@@ -91,6 +91,8 @@ import {
 } from '@qualy/plugin-assessment/plugin'
 import { BindableFormulaCatalog } from './binding-catalog.ts'
 import { contractWordsIssues } from '../contract-words.ts'
+import { invokeForScore } from '../scoring/invoke.ts'
+import { FORMULA_SCORING_LIMITS } from '../scoring/limits.ts'
 
 /**
  * The capability to write scoring formulas at all - tenant-wide, because
@@ -135,6 +137,15 @@ const RUNS_PER_PERSON = 2
 
 /** what a case left unrun after an earlier one was interrupted says on its row */
 const NOT_RUN = 'not run: an earlier case was interrupted'
+
+/** what an example that passed but could not be scored in time says on its row */
+const OVER_SCORING_BUDGET = 'exceeds the scoring time budget'
+
+/** how often an example that crossed the scoring deadline is asked again, host permitting */
+const SCORING_BUDGET_ROUNDS = 3
+
+/** how a sandbox run can fail, as the service declares it */
+type SandboxFailure = Effect.Error<ReturnType<Sandbox['Service']['invoke']>>
 
 /** the examples' own weight check, the same at every door a draft is written through */
 const testsTooLarge = (tests: readonly unknown[]): boolean =>
@@ -1338,6 +1349,74 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       return { ...prepared, report } satisfies CompiledFormula
     })
 
+  /**
+   * Whether a version's own examples can be scored in the scoring budget.
+   *
+   * They passed under the publication's deadline, which is sized for a cold
+   * start; a score is asked under a far tighter one, and a version whose own
+   * examples cannot be scored in it would pass here and fail every
+   * settlement and every read that meets it. So each is asked the way a
+   * score asks it. The deadline is wall clock, so an example that misses it
+   * is weighed against the same artifact asked only for its contract: when
+   * that fits the budget and the example again does not, the time is the
+   * example's own; when even that does not fit, the host is too busy to say
+   * anything about the formula, and the question is left unanswered rather
+   * than answered against it.
+   */
+  const scoringBudgetCheck = (
+    compiled: CompiledFormula,
+    tests: readonly FormulaTestInput[],
+  ): Effect.Effect<void, FormulaTestFailed | FormulaCompileUnavailable> =>
+    Effect.gen(function* () {
+      const artifact = { runtimeJs: compiled.artifact, runtimeSha256: compiled.runtimeSha256 }
+      const outageOrVerdict = <A>(run: Effect.Effect<A, SandboxFailure>) =>
+        onLane(run).pipe(
+          Effect.as<string | null>(null),
+          Effect.catchTags({
+            SandboxUnavailable: () => Effect.fail(new FormulaCompileUnavailable()),
+            SandboxWorkerLost: () => Effect.fail(new FormulaCompileUnavailable()),
+            SandboxTimeout: () => Effect.succeed(OVER_SCORING_BUDGET),
+          }),
+          // nothing else differs between the two budgets; whatever else the
+          // scoring one refuses is this example failing, named on its row
+          Effect.catch((refused) =>
+            Effect.succeed(`failed under the scoring budget: ${refused._tag}`),
+          ),
+        )
+      const control = outageOrVerdict(
+        sandbox
+          .invoke({
+            artifact: compiled.artifact,
+            artifactHash: compiled.runtimeSha256,
+            entrypoint: '__qualyContract',
+            arguments: [],
+            limits: { ...FORMULA_SCORING_LIMITS, outputBytes: MAX_CONTRACT_TRANSPORT_BYTES },
+          })
+          .pipe(
+            Effect.retry({
+              times: 1,
+              while: (error) => error._tag === 'SandboxTimeout' && error.phase === 'soft',
+            }),
+          ),
+      )
+      const report = [...compiled.report]
+      for (const [index, test] of tests.entries()) {
+        let verdict: string | null = null
+        for (let round = 0; round < SCORING_BUDGET_ROUNDS; round += 1) {
+          verdict = yield* outageOrVerdict(invokeForScore(sandbox, artifact, test.input))
+          if (verdict !== OVER_SCORING_BUDGET) break
+          if ((yield* control) !== null) {
+            yield* Effect.logWarning(
+              'the sandbox is too busy to tell whether a formula fits the scoring budget',
+            )
+            return
+          }
+        }
+        if (verdict !== null) report[index] = { ...report[index]!, passed: false, defect: verdict }
+      }
+      if (report.some((row) => !row.passed)) return yield* new FormulaTestFailed({ report })
+    })
+
   const listFunctions = Effect.fn('FormulaLibrary.listFunctions')(function* (
     tenantId: string,
     page: { cursor?: string; limit?: string },
@@ -1878,6 +1957,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       parameterSchemaAt(schema, `/${parameter}`),
     )
     if (unworded.length > 0) return yield* new FormulaContractInvalid({ issues: unworded })
+    yield* scoringBudgetCheck(compiled, row.draftTests)
 
     // What publication is idempotent over: the EXECUTABLE identity alone -
     // source, examples and the whole toolchain. What the author calls it is

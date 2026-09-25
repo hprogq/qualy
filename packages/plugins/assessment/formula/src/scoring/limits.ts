@@ -14,11 +14,13 @@
  * executable. The sandbox default admits only 256KiB, while publication
  * admits MAX_COMPILED_ARTIFACT_BYTES - without this override a lawfully
  * published large formula would score as ArtifactTooLarge forever, which
- * is a host-inflicted invariant breach, not a data problem. Input and
- * output ride on explicit transport budgets rather than the engine's 8MiB
- * ceiling: the input is one JSON object of at most 64 host-validated
- * parameters, the output is one envelope holding an amount or a capped
- * failure message.
+ * is a host-inflicted invariant breach, not a data problem. Time is held
+ * to the same rule from the other side: publication asks its examples once
+ * more under this budget (./invoke.ts), so a version whose own examples
+ * cannot be scored in it is not published. Input and output ride on
+ * explicit transport budgets rather than the engine's 8MiB ceiling: the
+ * input is one JSON object of at most 64 host-validated parameters, the
+ * output is one envelope holding an amount or a capped failure message.
  */
 
 import { DEFAULT_LIMITS, MAX_COMPILED_ARTIFACT_BYTES } from '@qualy/sandbox-rpc'

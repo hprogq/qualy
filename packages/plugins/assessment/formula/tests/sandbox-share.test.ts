@@ -21,7 +21,12 @@ import { seedFormulaFixture, servicesFor } from './support/stack.ts'
 interface Probe {
   live: number
   peak: number
+  /** example runs asked under the scoring budget, and which of them answer out of time */
+  scored: number
+  starve: 'nothing' | 'examples' | 'everything'
 }
+
+const fresh = (): Probe => ({ live: 0, peak: 0, scored: 0, starve: 'nothing' })
 
 // Authoring runs carry the publication-sized deadline; scoring never does.
 // Each authoring run is held a moment before it goes in, so that any two
@@ -33,19 +38,29 @@ const counted = (probe: Probe) =>
       const inner = yield* Sandbox
       return Sandbox.of({
         invoke: (call: SandboxInvocation) =>
-          call.limits?.softDeadlineMs !== 2_000
-            ? inner.invoke(call)
-            : Effect.acquireUseRelease(
-                Effect.sync(() => {
-                  probe.live += 1
-                  probe.peak = Math.max(probe.peak, probe.live)
-                }),
-                () => Effect.sleep(150).pipe(Effect.andThen(inner.invoke(call))),
-                () =>
+          call.limits?.softDeadlineMs === FORMULA_SCORING_LIMITS.softDeadlineMs
+            ? Effect.suspend(() => {
+                const example = call.entrypoint === '__qualyInvoke'
+                if (example) probe.scored += 1
+                const starved =
+                  probe.starve === 'everything' || (probe.starve === 'examples' && example)
+                return starved
+                  ? Effect.fail({ _tag: 'SandboxTimeout', phase: 'soft' } as never)
+                  : inner.invoke(call)
+              })
+            : call.limits?.softDeadlineMs !== 2_000
+              ? inner.invoke(call)
+              : Effect.acquireUseRelease(
                   Effect.sync(() => {
-                    probe.live -= 1
+                    probe.live += 1
+                    probe.peak = Math.max(probe.peak, probe.live)
                   }),
-              ),
+                  () => Effect.sleep(150).pipe(Effect.andThen(inner.invoke(call))),
+                  () =>
+                    Effect.sync(() => {
+                      probe.live -= 1
+                    }),
+                ),
       })
     }),
   ).pipe(Layer.provide(sandboxLocalLayer({ size: 1, variant: 'release' })))
@@ -87,6 +102,14 @@ export default defineFormula({
 })
 `
 
+/** a few hundred milliseconds of arithmetic: nothing to a try-run, far past a score's budget */
+const SLOW = MOODY.replace(
+  'return input.value',
+  `let spent = 0
+    for (let step = 0; step < 8_000_000; step += 1) spent = (spent + step) % 7
+    return spent >= 0 ? input.value : input.value`,
+)
+
 const LOOP = { mode: 'loop', value: '1.00' }
 const FINE = { mode: 'ok', value: '1.00' }
 
@@ -126,7 +149,7 @@ describe.runIf(postgresAvailable)('the runtime sandbox, shared by scoring and au
   })
 
   it('lets one authoring run in at a time, so a score waits behind one at most', async () => {
-    const probe: Probe = { live: 0, peak: 0 }
+    const probe = fresh()
     const outcome = ok(
       await run(
         db.url,
@@ -175,7 +198,7 @@ describe.runIf(postgresAvailable)('the runtime sandbox, shared by scoring and au
   }, 120_000)
 
   it('refuses a third run from one person while two are under way', async () => {
-    const probe: Probe = { live: 0, peak: 0 }
+    const probe = fresh()
     const outcome = ok(
       await run(
         db.url,
@@ -213,7 +236,7 @@ describe.runIf(postgresAvailable)('the runtime sandbox, shared by scoring and au
   }, 120_000)
 
   it('leaves the rest of a round unrun once one case is interrupted', async () => {
-    const probe: Probe = { live: 0, peak: 0 }
+    const probe = fresh()
     const outcome = ok(
       await run(
         db.url,
@@ -243,5 +266,90 @@ describe.runIf(postgresAvailable)('the runtime sandbox, shared by scoring and au
     ])
     // one deadline spent, not two
     expect(outcome.took).toBeLessThan(4_000)
+  }, 120_000)
+
+  it('publishes only what its own examples can be scored within, asked as a score asks', async () => {
+    const attempt = (starve: Probe['starve'], slug: string) => {
+      const probe = fresh()
+      return run(
+        db.url,
+        probe,
+        Effect.gen(function* () {
+          const f = yield* seedFormulaFixture(slug)
+          const library = yield* FormulaLibrary
+          const as = f.principal(f.authorA)
+          const created = yield* library.createFunction(f.t, { name: '计分时限' }, as)
+          yield* library.updateDraft(
+            f.t,
+            created.id,
+            {
+              expectedDraftRevision: 1,
+              draftSourceTs: MOODY,
+              draftTests: [{ name: 'fine', input: FINE, expected: '1' }],
+            },
+            as,
+          )
+          probe.starve = starve
+          const published = yield* Effect.result(
+            library.publish(f.t, created.id, { expectedDraftRevision: 2, releaseName: '慢' }, as),
+          )
+          const after = yield* library.getFunction(f.t, created.id, as)
+          return { published, versions: after.versions.length, scored: probe.scored }
+        }),
+      ).then(ok)
+    }
+    // the artifact loads within the budget and the example never finishes in
+    // it: the time is the example's own
+    const slow = await attempt('examples', 'ss-budget-slow')
+    expect(slow.published._tag).toBe('Failure')
+    expect(slow.published._tag === 'Failure' ? slow.published.failure : null).toMatchObject({
+      _tag: 'ASSESSMENT_FORMULA_TEST_FAILED',
+      report: [{ name: 'fine', passed: false, defect: 'exceeds the scoring time budget' }],
+    })
+    // asked the way a score asks - once more past a soft deadline - in each
+    // of the rounds the host was fit to judge
+    expect(slow.scored).toBe(6)
+    expect(slow.versions).toBe(0)
+    // nothing fits the budget at all: that is the host, not the formula
+    const busy = await attempt('everything', 'ss-budget-busy')
+    expect(busy.published._tag).toBe('Success')
+    expect(busy.versions).toBe(1)
+  }, 120_000)
+
+  it('refuses to publish a formula too slow to score, however well it tries', async () => {
+    const probe = fresh()
+    const outcome = ok(
+      await run(
+        db.url,
+        probe,
+        Effect.gen(function* () {
+          const f = yield* seedFormulaFixture('ss-slow')
+          const library = yield* FormulaLibrary
+          const as = f.principal(f.authorA)
+          const created = yield* library.createFunction(f.t, { name: '慢公式' }, as)
+          yield* library.updateDraft(
+            f.t,
+            created.id,
+            {
+              expectedDraftRevision: 1,
+              draftSourceTs: SLOW,
+              draftTests: [{ name: 'fine', input: FINE, expected: '1' }],
+            },
+            as,
+          )
+          const tried = yield* library.evaluateDraft(f.t, created.id, SLOW, [{ input: FINE }], as)
+          const refused = yield* Effect.flip(
+            library.publish(f.t, created.id, { expectedDraftRevision: 2, releaseName: '慢' }, as),
+          )
+          return { tried, refused }
+        }),
+      ),
+    )
+    // well within the try-run's deadline
+    expect(outcome.tried.results[0]!.actual).toBe('1')
+    expect(outcome.refused).toMatchObject({
+      _tag: 'ASSESSMENT_FORMULA_TEST_FAILED',
+      report: [{ name: 'fine', passed: false, defect: 'exceeds the scoring time budget' }],
+    })
   }, 120_000)
 })

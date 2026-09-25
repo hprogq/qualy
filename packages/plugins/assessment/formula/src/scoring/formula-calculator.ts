@@ -45,6 +45,7 @@ import { BindableFormulaCatalog, type FormulaNotBindable } from '../server/bindi
 import { contractIdentityOf } from '../server/contract-identity.ts'
 import { decodeFormulaEnvelope } from '../server/envelope.ts'
 import { FORMULA_SCORING_LIMITS } from './limits.ts'
+import { invokeForScore } from './invoke.ts'
 import { SUPPORTED_VALUE_SCHEMA_PROFILES } from '../server/runtime-compatibility.ts'
 
 const REF = 'formula@1'
@@ -388,41 +389,25 @@ export const formula1: CalculatorRegistration<
         resolveFrozenWith(store, frozen, context).pipe(
           Effect.map((resolved) => ({
             evaluate: (input: Record<string, unknown>) =>
-              sandbox
-                .invoke({
-                  artifact: resolved.runtimeJs,
-                  artifactHash: resolved.runtimeSha256,
-                  entrypoint: '__qualyInvoke',
-                  arguments: [JSON.stringify(input)],
-                  limits: FORMULA_SCORING_LIMITS,
-                })
-                .pipe(
-                  // the soft deadline is wall clock over the whole worker
-                  // envelope, so a starved host crosses it for a healthy
-                  // formula; the program is pure, so asking once more costs
-                  // nothing and a formula that is really slow fails again
-                  Effect.retry({
-                    times: 1,
-                    while: (error) => error._tag === 'SandboxTimeout' && error.phase === 'soft',
-                  }),
-                  Effect.mapError(evaluationFailure),
-                  Effect.flatMap((answer) => {
-                    const read = decodeFormulaEnvelope(answer.output)
-                    if (read._tag === 'malformed') {
-                      return Effect.fail(
-                        new CalculatorEvaluationError(
-                          'execution',
-                          `malformed formula envelope: ${read.reason}`,
-                        ),
+              invokeForScore(sandbox, resolved, input).pipe(
+                Effect.mapError(evaluationFailure),
+                Effect.flatMap((answer) => {
+                  const read = decodeFormulaEnvelope(answer.output)
+                  if (read._tag === 'malformed') {
+                    return Effect.fail(
+                      new CalculatorEvaluationError(
+                        'execution',
+                        `malformed formula envelope: ${read.reason}`,
+                      ),
+                    )
+                  }
+                  return read.envelope.ok
+                    ? Effect.succeed(read.envelope.amount)
+                    : Effect.fail(
+                        new CalculatorEvaluationError('refusal', read.envelope.failure.message),
                       )
-                    }
-                    return read.envelope.ok
-                      ? Effect.succeed(read.envelope.amount)
-                      : Effect.fail(
-                          new CalculatorEvaluationError('refusal', read.envelope.failure.message),
-                        )
-                  }),
-                ),
+                }),
+              ),
           })),
         ),
     }
