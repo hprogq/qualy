@@ -2067,13 +2067,15 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         params: Schema.Struct({ instanceId: uuidInput }),
         payload: Schema.Struct({
           instructions: boundedText(2000),
+          // A ceiling on the body only. The rule (a handful of pieces) is the
+          // service's, answered as a field issue the dialog can show.
           requirements: Schema.Array(
             Schema.Struct({
               label: trimmedName(100),
               kind: Schema.Literals(['text', 'file']),
               required: Schema.Boolean,
             }),
-          ),
+          ).check(Schema.isMaxLength(32)),
         }),
         success: Schema.Struct({ review: reviewDetailView }),
         error: [

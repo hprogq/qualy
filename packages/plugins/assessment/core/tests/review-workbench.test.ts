@@ -940,6 +940,88 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
     expect(result.decided.outcome).toBe('approved')
   })
 
+  // An answer that is not a small keyed record is refused in one line. The
+  // key walk once reported a string character by character, so a 2 MB body
+  // came back as two million issues built under the batch lock.
+  it('refuses an answer of the wrong shape in one line, and the ask stays open', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('wb-supplement-shape')
+          const assessment = yield* Assessment
+          const reviewer = f.principal(f.reviewer)
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          const instanceId = sent.currentReviewInstanceId!
+          // an ask with more pieces than the rule allows is one issue for the
+          // list, however many pieces it carries
+          const crowded = yield* Effect.exit(
+            assessment.requestSupplement(
+              f.t,
+              instanceId,
+              {
+                instructions: '请补充',
+                requirements: Array.from({ length: 30 }, () => ({
+                  label: '',
+                  kind: 'text' as const,
+                  required: true,
+                })),
+              },
+              reviewer,
+            ),
+          )
+          yield* assessment.requestSupplement(
+            f.t,
+            instanceId,
+            {
+              instructions: '请补充说明',
+              requirements: [{ label: '说明', kind: 'text', required: true }],
+            },
+            reviewer,
+          )
+          const requestId = (yield* assessment.getEntry(f.t, entry.id, s1)).supplement!.requestId
+          const answer = (payload: unknown) =>
+            Effect.exit(assessment.answerSupplement(f.t, requestId, { payload }, s1))
+          const text = yield* answer('x'.repeat(10_000))
+          const list = yield* answer(Array.from({ length: 10_000 }, () => 'x'))
+          const keys = yield* answer(
+            Object.fromEntries(Array.from({ length: 1_000 }, (_, index) => [`k${index}`, 1])),
+          )
+          const stillOpen = (yield* assessment.getEntry(f.t, entry.id, s1)).supplement
+          const answered = yield* assessment.answerSupplement(
+            f.t,
+            requestId,
+            { payload: { f1: '已补充' } },
+            s1,
+          )
+          return { crowded, text, list, keys, stillOpen, answered }
+        }),
+      ),
+    )
+    const issuesOf = (exit: Parameters<typeof errorOf>[0]) =>
+      errorOf<{ _tag: string; issues: readonly { field: string; reason: string }[] }>(exit)
+    expect(issuesOf(result.crowded)?.issues).toEqual([
+      { field: 'requirements', reason: 'too-many' },
+    ])
+    for (const [exit, reason] of [
+      [result.text, 'unreadable'],
+      [result.list, 'unreadable'],
+      [result.keys, 'too-many'],
+    ] as const) {
+      expect(issuesOf(exit)?._tag).toBe('ASSESSMENT_ENTRY_PAYLOAD_INVALID')
+      expect(issuesOf(exit)?.issues).toEqual([{ field: '', reason }])
+    }
+    expect(result.stillOpen?.requestId).toBeDefined()
+    expect(result.answered.supplements[0]!.status).toBe('answered')
+  })
+
   it('hands a rejected claim back with the words it was rejected in', async () => {
     const result = ok(
       await run(

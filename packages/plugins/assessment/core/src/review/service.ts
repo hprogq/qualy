@@ -2631,7 +2631,9 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             issues.push({ field: 'requirements', reason: 'required' })
           }
           if (input.requirements.length > MOST_REQUIREMENTS) {
+            // one line for the list, not one more per piece it carries
             issues.push({ field: 'requirements', reason: 'too-many' })
+            return yield* new EntryPayloadInvalid({ issues })
           }
           // keys are the server's: positional, stable for the answer to name
           const requirements: SupplementRequirement[] = input.requirements.map((asked, index) => ({
@@ -2853,6 +2855,20 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             if (!admin) return yield* new ReviewNotFound()
             return yield* refuse('supplement-answer', 'not-your-entry')
           }
+          // The answer's shape, ahead of the lock and of anything the round
+          // is doing: a keyed record, with no more pieces than an ask can
+          // have. Said in one line, because the key walk below would
+          // otherwise report a string character by character and an array
+          // element by element.
+          const sent = input.payload ?? {}
+          if (typeof sent !== 'object' || Array.isArray(sent)) {
+            return yield* new EntryPayloadInvalid({
+              issues: [{ field: '', reason: 'unreadable' }],
+            })
+          }
+          if (Object.keys(sent).length > MOST_REQUIREMENTS) {
+            return yield* new EntryPayloadInvalid({ issues: [{ field: '', reason: 'too-many' }] })
+          }
           const locked = yield* lockBatch(tenantId, first.batchId)
           if (locked!.status === 'archived') return yield* new BatchReadOnly()
           // Read it again, and judge from this one: between the first read
@@ -2875,7 +2891,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             return yield* refuse('supplement-answer', 'requirements-unreadable')
           }
           // the answer held to the ask: exactly the asked-for pieces
-          const record = (input.payload ?? {}) as Record<string, unknown>
+          const record = sent as Record<string, unknown>
           const issues: { field: string; reason: string }[] = []
           const known = new Set(asks.map((asked) => asked.key))
           for (const key of Object.keys(record)) {
