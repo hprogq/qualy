@@ -467,6 +467,19 @@ describe.runIf(postgresAvailable)('an OpenID Connect account', () => {
     expect(await labelOf()).toBe('ada.renamed')
   })
 
+  it('sends a session that has not lately shown it is its owner’s back to show it first', async () => {
+    const bind = await depart(
+      'op',
+      `?intent=bind&returnTo=${encodeURIComponent('/account/logins')}`,
+      await signedIn(ada, false),
+    )
+    expect(landing(bind.response)).toEqual({
+      path: '/account/logins',
+      code: 'AUTH_REAUTHENTICATION_REQUIRED',
+    })
+    expect(bind.response.headers.get('location')).not.toContain('/authorize')
+  })
+
   it('refuses an ID Token that is for another client, from another issuer, for another nonce, long expired, or signed by anybody else', async () => {
     for (const claims of [
       { sub: 'sub-ada', forged: true },

@@ -161,9 +161,16 @@ const handlers = HttpApiBuilder.group(local, 'authGithub', (handlers) =>
           .pipe(Effect.result)
         if (started._tag === 'Failure') {
           const refusal = started.failure
-          return refusal._tag === 'TOO_MANY_ATTEMPTS'
-            ? failed(refusal)
-            : failed(new SignInMethodUnavailable())
+          // a bind goes back to the page it was asked from, and says why there
+          const refused = (failure: {
+            readonly _tag: string
+            readonly retryAfterSeconds?: number
+          }) =>
+            binding ? away(failureLocation(query.returnTo ?? '/', failure), 303) : failed(failure)
+          return refusal._tag === 'TOO_MANY_ATTEMPTS' ||
+            refusal._tag === 'AUTH_REAUTHENTICATION_REQUIRED'
+            ? refused(refusal)
+            : refused(new SignInMethodUnavailable())
         }
         return away(
           authorizeRedirect(settings.endpoints, {

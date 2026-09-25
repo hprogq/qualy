@@ -402,6 +402,19 @@ describe.runIf(postgresAvailable)('a GitHub account', () => {
     expect(await subjects(lin)).not.toContain('4096')
   })
 
+  it('sends a session that has not lately shown it is its owner’s back to show it first', async () => {
+    const bind = await depart(
+      `?intent=bind&returnTo=${encodeURIComponent('/account/logins')}`,
+      await signedIn(ada, false),
+    )
+    expect(landing(bind.response)).toEqual({
+      path: '/account/logins',
+      code: 'AUTH_REAUTHENTICATION_REQUIRED',
+    })
+    // it never set out
+    expect(github.seen).toEqual([])
+  })
+
   it('binds nobody for a visitor who is not signed in', async () => {
     const { response } = await depart('?intent=bind')
     expect(landing(response)).toEqual({ path: '/login', code: 'AUTH_REQUIRED' })
