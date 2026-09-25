@@ -456,7 +456,7 @@ const resultWord = defineMessage<{ kind: string }>()({
 const resultMade = defineMessage<{ kind: string }>()({
   id: 'assessment/result/made',
   defaultMessage:
-    '{kind, select, voided {Item disabled; not counted} derived {Counted automatically} recorded {Awaiting staff entry} unrecorded {Not recorded} other {Nothing submitted}}',
+    '{kind, select, voided {Item disabled; not counted} derived {Counted automatically} recorded {Awaiting staff entry} unrecorded {Not recorded} unopened {Filing not open yet} ended {Filing closed} shut {Not open for filing now} other {Nothing submitted}}',
 })
 
 const resultRule = defineMessage<{ kind: string; value: string }>()({

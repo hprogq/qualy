@@ -217,6 +217,53 @@ export interface LedgerAdjustmentView {
 export type LedgerRow = LedgerGroupView | LedgerItemView | LedgerAdjustmentView
 
 /**
+ * Why a question nobody filed into stands empty, where the round's stages
+ * are the reason: no stage has begun yet (`before`), no stage lies ahead that
+ * could open it (`after`), or neither can be told from the timetable and only
+ * the moment keeps it shut (`between`). The timetable does not say which
+ * stages take filings, so `between` claims no more than that.
+ */
+export type FilingShut = 'before' | 'after' | 'between'
+
+/** the refusals that are the round's stages speaking, not the question or the claim */
+const STAGE_REASONS: ReadonlySet<string> = new Set([
+  'no-active-phase',
+  'phase-closed',
+  'item-out-of-scope',
+  'participant-out-of-scope',
+])
+
+/**
+ * Which questions the stages keep shut to the reader right now, and why, from
+ * the filing gates the reader's own claims arrive with and the round's
+ * timetable. Without the timetable nothing more than `between` is said.
+ */
+export const filingShutOf = (
+  gates: readonly {
+    readonly itemId: string
+    readonly create: { readonly state: string; readonly reason: string | null }
+  }[],
+  stages: readonly { readonly status: string }[] | undefined,
+): ReadonlyMap<string, FilingShut> => {
+  const why: FilingShut =
+    stages === undefined
+      ? 'between'
+      : !stages.some((stage) => stage.status !== 'future')
+        ? 'before'
+        : !stages.some((stage) => stage.status === 'future')
+          ? 'after'
+          : 'between'
+  const shut = new Map<string, FilingShut>()
+  for (const gate of gates) {
+    const { state, reason } = gate.create
+    if (state === 'blocked' && reason !== null && STAGE_REASONS.has(reason)) {
+      shut.set(gate.itemId, why)
+    }
+  }
+  return shut
+}
+
+/**
  * One stretch of the account.
  *
  * A top group with everything under it (`group`); the questions the paper

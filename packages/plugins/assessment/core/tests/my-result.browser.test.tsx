@@ -751,6 +751,76 @@ describe('the rows of the account', () => {
   })
 })
 
+describe('a question the stages keep shut', () => {
+  const stage = (status: 'ended' | 'current' | 'future', index: number) => ({
+    phaseId: `stage-${String(index)}`,
+    displayName: `阶段${String(index)}`,
+    entryNote: '',
+    status,
+    description: '',
+    entry: { kind: 'pending' as const, at: null },
+  })
+  const madeOf = (itemId: string) =>
+    itemRow(itemId).querySelector('[data-made]')?.getAttribute('data-made') ?? null
+
+  /** the paper, with filing into q2 refused for `reason`, or open, and every other question open */
+  const read = async (
+    stages: ReturnType<typeof stage>[],
+    reason: string | null,
+    batchStatus = 'active',
+  ) => {
+    await page.viewport(1440, 900)
+    const paper = normal()
+    const open = { state: 'available' as const, reason: null }
+    await screen(paper, {
+      getBatch: () => Effect.succeed({ batch: { ...batch, status: batchStatus } }),
+      getTimeline: () => Effect.succeed({ timeline: stages }),
+      listMyEntries: () =>
+        Effect.succeed({
+          participantId: PARTICIPANT_ID,
+          entries: paper.entries,
+          nextCursor: null,
+          attention: { unreadItemIds: [] },
+          filing: paper.items.map((one) => ({
+            itemId: one.id,
+            create:
+              one.id === 'q2' && reason !== null ? { state: 'blocked' as const, reason } : open,
+            submit: open,
+          })),
+        }),
+    })
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
+  }
+
+  it('says filing has not opened where no stage has begun', async () => {
+    await read([stage('future', 1), stage('future', 2)], 'no-active-phase')
+    await expect.poll(() => madeOf('q2')).toBe('unopened')
+  })
+
+  it('says nothing was filed where filing is open', async () => {
+    await read([stage('current', 1), stage('future', 2)], null)
+    expect(madeOf('q2')).toBe('none')
+  })
+
+  it('says filing has closed where no stage lies ahead', async () => {
+    await read([stage('ended', 1), stage('current', 2)], 'phase-closed')
+    await expect.poll(() => madeOf('q2')).toBe('ended')
+  })
+
+  it('says only that filing is not open now where stages lie both behind and ahead', async () => {
+    await read([stage('ended', 1), stage('current', 2), stage('future', 3)], 'item-out-of-scope')
+    await expect.poll(() => madeOf('q2')).toBe('shut')
+  })
+
+  it('says only what was filed on an archived account', async () => {
+    await read([stage('ended', 1)], 'no-active-phase', 'archived')
+    await expect
+      .element(page.getByTestId('result-moving'))
+      .toHaveAttribute('data-closed', 'archived')
+    expect(madeOf('q2')).toBe('none')
+  })
+})
+
 describe('the score page on a phone', () => {
   it('folds the outline into chips pinned over the bands, and fits the screen', async () => {
     await page.viewport(390, 844)

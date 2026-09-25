@@ -1,9 +1,10 @@
+import { useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { layout } from '@qualy/ui/theme/layout.stylex'
-import { useApiQuery, usePageNavigate } from '@qualy/web-runtime'
+import { useApi, useApiQuery, usePageNavigate } from '@qualy/web-runtime'
 import { isApiErrorCode, useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
@@ -15,6 +16,7 @@ import type { EntryDto, FilingGateDto } from '../entry/model.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { useBatchLive } from '../live.ts'
 import { ResultLedger, ResultUnavailable } from './ResultLedger.tsx'
+import { filingShutOf } from './ledger.ts'
 import { useMyEntriesQuery } from '../entry/my-entries.ts'
 
 // One's own standing in a round, and the page it is read on.
@@ -95,6 +97,7 @@ const styles = stylex.create({
 })
 
 function Standing({ batchId, archived }: { batchId: string; archived: boolean }) {
+  const api = useApi(assessmentApi)
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
   const navigate = usePageNavigate()
@@ -146,9 +149,30 @@ function Standing({ batchId, archived }: { batchId: string; archived: boolean })
   // Taken off the roster, a participant may still read their account but
   // file into nothing: the server then hides the filing gate of every
   // question, which it never does for anybody still on the roster.
-  const gates = (mine.data?.filing ?? []) as readonly FilingGateDto[]
+  const filing = mine.data?.filing
+  const gates = useMemo(() => (filing ?? []) as readonly FilingGateDto[], [filing])
   const offRoster = gates.length > 0 && gates.every((gate) => gate.create.state === 'hidden')
   const closed = archived ? 'archived' : offRoster ? 'excluded' : null
+  // The timetable, read already by the page's live wake-ups under the same
+  // key, says whether a question the stages keep shut has not opened yet or
+  // has nothing left to open it. A harness without it leaves it unasked.
+  const timed = typeof api.assessment.getTimeline === 'function'
+  const plan = useQuery(
+    timed
+      ? {
+          ...query.assessment.getTimeline.queryOptions({ params: { batchId } }),
+          staleTime: 30_000,
+        }
+      : // hooks are unconditional, so a harness without the timetable gets
+        // a query that never runs rather than none
+        {
+          queryKey: ['assessment', 'result-timeline-idle', batchId],
+          queryFn: () => Promise.resolve({ timeline: [] }),
+          enabled: false,
+        },
+  )
+  const stages = plan.data?.timeline
+  const shut = useMemo(() => filingShutOf(gates, stages), [gates, stages])
 
   const toEntries = (search?: Record<string, string>) =>
     navigate('assessment/batch-my-entries', {
@@ -270,6 +294,7 @@ function Standing({ batchId, archived }: { batchId: string; archived: boolean })
             heading={format(m.resultTab)}
             reader="owner"
             closed={closed}
+            shut={shut}
             emptyAction={goEntries}
             // a line leads to its claim on the filing page, opened there
             onEntryOpen={(entryId) => {

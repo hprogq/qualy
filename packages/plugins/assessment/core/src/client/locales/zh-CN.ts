@@ -396,7 +396,7 @@ export default {
   'assessment/result/word':
     '{kind, select, approved {已通过} recorded {管理员认定} notCounted {已通过，按计分规则计入了其他申报} refused {未通过，不计入成绩} abandoned {已放弃，不计入成绩} revoked {已撤销，不计入成绩} excluded {不计入成绩} other {自动计入}}',
   'assessment/result/made':
-    '{kind, select, voided {项目已停用，不计入成绩} derived {自动计入，无需申报} recorded {等待管理员认定} unrecorded {未认定} other {未申报}}',
+    '{kind, select, voided {项目已停用，不计入成绩} derived {自动计入，无需申报} recorded {等待管理员认定} unrecorded {未认定} unopened {暂未开放申报} ended {申报已截止} shut {目前不开放申报} other {未申报}}',
   'assessment/result/rule': '{kind, select, person {每人 {value} 分} other {每条 {value} 分}}',
   'assessment/result/line-tag':
     '{kind, select, notCounted {未计入} refused {未通过} abandoned {已放弃} excluded {不计分} other {已撤销}}',

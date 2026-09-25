@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildLedger,
+  filingShutOf,
   type LedgerEntry,
   type LedgerItem,
   type LedgerItemView,
@@ -955,6 +956,30 @@ describe('the score ledger model', () => {
     expect(capped.fullCents).toBe(10000)
     // without one, a question nobody here can read may add anything
     expect(build(null).fullCents).toBeNull()
+  })
+
+  it('tells which questions the stages keep shut, and whether filing is behind or ahead', () => {
+    const gates = [
+      { itemId: 'none-yet', create: { state: 'blocked', reason: 'no-active-phase' } },
+      { itemId: 'not-now', create: { state: 'blocked', reason: 'phase-closed' } },
+      { itemId: 'other-items', create: { state: 'blocked', reason: 'item-out-of-scope' } },
+      // shut by something other than the stages, or not shut at all
+      { itemId: 'full', create: { state: 'blocked', reason: 'max-entries-reached' } },
+      { itemId: 'open', create: { state: 'available', reason: null } },
+      { itemId: 'hidden', create: { state: 'hidden', reason: null } },
+    ]
+    const at = (...statuses: string[]) => statuses.map((status) => ({ status }))
+    const shut = (stages: { status: string }[] | undefined) =>
+      Object.fromEntries(filingShutOf(gates, stages))
+    const three = (why: string) => ({ 'none-yet': why, 'not-now': why, 'other-items': why })
+    expect(shut(at('future', 'future'))).toEqual(three('before'))
+    // nothing arranged at all has not begun either
+    expect(shut(at())).toEqual(three('before'))
+    expect(shut(at('ended', 'current'))).toEqual(three('after'))
+    expect(shut(at('ended', 'ended'))).toEqual(three('after'))
+    expect(shut(at('ended', 'current', 'future'))).toEqual(three('between'))
+    // without the timetable, no more than the moment is said
+    expect(shut(undefined)).toEqual(three('between'))
   })
 
   it('reads a round that asks nothing as empty', () => {

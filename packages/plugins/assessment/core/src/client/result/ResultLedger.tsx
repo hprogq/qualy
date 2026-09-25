@@ -29,6 +29,7 @@ import {
   type LedgerModel,
   type LedgerResult,
   type LedgerSection,
+  type FilingShut,
 } from './ledger.ts'
 
 export type { LedgerEntry, LedgerItem, LedgerResult } from './ledger.ts'
@@ -70,6 +71,9 @@ const LINES_SHOWN = 6
 
 const INDENT = 14
 const REDUCE = '@media (prefers-reduced-motion: reduce)'
+
+/** a reader the stages keep out of nothing, one stable value across renders */
+const NONE_SHUT: ReadonlyMap<string, FilingShut> = new Map()
 
 const two = twoPlaces
 
@@ -745,6 +749,10 @@ function useViewportHeight(seat: RefObject<HTMLElement | null>): number | null {
  * is archived, or the participant was taken off its roster - so nothing on
  * it promises what a decision still to come would do, and nothing is marked
  * as waiting on somebody who can no longer act.
+ *
+ * `shut` names the questions the round's stages keep shut to the reader, so
+ * one nobody filed into says filing is not open rather than that nothing
+ * was filed; a page that cannot tell passes nothing.
  */
 export function ResultLedger({
   result,
@@ -758,6 +766,7 @@ export function ResultLedger({
   stickyTop = 0,
   align = 'center',
   closed = null,
+  shut = NONE_SHUT,
 }: {
   result: LedgerResult
   items: readonly LedgerItem[]
@@ -777,6 +786,8 @@ export function ResultLedger({
   align?: 'center' | 'start'
   /** why the account has stopped moving, if it has */
   closed?: 'archived' | 'excluded' | null
+  /** the questions the stages keep shut to the reader, and why */
+  shut?: ReadonlyMap<string, FilingShut>
 }) {
   const model = useMemo(() => buildLedger({ result, items, entries }), [result, items, entries])
   const seat = useRef<HTMLDivElement>(null)
@@ -930,6 +941,8 @@ export function ResultLedger({
                 bandTop={bandTop}
                 reader={reader}
                 closed={closed !== null}
+                // a closed account says what was filed, not what may be
+                shut={closed === null ? shut : NONE_SHUT}
                 open={open}
                 onToggle={toggle}
                 onEntryOpen={onEntryOpen}
@@ -1241,6 +1254,7 @@ function Section({
   bandTop,
   reader,
   closed,
+  shut,
   open,
   onToggle,
   onEntryOpen,
@@ -1255,6 +1269,7 @@ function Section({
   bandTop: number
   reader: 'owner' | 'staff'
   closed: boolean
+  shut: ReadonlyMap<string, FilingShut>
   open: ReadonlySet<string>
   onToggle: (id: string) => void
   onEntryOpen: ((entryId: string) => void) | undefined
@@ -1330,6 +1345,7 @@ function Section({
             first={!banded && first && index === 0}
             reader={reader}
             closed={closed}
+            shut={shut.get(row.id) ?? null}
             open={open.has(row.id)}
             onToggle={onToggle}
             onEntryOpen={onEntryOpen}
@@ -1432,6 +1448,9 @@ type MadeKind =
   | 'waits'
   | 'recorded'
   | 'unrecorded'
+  | 'unopened'
+  | 'ended'
+  | 'shut'
   | 'none'
 
 /** the counts a mark beside the name already says, so the line under it does not */
@@ -1466,6 +1485,8 @@ const madeOf = (
   tag: Tag | null,
   reader: 'owner' | 'staff',
   closed: boolean,
+  /** why the stages keep the question shut to the reader, if they do */
+  shut: FilingShut | null,
   format: Format,
   list: (parts: readonly string[]) => string,
   dayOf: (at: string | null) => string | null,
@@ -1497,10 +1518,22 @@ const madeOf = (
   if (tag !== null) {
     return { kind: 'waits', said: format(m.resultWaitsFor, { kind: tag.kind, reader }) }
   }
-  // the office's record is still to come only while the account is open
-  const nothing = item.recordedOnly ? (closed ? 'unrecorded' : 'recorded') : 'none'
+  // the office's record is still to come only while the account is open;
+  // nothing filed where the stages let nobody file is not a choice not to
+  const nothing = item.recordedOnly
+    ? closed
+      ? 'unrecorded'
+      : 'recorded'
+    : shut === null
+      ? 'none'
+      : SHUT_MADE[shut]
   return { kind: nothing, said: format(m.resultMade, { kind: nothing }) }
 }
+
+const SHUT_MADE = { before: 'unopened', after: 'ended', between: 'shut' } as const satisfies Record<
+  FilingShut,
+  MadeKind
+>
 
 const tagOf = (item: LedgerItemView): Tag | null => {
   if (item.voided) return null
@@ -1543,6 +1576,7 @@ function ItemRow({
   first,
   reader,
   closed,
+  shut,
   open,
   onToggle,
   onEntryOpen,
@@ -1553,6 +1587,8 @@ function ItemRow({
   reader: 'owner' | 'staff'
   /** the account has stopped moving: nothing waits on anybody */
   closed: boolean
+  /** why the stages keep the question shut to the reader, if they do */
+  shut: FilingShut | null
   open: boolean
   onToggle: (id: string) => void
   onEntryOpen: ((entryId: string) => void) | undefined
@@ -1587,7 +1623,9 @@ function ItemRow({
   // no mark says one is waiting to be handled or decided
   const tag = closed ? null : tagOf(item)
   const rule = ruleOf(item)
-  const made = madeOf(item, tag, reader, closed, format, list, (at) => dayOf(at, locale, zone))
+  const made = madeOf(item, tag, reader, closed, shut, format, list, (at) =>
+    dayOf(at, locale, zone),
+  )
   const nothing = item.lines.length === 0 && item.cents === 0
   const inset = { paddingInlineStart: 16 + item.depth * INDENT }
   const lineData =
