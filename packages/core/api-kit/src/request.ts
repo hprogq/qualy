@@ -357,8 +357,16 @@ const schemeOf = (
  * So the platform's tracer is switched off (`platformTracerOff`, provided
  * where the server is built) and this opens the span it would have opened -
  * a server span, named by the method until routeSpanNames names it by the
- * route, continuing an inbound trace, with the method, the path without its
- * query, the scheme and, on the way out, the status.
+ * route, continuing an inbound trace, with the method, the scheme and, on
+ * the way out, the path and the status.
+ *
+ * The path is the same rule the access log follows: the route template when
+ * a route matched, the concrete path only when none did. A path segment can
+ * be a credential too - the local upload door's ticket is the whole
+ * authority to write those bytes - and the concrete path went to the trace
+ * backend for every upload while the access log had stopped writing it.
+ * Written on the way out because the router names the template while it
+ * dispatches, before which nothing here knows it.
  */
 export const serverSpans = (options?: {
   readonly trustedProxies?: readonly string[] | undefined
@@ -377,7 +385,6 @@ export const serverSpans = (options?: {
           ...(parent === undefined ? {} : { parent }),
           attributes: {
             'http.request.method': request.method,
-            'url.path': pathOf(request.url),
             'url.scheme': schemeOf(request, trusted),
           },
         },
@@ -385,6 +392,12 @@ export const serverSpans = (options?: {
           Effect.withParentSpan(httpApp, span).pipe(
             Effect.tap((response) =>
               Effect.sync(() => span.attribute('http.response.status_code', response.status)),
+            ),
+            Effect.onExit(() =>
+              Effect.sync(() => {
+                const route = span.attributes.get('http.route')
+                span.attribute('url.path', typeof route === 'string' ? route : pathOf(request.url))
+              }),
             ),
           ),
       )

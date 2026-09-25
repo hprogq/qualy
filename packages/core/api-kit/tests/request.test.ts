@@ -293,10 +293,24 @@ describe('the span a request exports', () => {
     for (const secret of ['ST-secret-ticket', 'c0de-secret', 'st4te-secret']) {
       expect(everything).not.toContain(secret)
     }
-    const path = span.attributes.find((attribute) => attribute.key === 'url.path')
-    expect(path?.value.stringValue).toBe('/things/42')
     // still the one server span, still named by its route
     expect(span.name).toBe('GET /things/:thingId')
+  })
+
+  it('carries the route template as its path, never the identifiers in it', async () => {
+    // A path segment can be a credential: the local upload door's ticket is
+    // the whole authority to write those bytes. The access log stopped
+    // writing concrete paths for that reason, and the span kept exporting
+    // them to whoever reads the trace backend.
+    const inbound = '7777666655554444333322221111aaaa'
+    const ticket = '019loudt-cafe-4bad-8000-5ec2e7000000'
+    await fetch(`${base}/things/${ticket}`, {
+      headers: { traceparent: `00-${inbound}-00f067aa0ba902b7-01` },
+    })
+    const span = await exportedSpan((candidate) => candidate.traceId === inbound)
+    const path = span.attributes.find((attribute) => attribute.key === 'url.path')
+    expect(path?.value.stringValue).toBe('/things/:thingId')
+    expect(JSON.stringify(span)).not.toContain(ticket)
   })
 
   it('keeps the method-only name when no route matched', async () => {
@@ -307,6 +321,9 @@ describe('the span a request exports', () => {
     const span = await exportedSpan((candidate) => candidate.traceId === inbound)
     // a 404 has no template; the raw URL must not become the name
     expect(span.name).toBe('http.server GET')
+    // and the path it asked for is all there is to say where it went
+    const path = span.attributes.find((attribute) => attribute.key === 'url.path')
+    expect(path?.value.stringValue).toBe('/no-such-route')
   })
 })
 
