@@ -27,6 +27,13 @@ export class UserTypeInUse extends Schema.TaggedError<UserTypeInUse>()(
   { httpApiStatus: 409, identifier: 'UserTypeInUse' },
 ) {}
 
+/** records kept from before still name this type: it can be disabled, not deleted */
+export class UserTypeReferenced extends Schema.TaggedError<UserTypeReferenced>()(
+  'USER_TYPE_REFERENCED',
+  {},
+  { httpApiStatus: 409, identifier: 'UserTypeReferenced' },
+) {}
+
 /**
  * The type changed since the caller read it.
  *

@@ -1238,6 +1238,10 @@ const i18n = definePluginMessages({
       message: userTypeLastForRoleMessage,
       values: (data) => ({ roleCount: data.roleCount }),
     },
+    USER_TYPE_REFERENCED: {
+      id: 'auth/error/user-type-referenced',
+      defaultMessage: 'Past records still name this user type, so it can only be disabled.',
+    },
     RECOVERY_CHANNEL_REQUIRED: {
       id: 'auth/error/recovery-channel-required',
       defaultMessage: 'The system account must keep a working password sign-in.',

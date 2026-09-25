@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
 import { transaction, withDatabase } from '@qualy/plugin-database/server'
-import { translateConstraints } from '@qualy/plugin-database/server/constraints'
+import { failedWith, translateConstraints } from '@qualy/plugin-database/server/constraints'
 import { db, lockTenant, userTypeGuard, type Db } from './db.ts'
 import { sql } from 'kysely'
 import { Rbac } from '@qualy/rbac-contract/effect'
@@ -24,9 +24,17 @@ import {
   UserTypeLastForRole,
   UserTypeOrgTypeNotFound,
   UserTypePlacementInUse,
+  UserTypeReferenced,
   UserTypeVersionConflict,
   userTypeConstraints,
 } from './errors.ts'
+
+/**
+ * What postgres says when a row is still pointed at: a RESTRICT foreign key
+ * raises 23001 and a NO ACTION one 23503, and which one a plugin above this
+ * chose is not something this one should have to know.
+ */
+const STILL_REFERENCED = ['23001', '23503']
 
 // What a user type is allowed to be, and who may still sign in afterwards.
 //
@@ -527,7 +535,19 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
           // answers on this transaction because the connection is in the fiber
           const stranded = yield* rbac.rolesStrandedByUserType(tenantId, type.id)
           if (stranded > 0) return yield* new UserTypeLastForRole({ roleCount: stranded })
-          yield* deleteUserType(tenantId, type.id)
+          // Any foreign key, not only the ones this plugin can name: a plugin
+          // above this keeps what type somebody was when it recorded them (a
+          // batch's participants do), and auth must not learn its constraint
+          // names to answer for it. Whichever it is, the answer is the same.
+          yield* deleteUserType(tenantId, type.id).pipe(
+            Effect.catchTag('QueryFailed', (error) =>
+              Effect.fail(
+                STILL_REFERENCED.some((sqlstate) => failedWith(error, sqlstate))
+                  ? new UserTypeReferenced()
+                  : error,
+              ),
+            ),
+          )
           yield* audit.record(UserTypeDeleted, {
             tenantId,
             actor: yield* actorOf(tenantId, as),

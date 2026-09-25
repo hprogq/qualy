@@ -463,6 +463,7 @@ export default {
   'auth/error/user-type-conflict': '已存在同名或相同 Code 的用户类型',
   'auth/error/user-type-is-system': '系统预置用户类型不支持此修改',
   'auth/error/user-type-in-use': '仍有 {userCount} 个用户属于该类型',
+  'auth/error/user-type-referenced': '历史记录仍在使用该类型，只能停用',
   'auth/error/user-type-last-for-role': '仍有 {roleCount} 个角色仅允许该用户类型担任',
   'auth/error/user-type-disabled': '该用户类型已停用',
   'auth/error/user-not-found': '未找到该用户',

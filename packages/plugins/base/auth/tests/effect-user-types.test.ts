@@ -302,6 +302,65 @@ describe.runIf(postgresAvailable).concurrent('user types', () => {
     }
   })
 
+  it('refuses to delete a type a record kept elsewhere still names', async () => {
+    const db = await createTestContext('effect-ut-referenced')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const guest = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into user_types (tenant_id, code, name, placement_mode)
+              values (${f.tenant}, 'guest', 'guest', 'unrestricted') returning id`),
+          ).id
+          // Tables auth does not know, the way a batch keeps the type each
+          // participant was when it listed them: one refusing at once, one
+          // at the end of the statement, since either is a plugin's choice.
+          yield* runSql(sql`
+            create table kept_at_once (
+              tenant_id uuid not null,
+              user_type_id uuid not null,
+              foreign key (tenant_id, user_type_id)
+                references user_types (tenant_id, id) on delete restrict
+            )`)
+          yield* runSql(sql`
+            create table kept_after (
+              tenant_id uuid not null,
+              user_type_id uuid not null,
+              foreign key (tenant_id, user_type_id)
+                references user_types (tenant_id, id) on delete no action
+            )`)
+          yield* runSql(sql`
+            insert into kept_at_once (tenant_id, user_type_id) values (${f.tenant}, ${f.staff})`)
+          yield* runSql(sql`
+            insert into kept_after (tenant_id, user_type_id) values (${f.tenant}, ${guest})`)
+          const iam = yield* Iam
+          const restricted = yield* Effect.result(iam.userTypes.remove(f.tenant, f.staff, 1, f.as))
+          const deferred = yield* Effect.result(iam.userTypes.remove(f.tenant, guest, 1, f.as))
+          // still there, and still free to be switched off instead
+          const disabled = yield* iam.userTypes.setEnabled(f.tenant, f.staff, false, 1, f.as)
+          const left = yield* runSql(sql`
+            select count(*)::int as n from user_types where id in (${f.staff}, ${guest})`)
+          return {
+            restricted: tagOf(restricted),
+            deferred: tagOf(deferred),
+            disabled,
+            left: one<{ n: number }>(left).n,
+          }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.restricted).toBe('USER_TYPE_REFERENCED')
+      expect(answer.deferred).toBe('USER_TYPE_REFERENCED')
+      expect(answer.disabled).toBe(2)
+      expect(answer.left).toBe(2)
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('leaves out of an edit whatever the caller left out', async () => {
     const db = await createTestContext('effect-ut-partial')
     try {
