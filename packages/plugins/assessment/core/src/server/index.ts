@@ -2534,18 +2534,21 @@ export const make = Effect.fn('Assessment.make')(function* () {
     storage,
   })
 
+  // the same gate every entry act passes through, asked for review.process:
+  // what the queue is filtered by, and so what every count of it says too
+  const reviewGate = (tenantId: string, batchId: string) =>
+    Effect.gen(function* () {
+      const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+      if (!batch) return { allowed: false, reason: 'no-active-phase' } as const
+      const now = yield* Clock.currentTimeMillis
+      const view = yield* dieQuery(withDb(gateView(tenantId, batch, now)))
+      return decide(view, 'assessment.review.process', undefined)
+    })
+
   const reviewMethods = makeReviewMethods({
     withDb,
     authorize: authorizeAction,
-    // the same gate every entry act passes through, asked for review.process
-    reviewGate: (tenantId, batchId) =>
-      Effect.gen(function* () {
-        const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
-        if (!batch) return { allowed: false, reason: 'no-active-phase' } as const
-        const now = yield* Clock.currentTimeMillis
-        const view = yield* dieQuery(withDb(gateView(tenantId, batch, now)))
-        return decide(view, 'assessment.review.process', undefined)
-      }),
+    reviewGate,
     escalateGate: (tenantId, batchId) =>
       Effect.gen(function* () {
         const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
@@ -2856,9 +2859,16 @@ export const make = Effect.fn('Assessment.make')(function* () {
           : yield* entryMethods
               .getMyEntrySummary(tenantId, batchId, as)
               .pipe(Effect.catchTag('ASSESSMENT_PARTICIPANT_NOT_FOUND', (e) => Effect.die(e)))
-      const reviewer = standing.review
+      const desk = standing.review
         ? yield* dieQuery(withDb(reviewerDeskOf({ tenantId, batchId, userId: as.userId })))
         : null
+      // What waits in the queue is what the queue shows: while the phase
+      // keeps judging closed, the queue is empty and so is this count. The
+      // answered asks stay, because reading them is not judging.
+      const reviewer =
+        desk === null || (yield* reviewGate(tenantId, batchId)).allowed
+          ? desk
+          : { ...desk, pendingCount: 0, queueGroups: [] }
       return { participant, reviewer }
     }),
 
@@ -2939,8 +2949,11 @@ export const make = Effect.fn('Assessment.make')(function* () {
             myEntries: taking.has(batchId)
               ? { ...(mine.get(batchId) ?? none), filing: yield* filingFor(batchId) }
               : null,
+            // the queue's own count, so under the queue's own gate
             reviewsWaiting: authority.has('assessment.review.process')
-              ? (waiting.get(batchId) ?? 0)
+              ? (yield* reviewGate(tenantId, batchId)).allowed
+                ? (waiting.get(batchId) ?? 0)
+                : 0
               : null,
           }
         }),

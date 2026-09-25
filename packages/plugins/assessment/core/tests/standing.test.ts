@@ -215,6 +215,52 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
     expect(mine(result.settled)).toEqual({ ...none, approved: 1, filing: 'closed' })
   }, 120_000)
 
+  // The card, the batch desk and the queue are three readings of one queue:
+  // while the phase keeps judging closed the queue is empty, and the two
+  // counts of it say so rather than promising work the queue will not show.
+  it('counts the queue under the queue’s own gate', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('standing-gate')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: PROFILE })
+          const judge = f.principal(f.reviewer)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            f.principal(f.s1),
+          )
+          yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', f.principal(f.s1))
+          const reading = Effect.gen(function* () {
+            const card = yield* assessment.listMyStanding(f.t, judge)
+            const desk = yield* assessment.getMyOverview(f.t, g.batch.id, judge)
+            const queue = yield* assessment.listReviewInbox(f.t, { batchId: g.batch.id }, judge)
+            return {
+              card: card.items.find((item) => item.batchId === g.batch.id)!.reviewsWaiting,
+              desk: desk.reviewer!.pendingCount,
+              groups: desk.reviewer!.queueGroups.length,
+              queue: queue.items.length,
+            }
+          })
+          const open = yield* reading
+          const plan = yield* assessment.getPlan(f.t, g.batch.id, f.principal(f.admin))
+          yield* assessment.advancePhase(
+            f.t,
+            g.batch.id,
+            { to: plan[1]!.id, force: true, reason: 'test closes judging' },
+            f.principal(f.admin),
+          )
+          const closed = yield* reading
+          return { open, closed }
+        }),
+      ),
+    )
+    expect(result.open).toEqual({ card: 1, desk: 1, groups: 1, queue: 1 })
+    expect(result.closed).toEqual({ card: 0, desk: 0, groups: 0, queue: 0 })
+  }, 120_000)
+
   // An appeal leaves the claim approved while its round runs, and an ask on
   // that round is the author's to answer all the same: the card says so,
   // as the batch's own to-do list does.
