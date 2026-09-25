@@ -410,8 +410,9 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
   // Getting on with a draft or a claim sent back is not starting a new
   // filing: a stage may open editing and submitting and not creating, or the
   // other way round. The card offers to continue on the same question each
-  // write asks, not on whether a new filing would go through.
-  it('offers to continue only what editing and submitting would take, whatever filing says', async () => {
+  // write asks, not on whether a new filing would go through: a draft is
+  // finished by sending it, a claim sent back by sending a new version.
+  it('offers to continue only what its own write would take, whatever filing says', async () => {
     const result = ok(
       await run(
         db.url,
@@ -470,7 +471,14 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
           // new filings, and nothing already started may be sent
           yield* profiled(['assessment.entry.create', 'assessment.review.process'])
           const starting = { draft: yield* mine(f.s1), toFix: yield* mine(f.s2) }
-          return { finishing, starting }
+          // sending what is written, with no writing: a draft goes as it
+          // stands, a claim sent back needs a new version first
+          yield* profiled(['assessment.entry.submit', 'assessment.review.process'])
+          const sending = { draft: yield* mine(f.s1), toFix: yield* mine(f.s2) }
+          // writing, with no sending: nothing can be finished
+          yield* profiled(['assessment.entry.edit', 'assessment.review.process'])
+          const writing = { draft: yield* mine(f.s1), toFix: yield* mine(f.s2) }
+          return { finishing, starting, sending, writing }
         }),
       ),
     )
@@ -501,6 +509,18 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
         filing: 'open',
         continuable: { draft: false, toFix: false },
       }),
+    )
+    expect(result.sending.draft).toEqual(
+      expect.objectContaining({ draft: 1, continuable: { draft: true, toFix: false } }),
+    )
+    expect(result.sending.toFix).toEqual(
+      expect.objectContaining({ toFix: 1, continuable: { draft: false, toFix: false } }),
+    )
+    expect(result.writing.draft).toEqual(
+      expect.objectContaining({ draft: 1, continuable: { draft: false, toFix: false } }),
+    )
+    expect(result.writing.toFix).toEqual(
+      expect.objectContaining({ toFix: 1, continuable: { draft: false, toFix: false } }),
     )
   }, 120_000)
 

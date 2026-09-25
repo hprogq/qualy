@@ -3298,16 +3298,20 @@ export const make = Effect.fn('Assessment.make')(function* () {
         const held = unfinished.get(batchId)
         const open =
           held === undefined
-            ? new Set<string>()
-            : yield* entryMethods.itemsOwnerMayContinue(tenantId, batchId, participant.id, [
-                ...held.draft,
-                ...held.toFix,
-              ])
-        const any = (items: ReadonlySet<string> | undefined) =>
-          items !== undefined && [...items].some((itemId) => open.has(itemId))
+            ? null
+            : yield* entryMethods.itemsOwnerMayContinue(
+                tenantId,
+                batchId,
+                participant.id,
+                { draft: [...held.draft], toFix: [...held.toFix] },
+                as,
+              )
         return {
           filing: yield* dieQuery(withDb(filingOf(tenantId, batch, participant.id, now))),
-          continuable: { draft: any(held?.draft), toFix: any(held?.toFix) },
+          continuable: {
+            draft: open !== null && open.draft.size > 0,
+            toFix: open !== null && open.toFix.size > 0,
+          },
         }
       })
       // Every round asks rbac its own question, so the rounds ask at once:

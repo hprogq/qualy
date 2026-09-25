@@ -83,6 +83,7 @@ import {
   insertRevisionAttachments,
   nextEntryRevisionNo,
   nextRoundNo,
+  ownerWorkFactsOf,
   standingPlace,
   participantOf,
   revisionAttachmentsOf,
@@ -90,6 +91,7 @@ import {
   staffReachesParticipant,
   type AccountReading,
   type EntryRow,
+  type OwnerWorkFacts,
   type ParticipantAnchor,
 } from './db.ts'
 import {
@@ -456,17 +458,20 @@ export interface EntryMethods {
     as: Principal,
   ) => Effect.Effect<EntryView, EntryNotFound>
   /**
-   * Of these questions, the ones on which the participant could edit and
-   * submit a claim of theirs right now - the question the write path asks
-   * (`ownerMayRefile`), for a line that offers to continue only what would
-   * go through.
+   * Of the questions the owner's drafts and claims sent back stand on, the
+   * ones they could get on with right now, for a line that offers to
+   * continue only what would go through. Each asks what its own write asks:
+   * a draft is finished by sending it, so the submit gate is enough; a claim
+   * sent back needs a new version sent, so both gates (`ownerMayRefile`).
+   * Asked by the owner themselves, whose gates these are.
    */
   readonly itemsOwnerMayContinue: (
     tenantId: string,
     batchId: string,
     participantId: string,
-    itemIds: readonly string[],
-  ) => Effect.Effect<ReadonlySet<string>>
+    asked: { readonly draft: readonly string[]; readonly toFix: readonly string[] },
+    as: Principal,
+  ) => Effect.Effect<{ readonly draft: ReadonlySet<string>; readonly toFix: ReadonlySet<string> }>
   /**
    * Whether this person may read that entry at all - the same boundary the
    * detail and its history use, offered to the doors that hold a citation
@@ -659,6 +664,29 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
   const driverOf = (item: ItemRow) => deps.itemTypes.get(item.itemType)
 
   /**
+   * What `ownerMayRefile` asks of the question itself, before the phase: it
+   * is still asked, its current version asks participants to file, and it
+   * is filed at all (not derived).
+   */
+  const questionTakesRefiling = (question: OwnerWorkFacts) => {
+    if (!question.active || question.entryChannels === null) return false
+    if (!opensTo(question.entryChannels, 'participant')) return false
+    const driver = deps.itemTypes.get(question.itemType)
+    return driver !== undefined && driver.interaction !== 'derived'
+  }
+
+  /**
+   * What sending a draft for review asks of the question itself, before the
+   * phase: the same refusals `setEntryStatus` reaches before it reads the
+   * draft (`item-not-active`, `item-not-configured`,
+   * `item-type-not-installed`).
+   */
+  const questionTakesDraft = (question: OwnerWorkFacts) =>
+    question.active &&
+    question.entryChannels !== null &&
+    deps.itemTypes.get(question.itemType) !== undefined
+
+  /**
    * Whether a claim's owner could revise it and send it again right now: on
    * the roster, on a live question whose current version asks participants
    * to file and is filed at all (not derived), with the phase opening both
@@ -677,9 +705,12 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
       if (participant.status !== 'active' || item.status !== 'active') return false
       const revision =
         item.currentRevisionId === null ? null : yield* revisionOf(tenantId, item.currentRevisionId)
-      if (revision === null || !opensTo(revision.entryChannels, 'participant')) return false
-      const driver = driverOf(item)
-      if (driver === undefined || driver.interaction === 'derived') return false
+      const question = {
+        itemType: item.itemType,
+        active: true,
+        entryChannels: revision === null ? null : revision.entryChannels,
+      }
+      if (!questionTakesRefiling(question)) return false
       const ctx = { itemId: item.id, participantId: participant.id }
       const edit = yield* deps.subjectGate(tenantId, batchId, 'assessment.entry.edit', ctx)
       if (!edit.allowed) return false
@@ -1287,19 +1318,39 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
     tenantId,
     batchId,
     participantId,
-    itemIds,
+    asked,
+    as,
   ) =>
     withDb(
       Effect.gen(function* () {
-        const open = new Set<string>()
+        const draft = new Set<string>()
+        const toFix = new Set<string>()
         const participant = yield* participantOf(tenantId, batchId, participantId)
-        if (participant === null) return open
-        for (const itemId of new Set(itemIds)) {
-          const item = yield* itemOf(tenantId, itemId)
-          if (item === null || item.batchId !== batchId) continue
-          if (yield* ownerMayRefile(tenantId, batchId, item, participant)) open.add(itemId)
+        // the gates below are the reader's own, so they answer for this
+        // participant only when the reader is them
+        if (
+          participant === null ||
+          participant.status !== 'active' ||
+          participant.userId !== as.userId
+        ) {
+          return { draft, toFix }
         }
-        return open
+        // every question the card names, and every gate on them, read once
+        const itemIds = [...new Set([...asked.draft, ...asked.toFix])]
+        const questions = yield* ownerWorkFactsOf(tenantId, batchId, itemIds)
+        const gates = yield* gatesFor(as, batchId, participantId, [...questions.keys()])
+        for (const itemId of new Set(asked.draft)) {
+          const question = questions.get(itemId)
+          if (question === undefined || !questionTakesDraft(question)) continue
+          if (gates.get(itemId)?.submit.allowed === true) draft.add(itemId)
+        }
+        for (const itemId of new Set(asked.toFix)) {
+          const question = questions.get(itemId)
+          if (question === undefined || !questionTakesRefiling(question)) continue
+          const gate = gates.get(itemId)
+          if (gate?.edit.allowed === true && gate.submit.allowed) toFix.add(itemId)
+        }
+        return { draft, toFix }
       }),
     ).pipe(Effect.orDie)
 

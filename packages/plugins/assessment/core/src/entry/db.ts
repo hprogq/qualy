@@ -1,5 +1,6 @@
 import { Effect } from 'effect'
 import { sql, type RawBuilder } from 'kysely'
+import { readEntryChannels, type EntryChannel } from '../item/channels.ts'
 import { heldThroughOpenAsk, mayActOn } from '../review/db.ts'
 import { db, staffReachOver } from '../server/db.ts'
 import { PARTICIPANT_SOURCES, type HeldEntries, type HeldInRound } from './limit.ts'
@@ -143,6 +144,54 @@ export const heldInRoundOf = (tenantId: string, participantId: string) =>
         administrative: Number(row.administrative),
       })),
     )
+
+/**
+ * What decides whether the owner may get on with work already begun on each
+ * named question, besides the phase: whether it is still asked, whether its
+ * current version asks participants to file, and what kind of question it
+ * is. One read for every question a reader's card names, not one per
+ * question.
+ */
+export const ownerWorkFactsOf = (tenantId: string, batchId: string, itemIds: readonly string[]) =>
+  itemIds.length === 0
+    ? Effect.succeed(new Map<string, OwnerWorkFacts>())
+    : db
+        .query((k) =>
+          k
+            .selectFrom('AssessmentItem as i')
+            .leftJoin('AssessmentItemRevision as r', (join) =>
+              join.onRef('r.tenantId', '=', 'i.tenantId').onRef('r.id', '=', 'i.currentRevisionId'),
+            )
+            .select(['i.id', 'i.itemType', 'i.status', 'r.id as revisionId', 'r.entryChannels'])
+            .where('i.tenantId', '=', tenantId)
+            .where('i.batchId', '=', batchId)
+            .where('i.id', 'in', [...itemIds])
+            .execute(),
+        )
+        .pipe(
+          Effect.map(
+            (rows) =>
+              new Map(
+                rows.map((row): [string, OwnerWorkFacts] => [
+                  row.id,
+                  {
+                    itemType: row.itemType,
+                    active: row.status === 'active',
+                    // no current version is a question nobody can file into yet
+                    entryChannels:
+                      row.revisionId == null ? null : readEntryChannels(row.entryChannels),
+                  },
+                ]),
+              ),
+          ),
+        )
+
+export interface OwnerWorkFacts {
+  readonly itemType: string
+  readonly active: boolean
+  /** the doors the current version opens; null when it has none yet */
+  readonly entryChannels: readonly EntryChannel[] | null
+}
 
 /** every question currently being asked, for the filing gates to answer per item */
 export const activeItemIdsOf = (tenantId: string, batchId: string) =>
