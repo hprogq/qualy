@@ -1,6 +1,7 @@
 import { Effect } from 'effect'
 import { sql } from 'kysely'
 import { db } from '../server/db.ts'
+import { VOIDED_WITH_ITEM } from '../entry/db.ts'
 
 // What input collection reads that no other module already provides: the
 // participant's entries with the payload each stands on, and the caller's
@@ -97,6 +98,8 @@ export interface ScoredEntryRow {
   recognition: Record<string, unknown>
   /** whether a round was ever opened on it, which is what submitting does */
   wasSubmitted: boolean
+  /** whether it was cancelled because its question was withdrawn */
+  voidedWithItem: boolean
   createdAt: number
 }
 
@@ -140,6 +143,39 @@ export const participantEntries = (tenantId: string, batchId: string, participan
             )
             .as('wasSubmitted'),
         )
+        // cancelled with its question: the entry's own record says so, and
+        // a claim cancelled that way before the record was kept still has
+        // its round's closing word
+        .select((eb) =>
+          eb
+            .and([
+              eb('e.status', '=', 'voided'),
+              eb.or([
+                eb.exists(
+                  eb
+                    .selectFrom('EntryEvent as ee')
+                    .select(eb.lit(1).as('one'))
+                    .whereRef('ee.tenantId', '=', 'e.tenantId')
+                    .whereRef('ee.entryId', '=', 'e.id')
+                    .where('ee.kind', '=', VOIDED_WITH_ITEM),
+                ),
+                eb.exists(
+                  eb
+                    .selectFrom('ReviewEvent as re')
+                    .innerJoin('ReviewInstance as ri', (join) =>
+                      join
+                        .onRef('ri.tenantId', '=', 're.tenantId')
+                        .onRef('ri.id', '=', 're.reviewInstanceId'),
+                    )
+                    .select(eb.lit(1).as('one'))
+                    .whereRef('ri.tenantId', '=', 'e.tenantId')
+                    .whereRef('ri.entryId', '=', 'e.id')
+                    .where('re.kind', '=', 'cancelled-item-voided'),
+                ),
+              ]),
+            ])
+            .as('voidedWithItem'),
+        )
         .select([epoch('e.created_at').as('createdMs')])
         .where('e.tenantId', '=', tenantId)
         .where('e.batchId', '=', batchId)
@@ -156,6 +192,7 @@ export const participantEntries = (tenantId: string, batchId: string, participan
           recognitionId: row.recognitionId ?? null,
           recognition: row.recognition ?? {},
           wasSubmitted: row.wasSubmitted === true,
+          voidedWithItem: row.voidedWithItem === true,
           createdAt: msOf(row.createdMs),
         })),
       ),

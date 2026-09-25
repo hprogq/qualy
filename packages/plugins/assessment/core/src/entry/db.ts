@@ -925,6 +925,14 @@ export const cancelReviewInstance = (input: {
     .pipe(Effect.map(({ rows }) => rows.length > 0))
 
 /**
+ * The entry event a claim gets when its question is withdrawn and takes the
+ * open claim along: §32.30 gives a claim cancelled that way no line of its
+ * own, so the scorer has to tell it from a claim its owner or the office
+ * voided, which keeps one.
+ */
+export const VOIDED_WITH_ITEM = 'voided-with-item'
+
+/**
  * Something that happened to a claim which no review round explains.
  *
  * Append-only, like every other log here. The reason it exists at all: an

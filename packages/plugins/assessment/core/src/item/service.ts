@@ -60,6 +60,7 @@ import {
   participantOf,
   repointReviewRound,
   setEntryState,
+  VOIDED_WITH_ITEM,
 } from '../entry/db.ts'
 import {
   enterableFrom,
@@ -2354,7 +2355,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                   yield* insertEntryEvent({
                     tenantId,
                     entryId: entry.id,
-                    kind: 'voided-with-item',
+                    kind: VOIDED_WITH_ITEM,
                     actorId: as.userId,
                     reason,
                   })

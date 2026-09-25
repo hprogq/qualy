@@ -407,6 +407,78 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
     expect(result.anew.status).toBe('draft')
   })
 
+  it('gives a claim that went with its question no line once the question is restored', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('il-restore-lines')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const s1 = f.principal(f.s1)
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const file = (participantId: string, as: typeof s1) =>
+            Effect.gen(function* () {
+              const entry = yield* assessment.createEntry(
+                f.t,
+                { itemId: g.item.id, participantId, payload: {} },
+                as,
+              )
+              return yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', as)
+            })
+
+          // walked away from by its owner before the question went: that
+          // keeps its line
+          const abandoned = yield* file(g.p1, s1)
+          yield* assessment.setEntryStatus(f.t, abandoned.id, 'voided', s1)
+          // two under review, whose rounds say why they went, and one
+          // handed back for a new version, which has no round to say it
+          const inReview = yield* file(g.p1, s1)
+          const handedBack = yield* file(g.p2, f.principal(f.s2))
+          yield* assessment.interveneOnEntry(
+            f.t,
+            handedBack.id,
+            { kind: 'return-for-revision', reason: '证书需要重新上传' },
+            admin,
+          )
+          const older = yield* file(g.p3, f.principal(f.s3))
+
+          yield* assessment.setItemStatus(
+            f.t,
+            g.item.id,
+            { status: 'voided', reason: 'policy withdrawn for the term' },
+            admin,
+          )
+          const marked = (yield* runSql(sql`
+              select entry_id from entry_events
+              where kind = 'voided-with-item' and entry_id in (${inReview.id}, ${handedBack.id}, ${older.id})
+              order by entry_id`)) as { rows: { entry_id: string }[] }
+          yield* assessment.setItemStatus(f.t, g.item.id, { status: 'active' }, admin)
+          const lines = (participantId: string) =>
+            Effect.map(
+              assessment.getParticipantResult(f.t, g.batch.id, participantId, admin),
+              (account) => account.lines.map((line) => [line.lineId, line.kind, line.value]),
+            )
+          return {
+            ids: { abandoned: abandoned.id, inReview: inReview.id },
+            marked: marked.rows.map((row) => row.entry_id),
+            expectedMarked: [handedBack.id],
+            p1: yield* lines(g.p1),
+            p2: yield* lines(g.p2),
+            p3: yield* lines(g.p3),
+          }
+        }),
+      ),
+    )
+
+    expect(result.marked).toEqual(result.expectedMarked)
+    // the owner's own walking away is still on the account at zero; the
+    // claim the question took along is not, whichever state it was in
+    expect(result.p1).toEqual([[`entry:${result.ids.abandoned}`, 'excluded-evidence', '0.00']])
+    expect(result.p2).toEqual([])
+    expect(result.p3).toEqual([])
+  })
+
   // An appeal on a decided claim is open work on a question that no longer
   // exists, even though the claim itself stands: the claim keeps its
   // standing while appealed (§32.21), so the void finds the round by the

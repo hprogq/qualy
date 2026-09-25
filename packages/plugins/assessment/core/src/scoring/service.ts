@@ -215,6 +215,8 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
         readonly recognition: Record<string, unknown>
         /** whether it was ever put to anybody, which is what gives it a line */
         readonly wasSubmitted: boolean
+        /** whether it went with its question, which takes that line away again */
+        readonly voidedWithItem: boolean
         readonly createdAt: number
       }[]
     },
@@ -280,11 +282,15 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
           // that was withdrawn carries its own line instead of one per
           // claim. Said as one of the ledger's own three standings rather
           // than by narrowing a lifecycle column, so "approved with no
-          // amount" is not a shape this loop can produce at all.
+          // amount" is not a shape this loop can produce at all. A claim
+          // cancelled because its question was withdrawn has no line either,
+          // even once the question is restored: nobody refused it, and the
+          // question's own withdrawal is what there was to answer for.
           const excluded =
             item !== undefined &&
             item.status === 'active' &&
-            (entry.status === 'rejected' || (entry.status === 'voided' && entry.wasSubmitted))
+            (entry.status === 'rejected' ||
+              (entry.status === 'voided' && entry.wasSubmitted && !entry.voidedWithItem))
           entries.push({ ...common, standing: excluded ? 'excluded' : 'unscored' })
           continue
         }
