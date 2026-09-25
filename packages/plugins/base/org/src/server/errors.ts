@@ -150,10 +150,12 @@ export class TypeConflict extends Schema.TaggedError<TypeConflict>()(
  * The database as a backstop, by constraint name.
  *
  * These are the violations a service check cannot prevent without a race: a
- * concurrent insert takes the same sibling name, or a user is placed on a node
- * between the has-children check and the delete. The constraint is what
- * actually decides, so its violation has to arrive as the same domain error a
- * pre-check would have raised, not as a 500.
+ * concurrent insert takes the same sibling name, or a unit being dropped
+ * outright (an import undoing its own unit) is pointed at. The constraint is
+ * what actually decides, so its violation has to arrive as the same domain
+ * error a pre-check would have raised, not as a 500. Binning a unit only marks
+ * the row, which no foreign key sees: that one is decided by asking what
+ * stands there under the tenant lock.
  */
 export type NodeConstraintError = NodeConflict | NodeInUse
 export type TypeConstraintError = TypeConflict | TypeInUse

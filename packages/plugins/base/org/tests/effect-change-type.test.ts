@@ -658,6 +658,67 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
     }
   })
 
+  it('asks what stands on a unit after the writes queued ahead of the delete', async () => {
+    const db = await createTestContext('effect-org-usage-under-lock')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const org = yield* Org
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const empty = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
+              values (${f.tenant}, ${f.node}, ${f.collegeType}, 'Empty', 'r.b.e', 2) returning id`),
+          ).id
+          const reporter = yield* peopleAtNode.bind
+          const held = Effect.map(reporter(f.tenant, empty), (usage) =>
+            usage.some((one) => one.clearable && one.count > 0),
+          )
+          // Another administrator's write holds the tenant lock and places
+          // somebody on the empty unit; it commits once the delete is queued
+          // behind it.
+          const locked = yield* Deferred.make<void>()
+          const placing = yield* Effect.forkChild(
+            transaction(
+              Effect.gen(function* () {
+                yield* runSql(sql`select 1 from tenants where id = ${f.tenant} for update`)
+                yield* runSql(sql`
+                  insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+                  values (${f.tenant}, 'Newcomer', ${f.adminType}, ${empty})`)
+                yield* Deferred.succeed(locked, undefined)
+                for (let waited = 0; waited < 200; waited += 1) {
+                  yield* runSql(sql`select pg_stat_clear_snapshot()`)
+                  const waiting = one<{ n: number }>(
+                    yield* runSql(sql`
+                      select count(*)::int as n from pg_stat_activity
+                       where datname = current_database() and wait_event_type = 'Lock'`),
+                  ).n
+                  if (waiting > 0) return true
+                  yield* Effect.sleep('20 millis')
+                }
+                return false
+              }),
+            ),
+          )
+          yield* Deferred.await(locked)
+          const deleted = yield* Effect.result(org.deleteNode(f.tenant, empty, f.principal, held))
+          const queued = yield* Fiber.join(placing)
+          const binned = one<{ binned: boolean }>(
+            yield* runSql(
+              sql`select deleted_at is not null as binned from org_nodes where id = ${empty}`,
+            ),
+          ).binned
+          return { queued, deleted: tagOf(deleted), binned }
+        }),
+      )
+      expect(ok(exit)).toEqual({ queued: true, deleted: 'ORG_NODE_IN_USE', binned: false })
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('drops a unit it is undoing only while nothing points at it, whatever the table', async () => {
     // Undoing an import's own unit is the one place a row is still dropped,
     // and a plugin above this one may point at a node - a round's management

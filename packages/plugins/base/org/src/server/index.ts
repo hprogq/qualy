@@ -189,6 +189,8 @@ export class Org extends Context.Service<
        * any more; the plugins that own those things do, and org cannot see
        * them, so whoever calls says how to ask. Required on purpose: a
        * caller that forgot would take a unit away from under the people at it.
+       * Run inside the delete's locked transaction, so its queries should
+       * join the caller's transaction rather than open their own.
        */
       held: Effect.Effect<boolean>,
     ) => Effect.Effect<void, DeleteNodeError>
@@ -454,18 +456,19 @@ export const make = Effect.fn('Org.make')(function* () {
     as: Principal,
     held: Effect.Effect<boolean>,
   ) {
-    // asked before the lock is taken: the answer comes from other plugins'
-    // own connections, and the tenant lock is not held across those
-    yield* rbac.requireAt(as, 'org.tree.manage', nodeId)
-    if (yield* held) return yield* new NodeInUse()
     yield* write(tenantId, nodeId, as, (node) =>
       Effect.gen(function* () {
         if (!node.parentId) return yield* new NodeIsRoot()
         const children = yield* hasChildren(tenantId, nodeId)
         if (children) return yield* new NodeHasChildren()
-        // Taken out of the structure, not dropped: whoever still stands here
-        // or holds a grant here is asked about before this is called, and
-        // what merely remembers the unit keeps a row to remember.
+        // Asked under the lock: the reporters' queries join this transaction,
+        // so they read what the writes serialized behind the same lock left.
+        // Asked before it, a person placed or a grant made in the gap stood
+        // on a unit that was binned a moment later, and no foreign key
+        // objects to a row that is only marked deleted.
+        if (yield* held) return yield* new NodeInUse()
+        // Taken out of the structure, not dropped: what merely remembers the
+        // unit keeps a row to remember.
         yield* deleteNodeRow(tenantId, nodeId)
         yield* audit.record(NodeDeleted, {
           tenantId,
