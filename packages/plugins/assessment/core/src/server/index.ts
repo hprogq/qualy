@@ -2642,15 +2642,15 @@ export const make = Effect.fn('Assessment.make')(function* () {
   /**
    * Who may open one participant, and how much of them they read.
    *
-   * The same people the roster reading lists (rosterReadingOf), so nobody is
-   * listed who cannot then be opened: whoever administers the roster, and
-   * whoever may re-determine or record over this participant in this round.
-   * Administering and re-determining read the whole account and every claim
-   * (ruling of 2026-09-25 #33: the power to change a result carries the
-   * reading it takes). Recording reads the account and the administrative
-   * claims only, the same claims `mayReadEntry` lets it open (#21): writing
-   * facts about somebody is not reading what they filed. An id naming nobody
-   * and an id out of reach get the same refusal.
+   * The same people the results roster lists (accountReadingOf), so nobody
+   * is listed who cannot then be opened: whoever administers the roster, and
+   * whoever may re-determine over this participant in this round. Both read
+   * the whole account and every claim (ruling of 2026-09-25 #33: the power
+   * to change a result carries the reading it takes). Recording authority is
+   * not a door until the owner rules on it (§30); should it become one, it
+   * reads the administrative claims only (`mayReadEntry`, #21), and the
+   * partial reading this returns is what the readers below already honour.
+   * An id naming nobody and an id out of reach get the same refusal.
    */
   const requireAccountReach = (
     as: Principal,
@@ -2663,20 +2663,18 @@ export const make = Effect.fn('Assessment.make')(function* () {
       if (Result.isSuccess(roster)) return 'whole' as const
       const participant = yield* dieQuery(withDb(participantOf(tenantId, batchId, participantId)))
       if (participant === null) return yield* roster.failure
-      const covers = (permissionCode: string) =>
-        dieQuery(
-          withDb(
-            staffReachesParticipant({
-              tenantId,
-              batchId,
-              userId: as.userId,
-              permissionCode,
-              participant,
-            }),
-          ),
-        )
-      if (yield* covers(REDETERMINE)) return 'whole' as const
-      if (yield* covers('assessment.entry.record')) return 'administrative' as const
+      const covered = yield* dieQuery(
+        withDb(
+          staffReachesParticipant({
+            tenantId,
+            batchId,
+            userId: as.userId,
+            permissionCode: REDETERMINE,
+            participant,
+          }),
+        ),
+      )
+      if (covered) return 'whole' as const
       return yield* roster.failure
     })
 

@@ -25,6 +25,7 @@ import { countEvaluation, mapResultFailure, mapRuntimeFailure } from './failure-
 import { frozenCalculatorOf, readScoringPlan } from './plan.ts'
 import type { ScoringPlan } from './plan.ts'
 import { administrativeEntryIdsOf, participantEntries, participantRowByUser } from './db.ts'
+import { linkingOnly } from './linking.ts'
 import type { AccountReading } from '../entry/db.ts'
 
 // The two halves of scoring, joined here and nowhere else: facts are
@@ -555,24 +556,6 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
       )
     },
   )
-
-  /**
-   * An account as read by somebody who may open only some of its claims.
-   *
-   * Every line and amount stays - the total is the account's, not the
-   * reader's - but a line no longer points at a claim this reader could not
-   * open, so the ledger offers no way through that answers with a refusal.
-   */
-  const linkingOnly = (account: MyResultView, openable: ReadonlySet<string>): MyResultView => ({
-    ...account,
-    lines: account.lines.map((line) => {
-      const { provenance, ...rest } = line
-      if (provenance?.entryId === undefined || openable.has(provenance.entryId)) return line
-      return provenance.calculatorRef === undefined
-        ? rest
-        : { ...rest, provenance: { calculatorRef: provenance.calculatorRef } }
-    }),
-  })
 
   const getParticipantResult: ScoringMethods['getParticipantResult'] = Effect.fn(
     'Assessment.getParticipantResult',
