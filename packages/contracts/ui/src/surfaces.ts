@@ -619,3 +619,23 @@ export interface OrgNodePickerContext {
    */
   loading?: boolean
 }
+
+/**
+ * The same tree with no organization behind it.
+ *
+ * `orgNodePicker` reads the units itself when it is given none, and so asks
+ * for the directory's own read permission even when a caller hands it every
+ * unit - which left a screen with its own authorized list of units (a round's
+ * roster, a batch's staff scope) drawing nothing at all for a reader who
+ * holds that screen's permission and not the directory's. This one draws
+ * exactly the units it is given, fetches nothing, and so is visible to anyone
+ * signed in; the caller has already proved its own list.
+ */
+export const orgNodePickerView = defineUiSlot({
+  key: 'iam/org-node-picker-view',
+  cardinality: 'one',
+})
+
+export interface OrgNodePickerViewContext extends OrgNodePickerContext {
+  nodes: NonNullable<OrgNodePickerContext['nodes']>
+}

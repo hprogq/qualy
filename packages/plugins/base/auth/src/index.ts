@@ -21,6 +21,7 @@ import {
   PUBLIC,
   USER_DETAIL_SHELL,
   orgNodePicker,
+  orgNodePickerView,
   peopleImportPicker,
   peoplePicker,
   peoplePickerView,
@@ -406,6 +407,14 @@ const plugin = Plugin.define(
     id: 'auth/org-node-picker',
     component: Ui.react('./client/iam/OrgNodePicker'),
     visibility: permissionOf('auth.user.read'),
+  }),
+  // The same tree over units the caller supplies: it reads nothing, so like
+  // the people drawing above it asks for no permission of its own.
+  Ui.slot({
+    key: orgNodePickerView.key,
+    id: 'auth/org-node-picker-view',
+    component: Ui.react('./client/iam/OrgNodePickerView'),
+    visibility: AUTHENTICATED,
   }),
   OrgUsage.reporter(peopleAtNode),
   Access.permissions('auth', permissions),

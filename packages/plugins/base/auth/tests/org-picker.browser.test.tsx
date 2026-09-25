@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import OrgNodePicker from '../src/client/iam/OrgNodePicker.tsx'
+import OrgNodePickerView from '../src/client/iam/OrgNodePickerView.tsx'
 import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
@@ -98,5 +99,42 @@ describe('the unit picker', () => {
     await box.click()
     // a set can run past what the tree shows, so it is worth a summary
     await expect.element(page.getByTestId('chosen-units')).toBeVisible()
+  })
+})
+
+// A screen with its own authorized list of units - a round's roster, say -
+// hands the tree those units. Given them, the drawing never asks the
+// directory, so a reader who may not browse people still gets the tree.
+describe('the unit tree over units the caller supplies', () => {
+  function Supplied() {
+    const [value, setValue] = useState<readonly string[]>([])
+    return (
+      <OrgNodePickerView
+        context={{
+          single: true,
+          value,
+          onChange: setValue,
+          nodes: nodes.slice(0, 3).map((node) => ({
+            id: node.orgNodeId,
+            name: node.name,
+            parentId: node.parentId,
+          })),
+        }}
+      />
+    )
+  }
+
+  // the client here has no directory at all: a drawing that so much as
+  // built a query against it would fail to render
+  it('draws the units it is given, and never reaches for the directory', async () => {
+    const client = fakeClient({
+      app: { getManifest: () => Effect.succeed(emptyManifest()) },
+    })
+    await renderScreen({ client, children: <Supplied /> })
+
+    const college = page.getByRole('button', { name: '软件学院', exact: true })
+    await expect.element(college).toBeVisible()
+    await college.click()
+    await expect.element(college).toHaveAttribute('aria-current', 'true')
   })
 })

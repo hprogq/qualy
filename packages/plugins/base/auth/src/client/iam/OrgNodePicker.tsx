@@ -173,10 +173,6 @@ const styles = stylex.create({
 
 export default function OrgNodePicker({ context }: { context: OrgNodePickerContext }) {
   const query = useApiQuery(authApi)
-  const { format } = useI18n()
-  const [search, setSearch] = useState('')
-  const [orgTypeId, setOrgTypeId] = useState('')
-
   const supplied = context.nodes !== undefined
   const options = useQuery({
     ...query.identity.getUserOptions.queryOptions({ query: {} }),
@@ -198,12 +194,46 @@ export default function OrgNodePicker({ context }: { context: OrgNodePickerConte
     () => new Map((options.data?.orgTypes ?? []).map((type) => [type.id, type.name])),
     [options.data],
   )
+  return (
+    <OrgNodeChooser
+      context={context}
+      nodes={nodes}
+      typeNames={typeNames}
+      // supplied units arrive with whoever opened the picker, and only they
+      // know whether they are still fetching them
+      loading={supplied ? context.loading === true : options.isPending}
+      truncated={!supplied && options.data?.truncated === true}
+    />
+  )
+}
+
+/**
+ * The picker's drawing over units already in hand, reading nothing itself:
+ * the directory's picker above hands it what it fetched, and the view for a
+ * caller's own units hands it those.
+ */
+export function OrgNodeChooser({
+  context,
+  nodes,
+  typeNames,
+  loading,
+  truncated,
+}: {
+  context: OrgNodePickerContext
+  nodes: readonly { id: string; name: string; parentId: string | null; orgTypeId?: string }[]
+  /** the kinds of unit by id; with none, the kind filter is not offered */
+  typeNames: ReadonlyMap<string, string>
+  loading: boolean
+  /** the units are only part of what exists */
+  truncated: boolean
+}) {
+  const { format } = useI18n()
+  const [search, setSearch] = useState('')
+  const [orgTypeId, setOrgTypeId] = useState('')
+
   const kindOf = (node: { orgTypeId?: string }) =>
     node.orgTypeId === undefined ? undefined : typeNames.get(node.orgTypeId)
 
-  // supplied units arrive with whoever opened the picker, and only they know
-  // whether they are still fetching them
-  const loading = supplied ? context.loading === true : options.isPending
   const filtering = search.trim() !== '' || orgTypeId !== ''
   const matches = nodes.filter(
     (node) =>
@@ -377,9 +407,7 @@ export default function OrgNodePicker({ context }: { context: OrgNodePickerConte
         )}
       </div>
 
-      {!supplied && options.data?.truncated === true && (
-        <p {...stylex.props(styles.moreNote)}>{format(commonMessages.moreResults)}</p>
-      )}
+      {truncated && <p {...stylex.props(styles.moreNote)}>{format(commonMessages.moreResults)}</p>}
 
       {/* What a SET of units comes to, which a set needs and one unit does
           not: a single choice is already said by the row it is on, and
