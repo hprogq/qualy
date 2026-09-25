@@ -1771,6 +1771,34 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                 })
 
               /**
+               * The one place a round moves the claim (§32.21), whichever
+               * kind of step concluded it. A first round is standing at
+               * `in_review`; a round reconsidering a settled decision left the
+               * claim where it was, so the states it may move from are all
+               * three. What it lands on is the same either way - 更正 and 维持
+               * both leave an approval approved, 撤销 makes it a rejection.
+               *
+               * A claim in none of those states is not standing on this round
+               * any more, and the whole transaction is refused rather than
+               * leaving a concluded round, and a determination, beside a
+               * claim that never moved.
+               */
+              const concludeClaim = (to: 'approved' | 'rejected', recognitionId?: string) =>
+                Effect.gen(function* () {
+                  const moved = yield* setEntryState({
+                    tenantId,
+                    entryId: row.entryId,
+                    from: ['in_review', 'approved', 'rejected'],
+                    to,
+                    ...(recognitionId === undefined ? {} : { currentRecognitionId: recognitionId }),
+                  })
+                  if (!moved) return yield* new ReviewConflict()
+                  // the verdict is the owner's news, not the stage handovers
+                  // on the way to it (§32.72)
+                  yield* bumpParticipantAttention(tenantId, row.entryId)
+                })
+
+              /**
                * Climbs the ladder from `from`: the next rung somebody
                * independent can stand at, stepping over rungs held only by
                * this round's own earlier judges, blocking on a genuinely
@@ -2044,14 +2072,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                       recognitionReason: sitting.reason,
                     })
                     const recognitionId = yield* settle(sitting.values, eventId)
-                    yield* setEntryState({
-                      tenantId,
-                      entryId: row.entryId,
-                      from: ['in_review'],
-                      to: 'approved',
-                      currentRecognitionId: recognitionId,
-                    })
-                    yield* bumpParticipantAttention(tenantId, row.entryId)
+                    yield* concludeClaim('approved', recognitionId)
                   } else if (ends) {
                     // The end of the ladder owns the final no, and a sitting
                     // held there has nowhere to hand a split to: the split is
@@ -2069,13 +2090,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                     })
                     if (!won) return yield* new ReviewConflict()
                     yield* sayFrom('rejected', null)
-                    yield* setEntryState({
-                      tenantId,
-                      entryId: row.entryId,
-                      from: ['in_review'],
-                      to: 'rejected',
-                    })
-                    yield* bumpParticipantAttention(tenantId, row.entryId)
+                    yield* concludeClaim('rejected')
                   } else {
                     // anything short of every voice saying yes climbs, the
                     // 0-for-all case included: the ladder's end owns the final
@@ -2102,22 +2117,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                 const eventId = yield* say(action === 'approve' ? 'approved' : 'rejected')
                 const recognitionId =
                   determined === undefined ? undefined : yield* settle(determined, eventId)
-                // The one place a round moves the claim (§32.21). A first
-                // round is standing at `in_review`; a round reconsidering a
-                // settled decision left the claim where it was, so the
-                // states it may move from are all three. What it lands on is
-                // the same either way - 更正 and 维持 both leave an approval
-                // approved, 撤销 makes it a rejection.
-                yield* setEntryState({
-                  tenantId,
-                  entryId: row.entryId,
-                  from: ['in_review', 'approved', 'rejected'],
-                  to: action === 'approve' ? 'approved' : 'rejected',
-                  ...(recognitionId === undefined ? {} : { currentRecognitionId: recognitionId }),
-                })
-                // the verdict is the owner's news, not the stage handovers
-                // on the way to it (§32.72)
-                yield* bumpParticipantAttention(tenantId, row.entryId)
+                yield* concludeClaim(action === 'approve' ? 'approved' : 'rejected', recognitionId)
                 return yield* written()
               }
 

@@ -1,10 +1,10 @@
 import { sql } from 'kysely'
-import { Effect } from 'effect'
+import { Effect, Exit } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Assessment } from '../src/server/index.ts'
 import { twoFactScoring } from './support/catalogs.ts'
-import { GATED, ok, one, run, runningBatch, seed, type Seeded } from './support/round.ts'
+import { errorOf, GATED, ok, one, run, runningBatch, seed, type Seeded } from './support/round.ts'
 
 // The sitting (§32.66): an escalation middle step whose quorum is `all`.
 //
@@ -152,6 +152,152 @@ const panelWorld = (f: Seeded, over?: { scoring?: unknown }) =>
       panelRole,
       appoint: (name: string) => appointAs(name, panelRole),
     }
+  })
+
+/**
+ * A claim already decided on the ordinary step, whose subject may appeal:
+ * the appeal walks the escalation route from its first rung, which is a
+ * sitting of three. `lastRung: 'nowhere'` names a type nobody here stands
+ * under, so the rung after the sitting is stepped over and the sitting is
+ * the end of the ladder.
+ */
+const appealWorld = (
+  f: Seeded,
+  first: 'approve' | 'reject',
+  over?: { lastRung?: 'staffed' | 'nowhere' },
+) =>
+  Effect.gen(function* () {
+    const assessment = yield* Assessment
+    const g = yield* runningBatch(f, { profile: [...REVIEW_OPEN, 'assessment.entry.appeal'] })
+    const admin = f.principal(f.admin)
+    const role = (code: string) =>
+      Effect.gen(function* () {
+        const id = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into roles (tenant_id, code, name, kind, status, anchor_mode)
+            values (${f.t}, ${code}, ${code}, 'org', 'active', 'allow-list') returning id`),
+        ).id
+        yield* runSql(sql`
+          insert into role_permissions (tenant_id, role_id, permission_id)
+          select ${f.t}, ${id}, p.id from permissions p
+          where p.code = 'assessment.review.process'`)
+        return id
+      })
+    const panelRole = yield* role('grade-panel')
+    const closerRole = yield* role('closer')
+    const appointAs = (name: string, roleId: string) =>
+      Effect.gen(function* () {
+        const who = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+            values (${f.t}, ${name}, ${f.studentType}, ${f.classA}) returning id`),
+        ).id
+        const grant = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            values (${f.t}, ${who}, ${roleId}, ${f.classA}, 'self') returning id`),
+        ).id
+        yield* accept(f.t, g.batch.id, who, grant)
+        return who
+      })
+    const b1 = yield* appointAs('B1', panelRole)
+    const b2 = yield* appointAs('B2', panelRole)
+    const b3 = yield* appointAs('B3', panelRole)
+    const closer = yield* appointAs('Closer', closerRole)
+    const lastType =
+      over?.lastRung === 'nowhere'
+        ? one<{ id: string }>(
+            yield* runSql(sql`
+              insert into org_types (tenant_id, name) values (${f.t}, 'Faculty') returning id`),
+          ).id
+        : f.classType
+    const groups = yield* assessment.listScoreGroups(f.t, g.batch.id, admin)
+    const item = yield* assessment.createItem(
+      f.t,
+      g.batch.id,
+      {
+        itemType: 'evidence',
+        title: '申诉进合议的题',
+        scoreGroupId: groups.groups[0]!.id,
+        maxEntries: 1,
+        config: {
+          entryChannels: ['participant'],
+          formConfig: {},
+          scoringConfig: {
+            calculator: { ref: 'fixed@1', config: { value: '1.00' } },
+            aggregator: { ref: 'sum@1', config: {} },
+          },
+          reviewPolicy: {
+            normal: {
+              stages: [
+                {
+                  id: 'n1',
+                  label: '初审',
+                  selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [panelRole] },
+                  quorum: { type: 'any' },
+                },
+              ],
+            },
+            escalation: {
+              stages: [
+                {
+                  id: 'g1',
+                  label: '合议复核',
+                  selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [panelRole] },
+                  quorum: { type: 'all' },
+                },
+                {
+                  id: 'd2',
+                  label: '终审',
+                  selector: { kind: 'roleAt', nodeTypeId: lastType, roleIds: [closerRole] },
+                  quorum: { type: 'any' },
+                },
+              ],
+            },
+          },
+        },
+      },
+      admin,
+    )
+    yield* assessment.setItemStatus(f.t, item.id, { status: 'active' }, admin)
+    const s1 = f.principal(f.s1)
+    const entry = yield* assessment.createEntry(
+      f.t,
+      { itemId: item.id, participantId: g.p1, payload: {} },
+      s1,
+    )
+    const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+    yield* assessment.decideReview(
+      f.t,
+      sent.currentReviewInstanceId!,
+      first === 'approve' ? { decision: 'approve' } : { decision: 'reject', comment: '材料不足' },
+      f.principal(b1),
+    )
+    const standing = () =>
+      Effect.map(
+        runSql(sql`
+          select e.status, e.current_recognition_id, e.current_review_instance_id,
+            (select count(*)::int from entry_recognitions r where r.entry_id = e.id) as recognitions
+          from entries e where e.id = ${entry.id}`),
+        (rows) =>
+          one<{
+            status: string
+            current_recognition_id: string | null
+            current_review_instance_id: string | null
+            recognitions: number
+          }>(rows),
+      )
+    /** the subject appeals; the round lands on the sitting */
+    const appeal = (reason: string) =>
+      Effect.map(assessment.appealEntry(f.t, entry.id, { reason }, s1), (opened) => opened.id)
+    const vote = (instanceId: string, who: string, decision: 'approve' | 'reject') =>
+      assessment.decideReview(
+        f.t,
+        instanceId,
+        decision === 'approve' ? { decision } : { decision, comment: '不予支持' },
+        f.principal(who),
+      )
+    return { entryId: entry.id, b1, b2, b3, closer, standing, appeal, vote }
   })
 
 describe.runIf(postgresAvailable)('the sitting', () => {
@@ -834,5 +980,136 @@ describe.runIf(postgresAvailable)('the sitting', () => {
     // a split sitting below the ladder's end hands the matter up rather than
     // ending the round; either way it determined nothing
     expect(result.resolution).toBe('escalated')
+  })
+
+  // An appeal leaves the claim standing where it stood (§32.21) and walks
+  // the escalation route from its first rung - here, a sitting. The sitting
+  // concluding is the round concluding, and the claim moves with it exactly
+  // as it would under a single judge: a sitting that upholds the appeal
+  // makes the refused claim approved, on the determination it voted on.
+  it('moves a refused claim when a sitting upholds its appeal', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('pn-appeal-upheld')
+          const w = yield* appealWorld(f, 'reject')
+          const before = yield* w.standing()
+          const round = yield* w.appeal('证书已补交，请复核')
+          const during = yield* w.standing()
+          for (const who of [w.b1, w.b2, w.b3]) yield* w.vote(round, who, 'approve')
+          const after = yield* w.standing()
+          const outcome = one<{ state: string; outcome: string }>(
+            yield* runSql(sql`select state, outcome from review_instances where id = ${round}`),
+          )
+          const settled = one<{ id: string }>(
+            yield* runSql(sql`
+              select id from entry_recognitions where review_instance_id = ${round}`),
+          )
+          return { before, during, after, outcome, settled }
+        }),
+      ),
+    )
+    expect(result.before).toMatchObject({ status: 'rejected', current_recognition_id: null })
+    // the appeal is a reconsideration, not a withdrawal of the refusal
+    expect(result.during.status).toBe('rejected')
+    expect(result.outcome).toEqual({ state: 'completed', outcome: 'approved' })
+    // and the claim now stands approved, on the sitting's determination
+    expect(result.after.status).toBe('approved')
+    expect(result.after.current_recognition_id).toBe(result.settled.id)
+  })
+
+  // A correction upheld by a sitting replaces the determination the claim
+  // stood on, and the next one replaces that: one line of determinations,
+  // each superseding the one before, the claim always pointing at the last.
+  it('keeps one line of determinations across appeals a sitting upholds', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('pn-appeal-twice')
+          const w = yield* appealWorld(f, 'approve')
+          const first = yield* w.standing()
+          const once = yield* w.appeal('认定等级有误')
+          for (const who of [w.b1, w.b2, w.b3]) yield* w.vote(once, who, 'approve')
+          const second = yield* w.standing()
+          const twice = yield* w.appeal('仍有异议')
+          const votes: Exit.Exit<unknown, unknown>[] = []
+          for (const who of [w.b1, w.b2, w.b3]) {
+            votes.push(yield* Effect.exit(w.vote(twice, who, 'approve')))
+          }
+          const third = yield* w.standing()
+          const chain = (yield* runSql(sql`
+            select id, supersedes_id from entry_recognitions
+            where entry_id = ${w.entryId} order by created_at, id`)) as {
+            rows: { id: string; supersedes_id: string | null }[]
+          }
+          return { first, second, third, votes, chain: chain.rows }
+        }),
+      ),
+    )
+    expect(result.votes.every((exit) => Exit.isSuccess(exit))).toBe(true)
+    expect(result.chain).toHaveLength(3)
+    const [r1, r2, r3] = result.chain
+    expect(r1!.supersedes_id).toBeNull()
+    expect(r2!.supersedes_id).toBe(r1!.id)
+    expect(r3!.supersedes_id).toBe(r2!.id)
+    expect(result.first.current_recognition_id).toBe(r1!.id)
+    expect(result.second).toMatchObject({ status: 'approved', current_recognition_id: r2!.id })
+    expect(result.third).toMatchObject({ status: 'approved', current_recognition_id: r3!.id })
+  })
+
+  // A sitting that the walk made the end of the ladder owns the final no.
+  // Splitting there on an appeal against an approval is 撤销: the claim
+  // stops standing approved, the same as a single judge refusing it there.
+  it('revokes an approval when the last sitting splits on its appeal', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('pn-appeal-split')
+          const w = yield* appealWorld(f, 'approve', { lastRung: 'nowhere' })
+          const round = yield* w.appeal('不应认定')
+          yield* w.vote(round, w.b1, 'approve')
+          yield* w.vote(round, w.b2, 'reject')
+          yield* w.vote(round, w.b3, 'reject')
+          const outcome = one<{ state: string; outcome: string }>(
+            yield* runSql(sql`select state, outcome from review_instances where id = ${round}`),
+          )
+          return { outcome, after: yield* w.standing() }
+        }),
+      ),
+    )
+    expect(result.outcome).toEqual({ state: 'completed', outcome: 'rejected' })
+    expect(result.after.status).toBe('rejected')
+  })
+
+  // A round whose claim no longer stands on it cannot conclude over it: the
+  // deciding word is refused whole, rather than completing the round and
+  // writing a determination beside a claim that never moves.
+  it('refuses to conclude a round whose claim has moved out from under it', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('pn-appeal-orphan')
+          const w = yield* appealWorld(f, 'reject')
+          const round = yield* w.appeal('请复核')
+          yield* w.vote(round, w.b1, 'approve')
+          yield* w.vote(round, w.b2, 'approve')
+          // the shape older data can be in: the claim walked off to a draft
+          // while its appeal stayed open
+          yield* runSql(sql`update entries set status = 'draft' where id = ${w.entryId}`)
+          const last = yield* Effect.exit(w.vote(round, w.b3, 'approve'))
+          const outcome = one<{ state: string; outcome: string | null }>(
+            yield* runSql(sql`select state, outcome from review_instances where id = ${round}`),
+          )
+          return { last, outcome, after: yield* w.standing() }
+        }),
+      ),
+    )
+    expect(errorOf<{ _tag: string }>(result.last)?._tag).toBe('ASSESSMENT_REVIEW_CONFLICT')
+    expect(result.outcome).toEqual({ state: 'active', outcome: null })
+    expect(result.after).toMatchObject({ status: 'draft', recognitions: 0 })
   })
 })
