@@ -108,6 +108,7 @@ export default {
     '停用后不再生效，但保留配置与授权记录；不可被授予表示不能再新增授权，已有授权不受影响',
   'rbac/roles/delete': '删除角色',
   'rbac/roles/granted-before': '已授予过，只能停用',
+  'rbac/roles/granted-before-disabled': '已授予过，不能删除',
   'rbac/roles/holder-count': '{count} 人',
   'rbac/roles/column-grants': '授权',
   'rbac/roles/column-holders': '可担任的用户类型',

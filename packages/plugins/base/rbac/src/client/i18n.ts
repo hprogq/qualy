@@ -285,6 +285,10 @@ const i18n = definePluginMessages({
       id: 'rbac/roles/granted-before',
       defaultMessage: 'Already granted, so it can only be disabled',
     },
+    roleGrantedBeforeDisabled: {
+      id: 'rbac/roles/granted-before-disabled',
+      defaultMessage: 'Already granted, so it cannot be deleted',
+    },
     holderCount: {
       id: 'rbac/roles/holder-count',
       defaultMessage: '{count, plural, one {# person} other {# people}}',

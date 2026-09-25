@@ -65,10 +65,22 @@ describe('removing a role', () => {
 
   it('withholds deletion from a role once granted, though nobody holds it now', async () => {
     // every grant withdrawn: no holders, and still a history that names it
-    await open(role({ grantCount: 0, everGranted: true }))
+    await open(role({ status: 'active', grantCount: 0, everGranted: true }))
     await expect
       .element(page.getByTestId('role-removal'))
       .toHaveAttribute('data-deletable', 'false')
     await expect.element(page.getByRole('button', { name: '删除角色' })).toBeDisabled()
+    // and points at the way it does go
+    await expect
+      .element(page.getByTestId('role-removal-why'))
+      .toHaveAttribute('data-suggests', 'disable')
+  })
+
+  it('points nowhere once a granted role is already switched off', async () => {
+    await open(role({ status: 'disabled', everGranted: true }))
+    await expect.element(page.getByRole('button', { name: '删除角色' })).toBeDisabled()
+    await expect
+      .element(page.getByTestId('role-removal-why'))
+      .toHaveAttribute('data-suggests', 'nothing')
   })
 })

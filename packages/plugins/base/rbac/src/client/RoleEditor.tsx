@@ -529,9 +529,18 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
               {...stylex.props(styles.removal)}
             >
               {/* a role anybody was ever granted, withdrawn or not, only
-                  goes by being switched off */}
+                  goes by being switched off; once it is, there is nothing
+                  left to point at */}
               {role.everGranted && (
-                <span {...stylex.props(styles.removalWhy)}>{format(m.roleGrantedBefore)}</span>
+                <span
+                  data-testid="role-removal-why"
+                  data-suggests={role.status === 'disabled' ? 'nothing' : 'disable'}
+                  {...stylex.props(styles.removalWhy)}
+                >
+                  {format(
+                    role.status === 'disabled' ? m.roleGrantedBeforeDisabled : m.roleGrantedBefore,
+                  )}
+                </span>
               )}
               <Button
                 size="xs"
