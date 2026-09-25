@@ -501,21 +501,48 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
               { decision: 'reject', comment: 'not enough' },
               reviewer,
             )
+            // two more claims on the same question: one the reviewer asked
+            // more of, and one they approved
+            yield* runSql(
+              sql`update assessment_items set max_entries = null where id = ${g.item.id}`,
+            )
+            const file = () =>
+              Effect.gen(function* () {
+                const made = yield* assessment.createEntry(
+                  f.t,
+                  { itemId: g.item.id, participantId: g.p1, payload: {} },
+                  s1,
+                )
+                const sent = yield* assessment.setEntryStatus(f.t, made.id, 'in_review', s1)
+                return { id: made.id, round: sent.currentReviewInstanceId! }
+              })
+            const asked = yield* file()
+            yield* assessment.requestSupplement(
+              f.t,
+              asked.round,
+              {
+                instructions: '请补充说明',
+                requirements: [{ label: '说明', kind: 'text', required: true }],
+              },
+              reviewer,
+            )
+            const approved = yield* file()
+            yield* assessment.decideReview(f.t, approved.round, { decision: 'approve' }, reviewer)
             // the filer is staff here too: they administer the whole round
             yield* runSql(sql`
               insert into role_grants (tenant_id, user_id, role_id)
               select ${f.t}, ${f.s1}, id from roles
               where tenant_id = ${f.t} and system_key = 'tenant-admin'`)
-            const row = (yield* assessment.listParticipantEntries(
-              f.t,
-              g.batch.id,
-              g.p1,
-              {},
-              s1,
-            )).entries.find((one) => one.entry.id === entry.id)!
+            const rows = (yield* assessment.listParticipantEntries(f.t, g.batch.id, g.p1, {}, s1))
+              .entries
+            const rowOf = (id: string) => rows.find((one) => one.entry.id === id)!
             return {
               previous: [round.context?.previous?.kind, round.context?.previous?.actorName],
-              ownRow: row.entry.refusal?.actorName ?? null,
+              ownRow: rowOf(entry.id).entry.refusal?.actorName ?? null,
+              askedBy: rowOf(asked.id).entry.supplement?.requestedByName ?? null,
+              askOpen: rowOf(asked.id).entry.supplement !== null,
+              determinedBy: rowOf(approved.id).recognition?.createdByName ?? null,
+              determined: rowOf(approved.id).recognition !== null,
             }
           }),
         ),
@@ -524,9 +551,16 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
     const shut = await told('veil-own-shut', REVIEW_OPEN)
     expect(shut.previous).toEqual(['cancelled-by-submitter', 'Zhang San'])
     expect(shut.ownRow).toBeNull()
+    // who asked and who determined are veiled the same way on the own row
+    expect(shut.askOpen).toBe(true)
+    expect(shut.askedBy).toBeNull()
+    expect(shut.determined).toBe(true)
+    expect(shut.determinedBy).toBeNull()
     const open = await told('veil-own-open', [...REVIEW_OPEN, 'assessment.review.view-reviewers'])
     expect(open.previous).toEqual(['cancelled-by-submitter', 'Zhang San'])
     expect(open.ownRow).toBe('Reviewer')
+    expect(open.askedBy).toBe('Reviewer')
+    expect(open.determinedBy).toBe('Reviewer')
   })
 
   it('keeps the round with its reviewer through an open ask, and a rejection ends it', async () => {
