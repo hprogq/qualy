@@ -92,6 +92,8 @@ const PAGES = [
 const open = (
   stubs: Record<string, unknown> = {},
   route = `/assessment/batches/${BATCH_ID}/results`,
+  /** the width the shell leaves the page, where a test stands in for the shell */
+  width?: number,
 ) =>
   renderScreen({
     client: fakeClient({
@@ -158,7 +160,19 @@ const open = (
         ...stubs,
       },
     }),
-    routes: [{ path: '/assessment/batches/:batchId/results', element: <ParticipantResultsPage /> }],
+    routes: [
+      {
+        path: '/assessment/batches/:batchId/results',
+        element:
+          width === undefined ? (
+            <ParticipantResultsPage />
+          ) : (
+            <div style={{ width }}>
+              <ParticipantResultsPage />
+            </div>
+          ),
+      },
+    ],
     route,
     registry: {
       slots: {
@@ -326,6 +340,80 @@ describe('the roster on the results page', () => {
     await expect
       .poll(() => asked.mock.calls.at(-1)![0].query)
       .toEqual({ reading: 'accounts', status: 'excluded' })
+  })
+
+  it('keeps a name readable beside the unit tree at a laptop’s width', async () => {
+    await page.viewport(1280, 800)
+    const busy = {
+      inReview: 12,
+      toSupplement: 3,
+      reconsidering: 2,
+      toRevise: 1,
+      blocked: 1,
+    }
+    // what the rail (224) and the page's margins (48) leave of a 1280 window
+    await open(
+      {
+        listParticipantAccounts: (request: Request) =>
+          pageOf(request, [person(1, { displayName: '欧阳明月', filings: busy }), person(2)]),
+      },
+      undefined,
+      1280 - 224 - 48,
+    )
+    // the tree stands beside the list at this width
+    await expect.element(page.getByRole('button', { name: '软件学院', exact: true })).toBeVisible()
+    const who = page.getByTestId('participant-who').first()
+    await expect.element(who).toBeVisible()
+    // the name keeps room to be read, whatever the counts beside it take
+    expect(who.element().getBoundingClientRect().width).toBeGreaterThanOrEqual(144)
+    for (const row of rows().elements()) {
+      expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth + 1)
+    }
+  })
+
+  it('folds the unit tree above the list once the table would not fit beside it', async () => {
+    await page.viewport(1180, 820)
+    try {
+      await open({}, undefined, 1180 - 224 - 48)
+      await expect.element(page.getByTestId('roster-unit-switch')).toBeVisible()
+      expect(page.getByTestId('split-handle').elements()).toHaveLength(0)
+    } finally {
+      await page.viewport(1280, 800)
+    }
+  })
+
+  it('stacks a row on a phone as a name over its facts, with nothing on a line of its own', async () => {
+    await page.viewport(390, 844)
+    try {
+      await open({
+        listParticipantAccounts: (request: Request) =>
+          pageOf(request, [
+            person(1, {
+              status: 'excluded',
+              excludedAt: '2026-03-02T00:00:00.000Z',
+              filings: { ...NONE, inReview: 1 },
+            }),
+            person(2),
+          ]),
+      })
+      const first = rows().first()
+      await expect.element(first).toHaveAttribute('data-participant-status', 'excluded')
+      // taken off the roster is said beside the name, on its line
+      const name = first.getByTestId('participant-name').element().getBoundingClientRect()
+      const mark = first.getByTestId('participant-excluded').element().getBoundingClientRect()
+      expect(Math.abs(mark.top + mark.height / 2 - (name.top + name.height / 2))).toBeLessThan(4)
+      // and nothing of the row falls to a line under its facts: a part on a
+      // line of its own would end a whole line lower, not a pixel or two
+      const row = first.element()
+      const facts = first.getByTestId('participant-filings').element().getBoundingClientRect()
+      const lead = first.getByTestId('participant-who').element().getBoundingClientRect()
+      const floor = Math.max(facts.bottom, lead.bottom)
+      for (const part of Array.from(row.children)) {
+        expect(part.getBoundingClientRect().bottom).toBeLessThanOrEqual(floor + 4)
+      }
+    } finally {
+      await page.viewport(1280, 800)
+    }
   })
 
   it('folds the unit tree behind one line on a phone, and says which unit is chosen', async () => {

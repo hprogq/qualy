@@ -39,7 +39,7 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { Spinner } from '@qualy/ui/spinner'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { useIsBelow } from '@qualy/ui/use-mobile'
+import { useIsBelow, useIsMobile } from '@qualy/ui/use-mobile'
 import { AddPeopleDialog } from '../roster/AddPeopleDialog.tsx'
 import { ImportDialog } from '../roster/ImportDialog.tsx'
 import { PlacementDialog, type PlacementDecision } from '../roster/PlacementDialog.tsx'
@@ -70,8 +70,25 @@ import { useBatchLive } from '../live.ts'
 // so opening somebody and coming back lands on the same page of the same
 // question, and the account opened over it can walk to the next person.
 
-/** the width the tree and the list stop competing for, tailwind's `lg` */
-const TWO_COLUMNS = 1024
+/**
+ * The width from which the unit tree stands beside the list rather than
+ * folding into one line above it.
+ *
+ * Counted from what the table needs, not from where two columns first fit:
+ * a laptop's 1280 less the rail (224), the page's margins (48), the tree
+ * (300) and the gap (20) leaves the list 688 pixels, which is the number,
+ * name and waiting columns plus a total and a menu with room for a name. An
+ * inch narrower and the name is what gives.
+ */
+const TWO_COLUMNS = 1280
+
+/**
+ * The roster's columns: the number it is scanned by, the person, what their
+ * claims wait on, the total and the row's menu. The person has a floor and
+ * the larger share of what is left, so the counts beside it can never
+ * squeeze a name down to nothing.
+ */
+const COLUMNS = '7.5rem minmax(9rem, 3fr) minmax(0, 2fr) 6.5rem 2rem'
 
 /**
  * A select cannot hold the empty string as a value, so "no narrowing" needs
@@ -100,7 +117,8 @@ const styles = stylex.create({
   panel: { display: 'flex', flexDirection: 'column', gap: 20 },
   unitsAside: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 8 },
   // stacked, it stands against the whole row beside what the row is scanned
-  // by, rather than auto-placing itself on the first line
+  // by, rather than auto-placing itself on the first line; a reader with
+  // nothing to do on a row still gets the seat, so both lay out alike
   rowAct: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -163,7 +181,8 @@ const styles = stylex.create({
   busy: { width: 14, height: 14, flexShrink: 0, color: tokens.mutedForeground },
   who: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 2 },
   nameWithMark: { display: 'inline-flex', minWidth: 0, alignItems: 'center', gap: 8 },
-  name: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  name: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  mark: { display: 'inline-flex', flexShrink: 0 },
   unitLine: {
     overflow: 'hidden',
     fontSize: 12,
@@ -187,7 +206,7 @@ const styles = stylex.create({
     display: 'grid',
     alignItems: 'center',
     gap: 12,
-    gridTemplateColumns: '8.5rem minmax(0, 1fr) 6rem 4rem',
+    gridTemplateColumns: '7.5rem minmax(0, 3fr) minmax(0, 2fr) 6.5rem',
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.divider,
@@ -226,7 +245,10 @@ export function ParticipantResultList({
   const [excluding, setExcluding] = useState<{ id: string; name: string } | null>(null)
   const [reconciling, setReconciling] = useState(false)
   const businessNo = useTerm(authTerms.businessNumber)
+  // the tree folds into one line at a width of its own; the rows stack only
+  // on a phone, where the table has no head to line its columns up under
   const narrow = useIsBelow(TWO_COLUMNS)
+  const stacked = useIsMobile()
   const [unitsOpen, setUnitsOpen] = useState(false)
 
   // Typing does not fire a request per keystroke. What the box last asked
@@ -467,19 +489,19 @@ export function ParticipantResultList({
         initial={300}
         min={240}
         max={480}
+        from={TWO_COLUMNS}
         handleLabel={format(m.rosterUnitsResize)}
+        // With room for the tree beside the table, it is simply there,
+        // filling the window's height from where it stands. Narrower, it is
+        // one line saying which units the list is of, and a sheet to change
+        // them - the shape the roster of people uses - and no side at all,
+        // so no boundary is offered to drag.
         side={
-          <>
-            {/* With room for two columns the tree is simply there, beside the
-                list, filling the window's height from where it stands.
-                Narrow, it is one line saying which units the list is of, and
-                a sheet to change them - the shape the roster of people uses. */}
-            {!narrow && (
-              <aside {...stylex.props(styles.unitsAside)}>
-                <StickyFill>{tree}</StickyFill>
-              </aside>
-            )}
-          </>
+          narrow ? null : (
+            <aside {...stylex.props(styles.unitsAside)}>
+              <StickyFill>{tree}</StickyFill>
+            </aside>
+          )
         }
       >
         <section aria-label={format(m.participantResultsTab)} {...stylex.props(styles.listColumn)}>
@@ -614,20 +636,19 @@ export function ParticipantResultList({
                     <Skeleton className={stylex.props(styles.skBone).className} width="70%" />
                     <Skeleton className={stylex.props(styles.skBone).className} width={width} />
                     <Skeleton className={stylex.props(styles.skChip).className} />
-                    <span />
+                    <Skeleton className={stylex.props(styles.skBone).className} width="60%" />
                   </div>
                 ))}
               </div>
             }
           >
             <Card data-testid="roster">
-              <Table columns="8.5rem minmax(0, 1fr) minmax(0, 11rem) 6.5rem 5.5rem 2rem">
+              <Table columns={COLUMNS}>
                 <TableHead>
                   <span>{businessNo}</span>
                   <span>{format(m.columnParticipant)}</span>
                   <span>{format(m.rosterColumnWaiting)}</span>
                   <span>{format(m.rosterColumnScore)}</span>
-                  <span>{format(m.columnParticipantStatus)}</span>
                   <span />
                 </TableHead>
                 {rows.length === 0 ? (
@@ -636,9 +657,21 @@ export function ParticipantResultList({
                   rows.map((row) => {
                     const { path, unknown } = unitPath(row.anchorLineage)
                     const who = (
-                      <span {...stylex.props(styles.who)}>
+                      <span data-testid="participant-who" {...stylex.props(styles.who)}>
                         <span {...stylex.props(styles.nameWithMark)}>
-                          <span {...stylex.props(styles.name)}>{row.displayName}</span>
+                          <span data-testid="participant-name" {...stylex.props(styles.name)}>
+                            {row.displayName}
+                          </span>
+                          {/* taking part is what a roster row is, so only
+                              the exception is said, beside the name it is
+                              about rather than in a column of its own */}
+                          {row.status === 'excluded' && (
+                            <span {...stylex.props(styles.mark)}>
+                              <Status tone="bad" data-testid="participant-excluded">
+                                {format(m.excludedBadge)}
+                              </Status>
+                            </span>
+                          )}
                           <PlacementMark placement={row.placement} />
                         </span>
                         {path !== '' && (
@@ -666,7 +699,7 @@ export function ParticipantResultList({
                         {/* across a table the number leads, because that is
                             what the list is scanned by; stacked, a row is a
                             person with their facts under them */}
-                        {narrow ? (
+                        {stacked ? (
                           <>
                             <Cell lead>{who}</Cell>
                             <Cell
@@ -701,16 +734,9 @@ export function ParticipantResultList({
                             waiting={scores.isPending && scores.fetchStatus !== 'idle'}
                           />
                         </Cell>
-                        <Cell unlabelled>
-                          <Status tone={row.status === 'excluded' ? 'bad' : 'plain'}>
-                            {format(
-                              row.status === 'excluded' ? m.excludedBadge : m.participantActive,
-                            )}
-                          </Status>
-                        </Cell>
                         {/* the act on one person, where the person is */}
-                        {manageable ? (
-                          <span {...stylex.props(styles.rowAct)}>
+                        <span {...stylex.props(styles.rowAct)}>
+                          {manageable && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button
@@ -742,10 +768,8 @@ export function ParticipantResultList({
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
-                          </span>
-                        ) : (
-                          <span />
-                        )}
+                          )}
+                        </span>
                       </TableRow>
                     )
                   })

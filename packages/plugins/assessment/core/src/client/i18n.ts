@@ -5929,10 +5929,6 @@ const i18n = definePluginMessages({
       defaultMessage: '{count, plural, one {# change handled} other {# changes handled}}',
     },
     columnParticipant: { id: 'assessment/roster/column-name', defaultMessage: 'Name' },
-    columnParticipantStatus: {
-      id: 'assessment/roster/column-status',
-      defaultMessage: 'Status',
-    },
     participantActive: { id: 'assessment/roster/active', defaultMessage: 'Participating' },
     excludedBadge: { id: 'assessment/roster/excluded', defaultMessage: 'Removed' },
     exclude: { id: 'assessment/roster/exclude', defaultMessage: 'Remove' },

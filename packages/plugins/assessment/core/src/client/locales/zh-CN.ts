@@ -1773,7 +1773,6 @@ export default {
   'assessment/placement/reason-placeholder': '例如：本学期仍在原班完成综测',
   'assessment/placement/settled': '已处理 {count} 人的组织变更',
   'assessment/roster/column-name': '姓名',
-  'assessment/roster/column-status': '状态',
   'assessment/roster/active': '参评中',
   'assessment/roster/excluded': '已移出',
   'assessment/roster/exclude': '移出',
