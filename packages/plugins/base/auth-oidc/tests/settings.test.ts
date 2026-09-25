@@ -36,11 +36,27 @@ describe('an OpenID Connect entrance', () => {
     })
   })
 
-  it('names the issuer and the client as whose accounts it speaks for, and nothing else', () => {
+  it('names the issuer, the client and where keys and tokens come from as whose accounts it speaks for', () => {
     const provisioning = driver.provisioning
     expect(
       provisioning.mode === 'tenant-managed' && provisioning.entrance.identityNamespaceKeys,
-    ).toEqual(['issuer', 'clientId'])
+    ).toEqual([
+      'issuer',
+      'clientId',
+      'discoveryMode',
+      'authorizationEndpoint',
+      'tokenEndpoint',
+      'jwksUri',
+      'userinfoEndpoint',
+    ])
+    // how it asks and how long it waits are not about who anybody is
+    const keys =
+      provisioning.mode === 'tenant-managed'
+        ? (provisioning.entrance.identityNamespaceKeys ?? [])
+        : []
+    for (const setting of ['scopes', 'tokenAuthMethod', 'clockSkewSeconds', 'clientSecret']) {
+      expect(keys).not.toContain(setting)
+    }
   })
 
   it('is offered for showing it is you again, through a sign-in asked for afresh', () => {

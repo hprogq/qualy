@@ -211,7 +211,8 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
   它决定谁能以谁的身份登录,默认只有 canonical tenant-admin(all-active)持有,别的角色要显式授予。一次保存同时改名称与配置
   就两个都要。两项都在租户锁内、写入事务里复核(用户类型的写入对 `auth.user-type.manage` 同样锁内复核)。
   `GET /auth/providers` 带 `capabilities { canManage, canManageTrust }`,页面据此不渲染用不了的控件。
-- **身份命名空间锁**:驱动用 `identityNamespaceKeys` 点名「说明这些账号属于谁」的配置键(CAS 的服务器地址、OIDC 的 issuer)。
+- **身份命名空间锁**:驱动用 `identityNamespaceKeys` 点名「说明这些账号属于谁」的配置键(CAS 的服务器地址与读人方式、
+  OIDC 的 issuer、client 与全部端点、GitHub Enterprise 地址)。
   只要该入口说过话——有过任何绑定(含已撤销),或有过一次成功登录——这些键不可再改(`AUTH_PROVIDER_IDENTITY_NAMESPACE_IN_USE`):
   已存的 subject 会开始指向别家的账号;按用户自己的字段找人的入口(CAS 按业务编号)根本不存绑定,只等绑定就永远不锁,
   换一台服务器就能替已经登录过的人作答。锁住后要换服务器只能新建入口(2026-09-25 裁决)。
@@ -377,7 +378,11 @@ JWKS、UserInfo 一个都不走默认 fetch;出站端口为此多了一个 Fetch
   对着 JWKS 验签——开发机允许明文 http 时连接担保不了什么,签名不看来路。
 - 配置:`issuer`、端点来源(自动发现缺省 / 手动填授权、令牌、JWKS、可选 UserInfo)、`clientId`、`clientSecret`;
   高级:scopes(缺省 `openid profile email`,`openid` 永远在)、客户端认证方式(自动 / Basic / 请求体)、时钟容差(0–300 秒,
-  缺省 60)。`identityNamespaceKeys: ['issuer', 'clientId']`(pairwise sub);端点不算身份。
+  缺省 60)。`identityNamespaceKeys` 为 issuer、clientId(pairwise sub),**以及端点来源与全部端点**
+  (discoveryMode、authorizationEndpoint、tokenEndpoint、jwksUri、userinfoEndpoint,2026-09-25 补齐):与 CAS 同一个信任根缺口——
+  有绑定之后把 jwksUri 指向自己的密钥集,就能以被锁住的 issuer 名义签出任意 sub、冒充已绑定的账号。scopes、客户端认证方式、
+  时钟容差不改变「认谁」,不在其列。GitHub 核对过:全部端点只由 `enterpriseUrl` 推出,它已在锁内;clientId 换成别的 OAuth 应用
+  也拿不到别人的账号 id,不锁。
 - 配置对象按「入口 id + version」缓存(至多 64 个,失败不缓存),保存设置即换 key 自然失效。
 - **subject 只认 `sub`**,绝不用 email / preferred_username;展示名依次取 ID Token 的 preferred_username / name / email,
   都没有才问 UserInfo(`sub` 必须一致,否则不用),UserInfo 失败只丢名字不挡登录;每次登录刷新展示名。

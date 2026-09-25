@@ -167,8 +167,19 @@ export const driver: LoginDriver = {
       label: say('entrance/kind', 'OpenID Connect'),
       fields,
       // a `sub` means one account to one issuer, and may mean another to
-      // another client of it (pairwise subjects); the endpoints do not count
-      identityNamespaceKeys: ['issuer', 'clientId'],
+      // another client of it (pairwise subjects). Where its keys and tokens
+      // come from counts as much: a key set moved elsewhere signs any `sub`
+      // under the issuer's name, so every endpoint, and whether they are
+      // discovered, is fixed with them
+      identityNamespaceKeys: [
+        'issuer',
+        'clientId',
+        'discoveryMode',
+        'authorizationEndpoint',
+        'tokenEndpoint',
+        'jwksUri',
+        'userinfoEndpoint',
+      ],
     },
   },
   resolution: { mode: 'binding-subject' },
