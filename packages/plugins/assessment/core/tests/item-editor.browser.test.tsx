@@ -554,6 +554,47 @@ describe('choosing how a question is handled', () => {
     ])
   })
 
+  it('asks before the way back throws away what was not saved', async () => {
+    await open({ items: [officerItem()], question: ITEM_ID })
+    await expect.element(page.getByRole('textbox', { name: '项目名称' })).toBeVisible()
+    await page.getByRole('textbox', { name: '项目名称' }).fill('学生干部任职（改）')
+
+    await page.getByTestId('item-back').click()
+    const asked = page.getByRole('alertdialog')
+    await expect.element(asked).toBeVisible()
+    await asked.getByRole('button', { name: '取消' }).click()
+    await expect.element(editor()).toBeVisible()
+    await expect
+      .element(page.getByRole('textbox', { name: '项目名称' }))
+      .toHaveValue('学生干部任职（改）')
+
+    await page.getByTestId('item-back').click()
+    await page.getByRole('alertdialog').getByTestId('confirm-accept').click()
+    await vi.waitFor(() => expect(document.querySelector('[data-testid="item-editor"]')).toBeNull())
+  })
+
+  it('leaves at once when nothing was changed', async () => {
+    await open({ items: [officerItem()], question: ITEM_ID })
+    await expect.element(editor()).toBeVisible()
+    await page.getByTestId('item-back').click()
+    await vi.waitFor(() => expect(document.querySelector('[data-testid="item-editor"]')).toBeNull())
+    expect(page.getByRole('alertdialog').elements()).toHaveLength(0)
+  })
+
+  it('lets a blank new question go at once, and asks once something is written in it', async () => {
+    await composeQuestion()
+    await page.getByTestId('item-back').click()
+    await vi.waitFor(() => expect(document.querySelector('[data-testid="item-editor"]')).toBeNull())
+    expect(page.getByRole('alertdialog').elements()).toHaveLength(0)
+
+    await page.getByRole('button', { name: '新建' }).click()
+    await page.getByRole('menuitem', { name: '新建项目' }).click()
+    await expect.element(editor()).toBeVisible()
+    await page.getByRole('textbox', { name: '项目名称' }).fill('志愿服务')
+    await page.getByTestId('item-back').click()
+    await expect.element(page.getByRole('alertdialog')).toBeVisible()
+  })
+
   it('names only the plain facts changed here, so a rename made elsewhere stands', async () => {
     const saved: Record<string, unknown>[] = []
     await open({ items: [officerItem()], question: ITEM_ID, saved: saved as never })

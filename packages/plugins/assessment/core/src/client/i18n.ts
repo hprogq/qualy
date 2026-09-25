@@ -5659,6 +5659,10 @@ const i18n = definePluginMessages({
       defaultMessage: 'Nothing to correct, ready to save',
     },
     itemsUnsaved: { id: 'assessment/items/unsaved', defaultMessage: 'Unsaved changes' },
+    itemsLeaveUnsaved: {
+      id: 'assessment/items/leave-unsaved',
+      defaultMessage: 'Discard the changes you have not saved?',
+    },
     itemsSavedAt: { id: 'assessment/items/saved-at', defaultMessage: 'Saved {when}' },
     itemsMoreActions: { id: 'assessment/items/more-actions', defaultMessage: 'More actions' },
     itemsDescriptionHint: {

@@ -1765,6 +1765,7 @@ export default {
   'assessment/items/pending-hint': '保存后才能发布',
   'assessment/items/pending-none': '配置无误，可以保存',
   'assessment/items/unsaved': '有未保存的修改',
+  'assessment/items/leave-unsaved': '放弃尚未保存的修改？',
   'assessment/items/saved-at': '{when} 保存',
   'assessment/items/more-actions': '更多操作',
   'assessment/items/description-hint': '显示在申报和认定页面，可填写适用范围、材料要求等',

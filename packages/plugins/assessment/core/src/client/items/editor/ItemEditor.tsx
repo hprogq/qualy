@@ -517,6 +517,29 @@ export function ItemEditor({
   useEffect(() => {
     onDirty?.(dirty)
   }, [dirty, onDirty])
+  // a new question as it first opened, so leaving it can tell written from
+  // blank; one resumed from earlier is measured against a fresh page
+  const [opening] = useState<Draft>(() => {
+    if (held === undefined) return draft
+    const seeded = draftOf(null, groups, options)
+    return defaultGroupId === undefined ? seeded : { ...seeded, scoreGroupId: defaultGroupId }
+  })
+  const composedHere =
+    item === null &&
+    stated(draft, null, contract, locale) !== stated(opening, null, contract, locale)
+  const [leaving, setLeaving] = useState(false)
+  const leave = () => {
+    if (dirty || composedHere) setLeaving(true)
+    else onCancel()
+  }
+  // closing the tab or reloading it takes unsaved work with it; the browser
+  // asks first, in its own words
+  useEffect(() => {
+    if (!dirty && !composedHere) return
+    const hold = (event: BeforeUnloadEvent) => event.preventDefault()
+    window.addEventListener('beforeunload', hold)
+    return () => window.removeEventListener('beforeunload', hold)
+  }, [dirty, composedHere])
   const scoringMoved =
     item?.currentRevision !== null &&
     item?.currentRevision !== undefined &&
@@ -1282,7 +1305,7 @@ export function ItemEditor({
               <button
                 type="button"
                 {...stylex.props(styles.back)}
-                onClick={onCancel}
+                onClick={leave}
                 data-testid="item-back"
               >
                 <ArrowLeftIcon aria-hidden {...stylex.props(styles.backIcon)} />
@@ -1688,6 +1711,18 @@ export function ItemEditor({
           )
         })()}
 
+      <ConfirmDialog
+        open={leaving}
+        title={format(m.itemsLeaveUnsaved)}
+        confirmLabel={format(m.discardEdits)}
+        cancelLabel={format(commonMessages.cancel)}
+        tone="destructive"
+        onConfirm={() => {
+          setLeaving(false)
+          onCancel()
+        }}
+        onCancel={() => setLeaving(false)}
+      />
       {askedOnce && (
         <ReasonDialog
           open={askingReason}
