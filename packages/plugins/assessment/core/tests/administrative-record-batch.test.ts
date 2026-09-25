@@ -374,12 +374,19 @@ describe.runIf(postgresAvailable).concurrent('recording one finding on a group',
     /** the act, held inside its proof until the change has committed */
     const heldAcross = (
       slug: string,
-      over: { formConfig?: Record<string, unknown> },
+      over: { formConfig?: Record<string, unknown>; maxEntries?: number | null },
       payload: Record<string, unknown>,
       change: (item: {
         id: string
         revision: string
         batchId: string
+      }) => Effect.Effect<unknown, never, Orm>,
+      /** what stands before the finding is previewed */
+      before?: (at: {
+        tenant: string
+        batchId: string
+        itemId: string
+        participantId: string
       }) => Effect.Effect<unknown, never, Orm>,
     ) =>
       Effect.gen(function* () {
@@ -387,6 +394,9 @@ describe.runIf(postgresAvailable).concurrent('recording one finding on a group',
           ...over,
           scoringConfig: probeScoring(),
         })
+        if (before !== undefined) {
+          yield* before({ tenant: f.t, batchId: g.batch.id, itemId: item.id, participantId: g.p1 })
+        }
         const assessment = yield* Assessment
         const input = {
           itemId: item.id,
@@ -479,6 +489,48 @@ describe.runIf(postgresAvailable).concurrent('recording one finding on a group',
         { field: 'claimed-when-slot', reason: 'out-of-range' },
       ])
       expect(narrowed.written).toBe(0)
+
+      // the question withdrawn while the finding was being proven
+      const withdrawn = ok(
+        await run(
+          db.url,
+          heldAcross('ar-held-voided', {}, {}, (item) =>
+            runSql(sql`
+              update assessment_items
+                 set status = 'voided', voided_at = now(), void_reason = 'withdrawn meanwhile',
+                     voided_by = (select created_by from assessment_item_revisions
+                                   where id = ${item.revision})
+               where id = ${item.id}`),
+          ),
+        ),
+      )
+      expect(errorOf<{ _tag: string }>(withdrawn.outcome)?._tag).toBe('ASSESSMENT_ITEM_NOT_FOUND')
+      expect(withdrawn.written).toBe(0)
+
+      // the question's allowance lowered below what the person already holds
+      const lowered = ok(
+        await run(
+          db.url,
+          heldAcross(
+            'ar-held-quota',
+            { maxEntries: 2 },
+            {},
+            (item) =>
+              runSql(sql`update assessment_items set max_entries = 1 where id = ${item.id}`),
+            (at) =>
+              // any claim that is not voided holds a place
+              runSql(sql`
+                insert into entries (tenant_id, batch_id, item_id, participant_id, source, status)
+                values (${at.tenant}, ${at.batchId}, ${at.itemId}, ${at.participantId},
+                        'record', 'draft')`),
+          ),
+        ),
+      )
+      expect(errorOf<{ blocked: unknown }>(lowered.outcome)?.blocked).toEqual([
+        { participantId: expect.any(String), reason: 'max-entries-reached' },
+      ])
+      // the one placed beforehand, and nothing the act added
+      expect(lowered.written).toBe(1)
     })
   })
 

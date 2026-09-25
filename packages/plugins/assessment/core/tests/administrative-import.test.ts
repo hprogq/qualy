@@ -990,7 +990,11 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
     /** a round, an administrative question, and a one-row file ready to commit */
     const prepared = (
       slug: string,
-      over?: { maxEntries?: number; formConfig?: Record<string, unknown> },
+      over?: {
+        maxEntries?: number
+        formConfig?: Record<string, unknown>
+        scoringConfig?: Record<string, unknown>
+      },
       row: readonly string[] = ['2023001', 'Zhang San', '甲'],
     ) =>
       Effect.gen(function* () {
@@ -1102,6 +1106,40 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
           (one) => [one.field, one.reason],
         ),
       ).toEqual([['evidence.claimed-when-slot', 'out-of-range']])
+      expect(found.after).toEqual({ imports: 0, entries: 0 })
+    })
+
+    // What the office determined is held to the window too: a row whose own
+    // fields a narrower window leaves alone, and whose determined day it
+    // does not cover, is judged again under the lock.
+    it('refuses a determined day the round no longer covers', async () => {
+      const found = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const { f, g, commit } = yield* prepared(
+              'ai-race-determined',
+              { scoringConfig: datedScoring() },
+              ['2023001', 'Zhang San', '校发〔2026〕12 号', '', '2026-07-15'],
+            )
+            const race = yield* raced(
+              g.batch.id,
+              runSql(sql`
+                update assessment_batches
+                   set material_range = daterange('2026-03-01', '2026-07-01')
+                 where id = ${g.batch.id}`),
+              commit,
+            )
+            return { ...race, after: yield* counts(f) }
+          }),
+        ),
+      )
+      expect(found.queued).toBe(true)
+      expect(
+        errorOf<{ issues: { field: string; reason: string }[] }>(found.outcome)?.issues.map(
+          (one) => [one.field.split('.')[0], one.reason],
+        ),
+      ).toEqual([['recognition', 'out-of-material-range']])
       expect(found.after).toEqual({ imports: 0, entries: 0 })
     })
 
