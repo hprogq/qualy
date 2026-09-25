@@ -21,7 +21,7 @@ import { sourceLabelOf } from './source.ts'
 import { EntryTrail } from './EntryHistory.tsx'
 import { EntryStanding } from './EntryStanding.tsx'
 import { choiceLabel, displayTitle, kindOf, type AtomicSchema } from '@qualy/value-schema'
-import { displayValueOf, fieldsOf, type EntryDto, type ItemDto } from './model.ts'
+import { answerOf, displayValueOf, fieldsOf, type EntryDto, type ItemDto } from './model.ts'
 
 // One claim, in full, in a drawer over the list it came from.
 //
@@ -393,15 +393,15 @@ function SuggestedChanges({
   const rows = fields.filter(
     (field) =>
       field.type !== 'attachment' &&
-      field.key in record &&
-      String(record[field.key] ?? '') !== String(payload[field.key] ?? ''),
+      Object.hasOwn(record, field.key) &&
+      String(answerOf(record, field.key) ?? '') !== String(answerOf(payload, field.key) ?? ''),
   )
   if (rows.length === 0) return null
   return (
     <div {...stylex.props(styles.suggested)} data-testid="suggested-changes">
       <p {...stylex.props(styles.quietNote)}>{format(m.entrySuggestedTitle)}</p>
       {rows.map((field) => {
-        const said = displayValueOf(field, record[field.key], {
+        const said = displayValueOf(field, answerOf(record, field.key), {
           yes: format(m.recognitionYes),
           no: format(m.recognitionNo),
         })
@@ -660,7 +660,7 @@ export function EntryDetail({
                     )}
                   </div>
                   {fields.map((field) => {
-                    const value = payload[field.key]
+                    const value = answerOf(payload, field.key)
                     return (
                       <div key={field.key} {...stylex.props(styles.field)}>
                         <p {...stylex.props(styles.fieldLabel)}>{field.label}</p>
@@ -722,7 +722,10 @@ export function EntryDetail({
                       {format(m.entrySheetSupAsk)}　{ask.instructions}
                     </p>
                     {ask.requirements.map((piece) => {
-                      const value = (ask.response!.payload as Record<string, unknown>)[piece.key]
+                      const value = answerOf(
+                        ask.response!.payload as Record<string, unknown>,
+                        piece.key,
+                      )
                       return (
                         <div key={piece.key} {...stylex.props(styles.field)}>
                           <p {...stylex.props(styles.fieldLabel)}>{piece.label}</p>

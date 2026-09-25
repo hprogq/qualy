@@ -11,7 +11,7 @@ import { useLingering } from '@qualy/ui/use-lingering'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
 import { AttachmentLink } from '../entry/AttachmentLink.tsx'
-import { attachmentContentUrl, displayValueOf, fieldsOf } from '../entry/model.ts'
+import { answerOf, attachmentContentUrl, displayValueOf, fieldsOf } from '../entry/model.ts'
 import {
   idsOf,
   timeLabel,
@@ -439,7 +439,8 @@ export const FilingColumn = memo(function FilingColumn({
     against === null
       ? 0
       : fields.filter(
-          (field) => (was.get(field.key)?.value ?? '') !== shown(field, record[field.key]),
+          (field) =>
+            (was.get(field.key)?.value ?? '') !== shown(field, answerOf(record, field.key)),
         ).length
   // The materials, numbered once across the whole filing in the order the
   // questions ask for them - the same numbers the 1-9 keys open. A file
@@ -448,7 +449,7 @@ export const FilingColumn = memo(function FilingColumn({
   const slots = new Map(
     fields
       .filter((field) => field.type === 'attachment')
-      .flatMap((field) => idsOf(record[field.key]))
+      .flatMap((field) => idsOf(answerOf(record, field.key)))
       .map((attachmentId, index) => [attachmentId, index + 1]),
   )
   // the situation in two or three short lines, for the face that opens
@@ -578,11 +579,11 @@ export const FilingColumn = memo(function FilingColumn({
         </div>
         <dl {...stylex.props(styles.fieldList)}>
           {fields.map((field) => {
-            const now = shown(field, record[field.key])
+            const now = shown(field, answerOf(record, field.key))
             const previous = was.get(field.key)
             const before = previous?.value ?? ''
             const changed = against !== null && before !== now
-            const cited = field.type === 'attachment' ? idsOf(record[field.key]) : []
+            const cited = field.type === 'attachment' ? idsOf(answerOf(record, field.key)) : []
             // only while comparing: without a version to read against, a file
             // that is not here now was simply never here
             const gone =
@@ -762,7 +763,7 @@ function SupplementCard({
       {supplement.response !== null && (
         <dl {...stylex.props(styles.answerList)}>
           {supplement.requirements.map((asked) => {
-            const value = answers[asked.key]
+            const value = answerOf(answers, asked.key)
             return (
               <div key={asked.key} {...stylex.props(styles.askedRow)}>
                 <dt {...stylex.props(styles.askedName)}>{asked.label}</dt>

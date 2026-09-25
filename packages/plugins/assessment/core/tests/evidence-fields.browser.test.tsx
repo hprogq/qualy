@@ -157,6 +157,39 @@ describe('filing typed evidence', () => {
     await expect.element(page.getByLabelText('奖项名称', { exact: false })).toHaveValue('')
   })
 
+  // the number drafts are a record keyed the same way: read plainly, an
+  // untouched number field so named found `Object` there and the whole form
+  // fell over trying to trim it
+  it('opens a number field keyed by a name every object answers to, and files it', async () => {
+    const plain = item()
+    const odd = {
+      ...plain,
+      currentRevision: {
+        ...plain.currentRevision,
+        formConfig: {
+          fields: [{ key: 'constructor', type: 'integer', label: '获奖序位', min: 1, max: 10 }],
+        },
+      },
+    }
+    const created = vi.fn((request: { payload: Record<string, unknown> }) =>
+      Effect.fail({ _tag: 'never' as const, request }),
+    )
+    await open({
+      listItems: () => Effect.succeed({ items: [odd], capabilities: { canManage: false } }),
+      createEntry: created,
+    })
+    await startFiling()
+    const placing = page.getByLabelText('获奖序位', { exact: false })
+    await expect.element(placing).toHaveValue('')
+    const { userEvent } = await import('vitest/browser')
+    await userEvent.fill(placing.element(), '3')
+    await page.getByRole('button', { name: '存为草稿', exact: false }).click()
+    await vi.waitFor(() => expect(created).toHaveBeenCalledOnce())
+    const filed = created.mock.calls[0]![0].payload['payload'] as Record<string, unknown>
+    expect(Object.hasOwn(filed, 'constructor')).toBe(true)
+    expect(filed['constructor']).toBe(3)
+  })
+
   it('files the choice as its value, the integer as a number, the decimal as its spelling', async () => {
     const created = vi.fn((request: { payload: Record<string, unknown> }) =>
       Effect.succeed({

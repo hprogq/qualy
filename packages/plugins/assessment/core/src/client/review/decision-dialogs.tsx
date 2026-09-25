@@ -20,7 +20,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
-import { displayValueOf, fieldsOf } from '../entry/model.ts'
+import { answerOf, displayValueOf, fieldsOf } from '../entry/model.ts'
 import type { EvidenceFieldSpec } from '../entry/EvidenceForm.tsx'
 import { offeredOptions } from '../entry/model.ts'
 import { AttachmentLink } from '../entry/AttachmentLink.tsx'
@@ -1377,7 +1377,7 @@ function FiledValues({
       <FadedScroll ground="inset">
         <dl {...stylex.props(styles.filingList)}>
           {fields.map((field) => {
-            const raw = record[field.key]
+            const raw = answerOf(record, field.key)
             const ids = field.type === 'attachment' ? idsOf(raw) : []
             const text = displayValueOf(field, raw, words) || valueOf(raw)
             return (
@@ -1549,13 +1549,14 @@ export function RejectDialog({
   // a typo in a suggestion must hold the door, never file as text where a
   // number belongs - and an all-empty grid stays "keep everything"
   const suggestionsInvalid =
-    suggesting && fields.some((field) => suggestionDraftInvalid(field, suggested[field.key] ?? ''))
+    suggesting &&
+    fields.some((field) => suggestionDraftInvalid(field, answerOf(suggested, field.key) ?? ''))
   const confirm = () => {
     if (!ready || suggestionsInvalid) return
     const changes = Object.fromEntries(
       fields
-        .filter((field) => (suggested[field.key] ?? '').trim() !== '')
-        .map((field) => [field.key, materializeSuggestion(field, suggested[field.key]!)]),
+        .filter((field) => (answerOf(suggested, field.key) ?? '').trim() !== '')
+        .map((field) => [field.key, materializeSuggestion(field, answerOf(suggested, field.key)!)]),
     )
     draft.forget()
     onConfirm({
@@ -1704,11 +1705,11 @@ export function RejectDialog({
                     key={field.key}
                     slot={index + 1}
                     field={field}
-                    original={displayValueOf(field, filed[field.key], {
+                    original={displayValueOf(field, answerOf(filed, field.key), {
                       yes: format(m.recognitionYes),
                       no: format(m.recognitionNo),
                     })}
-                    value={suggested[field.key] ?? ''}
+                    value={answerOf(suggested, field.key) ?? ''}
                     keepLabel={format(m.reviewSuggestKeep)}
                     yesLabel={format(m.recognitionYes)}
                     noLabel={format(m.recognitionNo)}
@@ -1833,6 +1834,7 @@ function FieldRow({
       ) : (
         <Input
           type="text"
+          aria-label={field.label}
           inputMode={
             field.type === 'integer' ? 'numeric' : field.type === 'decimal' ? 'decimal' : undefined
           }

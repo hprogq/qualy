@@ -20,6 +20,7 @@ import { Basis } from './Basis.tsx'
 import { EvidenceForm, type EvidencePayload } from './EvidenceForm.tsx'
 import { carryPayload, chainNamesOf, eachWorth, roomLeft } from './standing.ts'
 import {
+  answerOf,
   displayValueOf,
   fieldsOf,
   trimAmount,
@@ -740,7 +741,7 @@ const summary = (entry: EntryDto, item: ItemDto): string => {
   // never the stable value behind them
   const said = fields
     .filter((field) => field.type !== 'attachment' && field.type !== 'boolean')
-    .map((field) => displayValueOf(field, payload[field.key]))
+    .map((field) => displayValueOf(field, answerOf(payload, field.key)))
     .filter((value) => value.trim() !== '')
   return said.length === 0 ? item.title : said.join('　')
 }

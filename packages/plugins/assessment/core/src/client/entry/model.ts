@@ -168,6 +168,15 @@ export const fieldsOf = (
     : []
 
 /**
+ * What a record says under one field key: its own entry, never something
+ * every object inherits. A field key is a word an administrator chose, and
+ * `constructor` is one every object already answers to: read the plain way,
+ * a filing that left it blank printed `Object`'s source as its answer.
+ */
+export const answerOf = <T>(record: Readonly<Record<string, T>>, key: string): T | undefined =>
+  Object.hasOwn(record, key) ? record[key] : undefined
+
+/**
  * One field's raw payload value as the words a reader should see.
  *
  * Numbers print as numbers, a choice prints the administrator's label for

@@ -28,6 +28,7 @@ import {
   sizeLabel,
   sizeLimitLabel,
   offeredOptions,
+  answerOf,
 } from './model.ts'
 
 // The form an administrator composed, drawn field by field. The page hands
@@ -79,14 +80,6 @@ const styles = stylex.create({
     objectFit: 'cover',
   },
 })
-
-/**
- * One field's answer in a payload: its own, never something every object
- * inherits. A field keyed `constructor` read the plain way found `Object`,
- * and the attachment list crashed the whole form trying to map it.
- */
-const own = (record: Record<string, unknown>, key: string): unknown =>
-  Object.hasOwn(record, key) ? record[key] : undefined
 
 export interface EvidenceFieldSpec {
   /** what this field is called across versions of the form; older forms have none */
@@ -278,7 +271,7 @@ export function EvidenceForm({
   }
   const invalidDrafts = fields.filter((field) => {
     if (field.type !== 'integer' && field.type !== 'decimal') return false
-    const draft = numberDrafts[field.key]
+    const draft = answerOf(numberDrafts, field.key)
     return draft !== undefined && draftInvalid(field, draft)
   })
   const valid = invalidDrafts.length === 0
@@ -307,8 +300,8 @@ export function EvidenceForm({
   )
 
   const numberField = (field: EvidenceFieldSpec) => {
-    const stored = own(value, field.key)
-    const draft = numberDrafts[field.key] ?? (stored === undefined ? '' : String(stored))
+    const stored = answerOf(value, field.key)
+    const draft = answerOf(numberDrafts, field.key) ?? (stored === undefined ? '' : String(stored))
     const invalid = draftInvalid(field, draft)
     return (
       <Field
@@ -360,7 +353,7 @@ export function EvidenceForm({
               {(id) => (
                 <Input
                   id={id}
-                  value={(own(value, field.key) as string | undefined) ?? ''}
+                  value={(answerOf(value, field.key) as string | undefined) ?? ''}
                   maxLength={field.maxLength}
                   disabled={disabled}
                   onChange={(event) => setField(field.key, event.target.value)}
@@ -373,7 +366,7 @@ export function EvidenceForm({
           // Three states, not two: an optional yes-or-no left alone is
           // unanswered, and a switch has no way to say so. '' is the
           // unanswered state and leaves the payload, like an unpicked choice.
-          const held = own(value, field.key)
+          const held = answerOf(value, field.key)
           const chosen = held === true ? 'true' : held === false ? 'false' : ''
           return (
             <Field
@@ -433,7 +426,7 @@ export function EvidenceForm({
               {(id) => (
                 <DatePicker
                   id={id}
-                  value={(own(value, field.key) as string | undefined) ?? null}
+                  value={(answerOf(value, field.key) as string | undefined) ?? null}
                   min={floor === undefined ? undefined : String(floor)}
                   max={ceiling === undefined ? undefined : String(ceiling)}
                   disabled={disabled}
@@ -458,7 +451,9 @@ export function EvidenceForm({
 
         if (field.type === 'choice') {
           const chosen =
-            typeof own(value, field.key) === 'string' ? (own(value, field.key) as string) : ''
+            typeof answerOf(value, field.key) === 'string'
+              ? (answerOf(value, field.key) as string)
+              : ''
           const offered = offeredOptions(field)
           // an answer naming an option since retired stays readable: it is
           // listed, disabled, so the words are there and nobody re-picks it
@@ -499,7 +494,7 @@ export function EvidenceForm({
           )
         }
 
-        const cited = (own(value, field.key) as readonly string[] | undefined) ?? []
+        const cited = (answerOf(value, field.key) as readonly string[] | undefined) ?? []
         const kinds = fileKindLabels(field.accept, (family) =>
           format(
             family === 'image'
@@ -562,7 +557,7 @@ export function EvidenceForm({
             if (landed.length > 0) {
               // read the payload as it stands now, not as it stood at the drop
               const current = latest.current
-              const already = current[field.key]
+              const already = answerOf(current, field.key)
               onChange({
                 ...current,
                 [field.key]: [...(Array.isArray(already) ? (already as string[]) : []), ...landed],

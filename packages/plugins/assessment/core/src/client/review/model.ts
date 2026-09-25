@@ -4,7 +4,7 @@ import type { ApiResult } from '@qualy/web-runtime/api'
 import { useI18n } from '@qualy/web-i18n'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
-import { displayValueOf, fieldsOf } from '../entry/model.ts'
+import { answerOf, displayValueOf, fieldsOf } from '../entry/model.ts'
 
 // What the review screens agree on: the queue row, the three ways it is
 // laid out, and the run - the ordered slice of the queue a reviewer walks
@@ -287,7 +287,7 @@ export const valuesOf = (
 ): readonly { key: string; label: string; value: string; ids: readonly string[] }[] =>
   fieldsOf(formConfig).map((field) => {
     const record = (payload ?? {}) as Record<string, unknown>
-    const raw = record[field.key]
+    const raw = answerOf(record, field.key)
     return {
       key: field.key,
       label: field.label,

@@ -3,6 +3,7 @@ import { assessmentMessages as m } from '../i18n.ts'
 import type { EvidencePayload } from './EvidenceForm.tsx'
 import {
   amountOf,
+  answerOf,
   fieldsOf,
   opensTo,
   recordedOnly,
@@ -351,7 +352,7 @@ export const carryPayload = (
   for (const field of now) {
     const before = held.get(identity(field))
     if (before === undefined || before.type !== field.type) continue
-    const value = payload[before.key]
+    const value = answerOf(payload, before.key)
     if (value !== undefined) carried[field.key] = value
   }
   return carried

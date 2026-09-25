@@ -2116,6 +2116,60 @@ describe('judging a submission', () => {
       .toHaveValue('证书缺少落款。')
   }, 30_000)
 
+  // a field key is the administrator's word, and `constructor` is one every
+  // object answers to: read plainly, the advice grid found `Object` in an
+  // untouched box and fell over trying to trim it
+  it('offers advice on a field keyed by a name every object answers to', async () => {
+    const decided = vi.fn(() =>
+      Effect.succeed({ review: { ...review, state: 'completed' as const, outcome: 'rejected' } }),
+    )
+    const odd = {
+      ...review,
+      revision: { ...review.revision, payload: { summary: '入伍经历与退役时间' } },
+      form: {
+        itemType: 'evidence',
+        formConfig: {
+          fields: [
+            { key: 'summary', type: 'text', label: '事项说明' },
+            { key: 'constructor', type: 'text', label: '所在部队' },
+          ],
+        },
+      },
+    }
+    await screen(
+      {
+        listReviewInbox: () =>
+          Effect.succeed({ items: [inboxRow()], nextCursor: null, handledToday: 0 }),
+        getReviewInstance: () => Effect.succeed({ review: odd }),
+        decideReview: decided,
+      },
+      `/assessment/batches/${BATCH_ID}/reviews/${INSTANCE_ID}`,
+      [
+        {
+          path: '/assessment/batches/:batchId/reviews/:instanceId',
+          element: <ReviewInstancePage />,
+        },
+      ],
+    )
+
+    await page.getByRole('button', { name: /退回/ }).click()
+    await page.getByLabelText('审核意见', { exact: false }).fill('请补充部队名称。')
+    await page.getByRole('checkbox', { name: /附加修改建议/ }).click()
+    const unit = page.getByRole('dialog').getByRole('textbox', { name: '所在部队' })
+    await expect.element(unit).toHaveValue('')
+    await unit.fill('某部')
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /确认退回/ })
+      .click()
+    await vi.waitFor(() => expect(decided).toHaveBeenCalledOnce(), { timeout: 8000 })
+    const sent = (
+      decided.mock.calls[0] as unknown as [{ payload: { suggestedPayload: object } }]
+    )[0].payload.suggestedPayload as Record<string, unknown>
+    expect(Object.hasOwn(sent, 'constructor')).toBe(true)
+    expect(sent['constructor']).toBe('某部')
+  }, 30_000)
+
   it('does not count a round somebody else settled first as handled here', async () => {
     const decided = vi.fn(() => Effect.fail(apiError('ASSESSMENT_REVIEW_CONFLICT')))
     await screen(

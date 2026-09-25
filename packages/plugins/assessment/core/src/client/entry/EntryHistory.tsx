@@ -13,7 +13,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { AttachmentLink } from './AttachmentLink.tsx'
-import { displayValueOf, fieldsOf } from './model.ts'
+import { answerOf, displayValueOf, fieldsOf } from './model.ts'
 import { ownReviewEventMessage, reviewEventMessage } from '../review/events.ts'
 
 // The whole account of one claim, read the way records are read: newest
@@ -1007,7 +1007,9 @@ function Answer({
               <div key={asked.key} {...stylex.props(styles.gridRow)}>
                 <dt {...stylex.props(styles.term)}>{asked.label}</dt>
                 <dd {...stylex.props(styles.detail)}>
-                  {typeof answers[asked.key] === 'string' ? (answers[asked.key] as string) : '–'}
+                  {typeof answerOf(answers, asked.key) === 'string'
+                    ? (answerOf(answers, asked.key) as string)
+                    : '–'}
                 </dd>
               </div>
             ))}
@@ -1089,7 +1091,7 @@ function FiledFields({
     value: { kind: 'text'; text: string } | { kind: 'files'; ids: readonly string[] }
   }[] = []
   for (const field of fields) {
-    const value = record[field.key]
+    const value = answerOf(record, field.key)
     if (field.type === 'attachment') {
       const ids = filesOf(value)
       if (ids.length > 0)
