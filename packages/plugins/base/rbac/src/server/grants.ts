@@ -965,7 +965,9 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     held: (tenantId: string, userId: string) =>
       withDb(
         grantRows(tenantId, { userId, activeRoles: true }, undefined, undefined).pipe(
-          Effect.map((found) => found.rows),
+          // read without an actor's scope, which would mark every row as one
+          // the reader may revoke: seeing one's own roles is not managing them
+          Effect.map((found) => found.rows.map((row) => ({ ...row, manageable: false }))),
           Effect.orDie,
         ),
       ),
