@@ -751,4 +751,29 @@ describe('the ledger inside another page', () => {
       )
       .toBeLessThan(2)
   })
+
+  it('lines up at the start of a page that lines its own content up there', async () => {
+    await page.viewport(1440, 900)
+    const paper = many(1)
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+      }),
+      children: (
+        <ResultLedger
+          result={paper.result}
+          items={paper.items}
+          entries={paper.entries}
+          reader="staff"
+          align="start"
+        />
+      ),
+    })
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
+    const seat = page.getByTestId('result-ledger').element().getBoundingClientRect()
+    const total = page.getByTestId('result-total').element().getBoundingClientRect()
+    const band = sectionOf('m0').getBoundingClientRect()
+    expect(Math.abs(total.left - seat.left)).toBeLessThan(4)
+    expect(Math.abs(band.left - seat.left)).toBeLessThan(2)
+  })
 })

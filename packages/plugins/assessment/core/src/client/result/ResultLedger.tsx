@@ -84,6 +84,8 @@ const styles = stylex.create({
     flexDirection: 'column',
   },
   measure: { width: '100%', marginInline: 'auto' },
+  // inside a page that lines its own content up at the start
+  measureStart: { marginInlineStart: 0 },
   measureWide: { maxWidth: OUTLINE_WIDTH + 24 + LEDGER_WIDTH },
   measureNarrow: { maxWidth: LEDGER_WIDTH },
   head: {
@@ -737,6 +739,7 @@ export function ResultLedger({
   heading,
   reader = 'owner',
   stickyTop = 0,
+  align = 'center',
 }: {
   result: LedgerResult
   items: readonly LedgerItem[]
@@ -752,6 +755,8 @@ export function ResultLedger({
   reader?: 'owner' | 'staff'
   /** how far down the scroller something of the page's own is already pinned */
   stickyTop?: number
+  /** centred when the ledger is the page; at the start inside a page that lines up there */
+  align?: 'center' | 'start'
 }) {
   const model = useMemo(() => buildLedger({ result, items, entries }), [result, items, entries])
   const seat = useRef<HTMLDivElement>(null)
@@ -855,15 +860,30 @@ export function ResultLedger({
       data-layout={outline ? 'outline' : strip ? 'strip' : 'single'}
       {...stylex.props(styles.root)}
     >
-      <div {...stylex.props(styles.measure, outline ? styles.measureWide : styles.measureNarrow)}>
-        <Head model={model} mode={result.mode} heading={heading} />
-      </div>
-      {/* a direct child of the whole ledger, so it holds for all of it */}
-      {strip && <Strip model={model} active={current} top={stickyTop} onJump={jump} />}
       <div
         {...stylex.props(
           styles.measure,
           outline ? styles.measureWide : styles.measureNarrow,
+          align === 'start' && styles.measureStart,
+        )}
+      >
+        <Head model={model} mode={result.mode} heading={heading} />
+      </div>
+      {/* a direct child of the whole ledger, so it holds for all of it */}
+      {strip && (
+        <Strip
+          model={model}
+          active={current}
+          top={stickyTop}
+          start={align === 'start'}
+          onJump={jump}
+        />
+      )}
+      <div
+        {...stylex.props(
+          styles.measure,
+          outline ? styles.measureWide : styles.measureNarrow,
+          align === 'start' && styles.measureStart,
           styles.body,
           outline && styles.bodyWide,
         )}
@@ -1018,11 +1038,13 @@ function Strip({
   model,
   active,
   top,
+  start,
   onJump,
 }: {
   model: LedgerModel
   active: string | null
   top: number
+  start: boolean
   onJump: (id: string) => void
 }) {
   const { format } = useI18n()
@@ -1043,7 +1065,12 @@ function Strip({
       ref={row}
       aria-label={format(m.resultOutlineLabel)}
       data-testid="result-strip"
-      {...stylex.props(styles.measure, styles.measureNarrow, styles.strip)}
+      {...stylex.props(
+        styles.measure,
+        styles.measureNarrow,
+        start && styles.measureStart,
+        styles.strip,
+      )}
       style={{ top }}
     >
       {model.tops.map((group) => {
