@@ -464,6 +464,9 @@ export const emailFlowsLayer: Layer.Layer<
                 .executeTakeFirstOrThrow(),
             )).id
       const endedSessions = yield* endSessions(tenantId, person.id, keep)
+      // a move to another address asked for in a session that just ended
+      // must not outlive it in somebody's inbox
+      yield* retireChallenges(tenantId, person.id, ['change'])
       yield* audit.record(BindingWritten, {
         tenantId,
         actor: yield* actorOf(tenantId, actor),

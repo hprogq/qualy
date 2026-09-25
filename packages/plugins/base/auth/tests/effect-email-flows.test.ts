@@ -623,6 +623,94 @@ describe.runIf(postgresAvailable)('an email address', () => {
     }
   })
 
+  it('does not change once the account has been taken back, however that was done', async () => {
+    const db = await createTestContext('email-change-taken-back')
+    const mail = memoryMailBackend()
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const flows = yield* EmailFlows
+            const iam = yield* Iam
+            // an administrator who may do what taking an account back takes
+            const role = one<{ id: string }>(
+              yield* runSql(sql`
+                insert into roles (tenant_id, code, name, kind, status, permission_mode, system_key)
+                values (${f.tenant}, 'admin', 'Admin', 'tenant', 'active', 'all-active', 'tenant-admin')
+                returning id`),
+            ).id
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id)
+              values (${f.tenant}, ${f.admin}, ${role})`)
+            const admin = f.as(f.admin, f.adminHere)
+            // whoever holds one of Ada's sessions asks to move her address
+            // somewhere of theirs, and then Ada or an administrator acts
+            const stolen = f.as(f.ada, f.adaElsewhere)
+            const version = () =>
+              Effect.map(
+                runSql<{ version: number }>(sql`select version from users where id = ${f.ada}`),
+                (result) => result.rows[0]!.version,
+              )
+            const afterwards = Effect.fn('afterwards')(function* (
+              takeBack: Effect.Effect<unknown, unknown, EmailFlows | Iam | Orm>,
+            ) {
+              yield* flows.requestChange(stolen, {
+                newEmail: 'thief@elsewhere.example',
+                locale: 'en',
+              })
+              const link = yield* Effect.promise(() => tokenFrom(mail, 'thief@elsewhere.example'))
+              mail.outbox.length = 0
+              yield* takeBack
+              return tagOf(yield* Effect.result(flows.redeemChange(link.token)))
+            })
+            const ownPassword = yield* afterwards(
+              flows.setPassword(f.as(f.ada, f.adaHere), {
+                currentPassword: 'ada-password',
+                newPassword: 'fresh password',
+              }),
+            )
+            const replaced = yield* afterwards(
+              iam.users.putBinding(f.tenant, f.ada, f.local, { secret: 'another password' }, admin),
+            )
+            const revoked = yield* afterwards(
+              iam.users.revokeBinding(f.tenant, f.ada, f.local, admin),
+            )
+            const disabled = yield* afterwards(
+              Effect.gen(function* () {
+                yield* iam.users.setStatus(
+                  f.tenant,
+                  f.ada,
+                  { status: 'disabled', expectedVersion: yield* version() },
+                  admin,
+                )
+                yield* iam.users.setStatus(
+                  f.tenant,
+                  f.ada,
+                  { status: 'active', expectedVersion: yield* version() },
+                  admin,
+                )
+              }),
+            )
+            const email = yield* runSql<{ email: string }>(
+              sql`select email from users where id = ${f.ada}`,
+            )
+            return { ownPassword, replaced, revoked, disabled, email: email.rows[0]!.email }
+          }).pipe(Effect.provide(stack(db.url, mail.backend))),
+        ),
+      )
+      expect(answer).toEqual({
+        ownPassword: 'AUTH_CHALLENGE_INVALID',
+        replaced: 'AUTH_CHALLENGE_INVALID',
+        revoked: 'AUTH_CHALLENGE_INVALID',
+        disabled: 'AUTH_CHALLENGE_INVALID',
+        email: 'ada@school.edu',
+      })
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('spends a link that could not be mailed, and says so', async () => {
     const db = await createTestContext('email-not-sent')
     const mail = memoryMailBackend()

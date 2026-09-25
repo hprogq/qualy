@@ -830,6 +830,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
     const revokedBindings = yield* revokeUserBindings(tenantId, user.id, as.userId)
     // their sessions go, and every redirect pinned to one goes with them
     const endedSessions = yield* deleteUserSessions(tenantId, user.id)
+    yield* retireChallenges(tenantId, user.id, ['verify', 'reset', 'change'])
     yield* markUserDeleted(tenantId, user.id)
     yield* audit.record(UserDeleted, {
       tenantId,
@@ -1280,6 +1281,9 @@ export const make = Effect.fn('Iam.users.make')(function* () {
                 )).id
           const endedSessions =
             standing === undefined ? 0 : yield* deleteUserSessions(tenantId, userId)
+          // a replaced credential is somebody taking the account back: a move
+          // to another address asked for before it goes with the sessions
+          if (standing !== undefined) yield* retireChallenges(tenantId, userId, ['change'])
           yield* audit.record(BindingWritten, {
             tenantId,
             actor: yield* actorOf(tenantId, as),
@@ -1323,6 +1327,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
               .execute(),
           )
           const endedSessions = yield* deleteUserSessions(tenantId, userId)
+          yield* retireChallenges(tenantId, userId, ['change'])
           yield* audit.record(BindingRevoked, {
             tenantId,
             actor: yield* actorOf(tenantId, as),
@@ -1623,8 +1628,10 @@ export const make = Effect.fn('Iam.users.make')(function* () {
           })
           if (!enabled) {
             // a disabled user loses access now, not when their session
-            // happens to expire
+            // happens to expire, and no link sent before waits for them to
+            // come back
             yield* deleteUserSessions(tenantId, user.id)
+            yield* retireChallenges(tenantId, user.id, ['verify', 'reset', 'change'])
             yield* rbac.assertTenantKeepsAdministrator(tenantId)
           }
         }),
