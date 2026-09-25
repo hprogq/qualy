@@ -751,13 +751,16 @@ export const emailFlowsLayer: Layer.Layer<
             // the recovery account's address is the seed's to set
             if (person.isSystem) return yield* new SystemAccountProtected()
             yield* guardDemo(principal.tenantId, person.id)
-            if ((yield* emailTaken(principal.tenantId, normalized, person.id)) !== undefined) {
-              return yield* new UserEmailConflict()
-            }
+            // counted before the address is looked up, and kept when it is
+            // somebody's: asking is how anybody would learn whose it is
             yield* throttle(principal.tenantId, HARD_LIMITS.mailBySelf, principal.userId)
+            if ((yield* emailTaken(principal.tenantId, normalized, person.id)) !== undefined) {
+              return undefined
+            }
             return yield* issueChallenge(principal.tenantId, person.id, 'change', normalized)
           }),
         )
+        if (issued === undefined) return yield* new UserEmailConflict()
         const link = yield* withDb(
           linkTo(principal.tenantId, CONFIRM_EMAIL_PATH, {
             purpose: 'change',

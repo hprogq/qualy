@@ -784,6 +784,41 @@ describe.runIf(postgresAvailable)('an email address', () => {
     }
   })
 
+  it('says an address is somebody else’s only as often as it would send a link', async () => {
+    const db = await createTestContext('email-change-probe')
+    const mail = memoryMailBackend()
+    try {
+      const f = await seed(db.url)
+      const { limit } = HARD_LIMITS.mailBySelf
+      const answer = ok(
+        await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const flows = yield* EmailFlows
+            const ada = f.as(f.ada, f.adaHere)
+            const answers: (string | undefined)[] = []
+            for (let asked = 0; asked <= limit; asked += 1) {
+              answers.push(
+                tagOf(
+                  yield* Effect.result(
+                    flows.requestChange(ada, { newEmail: 'lin@school.edu', locale: 'en' }),
+                  ),
+                ),
+              )
+            }
+            return answers
+          }).pipe(Effect.provide(stack(db.url, mail.backend))),
+        ),
+      )
+      expect(answer).toEqual([
+        ...Array.from({ length: limit }, () => 'USER_EMAIL_CONFLICT'),
+        'TOO_MANY_ATTEMPTS',
+      ])
+      expect(mail.outbox).toEqual([])
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('spends a link that could not be mailed, and says so', async () => {
     const db = await createTestContext('email-not-sent')
     const mail = memoryMailBackend()
