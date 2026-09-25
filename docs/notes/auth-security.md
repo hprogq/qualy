@@ -460,7 +460,8 @@ smtp 后端对着 Mailpit 跑同一套,CI 设 `QUALY_REQUIRE_MAILPIT_TESTS=1`,�
 - **邮箱是 User 的属性**，不是某个登录方式的标识：通知收件、邮箱密码登录的登录名、(之后的)找回渠道都引用
   `users.email`，不存第二份。入库统一 trim + 小写（`@qualy/auth-contract/email` 的 `normalizeEmail`，契约层与服务层共用，
   库上有 `chk_users_email_normalized`）。`email_verified_at` 表示「本人证明过能收到」，任何改动都清空它；原样重述不算改动。
-  系统账户的邮箱只由 seed 设定，API 修改一律 `SYSTEM_ACCOUNT_PROTECTED`。
+  系统账户的邮箱只由 seed 设定，API 修改一律 `SYSTEM_ACCOUNT_PROTECTED`；业务编号同样冻结，且不看当时是否装配了
+  按业务编号找人的入口——今天写进去的编号，会在日后启用 CAS 时替它的主人打开系统账户的门。
 - 界面不再显示「账号数」：有的登录方式根本不保存绑定（按学工号对应），绑定数推不出「能不能登录」。详情改显示
   「最近登录」（取 `sign_in_events` 最近一次成功，任何登录方式都会写）。
 

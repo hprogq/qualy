@@ -1553,13 +1553,11 @@ export const make = Effect.fn('Iam.users.make')(function* () {
             )
           // The recovery account's way in is provisioned with it and not
           // edited from a screen: not its address, which is how the tenant
-          // gets back in, and not any other field a door finds it by, which
-          // would open a door for whoever the new value belongs to.
-          if (
-            user.isSystem &&
-            (fields.email !== undefined ||
-              (fields.businessNo !== undefined && findingBy('businessNo').length > 0))
-          ) {
+          // gets back in, and not its business number, which a door finds
+          // people by. Whether such a door is assembled today does not
+          // matter: one enabled later would let in whoever the number
+          // written now belongs to.
+          if (user.isSystem && (fields.email !== undefined || fields.businessNo !== undefined)) {
             return yield* new SystemAccountProtected()
           }
           const changingType =

@@ -77,7 +77,8 @@ const fakeCampusDriver = registerLoginDriver({
   resolution: { mode: 'user-field', field: 'businessNo' },
 })
 
-const stack = (url: string) =>
+/** `campus: false` assembles no door that finds people by their business number */
+const stack = (url: string, doors: { campus: boolean } = { campus: true }) =>
   booted(
     authLayer.pipe(
       Layer.provideMerge(rbacLayer),
@@ -97,7 +98,7 @@ const stack = (url: string) =>
       Layer.provideMerge(
         Layer.mergeAll(
           databaseFor(url, { entities: authClosure }),
-          Layer.mergeAll(fakeLocalDriver, fakeCampusDriver).pipe(
+          (doors.campus ? Layer.mergeAll(fakeLocalDriver, fakeCampusDriver) : fakeLocalDriver).pipe(
             Layer.provideMerge(loginDriversLayer),
           ),
           uiLayer,
@@ -116,8 +117,11 @@ const stack = (url: string) =>
     { catalog },
   )
 
-const run = <A, E>(url: string, effect: Effect.Effect<A, E, Iam | Orm>) =>
-  Effect.runPromiseExit(Effect.provide(effect, stack(url)))
+const run = <A, E>(
+  url: string,
+  effect: Effect.Effect<A, E, Iam | Orm>,
+  doors?: { campus: boolean },
+) => Effect.runPromiseExit(Effect.provide(effect, stack(url, doors)))
 
 const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
   if (Exit.isSuccess(exit)) return exit.value
@@ -531,6 +535,51 @@ describe.runIf(postgresAvailable).concurrent('users', () => {
         display_name: 'Platform',
         business_no: 'SYS-1',
       })
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  // A number written while no door finds people by it waits for the day one
+  // is enabled, and then lets in whoever it belongs to as the tenant.
+  it('keeps the recovery account’s number even where no door finds people by one', async () => {
+    const db = await createTestContext('effect-users-system-number')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const systemType = one_<{ id: string }>(
+            yield* runSql(sql`
+              insert into user_types (tenant_id, code, name, placement_mode, is_system)
+              values (${f.tenant}, 'system-account', 'System', 'unrestricted', true) returning id`),
+          ).id
+          const system = one_<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.tenant}, 'System', ${systemType}, ${f.root}) returning id`),
+          ).id
+          const adminRole = one_<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status, permission_mode, system_key)
+              values (${f.tenant},'admin','Admin','tenant','active','all-active','tenant-admin')
+              returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id)
+            values (${f.tenant}, ${f.manager}, ${adminRole})`)
+          const iam = yield* Iam
+          const numbered = yield* Effect.result(
+            iam.users.update(f.tenant, system, { businessNo: 'T0001' }, 1, f.as),
+          )
+          const row = one_<{ business_no: string | null }>(
+            yield* runSql(sql`select business_no, id from users where id = ${system}`),
+          )
+          return { numbered: tagOf(numbered), businessNo: row.business_no }
+        }),
+        { campus: false },
+      )
+      expect(ok(exit)).toEqual({ numbered: 'SYSTEM_ACCOUNT_PROTECTED', businessNo: null })
     } finally {
       await db.dispose()
     }
