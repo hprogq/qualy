@@ -42,7 +42,7 @@ import {
   type FormulaRuntimeVersion,
 } from '../server/runtime-store.ts'
 import { BindableFormulaCatalog, type FormulaNotBindable } from '../server/binding-catalog.ts'
-import { contractIdentityOf } from '../server/contract-identity.ts'
+import { contractIdentityOf, sha256Hex } from '../server/contract-identity.ts'
 import { decodeFormulaEnvelope } from '../server/envelope.ts'
 import { FORMULA_SCORING_LIMITS } from './limits.ts'
 import { invokeForScore } from './invoke.ts'
@@ -291,6 +291,24 @@ const evaluationFailure = (error: {
   }
 }
 
+/**
+ * How many answers a bound calculator keeps.
+ *
+ * Every read of an account asks each approved claim's rule again, one
+ * sandbox run apiece, and the pages that show an account ask again every
+ * half minute. A published formula is a pure program over an immutable
+ * artifact, so the same artifact handed the same bytes answers the same way
+ * every time: it needs asking once. Only what the program itself said is
+ * kept - an amount, or a refusal - never a deadline crossed or a sandbox
+ * away, which say nothing about the next time. A key is two hashes, so a
+ * few thousand of them are a few hundred kilobytes.
+ */
+export const REMEMBERED_ANSWERS = 4096
+
+type Answer =
+  | { readonly ok: true; readonly amount: string }
+  | { readonly ok: false; readonly message: string }
+
 export const formula1: CalculatorRegistration<
   FormulaRuntimeStore | BindableFormulaCatalog | Sandbox | FormulaSettings
 > = {
@@ -302,6 +320,57 @@ export const formula1: CalculatorRegistration<
     const bindable = yield* BindableFormulaCatalog
     const sandbox = yield* Sandbox
     const settings = yield* FormulaSettings
+
+    // held by this binding, so it lives as long as the layer and no longer;
+    // a Map iterates in insertion order and a hit is put back at the end,
+    // so the first key is always the one asked longest ago
+    const answers = new Map<string, Answer>()
+    const recall = (key: string): Answer | undefined => {
+      const hit = answers.get(key)
+      if (hit !== undefined) {
+        answers.delete(key)
+        answers.set(key, hit)
+      }
+      return hit
+    }
+    const keep = (key: string, answer: Answer) => {
+      answers.set(key, answer)
+      if (answers.size > REMEMBERED_ANSWERS) {
+        const oldest = answers.keys().next()
+        if (oldest.done !== true) answers.delete(oldest.value)
+      }
+    }
+    const said = (answer: Answer) =>
+      answer.ok
+        ? Effect.succeed(answer.amount)
+        : Effect.fail(new CalculatorEvaluationError('refusal', answer.message))
+    const ask = (resolved: FormulaRuntimeVersion, input: Record<string, unknown>) =>
+      Effect.suspend(() => {
+        // the exact bytes the program is handed, under the artifact's own
+        // identity: nothing else reaches it
+        const key = `${resolved.runtimeSha256}:${sha256Hex(JSON.stringify(input))}`
+        const known = recall(key)
+        if (known !== undefined) return said(known)
+        return invokeForScore(sandbox, resolved, input).pipe(
+          Effect.mapError(evaluationFailure),
+          Effect.flatMap((answer) => {
+            const read = decodeFormulaEnvelope(answer.output)
+            if (read._tag === 'malformed') {
+              return Effect.fail(
+                new CalculatorEvaluationError(
+                  'execution',
+                  `malformed formula envelope: ${read.reason}`,
+                ),
+              )
+            }
+            const heard: Answer = read.envelope.ok
+              ? { ok: true, amount: read.envelope.amount }
+              : { ok: false, message: read.envelope.failure.message }
+            keep(key, heard)
+            return said(heard)
+          }),
+        )
+      })
 
     const compile = (
       config: unknown,
@@ -388,26 +457,7 @@ export const formula1: CalculatorRegistration<
       prepare: (frozen, context) =>
         resolveFrozenWith(store, frozen, context).pipe(
           Effect.map((resolved) => ({
-            evaluate: (input: Record<string, unknown>) =>
-              invokeForScore(sandbox, resolved, input).pipe(
-                Effect.mapError(evaluationFailure),
-                Effect.flatMap((answer) => {
-                  const read = decodeFormulaEnvelope(answer.output)
-                  if (read._tag === 'malformed') {
-                    return Effect.fail(
-                      new CalculatorEvaluationError(
-                        'execution',
-                        `malformed formula envelope: ${read.reason}`,
-                      ),
-                    )
-                  }
-                  return read.envelope.ok
-                    ? Effect.succeed(read.envelope.amount)
-                    : Effect.fail(
-                        new CalculatorEvaluationError('refusal', read.envelope.failure.message),
-                      )
-                }),
-              ),
+            evaluate: (input: Record<string, unknown>) => ask(resolved, input),
           })),
         ),
     }

@@ -561,6 +561,109 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
     expect(hard.reason).toContain('hard deadline')
     expect(hard.reason).not.toContain('soft')
   }, 120_000)
+
+  it('asks the sandbox once for what the program already answered, across reads', async () => {
+    const outcome = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seedFormulaFixture('fc-remember')
+          const library = yield* FormulaLibrary
+          const store = yield* FormulaRuntimeStore
+          const sandbox = yield* Sandbox
+          const as = f.principal(f.admin)
+          const created = yield* library.createFunction(f.t, { name: '记得', description: '' }, as)
+          const drafted = yield* library.updateDraft(
+            f.t,
+            created.id,
+            {
+              expectedDraftRevision: created.draftRevision,
+              draftSourceTs: MOODY,
+              draftTests: [{ name: 'ok', input: { mode: 'ok', value: '3.00' }, expected: '3' }],
+            },
+            as,
+          )
+          yield* library.publish(
+            f.t,
+            created.id,
+            {
+              expectedDraftRevision: drafted.draftRevision,
+              releaseName: `release ${drafted.draftRevision}`,
+            },
+            as,
+          )
+          const versionId = one<{ id: string }>(
+            yield* runSql(
+              sql`select id from assessment_formula_versions where function_id = ${created.id}`,
+            ),
+          ).id
+          const resolved = yield* store.resolve({ tenantId: f.t, versionId })
+          const frozen: FrozenCalculatorContract = {
+            config: { versionId },
+            contractHash: resolved.contractSha256,
+            runtimeRef: { kind: 'formula-version', id: versionId, sha256: resolved.runtimeSha256 },
+            inputSchema: resolved.inputSchema,
+            outputSchema: resolved.outputSchema,
+            valueSchemaProfileVersion: resolved.valueSchemaProfileVersion,
+            regexProfileVersion: resolved.regexProfileVersion,
+          }
+          let asked = 0
+          const counting = {
+            invoke: (request: Parameters<Sandbox['Service']['invoke']>[0]) =>
+              Effect.suspend(() => {
+                asked += 1
+                return sandbox.invoke(request)
+              }),
+          } as unknown as Sandbox['Service']
+          const bound = yield* formula1.bind.pipe(
+            Effect.provideService(Sandbox, counting),
+            authoringOn,
+          )
+          const host = { tenantId: f.t, batchId: '01920000-0000-7000-8000-0000000000cc' }
+          // two reads of the same account, each preparing the rule anew
+          const first = yield* bound.prepare(frozen, host)
+          const second = yield* bound.prepare(frozen, host)
+          const amounts = [
+            yield* first.evaluate({ mode: 'ok', value: '7.50' }),
+            yield* second.evaluate({ mode: 'ok', value: '7.50' }),
+          ]
+          const afterAmounts = asked
+          const refusals = [
+            yield* Effect.exit(first.evaluate({ mode: 'refuse', value: '1.00' })),
+            yield* Effect.exit(second.evaluate({ mode: 'refuse', value: '1.00' })),
+          ]
+          const afterRefusals = asked
+          // a program that did not finish said nothing, and is asked again
+          yield* Effect.exit(first.evaluate({ mode: 'loop', value: '1.00' }))
+          const afterOneLoop = asked
+          yield* Effect.exit(second.evaluate({ mode: 'loop', value: '1.00' }))
+          const afterTwoLoops = asked
+          // something new is a new question
+          const other = yield* second.evaluate({ mode: 'ok', value: '2.25' })
+          return {
+            amounts,
+            other,
+            refusals: refusals.map((exit) => (failureOf(exit) as CalculatorEvaluationError).kind),
+            afterAmounts,
+            afterRefusals,
+            afterOneLoop,
+            afterTwoLoops,
+            afterOther: asked,
+          }
+        }),
+      ),
+    )
+    expect(outcome.amounts).toEqual(['7.5', '7.5'])
+    expect(outcome.afterAmounts).toBe(1)
+    expect(outcome.refusals).toEqual(['refusal', 'refusal'])
+    expect(outcome.afterRefusals).toBe(2)
+    expect(outcome.afterTwoLoops - outcome.afterOneLoop).toBe(
+      outcome.afterOneLoop - outcome.afterRefusals,
+    )
+    expect(outcome.afterOneLoop).toBeGreaterThan(outcome.afterRefusals)
+    expect(outcome.other).toBe('2.25')
+    expect(outcome.afterOther).toBe(outcome.afterTwoLoops + 1)
+  }, 120_000)
 })
 
 describe('the formula config language', () => {
