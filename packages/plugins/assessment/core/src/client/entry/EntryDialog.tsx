@@ -266,20 +266,7 @@ const ISSUE_SENTENCES: Record<string, MessageDescriptor> = {
   'duplicate-attachment': m.entryIssueFileElsewhere,
 }
 
-export function EntryDialog({
-  open,
-  batchId,
-  materialRange,
-  participantId,
-  item,
-  entry,
-  submitGate,
-  trail,
-  siblings,
-  onClose,
-  onSaved,
-  onStale,
-}: {
+type EntryDialogProps = {
   /** false while it animates shut; it keeps drawing what it was showing */
   open: boolean
   batchId: string
@@ -303,7 +290,45 @@ export function EntryDialog({
   onSaved: () => void
   /** ask the page for the item again; the fresh one arrives as a new prop */
   onStale?: () => void
-}) {
+  /** the claim was saved elsewhere since this opened; the page reads it again */
+  onChangedElsewhere?: () => void
+}
+
+/**
+ * The filing dialog, drawn afresh on every opening.
+ *
+ * The page keeps it mounted after it closes so it can animate out, and the
+ * next opening of the same claim used to find the last one's state: the
+ * version it was opened on, what it had written, what was typed. After a
+ * save made elsewhere was refused, reopening to see the latest showed the
+ * same old version and was refused again. Each opening now starts from the
+ * claim as the page holds it at that moment.
+ */
+export function EntryDialog(props: EntryDialogProps) {
+  const [opening, setOpening] = useState(0)
+  const [wasOpen, setWasOpen] = useState(props.open)
+  if (props.open !== wasOpen) {
+    setWasOpen(props.open)
+    if (props.open) setOpening((count) => count + 1)
+  }
+  return <EntryDialogBody key={opening} {...props} />
+}
+
+function EntryDialogBody({
+  open,
+  batchId,
+  materialRange,
+  participantId,
+  item,
+  entry,
+  submitGate,
+  trail,
+  siblings,
+  onClose,
+  onSaved,
+  onStale,
+  onChangedElsewhere,
+}: EntryDialogProps) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
   const { format, formatError } = useI18n()
@@ -442,6 +467,15 @@ export function EntryDialog({
       }
       const raised = error as { issues?: readonly { field: string; reason: string }[] }
       if (Array.isArray(raised.issues)) setIssues(raised.issues)
+      // saved elsewhere meanwhile: the page reads the claim again, so the
+      // next opening starts from the version that stands now
+      const refused = error as { _tag?: string; reason?: string }
+      if (
+        refused._tag === 'ASSESSMENT_ENTRY_ACTION_REFUSED' &&
+        refused.reason === 'entry-changed'
+      ) {
+        onChangedElsewhere?.()
+      }
       const refusal = entryRefusalMessage(error)
       const said = refusal === null ? formatError(error) : format(refusal)
       // the write went through and the handing on did not: say so, or the

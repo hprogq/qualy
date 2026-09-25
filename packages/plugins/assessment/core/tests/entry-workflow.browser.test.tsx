@@ -1672,6 +1672,66 @@ describe('filing a claim', () => {
     expect(addressNow()).toContain(`open=${ITEM_ID}`)
   })
 
+  // A save made on another device is refused here rather than written over,
+  // and the way on is opening the claim again. The dialog stays mounted
+  // between openings, so that opening has to start from the version that
+  // stands now - not from the one the refused save was drawn on.
+  it('reopens a claim saved elsewhere on the version that stands now', async () => {
+    await page.viewport(1280, 800)
+    const LATER = '66666666-6666-4666-8666-777777777777'
+    let current = REVISION_ID
+    const seen: (string | undefined)[] = []
+    const revised = vi.fn((request: { payload: { expectedEntryRevisionId?: string } }) => {
+      seen.push(request.payload.expectedEntryRevisionId)
+      if (seen.length === 1) {
+        // the other device's save lands before this one
+        current = LATER
+        return Effect.fail(
+          Object.assign(new Error('ASSESSMENT_ENTRY_ACTION_REFUSED'), {
+            _tag: 'ASSESSMENT_ENTRY_ACTION_REFUSED',
+            action: 'edit',
+            reason: 'entry-changed',
+          }),
+        )
+      }
+      return Effect.succeed({ entry: entry() })
+    })
+    const standing = () =>
+      entry({ currentRevision: { ...entry().currentRevision!, id: current, revisionNo: 2 } })
+    await screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [standing()],
+            nextCursor: null,
+            attention: { unreadItemIds: [] },
+          }),
+        reviseEntry: revised,
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}&entry=${ENTRY_ID}`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    const save = () => page.getByRole('button', { name: '存为草稿', exact: false }).click()
+    await expect.element(page.getByLabelText('事项说明', { exact: false })).toBeVisible()
+    await save()
+    await vi.waitFor(() => expect(revised).toHaveBeenCalledOnce())
+    await page.getByRole('button', { name: 'Close' }).click()
+    await vi.waitFor(() => expect(addressNow()).not.toContain('entry='))
+    await vi.waitFor(() =>
+      expect(document.querySelector('[data-slot="dialog-content"]')).toBeNull(),
+    )
+
+    await page.getByRole('button', { name: /2024 年入伍/ }).click()
+    await page.getByRole('dialog').getByRole('button', { name: '继续填写' }).click()
+    await expect.element(page.getByLabelText('事项说明', { exact: false })).toBeVisible()
+    await save()
+    await vi.waitFor(() => expect(revised).toHaveBeenCalledTimes(2))
+    expect(seen).toEqual([REVISION_ID, LATER])
+  })
+
   it('opens the form for the question that was clicked, wherever the address was', async () => {
     // the regression: opening a question AND starting a claim is one click
     // but two address layers, and two separate writes raced on the router's

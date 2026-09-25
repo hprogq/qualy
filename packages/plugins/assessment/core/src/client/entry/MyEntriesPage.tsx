@@ -1949,6 +1949,7 @@ function Body({
             refresh()
           }}
           onStale={() => void items.refetch()}
+          onChangedElsewhere={refresh}
         />
       )}
       {/* the drawer that holds the whole claim; its account is a tab inside */}
