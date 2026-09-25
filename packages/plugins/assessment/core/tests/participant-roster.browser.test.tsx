@@ -95,9 +95,12 @@ const open = (
   /** the width the shell leaves the page, where a test stands in for the shell */
   width?: number,
   locale: 'zh-CN' | 'en-US' = 'zh-CN',
+  /** what this browser already keeps */
+  storage: Record<string, string> = {},
 ) =>
   renderScreen({
     locale,
+    storage,
     client: fakeClient({
       app: {
         getManifest: () =>
@@ -711,6 +714,62 @@ describe('the roster on the results page', () => {
       expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth + 1)
     }
   })
+
+  // What each person waits on has to be readable where it stands: in the
+  // longer English words, and with the unit tree dragged as wide as a wider
+  // window allowed and remembered here.
+  it.each([
+    ['en-US', null],
+    ['en-US', '480'],
+    ['zh-CN', '480'],
+  ] as const)(
+    'keeps every count inside its column at a laptop’s width in %s (tree stored at %s)',
+    async (locale, stored) => {
+      await page.viewport(1280, 800)
+      try {
+        const busy = {
+          inReview: 12,
+          toSupplement: 13,
+          reconsidering: 12,
+          toRevise: 11,
+          blocked: 10,
+        }
+        await open(
+          {
+            listParticipantAccounts: (request: Request) =>
+              pageOf(request, [person(1, { filings: busy }), person(2)]),
+          },
+          undefined,
+          // the column the rail leaves, less a scrollbar's gutter where the
+          // system draws one; the page keeps its own margins inside it
+          1280 - 224 - 17,
+          locale,
+          stored === null ? {} : { 'qualy:assessment-roster-tree': stored },
+        )
+        // the tree stands beside the list at this width
+        await expect
+          .element(page.getByRole('button', { name: '软件学院', exact: true }))
+          .toBeVisible()
+        const filings = page.getByTestId('participant-filings').first()
+        await expect.element(filings).toHaveAttribute('data-reconsidering', '12')
+        const cell = filings.element().parentElement!.getBoundingClientRect()
+        const counts = Array.from(filings.element().children)
+        expect(counts).toHaveLength(5)
+        for (const count of counts) {
+          const box = count.getBoundingClientRect()
+          expect(box.left).toBeGreaterThanOrEqual(cell.left - 0.5)
+          expect(box.right).toBeLessThanOrEqual(cell.right + 0.5)
+          expect(count.scrollWidth).toBeLessThanOrEqual(count.clientWidth + 1)
+        }
+        // and the name keeps its room beside them
+        expect(
+          page.getByTestId('participant-who').first().element().getBoundingClientRect().width,
+        ).toBeGreaterThanOrEqual(144)
+      } finally {
+        await page.viewport(1280, 800)
+      }
+    },
+  )
 
   it('folds the unit tree above the list once the table would not fit beside it', async () => {
     await page.viewport(1180, 820)

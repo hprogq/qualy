@@ -87,6 +87,20 @@ import type { BatchLiveEvent } from '../../api.ts'
 const TWO_COLUMNS = 1280
 
 /**
+ * The widest the reader may drag the unit tree.
+ *
+ * Bounded by the table, not by the tree: the list keeps the row's padding
+ * (32) and gaps (64), the number (120), a name's floor (144), room for the
+ * longest count's longest word (80), the total (136) and the menu (32), 608
+ * in all. At the narrowest width the tree stands beside the list, that
+ * leaves it 1280 less the rail (224), a scrollbar's gutter where the system
+ * draws one (17), the page's margins (48) and the gap (20), less 608: 363. A
+ * width stored in a wider window is held to this too, rather than squeezing
+ * the counts out of their column.
+ */
+const TREE_MOST = 360
+
+/**
  * The roster's columns: the number it is scanned by, the person, what their
  * claims wait on, the total and the row's menu. The person has a floor and
  * the larger share of what is left, so the counts beside it can never
@@ -522,7 +536,7 @@ export function ParticipantResultList({
         storageKey="qualy:assessment-roster-tree"
         initial={300}
         min={240}
-        max={480}
+        max={TREE_MOST}
         from={TWO_COLUMNS}
         handleLabel={format(m.rosterUnitsResize)}
         // With room for the tree beside the table, it is simply there,

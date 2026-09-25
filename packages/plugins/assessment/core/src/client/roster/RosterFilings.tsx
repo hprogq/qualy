@@ -36,7 +36,9 @@ const styles = stylex.create({
     lineHeight: '1rem',
     color: tokens.mutedForeground,
   },
-  one: { whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' },
+  // a count longer than its column, in some language, goes on between its
+  // words rather than past the column's edge
+  one: { whiteSpace: 'normal', fontVariantNumeric: 'tabular-nums' },
   warn: { color: tokens.warning },
 })
 
