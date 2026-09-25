@@ -1273,14 +1273,21 @@ describe('the stage plan', () => {
       getPhases: () => Effect.succeed(twoPhases({ planned: '2027-09-04T18:15:00.000Z' })),
     })
 
+    // the time as the reader reads it, against the same moment spelled on
+    // each clock: the batch's, and the device's it must not be
+    const spelled = (timeZone: string) =>
+      new Intl.DateTimeFormat('zh-CN', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone,
+      }).format(new Date('2027-09-04T18:15:00.000Z'))
+    expect(spelled(ZONE)).not.toBe(spelled('Asia/Shanghai'))
     await vi.waitFor(() => {
       const planned = page
         .getByTestId('phase-when')
         .elements()
         .find((node) => node.getAttribute('data-when') === 'planned')
-      expect(planned?.querySelector('[data-wall]')?.getAttribute('data-wall')).toBe(
-        '2027-09-05 00:00',
-      )
+      expect(planned?.querySelector('[data-slot="phase-time"]')?.textContent).toBe(spelled(ZONE))
     })
     await expect.element(page.getByTestId('batch-zone')).toHaveAttribute('data-zone', ZONE)
     await expect.element(page.getByTestId('batch-zone')).toHaveAttribute('data-device', 'different')

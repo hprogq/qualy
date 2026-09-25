@@ -13,7 +13,6 @@ import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { TableCell, TableRow } from '@qualy/ui/table'
-import { instantToLocal } from '@qualy/ui/instant'
 import { assessmentMessages as m } from '../i18n.ts'
 import type { PlanRefusalLike } from '../refusals.ts'
 import type { PhaseDraft, PhaseDto, PlanShape } from './model.ts'
@@ -307,8 +306,6 @@ function useParts(props: PhaseRowProps) {
       timeStyle: 'short',
       ...inZone(zone),
     })
-  // the same moment as a fact rather than as prose: the batch's wall clock
-  const wallOf = (iso: string) => instantToLocal(iso, zone)?.slice(0, 16)
   const relative = (iso: string) => {
     const parts = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
     const delta = new Date(iso).getTime() - Date.now()
@@ -388,7 +385,7 @@ function useParts(props: PhaseRowProps) {
             aria-hidden
             {...stylex.props(styles.whenGlyph, current && styles.whenGlyphCurrent)}
           />
-          <span data-wall={wallOf(entered)} {...stylex.props(styles.whenTime)}>
+          <span data-slot="phase-time" {...stylex.props(styles.whenTime)}>
             {timeOf(entered)}
           </span>
         </span>
@@ -398,7 +395,7 @@ function useParts(props: PhaseRowProps) {
       <span data-testid="phase-when" data-when="planned" {...stylex.props(styles.whenCol)}>
         <span {...stylex.props(styles.whenLine)}>
           <CalendarClockIcon aria-hidden {...stylex.props(styles.whenGlyph)} />
-          <span data-wall={wallOf(planned)} {...stylex.props(styles.whenTime)}>
+          <span data-slot="phase-time" {...stylex.props(styles.whenTime)}>
             {timeOf(planned)}
           </span>
         </span>
