@@ -151,6 +151,26 @@ export const personaSituations = Effect.gen(function* () {
         join assessment_items i on i.tenant_id = e.tenant_id and i.id = e.item_id
        where i.status = 'voided' and e.status = 'voided'`),
   )
+  // what the student's own result pages say about the taken-back facts
+  const archived = (
+    (yield* runSql(
+      sql`select id from assessment_batches where status = 'archived' order by created_at`,
+    )) as { rows: { id: string }[] }
+  ).rows
+  let revokedLines = 0
+  let voidedQuestionLines = 0
+  for (const batch of archived) {
+    const result = yield* Effect.result(
+      assessment.getMyResult(tenantId, batch.id, principalOf(tenantId, student)),
+    )
+    if (result._tag === 'Failure') continue
+    revokedLines += result.success.lines.filter(
+      (line) => line.kind === 'excluded-evidence' && line.revoked === true,
+    ).length
+    voidedQuestionLines += result.success.lines.filter((line) => line.kind === 'item-voided').length
+  }
+  add('student', 'past: a revoked line on their own result', revokedLines)
+  add('student', 'past: a voided question on their own result', voidedQuestionLines)
   for (const [claims, when] of [
     [history, 'past'],
     [running, 'running'],
