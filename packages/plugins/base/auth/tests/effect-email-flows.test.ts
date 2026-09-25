@@ -4,7 +4,7 @@ import { compileCatalog } from '@qualy/rbac-contract/plugin'
 import { permissions as authPermissions } from '@qualy/plugin-auth/permissions'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
-import { Cause, Effect, Exit, Layer } from 'effect'
+import { Cause, Deferred, Effect, Exit, Fiber, Layer, Option } from 'effect'
 import { describe, expect, it, vi } from 'vitest'
 import {
   createTestContext,
@@ -18,7 +18,7 @@ import type { CaptchaProvider } from '@qualy/plugin-captcha/server'
 import { RequestContext } from '@qualy/api-kit/request'
 import { mailerLayerWith, memoryMailBackend } from '@qualy/plugin-mail/testkit'
 import { smtpBackend } from '@qualy/plugin-mail-smtp/backend'
-import { type Orm } from '@qualy/plugin-database/server'
+import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
 import { serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
 import { serviceLayer as auditLayer } from '@qualy/plugin-audit/server'
@@ -31,6 +31,7 @@ import { EmailFlows, emailFlowsLayer } from '../src/server/email-flows.ts'
 import { Iam, serviceLayer as authLayer } from '../src/server/index.ts'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
 import { HARD_LIMITS } from '../src/server/limiter.ts'
+import { lockTenant } from '../src/server/db.ts'
 import { authClosure } from './support/closure.ts'
 import { acceptable, standInChecks } from './support/secret-checks.ts'
 
@@ -416,6 +417,76 @@ describe.runIf(postgresAvailable)('reset links', () => {
       expect(answer.openBefore).toBe(3)
       expect(tagOf(answer.second)).toBe('AUTH_CHALLENGE_INVALID')
       expect(tagOf(answer.third)).toBe('AUTH_CHALLENGE_INVALID')
+    } finally {
+      await db.dispose()
+    }
+  })
+})
+
+describe.runIf(postgresAvailable)('a link presented while the tenant is busy', () => {
+  it('is refused without waiting when nobody issued it, and judges a password before waiting', async () => {
+    const db = await createTestContext('email-redeem-unlocked')
+    const mail = memoryMailBackend()
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const flows = yield* EmailFlows
+            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
+            const link = yield* Effect.promise(() => tokenFrom(mail, 'ada@school.edu'))
+            // somebody else's structural write holds the tenant's row
+            const withDb = yield* withDatabase
+            const held = yield* Deferred.make<void>()
+            const release = yield* Deferred.make<void>()
+            const holder = yield* withDb(
+              transaction(
+                Effect.gen(function* () {
+                  yield* lockTenant(f.tenant)
+                  yield* Deferred.succeed(held, undefined)
+                  yield* Deferred.await(release)
+                }),
+              ),
+            ).pipe(Effect.forkChild)
+            yield* Deferred.await(held)
+            const refusal = <E>(attempt: Effect.Effect<void, E>) =>
+              Effect.result(attempt).pipe(Effect.map(tagOf))
+            const meanwhile = yield* Effect.all(
+              [
+                refusal(flows.redeemVerification('nobody-issued-this')),
+                refusal(flows.redeemChange('nobody-issued-this')),
+                refusal(
+                  flows.redeemReset({ token: 'nobody-issued-this', password: 'a new password' }),
+                ),
+                // a real link, and a password the door would not take
+                refusal(flows.redeemReset({ token: link.token, password: 'short' })),
+              ],
+              { concurrency: 'unbounded' },
+            ).pipe(Effect.timeoutOption('3 seconds'))
+            yield* Deferred.succeed(release, undefined)
+            yield* Fiber.join(holder)
+            // the link is still good once the row is free
+            yield* flows.redeemReset({ token: link.token, password: 'a new password' })
+            const credential = yield* runSql<{ credential_hash: string }>(
+              sql`select credential_hash from user_auth_bindings
+                   where user_id = ${f.ada} and revoked_at is null`,
+            )
+            return {
+              meanwhile: Option.getOrUndefined(meanwhile),
+              credential: credential.rows[0]!.credential_hash,
+            }
+          }).pipe(Effect.provide(stack(db.url, mail.backend))),
+        ),
+      )
+      expect(answer).toEqual({
+        meanwhile: [
+          'AUTH_CHALLENGE_INVALID',
+          'AUTH_CHALLENGE_INVALID',
+          'AUTH_CHALLENGE_INVALID',
+          'AUTH_BINDING_CREDENTIAL_INVALID',
+        ],
+        credential: 'digest:a new password',
+      })
     } finally {
       await db.dispose()
     }

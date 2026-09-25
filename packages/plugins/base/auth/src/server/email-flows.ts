@@ -504,6 +504,22 @@ export const emailFlowsLayer: Layer.Layer<
         ),
       ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
 
+    /**
+     * A link that would not be taken is answered before anything is locked:
+     * anybody may present one, and the tenant's row is every structural
+     * write's queue. Taking it up stays inside the lock, where two presented
+     * at once are decided.
+     */
+    const unlessIssued = (tenantId: string, token: string, purpose: MailPurpose) =>
+      withDb(openChallenge(token, purpose)).pipe(
+        Effect.orDie,
+        Effect.flatMap((open) =>
+          open === undefined || open.tenantId !== tenantId
+            ? Effect.fail(new ChallengeInvalid())
+            : Effect.void,
+        ),
+      )
+
     return EmailFlows.of({
       requestReset: Effect.fn('Auth.email.requestReset')(function* ({
         email,
@@ -614,14 +630,23 @@ export const emailFlowsLayer: Layer.Layer<
       }),
 
       redeemReset: Effect.fn('Auth.email.redeemReset')(function* ({ token, password }) {
-        const tenant = yield* tenants.resolve.pipe(Effect.option)
-        if (Option.isNone(tenant)) return yield* new ChallengeInvalid()
-        const tenantId = tenant.value.id
+        // The link is looked at, and the digest worked out, before anything
+        // is locked, as a password set any other way is: a link nobody
+        // issued costs nobody a lock, and a digest that queues behind others
+        // holds the tenant's row for none of that time. Whether it may still
+        // be written is asked again inside the lock.
+        const { tenantId, person: asked, door: askedAt } = yield* openReset(token)
+        const prepared = yield* askedAt.binding.prepare({
+          secret: password,
+          subject: yield* withDb(secretSubjectOf(tenantId, asked.id)).pipe(Effect.orDie),
+        })
+        if (!prepared.ok)
+          return yield* new AuthBindingCredentialInvalid({ checks: prepared.checks })
         yield* inLock(
           tenantId,
           Effect.gen(function* () {
             const taken = yield* redeemChallenge(token, 'reset')
-            if (taken === undefined || taken.tenantId !== tenantId)
+            if (taken === undefined || taken.tenantId !== tenantId || taken.userId !== asked.id)
               return yield* new ChallengeInvalid()
             const person = yield* personOf(tenantId, taken.userId)
             // the person may have lost the address the link went to since
@@ -629,13 +654,7 @@ export const emailFlowsLayer: Layer.Layer<
               return yield* new ChallengeInvalid()
             }
             const door = yield* passwordDoor(tenantId, person)
-            if (door === undefined) return yield* new ChallengeInvalid()
-            const prepared = yield* door.binding.prepare({
-              secret: password,
-              subject: yield* secretSubjectOf(tenantId, person.id),
-            })
-            if (!prepared.ok)
-              return yield* new AuthBindingCredentialInvalid({ checks: prepared.checks })
+            if (door === undefined || door.id !== askedAt.id) return yield* new ChallengeInvalid()
             // everywhere they were signed in ends: whoever else knew the old
             // password is now on the outside
             yield* writeCredential(tenantId, person, door, prepared.credentialHash, undefined, {
@@ -695,6 +714,7 @@ export const emailFlowsLayer: Layer.Layer<
         const tenant = yield* tenants.resolve.pipe(Effect.option)
         if (Option.isNone(tenant)) return yield* new ChallengeInvalid()
         const tenantId = tenant.value.id
+        yield* unlessIssued(tenantId, token, 'verify')
         yield* inLock(
           tenantId,
           Effect.gen(function* () {
@@ -759,6 +779,7 @@ export const emailFlowsLayer: Layer.Layer<
         const tenant = yield* tenants.resolve.pipe(Effect.option)
         if (Option.isNone(tenant)) return yield* new ChallengeInvalid()
         const tenantId = tenant.value.id
+        yield* unlessIssued(tenantId, token, 'change')
         yield* inLock(
           tenantId,
           Effect.gen(function* () {
