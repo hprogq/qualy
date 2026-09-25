@@ -2336,7 +2336,7 @@ describe('the paper while the score is out of reach', () => {
             capabilities: { canManage: false },
           }),
         listScoreGroups: groups,
-        getMyResult: standing as never,
+        getMyResult: standing,
       },
       `/assessment/batches/${BATCH_ID}/my-entries`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
@@ -2377,7 +2377,7 @@ describe('the paper while the score is out of reach', () => {
     await screen(
       {
         listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
-        getMyResult: standing as never,
+        getMyResult: standing,
       },
       `/assessment/batches/${BATCH_ID}/my-entries`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
@@ -2458,7 +2458,7 @@ describe('a round longer than one page', () => {
             items: [item({ maxEntries: null })],
             capabilities: { canManage: false },
           }),
-        listMyEntries: paged(seen) as never,
+        listMyEntries: paged(seen),
       },
       `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}&detail=${LATER_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
@@ -2474,7 +2474,7 @@ describe('a round longer than one page', () => {
     await screen(
       {
         listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
-        listMyEntries: paged(seen) as never,
+        listMyEntries: paged(seen),
       },
       `/assessment/batches/${BATCH_ID}/my-result`,
       [{ path: '/assessment/batches/:batchId/my-result', element: <MyResultPage /> }],
