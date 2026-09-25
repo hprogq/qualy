@@ -1989,6 +1989,7 @@ export default {
   'assessment/items/review-chain': '审核流程',
   'assessment/items/review-chain-hint': '申报按以下步骤依次审核',
   'assessment/items/direct-note': '提交即生效，没有审核步骤',
+  'assessment/items/no-appeal-route': '未配置复核流程，该项目形成结论后参评人不能发起申诉',
   'assessment/items/problem-title': '项目名称尚未填写',
   'assessment/items/problem-group': '尚未选择所属分组',
   'assessment/items/problem-channels': '至少选择一种录入方式',

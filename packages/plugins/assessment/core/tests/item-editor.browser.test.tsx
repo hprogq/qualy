@@ -576,6 +576,22 @@ describe('choosing how a question is handled', () => {
     ).toContain('escalation-required')
   })
 
+  // A question participants file with no escalation step can conclude with
+  // nowhere to appeal, which the editor says where the route is set rather
+  // than leaving it to be found at the appeal (ruling of 2026-09-25 #17).
+  it('says a filed question with no escalation route takes no appeal', async () => {
+    await open({ items: [officerItem()], question: ITEM_ID })
+    await tab(/记录与审核/).click()
+    await expect.element(page.getByTestId('no-appeal-route')).toBeVisible()
+  })
+
+  it('says nothing of appeals where an escalation route is set', async () => {
+    await open({ items: [officerWithAppeals()], question: ITEM_ID })
+    await tab(/记录与审核/).click()
+    await expect.element(page.getByTestId('escalation-chain')).toBeVisible()
+    expect(page.getByTestId('no-appeal-route').elements()).toHaveLength(0)
+  })
+
   it('saves both doors when both are open', async () => {
     const saved: { config?: unknown }[] = []
     await open({ items: [officerWithAppeals()], question: ITEM_ID, saved })

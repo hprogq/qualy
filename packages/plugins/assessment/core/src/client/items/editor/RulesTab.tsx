@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { useQueries } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { CheckIcon, ChevronRightIcon, PlusIcon } from 'lucide-react'
@@ -15,7 +16,7 @@ import type { Placement } from '../paper.ts'
 import type { StageDraft } from '../StageSheet.tsx'
 import { countedEntries } from '../structure.ts'
 import { EditorSection, SectionCount, Tag } from './Rows.tsx'
-import { foldingOf, stageSettled, type Draft, type EditorProblem } from './model.ts'
+import { channelsOf, foldingOf, stageSettled, type Draft, type EditorProblem } from './model.ts'
 import { problemWords, sentences } from './words.ts'
 
 // How many records one person may hold and how they fold into a score, then
@@ -281,6 +282,15 @@ export function RulesTab({
   const normal = draft.stages.filter((one) => one.chain === 'normal')
   const escalation = draft.stages.filter((one) => one.chain === 'escalation')
   const countsProblem = problems.find((one) => one.block === 'counts')
+  // a question participants file with nowhere to hear an appeal: said here,
+  // before a conclusion is reached, not when somebody looks for the button
+  // (ruling of 2026-09-25 #17)
+  const unappealable = channelsOf(draft).includes('participant') && escalation.length === 0
+  const noAppeal = unappealable && (
+    <p {...stylex.props(styles.note)} data-testid="no-appeal-route">
+      {format(m.itemsNoAppealRoute)}
+    </p>
+  )
 
   return (
     <div {...stylex.props(styles.stack)}>
@@ -313,11 +323,13 @@ export function RulesTab({
             problems={problems}
             onOpen={onOpenStage}
             onAdd={() => onAddStage('escalation')}
+            note={noAppeal}
           />
         </>
       ) : (
         <EditorSection title={format(m.itemsReviewChain)} testId="review-chain" block="review">
           <p {...stylex.props(styles.note)}>{format(m.itemsDirectNote)}</p>
+          {noAppeal}
         </EditorSection>
       )}
     </div>
@@ -544,6 +556,7 @@ function StepChain({
   problems,
   onOpen,
   onAdd,
+  note,
 }: {
   batchId: string
   chain: 'normal' | 'escalation'
@@ -552,6 +565,8 @@ function StepChain({
   problems: readonly EditorProblem[]
   onOpen: (key: string) => void
   onAdd: () => void
+  /** a line said under the chain, when there is something to say about it */
+  note?: ReactNode
 }) {
   const { format } = useI18n()
   const query = useApiQuery(assessmentApi)
@@ -609,6 +624,7 @@ function StepChain({
       testId={chain === 'normal' ? 'review-chain' : 'escalation-chain'}
       block={block}
     >
+      {note}
       <div {...stylex.props(styles.chain)} data-testid={`chain-${chain}`}>
         <div {...stylex.props(styles.link)}>
           <div {...stylex.props(styles.rail)}>

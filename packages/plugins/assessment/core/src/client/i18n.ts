@@ -6331,6 +6331,11 @@ const i18n = definePluginMessages({
       id: 'assessment/items/direct-note',
       defaultMessage: 'Takes effect on submission; there are no review steps.',
     },
+    itemsNoAppealRoute: {
+      id: 'assessment/items/no-appeal-route',
+      defaultMessage:
+        'No escalation route is set, so participants cannot appeal once this item is decided',
+    },
     // ---- what stands between the question and a save ----
     itemsProblemTitle: { id: 'assessment/items/problem-title', defaultMessage: 'Title is missing' },
     itemsProblemGroup: { id: 'assessment/items/problem-group', defaultMessage: 'No group chosen' },
