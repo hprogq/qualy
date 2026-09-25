@@ -1,5 +1,5 @@
 import { sql } from 'kysely'
-import { Effect } from 'effect'
+import { Effect, Exit } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Storage } from '@qualy/plugin-storage/server'
@@ -517,9 +517,8 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
   // standing while appealed (§32.21), so the void finds the round by the
   // round. The claim goes back to standing on the decision it was
   // contesting, and the withdrawn question takes no new appeals. The appeal
-  // it ended was that decision's one appeal (ruling of 2026-09-25: a
-  // conclusion is the root target of one appeal, however that appeal
-  // ended), so restoring the question does not open a second.
+  // it ended never concluded, so it spent nothing (ruling of 2026-09-25):
+  // once the question is restored, the decision may be appealed again.
   it('ends an appeal on a decided claim with its question, and takes no new one', async () => {
     const result = ok(
       await run(
@@ -634,7 +633,7 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
     expect(result.detail.edit).toEqual(result.card.edit)
     expect(result.detail.submit).toEqual(result.card.submit)
     expect(refusalOf(result.lateAppeal)?.reason).toBe('item-not-active')
-    expect(refusalOf(result.appealedAgain)?.reason).toBe('appeal-exhausted')
+    expect(Exit.isSuccess(result.appealedAgain)).toBe(true)
   })
 
   // A claim that went with its question is told as that, with who and why,

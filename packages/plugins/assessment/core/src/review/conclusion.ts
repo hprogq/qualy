@@ -14,9 +14,12 @@ import { db } from '../server/db.ts'
 // Every conclusion may be contested by its participant once. A conclusion a
 // participant appeal itself produced may not be contested again: the appeal
 // was the one. A conclusion reached any other way - a first look, a staff
-// reopening, a re-determination - is new, and has its own. The database
-// holds the "once" (a conclusion is the root target of at most one appeal);
-// this module is how the screen and the write ask the same question.
+// reopening, a re-determination - is new, and has its own. Only an appeal
+// that concluded is counted: one the system ended before it did (a voided
+// question, an excluded participant, a re-determination, a reroute that
+// replaced it) spent nothing. The database holds the "once" (a conclusion
+// is contested by at most one concluded appeal); this module is how the
+// screen and the write ask the same question.
 
 /** the redetermination event kinds, one per way the standing can move */
 export const REDETERMINATION_KINDS = [
@@ -148,14 +151,17 @@ export const conclusionsOf = (tenantId: string, entryIds: readonly string[]) =>
               'last.kind as eventKind',
             ])
             .select((eb) => {
-              // the root of an appeal: a round that replaced nothing
+              // an appeal that reached a conclusion, whichever round of a
+              // rerouted chain it was: the same predicate as the
+              // uq_review_instances_appeal_of_* indexes
               const appealOf = () =>
                 eb
                   .selectFrom('ReviewInstance as a')
                   .select('a.id')
                   .whereRef('a.tenantId', '=', 'e.tenantId')
                   .where('a.origin', '=', 'appeal')
-                  .where('a.supersedesInstanceId', 'is', null)
+                  .where('a.state', '=', 'completed')
+                  .where('a.outcome', 'in', ['approved', 'rejected'])
               return [
                 eb
                   .exists(appealOf().whereRef('a.appealedInstanceId', '=', 'cr.id'))

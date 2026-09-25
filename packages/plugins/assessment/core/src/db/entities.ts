@@ -1364,22 +1364,24 @@ export const ReviewInstance = defineEntity({
       // predicate diffs against its own introspection forever
       expression: `create unique index uq_review_instances_open_entry on review_instances (entry_id) where ((state)::text = ANY ((ARRAY['active'::character varying, 'blocked'::character varying, 'awaiting_supplement'::character varying])::text[]))`,
     },
-    // One participant appeal per conclusion (ruling of 2026-09-25): a
-    // conclusion is the root target of at most one appeal. A re-routed
-    // appeal carries its target on to the round that replaces it, which is
-    // the same appeal, so only a round that replaced nothing counts.
+    // One participant appeal per conclusion (rulings of 2026-09-25): a
+    // conclusion is contested by at most one appeal that reached a
+    // conclusion of its own. An appeal the system ended (voided question,
+    // excluded participant, re-determination, a reroute that replaced it)
+    // spent nothing. A re-routed appeal carries its target on to the round
+    // that replaces it, and only the round that concludes is counted.
     // Spelled as pg_get_indexdef reports it, for the same reason as above.
     {
       name: 'uq_review_instances_appeal_of_instance',
-      expression: `create unique index uq_review_instances_appeal_of_instance on review_instances (tenant_id, appealed_instance_id) where (((origin)::text = 'appeal'::text) AND (supersedes_instance_id IS NULL))`,
+      expression: `create unique index uq_review_instances_appeal_of_instance on review_instances (tenant_id, appealed_instance_id) where (((origin)::text = 'appeal'::text) AND ((state)::text = 'completed'::text) AND ((outcome)::text = ANY ((ARRAY['approved'::character varying, 'rejected'::character varying])::text[])))`,
     },
     {
       name: 'uq_review_instances_appeal_of_recognition',
-      expression: `create unique index uq_review_instances_appeal_of_recognition on review_instances (tenant_id, appealed_recognition_id) where (((origin)::text = 'appeal'::text) AND (supersedes_instance_id IS NULL))`,
+      expression: `create unique index uq_review_instances_appeal_of_recognition on review_instances (tenant_id, appealed_recognition_id) where (((origin)::text = 'appeal'::text) AND ((state)::text = 'completed'::text) AND ((outcome)::text = ANY ((ARRAY['approved'::character varying, 'rejected'::character varying])::text[])))`,
     },
     {
       name: 'uq_review_instances_appeal_of_event',
-      expression: `create unique index uq_review_instances_appeal_of_event on review_instances (tenant_id, appealed_event_id) where (((origin)::text = 'appeal'::text) AND (supersedes_instance_id IS NULL))`,
+      expression: `create unique index uq_review_instances_appeal_of_event on review_instances (tenant_id, appealed_event_id) where (((origin)::text = 'appeal'::text) AND ((state)::text = 'completed'::text) AND ((outcome)::text = ANY ((ARRAY['approved'::character varying, 'rejected'::character varying])::text[])))`,
     },
     // the inbox join: open rounds standing at my node
     {

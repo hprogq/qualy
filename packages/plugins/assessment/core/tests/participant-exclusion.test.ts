@@ -1,4 +1,4 @@
-import { Effect } from 'effect'
+import { Effect, Exit } from 'effect'
 import { sql } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
@@ -177,7 +177,14 @@ describe.runIf(postgresAvailable)('what leaving the roster does to open work', (
               select status, current_recognition_id, current_review_instance_id
               from entries where id = ${entry.id}`),
           )
-          return { decision, before, round, after }
+          // readmitted: the appeal the exclusion ended never concluded, so
+          // it spent nothing and the decision may be appealed again
+          yield* assessment.setParticipantStatus(f.t, g.batch.id, g.p1, 'active', undefined, admin)
+          const card = yield* assessment.getEntry(f.t, entry.id, s1)
+          const again = yield* Effect.exit(
+            assessment.appealEntry(f.t, entry.id, { reason: '等级认定有误' }, s1),
+          )
+          return { decision, before, round, after, card: card.capabilities.appeal, again }
         }),
       ),
     )
@@ -189,6 +196,8 @@ describe.runIf(postgresAvailable)('what leaving the roster does to open work', (
       current_review_instance_id: result.decision,
     })
     expect(result.after.status).toBe('approved')
+    expect(result.card).toEqual({ state: 'available', reason: null })
+    expect(Exit.isSuccess(result.again)).toBe(true)
   })
 
   it('answers no ask from somebody already off the roster, and offers them none', async () => {

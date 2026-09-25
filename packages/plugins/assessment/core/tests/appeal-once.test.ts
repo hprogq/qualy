@@ -6,11 +6,12 @@ import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-data
 import { Assessment } from '../src/server/index.ts'
 import { GATED, ok, one, refusalOf, run, runningBatch, seed, type Seeded } from './support/round.ts'
 
-// One participant appeal per conclusion (ruling of 2026-09-25). A
+// One participant appeal per conclusion (rulings of 2026-09-25). A
 // conclusion an appeal reached cannot be appealed again, a conclusion
-// cannot be the root target of two appeals, and a new filing that is
-// judged again is a new conclusion with an appeal of its own. A re-routed
-// appeal is the same appeal, carried onto a newer chain.
+// cannot be contested by two appeals that both concluded, and a new filing
+// that is judged again is a new conclusion with an appeal of its own. An
+// appeal the system ended before it concluded spent nothing, and a
+// re-routed appeal is the same appeal, carried onto a newer chain.
 
 const APPEAL_OPEN = [
   ...GATED,
@@ -142,7 +143,7 @@ describe.runIf(postgresAvailable)('one appeal per conclusion', () => {
     expect(Exit.isSuccess(result.second)).toBe(true)
   })
 
-  it('holds the line in the database: a conclusion is the root of one appeal', async () => {
+  it('holds the line in the database: a conclusion is contested by one concluded appeal', async () => {
     const result = ok(
       await run(
         db.url,
@@ -165,13 +166,14 @@ describe.runIf(postgresAvailable)('one appeal per conclusion', () => {
             f.principal(f.reviewer),
           )
           const appealed = yield* assessment.appealEntry(f.t, entry.id, { reason: '请复核' }, s1)
-          // a second appeal against the same conclusion, written around the
-          // service: the round beside it is closed first so only the new
-          // index can refuse it
+          // more appeals against the same conclusion, written around the
+          // service: the round beside them is closed first so only the
+          // index can refuse them
           yield* runSql(sql`
             update review_instances set state = 'completed', outcome = 'rejected',
               completed_at = now() where id = ${appealed.id}`)
-          const copy = (supersedes: string | null) =>
+          let round = 10
+          const copy = (outcome: string, supersedes: string | null = null) =>
             runSql(sql`
               insert into review_instances
                 (tenant_id, entry_id, revision_id, round_no, origin, initiator,
@@ -179,31 +181,40 @@ describe.runIf(postgresAvailable)('one appeal per conclusion', () => {
                  recognition_revision_id, effective_chain, current_route,
                  current_stage_id, state, current_role_ids, current_node_id,
                  current_node_path, outcome, completed_at)
-              select tenant_id, entry_id, revision_id, round_no + 10, 'appeal', 'participant',
-                     appealed_instance_id, ${supersedes}::uuid, policy_revision_id,
-                     recognition_revision_id, effective_chain, current_route,
-                     current_stage_id, 'completed', current_role_ids, current_node_id,
-                     current_node_path, 'rejected', now()
+              select tenant_id, entry_id, revision_id, round_no + ${round++}, 'appeal',
+                     'participant', appealed_instance_id, ${supersedes}::uuid,
+                     policy_revision_id, recognition_revision_id, effective_chain,
+                     current_route, current_stage_id, 'completed', current_role_ids,
+                     current_node_id, current_node_path, ${outcome}, now()
               from review_instances where id = ${appealed.id}`)
-          const twice = yield* Effect.exit(copy(null))
-          // the same target carried by a round that replaced the appeal is
-          // that appeal moved, and is admitted
-          const moved = yield* Effect.exit(copy(appealed.id))
-          const roots = one<{ count: number }>(
+          // a second appeal that concluded is refused, whether it replaced
+          // nothing or took over from an earlier leg
+          const twice = yield* Effect.exit(copy('approved'))
+          const carried = yield* Effect.exit(copy('rejected', appealed.id))
+          // appeals the system ended before they concluded are admitted
+          // beside it: they spent nothing
+          const ended = yield* Effect.exit(copy('cancelled'))
+          const superseded = yield* Effect.exit(copy('superseded'))
+          const excluded = yield* Effect.exit(copy('subject-excluded'))
+          const concluded = one<{ count: number }>(
             yield* runSql(sql`
               select count(*)::int as count from review_instances
               where appealed_instance_id = ${contested} and origin = 'appeal'
-                and supersedes_instance_id is null`),
+                and state = 'completed' and outcome in ('approved', 'rejected')`),
           )
-          return { twice, moved, roots }
+          return { twice, carried, ended, superseded, excluded, concluded }
         }),
       ),
     )
-    expect(Exit.isFailure(result.twice)).toBe(true)
-    expect(
-      inspect(Exit.isFailure(result.twice) ? result.twice.cause : '', { depth: 12 }),
-    ).toContain('uq_review_instances_appeal_of_instance')
-    expect(Exit.isSuccess(result.moved)).toBe(true)
-    expect(result.roots.count).toBe(1)
+    for (const refused of [result.twice, result.carried]) {
+      expect(Exit.isFailure(refused)).toBe(true)
+      expect(inspect(Exit.isFailure(refused) ? refused.cause : '', { depth: 12 })).toContain(
+        'uq_review_instances_appeal_of_instance',
+      )
+    }
+    expect(Exit.isSuccess(result.ended)).toBe(true)
+    expect(Exit.isSuccess(result.superseded)).toBe(true)
+    expect(Exit.isSuccess(result.excluded)).toBe(true)
+    expect(result.concluded.count).toBe(1)
   })
 })

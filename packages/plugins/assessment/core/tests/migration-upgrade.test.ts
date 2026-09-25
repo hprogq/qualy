@@ -1680,3 +1680,158 @@ describe.runIf(postgresAvailable)('the item-entry-channels migration', () => {
     }
   })
 })
+
+// One appeal per conclusion counts only an appeal that concluded. An
+// instance may already hold a conclusion that was appealed twice: the first
+// appeal ended by the system (its question voided, and restored), the
+// second one decided. Both are roots, and an index over every root would
+// refuse to build on that database; one over concluded appeals builds, and
+// counts the one that concluded.
+
+const APPEAL_ONCE = '20260925064858_appeal-once.sql'
+
+describe.runIf(postgresAvailable)('the appeal-once migration', () => {
+  it('builds over an appeal the system ended, and counts only the one that concluded', async () => {
+    expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, APPEAL_ONCE))).toBe(true)
+    const before = lineageBefore(APPEAL_ONCE, 'appeal-once')
+    const db = await createTestContext('appeal-once-upgrade', {
+      migrations: 'apply',
+      migrationsFolder: before,
+    })
+    try {
+      const one = async (sql: string, values: unknown[] = []) =>
+        (await db.row<{ id: string }>(sql, values)).id
+      const tenant = await one(
+        `insert into tenants (slug, name) values ('once', 'Once') returning id`,
+      )
+      const orgType = await one(
+        `insert into org_types (tenant_id, name) values ($1, 'Class') returning id`,
+        [tenant],
+      )
+      const node = await one(
+        `insert into org_nodes (tenant_id, org_type_id, name, path, depth)
+         values ($1, $2, 'Class', 'once', 0) returning id`,
+        [tenant, orgType],
+      )
+      const userType = await one(
+        `insert into user_types (tenant_id, code, name, placement_mode)
+         values ($1, 'student', 'Student', 'unrestricted') returning id`,
+        [tenant],
+      )
+      const user = await one(
+        `insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+         values ($1, 'Zhang San', $2, $3) returning id`,
+        [tenant, userType, node],
+      )
+      const batch = await one(
+        `insert into assessment_batches (tenant_id, name, material_range)
+         values ($1, 'Appealed twice', daterange('2026-03-01', '2026-09-01')) returning id`,
+        [tenant],
+      )
+      const participant = await one(
+        `insert into batch_participants
+           (tenant_id, batch_id, user_id, assessment_anchor_node_id, anchor_path, anchor_lineage,
+            user_type_id, status)
+         values ($1, $2, $3, $4, 'once', '{}', $5, 'active') returning id`,
+        [tenant, batch, user, node, userType],
+      )
+      const group = await one(
+        `insert into score_groups (tenant_id, batch_id, name) values ($1, $2, '文体') returning id`,
+        [tenant, batch],
+      )
+      const item = await one(
+        `insert into assessment_items (tenant_id, batch_id, item_type, title, score_group_id, status)
+         values ($1, $2, 'evidence', '献血', $3, 'active') returning id`,
+        [tenant, batch, group],
+      )
+      const revision = await one(
+        `insert into assessment_item_revisions
+           (tenant_id, item_id, revision_no, entry_channels, form_config, scoring_config,
+            review_policy, display_config, created_by)
+         values ($1, $2, 1, '["participant"]', '{}', '{}', '{}', '{}', $3) returning id`,
+        [tenant, item, user],
+      )
+      await db.query(`update assessment_items set current_revision_id = $1 where id = $2`, [
+        revision,
+        item,
+      ])
+      const entry = await one(
+        `insert into entries (tenant_id, batch_id, item_id, participant_id, status, source)
+         values ($1, $2, $3, $4, 'draft', 'self') returning id`,
+        [tenant, batch, item, participant],
+      )
+      const filing = await one(
+        `insert into entry_revisions
+           (tenant_id, entry_id, item_id, item_revision_id, revision_no, payload, actor_id,
+            subject_id, source)
+         values ($1, $2, $3, $4, 1, '{}', $5, $5, 'self') returning id`,
+        [tenant, entry, item, revision, user],
+      )
+      const round = async (
+        no: number,
+        origin: string,
+        outcome: string,
+        pointers: { appealed?: string; supersedes?: string } = {},
+      ) =>
+        one(
+          `insert into review_instances
+             (tenant_id, entry_id, revision_id, round_no, origin, initiator, policy_revision_id,
+              recognition_revision_id, effective_chain, current_stage_id, state, outcome,
+              current_node_id, current_node_path, current_role_ids, completed_at,
+              appealed_instance_id, supersedes_instance_id)
+           values ($1, $2, $3, $4, $5, 'participant', $6, $6, '{}', 'class', 'completed', $7,
+                   $8, 'once', '{}', now(), $9, $10) returning id`,
+          [
+            tenant,
+            entry,
+            filing,
+            no,
+            origin,
+            revision,
+            outcome,
+            node,
+            pointers.appealed ?? null,
+            pointers.supersedes ?? null,
+          ],
+        )
+      // the decision, an appeal its voided question cancelled, and the
+      // appeal filed once the question was restored, re-routed on the way:
+      // the first leg was superseded and the leg that replaced it decided
+      const decision = await round(1, 'initial', 'rejected')
+      await round(2, 'appeal', 'cancelled', { appealed: decision })
+      const firstLeg = await round(3, 'appeal', 'superseded', { appealed: decision })
+      await round(4, 'appeal', 'rejected', { appealed: decision, supersedes: firstLeg })
+
+      const { applied } = await runMigrations(db.url, { folder: MIGRATIONS_FOLDER, entities: [] })
+      expect(applied).toBeGreaterThan(0)
+
+      const counted = await db.row<{ count: number }>(
+        `select count(*)::int as count from review_instances
+         where appealed_instance_id = $1 and origin = 'appeal'
+           and state = 'completed' and outcome in ('approved', 'rejected')`,
+        [decision],
+      )
+      expect(counted.count).toBe(1)
+      // and a second concluded appeal of the same decision is what the
+      // database now refuses
+      const second = await db
+        .query(
+          `insert into review_instances
+             (tenant_id, entry_id, revision_id, round_no, origin, initiator, policy_revision_id,
+              recognition_revision_id, effective_chain, current_stage_id, state, outcome,
+              current_node_id, current_node_path, current_role_ids, completed_at,
+              appealed_instance_id)
+           values ($1, $2, $3, 5, 'appeal', 'participant', $4, $4, '{}', 'class', 'completed',
+                   'approved', $5, 'once', '{}', now(), $6)`,
+          [tenant, entry, filing, revision, node, decision],
+        )
+        .then(
+          () => null,
+          (error: unknown) => inspect(error, { depth: 12 }),
+        )
+      expect(second).toContain('uq_review_instances_appeal_of_instance')
+    } finally {
+      await db.dispose()
+    }
+  })
+})
