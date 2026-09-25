@@ -140,6 +140,18 @@ const account = {
   ],
 }
 
+/** one page of the roster as the results page reads it: nobody waiting on anything */
+const rosterPage = (rows: readonly ReturnType<typeof participant>[]) =>
+  Effect.succeed({
+    items: rows.map((row) => ({
+      ...row,
+      filings: { inReview: 0, toSupplement: 0, reconsidering: 0, toRevise: 0, blocked: 0 },
+    })),
+    total: rows.length,
+    page: 1,
+    pageSize: 20,
+  })
+
 const PAGES = [
   { id: 'assessment/batch-results', path: '/assessment/batches/:batchId/results', layout: 'admin' },
 ]
@@ -166,11 +178,23 @@ const screen = (
         setParticipantStatus: () => Effect.succeed({ ok: true }),
         listParticipantPlacements: () =>
           Effect.succeed({ items: [], nextCursor: null, changedTotal: 0, unavailableTotal: 0 }),
-        listParticipants: () =>
+        listParticipantAccounts: () =>
+          rosterPage([participant(), participant({ id: OTHER_ID, displayName: '王君惠' })]),
+        listParticipantScores: (request: { query?: { participantIds?: string | string[] } }) =>
           Effect.succeed({
-            items: [participant(), participant({ id: OTHER_ID, displayName: '王君惠' })],
-            nextCursor: null,
+            scores: [request.query?.participantIds ?? []].flat().map((participantId) => ({
+              participantId,
+              state: 'scored' as const,
+              total: '1.00',
+              reason: null,
+            })),
           }),
+        listRosterUnits: () => Effect.succeed({ units: [] }),
+        // what the add and import dialogs read, from this domain
+        listScopeOptions: () => Effect.succeed({ nodes: [] }),
+        listUserTypeOptions: () => Effect.succeed({ userTypes: [] }),
+        listParticipantCandidates: () =>
+          Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }),
         getParticipant: (request: Request) =>
           Effect.succeed({ participant: participant({ id: request.params?.['participantId'] }) }),
         getParticipantResult: () => Effect.succeed(account),
@@ -293,14 +317,11 @@ describe('the participant results screen', () => {
       observedFingerprint: 'f'.repeat(64),
     }
     await screen({
-      listParticipants: () =>
-        Effect.succeed({
-          items: [
-            participant({ placement: 'changed' }),
-            participant({ id: OTHER_ID, displayName: '王君惠' }),
-          ],
-          nextCursor: null,
-        }),
+      listParticipantAccounts: () =>
+        rosterPage([
+          participant({ placement: 'changed' }),
+          participant({ id: OTHER_ID, displayName: '王君惠' }),
+        ]),
       listParticipantPlacements: () =>
         Effect.succeed({ items: [moved], nextCursor: null, changedTotal: 1, unavailableTotal: 0 }),
       reconcileParticipantPlacements: decided,

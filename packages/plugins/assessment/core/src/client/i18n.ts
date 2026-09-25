@@ -5820,10 +5820,6 @@ const i18n = definePluginMessages({
     },
     /** the one line a phone gives the unit filter, and what it opens */
     rosterUnitsAll: { id: 'assessment/roster/units-all', defaultMessage: 'Every unit' },
-    rosterUnitsSome: {
-      id: 'assessment/roster/units-some',
-      defaultMessage: '{count, plural, other {# units}} chosen',
-    },
     rosterUnitsChange: { id: 'assessment/roster/units-change', defaultMessage: 'Change' },
     rosterUnits: { id: 'assessment/roster/units', defaultMessage: 'Organization unit' },
     rosterEmpty: {
@@ -5942,6 +5938,97 @@ const i18n = definePluginMessages({
       defaultMessage: 'No {businessNo}',
     }),
     includedAt,
+
+    // narrowing and ordering the roster, and what each row says
+    rosterSearch: defineMessage<{ businessNo: string }>()({
+      id: 'assessment/roster/search',
+      defaultMessage: 'Search by name or {businessNo}',
+    }),
+    rosterStatusLabel: { id: 'assessment/roster/status-label', defaultMessage: 'Standing' },
+    rosterStatusAny: { id: 'assessment/roster/status-any', defaultMessage: 'Everyone' },
+    rosterWaitingLabel: { id: 'assessment/roster/waiting-label', defaultMessage: 'Waiting on' },
+    rosterWaitingAny: { id: 'assessment/roster/waiting-any', defaultMessage: 'Anything' },
+    rosterWaitingInReview: {
+      id: 'assessment/roster/waiting-in-review',
+      defaultMessage: 'In review',
+    },
+    rosterWaitingToSupplement: {
+      id: 'assessment/roster/waiting-to-supplement',
+      defaultMessage: 'Awaiting materials',
+    },
+    rosterWaitingReconsidering: {
+      id: 'assessment/roster/waiting-reconsidering',
+      defaultMessage: 'Under appeal or re-examination',
+    },
+    rosterWaitingToRevise: {
+      id: 'assessment/roster/waiting-to-revise',
+      defaultMessage: 'Sent back',
+    },
+    rosterWaitingBlocked: {
+      id: 'assessment/roster/waiting-blocked',
+      defaultMessage: 'No reviewer',
+    },
+    rosterWaitingInReviewCount: defineMessage<{ count: number }>()({
+      id: 'assessment/roster/waiting-in-review-count',
+      defaultMessage: '{count} in review',
+    }),
+    rosterWaitingToSupplementCount: defineMessage<{ count: number }>()({
+      id: 'assessment/roster/waiting-to-supplement-count',
+      defaultMessage: '{count} awaiting materials',
+    }),
+    rosterWaitingReconsideringCount: defineMessage<{ count: number }>()({
+      id: 'assessment/roster/waiting-reconsidering-count',
+      defaultMessage: '{count} under appeal',
+    }),
+    rosterWaitingToReviseCount: defineMessage<{ count: number }>()({
+      id: 'assessment/roster/waiting-to-revise-count',
+      defaultMessage: '{count} sent back',
+    }),
+    rosterWaitingBlockedCount: defineMessage<{ count: number }>()({
+      id: 'assessment/roster/waiting-blocked-count',
+      defaultMessage: '{count} with no reviewer',
+    }),
+    rosterSortLabel: { id: 'assessment/roster/sort-label', defaultMessage: 'Order' },
+    rosterSortUnit: { id: 'assessment/roster/sort-unit', defaultMessage: 'By unit' },
+    rosterSortName: { id: 'assessment/roster/sort-name', defaultMessage: 'By name' },
+    rosterSortBusinessNo: defineMessage<{ businessNo: string }>()({
+      id: 'assessment/roster/sort-business-no',
+      defaultMessage: 'By {businessNo}',
+    }),
+    rosterColumnWaiting: { id: 'assessment/roster/column-waiting', defaultMessage: 'Waiting on' },
+    rosterColumnScore: { id: 'assessment/roster/column-score', defaultMessage: 'Current total' },
+    rosterNoMatch: { id: 'assessment/roster/no-match', defaultMessage: 'Nobody matches' },
+    rosterPagerLabel: { id: 'assessment/roster/pager', defaultMessage: 'Roster pages' },
+    rosterPageSummary: defineMessage<{ from: number; to: number; total: number }>()({
+      id: 'assessment/roster/page-summary',
+      defaultMessage: '{from}–{to} of {total}',
+    }),
+    rosterScoreCompute: { id: 'assessment/roster/score-compute', defaultMessage: 'Compute' },
+    rosterScoreComputeOne: defineMessage<{ name: string }>()({
+      id: 'assessment/roster/score-compute-one',
+      defaultMessage: "Compute {name}'s current total",
+    }),
+    rosterScoreWorking: { id: 'assessment/roster/score-working', defaultMessage: 'Computing' },
+    rosterScoreUnavailable: {
+      id: 'assessment/roster/score-unavailable',
+      defaultMessage: 'Scoring unavailable',
+    },
+    rosterScoreTooLarge: {
+      id: 'assessment/roster/score-too-large',
+      defaultMessage: 'Too many to compute',
+    },
+    rosterScoreTimedOut: { id: 'assessment/roster/score-timed-out', defaultMessage: 'Timed out' },
+    rosterNeighbors: { id: 'assessment/roster/neighbors', defaultMessage: 'Other participants' },
+    rosterPrevious: { id: 'assessment/roster/previous', defaultMessage: 'Previous' },
+    rosterNext: { id: 'assessment/roster/next', defaultMessage: 'Next' },
+    rosterPosition: defineMessage<{ position: number; total: number }>()({
+      id: 'assessment/roster/position',
+      defaultMessage: '{position} of {total}',
+    }),
+    addPeopleOnRoster: {
+      id: 'assessment/roster/add-on-roster',
+      defaultMessage: 'On the roster',
+    },
 
     // ------------------------------------------------------------------
     // who may work on the round, and what this round accepted of it

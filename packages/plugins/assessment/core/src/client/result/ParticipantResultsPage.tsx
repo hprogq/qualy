@@ -5,6 +5,8 @@ import { useI18n } from '@qualy/web-i18n'
 import { Drill, type DrillMove } from '@qualy/ui/reveal'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
+import { RosterNeighbors } from '../roster/RosterNeighbors.tsx'
+import { rosterPageAddress, useRosterView } from '../roster/roster-view.ts'
 import { ParticipantResultList } from './ParticipantResultList.tsx'
 import { ParticipantResultDetail } from './ParticipantResultDetail.tsx'
 
@@ -15,8 +17,10 @@ import { ParticipantResultDetail } from './ParticipantResultDetail.tsx'
 // screen - the list it was opened from is the same page, and going back
 // lands on the row that was pressed - so the content travels sideways and
 // says so, the rail stays on this section, and the browser's own back button
-// is the way out. Which person is open lives in the address, so a reload and
-// a shared link both land where the reader was.
+// is the way out. Which person is open lives in the address, and so does
+// where the reader was in the list (roster-view): a reload and a shared link
+// both land where the reader was, and an open account can walk to the
+// person before or after it in the list it was opened from.
 //
 // It is a reading surface, not a fourth workbench. Everything it shows is
 // already somewhere: the roster says who, the claims say what was filed, the
@@ -32,6 +36,7 @@ const styles = stylex.create({
     flexBasis: '0%',
     flexDirection: 'column',
   },
+  open: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 8 },
 })
 
 export default function ParticipantResultsPage() {
@@ -43,6 +48,7 @@ export default function ParticipantResultsPage() {
   const [participantId] = usePageQueryState('participant', '', { history: 'push' })
   const [view] = usePageQueryState('view', '', { history: 'replace' })
   const [entryId] = usePageQueryState('entry', '', { history: 'push' })
+  const [roster, moveRoster] = useRosterView()
   // Every press here moves more than one key - opening a person clears the
   // tab and the open claim, following a number opens the claim AND the half
   // it lives on - and the router's updater reads the location the component
@@ -74,26 +80,43 @@ export default function ParticipantResultsPage() {
             <ParticipantResultList
               batchId={batch.id}
               manageable={batch.manageable}
+              view={roster}
+              onView={moveRoster}
               onOpen={(id) =>
                 address({ participant: id, view: '', entry: '' }, { history: 'push' })
               }
             />
           ) : (
-            <ParticipantResultDetail
-              batchId={batch.id}
-              manageable={batch.manageable}
-              writable={batch.status !== 'archived'}
-              mayRecord={batch.capabilities.record}
-              participantId={participantId}
-              view={view === 'entries' ? 'entries' : 'score'}
-              entryId={entryId}
-              onView={(next) => address({ view: next === 'score' ? '' : next })}
-              onEntry={(id) => address({ entry: id }, { history: 'push' })}
-              // a number leads to the claim behind it: the tab and the claim
-              // are one move, so they are one write
-              onFollow={(id) => address({ view: 'entries', entry: id }, { history: 'push' })}
-              onBack={() => address({ participant: '', view: '', entry: '' })}
-            />
+            <div {...stylex.props(styles.open)}>
+              <RosterNeighbors
+                batchId={batch.id}
+                participantId={participantId}
+                view={roster}
+                // the list's page follows whoever is open, so going back
+                // lands on their row
+                onOpen={(id, page) =>
+                  address(
+                    { participant: id, view: '', entry: '', ...rosterPageAddress(page) },
+                    { history: 'push' },
+                  )
+                }
+              />
+              <ParticipantResultDetail
+                batchId={batch.id}
+                manageable={batch.manageable}
+                writable={batch.status !== 'archived'}
+                mayRecord={batch.capabilities.record}
+                participantId={participantId}
+                view={view === 'entries' ? 'entries' : 'score'}
+                entryId={entryId}
+                onView={(next) => address({ view: next === 'score' ? '' : next })}
+                onEntry={(id) => address({ entry: id }, { history: 'push' })}
+                // a number leads to the claim behind it: the tab and the claim
+                // are one move, so they are one write
+                onFollow={(id) => address({ view: 'entries', entry: id }, { history: 'push' })}
+                onBack={() => address({ participant: '', view: '', entry: '' })}
+              />
+            </div>
           )}
         </Drill>
       )}

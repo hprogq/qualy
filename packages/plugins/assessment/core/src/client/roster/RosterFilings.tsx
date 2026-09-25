@@ -1,0 +1,63 @@
+import * as stylex from '@stylexjs/stylex'
+import { useI18n } from '@qualy/web-i18n'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { assessmentMessages as m } from '../i18n.ts'
+import type { RosterWaiting } from './roster-view.ts'
+
+// What one person's claims are waiting on, as short counts: only the kinds
+// that have any, so a row with nothing outstanding is quiet. A round nobody
+// can take is said in the warning colour - it will not move by itself.
+
+const WORDS = {
+  inReview: m.rosterWaitingInReviewCount,
+  toSupplement: m.rosterWaitingToSupplementCount,
+  reconsidering: m.rosterWaitingReconsideringCount,
+  toRevise: m.rosterWaitingToReviseCount,
+  blocked: m.rosterWaitingBlockedCount,
+} as const
+
+const ORDER: readonly RosterWaiting[] = [
+  'blocked',
+  'toSupplement',
+  'reconsidering',
+  'inReview',
+  'toRevise',
+]
+
+const styles = stylex.create({
+  list: {
+    display: 'flex',
+    minWidth: 0,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 10,
+    rowGap: 2,
+    fontSize: 12,
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  one: { whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' },
+  warn: { color: tokens.warning },
+})
+
+export function RosterFilings({ filings }: { filings: Readonly<Record<RosterWaiting, number>> }) {
+  const { format } = useI18n()
+  const said = ORDER.filter((kind) => filings[kind] > 0)
+  return (
+    <span
+      data-testid="participant-filings"
+      data-in-review={filings.inReview}
+      data-to-supplement={filings.toSupplement}
+      data-reconsidering={filings.reconsidering}
+      data-to-revise={filings.toRevise}
+      data-blocked={filings.blocked}
+      {...stylex.props(styles.list)}
+    >
+      {said.map((kind) => (
+        <span key={kind} {...stylex.props(styles.one, kind === 'blocked' && styles.warn)}>
+          {format(WORDS[kind], { count: filings[kind] })}
+        </span>
+      ))}
+    </span>
+  )
+}

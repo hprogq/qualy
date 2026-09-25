@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon, EllipsisIcon } from 'lucide-react'
 import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
@@ -7,24 +7,23 @@ import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { orgNodePicker } from '@qualy/ui-contract'
+import { orgNodePickerView } from '@qualy/ui-contract'
 import { AsyncSection, Feedback } from '@qualy/ui/admin'
 import {
   Card,
   CardEmpty,
+  CardFoot,
   Cell,
   DetailSheet,
+  ResizableSplit,
+  SearchField,
   Status,
+  StickyFill,
   Table,
   TableHead,
   TableRow,
 } from '@qualy/ui/screen'
 import { toast } from '@qualy/ui/toast'
-import { ResizableSplit, StickyFill } from '@qualy/ui/screen'
-import { AddPeopleDialog } from '../roster/AddPeopleDialog.tsx'
-import { ImportDialog } from '../roster/ImportDialog.tsx'
-import { PlacementDialog, type PlacementDecision } from '../roster/PlacementDialog.tsx'
-import { PlacementNotice } from '../roster/PlacementNotice.tsx'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import {
@@ -34,36 +33,65 @@ import {
   DropdownMenuTrigger,
 } from '@qualy/ui/dropdown-menu'
 import { ConfirmDialog } from '@qualy/ui/admin'
+import { Pager } from '@qualy/ui/pager'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Skeleton } from '@qualy/ui/skeleton'
+import { Spinner } from '@qualy/ui/spinner'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useIsBelow } from '@qualy/ui/use-mobile'
+import { AddPeopleDialog } from '../roster/AddPeopleDialog.tsx'
+import { ImportDialog } from '../roster/ImportDialog.tsx'
+import { PlacementDialog, type PlacementDecision } from '../roster/PlacementDialog.tsx'
+import { PlacementNotice } from '../roster/PlacementNotice.tsx'
+import { RosterFilings } from '../roster/RosterFilings.tsx'
+import { RosterScore } from '../roster/RosterScore.tsx'
+import {
+  ROSTER_PAGE_SIZE,
+  ROSTER_WAITING,
+  rosterQueryOf,
+  type RosterView,
+  type RosterWaiting,
+} from '../roster/roster-view.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { assessmentApi } from '../api.ts'
+import { useBatchLive } from '../live.ts'
 
-// Finding one person, and nothing else.
+// The roster, walked by page, with where each person stands.
 //
-// No totals in this list, and that is a decision rather than an omission: a
-// standing is not a stored number, it is one repeatable-read snapshot per
-// participant with the round's arithmetic run over it. Putting a score in
-// every row would run twenty-five of those to draw one page, and the page
-// only exists to get somebody to the one person they came for.
-
-const PAGE_SIZE = 25
+// A page is small, because each row carries a current total and a total is
+// not a stored number: it is one person's whole account, read and computed
+// on request. So the rows come first and the page's totals are asked for
+// after, bounded in time and arithmetic by the server; whoever that answer
+// does not reach gets a button that asks about them alone. What each
+// person's claims are waiting on comes with the rows, counted in sql.
+//
+// Everything the reader narrows the list by is in the address (roster-view),
+// so opening somebody and coming back lands on the same page of the same
+// question, and the account opened over it can walk to the next person.
 
 /** the width the tree and the list stop competing for, tailwind's `lg` */
 const TWO_COLUMNS = 1024
 
-const wide = '@media (min-width: 1024px)'
+/** a select cannot hold the empty string as a value, so "any" needs a word */
+const ANY = 'any'
+
+/** how long the page waits for a burst of live wake-ups to end before reading again */
+const LIVE_SETTLE = 1_000
+
+const WAITING_WORDS: Record<RosterWaiting, (typeof m)[keyof typeof m]> = {
+  inReview: m.rosterWaitingInReview,
+  toSupplement: m.rosterWaitingToSupplement,
+  reconsidering: m.rosterWaitingReconsidering,
+  toRevise: m.rosterWaitingToRevise,
+  blocked: m.rosterWaitingBlocked,
+}
+
 /** where a row is stacked, and what stands against it has to say so */
 const phone = '@media (max-width: 767.98px)'
 
 const styles = stylex.create({
   panel: { display: 'flex', flexDirection: 'column', gap: 20 },
-  columns: {
-    display: 'grid',
-    gap: 16,
-    gridTemplateColumns: { default: null, [wide]: 'minmax(0, 18rem) minmax(0, 1fr)' },
-  },
   unitsAside: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 8 },
   // stacked, it stands against the whole row beside what the row is scanned
   // by, rather than auto-placing itself on the first line
@@ -95,22 +123,49 @@ const styles = stylex.create({
     cursor: 'pointer',
   },
   unitSwitchWords: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 1 },
-  unitSwitchName: { fontSize: 14, fontWeight: 600 },
+  unitSwitchName: {
+    overflow: 'hidden',
+    fontSize: 14,
+    fontWeight: 600,
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
   unitSwitchNote: { fontSize: 11.5, color: tokens.mutedForeground },
   unitSwitchGo: { flexShrink: 0, fontSize: 13, color: tokens.surfaceMutedForeground },
   unitSwitchIcon: { width: 14, height: 14, flexShrink: 0, color: tokens.mutedForeground },
   treeWaiting: { display: 'flex', flexDirection: 'column', gap: 10, paddingBlock: 8 },
   bone: { height: 14, borderRadius: 4 },
   listColumn: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 10 },
-  listHead: { display: 'flex', alignItems: 'baseline', gap: 8 },
+  listHead: { display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 8 },
   listTitle: { fontSize: 14, fontWeight: 600 },
-  listCount: { fontSize: 12, color: tokens.mutedForeground },
+  listCount: { fontSize: 12, fontVariantNumeric: 'tabular-nums', color: tokens.mutedForeground },
   listSpacer: { flexGrow: 1 },
   listActions: { display: 'flex', flexShrink: 0, alignItems: 'center', gap: 8 },
+  // the search takes what the line has; on a phone the three choices share
+  // the next line, each taking its part of it
+  toolbar: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  search: {
+    width: { default: '15rem', [breakpoints.phone]: '100%' },
+    flexShrink: { default: 0, [breakpoints.phone]: 1 },
+  },
+  choice: {
+    width: { default: '9.5rem', [breakpoints.phone]: 'auto' },
+    flexGrow: { default: 0, [breakpoints.phone]: 1 },
+    flexShrink: 0,
+    flexBasis: { default: null, [breakpoints.phone]: '0%' },
+  },
+  busy: { width: 14, height: 14, flexShrink: 0, color: tokens.mutedForeground },
+  who: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 2 },
   nameWithMark: { display: 'inline-flex', minWidth: 0, alignItems: 'center', gap: 8 },
-  // one person per ruled line: a card per row would make finding somebody a
-  // matter of scrolling past twenty-five boxes
-  pagerRow: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },
+  name: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  unitLine: {
+    overflow: 'hidden',
+    fontSize: 12,
+    fontWeight: 400,
+    color: tokens.mutedForeground,
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
   // the table's own shape, greyed: a head and rows of the widths a roster
   // actually has. One slab says only "something is coming".
   skFrame: {
@@ -126,7 +181,7 @@ const styles = stylex.create({
     display: 'grid',
     alignItems: 'center',
     gap: 12,
-    gridTemplateColumns: '8.5rem minmax(0, 1fr) 6rem 2rem',
+    gridTemplateColumns: '8.5rem minmax(0, 1fr) 6rem 4rem',
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.divider,
@@ -142,11 +197,16 @@ const styles = stylex.create({
 export function ParticipantResultList({
   batchId,
   manageable,
+  view,
+  onView,
   onOpen,
 }: {
   batchId: string
   /** whether this reader may add people to the round */
   manageable: boolean
+  /** where the reader is in the list, as the address has it */
+  view: RosterView
+  onView: (changes: Partial<RosterView>) => void
   onOpen: (participantId: string) => void
 }) {
   const query = useApiQuery(assessmentApi)
@@ -160,40 +220,97 @@ export function ParticipantResultList({
   const [excluding, setExcluding] = useState<{ id: string; name: string } | null>(null)
   const [reconciling, setReconciling] = useState(false)
   const businessNo = useTerm(authTerms.businessNumber)
-  const [units, setUnits] = useState<readonly string[]>([])
-  const [unitScope, setUnitScope] = useState<'self' | 'subtree'>('subtree')
   const narrow = useIsBelow(TWO_COLUMNS)
-  const [unitsOpen, setUnitsOpen] = useState(!narrow)
-  useEffect(() => setUnitsOpen(!narrow), [narrow])
+  const [unitsOpen, setUnitsOpen] = useState(false)
 
-  // Keyset paging walked by page, with the question it belongs to carried
-  // beside it: a cursor means nothing against a question it did not come
-  // from, so changing the filter starts the walk over in the same render.
-  const question = `${[...units].sort().join(',')}:${unitScope}`
-  const [paging, setPaging] = useState<{
-    question: string
-    cursors: readonly (string | undefined)[]
-    at: number
-  }>({ question, cursors: [undefined], at: 0 })
-  const page = paging.question === question ? paging : { question, cursors: [undefined], at: 0 }
-  const { cursors, at } = page
-  const participants = useQuery(
-    query.assessment.listParticipants.queryOptions({
-      params: { batchId },
-      query: {
-        ...(units.length > 0 ? { orgNodeIds: [...units], orgScope: unitScope } : {}),
-        ...(cursors[at] !== undefined ? { cursor: cursors[at] } : {}),
-        limit: String(PAGE_SIZE),
-      },
-    }),
-  )
-  const nextCursor = participants.data?.nextCursor ?? null
+  // Typing does not fire a request per keystroke. What the box last asked
+  // the address for is remembered, so an address that moves by itself - the
+  // back button, a link - moves the box, rather than the box writing its
+  // old words back over it.
+  const [draft, setDraft] = useState(view.q)
+  const asked = useRef(view.q)
   useEffect(() => {
-    if (nextCursor === null || cursors[at + 1] === nextCursor) return
-    setPaging({ question, cursors: [...cursors.slice(0, at + 1), nextCursor], at })
-  }, [nextCursor, at, cursors, question])
+    if (view.q === asked.current) return
+    asked.current = view.q
+    setDraft(view.q)
+  }, [view.q])
+  useEffect(() => {
+    if (draft === asked.current) return
+    const timer = setTimeout(() => {
+      asked.current = draft
+      onView({ q: draft })
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [draft, onView])
 
+  const participants = useQuery({
+    ...query.assessment.listParticipantAccounts.queryOptions({
+      params: { batchId },
+      query: rosterQueryOf(view),
+    }),
+    // the rows of the page being left stay up until the next one arrives,
+    // so turning a page does not blank the table
+    placeholderData: keepPreviousData,
+  })
   const rows = participants.data?.items ?? []
+  const total = participants.data?.total ?? 0
+  const page = participants.data?.page ?? view.page
+
+  // the page's totals, asked once its rows are known and never before: the
+  // rows are what somebody came for, and they must not wait on arithmetic
+  const ids = rows.map((row) => row.id)
+  const scores = useQuery({
+    ...query.assessment.listParticipantScores.queryOptions({
+      params: { batchId },
+      query: { participantIds: ids },
+    }),
+    enabled: ids.length > 0 && !participants.isPlaceholderData,
+  })
+  const scored = new Map((scores.data?.scores ?? []).map((one) => [one.participantId, one]))
+
+  // Live: a claim that moved changes what somebody is waiting on and what
+  // they have, so the page and its totals are read again. A burst of
+  // wake-ups - a reviewer working down a queue - is one re-read rather than
+  // one per event: each re-read of the totals is a page of accounts.
+  const reread = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(
+    () => () => {
+      if (reread.current !== null) clearTimeout(reread.current)
+    },
+    [],
+  )
+  useBatchLive(batchId, (kind) => {
+    if (kind === 'heartbeat' || kind === 'plan-changed' || kind === 'review-inbox-changed') return
+    if (reread.current !== null) clearTimeout(reread.current)
+    reread.current = setTimeout(() => {
+      reread.current = null
+      void queryClient.invalidateQueries({
+        queryKey: query.assessment.listParticipantAccounts.key(),
+      })
+      void queryClient.invalidateQueries({
+        queryKey: query.assessment.listParticipantScores.key(),
+      })
+    }, LIVE_SETTLE)
+  })
+
+  // the units this round's people were admitted from, within this reader's
+  // reach: the tree the list is narrowed by, and the names of each row's unit
+  const units = useQuery(
+    query.assessment.listRosterUnits.queryOptions({ params: { batchId }, query: {} }),
+  )
+  const byUnit = useMemo(
+    () => new Map((units.data?.units ?? []).map((unit) => [unit.id, unit])),
+    [units.data],
+  )
+  /** a row's unit from the top down, less the root every row shares */
+  const unitPath = (lineage: readonly { nodeId: string }[]) => {
+    const names = [...lineage]
+      .reverse()
+      .map((step) => byUnit.get(step.nodeId)?.name)
+      .filter((name): name is string => name !== undefined)
+    return (names.length > 1 ? names.slice(1) : names).join(' / ')
+  }
+  const chosenUnit = view.unit === '' ? undefined : byUnit.get(view.unit)
 
   // whether the organization has anybody elsewhere: the totals ride on the
   // first page, so one row is all this has to fetch to know
@@ -286,16 +403,18 @@ export function ParticipantResultList({
 
   const tree = (
     <UiSlot
-      token={orgNodePicker}
+      token={orgNodePickerView}
       context={{
         // one unit, pointed at rather than collected, plus how far down to
         // look: a filter is not a shopping list
         single: true,
         fill: true,
-        value: units,
-        onChange: setUnits,
-        scope: unitScope,
-        onScopeChange: setUnitScope,
+        value: view.unit === '' ? [] : [view.unit],
+        onChange: (next: string[]) => onView({ unit: next[0] ?? '' }),
+        scope: view.scope,
+        onScopeChange: (scope: 'self' | 'subtree') => onView({ scope }),
+        nodes: units.data?.units ?? [],
+        loading: units.isPending,
       }}
       fallback={null}
       // the shape of a tree, not a block the size of one: a grey rectangle
@@ -317,6 +436,8 @@ export function ParticipantResultList({
     />
   )
 
+  const narrowed = view.q !== '' || view.unit !== '' || view.status !== '' || view.waiting !== ''
+
   return (
     <div {...stylex.props(styles.panel)}>
       <Feedback message={failure} />
@@ -328,19 +449,10 @@ export function ParticipantResultList({
         handleLabel={format(m.rosterUnitsResize)}
         side={
           <>
-            {/* On a phone the tree is a second screenful in front of the list
-            somebody came for, so it folds behind a disclosure that says what
-                it is. With room for two columns it is simply there: a
-                heading over a tree that is already open is a word doing no
-                work, and a control that cannot be pressed is worse than one
-                that is absent, and how wide it should be is the reader's. */}
-            {/* Narrow, the tree is not a column beside the list and not a
-                disclosure above it either: unfolded in place it is a second
-                screenful in front of what somebody came for. It is one line
-                saying which units the list is of, and a sheet to change it -
-                the same shape the roster of people uses. */}
-            {/* the tree fills the room it stands in, so the room is the window's
-                height from here down rather than whatever its rows came to */}
+            {/* With room for two columns the tree is simply there, beside the
+                list, filling the window's height from where it stands.
+                Narrow, it is one line saying which units the list is of, and
+                a sheet to change them - the shape the roster of people uses. */}
             {!narrow && (
               <aside {...stylex.props(styles.unitsAside)}>
                 <StickyFill>{tree}</StickyFill>
@@ -352,8 +464,8 @@ export function ParticipantResultList({
         <section aria-label={format(m.participantResultsTab)} {...stylex.props(styles.listColumn)}>
           <div {...stylex.props(styles.listHead)}>
             <h3 {...stylex.props(styles.listTitle)}>{format(m.tabRoster)}</h3>
-            <span {...stylex.props(styles.listCount)}>
-              {format(m.participantCount, { count: rows.length })}
+            <span data-testid="roster-total" data-count={total} {...stylex.props(styles.listCount)}>
+              {format(m.participantCount, { count: total })}
             </span>
             <span {...stylex.props(styles.listSpacer)} />
             {manageable && (
@@ -378,14 +490,13 @@ export function ParticipantResultList({
             <button
               type="button"
               data-testid="roster-unit-switch"
+              data-unit={view.unit}
               {...stylex.props(styles.unitSwitch)}
               onClick={() => setUnitsOpen(true)}
             >
               <span {...stylex.props(styles.unitSwitchWords)}>
                 <span {...stylex.props(styles.unitSwitchName)}>
-                  {units.length === 0
-                    ? format(m.rosterUnitsAll)
-                    : format(m.rosterUnitsSome, { count: units.length })}
+                  {chosenUnit?.name ?? format(m.rosterUnitsAll)}
                 </span>
                 <span {...stylex.props(styles.unitSwitchNote)}>{format(m.rosterUnits)}</span>
               </span>
@@ -393,6 +504,81 @@ export function ParticipantResultList({
               <ChevronRightIcon aria-hidden {...stylex.props(styles.unitSwitchIcon)} />
             </button>
           )}
+          <div {...stylex.props(styles.toolbar)}>
+            <SearchField
+              name="roster-search"
+              value={draft}
+              onChange={setDraft}
+              label={format(m.rosterSearch, { businessNo })}
+              xstyle={styles.search}
+            />
+            <Select
+              value={view.status === '' ? ANY : view.status}
+              onValueChange={(next) =>
+                onView({ status: next === ANY ? '' : (next as 'active' | 'excluded') })
+              }
+            >
+              <SelectTrigger
+                aria-label={format(m.rosterStatusLabel)}
+                data-testid="roster-status"
+                xstyle={styles.choice}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ANY}>{format(m.rosterStatusAny)}</SelectItem>
+                <SelectItem value="active">{format(m.participantActive)}</SelectItem>
+                <SelectItem value="excluded">{format(m.excludedBadge)}</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
+              value={view.waiting === '' ? ANY : view.waiting}
+              onValueChange={(next) =>
+                onView({ waiting: next === ANY ? '' : (next as RosterWaiting) })
+              }
+            >
+              <SelectTrigger
+                aria-label={format(m.rosterWaitingLabel)}
+                data-testid="roster-waiting"
+                xstyle={styles.choice}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ANY}>{format(m.rosterWaitingAny)}</SelectItem>
+                {ROSTER_WAITING.map((kind) => (
+                  <SelectItem key={kind} value={kind}>
+                    {format(WAITING_WORDS[kind])}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={view.sort}
+              onValueChange={(next) => onView({ sort: next as RosterView['sort'] })}
+            >
+              <SelectTrigger
+                aria-label={format(m.rosterSortLabel)}
+                data-testid="roster-sort"
+                xstyle={styles.choice}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="unit">{format(m.rosterSortUnit)}</SelectItem>
+                <SelectItem value="name">{format(m.rosterSortName)}</SelectItem>
+                <SelectItem value="business-no">
+                  {format(m.rosterSortBusinessNo, { businessNo })}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            {participants.isFetching && !participants.isPending && (
+              <Spinner
+                aria-label={format(commonMessages.loading)}
+                className={stylex.props(styles.busy).className}
+              />
+            )}
+          </div>
           <AsyncSection
             pending={participants.isPending}
             error={participants.isError ? formatError(participants.error) : null}
@@ -412,131 +598,161 @@ export function ParticipantResultList({
               </div>
             }
           >
-            <Card>
-              <Table columns="8.5rem minmax(0, 1fr) 6rem 2rem">
+            <Card data-testid="roster">
+              <Table columns="8.5rem minmax(0, 1fr) minmax(0, 11rem) 6.5rem 5.5rem 2rem">
                 <TableHead>
                   <span>{businessNo}</span>
                   <span>{format(m.columnParticipant)}</span>
+                  <span>{format(m.rosterColumnWaiting)}</span>
+                  <span>{format(m.rosterColumnScore)}</span>
                   <span>{format(m.columnParticipantStatus)}</span>
                   <span />
                 </TableHead>
                 {rows.length === 0 ? (
-                  <CardEmpty>{format(m.rosterEmpty)}</CardEmpty>
+                  <CardEmpty>{format(narrowed ? m.rosterNoMatch : m.rosterEmpty)}</CardEmpty>
                 ) : (
-                  rows.map((row) => (
-                    <TableRow
-                      key={row.id}
-                      height="compact"
-                      nested
-                      onOpen={() => onOpen(row.id)}
-                      data-testid="participant-row"
-                      data-participant={row.id}
-                      data-participant-status={row.status}
-                    >
-                      {/* across a table the number leads, because that is
-                          what the list is sorted by; stacked, a row is a
-                          person with their facts under them */}
-                      {narrow ? (
-                        <>
-                          <Cell lead>
-                            {row.displayName}
-                            <PlacementMark placement={row.placement} />
-                          </Cell>
-                          <Cell
-                            numeric
-                            unlabelled
-                            tone={row.businessNo === null ? 'quiet' : 'muted'}
-                          >
-                            {row.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
-                          </Cell>
-                        </>
-                      ) : (
-                        <>
-                          <Cell lead numeric tone={row.businessNo === null ? 'quiet' : 'plain'}>
-                            {row.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
-                          </Cell>
-                          <Cell tone="plain" unlabelled>
-                            <span {...stylex.props(styles.nameWithMark)}>
-                              {row.displayName}
-                              <PlacementMark placement={row.placement} />
-                            </span>
-                          </Cell>
-                        </>
-                      )}
-                      {/* whether they are still in the round is what this
-                          list is scanned for, so stacked it keeps the end */}
-                      <Cell narrow="end" unlabelled>
-                        <Status tone={row.status === 'excluded' ? 'bad' : 'plain'}>
-                          {format(
-                            row.status === 'excluded' ? m.excludedBadge : m.participantActive,
-                          )}
-                        </Status>
-                      </Cell>
-                      {/* the act on one person, where the person is: walking
-                          into their account to take them off the round was a
-                          detour through a page that answers a different
-                          question */}
-                      {manageable ? (
-                        <span {...stylex.props(styles.rowAct)}>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                size="icon-xs"
-                                variant="ghost"
-                                data-testid="participant-actions"
-                                aria-label={format(m.rosterRowActions, { name: row.displayName })}
-                                onClick={(event) => event.stopPropagation()}
-                              >
-                                <EllipsisIcon aria-hidden />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onSelect={() => onOpen(row.id)}>
-                                {format(m.participantResultsOpen)}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                data-testid="participant-standing"
-                                onSelect={() =>
-                                  row.status === 'excluded'
-                                    ? setStatus.mutate({ participantId: row.id, status: 'active' })
-                                    : setExcluding({ id: row.id, name: row.displayName })
-                                }
-                              >
-                                {format(row.status === 'excluded' ? m.restore : m.exclude)}
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                  rows.map((row) => {
+                    const path = unitPath(row.anchorLineage)
+                    const who = (
+                      <span {...stylex.props(styles.who)}>
+                        <span {...stylex.props(styles.nameWithMark)}>
+                          <span {...stylex.props(styles.name)}>{row.displayName}</span>
+                          <PlacementMark placement={row.placement} />
                         </span>
-                      ) : (
-                        <span />
-                      )}
-                    </TableRow>
-                  ))
+                        {path !== '' && (
+                          <span
+                            data-testid="participant-unit"
+                            title={path}
+                            {...stylex.props(styles.unitLine)}
+                          >
+                            {path}
+                          </span>
+                        )}
+                      </span>
+                    )
+                    return (
+                      <TableRow
+                        key={row.id}
+                        height="compact"
+                        nested
+                        onOpen={() => onOpen(row.id)}
+                        data-testid="participant-row"
+                        data-participant={row.id}
+                        data-participant-status={row.status}
+                      >
+                        {/* across a table the number leads, because that is
+                            what the list is scanned by; stacked, a row is a
+                            person with their facts under them */}
+                        {narrow ? (
+                          <>
+                            <Cell lead>{who}</Cell>
+                            <Cell
+                              numeric
+                              unlabelled
+                              tone={row.businessNo === null ? 'quiet' : 'muted'}
+                            >
+                              {row.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
+                            </Cell>
+                          </>
+                        ) : (
+                          <>
+                            <Cell lead numeric tone={row.businessNo === null ? 'quiet' : 'plain'}>
+                              {row.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
+                            </Cell>
+                            <Cell tone="plain" unlabelled>
+                              {who}
+                            </Cell>
+                          </>
+                        )}
+                        <Cell unlabelled>
+                          <RosterFilings filings={row.filings} />
+                        </Cell>
+                        {/* the total is what the list is scanned by, so
+                            stacked it keeps the end of the row */}
+                        <Cell narrow="end" end unlabelled>
+                          <RosterScore
+                            batchId={batchId}
+                            participantId={row.id}
+                            name={row.displayName}
+                            answer={scored.get(row.id)}
+                            waiting={scores.isPending && scores.fetchStatus !== 'idle'}
+                          />
+                        </Cell>
+                        <Cell unlabelled>
+                          <Status tone={row.status === 'excluded' ? 'bad' : 'plain'}>
+                            {format(
+                              row.status === 'excluded' ? m.excludedBadge : m.participantActive,
+                            )}
+                          </Status>
+                        </Cell>
+                        {/* the act on one person, where the person is */}
+                        {manageable ? (
+                          <span {...stylex.props(styles.rowAct)}>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  size="icon-xs"
+                                  variant="ghost"
+                                  data-testid="participant-actions"
+                                  aria-label={format(m.rosterRowActions, { name: row.displayName })}
+                                  onClick={(event) => event.stopPropagation()}
+                                >
+                                  <EllipsisIcon aria-hidden />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onSelect={() => onOpen(row.id)}>
+                                  {format(m.participantResultsOpen)}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  data-testid="participant-standing"
+                                  onSelect={() =>
+                                    row.status === 'excluded'
+                                      ? setStatus.mutate({
+                                          participantId: row.id,
+                                          status: 'active',
+                                        })
+                                      : setExcluding({ id: row.id, name: row.displayName })
+                                  }
+                                >
+                                  {format(row.status === 'excluded' ? m.restore : m.exclude)}
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </span>
+                        ) : (
+                          <span />
+                        )}
+                      </TableRow>
+                    )
+                  })
                 )}
               </Table>
+              <CardFoot>
+                <Pager
+                  testId="roster-pager"
+                  label={format(m.rosterPagerLabel)}
+                  page={page}
+                  pageSize={ROSTER_PAGE_SIZE}
+                  total={total}
+                  disabled={participants.isFetching}
+                  summary={format(m.rosterPageSummary, {
+                    from: total === 0 ? 0 : (page - 1) * ROSTER_PAGE_SIZE + 1,
+                    to: (page - 1) * ROSTER_PAGE_SIZE + rows.length,
+                    total,
+                  })}
+                  onPage={(next) => {
+                    onView({ page: next })
+                    // the pager is at the foot of the list; the next page
+                    // is read from its top
+                    document
+                      .querySelector('[data-testid="roster"]')
+                      ?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+                  }}
+                />
+              </CardFoot>
             </Card>
           </AsyncSection>
-
-          {(at > 0 || nextCursor !== null) && (
-            <div {...stylex.props(styles.pagerRow)}>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={at === 0}
-                onClick={() => setPaging({ question, cursors, at: Math.max(0, at - 1) })}
-              >
-                {format(m.previousPage)}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={nextCursor === null}
-                onClick={() => setPaging({ question, cursors, at: at + 1 })}
-              >
-                {format(m.nextPage)}
-              </Button>
-            </div>
-          )}
         </section>
       </ResizableSplit>
 
@@ -566,26 +782,31 @@ export function ParticipantResultList({
         }
         onCancel={() => setExcluding(null)}
       />
-      <PlacementDialog
-        batchId={batchId}
-        open={reconciling}
-        pending={reconcile.isPending}
-        onDecide={(decisions, reason) => reconcile.mutate({ decisions, reason })}
-        onClose={() => setReconciling(false)}
-      />
-      <AddPeopleDialog
-        open={adding}
-        pending={addPeople.isPending}
-        onAdd={(userIds) => addPeople.mutate(userIds)}
-        onClose={() => setAdding(false)}
-      />
-      <ImportDialog
-        batchId={batchId}
-        open={importing}
-        pending={importPeople.isPending}
-        onImport={(selection) => importPeople.mutate(selection)}
-        onClose={() => setImporting(false)}
-      />
+      {manageable && (
+        <>
+          <PlacementDialog
+            batchId={batchId}
+            open={reconciling}
+            pending={reconcile.isPending}
+            onDecide={(decisions, reason) => reconcile.mutate({ decisions, reason })}
+            onClose={() => setReconciling(false)}
+          />
+          <AddPeopleDialog
+            batchId={batchId}
+            open={adding}
+            pending={addPeople.isPending}
+            onAdd={(userIds) => addPeople.mutate(userIds)}
+            onClose={() => setAdding(false)}
+          />
+          <ImportDialog
+            batchId={batchId}
+            open={importing}
+            pending={importPeople.isPending}
+            onImport={(selection) => importPeople.mutate(selection)}
+            onClose={() => setImporting(false)}
+          />
+        </>
+      )}
     </div>
   )
 }

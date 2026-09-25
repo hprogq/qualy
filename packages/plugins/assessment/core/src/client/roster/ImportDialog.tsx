@@ -3,11 +3,12 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useQuery } from '@tanstack/react-query'
-import { UiSlot, useApiQuery } from '@qualy/web-runtime'
-import { peopleImportPicker } from '@qualy/ui-contract'
+import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import { AsyncSection, CheckboxGroup, Field } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
+import { FieldGroup } from '@qualy/ui/field'
 import {
   Dialog,
   DialogBody,
@@ -17,15 +18,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@qualy/ui/dialog'
+import { TreeSelect } from '@qualy/ui/tree-select'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 
 // Running the organization query again, once.
 //
 // The same act that filled the roster when the batch was created, offered
-// whenever somebody wants it. The selection is made by the picker that owns
-// people; what it would do here is this screen's own answer, and it is said
-// as a number before the button will do anything.
+// whenever somebody wants it, and drawn from the same options the batch was
+// created from: the units this reader manages and the kinds of people there
+// are, served by this domain. Running a round needs assessment authority and
+// nothing else - not the directory's own read permission, which a round's
+// administrator need not hold. What it would do here is said as a number
+// before the button will do anything.
 
 interface Selection {
   orgNodeIds: readonly string[]
@@ -33,7 +38,16 @@ interface Selection {
 }
 
 const styles = stylex.create({
-  body: { height: '58vh' },
+  body: { maxHeight: '62vh' },
+  tree: {
+    maxHeight: 280,
+    overflowY: 'auto',
+    borderRadius: tokens.radiusMd,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    padding: 8,
+  },
   quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
   foot: {
     justifyContent: {
@@ -61,11 +75,18 @@ export function ImportDialog({
   onClose: () => void
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format } = useI18n()
+  const { format, formatError } = useI18n()
   const [selection, setSelection] = useState<Selection>(EMPTY)
   useEffect(() => {
     if (open) setSelection(EMPTY)
   }, [open])
+
+  // asked for when the dialog opens, not when the page behind it loads
+  const nodes = useQuery({ ...query.assessment.listScopeOptions.queryOptions({}), enabled: open })
+  const userTypes = useQuery({
+    ...query.assessment.listUserTypeOptions.queryOptions({}),
+    enabled: open,
+  })
 
   const ready = selection.orgNodeIds.length > 0 && selection.userTypeIds.length > 0
   // counted before anybody is added, and counted again by the server when
@@ -80,6 +101,7 @@ export function ImportDialog({
     }),
     enabled: open && ready,
   })
+  const failed = nodes.isError ? nodes.error : userTypes.isError ? userTypes.error : null
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
@@ -89,11 +111,41 @@ export function ImportDialog({
           <DialogDescription>{format(m.importHint)}</DialogDescription>
         </DialogHeader>
         <DialogBody xstyle={styles.body}>
-          <UiSlot
-            token={peopleImportPicker}
-            context={{ value: selection, onChange: setSelection }}
-            fallback={<p {...stylex.props(styles.quiet)}>{format(m.pickerUnavailable)}</p>}
-          />
+          <AsyncSection
+            pending={nodes.isPending || userTypes.isPending}
+            error={failed === null ? null : formatError(failed)}
+            loadingLabel={format(commonMessages.loading)}
+            retryLabel={format(commonMessages.retry)}
+            onRetry={() => {
+              void nodes.refetch()
+              void userTypes.refetch()
+            }}
+          >
+            <FieldGroup>
+              <Field label={format(m.scopeLegend)}>
+                {() => (
+                  <div data-testid="import-units" {...stylex.props(styles.tree)}>
+                    <TreeSelect
+                      value={selection.orgNodeIds}
+                      onChange={(orgNodeIds) => setSelection((now) => ({ ...now, orgNodeIds }))}
+                      nodes={nodes.data?.nodes ?? []}
+                      emptyLabel={format(m.scopeEmpty)}
+                    />
+                  </div>
+                )}
+              </Field>
+              <CheckboxGroup
+                legend={format(m.userTypesLegend)}
+                options={(userTypes.data?.userTypes ?? []).map((type) => ({
+                  value: type.id,
+                  label: type.name,
+                }))}
+                selected={[...selection.userTypeIds]}
+                onChange={(userTypeIds) => setSelection((now) => ({ ...now, userTypeIds }))}
+                emptyLabel={format(m.userTypesEmpty)}
+              />
+            </FieldGroup>
+          </AsyncSection>
         </DialogBody>
         <DialogFooter className={stylex.props(styles.foot).className}>
           <span

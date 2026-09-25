@@ -20,7 +20,6 @@ import { apiError, emptyManifest, fakeClient, renderScreen } from './support/scr
 // loaded through the registry the host actually uses, so a screen that lost
 // its key would fail here rather than at runtime
 // the picker iam contributes, held the way the registry holds one
-const PeopleImportPicker = lazy(() => import('@qualy/plugin-auth/client/iam/PeopleImportPicker'))
 // the bar the workspace shell puts above its rail: which batch is open, where
 // it stands, and what can be done to it. Mounted here the way the shell
 // mounts it, because half of what these cases drive lives in it.
@@ -190,6 +189,12 @@ const assessmentStubs = (over: Stubs = {}): Stubs => ({
   listUserTypeOptions: () =>
     Effect.succeed({ userTypes: [{ id: USER_ID, code: 'student', name: '学生' }] }),
   listParticipants: () => Effect.succeed({ items: [], nextCursor: null }),
+  // the results page's own roster: its page, its totals, its units, and the
+  // people its add dialog offers
+  listParticipantAccounts: () => Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }),
+  listParticipantScores: () => Effect.succeed({ scores: [] }),
+  listRosterUnits: () => Effect.succeed({ units: [] }),
+  listParticipantCandidates: () => Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }),
   listParticipantPlacements: () =>
     Effect.succeed({ items: [], nextCursor: null, changedTotal: 0, unavailableTotal: 0 }),
   previewImport: () => Effect.succeed({ candidates: 0 }),
@@ -1548,38 +1553,11 @@ describe('the participants tab', () => {
 
   it('imports from the organization only after saying how many that is', async () => {
     const importParticipants = vi.fn((_request: Request) => Effect.succeed({ added: 3 }))
+    // the units and kinds of people come from this domain, as they do for a
+    // new batch: running a round does not need the directory's permission
     await renderScreen({
       client: fakeClient({
-        app: {
-          getManifest: () =>
-            Effect.succeed({
-              ...emptyManifest(),
-              pages: PAGES,
-              // the picker belongs to iam and arrives through the surface it
-              // contributes to, exactly as it does in the running application
-              slots: {
-                'iam/people-import-picker': [{ id: 'auth/people-import-picker', order: 0 }],
-              },
-            }),
-        },
-        identity: {
-          getUserOptions: () =>
-            Effect.succeed({
-              truncated: false,
-              nodes: [
-                {
-                  orgNodeId: NODE_ID,
-                  name: '软件学院',
-                  parentId: null,
-                  depth: 1,
-                  orgTypeId: NODE_ID,
-                  manageable: true,
-                },
-              ],
-              orgTypes: [{ id: NODE_ID, name: '院系' }],
-              userTypes: [{ id: USER_ID, code: 'student', name: '学生', placementPolicy: null }],
-            }),
-        },
+        app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
         assessment: assessmentStubs({
           getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
           previewImport: () => Effect.succeed({ candidates: 3 }),
@@ -1593,9 +1571,6 @@ describe('the participants tab', () => {
         },
       ],
       route: `/assessment/batches/${BATCH_ID}/results`,
-      registry: {
-        slots: { 'iam/people-import-picker': { 'auth/people-import-picker': PeopleImportPicker } },
-      },
     })
 
     await page.getByRole('button', { name: '从组织导入' }).click()
@@ -1603,12 +1578,6 @@ describe('the participants tab', () => {
     await expect
       .element(page.getByTestId('import-candidates'))
       .toHaveAttribute('data-ready', 'false')
-    // every unit says what kind of thing it is, and the same kinds are what
-    // the filter offers: that is how somebody picks the right one out of a
-    // tree of similar names
-    // the kind filter is there, and every unit says which kind it is
-    await expect.element(page.getByText('全部类型')).toBeVisible()
-    await expect.element(page.getByText('院系')).toBeVisible()
 
     // ticking a unit, and untucking it again: a selection that cannot be
     // taken back is a trap, and this one was
