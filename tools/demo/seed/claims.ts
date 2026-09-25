@@ -112,7 +112,7 @@ export const claimsOf = (
             ]).rank
           : 1,
       },
-      proof: awarded ? 'campus-2' : random.pick(['campus-1', 'campus-3']),
+      proof: awarded ? PROOF_ASSETS.award[0] : proofOf(random, 'participation'),
       filename: `${activity.name}.jpg`,
     }
   })
@@ -173,8 +173,8 @@ export const claimsOf = (
         payload: { kind: kind.value, 'certificate-no': `DEMO${random.int(100000, 999999)}` },
         proof:
           kind.value === 'cet4' || kind.value === 'cet6'
-            ? random.pick(['certificate-1', 'certificate-2'])
-            : 'certificate-3',
+            ? proofOf(random, 'english')
+            : PROOF_ASSETS.certificate[0],
         filename: `${kind.label}.jpg`,
       }
     },
@@ -194,7 +194,7 @@ export const claimsOf = (
     return {
       item: 'research',
       payload: { title, kind: kind.value, role: random.weighted(RESEARCH_ROLES).value, source },
-      proof: kind.value === 'software' ? 'research-2' : 'research-1',
+      proof: kind.value === 'software' ? PROOF_ASSETS.software[0] : PROOF_ASSETS.project[0],
       filename: '成果证明.jpg',
     }
   })
@@ -243,7 +243,7 @@ export const claimsOf = (
         'donated-on': dayIn(random, material),
         'certificate-no': `DEMO-${random.int(1000000, 9999999)}`,
       },
-      proof: 'blood-1',
+      proof: PROOF_ASSETS.blood[0],
       filename: '献血证.jpg',
     })
   }
@@ -251,14 +251,14 @@ export const claimsOf = (
     claims.push({
       item: 'instructor',
       payload: {},
-      proof: 'honour-1',
+      proof: PROOF_ASSETS.honour[0],
       filename: '优秀学生教官证书.jpg',
     })
     if (random.chance(0.12)) {
       claims.push({
         item: 'flag-guard',
         payload: {},
-        proof: 'honour-1',
+        proof: PROOF_ASSETS.honour[0],
         filename: '国旗班证明.jpg',
       })
     }

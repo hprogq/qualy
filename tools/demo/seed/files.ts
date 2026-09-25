@@ -77,14 +77,20 @@ export const stageWorkbook = (tenantId: string, bytes: Buffer, filename: string,
     return meta.id
   })
 
-/** the proof pictures of each kind */
+/**
+ * The pictures claims are filed with, by what they prove. Any term may cite
+ * any of them, which is why none of them carries a date (tools/demo/pictures.ts).
+ */
 export const PROOF_ASSETS = {
-  campus: ['campus-1', 'campus-2', 'campus-3'],
+  participation: ['campus-1', 'campus-3'],
+  award: ['campus-2'],
   competition: ['competition-1', 'competition-2', 'competition-3'],
-  certificate: ['certificate-1', 'certificate-2', 'certificate-3'],
+  english: ['certificate-1', 'certificate-2'],
+  certificate: ['certificate-3'],
   language: ['certificate-1', 'certificate-2'],
   practice: ['practice-1', 'practice-2', 'practice-3'],
-  research: ['research-1', 'research-2'],
+  project: ['research-1'],
+  software: ['research-2'],
   blood: ['blood-1'],
   honour: ['honour-1'],
   article: ['article-1'],

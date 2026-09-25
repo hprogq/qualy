@@ -128,7 +128,11 @@ export const EPISODES: Readonly<Record<Term, readonly Episode[]>> = {
     },
   ],
   '24-25-1': [
-    { kind: 'appeal-upheld', claim: campus('心理情景剧微电影大赛', '0.2', 'university', 3) },
+    // the certificate was issued this term for a contest held the term before
+    {
+      kind: 'appeal-upheld',
+      claim: { ...campus('心理情景剧微电影大赛', '0.2', 'university', 3), proof: 'campus-4' },
+    },
     { kind: 'record-void' },
   ],
   '24-25-2': [

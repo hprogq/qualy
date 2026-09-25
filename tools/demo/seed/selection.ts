@@ -19,7 +19,7 @@ import {
 } from '../catalog.ts'
 import { answerAsk, askFor, requestAsk, type Ask } from './asks.ts'
 import { addMinutes, awake, principalOf, type Random, type Story } from './context.ts'
-import { stageProof, stageWorkbook } from './files.ts'
+import { PROOF_ASSETS, stageProof, stageWorkbook } from './files.ts'
 import { scoringConfigOf, type Versions } from './items.ts'
 import { EventQueue } from './queue.ts'
 import { ESCALATE_REASONS } from './term.ts'
@@ -821,7 +821,7 @@ export const runSelection = (input: {
               rank: random.int(1, 5),
               team: random.chance(0.6),
             },
-            random.pick(['competition-1', 'competition-2', 'competition-3']),
+            random.pick(PROOF_ASSETS.competition),
             '获奖证书.jpg',
             !random.chance(0.05),
           ),
@@ -846,7 +846,7 @@ export const runSelection = (input: {
                   ? `登记号 DEMO-SR-${random.int(10000, 99999)}`
                   : '大学生创新创业训练计划',
             },
-            kind.value === 'software' ? 'research-2' : 'research-1',
+            kind.value === 'software' ? PROOF_ASSETS.software[0] : PROOF_ASSETS.project[0],
             '成果证明.jpg',
             true,
           ),
