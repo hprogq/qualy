@@ -25,6 +25,7 @@ import {
   type LoginDriver,
 } from '@qualy/auth-contract/login'
 import { driver as localDriver } from '@qualy/plugin-auth-local'
+import { driver as casDriver } from '@qualy/plugin-auth-cas'
 import { userActions } from '../src/actions.ts'
 import { AuthConfig } from '../src/server/auth-config.ts'
 import { Iam, serviceLayer as authLayer } from '../src/server/index.ts'
@@ -171,6 +172,7 @@ const stack = (url: string) =>
             registerLoginDriver(localDriver),
             registerLoginDriver(campus),
             registerLoginDriver(badge),
+            registerLoginDriver(casDriver),
             registerLoginDriver(shaped),
           ).pipe(Layer.provideMerge(loginDriversLayer)),
           uiLayer,
@@ -557,6 +559,72 @@ describe.runIf(postgresAvailable)('an entrance a tenant adds', () => {
       expect(tagOf(answer.pinned)).toBe('AUTH_PROVIDER_IDENTITY_NAMESPACE_IN_USE')
       expect(failureOf(answer.pinned)?.['field']).toBe('server')
       expect(answer.relabelled).toBe(4)
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('keeps a CAS entrance’s server and the way it reads a person once anybody came in', async () => {
+    const db = await createTestContext('providers-namespace-cas')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const iam = yield* Iam
+            const id = yield* iam.providers.create(
+              f.tenant,
+              { type: 'cas', code: 'school', name: 'School CAS' },
+              f.as,
+            )
+            const set = yield* iam.providers.update(
+              f.tenant,
+              id,
+              {
+                expectedVersion: 1,
+                values: {
+                  serverUrl: 'https://cas.school.edu/cas',
+                  identitySource: 'attribute',
+                  identityAttribute: 'id_number',
+                },
+              },
+              f.as,
+            )
+            yield* runSql(sql`
+              insert into sign_in_events
+                (tenant_id, provider_id, provider_type, provider_code, user_id, outcome)
+              values (${f.tenant}, ${id}, 'cas', 'school', ${f.person}, 'success')`)
+            const change = (values: Record<string, string>) =>
+              Effect.map(
+                Effect.result(
+                  iam.providers.update(f.tenant, id, { expectedVersion: set, values }, f.as),
+                ),
+                (result) =>
+                  result._tag === 'Success' ? 'Success' : String(failureOf(result)?.['field']),
+              )
+            return {
+              server: yield* change({ serverUrl: 'https://evil.example/cas' }),
+              protocol: yield* change({ protocol: 'cas2' }),
+              custom: yield* change({ protocol: 'custom', validateUrl: 'https://evil.example/v' }),
+              source: yield* change({ identitySource: 'principal' }),
+              attribute: yield* change({ identityAttribute: 'nickname' }),
+              fallback: yield* change({ identityFallback: 'true' }),
+              // asking for the password every time names nobody differently
+              renew: yield* change({ renew: 'true' }),
+            }
+          }),
+        ),
+      )
+      expect(answer).toEqual({
+        server: 'serverUrl',
+        protocol: 'protocol',
+        custom: 'protocol',
+        source: 'identitySource',
+        attribute: 'identityAttribute',
+        fallback: 'identityFallback',
+        renew: 'Success',
+      })
     } finally {
       await db.dispose()
     }

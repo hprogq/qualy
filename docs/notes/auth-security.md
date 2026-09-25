@@ -302,6 +302,9 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
   (`loginUrl`、`validateUrl`、请求方式、返回格式、身份规则)存进 `config.derived`,运行时只读展开结果——之后改了档位的默认路径,
   在用的入口不会被悄悄挪走。回调只收 GET(不向服务器要 `method=POST` 的登录)。标准档一律 GET、XML(CAS 1 为文本);「自定义」档可逐个覆盖登录与校验地址、改用 POST 表单、
   指定返回格式(自动 / XML / JSON)。没有 logout 地址:本产品不做 CAS 登出与 SLO,存一个没人读的设置只会误导管理员。
+- **身份命名空间键(2026-09-25 裁决)**:`serverUrl`、`protocol`、自定义档的 `loginUrl` / `validateUrl`、`identitySource` /
+  `identityAttribute` / `identityFallback`——相信哪台服务器、从它的答复里哪一处读出人员编号。CAS 不存绑定,所以入口有过一次成功登录
+  即锁定(见「身份命名空间锁」);`renew`、校验请求方式与返回格式不改变「认谁」,不在其列。
 - **service 只写一次**:发起时用 flow 的 payload 工厂把「回调地址 + `?flow=<state>`」写成字符串存进 flow,跳转与校验都用这同一个
   字符串,绝不回调时重新拼。flow 防串线与 CSRF,CAS 自己防 ticket 重放,两件事不重复。
 - **只收 ST**:回调里的 ticket 必须是 `ST-` 开头的可打印 ASCII(≤256),PT/TGT 或没有 ticket 一律拒绝且不去问服务器。

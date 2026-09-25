@@ -173,6 +173,18 @@ export const driver: LoginDriver = {
     entrance: {
       label: say('entrance/kind', 'CAS single sign-on'),
       fields,
+      // which server is believed, and where in its answer the person's
+      // number is read: once somebody has come in, another answer to either
+      // would let a different server, or a different attribute, name them
+      identityNamespaceKeys: [
+        'serverUrl',
+        'protocol',
+        'loginUrl',
+        'validateUrl',
+        'identitySource',
+        'identityAttribute',
+        'identityFallback',
+      ],
       // the protocol version expanded into the endpoints it stands for, so
       // what an entrance in service calls is what was saved
       prepareConfig: ({ values }) => {
