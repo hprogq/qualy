@@ -14,12 +14,33 @@ import { clientFor } from '../src/api.ts'
 // back: the identity on every request from the one transport, and the
 // server's refusal of the protocol read off the raw response.
 
+/** an endpoint's own 503, the way a mail that could not be sent is declared */
+class ProbeBusy extends Schema.TaggedError<ProbeBusy>()(
+  'PROBE_BUSY',
+  { retryInSeconds: Schema.Number },
+  { httpApiStatus: 503, identifier: 'ProbeBusy' },
+) {}
+
+/** an endpoint's own 404 */
+class ProbeMissing extends Schema.TaggedError<ProbeMissing>()(
+  'PROBE_MISSING',
+  {},
+  { httpApiStatus: 404, identifier: 'ProbeMissing' },
+) {}
+
 const api = HttpApi.make('transport-under-test').add(
-  HttpApiGroup.make('ping').add(
-    HttpApiEndpoint.get('hello', '/ping/hello', {
-      success: Schema.Struct({ msg: Schema.String }),
-    }),
-  ),
+  HttpApiGroup.make('ping')
+    .add(
+      HttpApiEndpoint.get('hello', '/ping/hello', {
+        success: Schema.Struct({ msg: Schema.String }),
+      }),
+    )
+    .add(
+      HttpApiEndpoint.post('send', '/ping/send', {
+        success: Schema.Struct({ msg: Schema.String }),
+        error: [ProbeBusy, ProbeMissing],
+      }),
+    ),
 )
 
 /** a fetch that writes down every header it saw and answers as told */
@@ -170,11 +191,11 @@ describe('the server unable to serve a request right now', () => {
       headers: { 'content-type': 'text/plain; charset=utf-8', 'x-qualy-state': 'starting' },
     })
 
-  const failureOf = async (answer: () => Response) => {
+  const failureOf = async (answer: () => Response, endpoint: 'hello' | 'send' = 'hello') => {
     const exit = await Effect.runPromiseExit(
       Effect.gen(function* () {
         const client = yield* clientFor(api, 'http://qualy.test')
-        return yield* client.ping.hello()
+        return yield* endpoint === 'hello' ? client.ping.hello() : client.ping.send()
       }).pipe(Effect.provideService(FetchHttpClient.Fetch, answering([], answer))),
     )
     if (Exit.isSuccess(exit)) throw new Error('the request succeeded')
@@ -186,9 +207,48 @@ describe('the server unable to serve a request right now', () => {
     expect(getApiErrorCode(await failureOf(unavailable))).toBe('SERVICE_UNAVAILABLE')
   })
 
+  it('is given back its own name by an endpoint that declares a 503 of its own', async () => {
+    expect(getApiErrorCode(await failureOf(unavailable, 'send'))).toBe('SERVICE_UNAVAILABLE')
+    // and a proxy's 503, which has no tagged body at all, is the same news
+    const proxied = () =>
+      new Response('<html>503 Service Temporarily Unavailable</html>', {
+        status: 503,
+        headers: { 'content-type': 'text/html' },
+      })
+    expect(getApiErrorCode(await failureOf(proxied, 'send'))).toBe('SERVICE_UNAVAILABLE')
+  })
+
+  it('leaves the endpoint its own 503', async () => {
+    const busy = () =>
+      new Response(JSON.stringify({ _tag: 'PROBE_BUSY', retryInSeconds: 5 }), {
+        status: 503,
+        headers: { 'content-type': 'application/json' },
+      })
+    const failure = await failureOf(busy, 'send')
+    expect(getApiErrorCode(failure)).toBe('PROBE_BUSY')
+    expect(failure).toMatchObject({ retryInSeconds: 5 })
+  })
+
   it('leaves a server between processes to be waited out', async () => {
-    const failure = await failureOf(starting)
-    expect(getApiErrorCode(failure)).toBeUndefined()
-    expect(isBackendUnavailable(failure)).toBe(true)
+    for (const endpoint of ['hello', 'send'] as const) {
+      const failure = await failureOf(starting, endpoint)
+      expect(getApiErrorCode(failure), endpoint).toBeUndefined()
+      expect(isBackendUnavailable(failure), endpoint).toBe(true)
+    }
+  })
+
+  it('gives the pipeline its own name at a status the endpoint declares too', async () => {
+    const gone = () =>
+      new Response(JSON.stringify({ _tag: 'API_ROUTE_NOT_FOUND', message: 'no route' }), {
+        status: 404,
+        headers: { 'content-type': 'application/json' },
+      })
+    expect(getApiErrorCode(await failureOf(gone, 'send'))).toBe('API_ROUTE_NOT_FOUND')
+    const own = () =>
+      new Response(JSON.stringify({ _tag: 'PROBE_MISSING' }), {
+        status: 404,
+        headers: { 'content-type': 'application/json' },
+      })
+    expect(getApiErrorCode(await failureOf(own, 'send'))).toBe('PROBE_MISSING')
   })
 })

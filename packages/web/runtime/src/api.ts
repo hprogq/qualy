@@ -110,21 +110,25 @@ const withIdentity = (options: TransportOptions) => {
 /**
  * The refusals no endpoint declares, given back their own names.
  *
- * Two answers under `/api` are the pipeline's rather than a handler's: a
- * request that did not come from this application, and a route this build no
- * longer has. They carry the same tagged shape as every other error here,
- * but no endpoint lists them - so the typed client has no decoder for their
- * status and falls through to its own transport error. The reader was then
- * told "something went wrong" for the two answers whose whole point is to
- * say what to do next, and the sentences written for them could never be
- * reached.
+ * Three answers under `/api` are the pipeline's rather than a handler's: a
+ * request that did not come from this application, a route this build no
+ * longer has, and a dependency of the server's that is unavailable. They
+ * carry the same tagged shape as every other error here, but no endpoint
+ * lists them - so the typed client has no decoder for them and falls through
+ * to its own transport error. The reader was then told "something went
+ * wrong" for the answers whose whole point is to say what to do next, and
+ * the sentences written for them could never be reached.
  *
- * Decided by status rather than by body, because the body is gone: the
- * decoder that failed has already read it, and a response here has no second
- * copy. The status is enough precisely because this code only runs when the
- * decoder fell through - which means this endpoint declared nothing for that
- * status, and under this mount the only thing left that answers it is the
- * pipeline.
+ * The client falls through two ways (repos/effect/packages/effect/src/
+ * unstable/httpapi/HttpApiClient.ts): with a `DecodeError` when the endpoint
+ * declares nothing for the status, and with a `StatusCodeError` when it
+ * declares errors of its own there and the body is none of them - an
+ * endpoint with its own 503 (a mail that could not be sent, a sandbox that
+ * is busy) meeting the pipeline's. Either way the answer is not the
+ * endpoint's, and under this mount what is left to answer with that status
+ * is the pipeline, or for a 503 a proxy in front of it. So the status
+ * decides, not the body: a proxy's 503 has no tagged body at all, and is
+ * the same news for the reader.
  */
 const PIPELINE_REFUSALS: Record<number, string> = {
   403: 'REQUEST_ORIGIN_REFUSED',
@@ -148,9 +152,13 @@ type FellThrough = {
   }
 }
 
+/** the two ways the typed client gives up on a response it has no declared error for */
+const FELL_THROUGH = new Set<unknown>(['DecodeError', 'StatusCodeError'])
+
 const fellThrough = (error: unknown): error is FellThrough =>
   (error as { _tag?: unknown } | null)?._tag === 'HttpClientError' &&
-  (error as { reason?: { _tag?: unknown } }).reason?._tag === 'DecodeError'
+  FELL_THROUGH.has((error as { reason?: { _tag?: unknown } }).reason?._tag) &&
+  (error as { reason: { response?: unknown } }).reason.response !== undefined
 
 const pipelineRefusals = (
   effect: Effect.Effect<unknown, unknown, unknown>,
