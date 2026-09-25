@@ -2143,6 +2143,10 @@ const i18n = definePluginMessages({
       id: 'assessment/record/import/reason/formula-not-allowed',
       defaultMessage: 'A cell holds a formula. Paste the values instead.',
     },
+    importReasonPercent: {
+      id: 'assessment/record/import/reason/percent-not-allowed',
+      defaultMessage: 'Type the number itself, without a percent sign',
+    },
     importReasonCellTooLong: {
       id: 'assessment/record/import/reason/cell-too-long',
       defaultMessage: 'A cell is too long',

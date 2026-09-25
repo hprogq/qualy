@@ -59,6 +59,7 @@ const WORDS = {
   'unsupported-template-version': m.importReasonOldTemplate,
   'template-for-another-item': m.importReasonOtherItem,
   'formula-not-allowed': m.importReasonFormula,
+  'percent-not-allowed': m.importReasonPercent,
   'cell-too-long': m.importReasonCellTooLong,
   'cell-error': m.importReasonCellError,
   'source-unavailable': m.importReasonUnavailable,

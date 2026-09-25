@@ -292,9 +292,9 @@ describe('the words an import problem gets', () => {
     }
   })
 
-  it('has one for content the reading would not take', () => {
+  it('has one for each part of a file the reading refuses', () => {
     const said = ((descriptor: { id: string }) => descriptor.id) as never
-    for (const reason of ['extra-sheet', 'extra-column']) {
+    for (const reason of ['extra-sheet', 'extra-column', 'percent-not-allowed']) {
       expect(reasonText(said, { reason }, '编号')).not.toBe('assessment/record/import/reason/other')
     }
   })

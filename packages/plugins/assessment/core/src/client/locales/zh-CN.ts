@@ -495,6 +495,7 @@ export default {
   'assessment/record/import/reason/template-for-another-item':
     '该模板是其他认定项目的，请下载本项目的模板',
   'assessment/record/import/reason/formula-not-allowed': '单元格包含公式，请改为粘贴数值',
+  'assessment/record/import/reason/percent-not-allowed': '请直接填写数值，不要带百分号',
   'assessment/record/import/reason/cell-too-long': '单元格内容过长',
   'assessment/record/import/reason/cell-error': '单元格包含错误值',
   'assessment/record/import/reason/source-unavailable': '暂时无法读取文件，请重试',

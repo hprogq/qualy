@@ -316,6 +316,16 @@ const textOf = (cell: ExcelJS.Cell, rowNo: number): string => {
   }
 }
 
+/**
+ * Whether a number format shows its value multiplied by a hundred.
+ *
+ * Typing 85% into a cell stores 0.85 and gives the cell a percent format,
+ * so the sheet says 85% while the value is 0.85. A `%` inside quotes or
+ * after a backslash is printed as it is and multiplies nothing.
+ */
+const showsPercent = (format: string | undefined): boolean =>
+  typeof format === 'string' && format.replace(/"[^"]*"|\\./g, '').includes('%')
+
 /** whether a cell holds anything a person could read, a formula included */
 const holdsSomething = (cell: ExcelJS.Cell): boolean =>
   cell.value !== null &&
@@ -433,7 +443,13 @@ export const parseAdministrativeWorkbook = async (bytes: Uint8Array): Promise<Pa
   // How wide each one may be once written is the domain's question, asked
   // row by row where the reader is told which row to fix.
   const at = (row: ExcelJS.Row, letter: string, rowNo: number) => {
-    const text = textOf(row.getCell(letter), rowNo).trim()
+    const cell = row.getCell(letter)
+    // what the sheet shows is not what it holds, and the reader would take
+    // the value a person never saw; asked to type the number instead
+    if (typeof cell.value === 'number' && showsPercent(cell.numFmt)) {
+      throw new WorkbookUnreadable('percent-not-allowed', { rowNo, column: letter })
+    }
+    const text = textOf(cell, rowNo).trim()
     if (text.length > ADMIN_IMPORT_LIMITS.maxCellChars) {
       throw new WorkbookUnreadable('cell-too-long', { rowNo, column: letter })
     }

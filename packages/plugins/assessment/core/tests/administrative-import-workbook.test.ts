@@ -156,6 +156,33 @@ describe('the administrative import workbook', () => {
     expect((refused as WorkbookUnreadable).column).toBe('C')
   })
 
+  it('refuses a number the sheet shows as a percentage, rather than reading a hundredth of it', async () => {
+    const withAmount = spec({
+      evidence: [
+        { key: 'amount', schema: { type: 'string', format: 'qualy-decimal', title: '成绩' } },
+      ],
+    })
+    const template = await buildAdministrativeWorkbook(withAmount)
+    const typed = (value: number, format: string) =>
+      filled(template, [['0012340', '张三', null, 'national', '校发〔2026〕7 号']], (book) => {
+        const cell = book.getWorksheet(DATA_SHEET)!.getRow(2).getCell('C')
+        cell.value = value
+        cell.numFmt = format
+      })
+    const read = async (bytes: Uint8Array) => {
+      const parsed = await parseAdministrativeWorkbook(bytes).catch((error: unknown) => error)
+      return parsed instanceof WorkbookUnreadable
+        ? [parsed.reason, parsed.rowNo, parsed.column]
+        : (parsed as Awaited<ReturnType<typeof parseAdministrativeWorkbook>>).rows[0]!.cells['C']
+    }
+    // what typing 85% leaves in a cell: the sheet shows 85%, the cell holds 0.85
+    expect(await read(await typed(0.85, '0%'))).toEqual(['percent-not-allowed', 2, 'C'])
+    expect(await read(await typed(0.8512, '0.00%'))).toEqual(['percent-not-allowed', 2, 'C'])
+    // a percent sign printed as a word multiplies nothing
+    expect(await read(await typed(85, '0"%"'))).toBe('85')
+    expect(await read(await typed(85, '0'))).toBe('85')
+  })
+
   it('tells two choices with the same word apart', async () => {
     const colliding = spec({
       recognition: [
