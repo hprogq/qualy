@@ -944,8 +944,11 @@ describe('the score page while it loads', () => {
   it('draws the shape of the ledger until the account arrives', async () => {
     await page.viewport(1440, 900)
     await screen(normal(), { getMyResult: () => Effect.never })
-    const loading = page.getByRole('status')
-    await expect.element(loading).toBeVisible()
+    // the batch has arrived and the account has not: the ledger's own shape
+    // stands in for it, not only the batch's loading
+    const skeleton = page.getByTestId('result-skeleton')
+    await expect.element(skeleton).toBeVisible()
+    expect(skeleton.element().closest('[role="status"]')).not.toBeNull()
     expect(page.getByTestId('result-total').elements()).toHaveLength(0)
   })
 })

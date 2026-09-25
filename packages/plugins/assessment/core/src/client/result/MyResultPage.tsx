@@ -260,7 +260,7 @@ function Standing({ batchId, archived }: { batchId: string; archived: boolean })
         void mine.refetch()
       }}
       skeleton={
-        <div {...stylex.props(styles.page)}>
+        <div data-testid="result-skeleton" {...stylex.props(styles.page)}>
           <div {...stylex.props(styles.seat)}>
             <div {...stylex.props(styles.skHead)}>
               <Skeleton height={20} width={120} radius={6} />
