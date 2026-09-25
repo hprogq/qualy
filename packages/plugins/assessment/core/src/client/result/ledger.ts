@@ -176,6 +176,10 @@ export interface LedgerItemView {
   readonly perPerson: string | null
   readonly facts: ItemFacts
   readonly lines: readonly LedgerLineView[]
+  /** claims on the question that are not on the account: undecided, unsent, or waiting on the participant */
+  readonly aside: number
+  /** the one claim waiting on the participant to revise or add material, when there is exactly one */
+  readonly waitingOn: string | null
 }
 
 export interface LedgerGroupView {
@@ -475,6 +479,9 @@ export const buildLedger = ({
     let askedMore = 0
     let returned = 0
     let drafts = 0
+    let aside = 0
+    const todo: (string | null)[] = []
+    const onAccount = new Set(lines.map((line) => line.entryId))
     for (const claim of claimsOf.get(item.id) ?? []) {
       // one word per claim, in the order it matters to the reader: an open
       // ask first, then a round looking at a settled claim again, then the
@@ -484,6 +491,8 @@ export const buildLedger = ({
       else if (claim.status === 'in_review') pending += 1
       else if (claim.status === 'needs_revision') returned += 1
       else if (isDraft(claim)) drafts += 1
+      if (claim.supplement != null || claim.status === 'needs_revision') todo.push(claim.id ?? null)
+      if (claim.id === undefined || !onAccount.has(claim.id)) aside += 1
     }
     const channels = item.currentRevision?.entryChannels ?? []
     const derived = lines.some((line) => line.kind === 'derived')
@@ -514,6 +523,8 @@ export const buildLedger = ({
         drafts,
       },
       lines,
+      aside,
+      waitingOn: todo.length === 1 ? (todo[0] ?? null) : null,
     }
   }
 

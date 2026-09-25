@@ -229,6 +229,46 @@ describe('the score ledger model', () => {
     // the head's counts: under review or looked at again, and unsent drafts
     expect(model.pending).toBe(3)
     expect(model.drafts).toBe(1)
+    // off the account: two under review, one returned, one unsent; two of
+    // them wait on the participant, so no single one is named
+    expect(itemsOf(model)[0]).toMatchObject({ aside: 4, waitingOn: null })
+  })
+
+  it('names the one claim that waits on the participant, and counts what is off the account', () => {
+    const build = (entries: LedgerEntry[]) =>
+      itemsOf(
+        buildLedger({
+          result: {
+            mode: 'provisional',
+            total: '6.00',
+            groups: [group({ groupId: 'g', final: '6.00', raw: '6.00', itemsTotal: '6.00' })],
+            lines: [
+              line({
+                lineId: 'l',
+                kind: 'entry',
+                value: '6.00',
+                itemId: 'q',
+                provenance: { entryId: 'a' },
+              }),
+            ],
+          },
+          items: [item({ id: 'q', scoreGroupId: 'g' })],
+          entries,
+        }),
+      )[0]!
+    const approved = claim({ id: 'a', itemId: 'q', status: 'approved' })
+    expect(build([approved])).toMatchObject({ aside: 0, waitingOn: null })
+    expect(
+      build([approved, claim({ id: 'n', itemId: 'q', status: 'needs_revision' })]),
+    ).toMatchObject({ aside: 1, waitingOn: 'n' })
+    // an ask for more material on a claim that is on the account waits on
+    // the participant too, and is not off the account
+    expect(
+      build([
+        { ...approved, supplement: { requestId: 's' } },
+        claim({ itemId: 'q', status: 'draft' }),
+      ]),
+    ).toMatchObject({ aside: 1, waitingOn: 'a' })
   })
 
   it('writes a limit that bit under what it held down, and the figure it held it to', () => {

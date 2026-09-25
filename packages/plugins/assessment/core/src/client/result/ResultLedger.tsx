@@ -1359,19 +1359,39 @@ const UNCOUNTED: ReadonlySet<LedgerLineView['standing']> = new Set([
   'excluded',
 ])
 
+/** the one thing about a question worth a mark beside its name */
+interface Tag {
+  readonly kind: 'todo' | 'drafts' | 'pending'
+  readonly count: number
+  readonly attention: boolean
+}
+
+/** what the line under a question's name is made of */
+type MadeKind = 'voided' | 'derived' | 'claim' | 'claims' | 'waits' | 'recorded' | 'none'
+
+/** the counts a mark beside the name already says, so the line under it does not */
+const TAG_SAYS: Record<Tag['kind'], readonly (typeof FACT_ORDER)[number][]> = {
+  todo: ['asked', 'returned'],
+  drafts: ['drafts'],
+  pending: ['pending', 'reconsidering'],
+}
+
 /**
  * Where a question's figure came from, in one line: which claim it was when
  * there is one, how its claims stand when there are several, and why it is
- * nothing when it is nothing.
+ * nothing when it is nothing. What the mark beside the name says is not said
+ * again; where that leaves nothing, the line says what the figure waits for.
  */
 const madeOf = (
   item: LedgerItemView,
+  tag: Tag | null,
+  reader: 'owner' | 'staff',
   format: Format,
   list: (parts: readonly string[]) => string,
   dayOf: (at: string | null) => string | null,
-): string => {
-  if (item.voided) return format(m.resultMade, { kind: 'voided' })
-  if (item.derived) return format(m.resultMade, { kind: 'derived' })
+): { readonly kind: MadeKind; readonly said: string } => {
+  if (item.voided) return { kind: 'voided', said: format(m.resultMade, { kind: 'voided' }) }
+  if (item.derived) return { kind: 'derived', said: format(m.resultMade, { kind: 'derived' }) }
   const { facts } = item
   const moving = facts.pending + facts.asked + facts.returned + facts.drafts + facts.reconsidering
   const only = item.lines.length === 1 ? item.lines[0] : undefined
@@ -1382,19 +1402,21 @@ const madeOf = (
     const said = format(m.resultWord, { kind: only.standing })
     const word = day === null ? said : `${day} ${said}`
     const identity = [only.lead, only.sub].filter((part): part is string => part !== null).join(' ')
-    return identity === '' ? word : `${word} · ${identity}`
+    return { kind: 'claim', said: identity === '' ? word : `${word} · ${identity}` }
   }
-  const parts = FACT_ORDER.filter((kind) => facts[kind] > 0).map((kind) =>
+  const told: readonly string[] = tag === null ? [] : TAG_SAYS[tag.kind]
+  const parts = FACT_ORDER.filter((kind) => facts[kind] > 0 && !told.includes(kind)).map((kind) =>
     format(m.resultFact, { kind, count: facts[kind] }),
   )
-  if (parts.length > 0) return list(parts)
-  return format(m.resultMade, { kind: item.recordedOnly ? 'recorded' : 'none' })
+  if (parts.length > 0) return { kind: 'claims', said: list(parts) }
+  if (tag !== null) {
+    return { kind: 'waits', said: format(m.resultWaitsFor, { kind: tag.kind, reader }) }
+  }
+  const nothing = item.recordedOnly ? 'recorded' : 'none'
+  return { kind: nothing, said: format(m.resultMade, { kind: nothing }) }
 }
 
-/** the one thing about a question worth a mark beside its name */
-const tagOf = (
-  item: LedgerItemView,
-): { kind: 'todo' | 'drafts' | 'pending'; count: number; attention: boolean } | null => {
+const tagOf = (item: LedgerItemView): Tag | null => {
   if (item.voided) return null
   const { facts } = item
   const todo = facts.asked + facts.returned
@@ -1408,14 +1430,15 @@ const tagOf = (
   return null
 }
 
-/** the question's rule, as briefly as a column can say it */
-const ruleOf = (item: LedgerItemView, format: Format): string | null => {
+/**
+ * The question's rule, as briefly as a column can say it. A question the
+ * office records says so on the line beside it, so the column stays empty
+ * rather than saying it twice.
+ */
+const ruleOf = (item: LedgerItemView): { kind: 'person' | 'each'; value: string } | null => {
   if (item.voided) return null
-  if (item.perPerson !== null) {
-    return format(m.resultRule, { kind: 'person', value: plain(item.perPerson) })
-  }
-  if (item.each !== null) return format(m.resultRule, { kind: 'each', value: plain(item.each) })
-  if (item.recordedOnly) return format(m.resultRule, { kind: 'recorded', value: '' })
+  if (item.perPerson !== null) return { kind: 'person', value: plain(item.perPerson) }
+  if (item.each !== null) return { kind: 'each', value: plain(item.each) }
   return null
 }
 
@@ -1424,7 +1447,10 @@ const ruleOf = (item: LedgerItemView, format: Format): string | null => {
  *
  * Several claims open in place under it; a single claim is the row itself,
  * and pressing it goes to that claim, since listing one claim under a row
- * that already names it would say the same thing twice.
+ * that already names it would say the same thing twice. Claims that are not
+ * on the account - undecided, unsent, or waiting on the participant - are
+ * reached from it too: from the fold when the question has lines to open,
+ * from the row itself when it has none.
  */
 function ItemRow({
   item,
@@ -1447,14 +1473,28 @@ function ItemRow({
   const zone = useBatchZone()
   const list = useList()
   const panelId = useId()
-  const expandable = item.lines.length >= 2
+  const waitingOn = item.waitingOn
+  const toItem = onItemOpen === undefined ? null : () => onItemOpen(item.id)
+  // the claims waiting on the participant: the one claim itself, or the
+  // question on the filing page when there are several
+  const toWaiting =
+    item.facts.asked + item.facts.returned === 0
+      ? null
+      : waitingOn !== null && onEntryOpen !== undefined
+        ? () => onEntryOpen(waitingOn)
+        : toItem
+  const toAside = item.aside > 0 ? (toWaiting ?? toItem) : null
+  const expandable = item.lines.length >= 2 || (item.lines.length === 1 && toAside !== null)
   const only = item.lines.length === 1 ? item.lines[0] : undefined
   const follow =
     !expandable && only !== undefined && only.entryId !== null && onEntryOpen !== undefined
       ? only.entryId
       : null
+  // nothing on the account yet, and claims to go to
+  const lead = item.lines.length === 0 ? toAside : null
   const tag = tagOf(item)
-  const rule = ruleOf(item, format)
+  const rule = ruleOf(item)
+  const made = madeOf(item, tag, reader, format, list, (at) => dayOf(at, locale, zone))
   const nothing = item.lines.length === 0 && item.cents === 0
   const inset = { paddingInlineStart: 16 + item.depth * INDENT }
   const lineData =
@@ -1497,8 +1537,8 @@ function ItemRow({
         {two(item.cents)}
       </span>
       <span {...stylex.props(styles.madeCell)}>
-        <span {...stylex.props(styles.made)}>
-          {madeOf(item, format, list, (at) => dayOf(at, locale, zone))}
+        <span data-made={made.kind} {...stylex.props(styles.made)}>
+          {made.said}
         </span>
         {expandable && (
           <ChevronDownIcon
@@ -1506,9 +1546,13 @@ function ItemRow({
             {...stylex.props(styles.chevron, open && styles.chevronOpen)}
           />
         )}
-        {follow !== null && <ChevronRightIcon aria-hidden {...stylex.props(styles.chevron)} />}
+        {(follow !== null || lead !== null) && (
+          <ChevronRightIcon aria-hidden {...stylex.props(styles.chevron)} />
+        )}
       </span>
-      <span {...stylex.props(styles.rule)}>{rule ?? ''}</span>
+      <span data-rule={rule?.kind} {...stylex.props(styles.rule)}>
+        {rule === null ? '' : format(m.resultRule, rule)}
+      </span>
     </>
   )
   return (
@@ -1542,6 +1586,16 @@ function ItemRow({
         >
           {cells}
         </button>
+      ) : lead !== null ? (
+        <button
+          type="button"
+          data-testid="ledger-lead"
+          onClick={lead}
+          {...stylex.props(styles.row, styles.pressable)}
+          style={inset}
+        >
+          {cells}
+        </button>
       ) : (
         <div {...lineData} {...stylex.props(styles.row)} style={inset}>
           {cells}
@@ -1554,32 +1608,43 @@ function ItemRow({
           open={open}
           reader={reader}
           onEntryOpen={onEntryOpen}
-          onItemOpen={onItemOpen}
+          toItem={toItem}
+          toWaiting={toWaiting}
         />
       )}
     </div>
   )
 }
 
-/** a question's claims, opened under it; the first few, and the way to the rest */
+/**
+ * A question's claims, opened under it: the first few, then the way to what
+ * the fold does not hold - the claims waiting on the participant, the rest
+ * of a long list, or the claims not on the account at all.
+ */
 function Lines({
   id,
   item,
   open,
   reader,
   onEntryOpen,
-  onItemOpen,
+  toItem,
+  toWaiting,
 }: {
   id: string
   item: LedgerItemView
   open: boolean
   reader: 'owner' | 'staff'
   onEntryOpen: ((entryId: string) => void) | undefined
-  onItemOpen: ((itemId: string) => void) | undefined
+  toItem: (() => void) | null
+  toWaiting: (() => void) | null
 }) {
   const { format } = useI18n()
-  const capped = onItemOpen !== undefined && item.lines.length > LINES_SHOWN
-  const shown = capped ? item.lines.slice(0, LINES_SHOWN) : item.lines
+  const all = item.lines.length > LINES_SHOWN ? toItem : null
+  const shown = all !== null ? item.lines.slice(0, LINES_SHOWN) : item.lines
+  const waiting = item.facts.asked + item.facts.returned
+  // the waiting claims lead to the question's page as well; a second way
+  // there would only repeat it
+  const rest = all === null && toWaiting === null && item.aside > 0 ? toItem : null
   return (
     <div
       id={id}
@@ -1599,15 +1664,42 @@ function Lines({
             {shown.map((line) => (
               <LineRow key={line.key} line={line} fallback={item.title} onEntryOpen={onEntryOpen} />
             ))}
-            {capped && (
+            {toWaiting !== null && (
               <button
                 type="button"
                 data-testid="ledger-more"
+                data-follow="todo"
+                data-count={waiting}
+                onClick={toWaiting}
+                {...stylex.props(styles.more, styles.pressable)}
+              >
+                {format(m.resultFollow, { kind: 'todo', count: waiting, reader })}
+                <ChevronRightIcon aria-hidden {...stylex.props(styles.moreIcon)} />
+              </button>
+            )}
+            {all !== null && (
+              <button
+                type="button"
+                data-testid="ledger-more"
+                data-follow="all"
                 data-count={item.lines.length}
-                onClick={() => onItemOpen(item.id)}
+                onClick={all}
                 {...stylex.props(styles.more, styles.pressable)}
               >
                 {format(m.resultMore, { count: item.lines.length, reader })}
+                <ChevronRightIcon aria-hidden {...stylex.props(styles.moreIcon)} />
+              </button>
+            )}
+            {rest !== null && (
+              <button
+                type="button"
+                data-testid="ledger-more"
+                data-follow="rest"
+                data-count={item.aside}
+                onClick={rest}
+                {...stylex.props(styles.more, styles.pressable)}
+              >
+                {format(m.resultFollow, { kind: 'rest', count: item.aside, reader })}
                 <ChevronRightIcon aria-hidden {...stylex.props(styles.moreIcon)} />
               </button>
             )}

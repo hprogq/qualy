@@ -395,10 +395,13 @@ export default {
     '{kind, select, approved {已通过} recorded {管理员认定} notCounted {已通过，按计分规则计入了其他申报} refused {未通过，不计入成绩} abandoned {已放弃，不计入成绩} revoked {已撤销，不计入成绩} excluded {不计入成绩} other {自动计入}}',
   'assessment/result/made':
     '{kind, select, voided {项目已停用，不计入成绩} derived {自动计入，无需申报} recorded {等待管理员认定} other {未申报}}',
-  'assessment/result/rule':
-    '{kind, select, each {每条 {value} 分} person {每人 {value} 分} other {管理员认定}}',
+  'assessment/result/rule': '{kind, select, person {每人 {value} 分} other {每条 {value} 分}}',
   'assessment/result/line-tag':
     '{kind, select, notCounted {未计入} refused {未通过} abandoned {已放弃} excluded {不计分} other {已撤销}}',
+  'assessment/result/waits-for':
+    '{kind, select, pending {通过后计入} drafts {提交并通过后计入} other {{reader, select, staff {参评人修改或补充后继续审核} other {修改或补充后继续审核}}}}',
+  'assessment/result/follow':
+    '{kind, select, todo {{reader, select, staff {查看待参评人处理的 {count} 条} other {去我的申报处理 {count} 条}}} other {{reader, select, staff {查看该项目的全部申报} other {在我的申报中查看该项目}}}}',
   'assessment/result/more':
     '{reader, select, staff {查看全部 {count} 条} other {在我的申报中查看全部 {count} 条}}',
   'assessment/result/trim':

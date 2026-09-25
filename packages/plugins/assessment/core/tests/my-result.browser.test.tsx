@@ -509,12 +509,61 @@ describe('the rows of the account', () => {
     const fold = row.querySelector('[data-testid="ledger-lines"]') as HTMLElement
     await expect.poll(() => fold.getAttribute('data-open')).toBe('true')
     expect(fold.querySelectorAll('[data-testid="ledger-line"]')).toHaveLength(6)
-    const more = fold.querySelector('[data-testid="ledger-more"]') as HTMLElement
+    const more = fold.querySelector('[data-testid="ledger-more"][data-follow="all"]') as HTMLElement
     expect(more.getAttribute('data-count')).toBe('78')
     await userEvent.click(more)
     await expect.element(page.getByTestId('entries-page')).toBeInTheDocument()
     expect(addressNow()).toContain('open=q7')
     expect(addressNow()).not.toContain('detail=')
+  })
+
+  it('leads from what waits on the reader to that very claim', async () => {
+    await page.viewport(1440, 900)
+    await screen(normal())
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
+    // three approved, four under review, and one sent back for revision
+    const row = itemRow('q3')
+    expect(row.querySelector('[data-tag]')?.getAttribute('data-tag')).toBe('todo')
+    await userEvent.click(row.querySelector('button[aria-expanded]') as HTMLElement)
+    const fold = row.querySelector('[data-testid="ledger-lines"]') as HTMLElement
+    await expect.poll(() => fold.getAttribute('data-open')).toBe('true')
+    const waiting = fold.querySelector('[data-follow="todo"]') as HTMLElement
+    expect(waiting.getAttribute('data-count')).toBe('1')
+    await userEvent.click(waiting)
+    await expect.element(page.getByTestId('entries-page')).toBeInTheDocument()
+    expect(addressNow()).toContain('open=q3')
+    expect(addressNow()).toContain('detail=q3-h')
+  })
+
+  it('leads from a question with nothing on the account yet to its claims', async () => {
+    await page.viewport(1440, 900)
+    await screen(normal())
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
+    // two under review and nothing decided: the row itself goes there
+    const lead = itemRow('q4').querySelector('[data-testid="ledger-lead"]') as HTMLElement
+    await userEvent.click(lead)
+    await expect.element(page.getByTestId('entries-page')).toBeInTheDocument()
+    expect(addressNow()).toContain('open=q4')
+    expect(addressNow()).not.toContain('detail=')
+  })
+
+  it('says under a question what its figure waits for, not the count its mark already gives', async () => {
+    await page.viewport(1440, 900)
+    await screen(normal())
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
+    const made = (itemId: string) =>
+      itemRow(itemId).querySelector('[data-made]')?.getAttribute('data-made') ?? null
+    const rule = (itemId: string) =>
+      itemRow(itemId).querySelector('[data-rule]')?.getAttribute('data-rule') ?? null
+    // only under review, and only a draft: the reason the figure is nothing
+    expect(made('q4')).toBe('waits')
+    expect(made('q9')).toBe('waits')
+    // decided claims beside the ones the mark counts
+    expect(made('q3')).toBe('claims')
+    // one record by the office says so once, on its own line
+    expect(made('q6')).toBe('claim')
+    expect(rule('q6')).toBeNull()
+    expect(rule('q3')).toBe('each')
   })
 
   it('takes a question with one claim straight to it', async () => {
@@ -915,5 +964,80 @@ describe('the ledger inside another page', () => {
     const band = sectionOf('m0').getBoundingClientRect()
     expect(Math.abs(total.left - seat.left)).toBeLessThan(4)
     expect(Math.abs(band.left - seat.left)).toBeLessThan(2)
+  })
+
+  it('leads a staff reader to the claims off the account through the page’s own ways', async () => {
+    await page.viewport(1440, 900)
+    const eight = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map((key) => `many-${key}`)
+    const onEntryOpen = vi.fn()
+    const onItemOpen = vi.fn()
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+      }),
+      children: (
+        <ResultLedger
+          result={{
+            mode: 'provisional',
+            total: '11.00',
+            groups: [group('g', '综合', { final: '11.00' })],
+            lines: [
+              counted('one-a', 'one', '3.00'),
+              ...eight.map((id) => counted(id, 'many', '1.00')),
+            ],
+          }}
+          items={[
+            item('one', 'g', '社会实践', { each: '3' }),
+            item('back', 'g', '学术竞赛获奖', { each: '6' }),
+            item('many', 'g', '志愿服务时长', { each: '1' }),
+          ]}
+          entries={[
+            entry('one-a', 'one', 'approved'),
+            entry('one-b', 'one', 'in_review'),
+            entry('back-a', 'back', 'needs_revision'),
+            ...eight.map((id) => entry(id, 'many', 'approved')),
+            entry('many-x', 'many', 'needs_revision'),
+            entry('many-y', 'many', 'in_review', { supplement: true }),
+          ]}
+          reader="staff"
+          onEntryOpen={onEntryOpen}
+          onItemOpen={onItemOpen}
+        />
+      ),
+    })
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
+    const open = async (itemId: string) => {
+      await userEvent.click(itemRow(itemId).querySelector('button[aria-expanded]') as HTMLElement)
+      const fold = itemRow(itemId).querySelector('[data-testid="ledger-lines"]') as HTMLElement
+      await expect.poll(() => fold.getAttribute('data-open')).toBe('true')
+      return fold
+    }
+
+    // one decided claim and one still under review: the claim opens in
+    // place, and the rest of the question is one press on
+    const one = await open('one')
+    expect(one.querySelectorAll('[data-testid="ledger-line"]')).toHaveLength(1)
+    await userEvent.click(one.querySelector('[data-follow="rest"]') as HTMLElement)
+    expect(onItemOpen).toHaveBeenLastCalledWith('one')
+
+    // nothing decided and one claim waiting on the participant: the row is it
+    expect(itemRow('back').querySelector('[data-tag]')?.getAttribute('data-tag')).toBe('todo')
+    await userEvent.click(
+      itemRow('back').querySelector('[data-testid="ledger-lead"]') as HTMLElement,
+    )
+    expect(onEntryOpen).toHaveBeenLastCalledWith('back-a')
+
+    // two waiting and more decided than the fold lists: both lead to the
+    // question, which holds them all
+    const many = await open('many')
+    const waiting = many.querySelector('[data-follow="todo"]') as HTMLElement
+    expect(waiting.getAttribute('data-count')).toBe('2')
+    await userEvent.click(waiting)
+    expect(onItemOpen).toHaveBeenLastCalledWith('many')
+    const all = many.querySelector('[data-follow="all"]') as HTMLElement
+    expect(all.getAttribute('data-count')).toBe('8')
+    onItemOpen.mockClear()
+    await userEvent.click(all)
+    expect(onItemOpen).toHaveBeenCalledWith('many')
   })
 })

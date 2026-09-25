@@ -455,14 +455,25 @@ const resultMade = defineMessage<{ kind: string }>()({
 
 const resultRule = defineMessage<{ kind: string; value: string }>()({
   id: 'assessment/result/rule',
-  defaultMessage:
-    '{kind, select, each {{value} each} person {{value} per participant} other {Recorded by staff}}',
+  defaultMessage: '{kind, select, person {{value} per participant} other {{value} each}}',
 })
 
 const resultLineTag = defineMessage<{ kind: string }>()({
   id: 'assessment/result/line-tag',
   defaultMessage:
     '{kind, select, notCounted {Not counted} refused {Not approved} abandoned {Abandoned} excluded {Excluded} other {Revoked}}',
+})
+
+const resultWaitsFor = defineMessage<{ kind: string; reader: string }>()({
+  id: 'assessment/result/waits-for',
+  defaultMessage:
+    '{kind, select, pending {Counts once approved} drafts {Counts once submitted and approved} other {{reader, select, staff {Review goes on once the participant revises or adds material} other {Review goes on once you revise or add material}}}}',
+})
+
+const resultFollow = defineMessage<{ kind: string; count: number; reader: string }>()({
+  id: 'assessment/result/follow',
+  defaultMessage:
+    '{kind, select, todo {{reader, select, staff {View the {count} waiting on the participant} other {Handle {count} in My entries}}} other {{reader, select, staff {View every entry on this item} other {View this item in My entries}}}}',
 })
 
 const resultMore = defineMessage<{ count: number; reader: string }>()({
@@ -1915,6 +1926,8 @@ const i18n = definePluginMessages({
     resultMade,
     resultRule,
     resultLineTag,
+    resultWaitsFor,
+    resultFollow,
     resultMore,
     resultTrim,
     // ------------------------------------------------------------------
