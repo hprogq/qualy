@@ -437,6 +437,16 @@ export const personaSituations = Effect.gen(function* () {
       'review-stage',
     )
     add('lead', 'running: own ask still out', yield* asksOutstanding(lead))
+    // the rounds nobody is appointed to review, as the lead's alert panel reads them
+    const alerts = yield* assessment.reviewAlerts(tenantId, current, principalOf(tenantId, lead))
+    add(
+      'lead',
+      'running: rounds nobody can review, in the alerts',
+      alerts.groups
+        .filter((group) => group.reason === 'no-assignee')
+        .reduce((sum, group) => sum + group.waiting, 0),
+      'route-change',
+    )
     add('lead', 'running: rounds concluded', yield* acted(lead, ['approved', 'rejected']))
     add(
       'lead',

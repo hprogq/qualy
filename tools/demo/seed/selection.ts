@@ -556,9 +556,18 @@ export const runSelection = (input: {
             )
             .sort((a, b) => b.standing - a.standing)
             .slice(0, 5)
+    // and one big data student, whose award the route change leaves with
+    // nobody appointed to review it
+    const bigData = present
+      .filter(
+        (student) =>
+          student.major === 'bd' && !leading.has(student.id) && !world.personas.has(student.id),
+      )
+      .sort((a, b) => b.standing - a.standing)[0]
     const first = new Set([
       ...(persona === undefined ? [] : [persona.id]),
       ...classmates.map((one) => one.id),
+      ...(bigData === undefined ? [] : [bigData.id]),
     ])
     const byStanding = [...present].sort(
       (a, b) => Number(first.has(b.id)) - Number(first.has(a.id)) || b.standing - a.standing,
@@ -1515,6 +1524,29 @@ export const runSelection = (input: {
     if (a5 !== undefined) {
       scene(ago(4, '11:00'), () => askAs(papersOf(a5, 'transcript'), desk))
       scene(ago(3, '20:00'), () => answerAs(papersOf(a5, 'transcript')))
+    }
+    // The lead's alert panel: a big data award sent in before the route
+    // change, still with the counsellor when it came. The step the change
+    // puts first asks for a major reviewer big data never had, so the round
+    // stops there and waits for an appointment.
+    if (bigData !== undefined) {
+      scene(ago(12, '21:10'), () =>
+        fileFor(
+          held,
+          'big-data',
+          bigData,
+          'competition',
+          {
+            name: '省大学生大数据挑战赛',
+            term: '25-26-1',
+            level: 'provincial',
+            rank: 1,
+            team: true,
+          },
+          'competition-1',
+          '获奖证书.jpg',
+        ),
+      )
     }
 
     // --- what the college imports -------------------------------------------
