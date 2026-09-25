@@ -25,8 +25,10 @@ import type { Student } from './seed/world.ts'
 import {
   arrangeSignInPage,
   choosePersonaStudent,
+  PERSONA_PASSWORD_REQUIRED,
   demoAccountsEnv,
   openPersonaAccounts,
+  personaPassword,
 } from './seed/personas.ts'
 import { runSelection, type SelectionStage } from './seed/selection.ts'
 import { writeSignIns } from './seed/telemetry.ts'
@@ -45,6 +47,9 @@ if (adminPassword === undefined || adminPassword.length < 15) {
     'QUALY_DEMO_ADMIN_PASSWORD must name the demo system administrator’s password (15 characters or more)',
   )
 }
+// the accounts the demonstration signs in as: not a committed value either
+const accountsPassword = personaPassword()
+if (accountsPassword === undefined) throw new Error(PERSONA_PASSWORD_REQUIRED)
 const flag = (name: string) =>
   process.argv.find((arg) => arg.startsWith(`--${name}=`))?.slice(name.length + 3)
 const stage = (flag('stage') ?? 'review') as SelectionStage
@@ -199,7 +204,7 @@ const program = Effect.gen(function* () {
 
   // the demonstration accounts open, a few weeks before the selection
   story.set(new Date(startedAt - 27 * 86_400_000))
-  yield* openPersonaAccounts(world, personaStudent, story)
+  yield* openPersonaAccounts(world, personaStudent, story, accountsPassword)
 
   const history = (
     (yield* runSql(
@@ -228,7 +233,9 @@ await runOverDemo(url, program as Effect.Effect<void, unknown, never>)
 const moved = await rewrite(pool, timeline)
 const signIns = await writeSignIns(pool)
 console.log(`${signIns} sign-ins written`)
-console.log(`\nset on the demo deployment:\nQUALY_DEMO_ACCOUNTS='${demoAccountsEnv()}'`)
+console.log(
+  `\nonly on a deployment that offers these accounts on its sign-in page:\nQUALY_DEMO_ACCOUNTS='${demoAccountsEnv(accountsPassword)}'`,
+)
 await pool.end()
 console.log(
   `done in ${Math.round((Date.now() - startedAt) / 1000)}s: ${timeline.windows.length} steps, ${moved} timestamps placed in the story`,

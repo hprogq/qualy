@@ -9,12 +9,12 @@
 // the next snapshot is taken from there, and signing in writes sessions and
 // sign-ins that do not belong in it. Never into the development database
 // either. What a preview writes is gone at the next restore, as it is on the
-// server every six hours.
+// server when the baseline is restored there.
 
 import { execFileSync, spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { PERSONA_ACCOUNTS, demoAccountsEnv } from './seed/personas.ts'
+import { PERSONA_ACCOUNTS, demoAccountsEnv, personaPassword } from './seed/personas.ts'
 
 const CONTAINER = 'qualy-postgres-demo'
 const DATABASE = 'qualy_demo_preview'
@@ -78,9 +78,15 @@ if (!keep) {
   execFileSync('tar', ['-xzf', files, '-C', STORAGE])
 }
 
+// the password the baseline was seeded with; without it the sign-in page
+// lists nobody and the accounts are signed in to by hand
+const password = personaPassword()
 console.log('\nsign in at http://localhost:5173 with one of:')
 for (const account of PERSONA_ACCOUNTS) {
-  console.log(`  ${account.label}: ${account.email} / ${account.password}`)
+  console.log(`  ${account.label}: ${account.email}`)
+}
+if (password === undefined) {
+  console.log('  (with the password the baseline was seeded with, QUALY_DEMO_PERSONA_PASSWORD)')
 }
 console.log('')
 
@@ -94,7 +100,7 @@ const child = spawn(process.execPath, ['apps/server/src/dev/host.ts'], {
     DATABASE_URL: `postgres://qualy:qualy@localhost:5434/${DATABASE}`,
     QUALY_STORAGE_DEFAULT_BACKEND: 'local',
     QUALY_STORAGE_LOCAL_ROOT: STORAGE,
-    QUALY_DEMO_ACCOUNTS: demoAccountsEnv(),
+    ...(password === undefined ? {} : { QUALY_DEMO_ACCOUNTS: demoAccountsEnv(password) }),
   },
 })
 // the terminal's interrupt reaches the whole group; this only waits for it

@@ -1,6 +1,6 @@
 # 演示数据
 
-公开演示站用的数据：三学年六个已归档的综测批次，加一个进行中的推免批次。工具在 `tools/demo/`，
+展示实例用的数据：三学年六个已归档的综测批次，加一个进行中的推免批次。工具在 `tools/demo/`，
 服务器上的用法见 `deploy/demo/README.md`。
 
 ## 来源与隐私
@@ -88,16 +88,18 @@ D+9 开放申诉（条数取真实各学期），D+11 截止；D+13 归档（归
 
 ## 演示账号
 
-`tools/demo/seed/personas.ts`：学生、班级综测负责人、辅导员、综测负责人四个账号，密码公开（登录页会显示）。
-部署设置 `QUALY_DEMO_ACCOUNTS` 后，登录页列出它们，并冻结其密码、邮箱与登录方式（见 docs/deployment.md）。
-系统管理员不公开，密码只由 `QUALY_DEMO_ADMIN_PASSWORD` 在生成时给出。
+`tools/demo/seed/personas.ts`：学生、班级综测负责人、辅导员、综测负责人四个账号，共用生成时由
+`QUALY_DEMO_PERSONA_PASSWORD` 给出的密码，不入库（2026-09-25 起；之前的密码写在源码里，已随部署形态改为不公开账号而撤下）。
+部署设置 `QUALY_DEMO_ACCOUNTS` 后，登录页列出它们，并冻结其密码、邮箱与登录方式（见 docs/deployment.md）；
+展示实例不设，只留给将来开放受限演示。系统管理员的密码只由 `QUALY_DEMO_ADMIN_PASSWORD` 在生成时给出。
 
 ## 本地预览
 
 `pnpm demo:preview`：把 `data/demo-baseline/` 的快照还原到演示容器里单独的 `qualy_demo_preview` 库，附件解到
 `data/demo-preview/storage`，然后照常启动 `pnpm dev`（开发会话里 shell 变量优先于 `.env`，所以只有数据库、存储与
-演示账号三项被改指向，其余沿用自己的 `.env`）。浏览器开 http://localhost:5173，登录页有四个演示账号。
+演示账号三项被改指向，其余沿用自己的 `.env`）。浏览器开 http://localhost:5173；设了 `QUALY_DEMO_PERSONA_PASSWORD`
+时登录页列出四个演示账号，没设时按邮箱手动登录。
 
-- 每次运行都先还原，登录产生的会话与登录记录只落在预览副本里，与服务器每 6 小时还原一样；`--keep` 跳过还原。
+- 每次运行都先还原，登录产生的会话与登录记录只落在预览副本里，与服务器上复原一样；`--keep` 跳过还原。
 - 不碰 `qualy_demo`（下一次快照从它打）也不碰开发库；普通 `pnpm dev` 仍然是自己的开发数据。
 - 需要演示容器在跑：`docker compose --profile demo up -d postgres-demo`；快照不在时先 `pnpm demo:snapshot`。

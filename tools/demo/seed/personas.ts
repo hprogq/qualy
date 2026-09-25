@@ -5,46 +5,36 @@ import { runSql } from '@qualy/plugin-database/testkit'
 import type { Story } from './context.ts'
 import type { Student, World } from './world.ts'
 
-// The people a visitor signs in as.
+// The people the demonstration signs in as.
 //
-// Their passwords are no secret - the sign-in page of a demonstration
-// deployment prints them - which is why they may live in this file. The
-// deployment names the same accounts in QUALY_DEMO_ACCOUNTS, and that is
-// what freezes them against a visitor changing them.
+// Their password is given at seeding time, like the administrator's, and is
+// never committed: a deployment of this baseline decides for itself whether
+// anybody but its owner may sign in as them. One that offers them on its
+// sign-in page names them in QUALY_DEMO_ACCOUNTS, which also freezes them
+// against a visitor changing them; the seeder prints that value.
 //
 // The system administrator is not among them: that account can change how
 // everybody signs in, and its password comes from the environment only.
 
 export const PERSONA_ACCOUNTS = [
-  {
-    key: 'student',
-    label: '学生',
-    email: 'student@demo.qualy.example',
-    password: 'quiet-harbor-lantern-2027',
-  },
-  {
-    key: 'class-lead',
-    label: '班级综测负责人',
-    email: 'class-lead@demo.qualy.example',
-    password: 'amber-meadow-compass-2027',
-  },
-  {
-    key: 'counsellor',
-    label: '辅导员',
-    email: 'counsellor@demo.qualy.example',
-    password: 'silver-orchard-bridge-2027',
-  },
-  {
-    key: 'lead',
-    label: '综测负责人',
-    email: 'assessment-lead@demo.qualy.example',
-    password: 'cobalt-river-lighthouse-2027',
-  },
+  { key: 'student', label: '学生', email: 'student@demo.qualy.example' },
+  { key: 'class-lead', label: '班级综测负责人', email: 'class-lead@demo.qualy.example' },
+  { key: 'counsellor', label: '辅导员', email: 'counsellor@demo.qualy.example' },
+  { key: 'lead', label: '综测负责人', email: 'assessment-lead@demo.qualy.example' },
 ] as const
 
-/** what a demonstration deployment puts in QUALY_DEMO_ACCOUNTS */
-export const demoAccountsEnv = () =>
-  JSON.stringify(PERSONA_ACCOUNTS.map(({ label, email, password }) => ({ label, email, password })))
+export const PERSONA_PASSWORD_REQUIRED =
+  'QUALY_DEMO_PERSONA_PASSWORD must name the password the demonstration accounts share (15 characters or more)'
+
+/** the password the four accounts share, or undefined when the environment names none */
+export const personaPassword = (): string | undefined => {
+  const value = process.env.QUALY_DEMO_PERSONA_PASSWORD
+  return value === undefined || value.length < 15 ? undefined : value
+}
+
+/** what a deployment that offers the accounts puts in QUALY_DEMO_ACCOUNTS */
+export const demoAccountsEnv = (password: string) =>
+  JSON.stringify(PERSONA_ACCOUNTS.map(({ label, email }) => ({ label, email, password })))
 
 /** the student the demonstration follows: near the top in grades, busy, and in a 2023 class */
 export const choosePersonaStudent = (world: World): Student => {
@@ -82,7 +72,12 @@ export const arrangeSignInPage = (world: World, story: Story) =>
   })
 
 /** gives each persona an address and a password, through the product */
-export const openPersonaAccounts = (world: World, student: Student, story: Story) =>
+export const openPersonaAccounts = (
+  world: World,
+  student: Student,
+  story: Story,
+  password: string,
+) =>
   Effect.gen(function* () {
     const iam = yield* Iam
     const provider = (
@@ -113,7 +108,7 @@ export const openPersonaAccounts = (world: World, student: Student, story: Story
           world.tenantId,
           userId,
           provider,
-          { secret: account.password },
+          { secret: password },
           world.admin,
         ),
       )
