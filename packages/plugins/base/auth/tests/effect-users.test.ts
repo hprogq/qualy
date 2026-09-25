@@ -1115,3 +1115,302 @@ describe.runIf(postgresAvailable).concurrent('the way in written for a person', 
     }
   })
 })
+
+describe
+  .runIf(postgresAvailable)
+  .concurrent('an account, administered within what one could grant', () => {
+    // The manager administers the left branch and holds no grant
+    // administration at all. An administrator standing there is a person on
+    // their branch whose authority they could never have handed out.
+    const withAdministrators = Effect.fn('withAdministrators')(function* () {
+      const f = yield* seed()
+      const admin = one_<{ id: string }>(
+        yield* runSql(sql`
+        insert into roles (tenant_id, code, name, kind, status, permission_mode, system_key)
+        values (${f.tenant}, 'admin', 'Admin', 'tenant', 'active', 'all-active', 'tenant-admin')
+        returning id`),
+      ).id
+      const person = (name: string, at: string, email: string, businessNo: string) =>
+        Effect.map(
+          runSql(sql`
+          insert into users
+            (tenant_id, display_name, user_type_id, primary_org_node_id, email, business_no)
+          values (${f.tenant}, ${name}, ${f.staff}, ${at}, ${email}, ${businessNo})
+          returning id`),
+          (result) => one_<{ id: string }>(result).id,
+        )
+      const boss = yield* person('Boss', f.left, 'boss@school.edu', 'B-1')
+      const chief = yield* person('Chief', f.root, 'chief@school.edu', 'C-1')
+      for (const holder of [boss, chief]) {
+        yield* runSql(sql`
+        insert into role_grants (tenant_id, user_id, role_id) values (${f.tenant}, ${holder}, ${admin})`)
+      }
+      // the manager may also delete and read on their branch, so nothing but
+      // what Boss holds stands in the way
+      const managerRole = one_<{ id: string }>(
+        yield* runSql(sql`select id from roles where tenant_id = ${f.tenant} and code = 'mgr'`),
+      ).id
+      const remove = one_<{ id: string }>(
+        yield* runSql(sql`
+        insert into permissions (code, plugin, name, target_kind)
+        values ('auth.user.delete', 'auth', 'delete users', 'org-node')
+        on conflict (code) do update set code = excluded.code returning id`),
+      ).id
+      yield* runSql(sql`
+      insert into role_permissions (tenant_id, role_id, permission_id)
+      values (${f.tenant}, ${managerRole}, ${remove})`)
+      const readerRole = one_<{ id: string }>(
+        yield* runSql(sql`select id from roles where tenant_id = ${f.tenant} and code = 'reader'`),
+      ).id
+      yield* runSql(sql`
+      insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+      values (${f.tenant}, ${f.manager}, ${readerRole}, ${f.left}, 'subtree')`)
+      const other = one_<{ id: string }>(
+        yield* runSql(sql`
+        insert into user_types (tenant_id, code, name, placement_mode)
+        values (${f.tenant}, 'other', 'Other', 'unrestricted') returning id`),
+      ).id
+      const provider = one_<{ id: string }>(
+        yield* runSql(
+          sql`select id from auth_providers where tenant_id = ${f.tenant} and code = 'local'`,
+        ),
+      ).id
+      yield* runSql(sql`
+      insert into user_auth_bindings (tenant_id, user_id, auth_provider_id, credential_hash)
+      values (${f.tenant}, ${boss}, ${provider}, 'digest:boss-own-secret')`)
+      const chiefAs: Principal = { tenantId: f.tenant, userId: chief, sessionId: 's' }
+      return { ...f, boss, chief, chiefAs, other, provider }
+    })
+
+    it('refuses a manager every change to the account of somebody holding more than they could grant', async () => {
+      const db = await createTestContext('effect-users-account-beyond')
+      try {
+        const exit = await run(
+          db.url,
+          Effect.gen(function* () {
+            const f = yield* withAdministrators()
+            const iam = yield* Iam
+            const tried = (write: Effect.Effect<unknown, unknown>) =>
+              Effect.map(Effect.result(write), (result) => tagOf(result) ?? result._tag)
+            const answers = {
+              put: yield* tried(
+                iam.users.putBinding(f.tenant, f.boss, f.provider, { secret: 'taken over' }, f.as),
+              ),
+              assess: yield* tried(
+                iam.users.assessBinding(f.tenant, f.boss, f.provider, { secret: 'x' }, f.as),
+              ),
+              revoke: yield* tried(iam.users.revokeBinding(f.tenant, f.boss, f.provider, f.as)),
+              email: yield* tried(
+                iam.users.update(f.tenant, f.boss, { email: 'mine@evil.test' }, 1, f.as),
+              ),
+              number: yield* tried(
+                iam.users.update(f.tenant, f.boss, { businessNo: 'X-1' }, 1, f.as),
+              ),
+              type: yield* tried(
+                iam.users.update(f.tenant, f.boss, { userTypeId: f.other }, 1, f.as),
+              ),
+              disable: yield* tried(
+                iam.users.setStatus(
+                  f.tenant,
+                  f.boss,
+                  { status: 'disabled', expectedVersion: 1 },
+                  f.as,
+                ),
+              ),
+              move: yield* tried(iam.users.setPlacement(f.tenant, f.boss, f.left, 1, f.as)),
+              remove: yield* tried(iam.users.remove(f.tenant, f.boss, 1, f.as)),
+              retire: yield* tried(iam.users.provisioning.retireUsers(f.tenant, [f.boss], f.as)),
+              // a name is the record, not the account
+              rename: yield* tried(
+                iam.users.update(f.tenant, f.boss, { displayName: 'The Boss' }, 1, f.as),
+              ),
+            }
+            const row = one_<{
+              email: string
+              business_no: string
+              enabled: boolean
+              deleted: boolean
+              node: string
+              type: string
+            }>(
+              yield* runSql(sql`
+              select email, business_no, enabled, deleted_at is not null as deleted,
+                primary_org_node_id as node, user_type_id as type, id
+              from users where id = ${f.boss}`),
+            )
+            const grants = one_<{ count: number }>(
+              yield* runSql(sql`
+              select count(*)::int as count, 'x' as id from role_grants
+              where user_id = ${f.boss} and revoked_at is null`),
+            ).count
+            const bindings = (yield* runSql(sql`
+            select credential_hash, revoked_at is not null as revoked
+            from user_auth_bindings where user_id = ${f.boss}`)) as unknown as {
+              rows: { credential_hash: string; revoked: boolean }[]
+            }
+            // the same manager over somebody who holds nothing
+            const plain = yield* tried(
+              iam.users.setStatus(
+                f.tenant,
+                f.onLeft,
+                { status: 'disabled', expectedVersion: 1 },
+                f.as,
+              ),
+            )
+            // and an administrator over the same administrator
+            const byPeer = yield* tried(
+              iam.users.update(f.tenant, f.boss, { email: 'boss@school.edu.cn' }, 2, f.chiefAs),
+            )
+            return { answers, row, grants, bindings: bindings.rows, plain, byPeer, f }
+          }),
+        )
+        const answer = ok(exit)
+        expect(answer.answers).toEqual({
+          put: 'ACCESS_DENIED',
+          assess: 'ACCESS_DENIED',
+          revoke: 'ACCESS_DENIED',
+          email: 'ACCESS_DENIED',
+          number: 'ACCESS_DENIED',
+          type: 'ACCESS_DENIED',
+          disable: 'ACCESS_DENIED',
+          move: 'ACCESS_DENIED',
+          remove: 'ACCESS_DENIED',
+          retire: 'ACCESS_DENIED',
+          rename: 'Success',
+        })
+        // nothing about the account moved
+        expect(answer.row).toMatchObject({
+          email: 'boss@school.edu',
+          business_no: 'B-1',
+          enabled: true,
+          deleted: false,
+          node: answer.f.left,
+          type: answer.f.staff,
+        })
+        expect(answer.grants).toBe(1)
+        expect(answer.bindings).toEqual([
+          { credential_hash: 'digest:boss-own-secret', revoked: false },
+        ])
+        expect(answer.plain).toBe('Success')
+        expect(answer.byPeer).toBe('Success')
+      } finally {
+        await db.dispose()
+      }
+    })
+
+    it('tells the screen which accounts it may change', async () => {
+      const db = await createTestContext('effect-users-account-capability')
+      try {
+        const exit = await run(
+          db.url,
+          Effect.gen(function* () {
+            const f = yield* withAdministrators()
+            const iam = yield* Iam
+            const boss = yield* iam.users.detail(f.as, f.boss)
+            const ada = yield* iam.users.detail(f.as, f.onLeft)
+            return {
+              boss: { record: boss.user.manageable, account: boss.accountManageable },
+              ada: { record: ada.user.manageable, account: ada.accountManageable },
+              bossDoors: (yield* iam.users.entrances(f.as, f.boss)).manageable,
+              adaDoors: (yield* iam.users.entrances(f.as, f.onLeft)).manageable,
+              byPeer: (yield* iam.users.detail(f.chiefAs, f.boss)).accountManageable,
+            }
+          }),
+        )
+        expect(ok(exit)).toEqual({
+          boss: { record: true, account: false },
+          ada: { record: true, account: true },
+          bossDoors: false,
+          adaDoors: true,
+          byPeer: true,
+        })
+      } finally {
+        await db.dispose()
+      }
+    })
+
+    it('answers an id that names nobody the way it answers somebody out of reach', async () => {
+      const db = await createTestContext('effect-users-unknown-id')
+      try {
+        const exit = await run(
+          db.url,
+          Effect.gen(function* () {
+            const f = yield* seed()
+            const iam = yield* Iam
+            const provider = one_<{ id: string }>(
+              yield* runSql(
+                sql`select id from auth_providers where tenant_id = ${f.tenant} and code = 'local'`,
+              ),
+            ).id
+            const gone = one_<{ id: string }>(
+              yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id,
+                deleted_at, enabled)
+              values (${f.tenant}, 'Gone', ${f.staff}, ${f.left}, now(), false) returning id`),
+            ).id
+            const nobody = '01900000-0000-7000-8000-000000000000'
+            const answers = (userId: string) =>
+              Effect.gen(function* () {
+                const reason = (result: { _tag: string; failure?: unknown }) =>
+                  result._tag === 'Failure'
+                    ? `${tagOf(result)}:${(result.failure as { reason?: string }).reason ?? ''}`
+                    : result._tag
+                return [
+                  reason(
+                    yield* Effect.result(
+                      iam.users.update(f.tenant, userId, { displayName: 'X' }, 1, f.as),
+                    ),
+                  ),
+                  reason(
+                    yield* Effect.result(
+                      iam.users.setStatus(
+                        f.tenant,
+                        userId,
+                        { status: 'disabled', expectedVersion: 1 },
+                        f.as,
+                      ),
+                    ),
+                  ),
+                  reason(yield* Effect.result(iam.users.remove(f.tenant, userId, 1, f.as))),
+                  reason(
+                    yield* Effect.result(iam.users.setPlacement(f.tenant, userId, f.left, 1, f.as)),
+                  ),
+                  reason(
+                    yield* Effect.result(
+                      iam.users.putBinding(
+                        f.tenant,
+                        userId,
+                        provider,
+                        { secret: 'long-enough' },
+                        f.as,
+                      ),
+                    ),
+                  ),
+                  reason(
+                    yield* Effect.result(
+                      iam.users.assessBinding(f.tenant, userId, provider, { secret: 'x' }, f.as),
+                    ),
+                  ),
+                  reason(
+                    yield* Effect.result(iam.users.revokeBinding(f.tenant, userId, provider, f.as)),
+                  ),
+                ]
+              })
+            return {
+              nobody: yield* answers(nobody),
+              gone: yield* answers(gone),
+              // Grace stands on the right branch, which the manager does not administer
+              outOfReach: yield* answers(f.onRight),
+            }
+          }),
+        )
+        const answer = ok(exit)
+        expect(new Set(answer.outOfReach)).toEqual(new Set([answer.outOfReach[0]]))
+        expect(answer.outOfReach[0]).toMatch(/^ACCESS_DENIED:/)
+        expect(answer.nobody).toEqual(answer.outOfReach)
+        expect(answer.gone).toEqual(answer.outOfReach)
+      } finally {
+        await db.dispose()
+      }
+    })
+  })

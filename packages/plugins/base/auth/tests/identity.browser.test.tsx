@@ -627,6 +627,7 @@ describe('users workspace', () => {
     placement: { mode: 'unrestricted' },
     roles: [{ grantId: 'g-1', roleId: 'r-1', roleName: '审核员', orgNodeName: '分部' }],
     lastSignInAt: null,
+    accountManageable: true,
   })
   const rosterStubs = (over: Stubs<'identity'> = {}) =>
     stubs({
@@ -872,6 +873,7 @@ describe("a person's header", () => {
     placement: { mode: 'unrestricted' },
     roles: [],
     lastSignInAt: null,
+    accountManageable: true,
   })
   const mount = (over: Stubs<'identity'>) =>
     renderScreen({
@@ -916,5 +918,32 @@ describe("a person's header", () => {
     await dialog.getByRole('button', { name: '取消' }).click()
     await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull()
     expect(document.querySelector('[data-testid="feedback"]')).toBeNull()
+  })
+
+  // Somebody holding authority the reader could not grant: their record is
+  // the reader's to edit, their account is not. The controls that would only
+  // be refused are not drawn, and a save sends none of the account's fields.
+  it('offers only the record when the account is beyond the reader', async () => {
+    const update = vi.fn((_: { payload: Record<string, unknown> }) =>
+      Effect.succeed({ ok: true as const }),
+    )
+    await mount({
+      getUser: () => Effect.succeed({ ...person(), accountManageable: false }),
+      updateUser: update,
+    })
+    await expect.element(page.getByRole('button', { name: '编辑资料' })).toBeInTheDocument()
+    expect(page.getByRole('link', { name: '调动' }).query()).toBeNull()
+    expect(page.getByRole('button', { name: '更多操作' }).query()).toBeNull()
+
+    await page.getByRole('button', { name: '编辑资料' }).click()
+    const dialog = page.getByRole('dialog')
+    await expect.element(dialog.getByRole('textbox', { name: '邮箱' })).toBeDisabled()
+    await dialog.getByRole('textbox', { name: '名称' }).fill('张新')
+    await dialog.getByRole('button', { name: '保存' }).click()
+    await vi.waitFor(() => expect(update).toHaveBeenCalledTimes(1))
+    const sent = update.mock.calls[0]![0].payload
+    expect(sent).toMatchObject({ displayName: '张新' })
+    expect(sent).not.toHaveProperty('email')
+    expect(sent).not.toHaveProperty('businessNo')
   })
 })

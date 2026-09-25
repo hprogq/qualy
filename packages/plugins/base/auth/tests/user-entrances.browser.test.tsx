@@ -39,6 +39,7 @@ const person = (over: Partial<Person['user']> = {}): Person => ({
   placement: { mode: 'unrestricted' },
   roles: [],
   lastSignInAt: null,
+  accountManageable: true,
 })
 
 const local = (over: Partial<Entrance> = {}): Entrance => ({

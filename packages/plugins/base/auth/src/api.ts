@@ -217,6 +217,13 @@ const userDetail = Schema.Struct({
   // in is a question per entrance, answered on the ways-in page; a count of
   // bindings cannot answer it, because some doors keep none.
   lastSignInAt: Schema.NullOr(Schema.String),
+  /**
+   * Whether this caller may also change the person's account - their ways
+   * in, email, business number, type, status, placement - or delete them.
+   * `user.manageable` covers the record; this also needs everything the
+   * person holds to be authority the caller could grant them.
+   */
+  accountManageable: Schema.Boolean,
 })
 
 /**
@@ -768,7 +775,6 @@ export const identityApiGroup = HttpApiGroup.make('identity')
       error: [
         UserConflict,
         UserEmailConflict,
-        UserNotFound,
         UserVersionConflict,
         UserTypeNotFound,
         UserTypeDisabled,
@@ -789,7 +795,6 @@ export const identityApiGroup = HttpApiGroup.make('identity')
       payload: Schema.Struct({ primaryOrgNodeId: uuidInput, version: expectedVersion }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
       error: [
-        UserNotFound,
         UserVersionConflict,
         UserTypeNotFound,
         SystemAccountProtected,
@@ -805,13 +810,7 @@ export const identityApiGroup = HttpApiGroup.make('identity')
       params: Schema.Struct({ userId: uuidInput }),
       payload: Schema.Struct({ status: resourceStatus, version: expectedVersion }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
-      error: [
-        UserNotFound,
-        UserVersionConflict,
-        SystemAccountProtected,
-        LastAdministrator,
-        AccessDenied,
-      ],
+      error: [UserVersionConflict, SystemAccountProtected, LastAdministrator, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(
@@ -822,13 +821,7 @@ export const identityApiGroup = HttpApiGroup.make('identity')
       params: Schema.Struct({ userId: uuidInput }),
       query: Schema.Struct({ version: Schema.String }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
-      error: [
-        UserNotFound,
-        UserVersionConflict,
-        SystemAccountProtected,
-        LastAdministrator,
-        AccessDenied,
-      ],
+      error: [UserVersionConflict, SystemAccountProtected, LastAdministrator, AccessDenied],
     }).middleware(Authenticated),
   )
   // Every entrance in the tenant as it stands for one person: whether it
@@ -857,7 +850,6 @@ export const identityApiGroup = HttpApiGroup.make('identity')
       }),
       success: Schema.Struct({ id: Schema.String }),
       error: [
-        UserNotFound,
         ProviderNotFound,
         SystemAccountProtected,
         AuthBindingUnsupported,
@@ -881,7 +873,6 @@ export const identityApiGroup = HttpApiGroup.make('identity')
         }),
         success: Schema.Struct({ checks: SecretChecks }),
         error: [
-          UserNotFound,
           ProviderNotFound,
           SystemAccountProtected,
           AuthBindingUnsupported,
@@ -899,13 +890,7 @@ export const identityApiGroup = HttpApiGroup.make('identity')
       {
         params: Schema.Struct({ userId: uuidInput, providerId: uuidInput }),
         success: Schema.Struct({ ok: Schema.Literal(true) }),
-        error: [
-          UserNotFound,
-          SystemAccountProtected,
-          AuthBindingNotFound,
-          AccessDenied,
-          DemoAccountLocked,
-        ],
+        error: [SystemAccountProtected, AuthBindingNotFound, AccessDenied, DemoAccountLocked],
       },
     ).middleware(Authenticated),
   )

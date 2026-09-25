@@ -446,7 +446,8 @@ smtp 后端对着 Mailpit 跑同一套,CI 设 `QUALY_REQUIRE_MAILPIT_TESTS=1`,�
 ## 用户删除是终态；邮箱归 User（2026-09-22）
 
 - **删除不可恢复**。`users.deleted_at` 只是墓碑：授予、批次记录、审计事件按 id 引用它，所以行保留；除此之外的一切读取
-  （名册、详情、选择器、写入守卫、`UserProvisioning.byBusinessNo`）都当它不存在，一律 `USER_NOT_FOUND`。恢复接口、
+  （名册、详情、选择器、写入守卫、`UserProvisioning.byBusinessNo`）都当它不存在：读取答 `USER_NOT_FOUND`，
+  写入与对不存在、够不着的人一样答 `ACCESS_DENIED`（2026-09-25 起，见「管人边界」）。恢复接口、
   `auth.user.restore` 权限（迁移删除目录与角色勾选）、`USER_NOT_DISABLED` / `USER_DELETED` 均已移除；
   `auth.user.restore` 审计动作保留声明、列入 `audit-actions` 门禁的 `RETIRED`，旧事件仍有名字。
 - **业务编号与邮箱只在存活用户中唯一**（`uq_users_tenant_business_no` 保名改谓词，`uq_users_tenant_email_live`），
@@ -462,6 +463,24 @@ smtp 后端对着 Mailpit 跑同一套,CI 设 `QUALY_REQUIRE_MAILPIT_TESTS=1`,�
   系统账户的邮箱只由 seed 设定，API 修改一律 `SYSTEM_ACCOUNT_PROTECTED`。
 - 界面不再显示「账号数」：有的登录方式根本不保存绑定（按学工号对应），绑定数推不出「能不能登录」。详情改显示
   「最近登录」（取 `sign_in_events` 最近一次成功，任何登录方式都会写）。
+
+## 管人边界（2026-09-25 裁决）
+
+- 「对人的权限就是对其所在节点的权限」只管**记录**：姓名这类普通资料，在该人节点持有 `auth.user.manage` 即可改。
+- **账号**另有一道门。对他人改邮箱、改业务编号、改用户类型（类型决定哪些入口接纳此人）、设置 / 重置 / 撤销登录凭据
+  （含代设密码时的强度试算）、停用与重新启用（恢复服务等于交还其全部授予）、调动、删除（含目录导入撤销的逐人退休），
+  要求该人**当前每一条有效授予**都是操作者此刻能合法授出的：问的是「假如这条授予不存在，操作者现在能不能把它授给这个人」，
+  不是比较权限集合大小。
+  - 「有效」= 在效（未撤销、在有效期内）且角色 active；resource-scoped 授予同样算（它在该资源内就是权力）；已停用角色的授予不算，
+    它此刻不授予任何东西。
+  - 逐条走授予路径里「关于授出者」的三问：授予管理权覆盖该锚点与 coverage（`mayAdministerGrantsAt`）、管理员角色只由管理员授撤
+    （`mayAdministerRole`）、任命规则（`mayAppointRole`，canonical tenant-admin 豁免）。不问持有资格——那是持有人的事实。
+  - 判定只有一份，在 rbac：`Rbac.mayConferHoldings`，与 `grantRole` 共用同一个 `mayConfer`；auth 在租户锁内、写入事务里调用，
+    不满足答 `ACCESS_DENIED`。本人的账号不受此限。
+- 能力走服务端：`GET /iam/users/{id}` 带 `accountManageable`，`GET /iam/users/{id}/entrances` 的 `manageable` 同一判定；
+  详情页据此不显示调动与停用 / 删除，编辑资料锁住登录信息字段、只发姓名。
+- 写接口对无权者不区分「不存在」与「无权」：查不到、已删除与够不着的人一律 `ACCESS_DENIED`（同一个 reason），与读接口
+  「不存在与不可读不可区分」同一原则；授权判断先于版本、系统账户与演示账号检查。
 
 ## 深链、会话过期与登录页（2026-09-24 定）
 

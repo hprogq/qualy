@@ -21,6 +21,7 @@ import { literal } from '@qualy/i18n-contract'
 import { Iam } from '../src/server/index.ts'
 import { userActions } from '../src/actions.ts'
 import { permissions as authPermissions } from '../src/permissions.ts'
+import { permissions as rbacPermissions } from '@qualy/plugin-rbac/permissions'
 import { AuthConfig } from '../src/server/sign-in.ts'
 import { serviceLayer as authLayer } from '../src/server/index.ts'
 import { authClosure } from './support/closure.ts'
@@ -32,8 +33,13 @@ import { captchaLayer } from '@qualy/plugin-captcha/testkit'
 // The trail is asserted through the audit table itself: the events are the
 // contract, not a side effect.
 
+// rbac's own codes too: whether a person's account may be changed is asked
+// in grant-administration terms, which an assembly always serves
 const catalog = [
-  ...compileCatalog([{ owner: 'auth', permissions: authPermissions }]),
+  ...compileCatalog([
+    { owner: 'auth', permissions: authPermissions },
+    { owner: 'rbac', permissions: rbacPermissions },
+  ]),
   { code: 'org.tree.read', name: literal('read'), target: 'org-node' as const, plugin: 'org' },
 ]
 
@@ -333,12 +339,14 @@ describe.runIf(postgresAvailable)('the user lifecycle', () => {
       expect(answer.listed).toEqual(['Admin'])
       expect(answer.pagedTotal).toBe(0)
       expect(answer.rootCount).toBe(1)
+      // a read does not find them; a write is refused them exactly as it is
+      // refused somebody out of reach, so neither says whether they existed
       expect(answer.refusals).toEqual([
         'USER_NOT_FOUND',
         'USER_NOT_FOUND',
-        'USER_NOT_FOUND',
-        'USER_NOT_FOUND',
-        'USER_NOT_FOUND',
+        'ACCESS_DENIED',
+        'ACCESS_DENIED',
+        'ACCESS_DENIED',
       ])
     } finally {
       await db.dispose()
@@ -417,7 +425,8 @@ describe.runIf(postgresAvailable)('the user lifecycle', () => {
       expect(answer.agreeing).toBe('ACCESS_DENIED')
       expect(answer.changing).toBe('ACCESS_DENIED')
       expect(answer.deleting).toBe('ACCESS_DENIED')
-      expect(answer.gone).toBe('USER_NOT_FOUND')
+      // and whether they exist at all is not told either
+      expect(answer.gone).toBe('ACCESS_DENIED')
       expect(answer.never).toBe(answer.gone)
     } finally {
       await db.dispose()

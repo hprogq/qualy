@@ -564,6 +564,7 @@ export default {
   'auth/users/email-verified': '已验证',
   'auth/users/email-unverified': '未验证',
   'auth/users/email-edit-hint': '通知将发送至该邮箱',
+  'auth/users/account-beyond-reach-hint': '登录信息请交由权限更高的管理员修改',
   'auth/users/email-system-hint': '系统账户邮箱由部署配置，此处不可修改',
   'auth/users/last-sign-in': '最近登录',
   'auth/person/gone': '该用户已删除，或不在你的查看范围内',

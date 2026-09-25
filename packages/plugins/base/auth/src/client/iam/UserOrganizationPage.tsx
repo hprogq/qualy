@@ -67,7 +67,8 @@ export default function UserOrganizationPage() {
 
   const user = useQuery(query.identity.getUser.queryOptions({ params: { userId } }))
   const record = user.data?.user
-  const manageable = record?.manageable ?? false
+  // moving somebody is their account's business, not only their record's
+  const manageable = user.data?.accountManageable ?? false
   // the same read the picker makes, for the two things it cannot know: which
   // units this reader may place into, and what they are called afterwards
   const options = useQuery({

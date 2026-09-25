@@ -49,6 +49,7 @@ const detail = {
   placement: { mode: 'allow-list', orgTypeIds: [CLASS_TYPE] },
   roles: [],
   lastSignInAt: null,
+  accountManageable: true,
 }
 
 const unit = (over: {

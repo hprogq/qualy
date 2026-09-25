@@ -696,6 +696,10 @@ const i18n = definePluginMessages({
     emailVerified: { id: 'auth/users/email-verified', defaultMessage: 'Verified' },
     emailUnverified: { id: 'auth/users/email-unverified', defaultMessage: 'Not verified' },
     emailEditHint: { id: 'auth/users/email-edit-hint', defaultMessage: 'Notices are sent here' },
+    accountBeyondReachHint: {
+      id: 'auth/users/account-beyond-reach-hint',
+      defaultMessage: 'Ask an administrator with wider authority to change sign-in details',
+    },
     emailSystemHint: {
       id: 'auth/users/email-system-hint',
       defaultMessage: 'The system account’s address is set when it is provisioned',

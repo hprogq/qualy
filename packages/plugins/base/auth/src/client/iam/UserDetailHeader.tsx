@@ -229,8 +229,9 @@ export default function UserDetailHeader() {
           displayName,
           userTypeId,
           // emptied means taken away; the recovery account's address and
-          // number are not the form's to send at all
-          ...(system
+          // number are not the form's to send at all, and neither are those
+          // of somebody whose account is not this reader's
+          ...(system || !accountManageable
             ? {}
             : {
                 businessNo: businessNo.trim() === '' ? undefined : businessNo.trim(),
@@ -275,6 +276,10 @@ export default function UserDetailHeader() {
   })
 
   const manageable = record?.manageable ?? false
+  // their ways in, the names a door finds them by, their kind, whether they
+  // are in service, where they stand: a reader who may edit the record may
+  // still not be one who may change these
+  const accountManageable = user.data?.accountManageable ?? false
   // the platform's own account: where it stands and what it signs in with
   // are provisioned, so the form does not offer them
   const system = user.data?.placement.mode === 'tenant-root'
@@ -383,40 +388,44 @@ export default function UserDetailHeader() {
                 </Button>
                 {/* moving somebody is a section of their record, with the rules
                       that refuse it said beside the tree; the band only leads there */}
-                <Button variant="outline" size="sm" asChild>
-                  <PageLink page="auth/user-organization" params={{ userId }}>
-                    {format(m.transfer)}
-                  </PageLink>
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="icon-sm" aria-label={format(m.moreActions)}>
-                      <EllipsisIcon aria-hidden />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="end"
-                    className={stylex.props(styles.moreMenu).className}
-                  >
-                    <DropdownMenuItem
-                      disabled={setStatus.isPending}
-                      onSelect={() =>
-                        record.status === 'active'
-                          ? setConfirmingDisable(true)
-                          : setStatus.mutate('active')
-                      }
+                {accountManageable && (
+                  <Button variant="outline" size="sm" asChild>
+                    <PageLink page="auth/user-organization" params={{ userId }}>
+                      {format(m.transfer)}
+                    </PageLink>
+                  </Button>
+                )}
+                {accountManageable && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="icon-sm" aria-label={format(m.moreActions)}>
+                        <EllipsisIcon aria-hidden />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="end"
+                      className={stylex.props(styles.moreMenu).className}
                     >
-                      {format(record.status === 'active' ? m.disable : m.enable)}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className={stylex.props(styles.danger).className}
-                      disabled={remove.isPending}
-                      onSelect={() => setConfirmingDelete(true)}
-                    >
-                      {format(m.deleteAction)}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                      <DropdownMenuItem
+                        disabled={setStatus.isPending}
+                        onSelect={() =>
+                          record.status === 'active'
+                            ? setConfirmingDisable(true)
+                            : setStatus.mutate('active')
+                        }
+                      >
+                        {format(record.status === 'active' ? m.disable : m.enable)}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className={stylex.props(styles.danger).className}
+                        disabled={remove.isPending}
+                        onSelect={() => setConfirmingDelete(true)}
+                      >
+                        {format(m.deleteAction)}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </div>
             )}
           </div>
@@ -469,14 +478,20 @@ export default function UserDetailHeader() {
                   <Input
                     id={id}
                     value={businessNo}
-                    disabled={system}
+                    disabled={system || !accountManageable}
                     onChange={(event) => setBusinessNo(event.target.value)}
                   />
                 )}
               </Field>
               <Field
                 label={format(m.emailLabel)}
-                hint={format(system ? m.emailSystemHint : m.emailEditHint)}
+                hint={format(
+                  system
+                    ? m.emailSystemHint
+                    : accountManageable
+                      ? m.emailEditHint
+                      : m.accountBeyondReachHint,
+                )}
               >
                 {(id) => (
                   <Input
@@ -484,14 +499,18 @@ export default function UserDetailHeader() {
                     type="email"
                     autoComplete="off"
                     value={email}
-                    disabled={system}
+                    disabled={system || !accountManageable}
                     onChange={(event) => setEmail(event.target.value)}
                   />
                 )}
               </Field>
               <Field label={format(m.userTypeLabel)}>
                 {(id) => (
-                  <Select value={userTypeId} onValueChange={setUserTypeId}>
+                  <Select
+                    value={userTypeId}
+                    onValueChange={setUserTypeId}
+                    disabled={!accountManageable}
+                  >
                     <SelectTrigger id={id} xstyle={styles.fullField}>
                       <SelectValue placeholder={format(m.selectUserType)} />
                     </SelectTrigger>

@@ -52,10 +52,12 @@ import { TooManyAttempts } from '@qualy/auth-contract/session'
 
 // People, and where they stand.
 //
-// Authority over a person is authority over the node they stand at, so every
-// write here re-decides that on the locked connection rather than trusting a
-// check made before the lock. A transfer needs it at both ends, because moving
-// someone changes who administers them.
+// Authority over a person's record is authority over the node they stand at,
+// so every write here re-decides that on the locked connection rather than
+// trusting a check made before the lock. A transfer needs it at both ends,
+// because moving someone changes who administers them. Their account - ways
+// in, the names doors find them by, type, status, placement, deletion - also
+// needs everything they hold to be authority the caller could grant them.
 
 /**
  * A living user with the system flag their type carries, which every write
@@ -439,6 +441,9 @@ const entrancesOf = (tenantId: string, userId: string, userTypeId: string | null
 /** a person with no type is admitted by no allow-list; this id names nobody */
 const NO_TYPE = '00000000-0000-0000-0000-000000000000'
 
+/** the one reason every write gives somebody who does not administer the person */
+const NOT_ADMINISTERED = 'not allowed to administer users at this node'
+
 /** the door a binding is written against; its kind names the driver that knows how */
 const providerGuard = (tenantId: string, providerId: string) =>
   db.query((k) =>
@@ -799,18 +804,59 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       ),
     )
 
-  /** authority over a person is authority over the node they stand at */
+  /** authority over somebody's record is authority over the node they stand at */
   const manages = Effect.fn('Iam.users.manages')(function* (as: Principal, orgNodeId: string) {
     if (!(yield* rbac.canAt(as, 'auth.user.manage', orgNodeId))) {
-      return yield* new AccessDenied({ reason: 'not allowed to administer users at this node' })
+      return yield* new AccessDenied({ reason: NOT_ADMINISTERED })
     }
   })
 
-  /** a living person; the deleted answer exactly like somebody who never existed */
-  const requireUser = Effect.fn('Iam.users.require')(function* (tenantId: string, userId: string) {
+  /**
+   * A living person the caller administers, and one refusal for anybody else.
+   *
+   * An id that names nobody, somebody deleted and somebody out of reach all
+   * answer the same: a write is no more a way to learn whether a person
+   * exists than a read is.
+   */
+  const administered = Effect.fn('Iam.users.administered')(function* (
+    tenantId: string,
+    userId: string,
+    as: Principal,
+  ) {
     const row = yield* userGuard(tenantId, userId)
-    if (!row) return yield* new UserNotFound()
+    if (!row) return yield* new AccessDenied({ reason: NOT_ADMINISTERED })
+    yield* manages(as, row.primaryOrgNodeId!)
     return row
+  })
+
+  /**
+   * Whether the caller may administer this person's account and not only
+   * their record: their ways in, the names a door finds them by, their type,
+   * whether they are in service, where they stand, their deletion.
+   *
+   * Everything the person holds must be authority the caller could grant
+   * them now (ruled 2026-09-25), asked of rbac, which owns that answer.
+   * One's own account is one's own. Asked on the caller's transaction.
+   */
+  const administersAccount = Effect.fn('Iam.users.administersAccount')(function* (
+    tenantId: string,
+    userId: string,
+    as: Principal,
+  ) {
+    if (as.userId === userId) return true
+    return yield* rbac.mayConferHoldings({ tenantId, actor: as, userId })
+  })
+
+  const requireAccount = Effect.fn('Iam.users.requireAccount')(function* (
+    tenantId: string,
+    userId: string,
+    as: Principal,
+  ) {
+    if (!(yield* administersAccount(tenantId, userId, as))) {
+      return yield* new AccessDenied({
+        reason: 'the person holds authority the caller cannot grant',
+      })
+    }
   })
 
   type GuardRow = NonNullable<Effect.Success<ReturnType<typeof userGuard>>>
@@ -1028,6 +1074,9 @@ export const make = Effect.fn('Iam.users.make')(function* () {
               continue
             }
             yield* mayDelete(as, user.primaryOrgNodeId!)
+            // somebody given authority since the import is no longer only
+            // the import's to take back
+            yield* requireAccount(tenantId, user.id, as)
             yield* retire(tenantId, user, as, actor)
             retired += 1
           }
@@ -1125,11 +1174,14 @@ export const make = Effect.fn('Iam.users.make')(function* () {
         const held = yield* scopes(principal)
         const row = yield* oneUser(principal.tenantId, userId, held).pipe(Effect.orDie)
         if (!row) return yield* new UserNotFound()
-        const [orgPath, roles, lastSignInAt, rule] = yield* Effect.all([
+        const [orgPath, roles, lastSignInAt, rule, account] = yield* Effect.all([
           ancestryOf(principal.tenantId, row.primaryOrgNodeId, held.read).pipe(Effect.orDie),
           rbac.listUserRoles(principal.tenantId, userId, held.read),
           lastSignInOf(principal.tenantId, userId).pipe(Effect.orDie),
           placementPolicyOf(principal.tenantId, row.userTypeId).pipe(Effect.orDie),
+          row.manageable === true
+            ? administersAccount(principal.tenantId, userId, principal)
+            : Effect.succeed(false),
         ])
         // the type is joined in the read above, so a missing rule is a row
         // that vanished in between; it may stand nowhere new
@@ -1141,7 +1193,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
               : rule.placementMode === 'allow-list'
                 ? ({ mode: 'allow-list', orgTypeIds: rule.allowedOrgTypeIds } as const)
                 : ({ mode: 'unrestricted' } as const)
-        return { user: row, orgPath, placement, roles, lastSignInAt }
+        return { user: row, orgPath, placement, roles, lastSignInAt, accountManageable: account }
       }),
     ),
 
@@ -1150,8 +1202,10 @@ export const make = Effect.fn('Iam.users.make')(function* () {
      * may be written for them, and the live binding when there is one.
      *
      * Behind the person's read authority; `manageable` is asked separately,
-     * because reading somebody and administering them are two grants. A
-     * door whose driver is not in this assembly says nothing about either.
+     * because reading somebody and administering their account are two
+     * questions: the second also needs everything they hold to be authority
+     * the caller could grant. A door whose driver is not in this assembly
+     * says nothing about either.
      */
     entrances: bound(
       Effect.fn('Iam.users.entrances')(function* (principal: Principal, userId: string) {
@@ -1168,7 +1222,12 @@ export const make = Effect.fn('Iam.users.make')(function* () {
             binding: registered?.driver.binding,
           })),
         )
-        return { entrances, manageable: row.manageable === true }
+        return {
+          entrances,
+          manageable:
+            row.manageable === true &&
+            (yield* administersAccount(principal.tenantId, userId, principal)),
+        }
       }),
     ),
 
@@ -1184,6 +1243,13 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       input: { secret: string },
       as: Principal,
     ) {
+      // authority first: somebody without it learns nothing about the person,
+      // the door, or what a credential there is held to
+      const user = yield* withDb(administered(tenantId, userId, as)).pipe(
+        Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+      )
+      if (user.isSystem) return yield* new SystemAccountProtected()
+      yield* requireAccount(tenantId, userId, as)
       yield* guardDemo(tenantId, userId)
       const provider = yield* withDb(providerGuard(tenantId, providerId)).pipe(Effect.orDie)
       if (!provider) return yield* new ProviderNotFound()
@@ -1192,11 +1258,6 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       if (binding?.mode !== 'managed' || driver?.resolution.mode !== 'user-field') {
         return yield* new AuthBindingUnsupported()
       }
-      const user = yield* withDb(requireUser(tenantId, userId)).pipe(
-        Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
-      )
-      yield* manages(as, user.primaryOrgNodeId!)
-      if (user.isSystem) return yield* new SystemAccountProtected()
       // a guess estimate costs the server's only thread; typed pauses ask
       // for a handful a minute, and a loop is refused
       const judged = yield* limiter.consumeHard(tenantId, HARD_LIMITS.passwordAssessment, as.userId)
@@ -1228,6 +1289,13 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       input: { secret: string },
       as: Principal,
     ) {
+      // authority first, so somebody without it learns nothing about the
+      // person or what a valid credential looks like, and costs no digest
+      const before = yield* withDb(administered(tenantId, userId, as)).pipe(
+        Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+      )
+      if (before.isSystem) return yield* new SystemAccountProtected()
+      yield* requireAccount(tenantId, userId, as)
       yield* guardDemo(tenantId, userId)
       const provider = yield* withDb(providerGuard(tenantId, providerId)).pipe(Effect.orDie)
       if (!provider) return yield* new ProviderNotFound()
@@ -1237,13 +1305,6 @@ export const make = Effect.fn('Iam.users.make')(function* () {
         return yield* new AuthBindingUnsupported()
       }
       const field = driver.resolution.field
-      // authority first, so somebody without it learns nothing about what a
-      // valid credential looks like and costs the server no digest
-      const before = yield* withDb(requireUser(tenantId, userId)).pipe(
-        Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
-      )
-      yield* manages(as, before.primaryOrgNodeId!)
-      if (before.isSystem) return yield* new SystemAccountProtected()
       if (before[field] === null) return yield* new AuthBindingUserFieldMissing({ field })
       const prepared = yield* binding.prepare({
         secret: input.secret,
@@ -1253,9 +1314,9 @@ export const make = Effect.fn('Iam.users.make')(function* () {
 
       return yield* writeBinding(tenantId, () =>
         Effect.gen(function* () {
-          const user = yield* requireUser(tenantId, userId)
-          yield* manages(as, user.primaryOrgNodeId!)
+          const user = yield* administered(tenantId, userId, as)
           if (user.isSystem) return yield* new SystemAccountProtected()
+          yield* requireAccount(tenantId, userId, as)
           if (user[field] === null) return yield* new AuthBindingUserFieldMissing({ field })
           const admitted = yield* entrancesOf(tenantId, userId, user.userTypeId)
           if (admitted.find((entrance) => entrance.providerId === providerId)?.admits !== true) {
@@ -1319,12 +1380,12 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       providerId: string,
       as: Principal,
     ) {
-      yield* guardDemo(tenantId, userId)
       yield* writeBinding(tenantId, () =>
         Effect.gen(function* () {
-          const user = yield* requireUser(tenantId, userId)
-          yield* manages(as, user.primaryOrgNodeId!)
+          const user = yield* administered(tenantId, userId, as)
           if (user.isSystem) return yield* new SystemAccountProtected()
+          yield* requireAccount(tenantId, userId, as)
+          yield* guardDemo(tenantId, userId)
           const standing = yield* liveBinding(tenantId, userId, providerId)
           if (standing === undefined) return yield* new AuthBindingNotFound()
           yield* db.query((k) =>
@@ -1465,15 +1526,14 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       expectedVersion: number,
       as: Principal,
     ) {
-      // a demo account's address is how it signs in; it stays what it is
-      if (input.email !== undefined) yield* guardDemo(tenantId, userId)
       const email = input.email === undefined ? undefined : yield* storedEmail(input.email)
       yield* write(tenantId, () =>
         Effect.gen(function* () {
-          const user = yield* requireUser(tenantId, userId)
           // authority first: somebody without it learns nothing of the
-          // person's history or kind from how they are refused
-          yield* manages(as, user.primaryOrgNodeId!)
+          // person's existence, history or kind from how they are refused
+          const user = yield* administered(tenantId, userId, as)
+          // a demo account's address is how it signs in; it stays what it is
+          if (input.email !== undefined) yield* guardDemo(tenantId, userId)
           yield* requireVersion(user, expectedVersion)
           // an address or a number restated unchanged is not a change: it
           // must not throw away the proof the person already gave for it
@@ -1504,6 +1564,12 @@ export const make = Effect.fn('Iam.users.make')(function* () {
           }
           const changingType =
             fields.userTypeId !== undefined && fields.userTypeId !== user.userTypeId
+          // The names a door finds somebody by, and the type that decides
+          // which doors admit them, are their account rather than their
+          // record: a name is not.
+          if (fields.email !== undefined || fields.businessNo !== undefined || changingType) {
+            yield* requireAccount(tenantId, user.id, as)
+          }
           if (changingType) {
             if (user.isSystem) return yield* new SystemAccountProtected()
             const type = yield* requireType(tenantId, fields.userTypeId!)
@@ -1587,11 +1653,11 @@ export const make = Effect.fn('Iam.users.make')(function* () {
     ) {
       yield* write(tenantId, () =>
         Effect.gen(function* () {
-          const user = yield* requireUser(tenantId, userId)
-          yield* manages(as, user.primaryOrgNodeId!)
+          const user = yield* administered(tenantId, userId, as)
           yield* requireVersion(user, expectedVersion)
           if (user.isSystem) return yield* new SystemAccountProtected()
           yield* manages(as, primaryOrgNodeId)
+          yield* requireAccount(tenantId, user.id, as)
           yield* requireOrgNode(tenantId, primaryOrgNodeId)
           // a transfer may not put someone where their kind of person may not be
           yield* requirePlacement(tenantId, user.userTypeId!, primaryOrgNodeId)
@@ -1620,17 +1686,19 @@ export const make = Effect.fn('Iam.users.make')(function* () {
     ) {
       yield* writeState(tenantId, () =>
         Effect.gen(function* () {
-          const user = yield* requireUser(tenantId, userId)
           const enabled = input.status === 'active'
           // authority first, then whether there is anything to do: answered
           // the other way round, a caller with no reach over this person
           // learned from the difference between success and a refusal
           // whether they were enabled, and from a version refused how often
           // they had been changed
-          yield* manages(as, user.primaryOrgNodeId!)
+          const user = yield* administered(tenantId, userId, as)
           yield* requireVersion(user, input.expectedVersion)
           if (user.enabled === enabled) return
           if (!enabled && user.isSystem) return yield* new SystemAccountProtected()
+          // either way: putting somebody back in service hands them back
+          // everything they hold, as surely as a grant would
+          yield* requireAccount(tenantId, user.id, as)
           yield* setUserEnabled(tenantId, user.id, enabled)
           yield* audit.record(enabled ? UserEnabled : UserDisabled, {
             tenantId,
@@ -1666,10 +1734,11 @@ export const make = Effect.fn('Iam.users.make')(function* () {
     ) {
       yield* writeState(tenantId, () =>
         Effect.gen(function* () {
-          const user = yield* requireUser(tenantId, userId)
+          const user = yield* administered(tenantId, userId, as)
           yield* mayDelete(as, user.primaryOrgNodeId!)
           yield* requireVersion(user, expectedVersion)
           if (user.isSystem) return yield* new SystemAccountProtected()
+          yield* requireAccount(tenantId, user.id, as)
           yield* retire(tenantId, user, as, yield* actorOf(tenantId, as))
           yield* rbac.assertTenantKeepsAdministrator(tenantId)
         }),
