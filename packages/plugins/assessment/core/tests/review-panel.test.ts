@@ -460,13 +460,16 @@ describe.runIf(postgresAvailable)('the sitting', () => {
             w.instanceId,
             f.principal(w.closer),
           )
+          // the filer reads the same round without anybody's name on a
+          // ballot while the phase keeps them from it (§32.85)
+          const asFiler = yield* assessment.getReviewInstance(f.t, w.instanceId, f.principal(f.s1))
           const settled = yield* assessment.decideReview(
             f.t,
             w.instanceId,
             { decision: 'reject', comment: '采纳异议，不予认定' },
             f.principal(w.closer),
           )
-          return { asCloser, settled }
+          return { asCloser, asFiler, settled }
         }),
       ),
     )
@@ -475,6 +478,10 @@ describe.runIf(postgresAvailable)('the sitting', () => {
     const g1 = result.asCloser.chain.escalation.find((stage) => stage.id === 'g1')
     expect(g1?.opinions?.map((opinion) => opinion.decision).sort()).toEqual(['approve', 'reject'])
     expect(g1?.opinions?.map((opinion) => opinion.comment)).toContain('日期超出认定范围')
+    expect(g1?.opinions?.map((opinion) => opinion.who).sort()).toEqual(['B2', 'B3'])
+    const filerSees = result.asFiler.chain.escalation.find((stage) => stage.id === 'g1')
+    expect(filerSees?.opinions?.map((opinion) => opinion.who)).toEqual([null, null])
+    expect(filerSees?.reviewers).toBeNull()
     // the climb is the sitting's own word
     const climbed = result.asCloser.events[result.asCloser.events.length - 1]!
     expect(climbed.kind).toBe('escalated')
