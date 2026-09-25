@@ -694,6 +694,9 @@ const sortOrder = Schema.Number.check(
   Schema.isLessThanOrEqualTo(2_147_483_647),
 )
 
+/** the most groups one paper's tree may hold */
+export const MAX_SCORE_GROUPS = 200
+
 const scoreGroupSpec = Schema.Struct({
   id: Schema.optional(uuidInput),
   /**
@@ -2324,7 +2327,10 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     HttpApiEndpoint.put('replaceScoreGroups', '/assessment/batches/:batchId/score-groups', {
       params: Schema.Struct({ batchId: uuidInput }),
       payload: Schema.Struct({
-        groups: Schema.Array(scoreGroupSpec),
+        // the whole tree, every time: a real paper has a few dozen groups,
+        // and each one is checked against its ancestors and written under
+        // the batch lock
+        groups: Schema.Array(scoreGroupSpec).check(Schema.isMaxLength(MAX_SCORE_GROUPS)),
         expectedVersion,
         /** why, when a cap or floor moves on a running round */
         reason: Schema.optional(boundedText(500)),

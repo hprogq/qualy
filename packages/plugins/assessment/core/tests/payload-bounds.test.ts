@@ -1,6 +1,6 @@
 import { Result, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
-import { assessmentApiGroup, MAX_PLAN_PHASES } from '../src/api.ts'
+import { assessmentApiGroup, MAX_PLAN_PHASES, MAX_SCORE_GROUPS } from '../src/api.ts'
 
 // What one request may carry.
 //
@@ -148,5 +148,23 @@ describe('a staff sync selection', () => {
     const many = Array.from({ length: 8 }, () => 'assessment.review.process')
     expect(accepts(sync, { accept: [choice(1, many.slice(0, 7))] })).toBe(true)
     expect(accepts(sync, { accept: [choice(1, many)] })).toBe(false)
+  })
+})
+
+// The paper's tree arrives whole, and every group is walked up to the top
+// looking for a cycle before any of it is written under the batch lock.
+describe('a score group tree', () => {
+  const put = payloadOf('replaceScoreGroups')
+  const groups = (count: number) =>
+    Array.from({ length: count }, (_, index) => ({
+      parentGroupId: null,
+      name: `Group ${index + 1}`,
+      cap: null,
+      floor: null,
+    }))
+
+  it('holds as many groups as a paper may, and no more', () => {
+    expect(accepts(put, { groups: groups(MAX_SCORE_GROUPS), expectedVersion: 1 })).toBe(true)
+    expect(accepts(put, { groups: groups(MAX_SCORE_GROUPS + 1), expectedVersion: 1 })).toBe(false)
   })
 })
