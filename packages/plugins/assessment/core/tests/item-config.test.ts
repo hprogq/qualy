@@ -241,6 +241,27 @@ const studentConfig = (over: Partial<Record<string, unknown>> = {}) => ({
   ...over,
 })
 
+/** the same question recorded by staff, with the escalation step its appeals walk */
+const recordedConfig = () => {
+  const base = studentConfig()
+  return {
+    ...base,
+    entryChannels: ['administrative'] as const,
+    reviewPolicy: {
+      ...base.reviewPolicy,
+      escalation: {
+        stages: [
+          {
+            id: 'a1',
+            selector: { kind: 'roleAt', nodeTypeId: randomUUID(), roleIds: [randomUUID()] },
+            quorum: { type: 'any' },
+          },
+        ],
+      },
+    },
+  }
+}
+
 describe.runIf(postgresAvailable)('item configuration', () => {
   let db: Awaited<ReturnType<typeof createTestContext>>
 
@@ -862,8 +883,11 @@ describe.runIf(postgresAvailable)('item configuration', () => {
               'participant',
             ]),
             // the trusted path never walks the chain on the way in, but an
-            // appeal resolves it from this very revision: it must be there
-            administrativeChain: yield* create(routes([stage('n1')]), ['administrative']),
+            // appeal walks its escalation route: that must be there
+            administrativeChain: yield* create(routes([stage('n1')], [stage('a1')]), [
+              'administrative',
+            ]),
+            administrativeNoAppeal: yield* create(routes([stage('n1')]), ['administrative']),
             administrativeEmpty: yield* create({}, ['administrative']),
           }
         }),
@@ -886,6 +910,7 @@ describe.runIf(postgresAvailable)('item configuration', () => {
     // one list with a marker in it is read forever and written never again
     expect(issuesOf(result.oneListWithAMarker)).toEqual(['policy-version-legacy'])
     expect(Exit.isSuccess(result.administrativeChain)).toBe(true)
+    expect(issuesOf(result.administrativeNoAppeal)).toEqual(['policy-escalation-required'])
     expect(issuesOf(result.administrativeEmpty)).toContain('policy-stages-required')
   })
 
@@ -1441,7 +1466,7 @@ describe.runIf(postgresAvailable)('item configuration', () => {
           const beforeEntries = yield* assessment.updateItem(
             f.tenant,
             item.id,
-            { config: studentConfig({ entryChannels: ['administrative'] }) },
+            { config: recordedConfig() },
             f.principal,
           )
           yield* assessment.updateItem(f.tenant, item.id, { config: studentConfig() }, f.principal)
@@ -1456,12 +1481,7 @@ describe.runIf(postgresAvailable)('item configuration', () => {
             insert into entries (tenant_id, batch_id, item_id, participant_id, source, status)
             values (${f.tenant}, ${batch.id}, ${item.id}, ${participant}, 'self', 'draft')`)
           const frozen = yield* Effect.exit(
-            assessment.updateItem(
-              f.tenant,
-              item.id,
-              { config: studentConfig({ entryChannels: ['administrative'] }) },
-              f.principal,
-            ),
+            assessment.updateItem(f.tenant, item.id, { config: recordedConfig() }, f.principal),
           )
           return { beforeEntries, frozen }
         }),

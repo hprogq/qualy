@@ -325,6 +325,19 @@ const boundConfig = (versionId: string, valueId?: string) => ({
   },
 })
 
+/** the bound question recorded by staff, with the escalation step its appeals walk */
+const recordedConfig = (versionId: string, valueId?: string) => {
+  const base = boundConfig(versionId, valueId)
+  return {
+    ...base,
+    entryChannels: ['administrative'] as const,
+    reviewPolicy: {
+      ...base.reviewPolicy,
+      escalation: { stages: [{ ...base.reviewPolicy.normal.stages[0]!, id: 'a1' }] },
+    },
+  }
+}
+
 const phase = (over: Partial<PhaseSpecInput> & { phaseKey: string }): PhaseSpecInput => ({
   displayName: over.phaseKey,
   permissionProfile: [],
@@ -642,10 +655,7 @@ describe.runIf(postgresAvailable)('formula scoring, end to end', () => {
     // goes on being read, scored and re-saved under the same exact version
     // after the writer is closed - and nothing new is bound at any version,
     // by a save or by a preview.
-    const administrative = (versionId: string, valueId?: string) => ({
-      ...boundConfig(versionId, valueId),
-      entryChannels: ['administrative'] as const,
-    })
+    const administrative = recordedConfig
     const opened = ok(
       await Effect.runPromiseExit(
         Effect.provide(
@@ -985,10 +995,7 @@ export default defineFormula({
                 select id from batch_participants
                 where batch_id = ${batchId} and user_id = ${f.bystander}`),
             ).id
-            const recorded = (versionId: string, valueId?: string) => ({
-              ...boundConfig(versionId, valueId),
-              entryChannels: ['administrative'] as const,
-            })
+            const recorded = recordedConfig
             const ask = (title: string, versionId: string) =>
               Effect.gen(function* () {
                 const item = yield* assessment.createItem(

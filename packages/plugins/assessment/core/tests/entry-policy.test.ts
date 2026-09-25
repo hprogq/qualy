@@ -94,7 +94,20 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
                       },
                     ],
                   },
-                  escalation: { stages: [] },
+                  // where an appeal against a recorded fact is heard
+                  escalation: {
+                    stages: [
+                      {
+                        id: 'a1',
+                        selector: {
+                          kind: 'roleAt',
+                          nodeTypeId: f.classType,
+                          roleIds: [f.reviewRole],
+                        },
+                        quorum: { type: 'any' },
+                      },
+                    ],
+                  },
                 },
               },
             },

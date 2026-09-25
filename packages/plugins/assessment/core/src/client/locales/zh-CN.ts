@@ -102,6 +102,7 @@ export default {
   'assessment/entry/refuse-review-under-way':
     '审核已开始，无法撤回修改；如不再主张本条申报，可选择放弃。',
   'assessment/entry/refuse-appeal-not-withdrawable': '申诉进行中，无法撤回。',
+  'assessment/entry/refuse-no-appeal-route': '该项目未设置复核流程，暂不能申诉，请联系批次管理员。',
   'assessment/entry/refuse-appeal-under-way': '申诉处理完成后才能修改或重新提交。',
   'assessment/entry/refuse-max-entries': '已达到该项目的申报条数上限。',
   'assessment/entry/refuse-item-voided': '项目已停用。',
@@ -1916,6 +1917,8 @@ export default {
   'assessment/items/problem-unlinked': '需要对应的申报字段',
   'assessment/items/problem-binding-orphan': '公式已没有该参数',
   'assessment/items/problem-stages-required': '至少添加一个审核步骤',
+  'assessment/items/problem-escalation-required':
+    '添加复核步骤，参评人员才能对统一认定的记录提出申诉',
   'assessment/items/problem-stage-unset': '审核步骤尚未设置处理人',
   'assessment/items/problem-max-entries': '每人可申报条数至少为 1',
   'assessment/items/problem-top-n': '计入条数至少为 1',

@@ -122,7 +122,22 @@ const scoringBatch = (
                   },
                 ],
               },
-              escalation: { stages: [] },
+              // a recorded question carries the step its appeals are heard at
+              escalation: {
+                stages: item.entryChannels.includes('administrative')
+                  ? [
+                      {
+                        id: 'a1',
+                        selector: {
+                          kind: 'roleAt',
+                          nodeTypeId: f.classType,
+                          roleIds: [f.reviewRole],
+                        },
+                        quorum: { type: 'any' },
+                      },
+                    ]
+                  : [],
+              },
             },
           },
         },

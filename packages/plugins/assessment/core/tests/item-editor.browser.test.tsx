@@ -405,9 +405,48 @@ describe('choosing how a question is handled', () => {
     ).toContain('channels-required')
   })
 
+  // A recorded fact is contested on the escalation route alone, so opening
+  // the staff door on a question with no escalation step leaves it pending.
+  it('asks for an escalation step before staff records are opened', async () => {
+    await open({ items: [officerItem()], question: ITEM_ID })
+    await expect.element(page.getByRole('checkbox', { name: '工作人员统一认定' })).toBeVisible()
+    await page.getByRole('checkbox', { name: '工作人员统一认定' }).click()
+    const trigger = page.getByTestId('pending-trigger')
+    await expect.element(trigger).toBeVisible()
+    await trigger.click()
+    await expect.element(page.getByTestId('pending-list')).toBeVisible()
+    expect(
+      page
+        .getByTestId('pending-row')
+        .elements()
+        .map((row) => row.getAttribute('data-code')),
+    ).toContain('escalation-required')
+  })
+
   it('saves both doors when both are open', async () => {
     const saved: { config?: unknown }[] = []
-    await open({ items: [officerItem()], question: ITEM_ID, saved })
+    const officer = officerItem()
+    // a staff record's appeals are heard on the escalation route
+    const withAppeals = {
+      ...officer,
+      currentRevision: {
+        ...officer.currentRevision,
+        reviewPolicy: {
+          ...officer.currentRevision.reviewPolicy,
+          escalation: {
+            stages: [
+              {
+                id: 's-appeal',
+                label: '学院复核',
+                selector: { kind: 'roleAt', nodeTypeId: ORG_TYPE_ID, roleIds: [ROLE_ID] },
+                quorum: { type: 'any' },
+              },
+            ],
+          },
+        },
+      },
+    }
+    await open({ items: [withAppeals], question: ITEM_ID, saved })
     await expect.element(page.getByRole('checkbox', { name: '工作人员统一认定' })).toBeVisible()
     await page.getByRole('checkbox', { name: '工作人员统一认定' }).click()
     await page.getByTestId('item-save').click()

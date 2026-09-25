@@ -984,6 +984,11 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/refuse-appeal-not-withdrawable',
       defaultMessage: 'An appeal in progress cannot be withdrawn.',
     },
+    refuseNoAppealRoute: {
+      id: 'assessment/entry/refuse-no-appeal-route',
+      defaultMessage:
+        'This item has no escalation workflow, so it cannot be appealed. Contact the batch administrator.',
+    },
     refuseAppealUnderWay: {
       id: 'assessment/entry/refuse-appeal-under-way',
       defaultMessage: 'Your appeal is being decided. You can edit or resubmit once it is.',
@@ -6069,6 +6074,10 @@ const i18n = definePluginMessages({
     itemsProblemStagesRequired: {
       id: 'assessment/items/problem-stages-required',
       defaultMessage: 'Add at least one review step',
+    },
+    itemsProblemEscalationRequired: {
+      id: 'assessment/items/problem-escalation-required',
+      defaultMessage: 'Add an escalation step so participants can appeal staff records',
     },
     itemsProblemStageUnset: {
       id: 'assessment/items/problem-stage-unset',

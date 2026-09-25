@@ -1515,6 +1515,38 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     expect(Exit.isSuccess(result.again)).toBe(true)
   })
 
+  // An appeal walks the escalation route alone (§32.62). A question
+  // configured with no escalation step has nowhere to hear one, which is a
+  // different thing to tell the appellant from a route whose steps name no
+  // level above them.
+  it('tells an appellant when the question has no escalation step at all', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-no-appeal-route')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: [...NO_DOUBTS, 'assessment.entry.appeal'] })
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          yield* assessment.decideReview(
+            f.t,
+            sent.currentReviewInstanceId!,
+            { decision: 'reject', comment: '材料不足' },
+            f.principal(f.reviewer),
+          )
+          return yield* Effect.exit(assessment.appealEntry(f.t, entry.id, { reason: '请复核' }, s1))
+        }),
+      ),
+    )
+    expect(refusalOf(result)?.reason).toBe('no-appeal-route')
+  })
+
   // Advice for the person who filed rides only a rejection that reaches
   // them. A judge standing mid-ladder writes to the judge above instead, so
   // the workbench must not offer them the suggestion grid - it used to, and

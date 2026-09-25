@@ -2413,6 +2413,10 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             // over, a genuinely unstaffed one blocks. The prior round's
             // judges are eligible again on purpose: an appeal is a fresh
             // round, and their earlier word is a fact of the old one.
+            // a question configured with no escalation step at all is a
+            // different answer from one whose steps name no level above
+            // this person, and the appellant is told which
+            if (policy.escalation.length === 0) return yield* refuse('appeal', 'no-appeal-route')
             const landing = yield* resolveArrival({
               tenantId,
               batchId: row.batchId,

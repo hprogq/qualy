@@ -194,10 +194,10 @@ export const validateReviewPolicy = (policy: unknown): readonly PolicyIssue[] =>
 
   const normal = (policy['normal'] as { stages?: unknown } | undefined)?.stages
   if (!Array.isArray(normal) || normal.length === 0) {
-    // Administrative items carry an ordinary route too. Their entries never
-    // walk it on the way in - recording is trusted - but an appeal or a
-    // staff reopen later resolves a route from the revision the entry cites,
-    // and a revision without one is history with no way back (§13/§15).
+    // Every reviewed question carries an ordinary route, administrative ones
+    // included. What an administrative question's appeals walk is its
+    // escalation route, which the item's own validation requires of a
+    // question that records facts (§15, §32.62).
     issues.push({ path: 'reviewPolicy.normal.stages', reason: 'policy-stages-required' })
   }
   return issues

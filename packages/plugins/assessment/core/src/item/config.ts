@@ -147,6 +147,24 @@ export const validateItemConfig = (
       }
     }
 
-    issues.push(...validateReviewPolicy(input.reviewPolicy))
+    const policyIssues = validateReviewPolicy(input.reviewPolicy)
+    issues.push(...policyIssues)
+    // A recorded fact never walks a route on its way in - recording is
+    // trusted - so the one route it has is the one its subject's appeal
+    // takes, and an appeal walks the escalation route alone (§15, §32.62).
+    // A question that records facts with no escalation step leaves every
+    // recorded deduction beyond appeal. A question nobody reviews says so
+    // with `mode: 'none'` and is not held to this here.
+    const channels = input.entryChannels
+    const policy = input.reviewPolicy as { mode?: unknown; escalation?: { stages?: unknown } }
+    if (
+      policyIssues.length === 0 &&
+      Array.isArray(channels) &&
+      channels.includes('administrative') &&
+      policy.mode === undefined &&
+      !(Array.isArray(policy.escalation?.stages) && policy.escalation.stages.length > 0)
+    ) {
+      issues.push({ path: 'reviewPolicy.escalation.stages', reason: 'policy-escalation-required' })
+    }
     return issues
   })

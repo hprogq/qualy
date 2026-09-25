@@ -297,7 +297,27 @@ describe.runIf(postgresAvailable)("one participant's account, read by staff", ()
               title: '行政登记',
               scoreGroupId: g.item.scoreGroupId,
               maxEntries: 1,
-              config: { ...itemConfig(f), entryChannels: ['administrative'] as const },
+              config: {
+                ...itemConfig(f),
+                entryChannels: ['administrative'] as const,
+                // where an appeal against the record would be heard
+                reviewPolicy: {
+                  ...itemConfig(f).reviewPolicy,
+                  escalation: {
+                    stages: [
+                      {
+                        id: 'a1',
+                        selector: {
+                          kind: 'roleAt',
+                          nodeTypeId: f.classType,
+                          roleIds: [f.reviewRole],
+                        },
+                        quorum: { type: 'any' },
+                      },
+                    ],
+                  },
+                },
+              },
             },
             admin,
           )

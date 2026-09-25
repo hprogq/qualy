@@ -1559,6 +1559,16 @@ export const problemsOf = (input: {
     if (normal.length === 0) {
       found.push({ area: 'rules', block: 'review', code: 'stages-required', tone: 'pending' })
     }
+    // a recorded fact is only ever contested on the escalation route, so a
+    // question that records facts needs one (the save says the same)
+    if (draft.administrative && draft.stages.every((stage) => stage.chain !== 'escalation')) {
+      found.push({
+        area: 'rules',
+        block: 'escalation',
+        code: 'escalation-required',
+        tone: 'pending',
+      })
+    }
     for (const stage of draft.stages) {
       const block = stage.chain === 'normal' ? ('review' as const) : ('escalation' as const)
       const entity = { kind: 'stage' as const, key: stage.key }
@@ -1873,6 +1883,16 @@ export const problemsFromIssues = (input: {
         area: 'rules',
         block: 'review',
         code: 'stages-required',
+        tone: 'error',
+        reason,
+      })
+      continue
+    }
+    if (path === 'reviewPolicy.escalation.stages' && reason === 'policy-escalation-required') {
+      placed.push({
+        area: 'rules',
+        block: 'escalation',
+        code: 'escalation-required',
         tone: 'error',
         reason,
       })

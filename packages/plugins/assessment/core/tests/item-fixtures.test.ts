@@ -3,6 +3,7 @@ import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { evidenceDriver } from '@qualy/plugin-assessment-evidence/driver'
 import { validateItemConfig } from '../src/item/config.ts'
+import type { EntryChannel } from '../src/item/channels.ts'
 import { builtinAggregators, builtinCalculators } from '../src/scoring/builtins.ts'
 import { testDefinitions, testHost, testRuntime } from './support/catalogs.ts'
 import { compileScoringPlan } from '../src/scoring/plan.ts'
@@ -58,10 +59,11 @@ describe('the first two real configurations', () => {
     expect(issues).toEqual([])
   })
 
-  it('expresses an administrative -1: recorded with its basis, chain held for appeals', () => {
-    const issues = Effect.runSync(
+  /** a -1 recorded with its basis, under whichever doors and escalation steps */
+  const deduction = (channels: readonly EntryChannel[], escalation: readonly string[]) =>
+    Effect.runSync(
       validateItemConfig(catalogs, 'evidence', {
-        entryChannels: ['administrative'],
+        entryChannels: channels,
         formConfig: {
           fields: [
             { key: 'basis', type: 'text', label: '依据（文号）', required: true },
@@ -82,11 +84,33 @@ describe('the first two real configurations', () => {
               },
             ],
           },
-          escalation: { stages: [] },
+          escalation: {
+            stages: escalation.map((id) => ({
+              id,
+              selector: { kind: 'roleAt', nodeTypeId: randomUUID(), roleIds: [randomUUID()] },
+              quorum: { type: 'any' },
+            })),
+          },
         },
       }),
     )
-    expect(issues).toEqual([])
+
+  it('expresses an administrative -1: recorded with its basis, chain held for appeals', () => {
+    expect(deduction(['administrative'], ['a1'])).toEqual([])
+  })
+
+  // An appeal walks the escalation route alone (§32.62), and a recorded fact
+  // is never walked in at all: without an escalation step, every deduction
+  // recorded under this question would be beyond appeal.
+  it('refuses a recorded question whose deductions nobody could hear an appeal against', () => {
+    expect(deduction(['administrative'], [])).toEqual([
+      { path: 'reviewPolicy.escalation.stages', reason: 'policy-escalation-required' },
+    ])
+    expect(deduction(['participant', 'administrative'], [])).toEqual([
+      { path: 'reviewPolicy.escalation.stages', reason: 'policy-escalation-required' },
+    ])
+    // a filed question is not held to it here
+    expect(deduction(['participant'], [])).toEqual([])
   })
 
   it('still reads a veteran filing the way the form promised', () => {

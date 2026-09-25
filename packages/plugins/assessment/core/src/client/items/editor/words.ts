@@ -129,6 +129,7 @@ const PROBLEM_LABEL: Record<string, MessageDescriptor> = {
   'recognition-unlinked': m.itemsProblemUnlinked,
   'binding-orphan': m.itemsProblemBindingOrphan,
   'stages-required': m.itemsProblemStagesRequired,
+  'escalation-required': m.itemsProblemEscalationRequired,
   'stage-unnamed': m.itemsProblemStageUnnamed,
   'stage-unset': m.itemsProblemStageUnset,
   'stage-quorum': m.itemsProblemStageQuorum,
