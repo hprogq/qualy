@@ -29,13 +29,13 @@ describe('what the approve form offers when the question narrowed mid-round', ()
           [MAX_SCALE]: 2,
           [DECIMAL_MINIMUM]: '0',
           [DECIMAL_MAXIMUM]: '10.5',
-        } as AtomicSchema,
+        },
         {
           type: 'string',
           format: DECIMAL_FORMAT,
           [MAX_SCALE]: 1,
           [DECIMAL_MINIMUM]: '0.5',
-        } as AtomicSchema,
+        },
       ),
     ).toMatchObject({ [MAX_SCALE]: 1, [DECIMAL_MINIMUM]: '0.5', [DECIMAL_MAXIMUM]: '10.5' })
   })
@@ -43,13 +43,13 @@ describe('what the approve form offers when the question narrowed mid-round', ()
   it('pulls a date window in, and shortens a text', () => {
     expect(
       admittedToday(
-        { type: 'string', format: 'date', [DATE_MINIMUM]: '2026-03-01' } as AtomicSchema,
+        { type: 'string', format: 'date', [DATE_MINIMUM]: '2026-03-01' },
         {
           type: 'string',
           format: 'date',
           [DATE_MINIMUM]: '2026-02-01',
           [DATE_MAXIMUM]: '2026-08-31',
-        } as AtomicSchema,
+        },
       ),
     ).toMatchObject({ [DATE_MINIMUM]: '2026-03-01', [DATE_MAXIMUM]: '2026-08-31' })
     expect(

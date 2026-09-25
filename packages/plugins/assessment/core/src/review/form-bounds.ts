@@ -40,7 +40,7 @@ export const admittedToday = (frozen: AtomicSchema, today: AtomicSchema): Atomic
       const now = today as IntegerSchema
       const minimum = Math.max(was.minimum, now.minimum)
       const maximum = Math.min(was.maximum, now.maximum)
-      return minimum > maximum ? frozen : ({ ...was, minimum, maximum } as IntegerSchema)
+      return minimum > maximum ? frozen : { ...was, minimum, maximum }
     }
     case 'decimal': {
       const was = frozen as DecimalSchema
@@ -63,7 +63,7 @@ export const admittedToday = (frozen: AtomicSchema, today: AtomicSchema): Atomic
         [MAX_SCALE]: Math.min(was[MAX_SCALE], now[MAX_SCALE]),
         ...(minimum === undefined ? {} : { [DECIMAL_MINIMUM]: minimum }),
         ...(maximum === undefined ? {} : { [DECIMAL_MAXIMUM]: maximum }),
-      } as DecimalSchema
+      }
     }
     case 'date': {
       const was = frozen as DateSchema
@@ -78,7 +78,7 @@ export const admittedToday = (frozen: AtomicSchema, today: AtomicSchema): Atomic
         ...was,
         ...(minimum === undefined ? {} : { [DATE_MINIMUM]: minimum }),
         ...(maximum === undefined ? {} : { [DATE_MAXIMUM]: maximum }),
-      } as DateSchema
+      }
     }
     case 'text': {
       const was = frozen as TextSchema
@@ -94,7 +94,7 @@ export const admittedToday = (frozen: AtomicSchema, today: AtomicSchema): Atomic
         ...was,
         ...(minLength === undefined ? {} : { minLength }),
         ...(maxLength === undefined ? {} : { maxLength }),
-      } as TextSchema
+      }
     }
     case 'boolean':
       return frozen
