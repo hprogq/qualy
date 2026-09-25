@@ -70,8 +70,9 @@ const callbackEntrances = (types: readonly string[]) =>
  * An entrance of a kind that redirects is in service and this deployment has
  * no address to be redirected back to: every sign-in through it would fail at
  * the last step, one visitor at a time. Production refuses to start and names
- * the entrances; development warns. A deployment whose only entrance is the
- * password door never needs QUALY_PUBLIC_URL and never sees this.
+ * the entrances; development warns. The links mail carries are written with
+ * the same address, so a deployment without one is told at start that its
+ * reset, confirmation and address-change mail cannot go out.
  */
 export class CallbackOriginMissing extends Data.TaggedError('CallbackOriginMissing')<{
   readonly message: string
@@ -93,6 +94,10 @@ export const publicOriginBootCheck: Layer.Layer<
       run: withDb(
         Effect.gen(function* () {
           if (origin.configured) return
+          yield* Effect.logWarning(
+            'QUALY_PUBLIC_URL is not set: password reset, address confirmation and ' +
+              'address change mail cannot be sent',
+          )
           const types = (yield* drivers.all)
             .filter(({ driver }) => driver.callback !== undefined)
             .map(({ driver }) => driver.type)

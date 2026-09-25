@@ -139,7 +139,7 @@ export const retireChallenges = (
 /** what a reset challenge protects; a proof for it is worth nothing anywhere else */
 export const PASSWORD_RESET_CAPTCHA = captchaPurpose('auth/password-reset')
 
-const issueChallenge = (
+const insertChallenge = (
   tenantId: string,
   userId: string,
   purpose: MailPurpose,
@@ -343,6 +343,19 @@ export const emailFlowsLayer: Layer.Layer<
         return yield* new TooManyAttempts({ retryAfterSeconds: answer.retryAfterSeconds })
       }
     })
+
+    /**
+     * A link is issued only when it can be written down. Without the
+     * address this deployment is reached at there is no link to mail, and
+     * refusing inside the transaction undoes whatever it counted for the
+     * request: no link is left open and no quota is spent on it.
+     */
+    const issueChallenge = (...args: Parameters<typeof insertChallenge>) =>
+      origins.configured
+        ? insertChallenge(...args)
+        : Effect.logWarning(
+            'a link was asked for, and QUALY_PUBLIC_URL is not set to write it with',
+          ).pipe(Effect.andThen(Effect.fail(new MailNotSent())))
 
     const linkTo = Effect.fn('Auth.email.link')(function* (
       tenantId: string,
@@ -566,6 +579,10 @@ export const emailFlowsLayer: Layer.Layer<
               challenge: yield* issueChallenge(tenant.value.id, person.id, 'reset', null),
             }
           }),
+        ).pipe(
+          // a link nobody can be sent is the answer every other address
+          // gets: whether this one has a person behind it stays unsaid
+          Effect.catchTag('AUTH_MAIL_NOT_SENT', () => Effect.succeed(undefined)),
         )
         if (issued === undefined) return
         const link = yield* withDb(

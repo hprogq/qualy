@@ -30,6 +30,7 @@ import { AuthConfig } from '../src/server/auth-config.ts'
 import { EmailFlows, emailFlowsLayer } from '../src/server/email-flows.ts'
 import { Iam, serviceLayer as authLayer } from '../src/server/index.ts'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
+import { HARD_LIMITS } from '../src/server/limiter.ts'
 import { authClosure } from './support/closure.ts'
 import { acceptable, standInChecks } from './support/secret-checks.ts'
 
@@ -65,6 +66,7 @@ const stack = (
   backend: ReturnType<typeof memoryMailBackend>['backend'],
   captcha: typeof captchaLayer = captchaLayer,
   demoAccounts: readonly { email: string; password: string; label: string }[] = [],
+  publicUrl: string | null = PUBLIC_URL,
 ) => {
   const services = booted(
     authLayer.pipe(
@@ -93,7 +95,7 @@ const stack = (
               sessionTtlSeconds: 3600,
               secureCookies: false,
               sessionCookieName: 'qualy_session',
-              publicUrl: PUBLIC_URL,
+              ...(publicUrl === null ? {} : { publicUrl }),
               demoAccounts,
             }),
           ),
@@ -733,6 +735,65 @@ describe.runIf(postgresAvailable)('an email address', () => {
       )
       expect(tagOf(answer.refused)).toBe('AUTH_MAIL_NOT_SENT')
       expect(answer.open).toBe(0)
+    } finally {
+      await db.dispose()
+    }
+  })
+})
+
+describe.runIf(postgresAvailable)('a deployment with no address to write links with', () => {
+  it('leaves no link open and counts nothing, and answers a reset as it answers anybody', async () => {
+    const db = await createTestContext('email-no-origin')
+    const mail = memoryMailBackend()
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const flows = yield* EmailFlows
+            const verify = yield* Effect.result(
+              flows.requestVerification(f.as(f.lin, f.linHere), 'en'),
+            )
+            const change = yield* Effect.result(
+              flows.requestChange(f.as(f.ada, f.adaHere), {
+                newEmail: 'ada.new@school.edu',
+                locale: 'en',
+              }),
+            )
+            // Ada has a proven address and a password; nobody has the other
+            const known = yield* Effect.result(
+              flows.requestReset({ email: 'ada@school.edu', locale: 'en' }),
+            )
+            const unknown = yield* Effect.result(
+              flows.requestReset({ email: 'nobody@school.edu', locale: 'en' }),
+            )
+            const open = yield* runSql<{ count: number }>(
+              sql`select count(*)::int as count from user_email_challenges where consumed_at is null`,
+            )
+            const counted = yield* runSql<{ count: number }>(
+              sql`select count(*)::int as count from auth_rate_limit_buckets
+                   where scope = ${HARD_LIMITS.mailBySelf.scope}`,
+            )
+            return {
+              verify: tagOf(verify),
+              change: tagOf(change),
+              known: known._tag,
+              unknown: unknown._tag,
+              open: open.rows[0]!.count,
+              counted: counted.rows[0]!.count,
+            }
+          }).pipe(Effect.provide(stack(db.url, mail.backend, captchaLayer, [], null))),
+        ),
+      )
+      expect(answer).toEqual({
+        verify: 'AUTH_MAIL_NOT_SENT',
+        change: 'AUTH_MAIL_NOT_SENT',
+        known: 'Success',
+        unknown: 'Success',
+        open: 0,
+        counted: 0,
+      })
+      expect(mail.outbox).toEqual([])
     } finally {
       await db.dispose()
     }
