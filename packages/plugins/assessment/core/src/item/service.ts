@@ -1220,6 +1220,22 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             continue
           }
         }
+        // An open round its claim no longer stands on was left behind by
+        // an older path that moved the claim without ending the round.
+        // Moving it would build a replacement nothing points at, so it stays
+        // where it is, counted as kept, and is said in the log for whoever
+        // tidies such rounds up; the save goes through.
+        if (!round.claimStandsOnIt) {
+          yield* Effect.logWarning(
+            'review round left on its old policy: its claim stands elsewhere',
+            {
+              reviewInstanceId: round.id,
+              entryId: round.entryId,
+            },
+          )
+          keptOnOldPolicy += 1
+          continue
+        }
         const ended = yield* cancelReviewInstance({
           tenantId: input.tenantId,
           instanceId: round.id,

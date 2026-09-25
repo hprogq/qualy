@@ -740,6 +740,8 @@ export interface OpenRoundRow {
    * what these rounds are still allowed to produce.
    */
   recognitionRevisionId: string
+  /** whether the claim's round pointer names this round */
+  claimStandsOnIt: boolean
 }
 
 export const openRoundsOfItem = (tenantId: string, itemId: string) =>
@@ -769,6 +771,9 @@ export const openRoundsOfItem = (tenantId: string, itemId: string) =>
           'e.participantId',
           'er.actorId',
         ])
+        .select(
+          sql<boolean>`coalesce(e.current_review_instance_id = ri.id, false)`.as('claimStandsOnIt'),
+        )
         .where('ri.tenantId', '=', tenantId)
         .where('e.itemId', '=', itemId)
         .where('ri.state', 'in', ['active', 'blocked', 'awaiting_supplement'])
@@ -794,6 +799,7 @@ export const openRoundsOfItem = (tenantId: string, itemId: string) =>
           actorId: String(row.actorId),
           effectiveChain: row.effectiveChain,
           recognitionRevisionId: String(row.recognitionRevisionId),
+          claimStandsOnIt: row.claimStandsOnIt === true,
         })),
       ),
     )

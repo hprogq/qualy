@@ -75,6 +75,7 @@ const report = (next: { formConfig: unknown; reviewPolicy: unknown }) =>
         route: 'normal',
         stageId: 's1',
         effectiveChain: POLICY,
+        claimStandsOnIt: true,
       },
     ],
     incompatible: [],

@@ -1565,6 +1565,86 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     })
   })
 
+  // An open round its claim no longer stands on - left by an older path that
+  // moved the claim without ending the round - stays where it is when the
+  // chain moves, and the save that moves every other round goes through.
+  it('leaves a round its claim no longer stands on where it is when the chain moves', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-reroute-orphan')
+          const assessment = yield* Assessment
+          const stage = (id: string) => ({
+            id,
+            selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+            quorum: { type: 'any' },
+          })
+          const g = yield* runningBatch(f, {
+            profile: REVIEW_OPEN,
+            stages: [stage('n1'), stage('n2')],
+          })
+          const admin = f.principal(f.admin)
+          const orphan = yield* submitted(f, g, g.p1, f.s1)
+          const moving = yield* submitted(f, g, g.p2, f.s2)
+          yield* runSql(
+            sql`update entries set current_review_instance_id = null where id = ${orphan.entryId}`,
+          )
+          const swapped = {
+            entryChannels: ['participant'] as const,
+            formConfig: { files: {} },
+            scoringConfig: {
+              calculator: { ref: 'fixed@1', config: { value: '3.00' } },
+              aggregator: { ref: 'sum@1', config: {} },
+            },
+            reviewPolicy: {
+              normal: { stages: [stage('n2'), stage('n1')] },
+              escalation: { stages: [] },
+            },
+          }
+          const asked = yield* Effect.exit(
+            assessment.updateItem(f.t, g.item.id, { config: swapped }, admin),
+          )
+          const report = errorOf<{ impactToken: string }>(asked)!
+          const saved = yield* Effect.exit(
+            assessment.updateItem(
+              f.t,
+              g.item.id,
+              {
+                config: swapped,
+                reason: 'reorder the steps',
+                effects: {
+                  impactToken: report.impactToken,
+                  review: { open: 'reroute-all', missingCurrentStage: 'refuse' },
+                },
+              },
+              admin,
+            ),
+          )
+          const roundsOf = (entryId: string) =>
+            Effect.map(
+              runSql(sql`
+                select state, origin from review_instances
+                where entry_id = ${entryId} order by round_no`),
+              (rows) => (rows as { rows: { state: string; origin: string }[] }).rows,
+            )
+          return {
+            saved,
+            orphan: yield* roundsOf(orphan.entryId),
+            moving: yield* roundsOf(moving.entryId),
+          }
+        }),
+      ),
+    )
+
+    expect(result.saved._tag).toBe('Success')
+    expect(result.orphan).toEqual([{ state: 'active', origin: 'initial' }])
+    expect(result.moving).toEqual([
+      { state: 'completed', origin: 'initial' },
+      { state: 'active', origin: 'reroute' },
+    ])
+  })
+
   // A round keeps what it is when an administrator moves it onto a newer
   // chain. An appeal is the one round a claim may not be withdrawn out of -
   // withdrawing would quietly unmake the decision being contested - and the
