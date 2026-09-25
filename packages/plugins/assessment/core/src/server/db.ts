@@ -47,9 +47,12 @@ const jsonb = (value: unknown) => sql`${JSON.stringify(value)}::jsonb`
  *
  * A round's anchors and its appointments stand on units: a unit is binned
  * under this lock after asking, under it, what still stands there. A write
- * that places an anchor, or appoints through rbac (which takes this lock
- * itself), takes it first - before the batch's own lock, so that every
- * transaction here asks for the two in the same order.
+ * on an existing batch that holds both takes the batch's own lock first and
+ * this one after it - a roster write here, an appointment or a revocation
+ * inside rbac, which takes this lock itself - because every other write on
+ * the batch holds the batch's lock while its inserts ask for a key share on
+ * the tenant row, and the other order would have each wait on the other.
+ * Creating a batch takes only this one: there is no batch yet to wait on.
  */
 export const lockTenant = (tenantId: string) =>
   db.query((k) =>
