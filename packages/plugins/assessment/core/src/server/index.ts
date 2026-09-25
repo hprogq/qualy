@@ -17,7 +17,7 @@ import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import { Audit } from '@qualy/audit-contract/effect'
 import { BatchCreated, BatchDeleted } from '../actions.ts'
-import type { Principal } from '@qualy/rbac-contract'
+import type { AuthorizationScope, Principal } from '@qualy/rbac-contract'
 import type { ApplicableAssignment } from '@qualy/rbac-contract/effect'
 import { assessmentApiGroup, MAX_PLAN_PHASES } from '../api.ts'
 import {
@@ -682,6 +682,9 @@ const SWEEP_BATCH_LIMIT = 200
  * over the units of one round comes to.
  */
 const MAX_STAFF_PAIRS = 2000
+
+/** holding the batch permission anywhere, which is what building a round needs */
+const runsRounds = (held: AuthorizationScope) => held.tenantWide || held.anchors.length > 0
 
 /** rows gathered under a key, in the order they came; one pass */
 const groupBy = <T, K, V>(
@@ -2098,6 +2101,21 @@ export const make = Effect.fn('Assessment.make')(function* () {
         : Effect.fail(new AccessDenied({ reason: 'cannot manage assessment timetable templates' })),
     )
 
+  /**
+   * Whether the caller runs rounds anywhere at all, with where: the question
+   * the create button, the new-batch form's options and the template list
+   * all ask. Where exactly is answered where it matters - every unit a new
+   * batch faces is checked on its own, and applying a template is a plan
+   * write on one batch - so any reach is enough here. Writing a template is
+   * a different question (templatePermission).
+   */
+  const roundsHeld = (as: Principal) =>
+    Effect.flatMap(rbac.listAuthorizedScope(as, MANAGE), (held) =>
+      runsRounds(held)
+        ? Effect.succeed(held)
+        : Effect.fail(new AccessDenied({ reason: 'cannot manage assessment batches' })),
+    )
+
   /** the selection as a validated, deduplicated set of living units */
   const validateScopeSelection = (tenantId: string, ids: readonly string[]) =>
     Effect.gen(function* () {
@@ -2787,8 +2805,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
     canCreateBatch: Effect.fn('Assessment.canCreateBatch')(function* (as) {
       // creating validates every unit the form chose; this only says whether
       // there is any unit at all it could choose from
-      const held = yield* rbac.listAuthorizedScope(as, MANAGE)
-      return held.tenantWide || held.anchors.length > 0
+      return runsRounds(yield* rbac.listAuthorizedScope(as, MANAGE))
     }),
 
     listUserBatches: Effect.fn('Assessment.listUserBatches')(
@@ -4258,7 +4275,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
     authorizeEntryAction: authorizeAction,
 
     listTemplates: Effect.fn('Assessment.listTemplates')(function* (tenantId, filter, as) {
-      yield* templatePermission(as)
+      // reading what the tenant offers is part of building a round anywhere
+      // in it; only writing one is the whole tenant's business
+      yield* roundsHeld(as)
       return yield* dieQuery(withDb(listTemplatesPage(tenantId, filter)))
     }),
 
@@ -4801,8 +4820,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
     scopeOptions: Effect.fn('Assessment.scopeOptions')(function* (tenantId, as) {
       // no separate permission: what a batch may face is what this caller may
       // manage, so the authorization scope IS the option list
-      const held = yield* rbac.listAuthorizedScope(as, MANAGE)
-      yield* templatePermission(as)
+      const held = yield* roundsHeld(as)
       // the whole authorized projection, uncapped. A ceiling here protected
       // nothing - org serves the same rows of the same table to the same
       // tenant with more columns and no ceiling - while costing an
@@ -4898,7 +4916,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
     }),
 
     userTypeOptions: Effect.fn('Assessment.userTypeOptions')(function* (tenantId, as) {
-      yield* templatePermission(as)
+      yield* roundsHeld(as)
       return yield* dieQuery(withDb(userTypeOptionRows(tenantId)))
     }),
 

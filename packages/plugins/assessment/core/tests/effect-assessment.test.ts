@@ -3080,10 +3080,35 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
         )
         const removed = yield* Effect.exit(assessment.deleteTemplate(f.tenant, mine.id, asLocal))
         const still = yield* assessment.listTemplates(f.tenant, { limit: 50 }, f.principal)
+
+        // and everything building a round of their own needs is still theirs
+        // to read: the units they run, the kinds of people, the templates
+        const units = yield* assessment.scopeOptions(f.tenant, asLocal)
+        const kinds = yield* assessment.userTypeOptions(f.tenant, asLocal)
+        const offered = yield* assessment.listTemplates(f.tenant, { limit: 50 }, asLocal)
+        const theirs = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Grade A round',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.gradeA], userTypeIds: [f.studentType] },
+          },
+          asLocal,
+        )
+        // somebody who runs no round anywhere is still refused
+        const outsider = { tenantId: f.tenant, userId: f.t1, sessionId: 's' }
+        const nobody = yield* Effect.exit(assessment.scopeOptions(f.tenant, outsider))
         return {
           written: tagOf(written),
           removed: tagOf(removed),
           names: still.map((row) => row.name),
+          units: units.map((unit) => unit.id),
+          kinds: kinds.length,
+          offered: offered.map((row) => row.name),
+          theirs: theirs.name,
+          nobody: tagOf(nobody),
+          gradeA: f.gradeA,
+          gradeB: f.gradeB,
         }
       }),
     )
@@ -3095,6 +3120,14 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(answer.written).toBe('ACCESS_DENIED')
     expect(answer.removed).toBe('ACCESS_DENIED')
     expect(answer.names).toContain('shared')
+    // Reading was caught in the same narrowing, which left every unit-level
+    // administrator a new-batch form with nothing to choose from.
+    expect(answer.units).toContain(answer.gradeA)
+    expect(answer.units).not.toContain(answer.gradeB)
+    expect(answer.kinds).toBeGreaterThan(0)
+    expect(answer.offered).toContain('shared')
+    expect(answer.theirs).toBe('Grade A round')
+    expect(answer.nobody).toBe('ACCESS_DENIED')
   })
 
   it('holds templates to their structural rules and versions their edits', async () => {
