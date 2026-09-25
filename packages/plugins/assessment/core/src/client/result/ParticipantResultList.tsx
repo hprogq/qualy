@@ -46,6 +46,7 @@ import { PlacementDialog, type PlacementDecision } from '../roster/PlacementDial
 import { PlacementNotice } from '../roster/PlacementNotice.tsx'
 import { RosterFilings } from '../roster/RosterFilings.tsx'
 import { RosterScore } from '../roster/RosterScore.tsx'
+import { unitPathOf } from '../roster/unit-path.ts'
 import {
   ROSTER_PAGE_SIZE,
   ROSTER_WAITING,
@@ -98,9 +99,6 @@ const COLUMNS = '7.5rem minmax(9rem, 3fr) minmax(0, 2fr) 6.5rem 2rem'
  * a word of its own, one that none of these selects' choices uses.
  */
 const ALL = 'all'
-
-/** where a unit on a row's path stands whose name is not to hand */
-const UNNAMED = '…'
 
 /** how long the page waits for a burst of live wake-ups to end before reading again */
 const LIVE_SETTLE = 1_000
@@ -358,22 +356,11 @@ export function ParticipantResultList({
     () => new Map((units.data?.units ?? []).map((unit) => [unit.id, unit])),
     [units.data],
   )
-  /**
-   * A row's unit from the top down, less the root every row shares. A unit
-   * that cannot be named keeps its place rather than dropping out, so the
-   * path never reads as a different one.
-   */
-  const unitPath = (lineage: readonly { nodeId: string }[]) => {
-    if (units.data === undefined) return { path: '', unknown: 0 }
-    const steps = [...lineage].reverse()
-    const names = (steps.length > 1 ? steps.slice(1) : steps).map(
-      (step) => byUnit.get(step.nodeId)?.name,
-    )
-    return {
-      path: names.map((name) => name ?? UNNAMED).join(' / '),
-      unknown: names.filter((name) => name === undefined).length,
-    }
-  }
+  /** a row's unit, said the way the heading over that person's account says it */
+  const unitPath = (lineage: readonly { nodeId: string }[]) =>
+    units.data === undefined
+      ? { path: '', unknown: 0 }
+      : unitPathOf(lineage, (nodeId) => byUnit.get(nodeId)?.name)
   const chosenUnit = view.unit === '' ? undefined : byUnit.get(view.unit)
 
   // whether the organization has anybody elsewhere: the totals ride on the

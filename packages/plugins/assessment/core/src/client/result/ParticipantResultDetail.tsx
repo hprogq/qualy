@@ -23,6 +23,7 @@ import { StandingNotice } from '../entry/workspace/StandingNotice.tsx'
 import { ResultLedger, ResultUnavailable } from './ResultLedger.tsx'
 import { ParticipantEntries } from './ParticipantEntries.tsx'
 import { useParticipantEntries } from './participant-entries.ts'
+import { unitPathOf } from '../roster/unit-path.ts'
 
 // One participant's whole account, in the page the list came from.
 //
@@ -254,11 +255,17 @@ export function ParticipantResultDetail({
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
   const entries = useQuery(useParticipantEntries(batchId, participantId))
   // Where they stand, in names: the round's units as this reader may see
-  // them, and the kinds of person. Both are optional reading - a reader who
-  // cannot see a unit's name is shown the rest of the path without it, and
-  // one who reads neither sees the person without it.
+  // them, and the kinds of person. Both are optional reading - a unit whose
+  // name is not given keeps its place on the path, and a reader who reads
+  // neither sees the person without them. The units are the ones the list
+  // this page was opened from reads, through the same door, and over
+  // everybody the round admitted: somebody taken off it is still somewhere,
+  // even where nobody left on the round stands beside them.
   const units = useQuery({
-    ...query.assessment.listRosterUnits.queryOptions({ params: { batchId }, query: {} }),
+    ...query.assessment.listRosterUnits.queryOptions({
+      params: { batchId },
+      query: { reading: 'accounts', status: 'all' },
+    }),
     staleTime: 60_000,
     retry: false,
   })
@@ -279,15 +286,13 @@ export function ParticipantResultDetail({
     (isApiErrorCode(result.error, 'ASSESSMENT_SCORING_UNAVAILABLE') ||
       isApiErrorCode(result.error, 'ASSESSMENT_SCORING_ACCOUNT_TOO_LARGE'))
 
-  // Where they stand, a step at a time. A step whose name this reader is not
-  // given stays in the path as a gap rather than closing up, so the path
-  // never reads as a shorter one than it is.
+  // Where they stand, from the top down: the same path their row on the list
+  // shows, by the same rule
   const unitNames = new Map((units.data?.units ?? []).map((unit) => [unit.id, unit.name] as const))
-  const steps =
-    participant === undefined
-      ? []
-      : participant.anchorLineage.map((step) => unitNames.get(step.nodeId) ?? null)
-  const path = steps.some((name) => name !== null) ? steps.map((name) => name ?? '…') : []
+  const where =
+    participant === undefined || units.data === undefined
+      ? { path: '', unknown: 0 }
+      : unitPathOf(participant.anchorLineage, (nodeId) => unitNames.get(nodeId))
   const kind = (kinds.data?.userTypes ?? []).find((one) => one.id === participant?.userTypeId)
   const dayOf = (iso: string) =>
     new Intl.DateTimeFormat(locale, {
@@ -324,7 +329,7 @@ export function ParticipantResultDetail({
             key: 'number',
             text: participant.businessNo ?? format(m.noBusinessNoShort, { businessNo }),
           },
-          ...(path.length > 0 ? [{ key: 'unit', text: path.join(' / ') }] : []),
+          ...(where.path !== '' ? [{ key: 'unit', text: where.path }] : []),
           ...(kind !== undefined ? [{ key: 'kind', text: kind.name }] : []),
           {
             key: 'roster',
@@ -411,7 +416,12 @@ export function ParticipantResultDetail({
                 <Skeleton className={stylex.props(styles.numberBone).className} />
               ) : (
                 facts.map((fact) => (
-                  <span key={fact.key} data-fact={fact.key} {...stylex.props(styles.fact)}>
+                  <span
+                    key={fact.key}
+                    data-fact={fact.key}
+                    data-unknown={fact.key === 'unit' ? where.unknown : undefined}
+                    {...stylex.props(styles.fact)}
+                  >
                     <span aria-hidden {...stylex.props(styles.factRule)} />
                     <span
                       {...stylex.props(fact.key === 'unit' ? styles.path : styles.truncate)}

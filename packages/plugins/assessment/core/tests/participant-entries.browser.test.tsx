@@ -50,10 +50,12 @@ const participant = (over: Record<string, unknown> = {}) => ({
   businessNo: '2023123456',
   userTypeId: 'type-student',
   anchorNodeId: 'n2',
-  anchorPath: 'n1.n2',
+  anchorPath: 'n0.n1.n2',
+  // as the round freezes it: their own unit first, the root last
   anchorLineage: [
-    { nodeId: 'n1', nodeTypeId: 'college' },
     { nodeId: 'n2', nodeTypeId: 'class' },
+    { nodeId: 'n1', nodeTypeId: 'college' },
+    { nodeId: 'n0', nodeTypeId: 'school' },
   ],
   status: 'active' as const,
   includedAt: '2026-02-02T00:00:00.000Z',
@@ -61,6 +63,13 @@ const participant = (over: Record<string, unknown> = {}) => ({
   placement: 'current' as const,
   ...over,
 })
+
+/** the round's units, root first, as the unit tree reads them */
+const UNITS = [
+  { id: 'n0', name: '示例大学', parentId: null },
+  { id: 'n1', name: '软件学院', parentId: 'n0' },
+  { id: 'n2', name: '软件2301班', parentId: 'n1' },
+]
 
 const question = (id: string, title: string, channels: readonly string[], sortOrder: number) => ({
   id,
@@ -258,13 +267,7 @@ const screen = ({
             ],
             version: 1,
           }),
-        listRosterUnits: () =>
-          Effect.succeed({
-            units: [
-              { id: 'n1', name: '软件学院', parentId: null },
-              { id: 'n2', name: '软件2301班', parentId: 'n1' },
-            ],
-          }),
+        listRosterUnits: () => Effect.succeed({ units: UNITS, userTypes: [] }),
         listUserTypeOptions: () =>
           Effect.succeed({ userTypes: [{ id: 'type-student', code: 'student', name: '学生' }] }),
         getRecognitionContract: () => Effect.succeed({ contract: null }),
@@ -285,6 +288,19 @@ const screen = ({
 
 const base = `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}`
 const rows = () => [...document.querySelectorAll('[data-testid="claim-row"]')]
+/** where the heading says the person stands */
+const unitFact = () => document.querySelector('[data-fact="unit"]')
+
+/** nothing waiting on anybody's claims, as a roster row counts them */
+const NO_FILINGS = { inReview: 0, toSupplement: 0, reconsidering: 0, toRevise: 0, blocked: 0 }
+
+/** the list the reader goes back to, with its totals and its doors */
+const listReads = {
+  listParticipantScores: () => Effect.succeed({ scores: [] }),
+  listScopeOptions: () => Effect.succeed({ nodes: [] }),
+  listParticipantCandidates: () => Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }),
+  previewImport: () => Effect.succeed({ candidates: 0 }),
+}
 
 describe('reading somebody’s entries', () => {
   it('says who the person is and where they stand, above their account', async () => {
@@ -608,30 +624,16 @@ describe('reading somebody’s entries', () => {
     await screen({
       route: `${base}&view=score&open=${OWN_ITEM}&entry=${entryId(1)}`,
       stubs: {
+        ...listReads,
         listParticipantAccounts: () =>
           Effect.succeed({
             items: [participant(), participant({ id: OTHER, displayName: '王君惠' })].map(
-              (row) => ({
-                ...row,
-                filings: {
-                  inReview: 0,
-                  toSupplement: 0,
-                  reconsidering: 0,
-                  toRevise: 0,
-                  blocked: 0,
-                },
-              }),
+              (row) => ({ ...row, filings: NO_FILINGS }),
             ),
             total: 2,
             page: 1,
             pageSize: 20,
           }),
-        // the list the reader goes back to, with its totals and its doors
-        listParticipantScores: () => Effect.succeed({ scores: [] }),
-        listScopeOptions: () => Effect.succeed({ nodes: [] }),
-        listParticipantCandidates: () =>
-          Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }),
-        previewImport: () => Effect.succeed({ candidates: 0 }),
       },
     })
     const strip = page.getByTestId('roster-neighbors')
@@ -647,19 +649,65 @@ describe('reading somebody’s entries', () => {
     expect(addressNow()).not.toContain('open=')
   })
 
-  it('keeps a step of the path it may not name as a gap', async () => {
+  // A unit the organization has since taken away is still where they were
+  // admitted from: it keeps its place on the path, unnamed.
+  it('keeps a unit it can no longer name in its place on the path', async () => {
     await screen({
       route: base,
       who: participant({
+        anchorNodeId: 'n9',
         anchorLineage: [
-          { nodeId: 'n0', nodeTypeId: 'school' },
+          { nodeId: 'n9', nodeTypeId: 'class' },
           { nodeId: 'n1', nodeTypeId: 'college' },
-          { nodeId: 'n2', nodeTypeId: 'class' },
+          { nodeId: 'n0', nodeTypeId: 'school' },
         ],
       }),
     })
-    await expect
-      .poll(() => document.querySelector('[data-fact="unit"]')?.textContent?.trim())
-      .toBe('… / 软件学院 / 软件2301班')
+    await expect.poll(() => unitFact()?.getAttribute('data-unknown')).toBe('1')
+    expect(unitFact()?.textContent?.trim()).toBe('软件学院 / …')
+  })
+
+  // Nobody left on the round may stand in the class somebody taken off it
+  // was admitted from; the heading still names it.
+  it('names the unit of somebody taken off the round', async () => {
+    const asked = vi.fn((request: { query?: Record<string, string> }) =>
+      Effect.succeed({
+        units:
+          request.query?.['status'] === 'all' ? UNITS : UNITS.filter((unit) => unit.id !== 'n2'),
+        userTypes: [],
+      }),
+    )
+    await screen({
+      route: base,
+      who: participant({ status: 'excluded', excludedAt: '2026-03-10T00:00:00.000Z' }),
+      stubs: { listRosterUnits: asked },
+    })
+    await expect.poll(() => unitFact()?.textContent?.trim()).toBe('软件学院 / 软件2301班')
+    expect(unitFact()?.getAttribute('data-unknown')).toBe('0')
+    // through the door the list it was opened from reads its units by
+    expect(asked.mock.calls.at(-1)![0].query).toEqual({ reading: 'accounts', status: 'all' })
+  })
+
+  it('says where somebody stands the same way on the list and over their account', async () => {
+    await page.viewport(1440, 900)
+    await screen({
+      route: `/assessment/batches/${BATCH_ID}/results`,
+      stubs: {
+        ...listReads,
+        listParticipantAccounts: () =>
+          Effect.succeed({
+            items: [{ ...participant(), filings: NO_FILINGS }],
+            total: 1,
+            page: 1,
+            pageSize: 20,
+          }),
+      },
+    })
+    const listed = page.getByTestId('participant-unit')
+    await expect.element(listed).toHaveAttribute('title', '软件学院 / 软件2301班')
+    const onList = listed.element().getAttribute('title')
+    await page.getByTestId('participant-row').click()
+    await expect.poll(() => addressNow()).toContain(`participant=${PARTICIPANT_ID}`)
+    await expect.poll(() => unitFact()?.textContent?.trim()).toBe(onList)
   })
 })
