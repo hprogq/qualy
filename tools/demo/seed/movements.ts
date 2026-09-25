@@ -239,12 +239,12 @@ export const handOver = (world: World, random: Random, story: Story, away: reado
       for (const lead of leads) {
         const grant = world.grants.get(`${lead}:${world.roles.classLead}`)
         if (grant === undefined) continue
+        // an organizational grant goes back the way it was given, through
+        // the grants API; the port only takes back what an object confines
         yield* story.step(
-          rbac.revokeAssignment({
-            tenantId: world.tenantId,
-            assignmentId: grant,
-            actorId: world.admin.userId,
-          }),
+          access.grants.revoke(world.tenantId, grant, world.admin, (tenantId) =>
+            rbac.assertTenantKeepsAdministrator(tenantId),
+          ),
           3,
         )
         world.grants.delete(`${lead}:${world.roles.classLead}`)

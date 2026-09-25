@@ -1425,7 +1425,9 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           yield* rbac.revokeAssignment({
             tenantId: f.tenant,
             assignmentId: grant.id,
-            actorId: f.principal.userId,
+            resource: { namespace: 'assessment', type: 'batch', id: staffed.id },
+            actor: f.principal,
+            authority: 'appointment',
           })
         }
         const afterRevoke = yield* assessment.listBatches(f.tenant, { limit: 20 }, worker)
@@ -2657,6 +2659,144 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(Exit.isSuccess(removed)).toBe(true)
     // the one appointment made while the round ran, revoked with its record
     expect(appointed).toEqual([true])
+  })
+
+  // Appointing somebody to a round asks whether the office is the caller's
+  // to fill; taking them off asked only whether the caller ran the roster,
+  // so a roster administrator could empty offices nobody let them fill.
+  // Closing the batch's own records - a deleted draft, an acceptance the
+  // organization has emptied - is the batch's housekeeping and asks nothing.
+  it('takes somebody off a round only with the authority to have appointed them', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('staff-appointer')
+        const assessment = yield* Assessment
+        const office = (code: string, codes: readonly string[]) =>
+          Effect.gen(function* () {
+            const id = one<{ id: string }>(
+              yield* runSql(sql`
+                insert into roles (tenant_id, code, name, kind, status, permission_mode,
+                                   assignable, eligibility_mode, anchor_mode)
+                values (${f.tenant}, ${code}, ${code}, 'org', 'active', 'explicit', true,
+                        'unrestricted', 'unrestricted')
+                returning id`),
+            ).id
+            yield* runSql(sql`
+              insert into role_permissions (tenant_id, role_id, permission_id)
+              select ${f.tenant}, ${id}, id from permissions where code in (${sql.join([...codes])})`)
+            return id
+          })
+        const reviewer = yield* office('reviewer', ['assessment.review.process'])
+        // both run rosters and administer grants over the whole college;
+        // only the second's office appoints reviewers
+        const runsRosters = ['assessment.batch.manage', 'iam.grant.manage']
+        const clerkRole = yield* office('clerk', runsRosters)
+        const appointerRole = yield* office('appointer', runsRosters)
+        yield* runSql(sql`
+          insert into role_grant_rules (tenant_id, granter_role_id, target_role_id)
+          values (${f.tenant}, ${appointerRole}, ${reviewer})`)
+        const holder = (name: string, roleId: string) =>
+          Effect.gen(function* () {
+            const userId = one<{ id: string }>(
+              yield* runSql(sql`
+                insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+                values (${f.tenant}, ${name}, ${f.teacherType}, ${f.root}) returning id`),
+            ).id
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+              values (${f.tenant}, ${userId}, ${roleId}, ${f.root}, 'subtree')`)
+            const principal: Principal = { tenantId: f.tenant, userId, sessionId: 's' }
+            return principal
+          })
+        const clerk = yield* holder('Clerk', clerkRole)
+        const appointer = yield* holder('Appointer', appointerRole)
+
+        const draft = (name: string) =>
+          assessment.createBatch(
+            f.tenant,
+            {
+              name,
+              materialRange: { start: '2026-03-01', end: '2026-09-01' },
+              import: { orgNodeIds: [f.class1], userTypeIds: [f.studentType] },
+            },
+            f.principal,
+          )
+        const staff = (batchId: string, userIds: string[]) =>
+          assessment.addStaff(
+            f.tenant,
+            batchId,
+            { userIds, orgNodeIds: [f.class1], roleId: reviewer },
+            f.principal,
+          )
+        const sourceOf = (batchId: string, userId: string) =>
+          Effect.map(
+            assessment.listAccess(f.tenant, batchId, {}, f.principal),
+            (listed) =>
+              listed.staff
+                .find((row) => row.userId === userId)
+                ?.sources.find((source) => source.origin === 'explicit')?.sourceId,
+          )
+        const grantsOn = (batchId: string, userId: string) =>
+          Effect.map(
+            runSql(sql`
+              select revoked_at is not null as revoked from role_grants
+              where tenant_id = ${f.tenant} and resource_id = ${batchId} and user_id = ${userId}`),
+            (result) => rowsOf<{ revoked: boolean }>(result).map((row) => row.revoked),
+          )
+        const remove = (batchId: string, sourceId: string, as: Principal) =>
+          Effect.exit(assessment.removeStaff(f.tenant, batchId, sourceId, as))
+
+        const batch = yield* draft('Staffed')
+        yield* staff(batch.id, [f.t1, f.s2])
+        const t1Source = (yield* sourceOf(batch.id, f.t1))!
+        const s2Source = (yield* sourceOf(batch.id, f.s2))!
+        const byClerk = yield* remove(batch.id, t1Source, clerk)
+        const afterClerk = {
+          grant: yield* grantsOn(batch.id, f.t1),
+          source: yield* sourceOf(batch.id, f.t1),
+        }
+        const byAppointer = yield* remove(batch.id, t1Source, appointer)
+        const byAdministrator = yield* remove(batch.id, s2Source, f.principal)
+
+        // the batch's own records closing, pressed by the same clerk
+        const dropped = yield* draft('Dropped')
+        yield* staff(dropped.id, [f.t1])
+        const deleted = yield* Effect.exit(assessment.deleteBatch(f.tenant, dropped.id, clerk))
+        const emptied = yield* draft('Emptied')
+        yield* staff(emptied.id, [f.t1])
+        // the organization takes back what the batch accepted from the office
+        yield* runSql(sql`delete from role_permissions where role_id = ${reviewer}`)
+        const synced = yield* Effect.exit(
+          assessment.applyAccessSync(f.tenant, emptied.id, { accept: [] }, clerk),
+        )
+        return {
+          byClerk,
+          afterClerk,
+          byAppointer,
+          afterAppointer: yield* grantsOn(batch.id, f.t1),
+          byAdministrator,
+          afterAdministrator: yield* grantsOn(batch.id, f.s2),
+          deleted,
+          afterDelete: yield* grantsOn(dropped.id, f.t1),
+          synced,
+          afterSync: yield* grantsOn(emptied.id, f.t1),
+          t1Source,
+        }
+      }),
+    )
+    const answer = ok(exit)
+    expect(tagOf(answer.byClerk)).toBe('ACCESS_DENIED')
+    // refused whole: the appointment stands and the round still lists it
+    expect(answer.afterClerk).toEqual({ grant: [false], source: answer.t1Source })
+    expect(Exit.isSuccess(answer.byAppointer)).toBe(true)
+    expect(answer.afterAppointer).toEqual([true])
+    expect(Exit.isSuccess(answer.byAdministrator)).toBe(true)
+    expect(answer.afterAdministrator).toEqual([true])
+    expect(Exit.isSuccess(answer.deleted)).toBe(true)
+    expect(answer.afterDelete).toEqual([true])
+    expect(Exit.isSuccess(answer.synced)).toBe(true)
+    expect(answer.afterSync).toEqual([true])
   })
 
   it('takes a change named twice in one sync once', async () => {

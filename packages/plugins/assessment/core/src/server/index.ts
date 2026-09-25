@@ -3796,14 +3796,22 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 cleared += 1
               }
               if (cleared > 0) {
-                // an appointment this batch made is its record's to end: once
-                // the record goes, nothing could ever revoke it again
+                // An appointment this batch made is its record's to end: once
+                // the record goes, nothing could ever revoke it again. Closing
+                // the record is the batch's own housekeeping, so it asks no
+                // appointment authority of whoever applied the sync.
                 for (const assignmentId of yield* explicitAssignments(
                   tenantId,
                   batchId,
                   'emptied',
                 )) {
-                  yield* rbac.revokeAssignment({ tenantId, assignmentId, actorId: as.userId })
+                  yield* rbac.revokeAssignment({
+                    tenantId,
+                    assignmentId,
+                    resource: batchResource(batchId),
+                    actor: as,
+                    authority: 'record-closing',
+                  })
                 }
                 yield* dropEmptyAccessSources(tenantId, batchId)
               }
@@ -4065,10 +4073,15 @@ export const make = Effect.fn('Assessment.make')(function* () {
             if (source.origin !== 'explicit') {
               return yield* new AccessInvalid({ reason: 'source-not-explicit' })
             }
+            // Taking somebody off the job takes their appointment back, and
+            // that asks what giving it did: whoever may not appoint the office
+            // there may not empty it either (ruled 2026-09-25).
             yield* rbac.revokeAssignment({
               tenantId,
               assignmentId: source.roleAssignmentId,
-              actorId: as.userId,
+              resource: batchResource(batchId),
+              actor: as,
+              authority: 'appointment',
             })
             yield* dropAccessSource(tenantId, source.id)
             return asSeenBy(yield* readAccess(tenantId, batchId), as)
@@ -4109,11 +4122,19 @@ export const make = Effect.fn('Assessment.make')(function* () {
             }
             // The appointments this batch made go with it. Their records
             // are removed with the batch, and a grant bound to a batch that
-            // no longer exists could not be revoked by anybody afterwards -
-            // while it kept its role from being deleted and its holder from
-            // changing type.
+            // no longer exists could not be revoked by anybody afterwards,
+            // while it kept its holder from changing type. Closing them is
+            // the batch's own housekeeping, so it asks no appointment
+            // authority of whoever deletes the draft. The withdrawn grants
+            // stay as history, and their role can then only be disabled.
             for (const assignmentId of yield* explicitAssignments(tenantId, batchId, 'all')) {
-              yield* rbac.revokeAssignment({ tenantId, assignmentId, actorId: as.userId })
+              yield* rbac.revokeAssignment({
+                tenantId,
+                assignmentId,
+                resource: batchResource(batchId),
+                actor: as,
+                authority: 'record-closing',
+              })
             }
             yield* deleteBatchRow(tenantId, batchId)
             yield* audit.record(BatchDeleted, {

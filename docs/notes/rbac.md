@@ -23,5 +23,20 @@
   恢复通道只看系统账户的登录凭据，撤销授予碰不到它。
 - 列表的 `manageable` 与写入同源：任命判定是一个谓词（`appointmentHeld`），写入经 `ruleAllowsAppointment` 问单条，
   授予列表逐行下推进 SQL 问同一个谓词，本人与 canonical tenant-admin 的两个例外也与写入一致。
-- 不在此列：批次限定授权只经批次的 `removeStaff` 撤销（`GRANT_RESOURCE_BOUND`），由批次管理权决定；删除用户时的
-  整体撤权由「管人边界」的 `mayConferHoldings` 把关（同一个 `mayConfer`，见 docs/notes/auth-security.md）。
+- 删除用户时的整体撤权由「管人边界」的 `mayConferHoldings` 把关（同一个 `mayConfer`，见 docs/notes/auth-security.md）。
+
+## 资源限定授予的撤销（2026-09-25，撤权对称的补全）
+
+- 资源限定授予（如批次任命）不走通用撤销（`GRANT_RESOURCE_BOUND`），只经资源拥有者调用 rbac 端口
+  `revokeAssignment` 撤销。端口与 `grants.revoke` 共用同一个 `mayTakeBack`：撤他人的问 `mayConfer` 三问，
+  撤自己的只问 grant-manage 覆盖与管理员角色保留；授权判定在租户行锁内（锁在 rbac 内取；调用方若持批次锁，则排在其后）。拒绝在端口上统一为
+  `ACCESS_DENIED`，原因保留原拒绝码（`scoped revoke refused: GRANT_RULE_REFUSED` 等）。批次的 `removeStaff`
+  因此要求操作者能任命被撤的这条授予：只有名册管理权、没有对应任命规则的人不能把别人从批次里撤下。
+- 端口要求拥有者重新点名资源，授予不是限定在该资源上的（限定在别的对象上，或根本不限定）一律拒绝：组织授予只经通用撤销，
+  那里还守着最后管理员。已过期的授予不再授予任何东西，撤掉它不问任命权，只把它标记为已撤销，好让拥有者的记录能关闭。
+- **两个豁免**（`authority: 'record-closing'`，不问任命权，撤销仍记在操作者名下、仍写审计）：
+  1. **删除草稿批次**：批次记录随批次删除，留下的授予此后没有任何人能撤（通用撤销拒绝资源限定授予），且在效授予会挡住持有人改类型。
+     删除草稿本身已由名册管理权授权，收尾是删除的一部分，不是另一次撤权决定。
+  2. **同步清除已被组织收回的接纳**（`applyAccessSync` 中 `lapsed` 清空了某条批次任命记录）：组织已经收回了批次接纳的全部权限，
+     记录被清空后同样再无人能撤；这是组织侧已发生事实的收尾，不是批次管理员替组织做的新决定。
+- 两个豁免都只作用于该批次自己的记录，拒绝它们只会让授予在记录消失后永久存活。

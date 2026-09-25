@@ -18,8 +18,7 @@ import { CurrentUser } from '@qualy/auth-contract/session'
 import { UiAuthorizer } from '@qualy/plugin-ui-registry/server/authorizer'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
 import { BadRequest, codeFrom, cursorUnusable, pageNumber, pageSize } from '@qualy/api-kit/schema'
-import { Audit } from '@qualy/audit-contract/effect'
-import { GrantRevoked } from '../actions.ts'
+import type { Audit } from '@qualy/audit-contract/effect'
 import { accessApiGroup } from '../api.ts'
 import { holdsCanonicalAdmin, make as makeGrants, type GrantRow } from './grants.ts'
 import { REACH_RANK, type Reach } from './authorization.ts'
@@ -46,7 +45,6 @@ import { ESCALATE, type Authority } from './escalation.ts'
 import { type GrantScope } from './grants.ts'
 import {
   revokeAllGrantsOfUser,
-  revokeGrant,
   rolePermissionCodes,
   rolePermissionMode,
   type RoleRow as RoleProjection,
@@ -71,7 +69,6 @@ import {
 // by remembering an argument.
 
 export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActivePermission[]) {
-  const audit = yield* Audit
   // this layer's database, closed over: what it builds is a service, and a
   // service that demands the orm has handed the orm to every caller
   const withDb = yield* withDatabase
@@ -406,24 +403,27 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
     }),
 
     revokeAssignment: Effect.fn('Rbac.revokeAssignment')(function* (input) {
-      const revoked: Effect.Success<ReturnType<typeof revokeGrant>> = yield* bound(() =>
-        revokeGrant(input.tenantId, input.assignmentId, input.actorId),
-      )().pipe(Effect.orDie)
-      if (revoked) {
-        // the port is a peer acting for a person (or for the system when it
-        // names nobody); the withdrawal is an authority change either way
-        yield* bound(() =>
-          audit.record(GrantRevoked, {
-            tenantId: input.tenantId,
-            actor:
-              input.actorId === null ? { kind: 'system' } : { kind: 'user', userId: input.actorId },
-            target: { id: revoked.id },
-            ...(revoked.orgNodeId === null ? {} : { organizationId: revoked.orgNodeId }),
-            details: { userId: revoked.userId, roleId: revoked.roleId },
-          }),
-        )()
-      }
-      return revoked !== undefined
+      // Under the same tenant lock and through the same authority questions
+      // as the grants API's revocation: taking authority back through the
+      // object it is confined to is not a shorter route to emptying an
+      // office one could not fill.
+      return yield* bound(() =>
+        grants.revokeConfined({
+          tenantId: input.tenantId,
+          grantId: input.assignmentId,
+          resource: input.resource,
+          actor: input.actor,
+          authority: input.authority,
+        }),
+      )().pipe(
+        // one code across the port, as for the grant it takes back, with
+        // the refusal kept as its reason
+        Effect.mapError((error) =>
+          error._tag === 'ACCESS_DENIED'
+            ? error
+            : new AccessDenied({ reason: `scoped revoke refused: ${error._tag}` }),
+        ),
+      )
     }),
 
     revokeAllGrantsOfUser: Effect.fn('Rbac.revokeAllGrantsOfUser')(

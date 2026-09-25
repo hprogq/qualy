@@ -79,8 +79,10 @@ export {
 // role's every permission says nothing about being the one who appoints it,
 // and appointing an office does not require personally holding its duties.
 // Taking somebody's grant back asks the giver's three questions again: what
-// one could not appoint, one cannot remove either. Only one's own grant is
-// shed without the appointment.
+// one could not appoint, one cannot remove either, through either door a
+// grant goes back through. Only one's own grant is shed without the
+// appointment, and a grant confined to an object goes with that object's own
+// record when its owner closes the record.
 
 const grantConstraints: Record<string, () => GrantExists> = {
   uq_role_grants_anchored: () => new GrantExists(),
@@ -464,6 +466,50 @@ const oneGrant = (tenantId: string, grantId: string) =>
   )
 
 /**
+ * A grant nobody has withdrawn yet, run out or not, and whether it is still
+ * in force.
+ *
+ * What the owner of an object closes: a grant past its term confers nothing,
+ * but its record still names it, and marking it withdrawn is what lets the
+ * record go.
+ */
+const unrevokedGrant = (tenantId: string, grantId: string) =>
+  db.query((k) =>
+    k
+      .selectFrom('RoleGrant as g')
+      .select((eb) => [
+        'g.userId',
+        'g.roleId',
+        'g.orgNodeId',
+        eb.ref('g.coverage').$castTo<'self' | 'subtree' | null>().as('coverage'),
+        'g.resourceNamespace',
+        'g.resourceType',
+        'g.resourceId',
+        inForce({
+          revokedAt: eb.ref('g.revokedAt'),
+          validFrom: eb.ref('g.validFrom'),
+          validUntil: eb.ref('g.validUntil'),
+        }).as('inForce'),
+      ])
+      .where('g.tenantId', '=', tenantId)
+      .where('g.id', '=', grantId)
+      .where('g.revokedAt', 'is', null)
+      .executeTakeFirst(),
+  )
+
+/**
+ * Where a grant stands, as the authority questions take it. An anchored
+ * grant always has a coverage (a check constraint on the table).
+ */
+const targetOf = (grant: {
+  orgNodeId: string | null
+  coverage: 'self' | 'subtree' | null
+}): GrantTarget =>
+  grant.orgNodeId === null
+    ? { kind: 'tenant' }
+    : { kind: 'org-node', orgNodeId: grant.orgNodeId, coverage: grant.coverage! }
+
+/**
  * Every grant one person holds in force, general or confined to one
  * resource, whatever the state of its role.
  *
@@ -725,6 +771,36 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
       if (!conferrable) return false
     }
     return true
+  })
+
+  /**
+   * Whether the actor may take this grant back.
+   *
+   * Somebody else's goes only with the authority it would take to give it
+   * to them now (ruled 2026-09-25): the questions a grant asks of whoever
+   * gives it - the reach, the administrator role's reservation, and the
+   * office being the caller's to appoint there - so an office one may not
+   * fill is not one one may empty either. One's own goes with the authority
+   * any revocation takes: shedding a role never grows anybody. The last
+   * administrator is kept by the grants API reading the state its removal
+   * leaves; the administrator role, a tenant role, is never confined to an
+   * object, so the other door has none to lose.
+   *
+   * One function for both doors a grant goes back through, the grants API
+   * and the port an object's owner calls, so the two cannot drift apart.
+   */
+  const mayTakeBack = Effect.fn('Rbac.grants.mayTakeBack')(function* (
+    actor: Principal,
+    tenantId: string,
+    grant: { userId: string; roleId: string },
+    target: GrantTarget,
+  ) {
+    if (grant.userId === actor.userId) {
+      yield* mayAdministerGrantsAt(actor, target)
+      yield* mayAdministerRole(actor, tenantId, grant.roleId)
+      return
+    }
+    yield* mayConfer(actor, tenantId, grant.roleId, target)
   })
 
   /** whether this role can be held by this person, here */
@@ -1152,30 +1228,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
               type: grant.resourceType ?? '',
             })
           }
-          const target: GrantTarget =
-            grant.orgNodeId === null
-              ? { kind: 'tenant' }
-              : {
-                  kind: 'org-node',
-                  orgNodeId: grant.orgNodeId,
-                  coverage: grant.coverage!,
-                }
-          if (grant.userId === actor.userId) {
-            // One's own grant goes with the authority any revocation takes:
-            // shedding a role never grows anybody, and the last administrator
-            // is still kept by the check below reading the state this removal
-            // leaves.
-            yield* mayAdministerGrantsAt(actor, target)
-            yield* mayAdministerRole(actor, tenantId, grant.roleId)
-          } else {
-            // Somebody else's goes only with the authority it would take to
-            // give it to them now (ruled 2026-09-25): the same questions a
-            // grant asks of whoever gives it - the reach, the administrator
-            // role's reservation, and the office being the caller's to
-            // appoint there - so an office one may not fill is not one one
-            // may empty either.
-            yield* mayConfer(actor, tenantId, grant.roleId, target)
-          }
+          yield* mayTakeBack(actor, tenantId, grant, targetOf(grant))
           // withdrawn, not deleted: who held what, where and until when, and
           // who took it back, is history the row keeps
           yield* revokeGrant(tenantId, grantId, actor.userId)
@@ -1191,6 +1244,54 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
             ...(grant.orgNodeId === null ? {} : { organizationId: grant.orgNodeId }),
             details: { userId: grant.userId, roleId: grant.roleId },
           })
+        }),
+      )
+    }),
+
+    /**
+     * Authority confined to one object, taken back through that object's
+     * owner: the other door, beside `revoke`, which refuses these.
+     *
+     * `appointment` asks what `revoke` asks (`mayTakeBack`); a grant already
+     * past its term takes nothing away, so nothing is asked of it. The
+     * owner closing its own record of the appointment asks nothing: it has
+     * authorized closing the record, and a grant outliving its record could
+     * never be revoked again. Either way only a grant confined to the object
+     * the owner names. Answers whether a grant nobody had withdrawn fell.
+     */
+    revokeConfined: Effect.fn('Rbac.grants.revokeConfined')(function* (input: {
+      tenantId: string
+      grantId: string
+      resource: { namespace: string; type: string; id: string }
+      actor: Principal
+      authority: 'appointment' | 'record-closing'
+    }) {
+      return yield* write(input.tenantId, () =>
+        Effect.gen(function* () {
+          const grant = yield* unrevokedGrant(input.tenantId, input.grantId)
+          if (!grant) return false
+          if (
+            grant.resourceId !== input.resource.id ||
+            grant.resourceNamespace !== input.resource.namespace ||
+            grant.resourceType !== input.resource.type
+          ) {
+            return yield* new AccessDenied({ reason: 'grant not confined to this resource' })
+          }
+          if (input.authority === 'appointment' && grant.inForce) {
+            yield* mayTakeBack(input.actor, input.tenantId, grant, targetOf(grant))
+          }
+          yield* revokeGrant(input.tenantId, input.grantId, input.actor.userId)
+          yield* audit.record(GrantRevoked, {
+            tenantId: input.tenantId,
+            actor: actorOf(input.actor),
+            target: {
+              id: input.grantId,
+              label: yield* grantLabel(input.tenantId, grant.userId, grant.roleId),
+            },
+            ...(grant.orgNodeId === null ? {} : { organizationId: grant.orgNodeId }),
+            details: { userId: grant.userId, roleId: grant.roleId },
+          })
+          return true
         }),
       )
     }),

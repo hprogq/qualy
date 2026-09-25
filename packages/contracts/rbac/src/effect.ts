@@ -199,11 +199,39 @@ export interface RbacShape {
     actor: Principal
   }) => Effect.Effect<string, AccessDenied>
 
+  /**
+   * Takes back authority confined to one object, through that object's owner.
+   *
+   * The owner names the object again, and a grant confined to anything else
+   * - or to nothing - is refused: general authority goes back through the
+   * grants API, which also keeps the last administrator. Answers whether a
+   * grant still held fell; one already withdrawn is left as it is.
+   */
   readonly revokeAssignment: (input: {
     tenantId: string
     assignmentId: string
-    actorId: string | null
-  }) => Effect.Effect<boolean>
+    resource: ResourceRef
+    /** who takes it back; the withdrawal and its trail name them */
+    actor: Principal
+    /**
+     * What the actor takes it back on.
+     *
+     * `appointment`: somebody else's grant goes only with the authority it
+     * would take to give it now - the same questions a grant asks of its
+     * giver (grant administration of that reach there, the administrator
+     * role's reservation, the office being theirs to appoint) - and one's
+     * own with grant administration alone. A grant that has already run out
+     * takes nothing away, so nothing is asked of it.
+     *
+     * `record-closing`: the owner is closing its own record of the
+     * appointment - the object is going, or what it accepted from the grant
+     * has emptied - and a grant bound to a record that is gone could never
+     * be revoked by anybody again. Nothing is asked of the actor here: the
+     * owner has already authorized closing the record, and refusing would
+     * leave the grant in force for good.
+     */
+    authority: 'appointment' | 'record-closing'
+  }) => Effect.Effect<boolean, AccessDenied>
 
   /**
    * Withdraws every live grant one person holds, attributed to the actor.

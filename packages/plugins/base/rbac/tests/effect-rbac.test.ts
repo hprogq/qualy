@@ -2106,6 +2106,156 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
     }
   })
 
+  // The door an object's owner takes a confined grant back through asked
+  // nothing at all: whoever could reach the owner's removal emptied offices
+  // they could never have filled, while the grants API refused the same.
+  it('takes a confined grant back through its owner with the authority that would give it', async () => {
+    const db = await createTestContext('effect-revoke-confined')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const rbac = yield* Rbac
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const manage = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into permissions (code, plugin, name, target_kind)
+              values ('iam.grant.manage', 'rbac', 'manage', 'org-node')
+              on conflict (code) do update set code = excluded.code returning id`),
+          ).id
+          const role = (code: string) =>
+            Effect.map(
+              runSql(sql`
+                insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+                values (${f.tenant}, ${code}, ${code}, 'org', 'active', 'explicit', 'unrestricted')
+                returning id`),
+              (result) => one<{ id: string }>(result).id,
+            )
+          // grant administration over the whole tree, and the office that
+          // appoints counsellors, both held by the anchored actor
+          const granter = yield* role('granter')
+          yield* runSql(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            values (${f.tenant}, ${granter}, ${manage})`)
+          const collegeAdmin = yield* role('college-admin')
+          const counsellor = yield* role('counsellor')
+          yield* runSql(sql`
+            insert into role_grant_rules (tenant_id, granter_role_id, target_role_id)
+            values (${f.tenant}, ${collegeAdmin}, ${counsellor})`)
+          const batch = '11111111-1111-4111-8111-111111111111'
+          const otherBatch = '22222222-2222-4222-8222-222222222222'
+          const hold = (
+            userId: string,
+            roleId: string,
+            nodeId: string,
+            resourceId: string | null,
+            lapsed = false,
+          ) =>
+            Effect.map(
+              runSql(sql`
+                insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage,
+                                         resource_namespace, resource_type, resource_id,
+                                         valid_until)
+                values (${f.tenant}, ${userId}, ${roleId}, ${nodeId}, 'subtree',
+                        ${resourceId === null ? null : 'assessment'},
+                        ${resourceId === null ? null : 'batch'}, ${resourceId},
+                        ${lapsed ? sql`now() - interval '1 day'` : null})
+                returning id`),
+              (result) => one<{ id: string }>(result).id,
+            )
+          yield* hold(f.anchored.userId, granter, f.root, null)
+          yield* hold(f.anchored.userId, collegeAdmin, f.root, null)
+          const li = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.tenant}, 'Li', ${f.userType}, ${f.child}) returning id`),
+          ).id
+          // an office the actor appoints, one they do not, the same one run
+          // out, one confined to another object, and one confined to nothing
+          const appointable = yield* hold(li, counsellor, f.child, batch)
+          const peer = yield* hold(li, collegeAdmin, f.child, batch)
+          const lapsedPeer = yield* hold(li, collegeAdmin, f.root, batch, true)
+          const elsewhere = yield* hold(li, counsellor, f.root, otherBatch)
+          const general = yield* hold(li, collegeAdmin, f.root, null)
+
+          const take = (
+            grantId: string,
+            actor: Principal,
+            authority: 'appointment' | 'record-closing',
+            resourceId = batch,
+          ) =>
+            Effect.map(
+              Effect.result(
+                rbac.revokeAssignment({
+                  tenantId: f.tenant,
+                  assignmentId: grantId,
+                  resource: { namespace: 'assessment', type: 'batch', id: resourceId },
+                  actor,
+                  authority,
+                }),
+              ),
+              (result) =>
+                result._tag === 'Success'
+                  ? result.success
+                  : (result.failure as { _tag: string; reason: string }),
+            )
+          const live = (grantId: string) =>
+            Effect.map(
+              runSql(sql`
+                select revoked_at is null as live from role_grants
+                where tenant_id = ${f.tenant} and id = ${grantId}`),
+              (result) => one<{ live: boolean }>(result).live,
+            )
+
+          const refused = yield* take(peer, f.anchored, 'appointment')
+          const stillThere = yield* live(peer)
+          return {
+            refused,
+            stillThere,
+            appointable: yield* take(appointable, f.anchored, 'appointment'),
+            // a grant past its term takes nothing away
+            lapsed: yield* take(lapsedPeer, f.anchored, 'appointment'),
+            // the owner closing its own record asks nothing of the actor
+            closing: yield* take(peer, f.anchored, 'record-closing'),
+            closed: yield* live(peer),
+            // and already withdrawn, nothing falls
+            again: yield* take(peer, f.principal, 'appointment'),
+            // only what is confined to the object the owner names
+            misnamed: yield* take(elsewhere, f.principal, 'record-closing'),
+            unconfined: yield* take(general, f.principal, 'record-closing'),
+            generalLive: yield* live(general),
+            // the administrator appoints everything, so takes anything back
+            canonical: yield* take(elsewhere, f.principal, 'appointment', otherBatch),
+            recordedBy: one<{ revokedBy: string | null }>(
+              yield* runSql(sql`
+                select revoked_by as "revokedBy" from role_grants
+                where tenant_id = ${f.tenant} and id = ${appointable}`),
+            ).revokedBy,
+            actor: f.anchored.userId,
+          }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.refused).toMatchObject({ _tag: 'ACCESS_DENIED' })
+      expect((answer.refused as { reason: string }).reason).toContain('GRANT_RULE_REFUSED')
+      expect(answer.stillThere).toBe(true)
+      expect(answer.appointable).toBe(true)
+      expect(answer.lapsed).toBe(true)
+      expect(answer.closing).toBe(true)
+      expect(answer.closed).toBe(false)
+      expect(answer.again).toBe(false)
+      expect(answer.misnamed).toMatchObject({ _tag: 'ACCESS_DENIED' })
+      expect(answer.unconfined).toMatchObject({ _tag: 'ACCESS_DENIED' })
+      expect(answer.generalLive).toBe(true)
+      expect(answer.canonical).toBe(true)
+      // the withdrawal names whoever took it back
+      expect(answer.recordedBy).toBe(answer.actor)
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('names the object a confined grant is confined to, and will not revoke it here', async () => {
     const db = await createTestContext('effect-grant-confined')
     try {
@@ -2444,7 +2594,9 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
           yield* rbac.revokeAssignment({
             tenantId: f.tenant,
             assignmentId: assignment,
-            actorId: f.user,
+            resource: { namespace: 'assessment', type: 'batch', id: f.child },
+            actor: f.principal,
+            authority: 'appointment',
           })
           const listed = yield* access.grants.list(
             f.tenant,
