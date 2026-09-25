@@ -987,6 +987,20 @@ export const makeAdministrativeImportMethods = (
   const commitAdministrativeImport: AdministrativeImportMethods['commitAdministrativeImport'] =
     Effect.fn('Assessment.commitAdministrativeImport')(function* (tenantId, batchId, input, as) {
       const runtime = yield* ScoringRuntimeCatalog
+      // A second press after a lost response is answered with the import the
+      // first one became, before the file is judged again: judged again, the
+      // facts that press wrote count against the question's limit, and every
+      // row of the import would be refused as already recorded. The check
+      // under the lock below still decides a race between two presses.
+      const earlier = yield* dieQuery(
+        withDb(importOfAttachment({ tenantId, attachmentId: input.attachmentId })),
+      )
+      if (earlier !== null) {
+        const staged = yield* storage
+          .metadata({ tenantId, attachmentId: input.attachmentId })
+          .pipe(Effect.catch(() => Effect.fail(new AttachmentUnavailable())))
+        if (staged.ownerUserId === as.userId) return earlier
+      }
       // All outside any transaction: reading the file, judging it and
       // proving the arithmetic are the expensive parts, and none of them
       // may be done holding the batch lock.

@@ -1141,6 +1141,45 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
     // confirmed, it goes in
     expect(found.confirmed.importedCount).toBe(1)
   })
+  // The quota a question keeps counts the facts the first press wrote, so
+  // judging the file again on a second press refused every row of the very
+  // import it was asking about - and a reader told "all at the limit" goes
+  // and uploads the file again.
+  it('answers a second press with the import, on a question that allows one fact each', async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ai-once-quota')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          yield* numbered(f)
+          const item = yield* recordItem(f, g.batch.id, { maxEntries: 1 })
+          const attachmentId = yield* workbook(f, item.id, f.recorder, [
+            ['2023001', 'Zhang San', '校发〔2026〕12 号'],
+          ])
+          const revision = one<{ id: string }>(
+            yield* runSql(
+              sql`select current_revision_id as id from assessment_items where id = ${item.id}`,
+            ),
+          ).id
+          const commit = () =>
+            assessment.commitAdministrativeImport(
+              f.t,
+              g.batch.id,
+              { attachmentId, itemId: item.id, expectedItemRevisionId: revision },
+              f.principal(f.recorder),
+            )
+          const first = yield* commit()
+          const retried = yield* commit()
+          return { first, retried, after: yield* counts(f) }
+        }),
+      ),
+    )
+    expect(found.retried).toEqual(found.first)
+    expect(found.after).toEqual({ imports: 1, entries: 1 })
+  })
+
   // Deletion frees a number for somebody new, and the roster keeps the
   // deleted person until an administrator takes them off it. A number is
   // answered by the living person who holds it, or by nobody.
