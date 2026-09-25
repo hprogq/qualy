@@ -86,6 +86,23 @@ const styles = stylex.create({
     fontSize: 14,
     color: tokens.mutedForeground,
   },
+  // the score's absence, said once above the paper with the way to ask again
+  scoreNotice: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    marginInline: 16,
+    marginTop: 12,
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.surfaceMuted,
+    paddingInline: 12,
+    paddingBlock: 8,
+  },
+  scoreNoticeWords: {
+    flexGrow: 1,
+    fontSize: 13,
+    color: tokens.mutedForeground,
+  },
   // the structure as its own column, the paper as the page: both panes
   // scroll inside themselves where they stand side by side; narrow, the
   // paper flows in the page and the structure folds into a drawer
@@ -1569,25 +1586,21 @@ function Body({
   const pendingCount = entries.filter((entry) => entry.status === 'in_review').length
   const draftCount = entries.filter((entry) => entry.status === 'draft').length
   const backCount = entries.filter((entry) => entry.status === 'needs_revision').length
+  // The score is read apart from the paper. Filing never waits on it, so a
+  // score that cannot be computed right now takes away the figures and
+  // nothing else - and a score that never arrived is drawn as unknown,
+  // never as a settled zero.
+  const scored = standing.data !== undefined
+  const scoreless = !scored && standing.error !== null
+  // a read that failed only in the background keeps what it last showed:
+  // replacing the page would take an open form down with it
+  const failed = (read: { error: unknown; data: unknown }) =>
+    read.data === undefined && read.error !== null ? formatError(read.error) : null
 
   return (
     <AsyncSection
       pending={items.isPending || mine.isPending || groups.isPending || standing.isPending}
-      error={
-        items.error
-          ? formatError(items.error)
-          : groups.error
-            ? formatError(groups.error)
-            : mine.error
-              ? formatError(mine.error)
-              : // a standing that failed is not a standing of zero: it is
-                // already retried out, so it reports neither pending nor an
-                // error unless somebody asks, and every group ledger drew a
-                // settled 0 over a read that never arrived
-                standing.error
-                ? formatError(standing.error)
-                : null
-      }
+      error={failed(items) ?? failed(groups) ?? failed(mine)}
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
       onRetry={() => {
@@ -1684,6 +1697,7 @@ function Body({
               rows={rows}
               batchName={batchName}
               standing={standing.data ?? null}
+              scored={scored}
               openId={marked}
               onOpen={goTo}
             />
@@ -1843,6 +1857,25 @@ function Body({
                 </div>
               </div>
               <PaneScroller>
+                {scoreless && (
+                  <div
+                    data-testid="standing-unavailable"
+                    data-standing="unavailable"
+                    {...stylex.props(styles.scoreNotice)}
+                  >
+                    <span {...stylex.props(styles.scoreNoticeWords)}>
+                      {format(m.resultUnavailableTitle)}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={standing.isFetching}
+                      onClick={() => void standing.refetch()}
+                    >
+                      {format(m.resultRecalculate)}
+                    </Button>
+                  </div>
+                )}
                 {/* the same paper, narrowed: it fades over itself so the
                     switch reads as this paper changing rather than another
                     one arriving */}
@@ -1852,6 +1885,7 @@ function Body({
                     entriesByItem={entriesByItem}
                     filing={filingByItem}
                     standing={standing.data ?? null}
+                    scored={scored}
                     showTodoOnly={paperView === 'todo'}
                     busy={setStatus.isPending || declare.isPending}
                     onFile={(item, entry) => openAndFile(item.id, entry?.id ?? 'new')}
@@ -1886,6 +1920,7 @@ function Body({
               rows={rows}
               batchName={batchName}
               standing={standing.data ?? null}
+              scored={scored}
               openId={marked}
               onOpen={goTo}
             />
@@ -2002,6 +2037,7 @@ function Structure({
   rows,
   batchName,
   standing,
+  scored,
   openId,
   onOpen,
   variant = 'rail',
@@ -2009,6 +2045,8 @@ function Structure({
   rows: readonly StructureRow[]
   batchName: string
   standing: Standing | null
+  /** false while the score could not be read: the figures are unknown, not zero */
+  scored: boolean
   openId: string | null
   onOpen: (id: string) => void
   /**
@@ -2201,9 +2239,10 @@ function Structure({
                     <span {...stylex.props(styles.ledgerCol)}>
                       <span {...stylex.props(styles.ledgerLine)}>
                         <span
+                          data-scored={scored}
                           {...stylex.props(styles.ledgerGot, gotNum === 0 && styles.ledgerGotZero)}
                         >
-                          {row.right === '' ? '0' : trimAmount(row.right)}
+                          {!scored ? '–' : row.right === '' ? '0' : trimAmount(row.right)}
                         </span>
                         <span {...stylex.props(styles.ledgerCap)}>
                           {capNum > 0
@@ -2294,7 +2333,7 @@ function Structure({
               <span {...stylex.props(styles.sumName)}>{root?.name ?? batchName}</span>
               <span {...stylex.props(styles.spacer)} />
               <span {...stylex.props(styles.sumValue, got === 0 && styles.sumValueZero)}>
-                {got.toFixed(2)}
+                {scored ? got.toFixed(2) : '–'}
               </span>
               <span {...stylex.props(styles.sumUnit)}>{format(m.myEntriesPaperUnit)}</span>
             </div>

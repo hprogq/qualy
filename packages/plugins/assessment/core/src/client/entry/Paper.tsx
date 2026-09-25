@@ -1001,6 +1001,7 @@ export function Paper({
   entriesByItem,
   filing,
   standing,
+  scored,
   showTodoOnly,
   busy,
   onFile,
@@ -1012,6 +1013,8 @@ export function Paper({
   /** the phase gate's word on filing into each question, from the entries read */
   filing: ReadonlyMap<string, FilingGateDto>
   standing: Standing | null
+  /** false while the score could not be read: the figures are unknown, not zero */
+  scored: boolean
   /** the toolbar's own filter: only questions still waiting on the reader */
   showTodoOnly: boolean
   busy: boolean
@@ -1071,13 +1074,14 @@ export function Paper({
             <Band
               key={row.id}
               row={row}
+              scored={scored}
               no={numbers.get(row.id) ?? ''}
               share={capSum > 0 && row.cap != null ? Number(row.cap) / capSum : null}
             />
           )
         }
         if (row.kind === 'group') {
-          return <SubBand key={row.id} row={row} no={numbers.get(row.id) ?? ''} />
+          return <SubBand key={row.id} row={row} scored={scored} no={numbers.get(row.id) ?? ''} />
         }
         return (
           <Question
@@ -1119,10 +1123,12 @@ const two = (value: string | number): string => {
  */
 function Band({
   row,
+  scored,
   no,
   share,
 }: {
   row: StructureRow
+  scored: boolean
   no: string
   /** this band's part of the whole paper, when every top cap is known */
   share: number | null
@@ -1133,8 +1139,11 @@ function Band({
   const pct = cap === null || cap === 0 ? 0 : Math.min(100, Math.round((got / cap) * 100))
   const ledger = (gotSize: stylex.StyleXStyles) => (
     <span {...stylex.props(styles.ledger)}>
-      <span {...stylex.props(styles.ledgerGot, gotSize, got === 0 && styles.ledgerGotZero)}>
-        {two(got)}
+      <span
+        data-scored={scored}
+        {...stylex.props(styles.ledgerGot, gotSize, got === 0 && styles.ledgerGotZero)}
+      >
+        {scored ? two(got) : '–'}
       </span>
       {cap !== null && (
         <span {...stylex.props(styles.ledgerCap)}>
@@ -1204,7 +1213,7 @@ function Band({
 }
 
 /** a nested group's smaller band */
-function SubBand({ row, no }: { row: StructureRow; no: string }) {
+function SubBand({ row, scored, no }: { row: StructureRow; scored: boolean; no: string }) {
   const { format } = useI18n()
   const cap = row.cap == null || row.cap === '' ? null : Number(row.cap)
   return (
@@ -1217,12 +1226,13 @@ function SubBand({ row, no }: { row: StructureRow; no: string }) {
         <span {...stylex.props(styles.spacer)} />
         <span {...stylex.props(styles.ledger)}>
           <span
+            data-scored={scored}
             {...stylex.props(
               styles.subBandGot,
               (row.right === '' || Number(row.right) === 0) && styles.ledgerGotZero,
             )}
           >
-            {two(row.right === '' ? 0 : row.right)}
+            {scored ? two(row.right === '' ? 0 : row.right) : '–'}
           </span>
           {cap !== null && (
             <span {...stylex.props(styles.ledgerCap)}>

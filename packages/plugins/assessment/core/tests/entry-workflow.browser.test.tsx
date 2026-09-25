@@ -2287,6 +2287,120 @@ describe('the phase gate on the paper', () => {
   })
 })
 
+describe('the paper while the score is out of reach', () => {
+  const INNER_ID = '77777777-7777-4777-8777-7777777777aa'
+  // a paper with a section under its root, so a band carries a ledger
+  const groups = () =>
+    Effect.succeed({
+      groups: [
+        {
+          id: GROUP_ID,
+          parentGroupId: null,
+          name: '文体活动',
+          cap: '10.00',
+          floor: null,
+          sortOrder: 0,
+          itemCount: 0,
+        },
+        {
+          id: INNER_ID,
+          parentGroupId: GROUP_ID,
+          name: '竞赛',
+          cap: '6.00',
+          floor: null,
+          sortOrder: 0,
+          itemCount: 1,
+        },
+      ],
+      version: 1,
+      capabilities: { canManage: false },
+    })
+
+  it('keeps filing open and draws no score at all, then asks again', async () => {
+    let computable = false
+    const standing = vi.fn(() =>
+      computable
+        ? Effect.succeed({
+            mode: 'provisional' as const,
+            total: '2.00',
+            groups: [],
+            lines: [],
+          })
+        : Effect.fail(apiError('ASSESSMENT_SCORING_UNAVAILABLE')),
+    )
+    await screen(
+      {
+        listItems: () =>
+          Effect.succeed({
+            items: [item({ scoreGroupId: INNER_ID })],
+            capabilities: { canManage: false },
+          }),
+        listScoreGroups: groups,
+        getMyResult: standing as never,
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    // the paper and its way in stand
+    await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
+    await expect.element(page.getByTestId('file-claim').first()).toBeInTheDocument()
+    await expect
+      .element(page.getByTestId('standing-unavailable'))
+      .toHaveAttribute('data-standing', 'unavailable')
+    // and no ledger claims a figure it never read
+    const ledgers = () =>
+      [...document.querySelectorAll('[data-scored]')].map((one) => one.getAttribute('data-scored'))
+    expect(ledgers().length).toBeGreaterThan(0)
+    expect(new Set(ledgers())).toEqual(new Set(['false']))
+
+    computable = true
+    await page.getByTestId('standing-unavailable').getByRole('button').click()
+    await vi.waitFor(() =>
+      expect(page.getByTestId('standing-unavailable').elements()).toHaveLength(0),
+    )
+    expect(new Set(ledgers())).toEqual(new Set(['true']))
+  })
+
+  it('keeps an open form when a later read of the score fails', async () => {
+    let computable = true
+    const standing = vi.fn(() =>
+      computable
+        ? Effect.succeed({
+            mode: 'provisional' as const,
+            total: '0.00',
+            groups: [],
+            lines: [],
+          })
+        : Effect.fail(apiError('ASSESSMENT_SCORING_UNAVAILABLE')),
+    )
+    await screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        getMyResult: standing as never,
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
+    await clickVisible('file-claim')
+    const said = page.getByLabelText('事项说明', { exact: false })
+    await said.fill('2024 年入伍，2026 年退役复学')
+
+    // the tab comes back into view: every read is asked again, and this
+    // time the score cannot be computed
+    computable = false
+    const before = standing.mock.calls.length
+    window.dispatchEvent(new Event('visibilitychange'))
+    await vi.waitFor(() => expect(standing.mock.calls.length).toBeGreaterThan(before))
+    await new Promise((settle) => setTimeout(settle, 300))
+
+    await expect.element(said).toBeVisible()
+    await expect.element(said).toHaveValue('2024 年入伍，2026 年退役复学')
+  })
+})
+
 describe('a round longer than one page', () => {
   const LATER_ID = '33333333-3333-4333-8333-3333333333aa'
   const asked = {
