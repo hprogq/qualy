@@ -50,6 +50,10 @@ export const resolveImportParticipants = (input: {
             .where('p.tenantId', '=', input.tenantId)
             .where('p.batchId', '=', input.batchId)
             .where('p.status', '=', 'active')
+            // a deleted person is nobody, whatever number they were given: the
+            // number is free for someone else once they are gone, and a
+            // roster that still lists them would otherwise answer it twice
+            .where('u.deletedAt', 'is', null)
             .where('u.businessNo', 'in', [...input.businessNos])
             .where(
               staffReachOver({
@@ -61,6 +65,7 @@ export const resolveImportParticipants = (input: {
                 anchorPath: sql.ref('p.anchor_path'),
               }),
             )
+            .orderBy('p.id')
             .execute(),
         )
         .pipe(

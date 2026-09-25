@@ -1141,6 +1141,81 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
     // confirmed, it goes in
     expect(found.confirmed.importedCount).toBe(1)
   })
+  // Deletion frees a number for somebody new, and the roster keeps the
+  // deleted person until an administrator takes them off it. A number is
+  // answered by the living person who holds it, or by nobody.
+  it('never finds a deleted person by the number they used to hold', async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ai-deleted')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          yield* numbered(f)
+          const item = yield* recordItem(f, g.batch.id)
+          const revision = one<{ id: string }>(
+            yield* runSql(
+              sql`select current_revision_id as id from assessment_items where id = ${item.id}`,
+            ),
+          ).id
+          const preview = (attachmentId: string) =>
+            assessment.previewAdministrativeImport(
+              f.t,
+              g.batch.id,
+              { attachmentId, itemId: item.id, expectedItemRevisionId: revision },
+              f.principal(f.recorder),
+            )
+          yield* runSql(
+            sql`update users set deleted_at = now(), enabled = false where id = ${f.s1}`,
+          )
+          const gone = yield* preview(
+            yield* workbook(f, item.id, f.recorder, [['2023001', 'Zhang San', '甲']]),
+          )
+          // the number given to somebody new, who joins the same roster
+          // where the deleted person still stands
+          const successor = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users
+                (tenant_id, display_name, user_type_id, primary_org_node_id, business_no)
+              select tenant_id, display_name, user_type_id, primary_org_node_id, business_no
+                from users where id = ${f.s1}
+              returning id`),
+          ).id
+          const joined = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into batch_participants
+                (tenant_id, batch_id, user_id, assessment_anchor_node_id, anchor_path,
+                 anchor_lineage, user_type_id)
+              select tenant_id, batch_id, ${successor}, assessment_anchor_node_id, anchor_path,
+                     anchor_lineage, user_type_id
+                from batch_participants where id = ${g.p1}
+              returning id`),
+          ).id
+          const attachmentId = yield* workbook(f, item.id, f.recorder, [
+            ['2023001', 'Zhang San', '甲'],
+          ])
+          const matched = yield* preview(attachmentId)
+          yield* assessment.commitAdministrativeImport(
+            f.t,
+            g.batch.id,
+            { attachmentId, itemId: item.id, expectedItemRevisionId: revision },
+            f.principal(f.recorder),
+          )
+          const written = (yield* runSql(sql`
+            select participant_id from entries
+             where tenant_id = ${f.t} and item_id = ${item.id}`)) as unknown as {
+            rows: { participant_id: string }[]
+          }
+          return { gone, matched, joined, written: written.rows }
+        }),
+      ),
+    )
+    expect(found.gone.rows[0]!.issues.map((one) => one.reason)).toEqual(['participant-not-found'])
+    expect(found.matched.rows[0]!.matchedParticipant?.id).toBe(found.joined)
+    expect(found.written).toEqual([{ participant_id: found.joined }])
+  })
+
   it('makes one import of one upload, however many times it is committed', async () => {
     const found = ok(
       await run(
