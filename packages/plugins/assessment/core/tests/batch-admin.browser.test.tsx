@@ -5,7 +5,9 @@ import BatchAccessPage from '../src/client/BatchAccessPage.tsx'
 import BatchOverviewPage from '../src/client/BatchOverviewPage.tsx'
 import BatchSettingsPage from '../src/client/BatchSettingsPage.tsx'
 import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
-import { lazy, type ReactNode } from 'react'
+import { lazy, useState, type ReactNode } from 'react'
+import { ScheduleDialog } from '../src/client/phase/PhaseDialogs.tsx'
+import { BatchZone } from '../src/client/batch/BatchZone.tsx'
 import { Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
@@ -1370,6 +1372,51 @@ describe('the stage plan', () => {
       params: { batchId: BATCH_ID, phaseId: ENTRY_PHASE_ID },
       payload: { plannedEntryAt: `${String(today.getFullYear())}-${month}-15T08:15:00.000Z` },
     })
+  })
+
+  // A batch kept on New York's clock, on the morning its clocks jump from
+  // 02:00 to 03:00: 02:30 is on nobody's wall there. The dialog keeps it as
+  // 03:00 and says so where the time is typed, rather than saving another
+  // time without a word.
+  it('says where a time the batch clocks skip will be saved instead', async () => {
+    function Scheduling() {
+      // midnight that morning, New York time: the calendar opens on it
+      const [value, setValue] = useState<string | null>('2027-03-14T05:00:00.000Z')
+      return (
+        <BatchZone zone="America/New_York">
+          <ScheduleDialog
+            open
+            name="审核"
+            canStartNow={false}
+            value={value}
+            pending={false}
+            onChange={setValue}
+            onCancel={() => {}}
+            onSchedule={() => {}}
+            onStartNow={() => {}}
+          />
+        </BatchZone>
+      )
+    }
+    await renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
+      children: <Scheduling />,
+    })
+
+    const dialog = page.getByRole('dialog')
+    expect(page.getByTestId('time-skipped').elements()).toHaveLength(0)
+    await dialog.getByLabelText('开始时间').click()
+    await userEvent.click(page.getByRole('spinbutton', { name: '小时' }))
+    await userEvent.keyboard('023000')
+
+    await expect
+      .element(page.getByTestId('time-skipped'))
+      .toHaveAttribute('data-moved-to', '2027-03-14T07:00:00.000Z')
+
+    // a time the wall does show takes the note away again
+    await userEvent.click(page.getByRole('spinbutton', { name: '小时' }))
+    await userEvent.keyboard('04')
+    await vi.waitFor(() => expect(page.getByTestId('time-skipped').elements()).toHaveLength(0))
   })
 })
 

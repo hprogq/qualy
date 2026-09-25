@@ -1491,6 +1491,7 @@ export default {
   'assessment/zone/note': '时间按{zone}显示',
   'assessment/zone/enter': '按{zone}填写',
   'assessment/zone/away': '你的设备时区与本批次不同，批次内的时间均按{zone}显示',
+  'assessment/zone/skipped': '该时刻因夏令时调整并不存在，将按{time}保存',
   'assessment/batch/stage-until': '本阶段至 {date}',
   'assessment/batch/empty-search': '未找到相关批次',
   'assessment/batch/empty-search-hint': '换个关键词试试',

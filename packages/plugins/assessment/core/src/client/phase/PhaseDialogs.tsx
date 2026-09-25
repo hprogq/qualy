@@ -9,7 +9,7 @@ import { DateTimePicker } from '@qualy/ui/date-time-picker'
 import { NativeSelect } from '@qualy/ui/native-select'
 import { assessmentMessages as m } from '../i18n.ts'
 import { ZoneNote } from '../batch/BatchZone.tsx'
-import { useBatchZone } from '../batch/zone.ts'
+import { inZone, useBatchZone } from '../batch/zone.ts'
 
 // The three decisions a plan asks for outside the table: give a phase a time,
 // enter it now, or take its time back. Each is short, focused and reversible
@@ -20,6 +20,10 @@ const styles = stylex.create({
   quietNote: {
     fontSize: 14,
     color: tokens.mutedForeground,
+  },
+  skipped: {
+    display: 'block',
+    color: tokens.warningForeground,
   },
 })
 
@@ -49,6 +53,10 @@ export function ScheduleDialog({
   // the time is typed on the batch's clock: "00:00" is the school's midnight
   // whatever zone the device keeps
   const zone = useBatchZone()
+  // a time typed into the hour the batch's clocks skip, and the time it will
+  // be saved as instead; said only while that is still the value
+  const [movedTo, setMovedTo] = useState<string | null>(null)
+  const moved = movedTo !== null && movedTo === value ? movedTo : null
   const [mode, setMode] = useState<'later' | 'now'>('later')
   const start = mode === 'now' ? 'now' : 'later'
   // the dialog animates out after its subject is gone; a title that empties
@@ -92,12 +100,35 @@ export function ScheduleDialog({
         />
       )}
       {start === 'later' && (
-        <Field label={format(m.plannedStartLabel)} hint={<ZoneNote purpose="enter" />}>
+        <Field
+          label={format(m.plannedStartLabel)}
+          hint={
+            <>
+              <ZoneNote purpose="enter" />
+              {moved !== null && (
+                <span
+                  data-testid="time-skipped"
+                  data-moved-to={moved}
+                  {...stylex.props(styles.skipped)}
+                >
+                  {format(m.zoneSkipped, {
+                    time: new Date(moved).toLocaleString(locale, {
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                      ...inZone(zone),
+                    }),
+                  })}
+                </span>
+              )}
+            </>
+          }
+        >
           {(id) => (
             <DateTimePicker
               id={id}
               value={value}
               onChange={onChange}
+              onSkippedTime={setMovedTo}
               timeZone={zone}
               placeholder={format(m.pickDateTime)}
               clearLabel={format(m.clearTime)}

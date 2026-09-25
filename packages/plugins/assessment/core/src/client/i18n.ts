@@ -363,6 +363,11 @@ const zoneAway = defineMessage<{ zone: string }>()({
   id: 'assessment/zone/away',
   defaultMessage: 'Your device uses a different time zone. Times in this batch are shown in {zone}',
 })
+/** a time typed into the hour a daylight-saving change skips */
+const zoneSkipped = defineMessage<{ time: string }>()({
+  id: 'assessment/zone/skipped',
+  defaultMessage: 'That time is skipped by a daylight-saving change and will be saved as {time}',
+})
 
 const stageUntil = defineMessage<{ date: string }>()({
   id: 'assessment/batch/stage-until',
@@ -650,6 +655,7 @@ const i18n = definePluginMessages({
     zoneNote,
     zoneEnter,
     zoneAway,
+    zoneSkipped,
     stageUntil,
     startsOn,
     previousBatch: { id: 'assessment/batch/previous', defaultMessage: 'Previous batch' },
