@@ -95,7 +95,7 @@ const COLUMNS = '7.5rem minmax(9rem, 3fr) minmax(0, 2fr) 6.5rem 2rem'
 
 /**
  * A select cannot hold the empty string as a value, so "no narrowing" needs
- * a word - one no choice in these selects is spelt as.
+ * a word of its own, one that none of these selects' choices uses.
  */
 const ALL = 'all'
 
