@@ -539,6 +539,8 @@ export default {
   'assessment/record/import/reason/out-of-range': '超出该项允许的范围',
   'assessment/record/import/reason/out-of-material-range': '超出本批次的材料时间范围',
   'assessment/record/import/reason/too-long': '内容过长',
+  'assessment/record/import/reason/too-short': '内容少于该项要求的字数',
+  'assessment/record/import/reason/pattern-mismatch': '内容不符合该项要求的格式',
   'assessment/record/import/reason/determination-refused': '当前计分规则不接受该认定结果：{detail}',
   'assessment/record/import/reason/participant-out-of-scope': '当前阶段不包括该人员',
   'assessment/record/import/reason/phase-closed': '当前阶段不允许认定',

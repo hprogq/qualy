@@ -2320,6 +2320,14 @@ const i18n = definePluginMessages({
       id: 'assessment/record/import/reason/too-long',
       defaultMessage: 'Too long',
     },
+    importReasonTooShort: {
+      id: 'assessment/record/import/reason/too-short',
+      defaultMessage: 'Shorter than this field requires',
+    },
+    importReasonPatternMismatch: {
+      id: 'assessment/record/import/reason/pattern-mismatch',
+      defaultMessage: 'Not in the format this field requires',
+    },
     importReasonDetermination: {
       id: 'assessment/record/import/reason/determination-refused',
       defaultMessage: 'The scoring rule does not accept this determination: {detail}',

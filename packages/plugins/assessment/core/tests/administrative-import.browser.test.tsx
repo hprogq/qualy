@@ -302,6 +302,18 @@ describe('the words an import problem gets', () => {
     )
   })
 
+  // an evidence field's text is checked for its length and pattern as it is
+  // when filed, and the import passes the driver's reason on as it comes
+  it("has one for a text shorter than its field's minimum or off its pattern", () => {
+    const said = ((descriptor: { id: string }) => descriptor.id) as never
+    expect(reasonText(said, { reason: 'too-short' }, '编号')).toBe(
+      'assessment/record/import/reason/too-short',
+    )
+    expect(reasonText(said, { reason: 'pattern-mismatch' }, '编号')).toBe(
+      'assessment/record/import/reason/pattern-mismatch',
+    )
+  })
+
   it('has one for each part of a file the reading refuses', () => {
     const said = ((descriptor: { id: string }) => descriptor.id) as never
     for (const reason of ['extra-sheet', 'extra-column', 'percent-not-allowed']) {

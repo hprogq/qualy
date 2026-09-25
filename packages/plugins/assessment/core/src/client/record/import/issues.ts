@@ -39,6 +39,9 @@ const WORDS = {
   // the round's material window, reached through what the office determined
   'out-of-material-range': m.importReasonOutOfMaterialRange,
   'too-long': m.importReasonTooLong,
+  // a text field's own minimum length and pattern, as the driver checks them
+  'too-short': m.importReasonTooShort,
+  'pattern-mismatch': m.importReasonPatternMismatch,
   'participant-out-of-scope': m.importReasonOutOfScope,
   'phase-closed': m.importReasonPhaseClosed,
   'no-active-phase': m.importReasonNoPhase,
