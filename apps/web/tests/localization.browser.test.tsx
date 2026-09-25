@@ -242,6 +242,23 @@ describe('the words themselves', () => {
       {
         listMyEntries: () =>
           Effect.succeed({ participantId: PARTICIPANT_ID, entries: [], nextCursor: null }),
+        // a line held at zero for a claim this reader was not handed
+        getMyResult: () =>
+          Effect.succeed({
+            mode: 'provisional',
+            total: '0.00',
+            groups: [],
+            lines: [
+              {
+                lineId: `entry:${ENTRY_ID}`,
+                kind: 'excluded-evidence' as const,
+                label: '退役复学',
+                value: '0.00',
+                itemId: ITEM_ID,
+                provenance: { entryId: ENTRY_ID },
+              },
+            ],
+          }),
       },
       <MyResultPage />,
       '/assessment/batches/:batchId/my-result',
@@ -253,6 +270,10 @@ describe('the words themselves', () => {
     // catalog is a layer rather than the source of the words
     await expect.element(page.getByText('My score')).toBeVisible()
     expect(page.getByText('我的成绩').elements()).toHaveLength(0)
+    // and that line is not scored in words that cannot be read as the
+    // participant having been taken off the roster
+    await expect.element(page.getByText('Not scored', { exact: true })).toBeVisible()
+    expect(page.getByText(/excluded/i).elements()).toHaveLength(0)
   })
 })
 
