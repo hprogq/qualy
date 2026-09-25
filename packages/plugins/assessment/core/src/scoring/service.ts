@@ -93,11 +93,16 @@ export interface ScoringDeps {
     batchId: string,
     as: Principal,
   ) => Effect.Effect<void, AccessDenied>
-  /** administrative reach over this round's roster: the staff account's door */
-  readonly requireRosterReach: (
+  /**
+   * The staff account's door: administrative reach over this round's
+   * roster, or re-determining authority over this participant. The same
+   * refusal whether the id names nobody or somebody out of reach.
+   */
+  readonly requireAccountReach: (
     as: Principal,
     tenantId: string,
     batchId: string,
+    participantId: string,
   ) => Effect.Effect<void, AccessDenied>
   readonly itemTypes: ReadonlyMap<string, { readonly interaction: string }>
   readonly catalogs: {
@@ -457,11 +462,11 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
       Effect.gen(function* () {
         const batch = yield* oneBatch(tenantId, batchId)
         if (!batch) return yield* new BatchNotFound()
-        // Administering this roster is the whole authorization, and it is
-        // asked before the participant is looked up: a reader without reach
-        // learns nothing about who is on somebody else's roster, not even
-        // whether the id they guessed is one.
-        yield* deps.requireRosterReach(as, tenantId, batchId)
+        // Administering this roster, or re-determining over this person
+        // (ruling of 2026-09-25 #33), is the whole authorization: a reader
+        // without either learns nothing about who is on somebody else's
+        // roster, not even whether the id they guessed is one.
+        yield* deps.requireAccountReach(as, tenantId, batchId, participantId)
         // scoped to this batch by the query itself, so an id from another
         // round reads as no such participant rather than as somebody else's
         const participant = yield* oneParticipant(tenantId, batchId, participantId)

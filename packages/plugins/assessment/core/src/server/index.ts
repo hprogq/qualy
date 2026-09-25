@@ -78,6 +78,8 @@ import {
   entrySummaryRowsOf,
   insertReviewEvent,
   listAdministrativeEntriesPage,
+  participantOf,
+  staffReachesParticipant,
   userActivityPage,
   type AdministrativeEntryRow,
 } from '../entry/db.ts'
@@ -324,6 +326,8 @@ export interface BatchCapabilities {
   readonly review: boolean
   readonly record: boolean
   readonly manage: boolean
+  /** may re-determine claims here, and so read the accounts it covers (ruling #33) */
+  readonly redetermine: boolean
 }
 
 /** one phase as a plan write states it; instants already parsed to epoch ms */
@@ -577,6 +581,9 @@ const specToEngine = (spec: PhaseSpecInput): NewPhaseSpec => ({
 
 const MANAGE = BATCH_MANAGE
 const FORCE_ADVANCE = 'assessment.batch.force-advance'
+const REDETERMINE = 'assessment.entry.redetermine'
+/** the staff authorities that read the part of a roster they act on */
+const ROSTER_READING_CODES: readonly string[] = ['assessment.entry.record', REDETERMINE]
 
 const RANGE = /^\[(\d{4}-\d{2}-\d{2}),(\d{4}-\d{2}-\d{2})\)$/
 
@@ -2464,6 +2471,57 @@ export const make = Effect.fn('Assessment.make')(function* () {
   })
 
   /**
+   * How much of a roster this reader reads: all of it when they administer
+   * it; otherwise the people their recording or re-determining authority in
+   * this round covers, intersected in sql (a re-determination needs the
+   * person it is about, ruling of 2026-09-25 #33); and nothing, refused,
+   * when they hold neither. Undefined is "all of it".
+   */
+  const rosterReadingOf = (tenantId: string, batchId: string, as: Principal) =>
+    Effect.gen(function* () {
+      const roster = yield* Effect.result(requireRosterReach(as, tenantId, batchId))
+      if (Result.isSuccess(roster)) return undefined
+      const authority = yield* batchAuthority(tenantId, batchId, as.userId)
+      const codes = ROSTER_READING_CODES.filter((code) => authority.has(code))
+      if (codes.length === 0) return yield* roster.failure
+      return { userId: as.userId, permissionCode: codes }
+    })
+
+  /**
+   * Who may read one participant's account and claims: whoever administers
+   * the roster, and whoever may re-determine claims in this round over this
+   * participant (ruling of 2026-09-25 #33) - the power to change a result
+   * carries the least reading it takes to exercise it, and no more of the
+   * roster than the holder's accepted authority covers. An id naming nobody
+   * and an id out of reach get the same refusal.
+   */
+  const requireAccountReach = (
+    as: Principal,
+    tenantId: string,
+    batchId: string,
+    participantId: string,
+  ): Effect.Effect<void, AccessDenied> =>
+    Effect.gen(function* () {
+      const roster = yield* Effect.result(requireRosterReach(as, tenantId, batchId))
+      if (Result.isSuccess(roster)) return
+      const participant = yield* dieQuery(withDb(participantOf(tenantId, batchId, participantId)))
+      const reaches =
+        participant !== null &&
+        (yield* dieQuery(
+          withDb(
+            staffReachesParticipant({
+              tenantId,
+              batchId,
+              userId: as.userId,
+              permissionCode: REDETERMINE,
+              participant,
+            }),
+          ),
+        ))
+      if (!reaches) return yield* roster.failure
+    })
+
+  /**
    * What synchronising would add, and what has already fallen away.
    *
    * Only the additions need deciding. A capability the tenant withdrew stopped
@@ -2706,6 +2764,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
     mayReviewEntry: (as, tenantId, entryId) =>
       dieQuery(withDb(mayReviewEntry({ tenantId, userId: as.userId, entryId }))),
     requireRosterReach,
+    requireAccountReach,
     requireBatchVisible,
     parseRange,
     itemTypes,
@@ -2754,7 +2813,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
   const scoringMethods = makeScoringMethods({
     withDb,
     requireBatchVisible,
-    requireRosterReach,
+    requireAccountReach,
     itemTypes,
     catalogs: { aggregators: scoring.aggregators },
   })
@@ -3037,6 +3096,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
         review: authority.has('assessment.review.process'),
         record: authority.has('assessment.entry.record'),
         manage: manageable,
+        redetermine: authority.has(REDETERMINE),
       } satisfies BatchCapabilities
     }),
 
@@ -3268,6 +3328,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
           review: authority.has('assessment.review.process'),
           record: authority.has('assessment.entry.record'),
           manage: detail.manageable,
+          redetermine: authority.has(REDETERMINE),
         } satisfies BatchCapabilities,
       }
     }),
@@ -4570,10 +4631,10 @@ export const make = Effect.fn('Assessment.make')(function* () {
       function* (tenantId, batchId, participantId, as) {
         const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
         if (!batch) return yield* new BatchNotFound()
-        // administering the roster is the door, asked before the row is
-        // looked up: a reader without reach learns nothing about who is on
+        // administering the roster, or re-determining over this person, is
+        // the door; a reader without either learns nothing about who is on
         // it, not even whether an id they hold is one of them
-        yield* requireRosterReach(as, tenantId, batchId)
+        yield* requireAccountReach(as, tenantId, batchId, participantId)
         const participant = yield* dieQuery(
           withDb(oneParticipant(tenantId, batchId, participantId)),
         )
@@ -4684,30 +4745,18 @@ export const make = Effect.fn('Assessment.make')(function* () {
       function* (tenantId, batchId, filter, as) {
         const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
         if (!batch) return yield* new BatchNotFound()
-        // administering the roster reads it; so does recording on it - a
-        // staff member filing an administrative fact has to be able to name
-        // whom it is about. The write itself still checks anchored reach.
-        // Administering the roster reads all of it. Recording on it reads
-        // the part the recorder may record on: the authority is anchored,
+        // Administering the roster reads all of it. Recording on it, or
+        // re-determining on it, reads the part that authority covers - a
+        // staff member acting on a person has to be able to name them, and
+        // the write still checks anchored reach. The authority is anchored,
         // so the reading is anchored too - in sql, because a page filtered
         // afterwards has already read and counted everybody else's people.
-        const administers = yield* Effect.match(requireRosterReach(as, tenantId, batchId), {
-          onSuccess: () => true,
-          onFailure: () => false,
-        })
-        if (!administers) {
-          const records = (yield* batchAuthority(tenantId, batchId, as.userId)).has(
-            'assessment.entry.record',
-          )
-          if (!records) yield* requireRosterReach(as, tenantId, batchId)
-        }
+        const reach = yield* rosterReadingOf(tenantId, batchId, as)
         return yield* dieQuery(
           withDb(
             listParticipantsPage(tenantId, batchId, {
               ...filter,
-              ...(administers
-                ? {}
-                : { reach: { userId: as.userId, permissionCode: 'assessment.entry.record' } }),
+              ...(reach === undefined ? {} : { reach }),
             }),
           ),
         )
@@ -4718,25 +4767,14 @@ export const make = Effect.fn('Assessment.make')(function* () {
       function* (tenantId, batchId, filter, as) {
         const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
         if (!batch) return yield* new BatchNotFound()
-        // the same two ways in as the roster itself: administering it reads
-        // all of it, recording on it reads the part that may be recorded on
-        const administers = yield* Effect.match(requireRosterReach(as, tenantId, batchId), {
-          onSuccess: () => true,
-          onFailure: () => false,
-        })
-        if (!administers) {
-          const records = (yield* batchAuthority(tenantId, batchId, as.userId)).has(
-            'assessment.entry.record',
-          )
-          if (!records) yield* requireRosterReach(as, tenantId, batchId)
-        }
+        // the same ways in as the roster itself: administering it reads all
+        // of it, acting on people in it reads the part that authority covers
+        const reach = yield* rosterReadingOf(tenantId, batchId, as)
         const found = yield* dieQuery(
           withDb(
             listRosterUnits(tenantId, batchId, {
               ...filter,
-              ...(administers
-                ? {}
-                : { reach: { userId: as.userId, permissionCode: 'assessment.entry.record' } }),
+              ...(reach === undefined ? {} : { reach }),
             }),
           ),
         )

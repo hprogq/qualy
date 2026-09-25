@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
+import { WorkspaceCapabilityScope, useWorkspaceCapabilities } from '@qualy/web-runtime'
 import type { assessmentApi } from '@qualy/plugin-assessment/client/api'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
@@ -62,7 +63,7 @@ const batch = (over: Partial<BatchDto> = {}): BatchDto => ({
   descriptionMd: null,
   manageable: true,
   reviewReasons: { reject: [], escalate: [] },
-  capabilities: { personal: false, review: false, record: false, manage: true },
+  capabilities: { personal: false, review: false, record: false, manage: true, redetermine: false },
   participantCount: 12,
   materialRange: { start: '2026-03-01', end: '2026-09-01' },
   timezone: 'Asia/Shanghai',
@@ -1559,6 +1560,58 @@ describe('who may work on a batch', () => {
     await page.getByRole('alertdialog').getByRole('button', { name: '移出本批次' }).click()
     await vi.waitFor(() => expect(removeStaff).toHaveBeenCalledTimes(1))
     expect(removeStaff.mock.calls[0]![0]).toMatchObject({ params: { sourceId: PARTICIPANT_ID } })
+  })
+})
+
+describe('what the open round offers the rail', () => {
+  function Published() {
+    const capabilities = useWorkspaceCapabilities()
+    return (
+      <output
+        data-testid="published"
+        data-values={
+          capabilities.status === 'ready' ? [...capabilities.values].sort().join(' ') : 'loading'
+        }
+      />
+    )
+  }
+  const open = (capabilities: BatchDto['capabilities']) =>
+    renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+        assessment: assessmentStubs({
+          getBatch: () => Effect.succeed({ batch: batch({ manageable: false, capabilities }) }),
+        }),
+      }),
+      routes: [
+        {
+          path: '/assessment/batches/:batchId',
+          element: (
+            <WorkspaceCapabilityScope>
+              <BatchContextBar />
+              <Published />
+            </WorkspaceCapabilityScope>
+          ),
+        },
+      ],
+      route: `/assessment/batches/${BATCH_ID}`,
+    })
+  const none = { personal: false, review: false, record: false, manage: false, redetermine: false }
+
+  // re-determining reads the accounts it covers (ruling of 2026-09-25 #33),
+  // so the results section is offered without the roster's own doors
+  it('offers the results to whoever re-determines here, and no administration with them', async () => {
+    await open({ ...none, redetermine: true })
+    await expect
+      .element(page.getByTestId('published'))
+      .toHaveAttribute('data-values', 'assessment/results')
+  })
+
+  it('offers nothing of the results to a reviewer', async () => {
+    await open({ ...none, review: true })
+    await expect
+      .element(page.getByTestId('published'))
+      .toHaveAttribute('data-values', 'assessment/review')
   })
 })
 

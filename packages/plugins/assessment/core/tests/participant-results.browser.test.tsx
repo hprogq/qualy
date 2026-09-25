@@ -29,7 +29,7 @@ const batch = {
   descriptionMd: null,
   manageable: true,
   reviewReasons: { reject: [], escalate: [] },
-  capabilities: { personal: false, review: false, record: false, manage: true },
+  capabilities: { personal: false, review: false, record: false, manage: true, redetermine: false },
   participantCount: 2,
   materialRange: { start: '2026-03-01', end: '2026-09-01' },
   timezone: 'Asia/Shanghai',
@@ -481,6 +481,48 @@ describe('the participant results screen', () => {
     await expect.element(page.getByTestId('entry-recognition')).toBeVisible()
     expect(page.getByTestId('staff-reopen').elements()).toHaveLength(0)
     expect(page.getByTestId('staff-redetermine').elements()).toHaveLength(0)
+  })
+
+  // Re-determining reads the accounts it covers (ruling of 2026-09-25 #33):
+  // such a reader opens a person and re-determines there, without any of
+  // the roster's own doors.
+  it('opens the results to a reader who re-determines, with none of the roster’s doors', async () => {
+    const reader = {
+      ...batch,
+      manageable: false,
+      capabilities: { ...batch.capabilities, manage: false, redetermine: true },
+    }
+    const redetermineEntry = vi.fn((_request: Request) =>
+      Effect.succeed({
+        redetermination: { kind: 'approval-revoked', status: 'rejected', endedRound: false },
+      }),
+    )
+    const placements = vi.fn(() =>
+      Effect.succeed({ items: [], nextCursor: null, changedTotal: 0, unavailableTotal: 0 }),
+    )
+    await screen({
+      getBatch: () => Effect.succeed({ batch: reader }),
+      listParticipantPlacements: placements,
+      ...correctable({
+        reopen: { state: 'hidden', reason: null },
+        redetermine: { state: 'available', reason: null },
+      }),
+      redetermineEntry,
+    })
+    await expect.element(page.getByText('郭航旗')).toBeVisible()
+    // adding people is the roster's door, and this reader holds none of it
+    expect(page.getByRole('button', { name: '添加人员' }).elements()).toHaveLength(0)
+    expect(placements).not.toHaveBeenCalled()
+    await page.getByTestId('participant-row').first().click()
+    await expect.element(page.getByTestId('result-total')).toHaveTextContent('1.00')
+    // the claim behind the number, and the correction this reader may make
+    await page.getByTestId('ledger-line').click()
+    await expect.element(page.getByTestId('entry-recognition')).toBeVisible()
+    await page.getByTestId('staff-redetermine').click()
+    await page.getByRole('radio', { name: '不通过' }).click()
+    await userEvent.fill(page.getByRole('textbox'), '证书与本人不符')
+    await page.getByRole('dialog').getByRole('button', { name: '重新认定' }).click()
+    await vi.waitFor(() => expect(redetermineEntry).toHaveBeenCalledTimes(1))
   })
 
   it('re-examines a concluded claim through the escalation workflow, with a reason', async () => {

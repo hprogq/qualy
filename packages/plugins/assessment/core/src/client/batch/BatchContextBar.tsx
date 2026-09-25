@@ -239,6 +239,8 @@ export default function BatchContextBar() {
             batch.capabilities.review && 'assessment/review',
             batch.capabilities.record && 'assessment/record',
             batch.capabilities.manage && 'assessment/manage',
+            // whoever re-determines reads the accounts it covers (ruling #33)
+            (batch.capabilities.manage || batch.capabilities.redetermine) && 'assessment/results',
           ].filter((token): token is string => token !== false),
         ),
   )

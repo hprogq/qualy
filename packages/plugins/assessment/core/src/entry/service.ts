@@ -582,6 +582,17 @@ export interface EntryDeps {
     tenantId: string,
     batchId: string,
   ) => Effect.Effect<void, AccessDenied>
+  /**
+   * Who may read one participant's claims as staff: administering the
+   * roster, or re-determining over this participant. The same refusal
+   * whether the id names nobody or somebody out of reach.
+   */
+  readonly requireAccountReach: (
+    as: Principal,
+    tenantId: string,
+    batchId: string,
+    participantId: string,
+  ) => Effect.Effect<void, AccessDenied>
   /** the same visibility every batch read passes through */
   readonly requireBatchVisible: (
     tenantId: string,
@@ -1180,6 +1191,11 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
    * A claim its owner filed is deliberately NOT in the third case: holding
    * `assessment.entry.record` is the power to write facts about people, not
    * the power to read what they submitted about themselves.
+   *
+   * And a fourth (ruling of 2026-09-25 #33): whoever may re-determine claims
+   * over this participant reads every claim of theirs, filed or recorded -
+   * a result cannot be re-made by somebody who may not read what it was
+   * made from.
    */
   const mayReadEntry = (
     tenantId: string,
@@ -1191,6 +1207,14 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
       if (participant.userId === as.userId) return true
       const roster = yield* Effect.result(deps.requireRosterReach(as, tenantId, entry.batchId))
       if (Result.isSuccess(roster)) return true
+      const redetermines = yield* staffReachesParticipant({
+        tenantId,
+        batchId: entry.batchId,
+        userId: as.userId,
+        permissionCode: 'assessment.entry.redetermine',
+        participant,
+      })
+      if (redetermines) return true
       if (entry.source !== 'record' && entry.source !== 'import') return false
       return yield* staffReachesParticipant({
         tenantId,
@@ -2123,9 +2147,9 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
       Effect.gen(function* () {
         const batch = yield* oneBatch(tenantId, batchId)
         if (!batch) return yield* new BatchNotFound()
-        // asked before the participant is looked up, so a reader without
-        // reach cannot learn whether an id is on this roster
-        yield* deps.requireRosterReach(as, tenantId, batchId)
+        // one refusal for an id out of reach and an id naming nobody, so a
+        // reader without reach cannot learn whether an id is on this roster
+        yield* deps.requireAccountReach(as, tenantId, batchId, participantId)
         const participant = yield* participantOf(tenantId, batchId, participantId)
         if (participant === null) return yield* new ParticipantNotFound()
         const rows = yield* entriesOfParticipantPage({

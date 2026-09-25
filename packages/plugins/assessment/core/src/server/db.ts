@@ -2481,9 +2481,11 @@ const toParticipantRow = (row: Record<string, unknown>): ParticipantRow =>
  */
 export const staffReachOver = (input: {
   tenantId: string
-  batchId: string
+  /** one round, or a column naming it for a list that spans rounds */
+  batchId: string | RawBuilder<unknown>
   userId: string
-  permissionCode: string
+  /** several codes read as any one of them covering the anchor */
+  permissionCode: string | readonly string[]
   anchorNodeId: RawBuilder<unknown>
   anchorPath: RawBuilder<unknown>
 }) => sql<boolean>`exists (
@@ -2502,7 +2504,11 @@ export const staffReachOver = (input: {
     and (rg.valid_from is null or rg.valid_from <= now())
     and (rg.valid_until is null or rg.valid_until > now())
     and ro.status = 'active'
-    and sp.permission_code = ${input.permissionCode}
+    and ${
+      typeof input.permissionCode === 'string'
+        ? sql`sp.permission_code = ${input.permissionCode}`
+        : sql`sp.permission_code = any(${[...input.permissionCode]}::text[])`
+    }
     and (
       ro.permission_mode = 'all-active'
       or exists (
@@ -2639,7 +2645,7 @@ export const listRosterUnits = (
   tenantId: string,
   batchId: string,
   filter: {
-    reach?: { userId: string; permissionCode: string }
+    reach?: { userId: string; permissionCode: string | readonly string[] }
     userTypeId?: string
   },
 ) =>
@@ -2701,7 +2707,7 @@ export const listParticipantsPage = (
      * rather than as the roster's administrator: intersected in sql, so
      * the page is what they may act on and nothing else
      */
-    reach?: { userId: string; permissionCode: string }
+    reach?: { userId: string; permissionCode: string | readonly string[] }
     after?: { path: string; id: string }
     limit: number
   },

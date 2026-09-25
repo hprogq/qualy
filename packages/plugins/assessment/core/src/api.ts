@@ -270,6 +270,7 @@ const batchView = Schema.Struct({
     review: Schema.Boolean,
     record: Schema.Boolean,
     manage: Schema.Boolean,
+    redetermine: Schema.Boolean,
   }),
 })
 

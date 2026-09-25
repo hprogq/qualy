@@ -33,7 +33,7 @@ const batch = () => ({
   descriptionMd: null,
   manageable: true,
   reviewReasons: { reject: [], escalate: [] },
-  capabilities: { personal: false, review: false, record: false, manage: true },
+  capabilities: { personal: false, review: false, record: false, manage: true, redetermine: false },
   participantCount: 12,
   materialRange: { start: '2026-03-01', end: '2026-09-01' },
   timezone: 'Asia/Shanghai',
