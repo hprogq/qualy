@@ -286,12 +286,23 @@ export const REJECTIONS = [
   { reason: '不符合本项认定条件', comment: '该活动不属于学校或学院组织的校园文化活动', weight: 5 },
 ] as const
 
-/** what a student writes when contesting a result, by kind */
+/** why a form or a report is sent back: it is judged for being whole and legible */
+export const PAPER_REJECTIONS = [
+  { reason: '证明材料无法清晰辨识', comment: '扫描件模糊，请重新上传清晰的扫描件', weight: 50 },
+  { reason: '申报信息不完整', comment: '材料缺页，请上传完整的扫描件', weight: 35 },
+  { reason: '申报内容与证明材料不一致', comment: '所附材料与本项要求的材料不符', weight: 15 },
+] as const
+
+/**
+ * What a student writes when contesting a result, by kind. An appeal carries
+ * a reason and nothing else, so none of these says something is attached:
+ * they argue from what the claim already holds.
+ */
 export const APPEAL_REASONS = {
   missing: [
     '该活动我提交了参与证明，但结果里没有计分，麻烦再核对一下',
-    '补交了组织单位盖章的证明，申请重新认定',
-    '获奖证书当时漏传了，现已补充',
+    '证明上的公章就是活动组织单位的章，申请复核',
+    '证书照片能看清获奖等级和日期，申请复核',
   ],
   wrong: [
     '认定的获奖等级有误，证书上是一等奖',

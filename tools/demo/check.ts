@@ -107,14 +107,40 @@ await runOverDemo(
             join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
             where ri.state in ('active', 'blocked', 'awaiting_supplement')
               and e.current_review_instance_id is distinct from ri.id)
-            as orphans`)) as {
-        rows: { verdicts: number; determinations: number; orphans: number }[]
+            as orphans,
+          -- an ask is for a file, so a visitor who opens its answer sees
+          -- what the answer talks about
+          (select count(*)::int from review_supplement_requests r
+            where not exists (
+              select 1 from jsonb_array_elements(r.requirements) asked
+               where asked->>'kind' = 'file'))
+            as textonly,
+          (select count(*)::int from review_supplement_requests r
+            join review_supplement_responses rr
+              on rr.tenant_id = r.tenant_id and rr.request_id = r.id
+            where not exists (
+              select 1 from review_supplement_attachments ra
+               where ra.tenant_id = rr.tenant_id and ra.response_id = rr.id))
+            as bare`)) as {
+        rows: {
+          verdicts: number
+          determinations: number
+          orphans: number
+          textonly: number
+          bare: number
+        }[]
       }
     ).rows[0]!
     console.log(
       `claims off their verdict ${broken.verdicts} · behind their determination ${broken.determinations} · open rounds nobody stands on ${broken.orphans}`,
     )
-    if (broken.verdicts + broken.determinations + broken.orphans > 0) process.exitCode = 1
+    console.log(`asks for no file ${broken.textonly} · answers without the file ${broken.bare}`)
+    if (
+      broken.verdicts + broken.determinations + broken.orphans + broken.textonly + broken.bare >
+      0
+    ) {
+      process.exitCode = 1
+    }
 
     // what each demonstration account opens onto
     const situations = yield* personaSituations

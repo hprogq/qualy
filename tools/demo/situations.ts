@@ -118,6 +118,17 @@ export const personaSituations = Effect.gen(function* () {
      where p.user_id = ${student} and b.status ${archived ? sql`=` : sql`<>`} 'archived'`
   const history = mine(true)
   const running = mine(false)
+  /** asks on these claims answered with the file they named */
+  const answeredWithFile = (claims: RawBuilder<unknown>) => sql`
+    select count(*)::int as n from (${claims}) e
+      join review_instances ri on ri.tenant_id = e.tenant_id and ri.entry_id = e.id
+      join review_supplement_requests r
+        on r.tenant_id = ri.tenant_id and r.review_instance_id = ri.id
+      join review_supplement_responses rr on rr.tenant_id = r.tenant_id and rr.request_id = r.id
+     where r.status = 'answered'
+       and exists (
+         select 1 from review_supplement_attachments ra
+          where ra.tenant_id = rr.tenant_id and ra.response_id = rr.id)`
   /** corrections made outside any round */
   const redetermined = (claims: RawBuilder<unknown>, kinds: readonly string[]) => sql`
     select count(*)::int as n from (${claims}) e
@@ -126,13 +137,8 @@ export const personaSituations = Effect.gen(function* () {
 
   add(
     'student',
-    'past: an ask for more material, answered',
-    yield* count(sql`
-      select count(*)::int as n from (${history}) e
-        join review_instances ri on ri.tenant_id = e.tenant_id and ri.entry_id = e.id
-        join review_supplement_requests r
-          on r.tenant_id = ri.tenant_id and r.review_instance_id = ri.id
-       where r.status = 'answered'`),
+    'past: an ask for more material, answered with the file',
+    yield* count(answeredWithFile(history)),
   )
   add(
     'student',
@@ -174,6 +180,16 @@ export const personaSituations = Effect.gen(function* () {
        and contested.outcome = 'rejected' and ri.outcome = ${outcome}`
   add('student', 'past: appeal against a refusal, granted', yield* count(appeals('approved')))
   add('student', 'past: appeal against a refusal, not granted', yield* count(appeals('rejected')))
+  add(
+    'student',
+    'past: an ask for material inside an appeal or a re-examination',
+    yield* count(sql`
+      select count(*)::int as n from (${history}) e
+        join review_instances ri on ri.tenant_id = e.tenant_id and ri.entry_id = e.id
+        join review_supplement_requests r
+          on r.tenant_id = ri.tenant_id and r.review_instance_id = ri.id
+       where ri.origin in ('appeal', 'reopen') and r.status = 'answered'`),
+  )
   add(
     'student',
     'past: re-examined by staff',
@@ -275,6 +291,14 @@ export const personaSituations = Effect.gen(function* () {
           on r.tenant_id = e.tenant_id and r.review_instance_id = e.current_review_instance_id
        where r.status = 'open'`),
   )
+  add('student', 'running: an ask answered with the file', yield* count(answeredWithFile(running)))
+  add(
+    'student',
+    'running: a determination corrected outside any round',
+    yield* count(
+      redetermined(running, ['recognition-corrected', 'approval-revoked', 'rejection-overturned']),
+    ),
+  )
   add(
     'student',
     'running: class panel sitting',
@@ -355,6 +379,11 @@ export const personaSituations = Effect.gen(function* () {
       yield* among(waiting, sql`ri.origin = 'appeal'`),
       'review-stage',
     )
+    add(
+      'class-lead',
+      'running: rounds concluded',
+      yield* acted(classLead, ['approved', 'rejected']),
+    )
   }
 
   if (lead !== null) {
@@ -409,6 +438,11 @@ export const personaSituations = Effect.gen(function* () {
     )
     add('lead', 'running: own ask still out', yield* asksOutstanding(lead))
     add('lead', 'running: rounds concluded', yield* acted(lead, ['approved', 'rejected']))
+    add(
+      'lead',
+      'running: determinations corrected outside any round',
+      yield* eventsBy(lead, ['recognition-corrected', 'approval-revoked', 'rejection-overturned']),
+    )
   }
 
   if (counsellor !== null) {

@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { itemsOf, type Term } from '../rules.ts'
 import { EPISODE_KINDS, EPISODES, TRIAL_ITEM, episodesOf } from '../seed/episodes.ts'
@@ -9,6 +11,7 @@ import { EPISODE_KINDS, EPISODES, TRIAL_ITEM, episodesOf } from '../seed/episode
 // not have.
 
 const questionsOf = (term: Term) => [...itemsOf(term), TRIAL_ITEM]
+const ASSETS = path.resolve('tools/demo/assets')
 
 describe('the persona episodes', () => {
   afterEach(() => {
@@ -25,7 +28,7 @@ describe('the persona episodes', () => {
     for (const term of Object.keys(EPISODES) as Term[]) {
       const questions = questionsOf(term)
       for (const episode of EPISODES[term]) {
-        for (const claim of [episode.claim, episode.refiled]) {
+        for (const claim of [episode.first, episode.claim, episode.refiled]) {
           if (claim === undefined) continue
           const question = questions.find((one) => one.key === claim.item)
           if (question === undefined) {
@@ -53,10 +56,32 @@ describe('the persona episodes', () => {
           (episode.kind !== 'record-void' && episode.claim === undefined) ||
           (episode.kind === 'item-void' &&
             (episode.claim?.item !== TRIAL_ITEM.key || episode.refiled === undefined)) ||
-          (episode.kind === 'rounds' && episode.corrected === undefined),
+          (episode.kind === 'rounds' && episode.corrected === undefined) ||
+          (episode.kind === 'revoke' && episode.first === undefined),
       )
       .map((episode) => episode.kind)
     expect(missing).toEqual([])
+  })
+
+  it('revokes a claim that duplicates one filed before it', () => {
+    // the revocation's reason names another claim of the same activity; the
+    // term has to hold it, or the reason is false on the page
+    for (const episode of Object.values(EPISODES)
+      .flat()
+      .filter((one) => one.kind === 'revoke')) {
+      expect(episode.first?.item).toBe(episode.claim?.item)
+      expect(episode.first?.payload['activity']).toBe(episode.claim?.payload['activity'])
+    }
+  })
+
+  it('files each claim with a picture that is there', () => {
+    const absent = Object.values(EPISODES)
+      .flat()
+      .flatMap((episode) => [episode.first, episode.claim, episode.refiled])
+      .filter((claim) => claim !== undefined)
+      .filter((claim) => !fs.existsSync(path.join(ASSETS, `${claim.proof}.jpg`)))
+      .map((claim) => claim.proof)
+    expect(absent).toEqual([])
   })
 
   it('plays every episode in the first term when asked to', () => {

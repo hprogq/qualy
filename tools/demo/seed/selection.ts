@@ -10,12 +10,14 @@ import { runSql } from '@qualy/plugin-database/testkit'
 import { transaction } from '@qualy/plugin-database/server'
 import {
   COMPETITIONS,
+  PAPER_REJECTIONS,
   REJECTIONS,
   RESEARCH_KINDS,
   RESEARCH_ROLES,
   RESEARCH_SUBJECTS,
   RESEARCH_TREATMENTS,
 } from '../catalog.ts'
+import { answerAsk, askFor, requestAsk, type Ask } from './asks.ts'
 import { addMinutes, awake, principalOf, type Random, type Story } from './context.ts'
 import { stageProof, stageWorkbook } from './files.ts'
 import { scoringConfigOf, type Versions } from './items.ts'
@@ -266,6 +268,9 @@ const SELECTION_ITEMS: readonly ItemSpec[] = [
   },
 ]
 
+/** the qualifying papers: forms and reports, judged for being complete and legible */
+const PAPERS = new Set(['application', 'conduct', 'transcript', 'cet4'])
+
 /**
  * The selection's phases. Re-examination opens while material is reviewed
  * and while results may be appealed, as in the school's own assessments
@@ -472,15 +477,25 @@ export const runSelection = (input: {
         stages: [oneStage('lead', '学院推免工作组', world.types.college, world.roles.manager)],
       },
     })
-    // a doubt about an applicant's conduct goes to the two class leads who
-    // know them, sitting together, before the working group
+    // The conduct form climbs the school's own ladder: a class lead checks
+    // it; a doubt about it, an appeal against that check or a
+    // re-examination goes up rung by rung - the class's two leads sitting
+    // together, then a counsellor, then the working group, which concludes.
+    // Nobody hands a form down to the people below them.
     const conductPolicy = {
       normal: {
-        stages: [oneStage('counsellor', '辅导员审核', world.types.grade, world.roles.counsellor)],
+        stages: [oneStage('class', '班级综测负责人审核', world.types.class, world.roles.classLead)],
       },
       escalation: {
         stages: [
-          oneStage('class', '班级综测小组评议', world.types.class, world.roles.classLead, 'all'),
+          oneStage(
+            'class-panel',
+            '班级综测小组评议',
+            world.types.class,
+            world.roles.classLead,
+            'all',
+          ),
+          oneStage('counsellor', '辅导员复核', world.types.grade, world.roles.counsellor),
           oneStage('lead', '学院推免工作组', world.types.college, world.roles.manager),
         ],
       },
@@ -614,7 +629,7 @@ export const runSelection = (input: {
             ? counsellors
             : seen.chain.stageId === 'lead'
               ? [lead]
-              : seen.chain.stageId === 'class'
+              : seen.chain.stageId === 'class' || seen.chain.stageId === 'class-panel'
                 ? (world.classLeads.get(subject?.classKey ?? '') ?? []).map((id) =>
                     principalOf(t, id),
                   )
@@ -648,7 +663,9 @@ export const runSelection = (input: {
         const roll = random.next()
         const form = judge.round.recognitionForm as Form
         if (roll < 0.08 && entry.item !== 'application') {
-          const rejection = random.weighted(REJECTIONS)
+          const reasons: readonly { reason: string; comment: string; weight: number }[] =
+            PAPERS.has(entry.item) ? PAPER_REJECTIONS : REJECTIONS
+          const rejection = random.weighted(reasons)
           yield* assessment.decideReview(
             t,
             entry.instanceId,
@@ -681,31 +698,23 @@ export const runSelection = (input: {
           return
         }
         if (roll < 0.21 && judge.round.actions.supplement.state === 'available') {
-          yield* assessment.requestSupplement(
-            t,
-            entry.instanceId,
-            {
-              instructions: '请补充证书原件照片，以及获奖名单公示页面截图',
-              requirements: [{ label: '补充说明', kind: 'text', required: true }],
-            },
-            judge.as,
-          )
+          const ask = askFor(entry.item)
+          yield* requestAsk(t, entry.instanceId, ask, judge.as)
           // most answer within a day or two and are looked at again; the
           // rest are still out when the story stops
           const answered = addMinutes(queue.now, random.int(4 * 60, 36 * 60))
           if (random.chance(0.65) && answered.getTime() < now.getTime() - 1.5 * DAY) {
             queue.at(answered, 'supplement-answer', () =>
               Effect.gen(function* () {
-                const me = principalOf(t, entry.student.id)
-                const round = yield* assessment.getReviewInstance(t, entry.instanceId!, me)
-                const ask = round.supplements.find((one) => one.status === 'open')
-                if (ask === undefined) return
-                yield* assessment.answerSupplement(
-                  t,
-                  ask.id,
-                  { payload: { f1: '已补充证书原件照片与公示名单截图，名单中第 12 行为本人。' } },
-                  me,
-                )
+                const sent = yield* answerAsk({
+                  tenantId: t,
+                  batchId: batch.id,
+                  itemId: items.get(entry.item)!.id,
+                  instanceId: entry.instanceId!,
+                  ask,
+                  as: principalOf(t, entry.student.id),
+                })
+                if (!sent) return
                 const again = awake(addMinutes(queue.now, random.int(3 * 60, 20 * 60)))
                 if (again.getTime() < now.getTime() - DAY)
                   queue.at(again, 'review', () => decide(entry))
@@ -772,12 +781,14 @@ export const runSelection = (input: {
         new Date(Math.min(start + offsetHours * 3_600_000, entryEnds.getTime() - 3_600_000))
       // the students the scenes below follow send their papers in
       const lateStarter = random.chance(0.06) && !cast.has(student.id)
+      // the forms the scenes below follow are left for them to judge
       const onDesk = (item: string) =>
-        item === 'conduct' && classmates.some((one) => one.id === student.id)
+        (item === 'conduct' && classmates.some((one) => one.id === student.id)) ||
+        (item === 'transcript' && student === others[4])
       const papers = [
-        ['application', {}, 'campus-1', '推免生申请表.jpg'],
-        ['conduct', {}, 'campus-1', '思想品德考核表.jpg'],
-        ['transcript', {}, 'certificate-3', '成绩单.jpg'],
+        ['application', {}, 'application-1', '推免生申请表.jpg'],
+        ['conduct', {}, 'conduct-1', '思想品德考核表.jpg'],
+        ['transcript', {}, 'transcript-1', '成绩单.jpg'],
         [
           'cet4',
           {
@@ -891,12 +902,18 @@ export const runSelection = (input: {
 
     // --- what the demonstration accounts open onto ---------------------------
     //
-    // The student's own claims in every state a claim can be in; the class
-    // leads' seats on their class's conduct forms, one of them half-voted,
-    // one back from an ask for more; the counsellor's desk with refusals,
-    // asks, a re-examination and records made by hand; and the working
-    // group's desk with an appeal, a claim on its third round, a
-    // re-examination, a split panel and an ask of its own still out.
+    // The student's own claims in every state a claim can be in, an ask
+    // answered with the file it named and a determination corrected; the
+    // class leads' desk of their class's conduct forms, with appeals sitting
+    // before the two of them; the counsellor's desk with refusals, asks, a
+    // re-examination and records made by hand; and the working group's desk
+    // with an appeal, a claim on its third round, a re-examination, a split
+    // class panel and an ask of its own still out.
+    //
+    // Whatever a text says was supplied was supplied: an ask names a file
+    // and its answer uploads one (asks.ts). An appeal only argues; when it
+    // needs new material, the step judging it asks for that inside the
+    // appeal.
 
     const desk = principalOf(t, input.personas.counsellor)
     const scene = (at: Date, run: () => Effect.Effect<unknown, unknown, unknown>) =>
@@ -939,24 +956,23 @@ export const runSelection = (input: {
         if (judge === null || judge.round.chain.stageId === stop) return
         yield* assessment.decideReview(t, round, approval(judge.round.recognitionForm), judge.as)
       })
-    const askAs = (entry: Filed, as: Principal, instructions: string) =>
+    const askAs = (entry: Filed, as: Principal, ask: Ask) =>
       Effect.gen(function* () {
         const round = yield* pointerOf(entry)
-        yield* assessment.requestSupplement(
-          t,
-          round!,
-          { instructions, requirements: [{ label: '补充说明', kind: 'text', required: true }] },
-          as,
-        )
+        yield* requestAsk(t, round!, ask, as)
       })
-    const answerAs = (entry: Filed, text: string) =>
+    const answerAs = (entry: Filed, ask: Ask) =>
       Effect.gen(function* () {
-        const me = principalOf(t, entry.student.id)
         const round = yield* pointerOf(entry)
-        const view = yield* assessment.getReviewInstance(t, round!, me)
-        const ask = view.supplements.find((one) => one.status === 'open')
-        if (ask === undefined) return yield* Effect.die(new Error('scene: no ask to answer'))
-        yield* assessment.answerSupplement(t, ask.id, { payload: { f1: text } }, me)
+        const sent = yield* answerAsk({
+          tenantId: t,
+          batchId: batch.id,
+          itemId: items.get(entry.item)!.id,
+          instanceId: round!,
+          ask,
+          as: principalOf(t, entry.student.id),
+        })
+        if (!sent) return yield* Effect.die(new Error('scene: no ask to answer'))
       })
     const appealAs = (entry: Filed, reason: string) =>
       Effect.asVoid(
@@ -1007,17 +1023,7 @@ export const runSelection = (input: {
     ) =>
       Effect.gen(function* () {
         const target = items.get(key)!
-        const stored = (yield* assessment.getItem(t, target.id, as)).currentRevision!
-          .scoringConfig as {
-          recognitions?: Record<string, { defaultFromFieldId: string | null }>
-        }
-        const values = Object.fromEntries(
-          Object.entries(stored.recognitions ?? {}).flatMap(([id, recognition]) =>
-            recognition.defaultFromFieldId === null
-              ? []
-              : [[id, payload[recognition.defaultFromFieldId]]],
-          ),
-        )
+        const values = yield* determinationOf(target.id, payload, as)
         const request = {
           itemId: target.id,
           target: { kind: 'people' as const, participantIds: [participants.get(student.id)!] },
@@ -1037,6 +1043,21 @@ export const runSelection = (input: {
           as,
         )
       })
+    /** each determined value of a question, from the filed field that would pre-fill it */
+    const determinationOf = (itemId: string, filed: Record<string, unknown>, as: Principal) =>
+      Effect.gen(function* () {
+        const stored = (yield* assessment.getItem(t, itemId, as)).currentRevision!
+          .scoringConfig as {
+          recognitions?: Record<string, { defaultFromFieldId: string | null }>
+        }
+        return Object.fromEntries(
+          Object.entries(stored.recognitions ?? {}).flatMap(([id, recognition]) =>
+            recognition.defaultFromFieldId === null
+              ? []
+              : [[id, filed[recognition.defaultFromFieldId]]],
+          ),
+        )
+      })
     const papersOf = (student: Student, item: string) =>
       filed.find((one) => one.student.id === student.id && one.item === item)!
 
@@ -1054,9 +1075,9 @@ export const runSelection = (input: {
 
       // the student: every paper in, two awards, two results, one draft
       const papers = [
-        ['application', {}, 'campus-1', '推免生申请表.jpg'],
-        ['conduct', {}, 'campus-1', '思想品德考核表.jpg'],
-        ['transcript', {}, 'certificate-3', '成绩单.jpg'],
+        ['application', {}, 'application-1', '推免生申请表.jpg'],
+        ['conduct', {}, 'conduct-1', '思想品德考核表.jpg'],
+        ['transcript', {}, 'transcript-1', '成绩单.jpg'],
         [
           'cet4',
           { 'report-no': '202406118800417', score: 583 },
@@ -1069,22 +1090,15 @@ export const runSelection = (input: {
           fileFor(held, item, persona, item, { ...payload }, asset, name),
         ),
       )
+      const awardA = {
+        name: '蓝桥杯全国软件和信息技术专业人才大赛',
+        term: '25-26-1',
+        level: 'provincial',
+        rank: 1,
+        team: false,
+      }
       scene(ago(14, '21:00'), () =>
-        fileFor(
-          held,
-          'award-a',
-          persona,
-          'competition',
-          {
-            name: '蓝桥杯全国软件和信息技术专业人才大赛',
-            term: '25-26-1',
-            level: 'provincial',
-            rank: 1,
-            team: false,
-          },
-          'competition-2',
-          '获奖证书.jpg',
-        ),
+        fileFor(held, 'award-a', persona, 'competition', awardA, 'competition-2', '获奖证书.jpg'),
       )
       scene(ago(14, '21:20'), () =>
         fileFor(
@@ -1117,7 +1131,7 @@ export const runSelection = (input: {
             source: '大学生创新创业训练计划',
           },
           'research-1',
-          '成果证明.jpg',
+          '立项通知书.jpg',
         ),
       )
       scene(ago(12, '21:30'), () =>
@@ -1165,6 +1179,18 @@ export const runSelection = (input: {
           comment: '证书显示为市级赛区奖项，与申报的省级不符',
         }),
       )
+      // the project certificate says the university's level; the provincial
+      // one comes in answer, and the claim goes on to be approved
+      const provincial: Ask = {
+        instructions:
+          '立项通知书显示为校级立项，与申报的省部级不一致；如已升为省级项目，请上传省级立项通知书',
+        file: '省级立项通知书',
+        asset: 'research-3',
+        filename: '省级立项通知书.jpg',
+        note: '项目已于 2025 年 11 月升为省级立项',
+      }
+      scene(ago(12, '16:00'), () => askAs(one('research-a'), desk, provincial))
+      scene(ago(11, '20:30'), () => answerAs(one('research-a'), provincial))
       scene(ago(11, '16:00'), () =>
         assessment.interveneOnEntry(
           t,
@@ -1181,104 +1207,131 @@ export const runSelection = (input: {
       scene(ago(8, '11:00'), () => passStep(one('research-b')))
       scene(ago(9, '11:00'), () => passStep(one('research-a')))
       scene(ago(7, '15:00'), () => passStep(one('research-a')))
-      scene(ago(5, '10:30'), () =>
-        decideAs(one('conduct'), desk, {
-          decision: 'escalate',
-          reason: '超出当前审核范围',
-          comment: '考核表中班级评议意见一栏空缺，请班级综测小组核实',
+      // the inspection office finds the award was a team's, and says so
+      // outside any round
+      scene(ago(5, '10:40'), () =>
+        Effect.gen(function* () {
+          const target = items.get('competition')!
+          const values = yield* determinationOf(target.id, { ...awardA, team: true }, lead)
+          yield* assessment.redetermineEntry(
+            t,
+            one('award-a').entryId,
+            {
+              decision: 'approve',
+              recognition: { values },
+              reason: '经核对省赛组委会公示名单，该奖项为团队获奖，按团体项目认定',
+            },
+            lead,
+          )
         }),
       )
-      scene(ago(3, '21:00'), () => decideAs(one('conduct'), partner, { decision: 'approve' }))
+      scene(ago(8, '21:00'), () =>
+        decideAs(one('conduct'), partner, {
+          decision: 'reject',
+          reason: '不符合本项认定条件',
+          comment: '考核表为往年模板，请使用学院今年下发的模板',
+        }),
+      )
       scene(ago(2, '16:00'), () =>
-        askAs(one('transcript'), desk, '成绩单扫描件的教务处印章不清晰，请补充盖章页的清晰照片'),
+        askAs(one('transcript'), desk, {
+          instructions: '成绩单扫描件的教务处印章不清晰，请上传盖章页的清晰照片',
+          file: '盖章页清晰照片',
+          asset: 'transcript-1',
+          filename: '成绩单盖章页.jpg',
+        }),
       )
       if (reviewing) {
+        // the working group asks, inside the appeal, for the notice the
+        // student's reason rests on
+        const notice: Ask = {
+          instructions: '请上传省赛组委会关于赛区获奖认定的通知',
+          file: '组委会获奖通知',
+          asset: 'notice-2',
+          filename: '组委会获奖通知.jpg',
+          note: '通知写明赛区获奖按省级认定',
+        }
         scene(ago(4, '20:30'), () =>
-          appealAs(one('award-b'), '证书由省赛组委会颁发，市级只是承办赛区，附组委会获奖通知'),
+          appealAs(
+            one('award-b'),
+            '市级赛区是省赛的初赛赛区，赛区获奖名单由省组委会统一公布，应按省级认定，请复核',
+          ),
         )
+        scene(ago(3, '10:00'), () => askAs(one('award-b'), lead, notice))
+        scene(ago(2, '19:30'), () => answerAs(one('award-b'), notice))
+        // the class's two leads sit on the student's appeal; one has voted
+        scene(ago(5, '12:10'), () =>
+          appealAs(one('conduct'), '学院通知允许沿用往年模板，只要求内容完整，请班级综测小组复核'),
+        )
+        scene(ago(3, '21:30'), () => decideAs(one('conduct'), partner, { decision: 'approve' }))
       }
 
-      // the class leads' seats: five classmates' conduct forms
-      const [x, y, z, w, v] = classmates
-      if (x !== undefined) {
-        scene(ago(4, '11:00'), () =>
-          decideAs(papersOf(x, 'conduct'), desk, {
-            decision: 'escalate',
-            reason: '材料真实性存疑',
-            comment: '考核表所列志愿服务时长与班级记录不一致，请班级综测小组核实',
-          }),
-        )
-      }
+      // the class leads' desk: five classmates' conduct forms, the first of
+      // them still waiting for either lead
+      const [, y, z, w, v] = classmates
+      const signature = askFor('conduct')
       if (y !== undefined) {
-        scene(ago(6, '15:00'), () =>
-          decideAs(papersOf(y, 'conduct'), desk, {
-            decision: 'escalate',
-            reason: '超出当前审核范围',
-            comment: '请班级综测小组核实该生本学年的班级表现',
-          }),
-        )
-        scene(ago(5, '20:00'), () =>
-          askAs(papersOf(y, 'conduct'), partner, '考核表缺少班主任签字页，请补充'),
-        )
-        scene(ago(4, '12:30'), () =>
-          answerAs(papersOf(y, 'conduct'), '已请班主任在考核表上签字，签字页照片已补充。'),
-        )
+        scene(ago(6, '20:00'), () => askAs(papersOf(y, 'conduct'), partner, signature))
+        scene(ago(5, '12:30'), () => answerAs(papersOf(y, 'conduct'), signature))
       }
       if (z !== undefined) {
-        scene(ago(9, '16:00'), () =>
-          decideAs(papersOf(z, 'conduct'), desk, {
+        scene(ago(9, '20:30'), () =>
+          decideAs(papersOf(z, 'conduct'), seat, {
             decision: 'reject',
             reason: '申报信息不完整',
-            comment: '考核表缺少班主任签字',
+            comment: '考核表缺少班主任签字页',
           }),
         )
         if (reviewing) {
-          scene(ago(3, '19:00'), () =>
-            appealAs(papersOf(z, 'conduct'), '考核表已由班主任补签，附签字页照片'),
+          // the page comes in answer to the panel's ask, and the panel sits again
+          scene(ago(5, '19:40'), () =>
+            appealAs(papersOf(z, 'conduct'), '班主任已在考核表上签字，请复核'),
           )
+          scene(ago(4, '21:00'), () => askAs(papersOf(z, 'conduct'), partner, signature))
+          scene(ago(3, '12:30'), () => answerAs(papersOf(z, 'conduct'), signature))
         }
       }
       if (w !== undefined) {
-        scene(ago(8, '10:00'), () =>
-          decideAs(papersOf(w, 'conduct'), desk, {
-            decision: 'escalate',
-            reason: '认定标准存在争议',
-            comment: '该生曾受通报批评，是否影响考核结论请班级综测小组评议',
-          }),
-        )
-        scene(ago(7, '20:00'), () =>
-          decideAs(papersOf(w, 'conduct'), seat, { decision: 'approve' }),
-        )
-        scene(ago(7, '21:30'), () =>
+        scene(ago(10, '21:15'), () =>
           decideAs(papersOf(w, 'conduct'), partner, {
             decision: 'reject',
-            reason: '不符合本项认定条件',
-            comment: '该生本学年受过通报批评，班级评议不同意通过',
+            reason: '申报内容与证明材料不一致',
+            comment: '考核表所列志愿服务情况与班级记录不一致',
           }),
         )
+        if (reviewing) {
+          // the two leads disagree; the counsellor gives an opinion and the
+          // working group concludes
+          scene(ago(5, '10:00'), () =>
+            appealAs(papersOf(w, 'conduct'), '志愿服务情况以志愿服务平台的记录为准，请复核'),
+          )
+          scene(ago(4, '20:00'), () =>
+            decideAs(papersOf(w, 'conduct'), seat, { decision: 'approve' }),
+          )
+          scene(ago(4, '21:30'), () =>
+            decideAs(papersOf(w, 'conduct'), partner, {
+              decision: 'reject',
+              reason: '申报内容与证明材料不一致',
+              comment: '平台记录与考核表所列仍有出入',
+            }),
+          )
+          scene(ago(3, '10:30'), () =>
+            decideAs(papersOf(w, 'conduct'), desk, {
+              decision: 'approve',
+              comment: '志愿服务平台记录可查，考核表所列属实',
+            }),
+          )
+        }
       }
       if (v !== undefined) {
-        scene(ago(11, '10:00'), () =>
-          decideAs(papersOf(v, 'conduct'), desk, {
-            decision: 'escalate',
-            reason: '材料真实性存疑',
-            comment: '考核表签字笔迹存疑，请班级综测小组核实',
-          }),
-        )
-        scene(ago(10, '20:00'), () =>
+        scene(ago(11, '20:00'), () =>
           decideAs(papersOf(v, 'conduct'), seat, { decision: 'approve' }),
-        )
-        scene(ago(10, '21:00'), () =>
-          decideAs(papersOf(v, 'conduct'), partner, { decision: 'approve' }),
-        )
-        scene(ago(9, '10:00'), () =>
-          decideAs(papersOf(v, 'conduct'), lead, { decision: 'approve' }),
         )
       }
     }
 
     // the working group's desk
-    const [a1, a2, a3, a4] = others
+    const [a1, a2, a3, a4, a5] = others
+    const listing = askFor('competition')
     if (a1 !== undefined) {
       scene(ago(15, '21:00'), () =>
         fileFor(
@@ -1306,15 +1359,13 @@ export const runSelection = (input: {
       )
       scene(ago(13, '20:00'), () => reviseAs(one('a1'), '已重新拍摄证书'))
       scene(ago(9, '14:00'), () => passStep(one('a1'), 'counsellor'))
-      scene(ago(8, '10:00'), () => askAs(one('a1'), desk, '请补充比赛官网的获奖名单截图'))
-      scene(ago(7, '20:00'), () =>
-        answerAs(one('a1'), '已补充官网获奖名单截图，本人所在团队位列第 17 行。'),
-      )
+      scene(ago(8, '10:00'), () => askAs(one('a1'), desk, listing))
+      scene(ago(7, '20:00'), () => answerAs(one('a1'), listing))
       scene(ago(6, '11:00'), () =>
         decideAs(one('a1'), desk, {
           decision: 'escalate',
           reason: '材料真实性存疑',
-          comment: '补充的获奖名单中未找到该生姓名，请工作组核实',
+          comment: '补充的获奖名单只列队伍编号，无法确认该生为队员，请工作组核实',
         }),
       )
     }
@@ -1333,7 +1384,7 @@ export const runSelection = (input: {
             source: '大学生创新创业训练计划',
           },
           'research-1',
-          '成果证明.jpg',
+          '立项通知书.jpg',
         ),
       )
       scene(ago(13, '15:00'), () => decideAs(one('a2'), desk, { decision: 'approve' }))
@@ -1378,7 +1429,12 @@ export const runSelection = (input: {
         }),
       )
       scene(ago(5, '15:00'), () =>
-        askAs(one('a3'), lead, '请提供竞赛官网获奖名单截图，并标出证书编号所在行'),
+        askAs(one('a3'), lead, {
+          instructions: '请提供竞赛官网获奖名单截图，并标出证书编号所在行',
+          file: '获奖名单截图',
+          asset: 'notice-1',
+          filename: '获奖名单截图.jpg',
+        }),
       )
     }
     if (a4 !== undefined) {
@@ -1409,6 +1465,12 @@ export const runSelection = (input: {
       )
       scene(ago(7, '10:00'), () => decideAs(one('a4'), lead, { decision: 'approve' }))
     }
+    // the counsellor's desk: a transcript back with the stamped page it lacked
+    if (a5 !== undefined) {
+      const stamp = askFor('transcript')
+      scene(ago(4, '11:00'), () => askAs(papersOf(a5, 'transcript'), desk, stamp))
+      scene(ago(3, '20:00'), () => answerAs(papersOf(a5, 'transcript'), stamp))
+    }
 
     // --- what the college imports -------------------------------------------
 
@@ -1429,8 +1491,9 @@ export const runSelection = (input: {
           const average = (84 + student.standing * 13 + random.next() * 1.5).toFixed(2)
           return { average, rank, size: bySize.get(student.major) ?? 1 }
         }
-        // one applicant came back from leave, and the registry's export
-        // left them out; the counsellor records theirs by hand four days on
+        // the registry's export dropped one applicant's row; the counsellor
+        // records theirs by hand from the certificate the registry sends
+        // three days on (the same applicant whose transcript lacks its stamp)
         const lateGrades = others[4]
         yield* importInto(
           assessment,
@@ -1446,7 +1509,7 @@ export const runSelection = (input: {
         if (lateGrades !== undefined) {
           const values = gradesOf(lateGrades)
           scene(ago(12, '10:00'), () =>
-            recordOne('grades', lateGrades, values, '教务处补发成绩证明（复学学生）', desk),
+            recordOne('grades', lateGrades, values, '教务处补发成绩证明（导出时漏行）', desk),
           )
         }
 

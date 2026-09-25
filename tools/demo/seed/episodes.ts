@@ -32,7 +32,7 @@ export const EPISODE_KINDS = [
   'reopen',
   // approved; the inspection office raises the determination
   'raise',
-  // approved; the inspection office revokes the approval
+  // filed twice for one afternoon, both approved; the inspection office revokes the second
   'revoke',
   // a counsellor records a deduction, then takes it back
   'record-void',
@@ -50,6 +50,8 @@ export interface Episode {
   readonly corrected?: Readonly<Record<string, unknown>>
   /** for `item-void`, what is filed again once the question is gone */
   readonly refiled?: Claim
+  /** for `revoke`, the claim filed first, which `claim` duplicates */
+  readonly first?: Claim
 }
 
 const campus = (
@@ -77,10 +79,15 @@ const competition = (
   filename: '获奖证书.jpg',
 })
 
-const practice = (activity: string, type: 'practice' | 'volunteer', evidence: string): Claim => ({
+const practice = (
+  activity: string,
+  type: 'practice' | 'volunteer',
+  evidence: string,
+  proof = 'practice-1',
+): Claim => ({
   item: 'practice',
   payload: { activity, type, evidence },
-  proof: 'practice-1',
+  proof,
   filename: `${activity}证明.jpg`,
 })
 
@@ -103,13 +110,21 @@ export const TRIAL_ITEM: ItemSpec = {
 export const EPISODES: Readonly<Record<Term, readonly Episode[]>> = {
   '23-24-1': [
     { kind: 'supplement', claim: campus('主题摄影比赛', '0.2', 'university', 2) },
-    { kind: 'revise', claim: practice('社区养老院助老服务', 'volunteer', 'report') },
+    // filed with the platform's record; the stamped certificate comes with the revision
+    {
+      kind: 'revise',
+      claim: practice('社区养老院助老服务', 'volunteer', 'hours', 'practice-2'),
+    },
   ],
   '23-24-2': [
     { kind: 'panel', claim: competition('全国大学生数学建模竞赛', 'provincial', 1, true) },
+    // filed with a municipal contest's certificate by mistake
     {
       kind: 'appeal-corrected',
-      claim: competition('省大学生信息素养大赛', 'provincial', 2, false),
+      claim: {
+        ...competition('省大学生信息素养大赛', 'provincial', 1, false),
+        proof: 'competition-3',
+      },
     },
   ],
   '24-25-1': [
@@ -139,7 +154,11 @@ export const EPISODES: Readonly<Record<Term, readonly Episode[]>> = {
         filename: '省大学生健身操舞锦标赛.jpg',
       },
     },
-    { kind: 'revoke', claim: practice('图书馆志愿服务', 'volunteer', 'hours') },
+    {
+      kind: 'revoke',
+      first: practice('图书馆志愿服务', 'volunteer', 'hours', 'practice-2'),
+      claim: practice('图书馆志愿服务', 'volunteer', 'certificate', 'practice-3'),
+    },
     {
       kind: 'item-void',
       claim: {

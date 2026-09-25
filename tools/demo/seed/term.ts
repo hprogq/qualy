@@ -8,6 +8,7 @@ import library from '../library.json' with { type: 'json' }
 import { APPEAL_REASONS, CADRE_POSTS, REJECTIONS } from '../catalog.ts'
 import type { FieldSpec, ItemSpec, Term } from '../rules.ts'
 import { claimsOf, type Claim } from './claims.ts'
+import { answerAsk, askFor, requestAsk, type Ask } from './asks.ts'
 import { addMinutes, awake, cst, principalOf, type Random, type Story } from './context.ts'
 import { episodesOf, TRIAL_ITEM, type Episode } from './episodes.ts'
 import { stageProof, stageWorkbook } from './files.ts'
@@ -376,7 +377,7 @@ export const runTerm = (input: {
       if (student.id !== persona.id) return claims
       const taken = new Map<string, number>()
       for (const episode of episodes) {
-        for (const claim of [episode.claim, episode.refiled]) {
+        for (const claim of [episode.first, episode.claim, episode.refiled]) {
           if (claim !== undefined) taken.set(claim.item, (taken.get(claim.item) ?? 0) + 1)
         }
       }
@@ -455,15 +456,7 @@ export const runTerm = (input: {
           return
         }
         if (roll < 0.105 && judge.round.actions.supplement.state === 'available') {
-          yield* assessment.requestSupplement(
-            t,
-            entry.instanceId,
-            {
-              instructions: '请补充说明活动的组织单位与具体日期',
-              requirements: [{ label: '补充说明', kind: 'text', required: true }],
-            },
-            judge.as,
-          )
+          yield* requestAsk(t, entry.instanceId, askFor(entry.claim.item), judge.as)
           queue.at(addMinutes(queue.now, random.int(3 * 60, 20 * 60)), 'supplement-answer', () =>
             answer(entry),
           )
@@ -566,18 +559,18 @@ export const runTerm = (input: {
       }
     }
 
-    const answer = (
-      entry: Filed,
-      text = '活动由学院学生会组织，时间为学期第十二周周六，已补充组织方盖章证明。',
-      review_ = true,
-    ) =>
+    /** the student answers the open ask with what it names; looked at again later unless `review_` is false */
+    const answer = (entry: Filed, ask: Ask = askFor(entry.claim.item), review_ = true) =>
       Effect.gen(function* () {
-        const me = asStudent(entry.student)
-        const round = yield* assessment.getReviewInstance(t, entry.instanceId!, me)
-        const ask = round.supplements.find((one) => one.status === 'open')
-        if (ask === undefined) return
-        yield* assessment.answerSupplement(t, ask.id, { payload: { f1: text } }, me)
-        if (!review_) return
+        const answered = yield* answerAsk({
+          tenantId: t,
+          batchId: batch.id,
+          itemId: itemOf(entry.claim.item).id,
+          instanceId: entry.instanceId!,
+          ask,
+          as: asStudent(entry.student),
+        })
+        if (!answered || !review_) return
         review(entry, addMinutes(queue.now, random.int(4 * 60, 30 * 60)))
       })
 
@@ -587,6 +580,8 @@ export const runTerm = (input: {
         readonly payload?: Readonly<Record<string, unknown>>
         readonly note?: string
         readonly review?: boolean
+        /** the picture uploaded this time, when not the one first filed */
+        readonly proof?: string
       } = {},
     ) =>
       Effect.gen(function* () {
@@ -596,7 +591,7 @@ export const runTerm = (input: {
           t,
           batch.id,
           item.id,
-          entry.claim.proof,
+          options.proof ?? entry.claim.proof,
           `补充-${entry.claim.filename}`,
           me,
         )
@@ -1146,26 +1141,22 @@ export const runTerm = (input: {
         })
 
       switch (episode.kind) {
-        case 'supplement':
+        case 'supplement': {
+          const ask: Ask = {
+            instructions: '证书上没有写名次，请上传获奖名单公示页截图，并标出本人所在行',
+            file: '获奖名单公示页截图',
+            asset: 'notice-1',
+            filename: '获奖名单公示.jpg',
+            note: '本人在二等奖名单第 17 行',
+          }
           fileAt(0, '20:30', episode.claim!)
           on(1, '19:30', (entry) =>
-            judged(entry, (judge) =>
-              assessment.requestSupplement(
-                t,
-                entry.instanceId!,
-                {
-                  instructions: '证书上未显示名次，请补充获奖名单公示页截图',
-                  requirements: [{ label: '补充说明', kind: 'text', required: true }],
-                },
-                judge.as,
-              ),
-            ),
+            judged(entry, (judge) => requestAsk(t, entry.instanceId!, ask, judge.as)),
           )
-          on(2, '12:10', (entry) =>
-            answer(entry, '已补充学校官网获奖名单公示页截图，本人位列二等奖第 3 名。', false),
-          )
+          on(2, '12:10', (entry) => answer(entry, ask, false))
           on(2, '20:40', approveNow())
           return
+        }
         case 'revise':
           fileAt(0, '21:00', episode.claim!)
           on(
@@ -1173,11 +1164,16 @@ export const runTerm = (input: {
             '19:50',
             rejectNow(
               '现有材料不足以支持申报内容',
-              '仅有活动现场照片，请补充组织单位盖章的参与证明',
+              '仅有志愿服务平台的时长截图，请补充服务单位盖章的服务证明',
             ),
           )
           on(2, '13:00', (entry) =>
-            revise(entry, { note: '已补充社区居委会盖章的服务证明', review: false }),
+            revise(entry, {
+              payload: { evidence: 'certificate' },
+              note: '已补充服务单位盖章的志愿服务证明',
+              proof: 'practice-3',
+              review: false,
+            }),
           )
           on(3, '19:30', approveNow())
           return
@@ -1211,7 +1207,7 @@ export const runTerm = (input: {
                 entry.entryId,
                 {
                   kind: 'return-for-revision',
-                  reason: '证明材料为赛事海报，无法证明本人参赛，请上传成绩册或获奖证书',
+                  reason: '证书为团体奖项，请补充赛事成绩册中本队所在页，证明本人为参赛队员',
                 },
                 lead,
               )
@@ -1219,7 +1215,11 @@ export const runTerm = (input: {
             }),
           )
           on(1, '20:30', (entry) =>
-            revise(entry, { note: '已上传赛事成绩册中本人所在页', review: false }),
+            revise(entry, {
+              note: '已上传赛事成绩册中本队所在页',
+              proof: 'roster-1',
+              review: false,
+            }),
           )
           on(2, '19:40', approveNow())
           return
@@ -1241,14 +1241,32 @@ export const runTerm = (input: {
           )
           on(3, '10:00', (entry) => walk(entry, { kind: 'approve' }, 4 * 60))
           return
-        case 'appeal-corrected':
+        case 'appeal-corrected': {
+          // filed with the wrong certificate; the right one comes in answer
+          // to an ask made inside the appeal
+          const ask: Ask = {
+            instructions: '请上传该竞赛的获奖证书',
+            file: '获奖证书',
+            asset: 'competition-1',
+            filename: '获奖证书.jpg',
+            note: '证书编号可在竞赛官网查询',
+          }
           fileAt(0, '22:00', episode.claim!)
-          on(1, '20:20', rejectNow('现有材料不足以支持申报内容', '未上传获奖证书，仅有参赛照片'))
-          on(9, '10:40', appeal('获奖证书当时漏传了，现已补充'))
-          on(9, '16:00', (entry) =>
+          on(
+            1,
+            '20:20',
+            rejectNow('申报内容与证明材料不一致', '所附证书为市级程序设计竞赛，与申报的竞赛不符'),
+          )
+          on(9, '10:40', appeal('上传时选错了证书，该竞赛的获奖证书可以补交，请复核'))
+          on(9, '15:00', (entry) =>
+            judged(entry, (judge) => requestAsk(t, entry.instanceId!, ask, judge.as)),
+          )
+          on(9, '20:10', (entry) => answer(entry, ask, false))
+          on(10, '10:00', (entry) =>
             walk(entry, { kind: 'approve', comment: '补充的获奖证书真实有效，予以认定' }, 5 * 60),
           )
           return
+        }
         case 'appeal-upheld':
           fileAt(1, '21:00', episode.claim!)
           on(2, '20:00', rejectNow('相关时间不在有效范围内', '活动时间不在本学期材料范围内'))
@@ -1265,21 +1283,31 @@ export const runTerm = (input: {
             ),
           )
           return
-        case 'reopen':
+        case 'reopen': {
+          const ask: Ask = {
+            instructions: '请上传组委会发布的更正后获奖名单截图',
+            file: '更正后的获奖名单',
+            asset: 'notice-1',
+            filename: '更正后的获奖名单.jpg',
+          }
           fileAt(0, '20:50', episode.claim!)
-          on(1, '20:30', approveNow('证书所载名次与申报不符，按证书认定', { rank: 2 }))
+          on(1, '20:30', approveNow('官网公示名单中该生为第二名，按公示名单认定', { rank: 2 }))
           on(6, '10:20', (entry) =>
             Effect.gen(function* () {
               const round = yield* assessment.reopenEntry(
                 t,
                 entry.entryId,
-                { reason: '参评人提交了组委会更正后的获奖名单，名次为第一名，请复核' },
+                { reason: '组委会已发布更正后的获奖名单，该生名次与原认定不符，请复核' },
                 recorder,
               )
               entry.instanceId = round.id
             }),
           )
-          on(6, '15:00', (entry) =>
+          on(6, '14:30', (entry) =>
+            judged(entry, (judge) => requestAsk(t, entry.instanceId!, ask, judge.as)),
+          )
+          on(6, '20:40', (entry) => answer(entry, ask, false))
+          on(7, '10:00', (entry) =>
             walk(
               entry,
               {
@@ -1291,6 +1319,7 @@ export const runTerm = (input: {
             ),
           )
           return
+        }
         case 'raise':
           fileAt(1, '20:40', episode.claim!)
           on(2, '19:50', approveNow())
@@ -1310,9 +1339,20 @@ export const runTerm = (input: {
             }),
           )
           return
-        case 'revoke':
-          fileAt(0, '21:40', episode.claim!)
-          on(1, '21:00', approveNow())
+        case 'revoke': {
+          // the same afternoon filed twice, and both approved; the second
+          // is the one the inspection office revokes
+          const earlier: { entry?: Filed } = {}
+          queue.at(addMinutes(at(0, '21:10'), order * 7), 'episode', () =>
+            Effect.map(file(persona, episode.first!, true), (entry) => {
+              earlier.entry = entry
+            }),
+          )
+          queue.at(addMinutes(at(1, '20:10'), order * 7), 'episode', () =>
+            approveNow()(earlier.entry!),
+          )
+          fileAt(2, '21:40', episode.claim!)
+          on(3, '21:00', approveNow())
           on(12, '10:20', (entry) =>
             Effect.gen(function* () {
               yield* assessment.redetermineEntry(
@@ -1328,6 +1368,7 @@ export const runTerm = (input: {
             }),
           )
           return
+        }
         case 'record-void': {
           const recorded: { entryId?: string } = {}
           queue.at(addMinutes(at(2, '16:30'), order * 7), 'episode', () =>
@@ -1565,7 +1606,7 @@ export const runTerm = (input: {
           const round = yield* assessment.getReviewInstance(t, entry.instanceId, lead)
           if (round.state === 'completed') continue
           if (round.state === 'awaiting_supplement') {
-            yield* answer(entry)
+            yield* answer(entry, askFor(entry.claim.item), false)
           }
           for (let step = 0; step < 6; step++) {
             const judge = yield* judgeOf(entry.instanceId, entry.student)
