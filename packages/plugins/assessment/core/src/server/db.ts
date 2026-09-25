@@ -1325,7 +1325,7 @@ export const explicitAssignments = (tenantId: string, batchId: string, which: 'a
         )
         .execute(),
     )
-    .pipe(Effect.map((rows) => rows.map((row) => row.roleAssignmentId as string)))
+    .pipe(Effect.map((rows) => rows.map((row) => row.roleAssignmentId)))
 
 /** a source that carries nothing is not a record of anything */
 export const dropEmptyAccessSources = (tenantId: string, batchId: string) =>
