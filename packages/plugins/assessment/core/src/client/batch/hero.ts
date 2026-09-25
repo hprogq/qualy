@@ -132,17 +132,31 @@ export const agendaOf = (
     // before what is still with the reviewers, and what was accepted only
     // when nothing else is left. "Nothing filed" is three different lines,
     // because "start filing" is only true while filing is open.
+    //
+    // A draft or a claim sent back only waits on the reader while filing is
+    // open. Once it is not, those lines report what was left and ask
+    // nothing, so they give way to a line that still asks - a refusal the
+    // reader may answer must not sit under an old draft nobody can finish.
     const own = mine.myEntries
-    const first = (
-      [
-        ['toAnswer', own.toAnswer],
-        ['toFix', own.toFix],
-        ['draft', own.draft],
-        ['rejected', own.rejected],
-        ['submitted', own.submitted],
-        ['approved', own.approved],
-      ] as const
-    ).find(([, count]) => count > 0)
+    const filingOpen = own.filing === 'open'
+    const order: readonly (readonly [OwnState, number])[] = filingOpen
+      ? [
+          ['toAnswer', own.toAnswer],
+          ['toFix', own.toFix],
+          ['draft', own.draft],
+          ['rejected', own.rejected],
+          ['submitted', own.submitted],
+          ['approved', own.approved],
+        ]
+      : [
+          ['toAnswer', own.toAnswer],
+          ['rejected', own.rejected],
+          ['toFix', own.toFix],
+          ['draft', own.draft],
+          ['submitted', own.submitted],
+          ['approved', own.approved],
+        ]
+    const first = order.find(([, count]) => count > 0)
     rows.push(
       first !== undefined
         ? { kind: 'own', state: first[0], count: first[1], filing: own.filing }

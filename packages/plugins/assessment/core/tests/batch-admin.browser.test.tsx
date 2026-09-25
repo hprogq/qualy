@@ -425,6 +425,11 @@ describe('the batch list', () => {
     [{ filing: 'upcoming' }, 'upcoming'],
     [{ filing: 'closed' }, 'missed'],
     [{ approved: 2, filing: 'closed' }, 'approved'],
+    // with filing shut, a draft nobody can finish gives way to a refusal the
+    // reader may still answer; while it is open the draft is the work
+    [{ draft: 1, rejected: 1, filing: 'closed' }, 'rejected'],
+    [{ toFix: 1, rejected: 1, filing: 'upcoming' }, 'rejected'],
+    [{ draft: 1, rejected: 1 }, 'draft'],
   ] as const)('says what became of the reader’s filings: %o reads as %s', async (mine, state) => {
     await screen(standing(mine, null), '/assessment/batches')
     await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
