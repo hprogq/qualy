@@ -139,24 +139,31 @@ export const useTryRecords = (functionId: string, scope: string) => {
    * and then found. What arrives is merged with what happened instead.
    */
   const load = useRef(0)
-  const since = useRef<{ added: readonly TryRecord[]; cleared: boolean }>({
-    added: [],
-    cleared: false,
-  })
+  const since = useRef<{
+    added: readonly TryRecord[]
+    /** taken out of storage by a ceiling, which a read begun earlier still returns */
+    dropped: ReadonlySet<string>
+    cleared: boolean
+  }>({ added: [], dropped: new Set(), cleared: false })
 
   useEffect(() => {
     const mine = ++load.current
-    since.current = { added: [], cleared: false }
+    since.current = { added: [], dropped: new Set(), cleared: false }
     setHeld({ scope: scopeKey, records: [] })
     void read(scopeKey).then((found) => {
       // a later scope, or a later hydration of this one, owns the screen now
       if (load.current !== mine) return
       const happened = since.current
-      since.current = { added: [], cleared: false }
+      since.current = { added: [], dropped: new Set(), cleared: false }
       // emptied while this was in flight: the list the person asked for is
       // the empty one, not the one the read started before they pressed it
       if (happened.cleared) return
-      setHeld({ scope: scopeKey, records: newestFirst([...happened.added, ...found]) })
+      setHeld({
+        scope: scopeKey,
+        records: newestFirst(
+          [...happened.added, ...found].filter((one) => !happened.dropped.has(one.id)),
+        ),
+      })
     })
   }, [scopeKey])
 
@@ -175,7 +182,7 @@ export const useTryRecords = (functionId: string, scope: string) => {
         scope: scopeKey,
         records: newestFirst([stored, ...(was.scope === scopeKey ? was.records : [])]),
       }))
-      void inStores(
+      void inStores<readonly string[]>(
         [TRY_RECORDS],
         'readwrite',
         (open) => {
@@ -186,6 +193,7 @@ export const useTryRecords = (functionId: string, scope: string) => {
           // one in - read after the put, so it counts itself - and neither
           // ever grows past its ceiling. Only this formula's rows are read.
           const held = store.index(BY_FUNCTION).getAll(IDBKeyRange.only(functionId))
+          const gone: string[] = []
           held.onsuccess = () => {
             const newest = (held.result as unknown[]).filter(isRecord).sort((a, b) => b.at - a.at)
             const perSource = new Map<string, number>()
@@ -193,19 +201,40 @@ export const useTryRecords = (functionId: string, scope: string) => {
             for (const one of newest) {
               const inSource = (perSource.get(one.scopeKey) ?? 0) + 1
               perSource.set(one.scopeKey, inSource)
-              if (inSource > TRIES_PER_SOURCE || kept >= TRIES_PER_FORMULA) store.delete(one.id)
-              else kept += 1
+              if (inSource > TRIES_PER_SOURCE || kept >= TRIES_PER_FORMULA) {
+                store.delete(one.id)
+                // the ones this list shows; another source's are not on screen
+                if (one.scopeKey === scopeKey) gone.push(one.id)
+              } else kept += 1
             }
           }
+          return () => gone
         },
-        undefined,
-      )
+        [],
+      ).then((gone) => {
+        if (gone.length === 0) return
+        // The formula's ceiling can take this source's own oldest tries when
+        // the others ran more recently. Once the removal has committed they
+        // leave the list too, rather than staying there to be loaded until
+        // the next visit reads storage again.
+        const dropped = new Set(gone)
+        since.current = {
+          ...since.current,
+          added: since.current.added.filter((one) => !dropped.has(one.id)),
+          dropped: new Set([...since.current.dropped, ...dropped]),
+        }
+        setHeld((was) =>
+          was.scope === scopeKey
+            ? { scope: scopeKey, records: was.records.filter((one) => !dropped.has(one.id)) }
+            : was,
+        )
+      })
     },
     [functionId, scopeKey],
   )
 
   const clear = useCallback(() => {
-    since.current = { added: [], cleared: true }
+    since.current = { added: [], dropped: new Set(), cleared: true }
     setHeld({ scope: scopeKey, records: [] })
     void inStores(
       [TRY_RECORDS],

@@ -199,4 +199,35 @@ describe('what this browser remembers about its tries', () => {
     // the other formula's tries are not this formula's to count
     expect(await storedIds(OTHER)).toHaveLength(theirs.length)
   })
+
+  it('takes a try off the list when the formula ceiling takes it out of storage', async () => {
+    // this source's tries are the formula's oldest, and the other sources
+    // ran enough since to fill the rest of what the formula keeps
+    const mine = earlierTries(FN, 'draft', 15, 1_000)
+    const since = Array.from({ length: 5 }, (_, n) =>
+      earlierTries(FN, `revision/${String(n + 1)}`, 17, 2_000 + n * 17),
+    ).flat()
+    expect(mine.length + since.length).toBe(TRIES_PER_FORMULA)
+    await inStores(
+      [TRY_RECORDS],
+      'readwrite',
+      (open) => {
+        for (const one of [...mine, ...since]) open(TRY_RECORDS).put(one)
+      },
+      undefined,
+    )
+
+    const draft = await renderHook(() => useTryRecords(FN, 'draft'))
+    await settles(() => draft.result.current.records, mine.length)
+    act(() => draft.result.current.add({ input: { base: 'now' }, outcome }))
+
+    // one more try, one fewer of the oldest: the list keeps what storage keeps
+    await vi.waitFor(
+      () => expect(draft.result.current.records.map((one) => one.id)).not.toContain(mine[0]!.id),
+      { timeout: 5_000 },
+    )
+    expect(draft.result.current.records).toHaveLength(mine.length)
+    expect(await storedIds(FN)).not.toContain(mine[0]!.id)
+    await draft.unmount()
+  })
 })
