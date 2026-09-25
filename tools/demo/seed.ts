@@ -30,7 +30,8 @@ import {
   openPersonaAccounts,
   personaPassword,
 } from './seed/personas.ts'
-import { runSelection, type SelectionStage } from './seed/selection.ts'
+import { runSelection } from './seed/selection.ts'
+import { seedOptionsOf } from './options.ts'
 import { writeSignIns } from './seed/telemetry.ts'
 import { sql } from 'kysely'
 import { runSql } from '@qualy/plugin-database/testkit'
@@ -50,13 +51,8 @@ if (adminPassword === undefined || adminPassword.length < 15) {
 // the accounts the demonstration signs in as: not a committed value either
 const accountsPassword = personaPassword()
 if (accountsPassword === undefined) throw new Error(PERSONA_PASSWORD_REQUIRED)
-const flag = (name: string) =>
-  process.argv.find((arg) => arg.startsWith(`--${name}=`))?.slice(name.length + 3)
-const stage = (flag('stage') ?? 'review') as SelectionStage
-if (!['entry', 'review', 'appeal'].includes(stage)) {
-  throw new Error('--stage must be entry, review or appeal')
-}
-const migrationBefore = flag('migration-state') === 'before'
+// demo:check takes the same two flags, to know what this run left out
+const { stage, migrationBefore } = seedOptionsOf(process.argv.slice(2))
 await requireEmpty(url)
 console.log(`seeding ${describeTarget(url)}`)
 const startedAt = Date.now()

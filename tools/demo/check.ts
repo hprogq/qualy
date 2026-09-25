@@ -4,7 +4,11 @@
 // medians sat around 71 to 75). Then what each demonstration account opens
 // onto (situations.ts): the run fails when any of it came out empty.
 //
-//   QUALY_DEMO_DATABASE_URL=… node tools/demo/check.ts [sample=80]
+//   QUALY_DEMO_DATABASE_URL=… node tools/demo/check.ts [sample=80] [--stage=…] [--migration-state=before]
+//
+// The two flags are demo:seed's own: a run seeded with the selection still
+// in its filing phase, or with the route change left for the demonstration,
+// is checked without the situations those leave out.
 
 import { Effect } from 'effect'
 import { sql } from 'kysely'
@@ -12,11 +16,14 @@ import { Assessment } from '@qualy/plugin-assessment/testkit'
 import { runSql } from '@qualy/plugin-database/testkit'
 import { demoUrl } from './target.ts'
 import { runOverDemo, runSeedingHooks } from './runtime.ts'
+import { positionalOf, seedOptionsOf } from './options.ts'
 import { principalOf } from './seed/context.ts'
-import { personaSituations } from './situations.ts'
+import { judgeSituations, personaSituations } from './situations.ts'
 
 const url = demoUrl()
-const sample = Number(process.argv[2] ?? 80)
+const argv = process.argv.slice(2)
+const options = seedOptionsOf(argv)
+const sample = Number(positionalOf(argv)[0] ?? 80)
 
 const quantile = (sorted: readonly number[], q: number) =>
   sorted.length === 0 ? NaN : sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))]!
@@ -110,13 +117,31 @@ await runOverDemo(
     if (broken.verdicts + broken.determinations + broken.orphans > 0) process.exitCode = 1
 
     // what each demonstration account opens onto
-    const { situations, missing } = yield* personaSituations
-    console.log('\nwhat the demonstration accounts open onto:')
+    const situations = yield* personaSituations
+    const { missing, notExpected, pending } = judgeSituations(situations, options)
+    console.log(
+      `\nwhat the demonstration accounts open onto (selection at ${options.stage}${options.migrationBefore ? ', route change left for the demonstration' : ''}):`,
+    )
     for (const one of situations) {
-      console.log(`  ${one.account.padEnd(10)} ${String(one.count).padStart(4)}  ${one.label}`)
+      const note = notExpected.includes(one)
+        ? '  (not seeded at this stage)'
+        : pending.includes(one)
+          ? '  (awaiting a ruling, not required)'
+          : ''
+      console.log(
+        `  ${one.account.padEnd(10)} ${String(one.count).padStart(4)}  ${one.label}${note}`,
+      )
+    }
+    if (pending.length > 0) {
+      console.log(
+        '\nawaiting a ruling (docs/assessment-design.md §30, item 12: whether the recording permission reads the roster):',
+      )
+      for (const one of pending) console.log(`  ${one.account}: ${one.label} = ${one.count}`)
     }
     if (missing.length > 0) {
-      console.log(`\nmissing:\n  ${missing.join('\n  ')}`)
+      console.log(
+        `\nmissing:\n  ${missing.map((one) => `${one.account}: ${one.label}`).join('\n  ')}`,
+      )
       process.exitCode = 1
     }
   }) as Effect.Effect<void, unknown, never>,

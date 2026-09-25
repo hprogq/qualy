@@ -21,6 +21,7 @@ import { stageProof, stageWorkbook } from './files.ts'
 import { scoringConfigOf, type Versions } from './items.ts'
 import { EventQueue } from './queue.ts'
 import { ESCALATE_REASONS } from './term.ts'
+import type { SeedOptions } from '../options.ts'
 import type { FieldSpec, ItemSpec } from '../rules.ts'
 import { MAJORS, type MajorKey, type Student, type World } from './world.ts'
 
@@ -44,14 +45,6 @@ import { MAJORS, type MajorKey, type Student, type World } from './world.ts'
 // the lead added a first review step for majors and moved everything under
 // review onto the new route, which left the one major with nobody appointed
 // to that step blocked.
-
-export type SelectionStage = 'entry' | 'review' | 'appeal'
-
-export interface SelectionOptions {
-  readonly stage: SelectionStage
-  /** leave the review-route change for the interviewer to watch */
-  readonly migrationBefore: boolean
-}
 
 const DAY = 86_400_000
 
@@ -289,7 +282,7 @@ export const runSelection = (input: {
   random: Random
   /** the six archived batches, oldest first, to take the conduct averages from */
   history: readonly string[]
-  options: SelectionOptions
+  options: SeedOptions
   /** the real moment the story treats as now */
   now: Date
   /** who the demonstration signs in as, by account */
