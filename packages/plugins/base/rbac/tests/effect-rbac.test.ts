@@ -2186,6 +2186,23 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
           const pendingPeer = yield* hold(wang, collegeAdmin, f.child, batch, 'pending')
           const elsewhere = yield* hold(li, counsellor, f.root, otherBatch)
           const general = yield* hold(li, collegeAdmin, f.root, null)
+          const named = { appointable, peer, lapsedPeer, pendingPeer, elsewhere, general }
+          // the removals an owner's screen offers, before anything is pressed
+          const offered = (actor: Principal, ids: readonly string[]) =>
+            Effect.map(
+              rbac.mayRevokeAssignments({
+                tenantId: f.tenant,
+                actor,
+                resource: { namespace: 'assessment', type: 'batch', id: batch },
+                assignmentIds: ids,
+              }),
+              (revocable) =>
+                Object.entries(named)
+                  .filter(([, id]) => revocable.has(id))
+                  .map(([name]) => name),
+            )
+          const offeredToAnchored = yield* offered(f.anchored, Object.values(named))
+          const offeredToCanonical = yield* offered(f.principal, Object.values(named))
 
           const take = (
             grantId: string,
@@ -2219,6 +2236,8 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
           const refused = yield* take(peer, f.anchored, 'appointment')
           const stillThere = yield* live(peer)
           return {
+            offeredToAnchored,
+            offeredToCanonical,
             refused,
             stillThere,
             appointable: yield* take(appointable, f.anchored, 'appointment'),
@@ -2230,6 +2249,8 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
             // the owner closing its own record asks nothing of the actor
             closing: yield* take(peer, f.anchored, 'record-closing'),
             closed: yield* live(peer),
+            // and once withdrawn there is nothing left to refuse
+            offeredWithdrawn: yield* offered(f.anchored, [peer]),
             // and already withdrawn, nothing falls
             again: yield* take(peer, f.principal, 'appointment'),
             // only what is confined to the object the owner names
@@ -2248,6 +2269,14 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
         }),
       )
       const answer = ok(exit)
+      // offered where the revocation would take it, and nowhere else
+      expect(answer.offeredToAnchored).toEqual(['appointable', 'lapsedPeer'])
+      expect(answer.offeredToCanonical).toEqual([
+        'appointable',
+        'peer',
+        'lapsedPeer',
+        'pendingPeer',
+      ])
       expect(answer.refused).toMatchObject({ _tag: 'ACCESS_DENIED' })
       expect((answer.refused as { reason: string }).reason).toContain('GRANT_RULE_REFUSED')
       expect(answer.stillThere).toBe(true)
@@ -2258,6 +2287,7 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
       expect(answer.pendingLive).toBe(true)
       expect(answer.closing).toBe(true)
       expect(answer.closed).toBe(false)
+      expect(answer.offeredWithdrawn).toEqual(['peer'])
       expect(answer.again).toBe(false)
       expect(answer.misnamed).toMatchObject({ _tag: 'ACCESS_DENIED' })
       expect(answer.unconfined).toMatchObject({ _tag: 'ACCESS_DENIED' })

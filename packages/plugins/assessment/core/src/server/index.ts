@@ -428,9 +428,23 @@ export interface BatchAccess {
   readonly staff: readonly AccessSubject[]
 }
 
+/** one accepted assignment, as one reader sees it */
+export interface AccessSourceSeen extends AccessSourceView {
+  /**
+   * Whether this reader may take it off the round: only an appointment the
+   * round made itself, on somebody else's row, and only one the reader could
+   * have made - `removeStaff`'s own questions, rbac's answered through the
+   * same judgement its revocation runs.
+   */
+  readonly removable: boolean
+}
+
 /** the same, as one reader sees it: every row says whether it is theirs to change */
 export interface BatchAccessView {
-  readonly staff: readonly (AccessSubject & { readonly manageable: boolean })[]
+  readonly staff: readonly (Omit<AccessSubject, 'sources'> & {
+    readonly sources: readonly AccessSourceSeen[]
+    readonly manageable: boolean
+  })[]
 }
 
 /**
@@ -2458,14 +2472,48 @@ export const make = Effect.fn('Assessment.make')(function* () {
    *
    * Nobody edits their own standing: an administrator who can withdraw their
    * own authority can lock themselves out of the batch they are responsible
-   * for, with nobody left to undo it. The server refuses it as well - this is
-   * so nobody is offered a button that answers with a refusal.
+   * for, with nobody left to undo it. And an appointment goes back only with
+   * the authority it would take to make it (ruled 2026-09-25), which rbac
+   * answers for the lot at once through the judgement its revocation runs.
+   * The server refuses both as well - this is so nobody is offered a button
+   * that answers with a refusal.
    */
-  const asSeenBy = (access: BatchAccess, as: Principal) => ({
-    staff: access.staff.map((subject) => ({
-      ...subject,
-      manageable: subject.userId !== as.userId,
-    })),
+  const asSeenBy = Effect.fn('Assessment.asSeenBy')(function* (
+    tenantId: string,
+    batchId: string,
+    access: BatchAccess,
+    as: Principal,
+  ) {
+    const others = access.staff.filter((subject) => subject.userId !== as.userId)
+    const appointed = others.flatMap((subject) =>
+      subject.sources
+        .filter((source) => source.origin === 'explicit')
+        .map((source) => source.assignmentId),
+    )
+    const revocable =
+      appointed.length === 0
+        ? new Set<string>()
+        : yield* rbac.mayRevokeAssignments({
+            tenantId,
+            actor: as,
+            resource: batchResource(batchId),
+            assignmentIds: appointed,
+          })
+    const view: BatchAccessView = {
+      staff: access.staff.map((subject) => {
+        const manageable = subject.userId !== as.userId
+        return {
+          ...subject,
+          manageable,
+          sources: subject.sources.map((source) => ({
+            ...source,
+            removable:
+              manageable && source.origin === 'explicit' && revocable.has(source.assignmentId),
+          })),
+        }
+      }),
+    }
+    return view
   })
 
   /**
@@ -3735,7 +3783,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
       // resumed in another, and the boundary between two pages read as rows
       // going missing.
       const at = new Map(subjects.map((subject, index) => [subject.userId, index]))
-      const seen = asSeenBy(access, as)
+      const seen = yield* asSeenBy(tenantId, batchId, access, as)
       return {
         staff: [...seen.staff].sort(
           (one, other) => (at.get(one.userId) ?? 0) - (at.get(other.userId) ?? 0),
@@ -3901,7 +3949,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
               actorId: as.userId,
               reason: input.reason ?? null,
             })
-            return asSeenBy(yield* readAccess(tenantId, batchId), as)
+            return yield* asSeenBy(tenantId, batchId, yield* readAccess(tenantId, batchId), as)
           }),
         ),
       ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
@@ -4100,7 +4148,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 })
               }
             }
-            return asSeenBy(yield* readAccess(tenantId, batchId), as)
+            return yield* asSeenBy(tenantId, batchId, yield* readAccess(tenantId, batchId), as)
           }),
         ),
       ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
@@ -4136,7 +4184,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
               authority: 'appointment',
             })
             yield* dropAccessSource(tenantId, source.id)
-            return asSeenBy(yield* readAccess(tenantId, batchId), as)
+            return yield* asSeenBy(tenantId, batchId, yield* readAccess(tenantId, batchId), as)
           }),
         ),
       ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))

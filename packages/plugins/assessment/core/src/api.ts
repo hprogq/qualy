@@ -506,6 +506,8 @@ const accessSourceView = Schema.Struct({
   accepted: Schema.Array(Schema.String),
   current: Schema.Array(Schema.String),
   active: Schema.Boolean,
+  /** whether this caller may take it off the batch: an appointment of its own they could have made */
+  removable: Schema.Boolean,
 })
 
 const accessSubjectView = Schema.Struct({

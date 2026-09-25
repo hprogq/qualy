@@ -444,16 +444,19 @@ function SubjectRow({
           {!source.active && (
             <span {...stylex.props(styles.aside)}>{format(m.accessSourceLapsed)}</span>
           )}
-          {/* only what this round handed out itself: an inherited
-              assignment belongs to the organization, and refusing what it
-              offers is what withholding is for */}
-          {source.origin === 'explicit' && subject.manageable && (
+          {/* the server says which: only what this round handed out itself,
+              on somebody else's row, and only an appointment this reader
+              could have made. An inherited assignment belongs to the
+              organization, and refusing what it offers is what withholding
+              is for */}
+          {source.removable && (
             <Button
               size="icon"
               variant="ghost"
               className={stylex.props(styles.drop).className}
               aria-label={format(m.accessRemove)}
               title={format(m.accessRemove)}
+              data-source={source.sourceId}
               onClick={() => onRemove(source)}
             >
               <XIcon {...stylex.props(styles.dropIcon)} />

@@ -2910,6 +2910,137 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(answer.afterSync).toEqual([true])
   })
 
+  // The removal press follows the same question the removal asks: running
+  // the roster and administering grants is not enough to take off somebody
+  // appointed to an office one does not appoint, so the page must not offer it.
+  it('offers a removal only to whoever could have made the appointment', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('staff-removable')
+        const assessment = yield* Assessment
+        const office = (code: string, codes: readonly string[]) =>
+          Effect.gen(function* () {
+            const id = one<{ id: string }>(
+              yield* runSql(sql`
+                insert into roles (tenant_id, code, name, kind, status, permission_mode,
+                                   assignable, eligibility_mode, anchor_mode)
+                values (${f.tenant}, ${code}, ${code}, 'org', 'active', 'explicit', true,
+                        'unrestricted', 'unrestricted')
+                returning id`),
+            ).id
+            yield* runSql(sql`
+              insert into role_permissions (tenant_id, role_id, permission_id)
+              select ${f.tenant}, ${id}, id from permissions where code in (${sql.join([...codes])})`)
+            return id
+          })
+        const reviewer = yield* office('reviewer', ['assessment.review.process'])
+        const runsRosters = ['assessment.batch.manage', 'iam.grant.manage']
+        const clerkRole = yield* office('clerk', runsRosters)
+        const appointerRole = yield* office('appointer', runsRosters)
+        yield* runSql(sql`
+          insert into role_grant_rules (tenant_id, granter_role_id, target_role_id)
+          values (${f.tenant}, ${appointerRole}, ${reviewer})`)
+        const holder = (name: string, roleId: string) =>
+          Effect.gen(function* () {
+            const userId = one<{ id: string }>(
+              yield* runSql(sql`
+                insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+                values (${f.tenant}, ${name}, ${f.teacherType}, ${f.root}) returning id`),
+            ).id
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+              values (${f.tenant}, ${userId}, ${roleId}, ${f.root}, 'subtree')`)
+            const principal: Principal = { tenantId: f.tenant, userId, sessionId: 's' }
+            return principal
+          })
+        const clerk = yield* holder('Clerk', clerkRole)
+        const appointer = yield* holder('Appointer', appointerRole)
+
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Offered',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.class1], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        yield* assessment.addStaff(
+          f.tenant,
+          batch.id,
+          { userIds: [f.t1, appointer.userId], orgNodeIds: [f.class1], roleId: reviewer },
+          f.principal,
+        )
+        // this round's own appointments as one reader sees them, and whether
+        // each offers the removal; what the organization hands the round
+        // never does
+        const offered = (as: Principal) =>
+          Effect.map(assessment.listAccess(f.tenant, batch.id, {}, as), (listed) => {
+            const sources = listed.staff.flatMap((row) =>
+              row.sources.map((source) => ({ who: row.userId, source })),
+            )
+            return {
+              appointed: new Map(
+                sources
+                  .filter(({ source }) => source.origin === 'explicit')
+                  .map(({ who, source }) => [who, source.removable]),
+              ),
+              inherited: sources
+                .filter(({ source }) => source.origin === 'inherited')
+                .some(({ source }) => source.removable),
+            }
+          })
+        const before = {
+          byClerk: yield* offered(clerk),
+          byAppointer: yield* offered(appointer),
+          byAdministrator: yield* offered(f.principal),
+        }
+        const t1Source = (yield* assessment.listAccess(f.tenant, batch.id, {}, clerk)).staff
+          .find((row) => row.userId === f.t1)!
+          .sources.find((source) => source.origin === 'explicit')!.sourceId
+        // what a write hands back is the same projection, for whoever wrote
+        const after = yield* assessment.removeStaff(f.tenant, batch.id, t1Source, appointer)
+        return {
+          ...before,
+          after: after.staff.flatMap((row) =>
+            row.sources
+              .filter((source) => source.origin === 'explicit')
+              .map((source) => [row.userId, source.removable] as const),
+          ),
+          t1: f.t1,
+          appointer: appointer.userId,
+        }
+      }),
+    )
+    const answer = ok(exit)
+    const { t1, appointer } = answer
+    // runs the roster and administers grants, but does not appoint reviewers
+    expect(answer.byClerk.appointed).toEqual(
+      new Map([
+        [t1, false],
+        [appointer, false],
+      ]),
+    )
+    // appoints reviewers, and is one: their own row offers nothing
+    expect(answer.byAppointer.appointed).toEqual(
+      new Map([
+        [t1, true],
+        [appointer, false],
+      ]),
+    )
+    expect(answer.byAdministrator.appointed).toEqual(
+      new Map([
+        [t1, true],
+        [appointer, true],
+      ]),
+    )
+    for (const reader of [answer.byClerk, answer.byAppointer, answer.byAdministrator]) {
+      expect(reader.inherited).toBe(false)
+    }
+    expect(answer.after).toEqual([[appointer, false]])
+  })
+
   it('takes a change named twice in one sync once', async () => {
     const exit = await run(
       db.url,

@@ -104,6 +104,7 @@ const source = (over: Record<string, unknown> = {}) => ({
   accepted: ['assessment.review.process'],
   current: ['assessment.review.process'],
   active: true,
+  removable: false,
   ...over,
 })
 
@@ -1801,7 +1802,7 @@ describe('who may work on a batch', () => {
             subject({
               userId: PARTICIPANT_ID,
               displayName: '临时来的',
-              sources: [source({ sourceId: PARTICIPANT_ID, origin: 'explicit' })],
+              sources: [source({ sourceId: PARTICIPANT_ID, origin: 'explicit', removable: true })],
             }),
           ],
         }),
@@ -1826,6 +1827,41 @@ describe('who may work on a batch', () => {
     await page.getByRole('alertdialog').getByRole('button', { name: '移出本批次' }).click()
     await vi.waitFor(() => expect(removeStaff).toHaveBeenCalledTimes(1))
     expect(removeStaff.mock.calls[0]![0]).toMatchObject({ params: { sourceId: PARTICIPANT_ID } })
+  })
+
+  // Taking an appointment back asks what making it did, so running the
+  // roster is not enough: the server says, source by source, which ones this
+  // reader could have made, and a press that can only be refused is not on
+  // the page.
+  it('offers a removal only where the server says the reader may make it', async () => {
+    await accessScreen({
+      listAccess: () =>
+        Effect.succeed({
+          staff: [
+            subject({
+              displayName: '学校任命的',
+              sources: [source({ origin: 'explicit', removable: false })],
+            }),
+            subject({
+              userId: PARTICIPANT_ID,
+              displayName: '学院任命的',
+              sources: [source({ sourceId: PARTICIPANT_ID, origin: 'explicit', removable: true })],
+            }),
+          ],
+        }),
+    })
+
+    await expect.element(page.getByText('学校任命的')).toBeVisible()
+    // both are this round's own appointments on somebody else's row
+    expect(
+      page
+        .getByTestId('access-origin')
+        .elements()
+        .map((badge) => badge.getAttribute('data-origin')),
+    ).toEqual(['explicit', 'explicit'])
+    // and only the one this reader could have made can be taken back here
+    const presses = page.getByRole('button', { name: '移出本批次' }).elements()
+    expect(presses.map((press) => press.getAttribute('data-source'))).toEqual([PARTICIPANT_ID])
   })
 })
 

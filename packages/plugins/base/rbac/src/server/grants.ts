@@ -466,7 +466,7 @@ const oneGrant = (tenantId: string, grantId: string) =>
   )
 
 /**
- * A grant nobody has withdrawn yet, run out or not, and whether it has run
+ * Grants nobody has withdrawn yet, run out or not, and whether each has run
  * out.
  *
  * What the owner of an object closes: a grant past its term confers nothing,
@@ -475,11 +475,12 @@ const oneGrant = (tenantId: string, grantId: string) =>
  * term has not begun yet is not in force either, but it will be, so it is
  * not over.
  */
-const unrevokedGrant = (tenantId: string, grantId: string) =>
+const unrevokedGrants = (tenantId: string, grantIds: readonly [string, ...string[]]) =>
   db.query((k) =>
     k
       .selectFrom('RoleGrant as g')
       .select((eb) => [
+        'g.id',
         'g.userId',
         'g.roleId',
         'g.orgNodeId',
@@ -493,10 +494,12 @@ const unrevokedGrant = (tenantId: string, grantId: string) =>
           .as('lapsed'),
       ])
       .where('g.tenantId', '=', tenantId)
-      .where('g.id', '=', grantId)
+      .where('g.id', 'in', grantIds)
       .where('g.revokedAt', 'is', null)
-      .executeTakeFirst(),
+      .execute(),
   )
+
+type UnrevokedGrant = Effect.Success<ReturnType<typeof unrevokedGrants>>[number]
 
 /**
  * Where a grant stands, as the authority questions take it. An anchored
@@ -802,6 +805,42 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
       return
     }
     yield* mayConfer(actor, tenantId, grant.roleId, target)
+  })
+
+  /**
+   * What taking a confined grant back through its object's owner asks, once
+   * the grant is found.
+   *
+   * Only a grant confined to the object the owner names. `appointment` asks
+   * what `revoke` asks (`mayTakeBack`), except of a grant past its term,
+   * which takes nothing away; one whose term has not begun yet will confer
+   * everything it names, so it asks the same as one in force.
+   * `record-closing` asks nothing: the owner has already authorized closing
+   * its record, and a grant outliving that record could never be revoked
+   * again.
+   *
+   * One function for the revocation and for the owner's screen asking which
+   * presses to offer, so the two cannot disagree.
+   */
+  const mayTakeBackConfined = Effect.fn('Rbac.grants.mayTakeBackConfined')(function* (
+    input: {
+      tenantId: string
+      resource: { namespace: string; type: string; id: string }
+      actor: Principal
+      authority: 'appointment' | 'record-closing'
+    },
+    grant: UnrevokedGrant,
+  ) {
+    if (
+      grant.resourceId !== input.resource.id ||
+      grant.resourceNamespace !== input.resource.namespace ||
+      grant.resourceType !== input.resource.type
+    ) {
+      return yield* new AccessDenied({ reason: 'grant not confined to this resource' })
+    }
+    if (input.authority === 'appointment' && !grant.lapsed) {
+      yield* mayTakeBack(input.actor, input.tenantId, grant, targetOf(grant))
+    }
   })
 
   /** whether this role can be held by this person, here */
@@ -1253,14 +1292,8 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
      * Authority confined to one object, taken back through that object's
      * owner: the other door, beside `revoke`, which refuses these.
      *
-     * `appointment` asks what `revoke` asks (`mayTakeBack`); a grant already
-     * past its term takes nothing away, so nothing is asked of it, while one
-     * whose term has not begun yet will confer everything it names, so it
-     * asks the same as one in force. The
-     * owner closing its own record of the appointment asks nothing: it has
-     * authorized closing the record, and a grant outliving its record could
-     * never be revoked again. Either way only a grant confined to the object
-     * the owner names. Answers whether a grant nobody had withdrawn fell.
+     * Asks what `mayTakeBackConfined` asks, under the tenant's lock. Answers
+     * whether a grant nobody had withdrawn fell.
      */
     revokeConfined: Effect.fn('Rbac.grants.revokeConfined')(function* (input: {
       tenantId: string
@@ -1271,18 +1304,9 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     }) {
       return yield* write(input.tenantId, () =>
         Effect.gen(function* () {
-          const grant = yield* unrevokedGrant(input.tenantId, input.grantId)
+          const [grant] = yield* unrevokedGrants(input.tenantId, [input.grantId])
           if (!grant) return false
-          if (
-            grant.resourceId !== input.resource.id ||
-            grant.resourceNamespace !== input.resource.namespace ||
-            grant.resourceType !== input.resource.type
-          ) {
-            return yield* new AccessDenied({ reason: 'grant not confined to this resource' })
-          }
-          if (input.authority === 'appointment' && !grant.lapsed) {
-            yield* mayTakeBack(input.actor, input.tenantId, grant, targetOf(grant))
-          }
+          yield* mayTakeBackConfined(input, grant)
           yield* revokeGrant(input.tenantId, input.grantId, input.actor.userId)
           yield* audit.record(GrantRevoked, {
             tenantId: input.tenantId,
@@ -1297,6 +1321,67 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
           return true
         }),
       )
+    }),
+
+    /**
+     * Which of these confined grants `revokeConfined` would take back from
+     * this actor on `appointment` authority, rather than refuse.
+     *
+     * The same question the revocation asks, grant by grant, so the owner's
+     * screen offers the press exactly where the write accepts it. A grant
+     * already withdrawn, or not there at all, is in the answer: the
+     * revocation has nothing left to refuse. Read without the tenant's
+     * lock - the revocation asks again under it.
+     */
+    revocableConfined: Effect.fn('Rbac.grants.revocableConfined')(function* (input: {
+      tenantId: string
+      grantIds: readonly string[]
+      resource: { namespace: string; type: string; id: string }
+      actor: Principal
+    }) {
+      const [first, ...rest] = [...new Set(input.grantIds)]
+      const revocable = new Set<string>()
+      if (first === undefined) return revocable
+      const found = new Map(
+        (yield* unrevokedGrants(input.tenantId, [first, ...rest])).map((grant) => [
+          grant.id,
+          grant,
+        ]),
+      )
+      // The answer turns on the grant's shape, not on who holds it, beyond
+      // whether that is the actor: a round appointing thirty reviewers to one
+      // office at one unit is one question, not thirty.
+      const asked = new Map<string, boolean>()
+      for (const grantId of [first, ...rest]) {
+        const grant = found.get(grantId)
+        if (grant === undefined) {
+          revocable.add(grantId)
+          continue
+        }
+        const shape = JSON.stringify([
+          grant.userId === input.actor.userId,
+          grant.roleId,
+          grant.orgNodeId,
+          grant.coverage,
+          grant.resourceNamespace,
+          grant.resourceType,
+          grant.resourceId,
+          grant.lapsed,
+        ])
+        let allowed = asked.get(shape)
+        if (allowed === undefined) {
+          allowed = yield* mayTakeBackConfined({ ...input, authority: 'appointment' }, grant).pipe(
+            Effect.as(true),
+            Effect.catchTag(
+              ['ACCESS_DENIED', 'TENANT_ADMIN_REQUIRED', 'GRANT_RULE_REFUSED', 'ROLE_NOT_FOUND'],
+              () => Effect.succeed(false),
+            ),
+          )
+          asked.set(shape, allowed)
+        }
+        if (allowed) revocable.add(grantId)
+      }
+      return revocable
     }),
   }
 })

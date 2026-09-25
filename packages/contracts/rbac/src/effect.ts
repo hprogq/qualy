@@ -235,6 +235,22 @@ export interface RbacShape {
   }) => Effect.Effect<boolean, AccessDenied>
 
   /**
+   * Which of these assignments `revokeAssignment` would take back from this
+   * actor on `appointment` authority, rather than refuse.
+   *
+   * The revocation's own question, asked of each, so an owner's screen
+   * offers a removal exactly where the write would accept it. One already
+   * withdrawn is in the answer: there is nothing left to refuse. A reading,
+   * not a promise - the revocation asks again under the tenant's lock.
+   */
+  readonly mayRevokeAssignments: (input: {
+    tenantId: string
+    actor: Principal
+    resource: ResourceRef
+    assignmentIds: readonly string[]
+  }) => Effect.Effect<ReadonlySet<string>>
+
+  /**
    * Withdraws every live grant one person holds, attributed to the actor.
    *
    * The user-deletion case: auth owns the person but must not write these

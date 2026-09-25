@@ -426,6 +426,17 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
       )
     }),
 
+    mayRevokeAssignments: Effect.fn('Rbac.mayRevokeAssignments')(function* (input) {
+      return yield* bound(() =>
+        grants.revocableConfined({
+          tenantId: input.tenantId,
+          grantIds: input.assignmentIds,
+          resource: input.resource,
+          actor: input.actor,
+        }),
+      )().pipe(Effect.orDie)
+    }),
+
     revokeAllGrantsOfUser: Effect.fn('Rbac.revokeAllGrantsOfUser')(
       function* (tenantId, userId, actorId) {
         return yield* bound(() => revokeAllGrantsOfUser(tenantId, userId, actorId))().pipe(
