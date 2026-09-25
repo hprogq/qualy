@@ -560,6 +560,75 @@ describe.runIf(postgresAvailable)('the sitting', () => {
     expect(result.b2Gone._tag).toBe('Failure')
   })
 
+  // Leaving the roster ends the round in the exclusion's own transaction
+  // (ruling of 2026-09-25 #12), and a sitting the round still holds ends
+  // with it: a panel left open on a closed round would go on seating voters
+  // for nothing. The vote already cast stays as history.
+  it('dissolves a sitting midway when its subject leaves the roster, and takes no further ballot', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('pn-excluded')
+          const assessment = yield* Assessment
+          const w = yield* panelWorld(f)
+          yield* assessment.decideReview(
+            f.t,
+            w.instanceId,
+            { decision: 'approve' },
+            f.principal(w.b2),
+          )
+          const participantId = one<{ participant_id: string }>(
+            yield* runSql(sql`select participant_id from entries where id = ${w.entryId}`),
+          ).participant_id
+          yield* assessment.setParticipantStatus(
+            f.t,
+            w.batchId,
+            participantId,
+            'excluded',
+            'transferred out',
+            f.principal(f.admin),
+          )
+          const round = one<{ state: string; outcome: string }>(
+            yield* runSql(
+              sql`select state, outcome from review_instances where id = ${w.instanceId}`,
+            ),
+          )
+          const panels = (
+            (yield* runSql(sql`
+              select state, closed_at is not null as closed from review_panels
+              where review_instance_id = ${w.instanceId}`)) as unknown as {
+              rows: { state: string; closed: boolean }[]
+            }
+          ).rows
+          const votes = one<{ n: number }>(
+            yield* runSql(sql`
+              select count(*)::int as n from review_votes v
+              join review_panels p on p.tenant_id = v.tenant_id and p.id = v.panel_id
+              where p.review_instance_id = ${w.instanceId}`),
+          ).n
+          const late = yield* Effect.exit(
+            assessment.decideReview(f.t, w.instanceId, { decision: 'approve' }, f.principal(w.b3)),
+          )
+          const queued = (yield* assessment.listReviewInbox(
+            f.t,
+            { batchId: w.batchId },
+            f.principal(w.b3),
+          )).items.map((row) => row.instanceId)
+          return { round, panels, votes, late, queued }
+        }),
+      ),
+    )
+
+    expect(result.round).toEqual({ state: 'completed', outcome: 'subject-excluded' })
+    expect(result.panels).toEqual([{ state: 'superseded', closed: true }])
+    // the ballot already cast is kept, and counts for nothing
+    expect(result.votes).toBe(1)
+    expect(Exit.isFailure(result.late)).toBe(true)
+    // and the member still to vote no longer finds the round waiting on them
+    expect(result.queued).toEqual([])
+  })
+
   it('spends the seat with the ballot, wherever a sitting exists', async () => {
     // On the escalation route independentAt already turns voters away; the
     // seat itself refusing its voted occupant is the second lock on the
