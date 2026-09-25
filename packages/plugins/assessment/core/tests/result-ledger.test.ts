@@ -122,16 +122,19 @@ describe('the score ledger model', () => {
       ],
     })
 
-    expect(model.sections.map((section) => section.group?.id)).toEqual(['outer'])
+    // the one root is the paper, lifted away: the group inside it is the top
+    expect(model.sections.map((section) => [section.kind, section.group?.id])).toEqual([
+      ['group', 'inner'],
+    ])
+    expect(model.tops).toEqual([expect.objectContaining({ id: 'inner', no: '01', depth: 0 })])
     const rows = model.sections[0]!.rows
     expect(
       rows.map((row) =>
         row.kind === 'item' ? row.id : row.kind === 'group' ? `group:${row.id}` : 'limit',
       ),
-    ).toEqual(['group:inner', 'q1', 'q2'])
-    expect(rows[0]).toMatchObject({ kind: 'group', no: '01.1', depth: 1 })
+    ).toEqual(['q1', 'q2'])
     const [scored, silent] = itemsOf(model)
-    expect(scored).toMatchObject({ cents: 600, each: '6.0000', depth: 2 })
+    expect(scored).toMatchObject({ cents: 600, each: '6.0000', depth: 1 })
     expect(scored!.facts).toMatchObject({ approved: 1, recorded: 0 })
     // the line knows which claim it was, from the claim's own words
     expect(scored!.lines).toEqual([
@@ -332,7 +335,16 @@ describe('the score ledger model', () => {
           mode: 'provisional',
           total: '3.00',
           groups: [
-            group({ groupId: 'g', itemsTotal: '3.00', raw: '3.00', final: '3.00', cap: '10.00' }),
+            group({
+              groupId: 'g',
+              parentGroupId: 'paper',
+              depth: 1,
+              itemsTotal: '3.00',
+              raw: '3.00',
+              final: '3.00',
+              cap: '10.00',
+            }),
+            group({ groupId: 'paper', childrenTotal: '3.00', raw: '3.00', final: '3.00' }),
           ],
           lines: [line({ lineId: 'l', kind: 'entry', value: '3.00', itemId: 'q' })],
         },
@@ -518,6 +530,7 @@ describe('the score ledger model', () => {
         mode: 'provisional',
         total: '1.00',
         groups: [
+          group({ groupId: 'paper', final: '1.00', raw: '1.00', childrenTotal: '1.00' }),
           group({
             groupId: 'd',
             parentGroupId: 'c',
@@ -543,7 +556,13 @@ describe('the score ledger model', () => {
             raw: '1.00',
             childrenTotal: '1.00',
           }),
-          group({ groupId: 'a', final: '1.00', raw: '1.00', childrenTotal: '1.00' }),
+          group({
+            groupId: 'a',
+            parentGroupId: 'paper',
+            final: '1.00',
+            raw: '1.00',
+            childrenTotal: '1.00',
+          }),
         ],
         lines: [line({ lineId: 'l', kind: 'entry', value: '1.00', itemId: 'q' })],
       },
@@ -566,6 +585,337 @@ describe('the score ledger model', () => {
       ['01.1.2', 2],
       ['q2', 3],
     ])
+  })
+
+  it('lifts the paper away and numbers the parts inside it as the tops (§32.61)', () => {
+    // the demo batches' paper (tools/demo/rules.ts): full marks 100, three
+    // parts, two of them with groups of their own
+    const model = buildLedger({
+      result: {
+        mode: 'provisional',
+        total: '80.00',
+        groups: [
+          group({
+            groupId: 'honour',
+            parentGroupId: 'moral',
+            depth: 2,
+            itemsTotal: '3.00',
+            raw: '3.00',
+            final: '3.00',
+            cap: '3.00',
+          }),
+          group({ groupId: 'practice', parentGroupId: 'moral', depth: 2, cap: '1.00' }),
+          group({
+            groupId: 'moral',
+            parentGroupId: 'paper',
+            depth: 1,
+            itemsTotal: '8.00',
+            childrenTotal: '3.00',
+            raw: '11.00',
+            final: '11.00',
+            cap: '15.00',
+            floor: '0.00',
+          }),
+          group({
+            groupId: 'academic',
+            parentGroupId: 'paper',
+            depth: 1,
+            itemsTotal: '60.00',
+            raw: '60.00',
+            final: '60.00',
+            cap: '75.00',
+            floor: '0.00',
+          }),
+          group({ groupId: 'cadre', parentGroupId: 'sports', depth: 2, cap: '3.00' }),
+          group({
+            groupId: 'activity',
+            parentGroupId: 'sports',
+            depth: 2,
+            itemsTotal: '6.00',
+            raw: '6.00',
+            final: '4.00',
+            cap: '4.00',
+          }),
+          group({
+            groupId: 'sports',
+            parentGroupId: 'paper',
+            depth: 1,
+            itemsTotal: '5.00',
+            childrenTotal: '4.00',
+            raw: '9.00',
+            final: '9.00',
+            cap: '10.00',
+            floor: '0.00',
+          }),
+          group({
+            groupId: 'paper',
+            name: '综合素质测评',
+            childrenTotal: '80.00',
+            raw: '80.00',
+            final: '80.00',
+            cap: '100.00',
+            floor: '0.00',
+          }),
+        ],
+        lines: [
+          line({ lineId: 'a', kind: 'entry', value: '8.00', itemId: 'moral-base' }),
+          line({ lineId: 'b', kind: 'entry', value: '3.00', itemId: 'honour-q' }),
+          line({ lineId: 'c', kind: 'entry', value: '60.00', itemId: 'academic-base' }),
+          line({ lineId: 'd', kind: 'entry', value: '5.00', itemId: 'sports-base' }),
+          line({ lineId: 'e', kind: 'entry', value: '6.00', itemId: 'activity-q' }),
+        ],
+      },
+      items: [
+        item({ id: 'moral-base', scoreGroupId: 'moral', sortOrder: 1 }),
+        item({ id: 'honour-q', scoreGroupId: 'honour' }),
+        item({ id: 'practice-q', scoreGroupId: 'practice' }),
+        item({ id: 'academic-base', scoreGroupId: 'academic' }),
+        item({ id: 'sports-base', scoreGroupId: 'sports' }),
+        item({ id: 'cadre-q', scoreGroupId: 'cadre' }),
+        item({ id: 'activity-q', scoreGroupId: 'activity' }),
+      ],
+      entries: [],
+    })
+
+    expect(model.sections.map((section) => [section.kind, section.key])).toEqual([
+      ['group', 'moral'],
+      ['group', 'academic'],
+      ['group', 'sports'],
+    ])
+    expect(model.tops.map((top) => [top.id, top.no, top.depth, top.capCents])).toEqual([
+      ['moral', '01', 0, 1500],
+      ['academic', '02', 0, 7500],
+      ['sports', '03', 0, 1000],
+    ])
+    expect(
+      model.sections[0]!.rows.map((row) =>
+        row.kind === 'group' ? [row.no, row.depth] : row.kind === 'item' ? [row.id, row.depth] : [],
+      ),
+    ).toEqual([
+      ['moral-base', 1],
+      ['01.1', 1],
+      ['honour-q', 2],
+      ['01.2', 1],
+      ['practice-q', 2],
+    ])
+    // the paper's limit is the round's full mark, and the parts divide it
+    expect(model.fullCents).toBe(10000)
+    expect(model.shares?.map((share) => [share.id, share.pct])).toEqual([
+      ['moral', 11],
+      ['academic', 60],
+      ['sports', 9],
+    ])
+    // it did not bite, so it writes no line
+    expect(model.limit).toBeNull()
+    // the rows and the limits inside the paper add up to what the scorer printed
+    const limits = model.sections.flatMap((section) =>
+      section.rows.flatMap((row) => (row.kind === 'adjustment' ? [row.deltaCents] : [])),
+    )
+    expect(limits).toEqual([-200])
+    expect(
+      itemsOf(model).reduce((sum, one) => sum + one.cents, 0) +
+        limits.reduce((sum, one) => sum + one, 0),
+    ).toBe(model.totalCents)
+  })
+
+  it('stands the paper’s own questions first with no group over them, and its limit last', () => {
+    const model = buildLedger({
+      result: {
+        mode: 'provisional',
+        total: '100.00',
+        groups: [
+          group({
+            groupId: 'a',
+            parentGroupId: 'paper',
+            depth: 1,
+            itemsTotal: '60.00',
+            raw: '60.00',
+            final: '60.00',
+            cap: '60.00',
+          }),
+          group({
+            groupId: 'b',
+            parentGroupId: 'paper',
+            depth: 1,
+            itemsTotal: '15.00',
+            raw: '15.00',
+            final: '15.00',
+            cap: '40.00',
+          }),
+          group({
+            groupId: 'paper',
+            itemsTotal: '30.00',
+            childrenTotal: '75.00',
+            raw: '105.00',
+            final: '100.00',
+            cap: '100.00',
+          }),
+        ],
+        lines: [
+          line({ lineId: 'own', kind: 'entry', value: '30.00', itemId: 'own-q' }),
+          line({ lineId: 'a', kind: 'entry', value: '60.00', itemId: 'a-q' }),
+          line({ lineId: 'b', kind: 'entry', value: '15.00', itemId: 'b-q' }),
+        ],
+      },
+      items: [
+        item({ id: 'a-q', scoreGroupId: 'a' }),
+        item({ id: 'own-q', scoreGroupId: 'paper' }),
+        item({ id: 'b-q', scoreGroupId: 'b' }),
+      ],
+      entries: [],
+    })
+    expect(model.sections.map((section) => [section.kind, section.key, section.group])).toEqual([
+      ['paper', 'paper', null],
+      ['group', 'a', expect.objectContaining({ no: '01' })],
+      ['group', 'b', expect.objectContaining({ no: '02' })],
+    ])
+    expect(model.sections[0]!.rows).toEqual([
+      expect.objectContaining({ kind: 'item', id: 'own-q', depth: 0, cents: 3000 }),
+    ])
+    // the paper held the round to its full mark: one line, at the end
+    expect(model.limit).toMatchObject({
+      groupId: 'paper',
+      rule: 'cap',
+      depth: 0,
+      rawCents: 10500,
+      limitCents: 10000,
+      deltaCents: -500,
+    })
+    expect(model.trimmedCents).toBe(500)
+    expect(model.fullCents).toBe(10000)
+    // a question of the paper's own that adds is a part of the total no
+    // bar of the groups could show
+    expect(model.shares).toBeNull()
+    expect(itemsOf(model).reduce((sum, one) => sum + one.cents, 0) + model.limit!.deltaCents).toBe(
+      model.totalCents,
+    )
+  })
+
+  it('draws the bar against what the groups came to where the paper held them back', () => {
+    const model = buildLedger({
+      result: {
+        mode: 'provisional',
+        total: '100.00',
+        groups: [
+          group({
+            groupId: 'a',
+            parentGroupId: 'paper',
+            raw: '70.00',
+            final: '70.00',
+            cap: '70.00',
+          }),
+          group({
+            groupId: 'b',
+            parentGroupId: 'paper',
+            raw: '40.00',
+            final: '40.00',
+            cap: '40.00',
+          }),
+          group({ groupId: 'paper', raw: '108.00', final: '100.00', cap: '100.00' }),
+        ],
+        lines: [],
+      },
+      items: [
+        item({ id: 'a-q', scoreGroupId: 'a' }),
+        item({ id: 'b-q', scoreGroupId: 'b' }),
+        // a deduction the paper holds itself takes away and adds nothing
+        deduction('minus', 'paper'),
+      ],
+      entries: [],
+    })
+    expect(model.sections.map((section) => section.kind)).toEqual(['paper', 'group', 'group'])
+    const pcts = model.shares!.map((share) => share.pct)
+    expect(pcts[0]).toBeCloseTo((70 / 110) * 100)
+    expect(pcts.reduce((sum, one) => sum + one, 0)).toBeCloseTo(100)
+  })
+
+  it('reads a paper with one group, or none, and a paper with no full mark set', () => {
+    const paperOf = (over: {
+      cap: string | null
+      groups?: Group[]
+      items: LedgerItem[]
+    }): LedgerModel =>
+      buildLedger({
+        result: {
+          mode: 'provisional',
+          total: '0.00',
+          groups: [...(over.groups ?? []), group({ groupId: 'paper', cap: over.cap })],
+          lines: [],
+        },
+        items: over.items,
+        entries: [],
+      })
+
+    // one group inside the paper: a band of its own, nothing to move between
+    const single = paperOf({
+      cap: '100.00',
+      groups: [group({ groupId: 'only', parentGroupId: 'paper', cap: '100.00' })],
+      items: [item({ id: 'q', scoreGroupId: 'only' })],
+    })
+    expect(single.sections.map((section) => section.kind)).toEqual(['group'])
+    expect(single.tops).toHaveLength(1)
+    expect(single.shares).toBeNull()
+    expect(single.fullCents).toBe(10000)
+
+    // no group at all: the questions are the paper's own, with no band
+    const flat = paperOf({
+      cap: '20.00',
+      items: [item({ id: 'q1', scoreGroupId: 'paper' }), item({ id: 'q2', scoreGroupId: 'paper' })],
+    })
+    expect(flat.sections.map((section) => [section.kind, section.rows.length])).toEqual([
+      ['paper', 2],
+    ])
+    expect(flat.tops).toEqual([])
+    expect(flat.fullCents).toBe(2000)
+
+    // full marks not set yet: the parts say them, if they all have limits
+    const parts = [
+      group({ groupId: 'x', parentGroupId: 'paper', cap: '15.00' }),
+      group({ groupId: 'y', parentGroupId: 'paper', cap: '85.00' }),
+    ]
+    const partsItems = [
+      item({ id: 'qx', scoreGroupId: 'x' }),
+      item({ id: 'qy', scoreGroupId: 'y' }),
+    ]
+    expect(paperOf({ cap: null, groups: parts, items: partsItems }).fullCents).toBe(10000)
+    // and a question of the paper's own that may add leaves them unsaid
+    expect(
+      paperOf({
+        cap: null,
+        groups: parts,
+        items: [...partsItems, item({ id: 'own', scoreGroupId: 'paper' })],
+      }).fullCents,
+    ).toBeNull()
+    // a paper nothing can add to has no full mark to print, not a zero
+    expect(paperOf({ cap: null, items: [deduction('minus', 'paper')] }).fullCents).toBeNull()
+  })
+
+  it('keeps the paper lifted when a line names a question this reader was not handed', () => {
+    const build = (cap: string | null) =>
+      buildLedger({
+        result: {
+          mode: 'provisional',
+          total: '3.00',
+          groups: [
+            group({ groupId: 'a', parentGroupId: 'paper', cap: '10.00' }),
+            group({ groupId: 'b', parentGroupId: 'paper', cap: '10.00' }),
+            group({ groupId: 'paper', raw: '3.00', final: '3.00', cap }),
+          ],
+          lines: [line({ lineId: 's', kind: 'derived', value: '3.00', itemId: 'stranger' })],
+        },
+        items: [item({ id: 'qa', scoreGroupId: 'a' }), item({ id: 'qb', scoreGroupId: 'b' })],
+        entries: [],
+      })
+    const capped = build('100.00')
+    expect(capped.sections.map((section) => [section.kind, section.key])).toEqual([
+      ['group', 'a'],
+      ['group', 'b'],
+      ['loose', 'ungrouped'],
+    ])
+    // the paper's limit holds whatever is on it, known here or not
+    expect(capped.fullCents).toBe(10000)
+    // without one, a question nobody here can read may add anything
+    expect(build(null).fullCents).toBeNull()
   })
 
   it('reads a round that asks nothing as empty', () => {

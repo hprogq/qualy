@@ -179,11 +179,47 @@ const counted = (entryId: string, itemId: string, value: string, label = 'label'
   provenance: { entryId },
 })
 
-// The shape the design is drawn on: five top groups, groups inside groups,
-// a limit that bites twice over, a question with dozens of claims, records
-// the office made, one it took back, and a deduction.
+const PAPER = 'paper'
+
+/**
+ * The one paper a batch is (§32.61), over the groups given: they become the
+ * parts inside it, and the paper's figures are the account's own.
+ */
+const onPaper = <Round extends { result: { total: string; groups: Group[] } }>(
+  round: Round,
+  cap: string | null = '100.00',
+): Round => ({
+  ...round,
+  result: {
+    ...round.result,
+    groups: [
+      ...round.result.groups.map((one) => ({
+        ...one,
+        parentGroupId: one.parentGroupId ?? PAPER,
+        depth: one.depth + 1,
+      })),
+      {
+        groupId: PAPER,
+        parentGroupId: null,
+        depth: 0,
+        name: '综合素质测评',
+        itemsTotal: '0.00',
+        childrenTotal: round.result.total,
+        raw: round.result.total,
+        final: round.result.total,
+        cap,
+        floor: null,
+      },
+    ],
+  },
+})
+
+// The shape the design is drawn on: five parts on the paper, groups inside
+// groups, a limit that bites twice over, a question with dozens of claims,
+// records the office made, one it took back, and a deduction.
 const volunteering = Array.from({ length: 78 }, (_, index) => `vol-${String(index)}`)
-const normal = () => {
+const normal = () => onPaper(flatNormal())
+const flatNormal = () => {
   const groups: Group[] = [
     group('g1', '思想品德', { final: '0.00', cap: '10.00' }),
     group('g21', '学术与科研', { final: '18.00', cap: '25.00', parent: 'g2' }),
@@ -302,21 +338,83 @@ const normal = () => {
 
 type Paper = ReturnType<typeof normal>
 
-/** a round of `count` top groups, one question each, each capped */
+/** a paper of `count` parts, one question each, each capped */
 const many = (count: number): Paper => {
   const groups = Array.from({ length: count }, (_, index) =>
     group(`m${String(index)}`, `分组${String(index + 1)}`, { final: '1.00', cap: '5.00' }),
   )
-  return {
-    result: {
-      mode: 'provisional',
-      total: `${String(count)}.00`,
-      groups,
-      lines: groups.map((one) => counted(`${one.groupId}-e`, `${one.groupId}-q`, '1.00')),
+  return onPaper<Paper>(
+    {
+      result: {
+        mode: 'provisional',
+        total: `${String(count)}.00`,
+        groups,
+        lines: groups.map((one) => counted(`${one.groupId}-e`, `${one.groupId}-q`, '1.00')),
+      },
+      items: groups.map((one) => item(`${one.groupId}-q`, one.groupId, `${one.name}记录`)),
+      entries: groups.map((one) => entry(`${one.groupId}-e`, `${one.groupId}-q`, 'approved')),
     },
-    items: groups.map((one) => item(`${one.groupId}-q`, one.groupId, `${one.name}记录`)),
-    entries: groups.map((one) => entry(`${one.groupId}-e`, `${one.groupId}-q`, 'approved')),
-  }
+    null,
+  )
+}
+
+/**
+ * The paper the demo batches are set on (tools/demo/rules.ts): full marks
+ * 100 over three parts, two of which hold groups of their own; a question
+ * the paper holds itself, where one is asked for.
+ */
+const demo = (over: { own?: boolean; total?: string } = {}): Paper => {
+  const total = over.total ?? '80.00'
+  const groups: Group[] = [
+    group('honour', '优秀学生教官与国旗班', { final: '3.00', cap: '3.00', parent: 'moral' }),
+    group('practice', '社会实践与志愿服务', { final: '0.00', cap: '1.00', parent: 'moral' }),
+    {
+      ...group('moral', '品德行为表现', { final: '11.00', cap: '15.00', parent: PAPER }),
+      itemsTotal: '8.00',
+      childrenTotal: '3.00',
+    },
+    group('academic', '学业表现', { final: '60.00', cap: '75.00', parent: PAPER }),
+    group('cadre', '学生干部', { final: '0.00', cap: '3.00', parent: 'sports' }),
+    group('activity', '文体活动', { final: '4.00', raw: '6.00', cap: '4.00', parent: 'sports' }),
+    {
+      ...group('sports', '文体表现', { final: '9.00', cap: '10.00', parent: PAPER }),
+      itemsTotal: '5.00',
+      childrenTotal: '4.00',
+    },
+    {
+      ...group(PAPER, '综合素质测评', { final: total, cap: '100.00' }),
+      itemsTotal: over.own === true ? '30.00' : '0.00',
+      childrenTotal: '80.00',
+      raw: over.own === true ? '110.00' : '80.00',
+    },
+  ]
+  const items = [
+    item('moral-base', 'moral', '品德基础分', { channels: ['administrative'] }),
+    item('honour-q', 'honour', '国旗班', { each: '3' }),
+    item('practice-q', 'practice', '社会实践', { each: '1' }),
+    item('academic-base', 'academic', '学业基础分', { channels: ['administrative'] }),
+    item('sports-base', 'sports', '体育基础分', { channels: ['administrative'] }),
+    item('cadre-q', 'cadre', '学生干部任职', { each: '1' }),
+    item('activity-q', 'activity', '文体活动参与', { each: '2' }),
+    ...(over.own === true ? [item('own-q', PAPER, '综合加分', { each: '30' })] : []),
+  ]
+  const entries = [
+    entry('moral-a', 'moral-base', 'approved', { source: 'record' }),
+    entry('honour-a', 'honour-q', 'approved'),
+    entry('academic-a', 'academic-base', 'approved', { source: 'record' }),
+    entry('sports-a', 'sports-base', 'approved', { source: 'record' }),
+    ...['a', 'b', 'c'].map((key) => entry(`activity-${key}`, 'activity-q', 'approved')),
+    ...(over.own === true ? [entry('own-a', 'own-q', 'approved')] : []),
+  ]
+  const lines = [
+    counted('moral-a', 'moral-base', '8.00'),
+    counted('honour-a', 'honour-q', '3.00'),
+    counted('academic-a', 'academic-base', '60.00'),
+    counted('sports-a', 'sports-base', '5.00'),
+    ...['a', 'b', 'c'].map((key) => counted(`activity-${key}`, 'activity-q', '2.00')),
+    ...(over.own === true ? [counted('own-a', 'own-q', '30.00')] : []),
+  ]
+  return { result: { mode: 'provisional', total, groups, lines }, items, entries }
 }
 
 const screen = (paper: Paper, over: Record<string, unknown> = {}) =>
@@ -674,23 +772,25 @@ describe('the score page on a phone', () => {
     const claims = ['a', 'b', 'c'].map((key) =>
       entry(`long-${key}`, 'long-q', 'approved', { name: `${longTitle}${key}`, level: unbroken }),
     )
-    await screen({
-      result: {
-        mode: 'provisional',
-        total: '18.00',
-        groups: [
-          group('long-g', longGroup, { final: '18.00', cap: '20.00' }),
-          group('other-g', `${longGroup}（续）`, { final: '0.00', cap: '10.00' }),
+    await screen(
+      onPaper<Paper>({
+        result: {
+          mode: 'provisional',
+          total: '18.00',
+          groups: [
+            group('long-g', longGroup, { final: '18.00', cap: '20.00' }),
+            group('other-g', `${longGroup}（续）`, { final: '0.00', cap: '10.00' }),
+          ],
+          lines: claims.map((one) => counted(one.id, 'long-q', '6.00')),
+        },
+        items: [
+          item('long-q', 'long-g', longTitle, { each: '6' }),
+          item('long-r', 'other-g', `${longTitle}（团体）`, { each: '4' }),
+          item('long-s', 'other-g', unbroken, { each: '1' }),
         ],
-        lines: claims.map((one) => counted(one.id, 'long-q', '6.00')),
-      },
-      items: [
-        item('long-q', 'long-g', longTitle, { each: '6' }),
-        item('long-r', 'other-g', `${longTitle}（团体）`, { each: '4' }),
-        item('long-s', 'other-g', unbroken, { each: '1' }),
-      ],
-      entries: [...claims, entry('long-r-a', 'long-r', 'needs_revision')],
-    })
+        entries: [...claims, entry('long-r-a', 'long-r', 'needs_revision')],
+      }),
+    )
     await expect.element(page.getByTestId('result-total')).toHaveTextContent('18.00')
     await userEvent.click(itemRow('long-q').querySelector('button[aria-expanded]') as HTMLElement)
     const fold = itemRow('long-q').querySelector('[data-testid="ledger-lines"]') as HTMLElement
@@ -757,6 +857,72 @@ describe('the score page while it loads', () => {
   })
 })
 
+describe('the paper a batch is set on', () => {
+  it('moves between the parts of the paper at a desk, with the bar dividing its full marks', async () => {
+    await page.viewport(1440, 900)
+    await screen(demo())
+    await expect.element(page.getByTestId('result-total')).toHaveTextContent('80.00')
+    await expect
+      .element(page.getByTestId('result-ledger'))
+      .toHaveAttribute('data-layout', 'outline')
+    // the paper itself is no band: its parts are what the reader moves between
+    await expect.poll(() => page.getByTestId('outline-group').elements().length).toBe(3)
+    expect(
+      page
+        .getByTestId('outline-group')
+        .elements()
+        .map((one) => one.getAttribute('data-group')),
+    ).toEqual(['moral', 'academic', 'sports'])
+    expect(document.querySelector(`[data-testid="ledger-group"][data-group="${PAPER}"]`)).toBeNull()
+    await expect.element(page.getByTestId('result-out-of')).toHaveAttribute('data-full', '100.00')
+    await expect.element(page.getByTestId('result-shares')).toHaveAttribute('data-count', '3')
+    // the groups inside the parts are lighter headings under their band
+    expect(
+      [...sectionOf('moral').querySelectorAll('[data-testid="ledger-subgroup"]')].map((one) =>
+        one.getAttribute('data-group'),
+      ),
+    ).toEqual(['honour', 'practice'])
+  })
+
+  it('folds the parts of the paper into chips on a phone', async () => {
+    await page.viewport(390, 844)
+    await screen(demo())
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
+    await expect.element(page.getByTestId('result-ledger')).toHaveAttribute('data-layout', 'strip')
+    expect(
+      page
+        .getByTestId('strip-group')
+        .elements()
+        .map((one) => one.getAttribute('data-group')),
+    ).toEqual(['moral', 'academic', 'sports'])
+    expect(scroller().scrollWidth).toBeLessThanOrEqual(scroller().clientWidth + 1)
+  })
+
+  it('stands the paper’s own questions first with no band, and its limit last', async () => {
+    await page.viewport(1440, 900)
+    await screen(demo({ own: true, total: '100.00' }))
+    await expect.element(page.getByTestId('result-total')).toHaveTextContent('100.00')
+    const card = sectionOf('moral').parentElement!
+    const first = card.firstElementChild as HTMLElement
+    expect(first.getAttribute('data-kind')).toBe('paper')
+    expect(first.querySelector('h2')).toBeNull()
+    expect(itemRow('own-q').getAttribute('data-value')).toBe('30.00')
+    // the paper's full mark held the round back: one line, after every part
+    const limits = page.getByTestId('group-adjustment').elements()
+    const last = limits.at(-1)!
+    expect([last.getAttribute('data-rule'), last.getAttribute('data-delta')]).toEqual([
+      'cap',
+      '-10.00',
+    ])
+    expect(last.parentElement).toBe(card)
+    expect(
+      sectionOf('sports').compareDocumentPosition(last) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    // a question of the paper's own that adds is a part no bar of the parts shows
+    expect(page.getByTestId('result-shares').elements()).toHaveLength(0)
+  })
+})
+
 describe('rounds of other shapes', () => {
   it('draws one group with no outline, no chips and no bar', async () => {
     await page.viewport(1440, 900)
@@ -768,22 +934,28 @@ describe('rounds of other shapes', () => {
 
   it('prints no full mark beside a group that adds with no limit, even before it has scored', async () => {
     await page.viewport(1440, 900)
-    await screen({
-      result: {
-        mode: 'provisional',
-        total: '5.00',
-        groups: [
-          group('capped', '学业', { final: '5.00', cap: '10.00' }),
-          group('open', '附加分', { final: '0.00' }),
-        ],
-        lines: [counted('capped-e', 'capped-q', '5.00')],
-      },
-      items: [
-        item('capped-q', 'capped', '课程成绩'),
-        item('open-q', 'open', '附加项目', { each: '3' }),
-      ],
-      entries: [entry('capped-e', 'capped-q', 'approved')],
-    })
+    // full marks not set on the paper, so its parts would have to say them
+    await screen(
+      onPaper<Paper>(
+        {
+          result: {
+            mode: 'provisional',
+            total: '5.00',
+            groups: [
+              group('capped', '学业', { final: '5.00', cap: '10.00' }),
+              group('open', '附加分', { final: '0.00' }),
+            ],
+            lines: [counted('capped-e', 'capped-q', '5.00')],
+          },
+          items: [
+            item('capped-q', 'capped', '课程成绩'),
+            item('open-q', 'open', '附加项目', { each: '3' }),
+          ],
+          entries: [entry('capped-e', 'capped-q', 'approved')],
+        },
+        null,
+      ),
+    )
     await expect.element(page.getByTestId('result-total')).toHaveTextContent('5.00')
     expect(page.getByTestId('result-out-of').elements()).toHaveLength(0)
     expect(page.getByTestId('result-shares').elements()).toHaveLength(0)

@@ -8,7 +8,9 @@ import { projectEntrySummary } from '../../entry/summary.ts'
 // from, so it can say which claim that was; and every limit that bit written
 // where it bit. That shaping lives here, pure, so a node test can hold it to
 // the arithmetic and the two readers of the ledger (the participant and staff
-// looking at them) draw the same answer.
+// looking at them) draw the same answer. The paper at the root of it all is
+// lifted away the way the filing page lifts it, so the two number the same
+// groups the same way.
 //
 // Amounts are carried as whole hundredths. The scorer already quantizes every
 // line to two places (§16), so hundredths are exact here and a sum of them is
@@ -214,8 +216,18 @@ export interface LedgerAdjustmentView {
 
 export type LedgerRow = LedgerGroupView | LedgerItemView | LedgerAdjustmentView
 
-/** one top group and everything under it; `group` is null for questions no group holds */
+/**
+ * One stretch of the account.
+ *
+ * A top group with everything under it (`group`); the questions the paper
+ * holds itself, outside any of its groups (`paper`); or the questions no
+ * group in the account holds (`loose`). Only a top group has a band of its
+ * own: the paper's own questions are the paper speaking, not a group.
+ */
 export interface LedgerSection {
+  readonly kind: 'group' | 'paper' | 'loose'
+  /** the group it is, the paper it belongs to, or `ungrouped` */
+  readonly key: string
   readonly group: LedgerGroupView | null
   readonly rows: readonly LedgerRow[]
 }
@@ -230,7 +242,7 @@ export interface LedgerShare {
 
 export interface LedgerModel {
   readonly totalCents: number
-  /** the round's full marks, when every top group declares one */
+  /** the round's full marks, where how it is set up says what they are */
   readonly fullCents: number | null
   /** what limits held back, over every group */
   readonly trimmedCents: number
@@ -238,6 +250,8 @@ export interface LedgerModel {
   readonly pending: number
   readonly drafts: number
   readonly sections: readonly LedgerSection[]
+  /** the paper's own limit, where it bit: the last line before the total */
+  readonly limit: LedgerAdjustmentView | null
   /** the top groups, for the outline */
   readonly tops: readonly LedgerGroupView[]
   /** how the total divides, where a bar of it can be read; null otherwise */
@@ -611,31 +625,54 @@ export const buildLedger = ({
     return rows
   }
 
-  const sections: LedgerSection[] = []
-  const tops: LedgerGroupView[] = []
-  let topIndex = 0
-  for (const root of childrenOf.get(null) ?? []) {
-    if (!holds(root)) continue
-    topIndex += 1
-    const no = String(topIndex).padStart(2, '0')
-    const rows = rowsUnder(root, no, 0)
-    const view = groupView(root, no, 0, rows)
-    tops.push(view)
-    sections.push({ group: view, rows })
-  }
-
   // questions no group in the account holds: under a group the scorer did
   // not answer for, or known only by a line
-  const loose = [
-    ...asked.filter((item) => !groupIds.has(item.scoreGroupId)),
-    ...strangers.values(),
-  ].sort((a, b) => a.sortOrder - b.sortOrder)
+  const unplaced = asked.filter((item) => !groupIds.has(item.scoreGroupId))
+  const loose = [...unplaced, ...strangers.values()].sort((a, b) => a.sortOrder - b.sortOrder)
+
+  // One batch, one paper (§32.61): the single group at the root is the paper
+  // itself, and its figures are the head's own - its limit is the round's
+  // full mark and what it came to is the total. It is lifted away rather
+  // than drawn as the one band over everything, so the groups inside it are
+  // the ones a reader moves between and numbers 01, 02, as the filing page
+  // numbers them. A round saved before that rule may still hold several
+  // roots; those stand as they are, each its own top group.
+  const roots = (childrenOf.get(null) ?? []).filter(holds)
+  const paper = roots.length === 1 && unplaced.length === 0 ? roots[0]! : null
+  const tier = paper === null ? roots : (childrenOf.get(paper.groupId) ?? []).filter(holds)
+
+  const sections: LedgerSection[] = []
+  const tops: LedgerGroupView[] = []
+  // the questions the paper holds itself come first, as they do on the
+  // filing page, with no band: they belong to no group but the paper
+  const own = paper === null ? [] : itemsIn(paper.groupId)
+  if (paper !== null && own.length > 0) {
+    sections.push({
+      kind: 'paper',
+      key: paper.groupId,
+      group: null,
+      rows: own.map((item) => itemView(item, 0)),
+    })
+  }
+  let topIndex = 0
+  for (const top of tier) {
+    topIndex += 1
+    const no = String(topIndex).padStart(2, '0')
+    const rows = rowsUnder(top, no, 0)
+    const view = groupView(top, no, 0, rows)
+    tops.push(view)
+    sections.push({ kind: 'group', key: top.groupId, group: view, rows })
+  }
   if (loose.length > 0) {
     sections.push({
+      kind: 'loose',
+      key: 'ungrouped',
       group: null,
       rows: loose.map((item) => itemView(item, tops.length > 0 ? 1 : 0)),
     })
   }
+  // the paper's own limit closes the account, the way a group's closes it
+  const limit = paper === null ? null : adjustmentOf(paper, 0)
 
   // The most a group can come to, read off how the round is set up and never
   // off how far anyone has got: a limit says it outright; with no limit, the
@@ -656,21 +693,38 @@ export const buildLedger = ({
     }
     return group.floor === null ? most : Math.max(most, centsOf(group.floor))
   }
-  const roots = (childrenOf.get(null) ?? []).filter(holds)
-  const reaches = roots.map(mostOf)
-  const fullCents =
-    roots.length > 0 && loose.length === 0 && reaches.every((reach) => reach !== null)
-      ? reaches.reduce<number>((sum, reach) => sum + (reach ?? 0), 0)
-      : null
+  const reach = (): number | null => {
+    // a paper's limit holds whatever it holds, questions this reader was
+    // not handed included; without one, those questions are unknowns
+    if (paper !== null) return paper.cap !== null || loose.length === 0 ? mostOf(paper) : null
+    if (roots.length === 0 || loose.length > 0) return null
+    let most = 0
+    for (const root of roots) {
+      const one = mostOf(root)
+      if (one === null) return null
+      most += one
+    }
+    return most
+  }
+  const most = reach()
+  // a round nothing can add to has no full mark worth printing
+  const fullCents = most !== null && most > 0 ? most : null
+  // A bar divides the total among the top groups, so it is only drawn where
+  // they are all of it: a question the paper holds itself that may add would
+  // be a part of the total the bar leaves out. Where the groups together came
+  // to more than the paper let through, the bar is drawn against what they
+  // came to, so it never runs past its own end.
+  const outside = own.some((item) => !onlyTakesAway(item))
+  const drawn = tops.reduce((sum, top) => sum + Math.max(0, top.cents), 0)
   const shares =
-    fullCents !== null && fullCents > 0 && tops.length >= 2 && tops.length <= MOST_SHARES
+    fullCents !== null && !outside && tops.length >= 2 && tops.length <= MOST_SHARES
       ? tops
           .filter((top) => top.cents > 0)
           .map((top) => ({
             id: top.id,
             name: top.name,
             cents: top.cents,
-            pct: Math.min(100, (top.cents / fullCents) * 100),
+            pct: Math.min(100, (top.cents / Math.max(fullCents, drawn)) * 100),
           }))
       : null
 
@@ -687,8 +741,9 @@ export const buildLedger = ({
     pending: entries.filter(isMoving).length,
     drafts: entries.filter(isDraft).length,
     sections,
+    limit,
     tops,
     shares,
-    empty: sections.length === 0,
+    empty: sections.length === 0 && limit === null,
   }
 }

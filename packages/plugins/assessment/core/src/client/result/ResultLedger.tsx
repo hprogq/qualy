@@ -42,7 +42,10 @@ export type { LedgerEntry, LedgerItem, LedgerResult } from './ledger.ts'
 // behind it. A question with several claims opens in place to list them; a
 // limit that bit is its own dashed line with the difference written out,
 // never a silent clamp. Questions that came to nothing stay where they are
-// at 0.00 with the reason beside them.
+// at 0.00 with the reason beside them. The paper the round is set on is not
+// a band of its own: the parts inside it are the top groups, questions it
+// holds itself stand first with nothing over them, and its own limit is the
+// last line before the total.
 //
 // Beside it, where the width allows and there is more than one group to
 // move between, an outline of the top groups follows the reading and jumps
@@ -920,7 +923,7 @@ export function ResultLedger({
           <div {...stylex.props(styles.card)}>
             {model.sections.map((section, index) => (
               <Section
-                key={section.group?.id ?? 'ungrouped'}
+                key={section.key}
                 section={section}
                 first={index === 0}
                 titled={model.tops.length > 0}
@@ -943,6 +946,8 @@ export function ResultLedger({
                 }}
               />
             ))}
+            {/* the paper's own limit, the last thing between the rows and the total */}
+            {model.limit !== null && <Trim adjustment={model.limit} />}
             <Foot total={model.totalCents} />
           </div>
         )}
@@ -1221,7 +1226,10 @@ function Outline({
   )
 }
 
-/** one top group - its band and everything under it - or the questions no group holds */
+/**
+ * One top group - its band and everything under it - or the questions the
+ * paper holds itself, or the questions no group holds.
+ */
 function Section({
   section,
   first,
@@ -1252,7 +1260,9 @@ function Section({
 }) {
   const { format } = useI18n()
   const group = section.group
-  const banded = group !== null || titled
+  // the paper's own questions are the paper speaking and need no heading;
+  // questions no group holds need one only beside groups that have theirs
+  const banded = section.kind === 'group' || (section.kind === 'loose' && titled)
   const looseCents = section.rows.reduce(
     (sum, row) => (row.kind === 'item' ? sum + row.cents : sum),
     0,
@@ -1261,7 +1271,8 @@ function Section({
     <section
       ref={holdSection}
       data-testid="ledger-group"
-      data-group={group?.id ?? 'ungrouped'}
+      data-group={section.key}
+      data-kind={section.kind}
       data-full={group?.full === true ? 'true' : undefined}
       data-pending={group?.pending}
       data-left={group === null || group.leftCents === null ? undefined : two(group.leftCents)}

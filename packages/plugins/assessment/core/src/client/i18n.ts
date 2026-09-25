@@ -411,13 +411,13 @@ const resultOutOf = defineMessage<{ full: string }>()({
 const resultHeadNote = defineMessage<{ pending: number; drafts: number; trimmed: string }>()({
   id: 'assessment/result/head-note',
   defaultMessage:
-    '{pending, plural, =0 {{drafts, plural, =0 {Nothing is under review} one {# draft not submitted; it counts once submitted and approved} other {# drafts not submitted; they count once submitted and approved}}} one {# entry under review; it counts once approved} other {# entries under review; they count once approved}}{trimmed, select, none {} other {; {trimmed} above group limits is not counted}}',
+    '{pending, plural, =0 {{drafts, plural, =0 {Nothing is under review} one {# draft not submitted; it counts once submitted and approved} other {# drafts not submitted; they count once submitted and approved}}} one {# entry under review; it counts once approved} other {# entries under review; they count once approved}}{trimmed, select, none {} other {; {trimmed} over the limits is not counted}}',
 })
 
 const resultClosedNote = defineMessage<{ kind: string; reader: string; trimmed: string }>()({
   id: 'assessment/result/closed-note',
   defaultMessage:
-    '{kind, select, archived {This batch is archived; the score no longer changes} other {{reader, select, staff {No longer on this batch’s roster} other {You are no longer on this batch’s roster}}}}{trimmed, select, none {} other {; {trimmed} above group limits is not counted}}',
+    '{kind, select, archived {This batch is archived; the score no longer changes} other {{reader, select, staff {No longer on this batch’s roster} other {You are no longer on this batch’s roster}}}}{trimmed, select, none {} other {; {trimmed} over the limits is not counted}}',
 })
 
 const resultOutlineHeading = defineMessage<{ count: number }>()({
