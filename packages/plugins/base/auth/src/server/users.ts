@@ -47,6 +47,8 @@ import {
   userConstraints,
 } from './errors.ts'
 import { makeDemoGuard } from './demo-guard.ts'
+import { HARD_LIMITS, makeLimiter } from './limiter.ts'
+import { TooManyAttempts } from '@qualy/auth-contract/session'
 
 // People, and where they stand.
 //
@@ -752,6 +754,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
   // a plain read opens no transaction, so it has nothing to take a database
   // from; supplying it here keeps the requirement off everybody who calls
   const withDb = yield* withDatabase
+  const limiter = yield* makeLimiter
 
   const write = <A, E, R>(tenantId: string, body: () => Effect.Effect<A, E, R>) =>
     withDb(
@@ -1194,6 +1197,12 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       )
       if (user.isSystem) return yield* new SystemAccountProtected()
       yield* manages(as, user.primaryOrgNodeId!)
+      // a guess estimate costs the server's only thread; typed pauses ask
+      // for a handful a minute, and a loop is refused
+      const judged = yield* limiter.consumeHard(tenantId, HARD_LIMITS.passwordAssessment, as.userId)
+      if (!judged.allowed) {
+        return yield* new TooManyAttempts({ retryAfterSeconds: judged.retryAfterSeconds })
+      }
       const subject = yield* withDb(secretSubjectOf(tenantId, userId)).pipe(Effect.orDie)
       return yield* binding.assess({ secret: input.secret, subject })
     }),

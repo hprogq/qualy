@@ -29,6 +29,7 @@ import { serviceLayer as authLayer } from '../src/server/index.ts'
 import { secretsLayer } from '@qualy/plugin-secrets/testkit'
 import { captchaLayer } from '@qualy/plugin-captcha/testkit'
 import { acceptable, standInChecks } from './support/secret-checks.ts'
+import { HARD_LIMITS } from '../src/server/limiter.ts'
 
 // People, and who may administer them.
 //
@@ -821,6 +822,38 @@ describe.runIf(postgresAvailable).concurrent('the way in written for a person', 
       expect(answer.outside).toBe('ACCESS_DENIED')
       // judging writes nothing
       expect(answer.rows).toEqual([])
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('judges a password typed for somebody else only so often', async () => {
+    const db = await createTestContext('effect-binding-assess-throttle')
+    try {
+      const { limit } = HARD_LIMITS.passwordAssessment
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const iam = yield* Iam
+          const provider = yield* providerOf(f.tenant)
+          for (let typed = 0; typed < limit; typed += 1) {
+            yield* iam.users.assessBinding(
+              f.tenant,
+              f.onLeft,
+              provider,
+              { secret: `candidate ${typed}` },
+              f.as,
+            )
+          }
+          return tagOf(
+            yield* Effect.result(
+              iam.users.assessBinding(f.tenant, f.onLeft, provider, { secret: 'one more' }, f.as),
+            ),
+          )
+        }),
+      )
+      expect(ok(exit)).toBe('TOO_MANY_ATTEMPTS')
     } finally {
       await db.dispose()
     }

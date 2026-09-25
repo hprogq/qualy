@@ -936,6 +936,49 @@ describe.runIf(postgresAvailable)('one’s own password', () => {
   })
 })
 
+describe.runIf(postgresAvailable)('a password judged while it is typed', () => {
+  it('is judged only so often for one person, and for one reset link', async () => {
+    const db = await createTestContext('email-assess-throttle')
+    const mail = memoryMailBackend()
+    try {
+      const f = await seed(db.url)
+      const { limit } = HARD_LIMITS.passwordAssessment
+      const answer = ok(
+        await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const flows = yield* EmailFlows
+            const ada = f.as(f.ada, f.adaHere)
+            for (let typed = 0; typed < limit; typed += 1) {
+              yield* flows.assessPassword(ada, { password: `candidate ${typed}` })
+            }
+            const self = yield* Effect.result(flows.assessPassword(ada, { password: 'one more' }))
+            // somebody else typing is not held up by it
+            const other = yield* Effect.result(
+              flows.assessPassword(f.as(f.lin, f.linHere), { password: 'one more' }),
+            )
+            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
+            const link = yield* Effect.promise(() => tokenFrom(mail, 'ada@school.edu'))
+            for (let typed = 0; typed < limit; typed += 1) {
+              yield* flows.assessReset({ token: link.token, password: `candidate ${typed}` })
+            }
+            const reset = yield* Effect.result(
+              flows.assessReset({ token: link.token, password: 'one more' }),
+            )
+            return { self: tagOf(self), other: tagOf(other), reset: tagOf(reset) }
+          }).pipe(Effect.provide(stack(db.url, mail.backend))),
+        ),
+      )
+      expect(answer).toEqual({
+        self: 'TOO_MANY_ATTEMPTS',
+        other: undefined,
+        reset: 'TOO_MANY_ATTEMPTS',
+      })
+    } finally {
+      await db.dispose()
+    }
+  })
+})
+
 const MAILPIT = process.env['QUALY_TEST_MAILPIT_URL'] ?? 'http://127.0.0.1:8025'
 const mailpitAvailable = await fetch(`${MAILPIT}/api/v1/info`, {
   signal: AbortSignal.timeout(5_000),

@@ -877,6 +877,7 @@ export const identityApiGroup = HttpApiGroup.make('identity')
           AuthBindingUnsupported,
           AccessDenied,
           DemoAccountLocked,
+          TooManyAttemptsResponse,
         ],
       },
     ).middleware(Authenticated),
@@ -1017,7 +1018,7 @@ export const sessionApiGroup = HttpApiGroup.make('auth')
         password: Schema.String.check(Schema.isMaxLength(1024)),
       }),
       success: Schema.Struct({ checks: SecretChecks }),
-      error: [ChallengeInvalid],
+      error: [ChallengeInvalid, TooManyAttemptsResponse],
     }),
   )
   .add(
@@ -1193,7 +1194,7 @@ export const selfApiGroup = HttpApiGroup.make('self')
         password: Schema.String.check(Schema.isMaxLength(1024)),
       }),
       success: Schema.Struct({ checks: SecretChecks }),
-      error: [UserNotFound, PasswordUnavailable],
+      error: [UserNotFound, PasswordUnavailable, TooManyAttemptsResponse],
     }).middleware(Authenticated),
   )
   .add(

@@ -87,6 +87,13 @@ export const HARD_LIMITS = {
   mailBySelf: { scope: 'mail:user', limit: 5, windowSeconds: 3600 },
   /** tries at one person's own current password */
   passwordBySelf: { scope: 'password:user', limit: 10, windowSeconds: 900 },
+  /**
+   * Passwords judged while they are typed: by one person for themselves, by
+   * one administrator for others, or through one reset link. Each is a guess
+   * estimate on the server's only thread, and a pause in typing asks for a
+   * handful a minute, so this is a fuse on asking in a loop.
+   */
+  passwordAssessment: { scope: 'password:assessment', limit: 60, windowSeconds: 60 },
 } as const satisfies Record<string, HardLimitRule>
 
 /** the rules that ask for a challenge */

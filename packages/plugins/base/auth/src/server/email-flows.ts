@@ -252,7 +252,7 @@ export class EmailFlows extends Context.Service<
     readonly assessReset: (input: {
       readonly token: string
       readonly password: string
-    }) => Effect.Effect<SecretChecks, ChallengeInvalid>
+    }) => Effect.Effect<SecretChecks, ChallengeInvalid | TooManyAttempts>
     readonly requestVerification: (
       principal: Principal,
       locale: MailLocale,
@@ -277,7 +277,7 @@ export class EmailFlows extends Context.Service<
     readonly assessPassword: (
       principal: Principal,
       input: { readonly password: string },
-    ) => Effect.Effect<SecretChecks, PasswordUnavailable | UserNotFound>
+    ) => Effect.Effect<SecretChecks, PasswordUnavailable | UserNotFound | TooManyAttempts>
     readonly setPassword: (
       principal: Principal,
       input: { readonly currentPassword?: string; readonly newPassword: string },
@@ -625,6 +625,7 @@ export const emailFlowsLayer: Layer.Layer<
 
       assessReset: Effect.fn('Auth.email.assessReset')(function* ({ token, password }) {
         const { tenantId, person, door } = yield* openReset(token)
+        yield* throttle(tenantId, HARD_LIMITS.passwordAssessment, `reset:${person.id}`)
         const subject = yield* withDb(secretSubjectOf(tenantId, person.id)).pipe(Effect.orDie)
         return yield* door.binding.assess({ secret: password, subject })
       }),
@@ -821,6 +822,7 @@ export const emailFlowsLayer: Layer.Layer<
 
       assessPassword: Effect.fn('Auth.email.assessPassword')(function* (principal, input) {
         const tenantId = principal.tenantId
+        yield* throttle(tenantId, HARD_LIMITS.passwordAssessment, principal.userId)
         const person = yield* withDb(personOf(tenantId, principal.userId)).pipe(Effect.orDie)
         if (person === undefined) return yield* new UserNotFound()
         const door = yield* withDb(passwordDoor(tenantId, person)).pipe(Effect.orDie)
