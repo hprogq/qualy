@@ -26,17 +26,18 @@
 
 数据层重新引入下列机制,**必须**由对应条件实际发生触发;条件未发生前禁止预防性重建:
 
-| 机制                          | 触发条件                                                                               |
-| ----------------------------- | -------------------------------------------------------------------------------------- |
-| installed.lock(三集合模型)    | 出现在线安装或多实例装配需求                                                           |
-| ~~behavior 片段编译器~~       | ~~多插件大量 trigger 且手工 custom 迁移频繁出错~~ **已于 2026-08-04 触发并落地**(见下) |
-| advisory lock(迁移互斥)       | 真实多副本部署                                                                         |
-| checksum 拒启                 | 实际发生历史迁移被篡改且 CI 未拦                                                       |
-| 对象 registry 与 PURGE 自动化 | 决定实现自动卸载                                                                       |
-| dirty/projection 基础设施     | P3 第一个真实派生数据场景                                                              |
-| 迁移 mode verify(校验不执行)  | 应用容器无 DDL 权限的生产部署真实出现                                                  |
-| 插件自带 migration 序列       | 出现需独立发版的外部插件生态(版本 DAG/多 ledger)                                       |
-| ~~池连接账本(checkout 归属)~~ | ~~关闭时池连接不归还且计数说不出是谁~~ **已于 2026-09-02 触发并落地**(见下)            |
+| 机制                          | 触发条件                                                                                       |
+| ----------------------------- | ---------------------------------------------------------------------------------------------- |
+| installed.lock(三集合模型)    | 出现在线安装或多实例装配需求                                                                   |
+| ~~behavior 片段编译器~~       | ~~多插件大量 trigger 且手工 custom 迁移频繁出错~~ **已于 2026-08-04 触发并落地**(见下)         |
+| advisory lock(迁移互斥)       | 真实多副本部署                                                                                 |
+| checksum 拒启                 | 实际发生历史迁移被篡改且 CI 未拦                                                               |
+| 对象 registry 与 PURGE 自动化 | 决定实现自动卸载                                                                               |
+| dirty/projection 基础设施     | P3 第一个真实派生数据场景                                                                      |
+| 迁移 mode verify(校验不执行)  | 应用容器无 DDL 权限的生产部署真实出现                                                          |
+| 插件自带 migration 序列       | 出现需独立发版的外部插件生态(版本 DAG/多 ledger)                                               |
+| ~~池连接账本(checkout 归属)~~ | ~~关闭时池连接不归还且计数说不出是谁~~ **已于 2026-09-02 触发并落地**(见下)                    |
+| ~~数据库等待上限与 503~~      | ~~锁排队占满连接池、库失联时请求与 ready 探针无期限挂起~~ **已于 2026-09-25 触发并落地**(见下) |
 
 ## 冻结规则
 
@@ -122,3 +123,29 @@ Deployment State(`<state>/database/migrations`),全新安装自己生成 initial
 
 **不建机制**:生成物本来就要人工审查,CI 的 `database verify` 与本地同一命令已经能在提交前拦住这类文件,没有漏到任何库上。
 触发条件记在这里:若同类顺序错误再次出现,或某一次没有被 `verify` 拦住,再考虑在 generate 里把「被外键引用的唯一索引」前置。
+
+## 2026-09-25:数据库等待上限与 503 已触发
+
+触发它的是 2026-09-25 上线前审查的 V11-platform#1.5(已确认)与随后的用户裁决(审查裁决 #4)。应用连接池没有任何上限:
+pg-pool 取连接无期限排队(`connectionTimeoutMillis` 为 0),会话没有 `statement_timeout` / `lock_timeout` /
+`idle_in_transaction_session_timeout`,`/health/ready` 的探针也不设期限。一次持批次行锁的整院行政认定,就能让同批次十几个并发写请求
+各占一条连接等锁;池满之后登录、manifest、ready 探针全部排队。库失联时,请求挂到 TCP 重传超时(分钟级)才报错,而不是快速失败。
+2026-09-02 一节「未做:任何缩短等待的超时」说的是关停时 `pool.end()` 的等待,这次不改它:关停仍然等在外的连接归还。
+
+落地范围刻意保持窄:
+
+- `DATABASE_TIMEOUTS`(`src/defaults.ts`):取连接 / 建连 5s、`statement_timeout` 30s、`lock_timeout` 10s、
+  `idle_in_transaction_session_timeout` 60s,作为应用连接池的 driver 选项(三个 PostgreSQL 参数随启动报文下发)。
+  `DATABASE_URL` 上的同名参数覆盖后三项(0 为关闭),不新增环境变量。迁移器(deploy job 与开发态 apply)用自己的会话,不继承这些上限。
+- 分类归 database 插件:`QueryFailed` 构造时判断失败是否表示「数据库暂时无法服务」——取连接超时、连接断开、
+  57014 / 55P03 / 25P03 / 57P01-03 / 57P05 / 53300 / 08 类,以及没有 SQLSTATE 的驱动断线消息——是则带上 api-kit 的 `unavailable` 标记。
+  `transaction` 的 begin 与 commit 失败也改为以 `QueryFailed` 抛出,同样会被标记。
+- 映射归 HTTP 边界:api-kit 的全局路由中间件 `unavailableDependencies` 把带标记的 defect 答成 503 `SERVICE_UNAVAILABLE`
+  (公共码,浏览器集中翻译)。约束冲突与领域错误照旧;访问日志按 5xx 规则以 Error 记下原因。api-kit 不认识 PostgreSQL,只读标记。
+- `/health/ready` 每个探针 4s 硬上限:探针在自己的 fiber 上跑,到期只停止等待,不等它中断完——`query` 的中断会等语句结束。
+- 测试:`packages/plugins/infra/database/tests/timeouts.test.ts`(在真实库上逐项触发四种上限;约束冲突不被标记;会话参数与 URL 覆盖;
+  HTTP 边界 503 / 500)、`packages/core/api-kit/tests/unavailable.test.ts`、`apps/server/tests/effect-shell.test.ts` 与
+  `access-log-endpoint.test.ts` 的新增用例、`packages/web/runtime/tests/transport.test.ts` 的 503 用例。
+
+**未做**:请求中断时对仍在执行的语句发 `pg_cancel_backend`(中断仍等语句在服务端上限内结束);按请求的整体超时;TCP keepalive 与
+`query_timeout` 客户端读超时(库成为黑洞时,已发出的语句仍要等到 TCP 重传超时);连接池上限的环境变量;浏览器遇 503 自动重试。

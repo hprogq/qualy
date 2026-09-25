@@ -117,6 +117,12 @@ database。出现第二种有持久部署副作用的能力时,先设计启动�
 
 没有 Redis:源码里没有任何使用,不为「将来也许」加一个空转的服务。
 
+**数据库等待上限**:server 的连接池给每个会话设了上限——取连接或建连 5s、`statement_timeout` 30s、`lock_timeout` 10s、
+`idle_in_transaction_session_timeout` 60s(`@qualy/plugin-database` 的 `DATABASE_TIMEOUTS`)。超过任一上限、连接断开或库拒绝新连接时,
+该请求答 503 `SERVICE_UNAVAILABLE`,访问日志以 Error 记下原因;约束冲突与业务拒绝照旧。`/health/ready` 每个探针最多等 4s,超时即 503。
+要放宽某一项,在 `DATABASE_URL` 上加同名参数(如 `?statement_timeout=120000`,`0` 为关闭),例如对库跑耗时较长的
+`qualy assessment audit-scoring` 时;取连接的 5s 不开放配置。迁移(`migrate` job 与开发态 apply)用自己的会话,不受这些上限约束。
+
 **CAPTCHA provider**(docs/captcha.md):默认 `@qualy/plugin-captcha-altcha`(本地 PoW,不依赖第三方,无需任何配置——签名密钥由
 `QUALY_SECRETS_MASTER_KEY` 派生);`@qualy/plugin-captcha-turnstile` 默认停用,只用于 Cloudflare 可服务的地区,启用时要先停用 altcha
 (两个 provider 同时启用在装配时被拒),并在 `.env` 填 `QUALY_CAPTCHA_TURNSTILE_SITE_KEY` / `QUALY_CAPTCHA_TURNSTILE_SECRET_KEY`(缺失即拒绝启动)。

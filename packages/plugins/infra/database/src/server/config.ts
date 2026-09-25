@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { Config, Context, Effect, Layer, Option, Redacted } from 'effect'
-import { LOCAL_FALLBACK, MIGRATIONS_FOLDER } from '../defaults.ts'
+import { LOCAL_FALLBACK, MIGRATIONS_FOLDER, type DatabaseTimeouts } from '../defaults.ts'
 
 /**
  * What the database needs to know.
@@ -27,6 +27,12 @@ export class DatabaseConfig extends Context.Service<
      * failure lands on whichever unrelated test connected last.
      */
     readonly poolSize?: number | undefined
+    /**
+     * How long this process waits on the database before a wait is a
+     * failure; `DATABASE_TIMEOUTS` unless a caller - a suite asserting what
+     * happens past one - says otherwise.
+     */
+    readonly timeouts?: DatabaseTimeouts | undefined
   }
 >()('@qualy/plugin-database/DatabaseConfig') {}
 

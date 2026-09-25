@@ -23,6 +23,33 @@ export const MIGRATIONS_FOLDER = 'db/migrations'
  */
 export const MIGRATION_FILE = /^(\d{14})(?:_[a-z0-9]+(?:-[a-z0-9]+)*)?\.sql$/
 
+/**
+ * How long the application's own sessions wait on the database before the
+ * wait is a failure, in milliseconds.
+ *
+ * Without them a lock queue or a database that stopped answering held every
+ * request, and the readiness probe, for as long as it lasted. The pool's
+ * connection timeout covers both getting a pooled connection and opening a
+ * new one; the other three are PostgreSQL's own session settings, sent when a
+ * session opens. A `statement_timeout`, `lock_timeout` or
+ * `idle_in_transaction_session_timeout` parameter on DATABASE_URL overrides
+ * the one here, 0 turning it off. The migrator opens sessions of its own and
+ * keeps its own limits.
+ */
+export interface DatabaseTimeouts {
+  readonly connectMs: number
+  readonly statementMs: number
+  readonly lockMs: number
+  readonly idleInTransactionMs: number
+}
+
+export const DATABASE_TIMEOUTS: DatabaseTimeouts = {
+  connectMs: 5_000,
+  statementMs: 30_000,
+  lockMs: 10_000,
+  idleInTransactionMs: 60_000,
+}
+
 /** the database a development machine is assumed to have */
 export const LOCAL_FALLBACK = 'postgres://qualy:qualy@localhost:5432/qualy'
 

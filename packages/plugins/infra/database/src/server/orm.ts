@@ -14,9 +14,12 @@ import {
   Redacted,
   References,
 } from 'effect'
+import { unavailable } from '@qualy/api-kit/unavailable'
 import { driverConnection } from '../connection.ts'
+import { DATABASE_TIMEOUTS, type DatabaseTimeouts } from '../defaults.ts'
 import { QualyNamingStrategy } from '../naming.ts'
 import { DatabaseConfig } from './config.ts'
+import { databaseUnavailable } from './constraints.ts'
 import { unwrapPgError } from '../pg-errors.ts'
 import {
   checkoutOwner,
@@ -212,7 +215,8 @@ const ledgers = new WeakMap<MikroORM, PoolLedger>()
  * closing. A rollback returns it; when even that fails the session is gone
  * and the ledger hands the client back as broken.
  *
- * The refusal itself still propagates, as it always did.
+ * The refusal itself still propagates, as it always did, carried by a
+ * `QueryFailed`.
  */
 const settle = async (
   orm: MikroORM,
@@ -234,7 +238,9 @@ const settle = async (
     ledgers
       .get(orm)
       ?.release(owner.token, refusal instanceof Error ? refusal : new Error(String(refusal)))
-    throw refusal
+    // as a query failure, so a commit lost with its session reads as the
+    // database being unavailable, the way that session's statements would
+    throw new QueryFailed(refusal)
   }
 }
 
@@ -312,7 +318,12 @@ export const transaction = <A, E, R>(
       ...(options?.readOnly === true ? ['read only'] : []),
     ].join(', ')
     return yield* Effect.acquireUseRelease(
-      Effect.promise(() => checkoutOwner.run(owner, () => em.begin())),
+      // a begin that got no connection is the database being unavailable,
+      // and the defect says so the way a statement's failure would
+      Effect.tryPromise({
+        try: () => checkoutOwner.run(owner, () => em.begin()),
+        catch: (cause) => new QueryFailed(cause),
+      }).pipe(Effect.orDie),
       () =>
         (mode === ''
           ? body
@@ -345,12 +356,20 @@ export const withDatabase: Effect.Effect<
 
 export class QueryFailed extends Error {
   readonly _tag = 'QueryFailed'
+  /**
+   * Set when the failure says the database could not serve the query right
+   * now - no connection in time, a statement or lock wait past its timeout,
+   * a session that dropped - rather than that the query was wrong. A request
+   * that dies of one is answered 503 by the http boundary instead of 500.
+   */
+  readonly [unavailable]: 'database' | undefined
   // no parameter property: strip-only node loads this source when resolution
   // imports descriptors, and refuses syntax with runtime semantics
   constructor(cause: unknown) {
     super(`a database query failed: ${cause instanceof Error ? cause.message : String(cause)}`, {
       cause,
     })
+    this[unavailable] = databaseUnavailable(cause) ? 'database' : undefined
   }
 }
 
@@ -401,11 +420,14 @@ export const query = <A>(run: () => Promise<A>): Effect.Effect<A, QueryFailed> =
       // either: the driver below does not read one, so aborting would
       // release nothing. Waiting does.
       //
-      // Unbounded on purpose. A statement that never settles already stops
-      // the pool from closing; what changes is where that shows up - on the
-      // fiber that asked, still carrying its owner, instead of inside a
-      // finalizer that can only say which plugin. The deadline that ends a
-      // wedged shutdown is the process's, and it is unchanged.
+      // Unbounded here on purpose. What bounds the statement is the session
+      // it runs on - the pool's connection timeout and the server's
+      // statement and lock timeouts (`sessionLimits` below) - and one that
+      // still never settles already stops the pool from closing; what
+      // changes is where that shows up - on the fiber that asked, still
+      // carrying its owner, instead of inside a finalizer that can only say
+      // which plugin. The deadline that ends a wedged shutdown is the
+      // process's, and it is unchanged.
       Effect.onInterrupt(() =>
         holder.running === undefined
           ? Effect.void
@@ -558,6 +580,24 @@ const reportWhileClosing = (
   )
 }
 
+/**
+ * The limits every session of the application's pool runs under.
+ *
+ * Driver options, which pg-pool and pg both read (pg-pool 3.14 index.js for
+ * the wait on a pooled connection, pg 8.23 lib/connection-parameters.js and
+ * lib/client.js for the rest). The three PostgreSQL settings go out as
+ * startup parameters, so a session has them before its first statement; a
+ * parameter of the same name on the url wins over the value here, and 0
+ * leaves it off. The migrator connects without these on purpose: a migration
+ * may lock and rewrite a table for as long as it takes.
+ */
+const sessionLimits = (timeouts: DatabaseTimeouts) => ({
+  connectionTimeoutMillis: timeouts.connectMs,
+  statement_timeout: timeouts.statementMs,
+  lock_timeout: timeouts.lockMs,
+  idle_in_transaction_session_timeout: timeouts.idleInTransactionMs,
+})
+
 export const layer: Layer.Layer<Orm, DatabaseStartupFailed, DatabaseConfig | Entities> =
   Layer.effect(
     Orm,
@@ -576,6 +616,7 @@ export const layer: Layer.Layer<Orm, DatabaseStartupFailed, DatabaseConfig | Ent
                   pool = created
                   ledger.attach(created)
                 },
+                ...sessionLimits(config.timeouts ?? DATABASE_TIMEOUTS),
               }),
               namingStrategy: QualyNamingStrategy,
               ...(config.poolSize === undefined ? {} : { pool: { min: 0, max: config.poolSize } }),
