@@ -1,4 +1,4 @@
-import { Effect, Schema } from 'effect'
+import { Cause, Duration, Effect, Fiber, Option, Schema } from 'effect'
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
 import { HEALTH_LIVE_PATH, HEALTH_READY_PATH, QUALY_API_ID } from '@qualy/api-kit'
 import { Readiness } from '@qualy/api-kit/readiness'
@@ -52,6 +52,37 @@ export const healthApiGroup = HttpApiGroup.make('health')
 // business API, and these stay out of the generated document
 export const healthApi = HttpApi.make(QUALY_API_ID).add(healthApiGroup)
 
+/**
+ * How long one probe may take before it counts as failed.
+ *
+ * An orchestrator's probe has a deadline of its own, and a readiness answer
+ * that arrives after it is no answer: a database whose lock queue filled
+ * the pool used to hold this endpoint for as long as the queue lasted.
+ */
+export const PROBE_DEADLINE = Duration.seconds(4)
+
+/**
+ * A probe with a deadline that holds whatever the probe does when told to
+ * stop.
+ *
+ * `Effect.timeout` would interrupt the probe and wait for it to finish being
+ * interrupted, and a database query waits out its own statement before it
+ * lets go (the database plugin's `query`) - so the deadline would be the
+ * statement's, not this one. The probe runs on a fiber of its own instead;
+ * what the deadline ends is only the waiting for it, and the probe is told to
+ * stop without anyone waiting on that.
+ */
+const withinDeadline = <E>(
+  probe: Effect.Effect<void, E>,
+): Effect.Effect<void, E | Cause.TimeoutError> =>
+  Effect.gen(function* () {
+    const running = yield* Effect.forkDetach(probe)
+    const settled = yield* Fiber.join(running).pipe(Effect.timeoutOption(PROBE_DEADLINE))
+    if (Option.isSome(settled)) return
+    yield* Effect.forkDetach(Fiber.interrupt(running))
+    return yield* new Cause.TimeoutError(`did not answer within ${Duration.format(PROBE_DEADLINE)}`)
+  })
+
 export const healthHandlers = HttpApiBuilder.group(healthApi, 'health', (handlers) =>
   Effect.gen(function* () {
     const readiness = yield* Readiness
@@ -64,7 +95,7 @@ export const healthHandlers = HttpApiBuilder.group(healthApi, 'health', (handler
           // fact about the assembly that was built, and reading it here is
           // what keeps this handler from naming a single plugin
           for (const check of yield* readiness.checks) {
-            yield* check.probe.pipe(
+            yield* withinDeadline(check.probe).pipe(
               // why it failed, and what failed, belong in the log rather
               // than in the body of an unauthenticated endpoint
               Effect.tapCause((cause) =>

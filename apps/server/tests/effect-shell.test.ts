@@ -1,4 +1,4 @@
-import { Effect, Exit, Layer, Scope } from 'effect'
+import { Duration, Effect, Exit, Layer, Scope } from 'effect'
 import { NodeHttpServer } from '@effect/platform-node'
 import { HttpRouter } from 'effect/unstable/http'
 import { HttpApiBuilder, HttpApiScalar } from 'effect/unstable/httpapi'
@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { Readiness, readinessLayer } from '@qualy/api-kit/readiness'
 import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
 import { MigrationsBehind } from '@qualy/plugin-database/server'
-import { healthApi, healthHandlers } from '../src/health.ts'
+import { PROBE_DEADLINE, healthApi, healthHandlers } from '../src/health.ts'
 
 // M2: the application shell, assembled the way main.ts assembles it.
 //
@@ -20,6 +20,7 @@ const port = 3197
 // its own, because suites are separate files and files run in parallel
 const barePort = 3208
 const refusingPort = 3212
+const hangingPort = 3246
 const base = `http://127.0.0.1:${port}`
 
 const shell = (url: string, migrations: 'apply' | 'off' = 'apply') =>
@@ -131,6 +132,53 @@ describe('readiness with a probe that fails', () => {
       await Effect.runPromise(Scope.close(scope, Exit.void))
     }
   })
+})
+
+// A probe that never answers, and one that will not stop when told to - the
+// way a database query waits out its own statement before letting go. The
+// endpoint answers within its deadline either way: an orchestrator's probe
+// has a deadline of its own, and a readiness answer after it is no answer.
+describe('readiness with a probe that hangs', () => {
+  const hanging = (stuck: Effect.Effect<void>) =>
+    HttpRouter.serve(HttpApiBuilder.layer(healthApi).pipe(Layer.provide(healthHandlers))).pipe(
+      Layer.provide(NodeHttpServer.layer(createServer, { port: hangingPort })),
+      Layer.provideMerge(
+        Layer.effectDiscard(
+          Effect.gen(function* () {
+            const readiness = yield* Readiness
+            yield* readiness.register({ name: 'stuck', probe: stuck })
+          }),
+        ).pipe(Layer.provideMerge(readinessLayer)),
+      ),
+    )
+
+  const answeredWithin = async (stuck: Effect.Effect<void>) => {
+    const scope = await Effect.runPromise(Scope.make())
+    try {
+      await Effect.runPromise(Layer.buildWithScope(hanging(stuck), scope))
+      const started = Date.now()
+      const response = await probe(`http://127.0.0.1:${hangingPort}/health/ready`)
+      return { status: response.status, elapsed: Date.now() - started }
+    } finally {
+      await Effect.runPromise(Scope.close(scope, Exit.void))
+    }
+  }
+
+  const deadline = Duration.toMillis(PROBE_DEADLINE)
+
+  it('answers 503 at its deadline when a probe never answers', async () => {
+    const { status, elapsed } = await answeredWithin(Effect.never)
+    expect(status).toBe(503)
+    expect(elapsed).toBeLessThan(deadline + 2_000)
+  }, 20_000)
+
+  it('answers at its deadline even when the probe will not stop', async () => {
+    const { status, elapsed } = await answeredWithin(
+      Effect.uninterruptible(Effect.sleep(Duration.millis(deadline + 4_000))),
+    )
+    expect(status).toBe(503)
+    expect(elapsed).toBeLessThan(deadline + 2_000)
+  }, 20_000)
 })
 
 describe.runIf(postgresAvailable)('effect application shell', () => {
