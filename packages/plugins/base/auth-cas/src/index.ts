@@ -190,6 +190,10 @@ export const driver: LoginDriver = {
   // the person identifier the server's answer names, never a stored binding
   resolution: { mode: 'user-field', field: 'businessNo' },
   callback: ({ code }) => urls.authCas.callback({ params: { providerCode: code }, query: {} }),
+  // an entrance told to ask for the password every time - on the way out,
+  // and again when the ticket is validated - signs in only somebody who
+  // just typed it, never a session the server was keeping
+  provesPresence: ({ config }) => settingsOf(config)?.renew === true,
 }
 
 /** the person is sent somewhere; every answer here is one */

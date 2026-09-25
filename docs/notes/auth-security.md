@@ -406,7 +406,8 @@ smtp 后端对着 Mailpit 跑同一套,CI 设 `QUALY_REQUIRE_MAILPIT_TESTS=1`,�
 - **拒绝码**:缺少近期重新认证 `AUTH_REAUTHENTICATION_REQUIRED`;用错方式(有密码却要验证码等)`AUTH_REAUTHENTICATION_METHOD_UNAVAILABLE`;
   验证码错或过期 `AUTH_REAUTHENTICATION_CODE_INVALID`。
 - **「重新登录」算不算**:驱动声明 `provesPresence(provider)`——这个入口的一次登录是否证明「人此刻在键盘前」。本地密码入口恒为真
-  (刚输入过密码);GitHub、OIDC 不声明(对方可能凭自己的会话直接放行)。
+  (刚输入过密码);CAS 只在该入口配置了「每次都要求重新输入密码」(`renew`,跳转与校验两处都带)时为真;GitHub、OIDC 不声明
+  (对方可能凭自己的会话直接放行)。
   `completeLogin` 对声明为真的登录在新会话上直接记下重新认证,所以刚用密码登录的人 10 分钟内改邮箱不会被再问一次。
 - **状态放在哪**:会话上的一条核心自有授予 `session_auth_grants(kind = 'qualy:reauthenticated')`,`expires_at` 即有效期;待填的验证码是
   `kind = 'qualy:reauthentication-code'`(密封存放,10 分钟)。两者都随会话级联删除——退出、被结束、过期即失效。`qualy:` 前缀归核心,

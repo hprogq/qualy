@@ -316,6 +316,19 @@ const latestEvent = () =>
     ),
   )
 
+/** the grants the person's newest session holds */
+const newestGrants = () =>
+  Effect.runPromise(
+    runSql<{ kind: string }>(sql`
+      select g.kind from session_auth_grants g
+       where g.session_id = (select id from sessions where user_id = ${userId}
+                              order by created_at desc, id desc limit 1)
+         and g.expires_at > now()`).pipe(
+      Effect.map((result) => result.rows.map((row) => row.kind)),
+      Effect.provide(probeInfra()),
+    ),
+  )
+
 describe.runIf(postgresAvailable)('signing in through a CAS server', () => {
   it('is offered on the sign-in page as a way out to the server', async () => {
     const response = await fetch(`${base}/auth/login-methods`)
@@ -341,6 +354,8 @@ describe.runIf(postgresAvailable)('signing in through a CAS server', () => {
     expect(cas.validations).toEqual([{ method: 'GET', path: '/cas/p3/serviceValidate', service }])
     const event = await latestEvent()
     expect(event).toMatchObject({ outcome: 'success', user_id: userId })
+    // the server may have let them through on a session of its own
+    expect(await newestGrants()).toEqual([])
 
     const signedIn = back.headers
       .getSetCookie()
@@ -469,6 +484,8 @@ describe.runIf(postgresAvailable)('signing in through a CAS server', () => {
     expect(back.headers.get('location')).toBe('/')
     expect(cas.validations).toEqual([{ method: 'POST', path: '/cas/proxyValidate', service }])
     expect(await latestEvent()).toMatchObject({ outcome: 'success', user_id: userId })
+    // the password was typed just now, which counts as showing it is them
+    expect(await newestGrants()).toEqual(['qualy:reauthenticated'])
 
     // the attribute missing, and no falling back to the name
     const other = await depart('legacy')
