@@ -105,6 +105,8 @@ export default {
   'directory-import/records/retry': '重试',
   'directory-import/record/counts': '新建 {users} 人，已有 {existing} 人，新建 {nodes} 个组织',
   'directory-import/record/standing': '当前仍有 {living} 人，已删除 {deleted} 人',
+  'directory-import/record/hidden-rows': '另有 {count} 行不在你的管理范围内',
+  'directory-import/record/hidden-nodes': '另有 {count} 个组织不在你的管理范围内',
   'directory-import/record/by': '操作人',
   'directory-import/record/at': '时间',
   'directory-import/record/under': '所属组织',

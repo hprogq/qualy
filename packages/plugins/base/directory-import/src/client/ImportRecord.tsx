@@ -245,6 +245,26 @@ export function ImportRecordSheet({
                 >
                   {format(m.recordStanding, found.import.standing)}
                 </span>
+                {/* the counts above are the import's own; what of it this
+                    reader is not shown is said, not left as an empty list */}
+                {found.hidden.rows > 0 && (
+                  <span
+                    {...stylex.props(styles.quiet)}
+                    data-testid="import-hidden-rows"
+                    data-count={found.hidden.rows}
+                  >
+                    {format(m.recordHiddenRows, { count: found.hidden.rows })}
+                  </span>
+                )}
+                {found.hidden.nodes > 0 && (
+                  <span
+                    {...stylex.props(styles.quiet)}
+                    data-testid="import-hidden-nodes"
+                    data-count={found.hidden.nodes}
+                  >
+                    {format(m.recordHiddenNodes, { count: found.hidden.nodes })}
+                  </span>
+                )}
               </div>
               {/* Reversing an import means reading how many of the people
                   it created can sign in and hold roles, and typing a reason

@@ -53,6 +53,7 @@ const open = (stubs: Record<string, unknown> = {}) =>
                 present: true,
               },
             ],
+            hidden: { rows: 0, nodes: 0 },
           }),
         listUserImportRows: () =>
           Effect.succeed({
@@ -103,6 +104,24 @@ describe('the record of an import', () => {
     // a created person is a way to their page; one no longer there is a name
     expect(rows[0]!.querySelector('a')).not.toBeNull()
     expect(rows[1]!.querySelector('a')).toBeNull()
+    // everything reached: nothing to say about what is not shown
+    expect(document.querySelector('[data-testid="import-hidden-rows"]')).toBeNull()
+    expect(document.querySelector('[data-testid="import-hidden-nodes"]')).toBeNull()
+  })
+
+  it('says how much of the import lies outside what the reader manages', async () => {
+    await open({
+      getUserImport: () =>
+        Effect.succeed({
+          import: summary(),
+          events: [],
+          nodes: [],
+          hidden: { rows: 2, nodes: 3 },
+        }),
+      listUserImportRows: () => Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }),
+    })
+    await expect.element(page.getByTestId('import-hidden-rows')).toHaveAttribute('data-count', '2')
+    await expect.element(page.getByTestId('import-hidden-nodes')).toHaveAttribute('data-count', '3')
   })
 
   it('reverses only with a reason, and sends the reason typed', async () => {

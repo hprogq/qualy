@@ -80,6 +80,16 @@ const recordStanding = defineMessage<{ living: number; deleted: number }>()({
   id: 'directory-import/record/standing',
   defaultMessage: '{living} still here, {deleted} deleted',
 })
+const recordHiddenRows = defineMessage<{ count: number }>()({
+  id: 'directory-import/record/hidden-rows',
+  defaultMessage:
+    '{count, plural, one {# more row is} other {# more rows are}} outside the units you manage',
+})
+const recordHiddenNodes = defineMessage<{ count: number }>()({
+  id: 'directory-import/record/hidden-nodes',
+  defaultMessage:
+    '{count, plural, one {# more unit is} other {# more units are}} outside the units you manage',
+})
 const reversalHint = defineMessage<{ count: number; bindings: number; grants: number }>()({
   id: 'directory-import/reverse/hint',
   defaultMessage:
@@ -405,6 +415,8 @@ const i18n = definePluginMessages({
     retry: { id: 'directory-import/records/retry', defaultMessage: 'Try again' },
     recordCounts,
     recordStanding,
+    recordHiddenRows,
+    recordHiddenNodes,
     recordBy: { id: 'directory-import/record/by', defaultMessage: 'By' },
     recordAt: { id: 'directory-import/record/at', defaultMessage: 'On' },
     recordUnder: { id: 'directory-import/record/under', defaultMessage: 'Under' },
