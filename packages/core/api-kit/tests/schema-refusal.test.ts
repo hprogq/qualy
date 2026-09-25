@@ -49,11 +49,13 @@ const handlers = HttpApiBuilder.group(api, 'probe', (h) =>
     .handle('drift', () => Effect.succeed({ status: 'archived' } as unknown as { status: 'open' })),
 )
 
-const serving = <A>(use: () => Promise<A>) =>
+// A port per server: fetch keeps the previous server's connection pooled,
+// and a request sent down it once that server has closed is reset.
+const serving = <A>(use: () => Promise<A>, at: number = port) =>
   Effect.runPromise(Scope.make()).then(async (scope) => {
     const layer = HttpRouter.serve(
       Layer.mergeAll(HttpApiBuilder.layer(api).pipe(Layer.provide(handlers)), schemaRefusals),
-    ).pipe(Layer.provide(NodeHttpServer.layer(createServer, { port })))
+    ).pipe(Layer.provide(NodeHttpServer.layer(createServer, { port: at })))
     await Effect.runPromise(Layer.buildWithScope(layer as never, scope) as never)
     try {
       return await use()
@@ -104,10 +106,11 @@ describe('a request its own schema will not read', () => {
     // encode, and it was answered as the caller's malformed request: a 400
     // telling the browser its input was invalid on a plain GET, logged at
     // Debug where production never looks.
+    const driftPort = port + 2
     const drift = await serving(async () => {
-      const response = await fetch(`${base}/probe/drift`)
+      const response = await fetch(`http://127.0.0.1:${driftPort}${QUALY_API_PREFIX}/probe/drift`)
       return { status: response.status, body: await response.text() }
-    })
+    }, driftPort)
     expect(drift.status).toBe(500)
     expect(drift.body).not.toContain('BAD_REQUEST')
   }, 30_000)
