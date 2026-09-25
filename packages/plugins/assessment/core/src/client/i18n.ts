@@ -1778,6 +1778,10 @@ const i18n = definePluginMessages({
       id: 'assessment/record/needs-result',
       defaultMessage: 'The determination is not filled in',
     },
+    recordNeedsCorrection: {
+      id: 'assessment/record/needs-correction',
+      defaultMessage: 'A determination value needs correcting',
+    },
     recordNeedsFormula: {
       id: 'assessment/record/needs-formula',
       defaultMessage: 'The scoring rule does not accept this determination',

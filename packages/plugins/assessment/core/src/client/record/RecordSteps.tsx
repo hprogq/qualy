@@ -17,6 +17,7 @@ import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { EvidenceForm, type EvidencePayload } from '../entry/EvidenceForm.tsx'
 import { fieldsOf, type ItemDto } from '../entry/model.ts'
+import { recognitionProblemText } from '../review/recognition.ts'
 import { RecordTargets, type RecordTarget } from './RecordTargets.tsx'
 import {
   WizardBody,
@@ -291,6 +292,17 @@ export function RecordSteps({
     settled !== null && !scored.isPending && !scored.isError && scored.data?.refusal !== null
       ? (scored.data?.refusal ?? null)
       : null
+  // What the judge said about the values themselves - a date outside the
+  // material window, a value the contract no longer takes - beside the field
+  // it is about. The act would be refused for it on the last press.
+  const issues =
+    settled !== null && !scored.isPending && !scored.isError ? (scored.data?.issues ?? []) : []
+  const problems = new Map<string, string>()
+  for (const issue of issues) {
+    if (problems.has(issue.recognitionId)) continue
+    const schema = fields.find((field) => field.id === issue.recognitionId)?.schema
+    problems.set(issue.recognitionId, recognitionProblemText(format, schema, issue.reason))
+  }
 
   // Named in the order the sheet is filled, so the state says the first
   // thing to go and do rather than all of them at once.
@@ -303,11 +315,13 @@ export function RecordSteps({
           ? m.recordNeedsMaterial
           : !recognitionReady
             ? m.recordNeedsResult
-            : basis.trim() === ''
-              ? m.recordNeedsBasis
-              : refused !== null
-                ? m.recordNeedsFormula
-                : null
+            : issues.length > 0
+              ? m.recordNeedsCorrection
+              : basis.trim() === ''
+                ? m.recordNeedsBasis
+                : refused !== null
+                  ? m.recordNeedsFormula
+                  : null
 
   const check = useMutation({
     mutationFn: (excluded: readonly string[]) =>
@@ -516,6 +530,7 @@ export function RecordSteps({
                   setRecognitionDrafts((current) => ({ ...current, [id]: draft }))
                 }}
                 locale={locale}
+                problems={problems}
                 scope="record"
               />
             </div>
@@ -530,9 +545,14 @@ export function RecordSteps({
                       ? { kind: 'unavailable' }
                       : refused !== null
                         ? { kind: 'refused', reason: refused }
-                        : scored.data?.amount !== null && scored.data?.amount !== undefined
-                          ? { kind: 'amount', amount: scored.data.amount }
-                          : { kind: 'unavailable' }
+                        : issues.length > 0
+                          ? {
+                              kind: 'issues',
+                              words: problems.get(issues[0]!.recognitionId) ?? '',
+                            }
+                          : scored.data?.amount !== null && scored.data?.amount !== undefined
+                            ? { kind: 'amount', amount: scored.data.amount }
+                            : { kind: 'unavailable' }
               }
             />
           </WizardSection>
@@ -584,28 +604,32 @@ type ScoreState =
   | { readonly kind: 'checking' }
   | { readonly kind: 'unavailable' }
   | { readonly kind: 'refused'; readonly reason: string }
+  /** a value the judge would not take, said in the field's own words */
+  | { readonly kind: 'issues'; readonly words: string }
   | { readonly kind: 'amount'; readonly amount: string }
 
 /**
  * What the determination would score, under the question's own formula.
  *
  * One card of one height in every state, so the sheet does not jump while the
- * values are typed; only a refusal changes ground, because it is the one
- * state that also stops the act.
+ * values are typed; only a refusal or a value the judge will not take
+ * changes ground, because those are the states that also stop the act.
  */
 function RecordScore({ state }: { state: ScoreState }) {
   const { format } = useI18n()
-  const bad = state.kind === 'refused'
+  const bad = state.kind === 'refused' || state.kind === 'issues'
   const words =
     state.kind === 'amount'
       ? format(m.reviewPreviewStands)
       : state.kind === 'refused'
         ? format(m.reviewPreviewRefused, { reason: state.reason })
-        : state.kind === 'checking'
-          ? format(m.reviewPreviewChecking)
-          : state.kind === 'unavailable'
-            ? format(m.reviewPreviewUnavailable)
-            : format(m.reviewPreviewIncomplete)
+        : state.kind === 'issues'
+          ? state.words
+          : state.kind === 'checking'
+            ? format(m.reviewPreviewChecking)
+            : state.kind === 'unavailable'
+              ? format(m.reviewPreviewUnavailable)
+              : format(m.reviewPreviewIncomplete)
   return (
     <div
       {...stylex.props(styles.score, bad && styles.scoreBad)}

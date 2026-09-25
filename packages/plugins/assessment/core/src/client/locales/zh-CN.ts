@@ -372,6 +372,7 @@ export default {
   'assessment/record/needs-material': '认定材料未填完',
   'assessment/record/needs-upload': '文件仍在上传',
   'assessment/record/needs-result': '认定结果未填完',
+  'assessment/record/needs-correction': '认定结果需要修改',
   'assessment/record/needs-formula': '计分公式不接受当前认定',
   'assessment/record/needs-basis': '未填写认定理由',
   'assessment/record/ready-to-check': '填写完成，可以核对名单',

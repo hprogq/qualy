@@ -371,6 +371,36 @@ describe('recording with a determination', () => {
     expect(Object.getOwnPropertyDescriptor(values, '__proto__')?.value).toBe('national')
   })
 
+  // A value the judge will not take - a date outside the material window, an
+  // option the contract no longer has - is said beside the determination
+  // while it can still be changed, and holds the forward key: the act would
+  // only be refused for it on the last press, for everybody at once.
+  it('holds the way forward while the judge refuses a determination value', async () => {
+    const created = vi.fn(() => Effect.succeed({}))
+    await open({
+      previewAdministrativeRecord: created,
+      previewRecordDetermination: () =>
+        Effect.succeed({
+          issues: [{ recognitionId: 'rec-level', reason: 'out-of-material-range' }],
+          amount: null,
+          refusal: null,
+        }),
+    })
+    await waitForItems()
+    await chooseItem('竞赛获奖登记')
+    const { userEvent } = await import('vitest/browser')
+    await choosePerson('周予安')
+    await vi.waitFor(() => {
+      if (document.querySelector('[data-testid="record-recognition"]') === null)
+        throw new Error('no recognition section yet')
+    })
+    await recognitionChoice('rec-level').pick('国家级')
+    await userEvent.fill(page.getByLabelText('认定理由').element(), '校运会秩序册第 3 页')
+    await expect.element(page.getByTestId('record-score')).toHaveAttribute('data-preview', 'issues')
+    await expect.element(page.getByTestId('record-step-next')).toBeDisabled()
+    expect(created).not.toHaveBeenCalled()
+  })
+
   it('keeps the one finding while the people it is about change', async () => {
     // One finding settled on many: adding somebody to the list does not
     // make the material somebody else's, so the sheet stands. What does not
