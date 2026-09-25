@@ -2330,6 +2330,41 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     ])
   })
 
+  // The options for a selection ask the same questions the write does, one
+  // pair at a time, and asked them for any selection at all - thousands of
+  // authorization reads for a selection the write would then refuse.
+  it('refuses to price a staffing selection larger than the write takes', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('staff-options-too-many')
+        const assessment = yield* Assessment
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Crowded options',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.class1], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        const many = (count: number) => Array.from({ length: count }, () => randomUUID())
+        return yield* Effect.exit(
+          assessment.staffOptions(
+            f.tenant,
+            batch.id,
+            { userIds: many(50), orgNodeIds: many(50) },
+            f.principal,
+          ),
+        )
+      }),
+    )
+    const refused = ok(exit)
+    expect(reasonsOf(refused).map((entry) => (entry.error as { reason?: string }).reason)).toEqual([
+      'too-many',
+    ])
+  })
+
   it('offers a role only where it holds for every person and unit chosen', async () => {
     const exit = await run(
       db.url,

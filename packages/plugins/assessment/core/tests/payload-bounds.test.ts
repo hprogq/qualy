@@ -108,7 +108,21 @@ describe('a batch time zone', () => {
   })
 })
 
-// keeps the helper honest: an id this file builds is one the contract takes
-it('builds ids the contract accepts', () => {
-  expect(accepts(queryOf('staffOptions'), { userIds: id(1) })).toBe(true)
+// Every person-by-unit pair of a staffing selection is its own authorization
+// question, and the list of people had no bound at all: one request could
+// ask thousands of them.
+describe('the roles a staffing selection could be offered', () => {
+  const options = queryOf('staffOptions')
+  const ids = (count: number) => Array.from({ length: count }, (_, index) => id(index))
+
+  it('takes one id, or as many as the write takes', () => {
+    // a query parameter named once arrives as a single value
+    expect(accepts(options, { userIds: id(1), orgNodeIds: id(2) })).toBe(true)
+    expect(accepts(options, { userIds: ids(200), orgNodeIds: ids(200) })).toBe(true)
+  })
+
+  it('refuses more than that', () => {
+    expect(accepts(options, { userIds: ids(201) })).toBe(false)
+    expect(accepts(options, { orgNodeIds: ids(201) })).toBe(false)
+  })
 })

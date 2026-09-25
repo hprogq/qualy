@@ -989,7 +989,7 @@ export class Assessment extends Context.Service<
             | null
         }[]
       },
-      BatchNotFound | AccessDenied
+      BatchNotFound | AccessInvalid | AccessDenied
     >
     /**
      * Somebody brought in for this round: an ordinary role assignment confined
@@ -3611,6 +3611,12 @@ export const make = Effect.fn('Assessment.make')(function* () {
       )
       const userIds = [...new Set(listed(request.userIds ?? []))]
       const orgNodeIds = [...new Set(listed(request.orgNodeIds ?? []))]
+      // every pair below is its own authorization question, and the write
+      // refuses a selection this large anyway: answering it was work for
+      // nothing, a few database reads per pair
+      if (userIds.length * orgNodeIds.length > MAX_STAFF_PAIRS) {
+        return yield* new AccessInvalid({ reason: 'too-many' })
+      }
       if (userIds.length === 0 || orgNodeIds.length === 0) return { nodes, roles: [] }
       // every unit has to be one of this round's own, or bringing somebody in
       // would be a way of handing out authority anywhere in the tenant

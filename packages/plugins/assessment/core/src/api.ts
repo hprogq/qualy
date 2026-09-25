@@ -309,6 +309,9 @@ export const idList = Schema.Union([Schema.Array(uuidInput), uuidInput])
  */
 const idsUpTo = (most: number) => Schema.Array(uuidInput).check(Schema.isMaxLength(most))
 
+/** a repeated query parameter, with the most one request may name */
+const idListUpTo = (most: number) => Schema.Union([idsUpTo(most), uuidInput])
+
 /**
  * The most phases one plan may hold.
  *
@@ -2571,8 +2574,9 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       // pair of it at once: a list answering for one person in one unit
       // promises roles the write then refuses, and refuses all of it
       query: Schema.Struct({
-        userIds: Schema.optional(idList),
-        orgNodeIds: Schema.optional(idList),
+        // as many as the write takes; each pair is asked about on its own
+        userIds: Schema.optional(idListUpTo(200)),
+        orgNodeIds: Schema.optional(idListUpTo(200)),
       }),
       success: Schema.Struct({
         nodes: Schema.Array(
@@ -2602,7 +2606,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
           }),
         ),
       }),
-      error: [BatchNotFound, AccessDenied],
+      error: [BatchNotFound, AccessInvalid, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(
