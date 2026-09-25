@@ -10,6 +10,7 @@ import {
   runSql,
 } from '@qualy/plugin-database/testkit'
 import { assembledLayer } from '@qualy/api-kit/assembled'
+import { encodeQueryCursor } from '@qualy/api-kit'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
@@ -2148,6 +2149,32 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     // rows have to arrive in that order or the boundary reads as rows going
     // missing
     expect(names).toEqual([...names].sort())
+  })
+
+  it('answers a page past the last person on a round with nobody, not a fault', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('access-past-end')
+        const assessment = yield* Assessment
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Past the end',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.gradeA], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        // a cursor after the last person: what a page that ended on
+        // somebody who has since gone resumes from
+        const everyone = yield* assessment.listAccess(f.tenant, batch.id, {}, f.principal)
+        const last = everyone.staff.at(-1)!
+        const cursor = encodeQueryCursor(`access:${batch.id}`, [last.displayName, last.userId])
+        return yield* assessment.listAccess(f.tenant, batch.id, { cursor }, f.principal)
+      }),
+    )
+    expect(ok(exit)).toEqual({ staff: [], nextCursor: null })
   })
 
   it('says a person is already staffed rather than refusing the administrator', async () => {

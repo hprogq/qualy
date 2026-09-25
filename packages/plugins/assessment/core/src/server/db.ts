@@ -1088,6 +1088,12 @@ export const accessSubjectPage = (
     )
 
 export const accessSources = (tenantId: string, batchId: string, subjectIds?: readonly string[]) =>
+  // a page with nobody on it asks about nobody, and `in ()` is not SQL
+  subjectIds !== undefined && subjectIds.length === 0
+    ? Effect.succeed<AccessSourceRow[]>([])
+    : accessSourcesOf(tenantId, batchId, subjectIds)
+
+const accessSourcesOf = (tenantId: string, batchId: string, subjectIds?: readonly string[]) =>
   db
     .query((k) =>
       k
