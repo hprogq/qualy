@@ -12,12 +12,15 @@ pnpm demo:reset-db                       # 只重建 demo 容器里的 qualy_dem
 QUALY_DEMO_DATABASE_URL=postgres://qualy:qualy@localhost:5434/qualy_demo \
 QUALY_DEMO_ADMIN_PASSWORD='<系统管理员密码，至少 15 位>' \
 QUALY_DEMO_PERSONA_PASSWORD='<四个演示身份共用的密码，至少 15 位>' \
-  pnpm demo:seed                         # 约 80–110 分钟；--stage=entry|review|appeal，--migration-state=before
+  pnpm demo:seed                         # 约 80–120 分钟；--stage=entry|review|appeal，--migration-state=before
 QUALY_DEMO_DATABASE_URL=postgres://qualy:qualy@localhost:5434/qualy_demo pnpm demo:check
 QUALY_DEMO_DATABASE_URL=postgres://qualy:qualy@localhost:5434/qualy_demo pnpm demo:snapshot
 ```
 
-`demo:check` 清点下文每个演示身份应当看到的情况，任何一项为 0 就以非零退出，这时不要打快照。
+`demo:check` 清点下文每个演示身份应当看到的情况，任何一项为 0 就以非零退出，这时不要打快照。生成时带了
+`--stage` 或 `--migration-state` 的，检查时带上同样的参数：它据此不要求那次生成本来就不会有的申诉、复查与流程调整。
+「辅导员能从名单打开参评人」一项等待裁决（docs/assessment-design.md §30 第 12 条），只打印、不判失败。
+它还核对库里没有只要文字的补件、没有不带文件的答复。
 得到 `data/demo-baseline/qualy-demo.dump` 与 `storage.tar.gz`，上传到服务器的 `/opt/qualy/demo-baseline/`。
 
 - 两个密码都只来自环境变量，不进仓库，也不写进任何文档。2026-09-25 之前生成的基线里，四个演示身份的密码是仓库里公开的值，
@@ -87,11 +90,11 @@ deploy/demo/restore.sh /opt/qualy/demo-baseline
 
 四个身份共用生成基线时给的 `QUALY_DEMO_PERSONA_PASSWORD`：
 
-| 账号                               | 能看到什么                                                                                                                                                                                 |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| student@demo.qualy.example         | 六个学期里的补充材料、驳回重交、多轮审核、合议、申诉改判与维持、复查、重新认定调高与撤销、行政扣分撤回、题目作废、流程调整；推免批次里通过、驳回后申诉中、待补材料、班级合议中、待审与草稿 |
-| class-lead@demo.qualy.example      | 本班历次审核记录；推免批次里同班考核表的班级合议：未表态、另一席已表态、补签字后回来、申诉进入评议                                                                                         |
-| counsellor@demo.qualy.example      | 推免材料审核的待办、补件往返、驳回、上提、发起复查，以及单独录入与撤回重录的行政认定                                                                                                       |
-| assessment-lead@demo.qualy.example | 批次与阶段管理、题目与计分公式、名单对账、无人可审的告警；推免工作组待审的申诉、多轮条目、复查与合议分歧，一条自己发出尚未答复的补件；以「综测督查」身份重新认定                           |
+| 账号                               | 能看到什么                                                                                                                                                                                                                                                   |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| student@demo.qualy.example         | 六个学期里的补充材料（附件可打开）、驳回重交、多轮审核、合议、申诉改判与维持、申诉与复查中的补件、复查、重新认定调高与撤销、行政扣分撤回、题目作废、流程调整；推免批次里通过、被重新认定、补件已答复与待答复、驳回后申诉中（其中一条在班级合议）、待审与草稿 |
+| class-lead@demo.qualy.example      | 本班历次审核记录；推免批次里本班考核表：未审的、补上签字页后回来的、申诉合议中只差你一票的、申诉中补件后重新合议的，以及自己驳回与通过的                                                                                                                     |
+| counsellor@demo.qualy.example      | 推免材料审核的待办、补件往返、驳回、上提、发起复查、考核表申诉的复核意见，以及单独录入与撤回重录的行政认定                                                                                                                                                   |
+| assessment-lead@demo.qualy.example | 批次与阶段管理、题目与计分公式、名单对账、无人可审的告警；推免工作组待审的申诉、多轮条目、复查与班级合议分歧，一条自己发出尚未答复的补件；以「综测督查」身份重新认定                                                                                         |
 
 系统管理员的密码只在生成基线时由环境变量给出，同样不公开。
