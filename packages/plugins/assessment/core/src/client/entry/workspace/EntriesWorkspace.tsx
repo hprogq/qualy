@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useLocation, useNavigate, useNavigationType } from 'react-router'
 import * as stylex from '@stylexjs/stylex'
 import {
   ChevronDownIcon,
@@ -298,8 +299,10 @@ export interface WorkspaceProps {
   /**
    * Open a row, or '' for the structure itself. `push` only where the reader
    * went somewhere the back key should bring them out of: from a phone's
-   * structure into one question. Everything else - a neighbour, the way
-   * back up, any move at a desk - stands in place of where they were.
+   * structure into one question. Everything else - a neighbour, any move at
+   * a desk - stands in place of where they were. The way back up from a
+   * question the structure opened goes back through the history instead,
+   * and does not come here.
    */
   onOpen: (id: string, history: 'push' | 'replace') => void
   /** the owner's filing gates, per question */
@@ -457,6 +460,33 @@ function Workspace({
     }
   }, [selectedId, phone, addressed])
 
+  // The history a phone has walked since it went from its structure into a
+  // question, the structure's own entry first, and where in it the reader
+  // is: an entry replaced as they step between neighbours, one added by
+  // whatever the page opens over the question (a claim's drawer), a place
+  // moved when back or forward is pressed. The way back up walks back over
+  // it, so the structure is not left in the history a second time for the
+  // back key to land on. Null where the question was reached some other
+  // way - a link, a reload - and there is nothing behind it to walk back to.
+  const location = useLocation()
+  const navigation = useNavigationType()
+  const navigate = useNavigate()
+  const trail = useRef<{ keys: string[]; at: number } | null>(null)
+  useEffect(() => {
+    const walked = trail.current
+    if (walked === null || walked.keys[walked.at] === location.key) return
+    if (navigation === 'PUSH') {
+      walked.keys = [...walked.keys.slice(0, walked.at + 1), location.key]
+      walked.at += 1
+    } else if (navigation === 'REPLACE') {
+      walked.keys[walked.at] = location.key
+    } else {
+      const at = walked.keys.indexOf(location.key)
+      if (at < 0) trail.current = null
+      else walked.at = at
+    }
+  }, [location.key, navigation])
+
   /** where the phone's structure screen is scrolled to right now */
   const structureScroll = (): number => {
     const node = rootNode.current
@@ -482,9 +512,19 @@ function Workspace({
   useClaimScreenFoot(footed)
 
   // Moving within a layer stands in place of where the reader was: stepping
-  // to a neighbour, a crumb, the way back up to the structure. Ten questions
-  // looked at are not ten presses of the back key.
+  // to a neighbour, a crumb. Ten questions looked at are not ten presses of
+  // the back key.
   const go = (id: string) => onOpen(id, 'replace')
+
+  /** from a phone's question back up to the structure it was entered from */
+  const upToStructure = () => {
+    const walked = trail.current
+    if (walked !== null && walked.at > 0 && walked.keys[walked.at] === location.key) {
+      void navigate(-walked.at)
+    } else {
+      go('')
+    }
+  }
 
   const rail = (layout: 'column' | 'screen') => (
     <StructureRail
@@ -503,6 +543,7 @@ function Workspace({
         // one move the back key should undo
         if (phone) {
           structureAt.current = structureScroll()
+          trail.current = { keys: [location.key], at: 0 }
           onOpen(id, 'push')
         } else {
           go(id)
@@ -620,7 +661,7 @@ function Workspace({
         {onPane && (
           <>
             <div {...stylex.props(styles.phoneBar)}>
-              <button type="button" onClick={() => go('')} {...stylex.props(styles.back)}>
+              <button type="button" onClick={upToStructure} {...stylex.props(styles.back)}>
                 <ChevronLeftIcon aria-hidden {...stylex.props(styles.backIcon)} />
                 {format(m.paperStructure)}
                 {outline.items.filter(isTodo).length > 0 && viewer === 'owner' && (

@@ -138,6 +138,29 @@ function BackKey() {
 const pressBack = () =>
   (document.querySelector('[data-testid="history-back"]') as HTMLButtonElement).click()
 
+/**
+ * The page the reader came from, one press of the back key behind the
+ * workspace: with a way to its structure, and a link straight to question 2.
+ */
+function Elsewhere() {
+  const navigate = useNavigate()
+  const entries = `/assessment/batches/${BATCH_ID}/my-entries`
+  return (
+    <>
+      <button type="button" data-testid="to-entries" onClick={() => void navigate(entries)}>
+        entries
+      </button>
+      <button
+        type="button"
+        data-testid="to-question"
+        onClick={() => void navigate(`${entries}?open=${itemId(2)}`)}
+      >
+        question
+      </button>
+    </>
+  )
+}
+
 const workspace = ({
   route,
   items = [
@@ -252,6 +275,7 @@ const workspace = ({
           </div>
         ),
       },
+      { path: '/elsewhere', element: <Elsewhere /> },
     ] as never,
   })
 
@@ -376,15 +400,51 @@ describe('finding a question', () => {
     pressBack()
     await expect.poll(() => addressNow()).not.toContain('open=')
     await expect.poll(shape).toBe('structure')
+  })
 
-    // and the way back up does not leave the question behind it either
+  // The way back up from a question the structure opened is the back key's
+  // own step: it leaves no second structure behind it, so one more press
+  // leaves the page - whatever was looked at or opened on the way.
+  it('goes back up to a phone’s structure one press from leaving the page', async () => {
+    await page.viewport(390, 844)
+    await workspace({ route: '/elsewhere', entries: [claim(1, itemId(3), 'in_review')] })
+    await page.getByTestId('to-entries').click()
+    await expect.poll(shape).toBe('structure')
     await page.getByRole('button', { name: /品德题目 2/ }).click()
     await expect.poll(() => addressNow()).toContain(`open=${itemId(2)}`)
-    await page.getByRole('button', { name: /评分结构/ }).click()
-    await expect.poll(() => addressNow()).not.toContain('open=')
+    await page.getByRole('button', { name: '下一项' }).click()
+    await expect.poll(() => addressNow()).toContain(`open=${itemId(3)}`)
+    // a claim's drawer opened and shut over the question on the way, once by
+    // its own key and once by the back key
+    await expect.poll(() => rows().length).toBe(1)
+    await userEvent.click(rows()[0]!)
+    await expect.poll(() => addressNow()).toContain('detail=')
+    await page.getByRole('button', { name: '关闭' }).click()
+    await expect.poll(() => addressNow()).not.toContain('detail=')
+    await userEvent.click(rows()[0]!)
+    await expect.poll(() => addressNow()).toContain('detail=')
     pressBack()
-    await expect.poll(() => addressNow()).not.toContain('open=')
+    await expect.poll(() => addressNow()).not.toContain('detail=')
+
+    await page.getByRole('button', { name: /评分结构/ }).click()
     await expect.poll(shape).toBe('structure')
+    expect(addressNow()).toBe(base)
+    pressBack()
+    await expect.poll(() => addressNow()).toBe('/elsewhere')
+  })
+
+  // Come in by a link, what lies behind the question is some other page, not
+  // its structure: the way up stands in the question's place instead.
+  it('goes up to the structure in place from a question a link opened', async () => {
+    await page.viewport(390, 844)
+    await workspace({ route: '/elsewhere' })
+    await page.getByTestId('to-question').click()
+    await expect.poll(shape).toBe('item')
+    await page.getByRole('button', { name: /评分结构/ }).click()
+    await expect.poll(shape).toBe('structure')
+    expect(addressNow()).toBe(base)
+    pressBack()
+    await expect.poll(() => addressNow()).toBe('/elsewhere')
   })
 
   // A long structure keeps its place: back out of a question, the reader is
