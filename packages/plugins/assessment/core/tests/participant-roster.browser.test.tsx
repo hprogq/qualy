@@ -483,6 +483,51 @@ describe('the roster on the results page', () => {
     expect(single).toHaveBeenCalledTimes(1)
   })
 
+  // Every connection opens with a sync, which means "read everything again".
+  // The first one finds totals the page has only just asked for; a later one
+  // follows a reconnect, and whatever moved while the stream was down moved
+  // the totals as well as the rows.
+  it('reads the totals again after a reconnect, but not when the page first connects', async () => {
+    let reconnect = () => {}
+    const second = new Promise<void>((resolve) => {
+      reconnect = resolve
+    })
+    const watchBatch = () =>
+      Effect.succeed(
+        Stream.concat(
+          Stream.make({ kind: 'sync' as const }),
+          Stream.concat(
+            Stream.fromEffect(
+              Effect.promise(() => second).pipe(Effect.as({ kind: 'sync' as const })),
+            ),
+            Stream.never,
+          ),
+        ),
+      )
+    const rows = vi.fn((request: Request) => pageOf(request))
+    const pages = vi.fn((request: Request) =>
+      Effect.succeed({
+        scores: idsOf(request).map((participantId) => ({
+          participantId,
+          state: 'scored' as const,
+          total: '80.00',
+          reason: null,
+        })),
+      }),
+    )
+    await open({ watchBatch, listParticipantAccounts: rows, listParticipantScores: pages })
+    await expect
+      .element(page.getByTestId('participant-score').first())
+      .toHaveAttribute('data-score', '80.00')
+    // the first sync, once its burst has settled: the rows are read again,
+    // the totals are not
+    await expect.poll(() => rows.mock.calls.length, { timeout: 5_000 }).toBeGreaterThan(1)
+    expect(pages).toHaveBeenCalledTimes(1)
+
+    reconnect()
+    await expect.poll(() => pages.mock.calls.length, { timeout: 5_000 }).toBe(2)
+  })
+
   it('says what each person’s claims are waiting on', async () => {
     await open({
       listParticipantAccounts: (request: Request) =>

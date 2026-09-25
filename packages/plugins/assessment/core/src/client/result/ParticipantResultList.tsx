@@ -108,8 +108,13 @@ const LIVE_SETTLE = 1_000
 /** how long after a burst began the page reads again, whether or not it has ended */
 const LIVE_MAX_WAIT = 5_000
 
-/** the wake-ups that can move somebody's total, rather than only what they wait on */
+/**
+ * The wake-ups that can move somebody's total, rather than only what they
+ * wait on. A `sync` opens every connection and means "read everything
+ * again": after a reconnect, whatever moved while the stream was down.
+ */
 const MOVES_TOTALS: ReadonlySet<BatchLiveEvent['kind']> = new Set([
+  'sync',
   'entries-changed',
   'review-instance-changed',
   'item-changed',
@@ -323,18 +328,19 @@ export function ParticipantResultList({
   // re-read of the totals is a page of accounts. Only this page's own
   // question is asked again; a person somebody asked about alone is not
   // re-asked with it, and their answer gives way to the page's newer one.
+  // Each wake-up is gathered as whether it may move a total.
   const latestScores = useRef(pageScores.queryKey)
   latestScores.current = pageScores.queryKey
   const live = useMemo(
     () =>
-      settler<BatchLiveEvent['kind']>({
+      settler<boolean>({
         settle: LIVE_SETTLE,
         maxWait: LIVE_MAX_WAIT,
-        fire: (kinds) => {
+        fire: (moves) => {
           void queryClient.invalidateQueries({
             queryKey: query.assessment.listParticipantAccounts.key(),
           })
-          if (kinds.some((kind) => MOVES_TOTALS.has(kind))) {
+          if (moves.some(Boolean)) {
             void queryClient.invalidateQueries({ queryKey: latestScores.current, exact: true })
           }
         },
@@ -342,9 +348,18 @@ export function ParticipantResultList({
     [queryClient, query],
   )
   useEffect(() => () => live.cancel(), [live])
+  // The first sync after the page opens finds totals the page has only just
+  // asked for, and asking again would work out the whole page twice; every
+  // later one follows a reconnect, and reads them again.
+  const connected = useRef(false)
   useBatchLive(batchId, (kind) => {
     if (kind === 'heartbeat' || kind === 'plan-changed' || kind === 'review-inbox-changed') return
-    live.wake(kind)
+    if (kind === 'sync' && !connected.current) {
+      connected.current = true
+      live.wake(false)
+      return
+    }
+    live.wake(MOVES_TOTALS.has(kind))
   })
 
   // The units the people this list can show were admitted from: the tree the
