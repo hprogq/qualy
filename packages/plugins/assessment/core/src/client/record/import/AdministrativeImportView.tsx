@@ -22,6 +22,7 @@ import { assessmentApi, assessmentUrls } from '../../api.ts'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { administrativeItemsOf, fieldsOf, sizeLabel, type ItemDto } from '../../entry/model.ts'
 import { uploadFile } from '../../entry/upload.ts'
+import { sayEntryFailure } from '../../entry/refusals.ts'
 import { ItemPicker } from '../ItemPicker.tsx'
 import {
   NoAdministrativeItems,
@@ -282,7 +283,7 @@ export function AdministrativeImportView({
         file,
       ),
     onSuccess: (file) => setUploaded(file),
-    onError: (error) => toast.error(formatError(error)),
+    onError: (error) => toast.error(sayEntryFailure(error, { format, formatError })),
   })
 
   const check = useMutation({
@@ -339,7 +340,7 @@ export function AdministrativeImportView({
       })
       onImported(done.importId)
     },
-    onError: (error) => toast.error(formatError(error)),
+    onError: (error) => toast.error(sayEntryFailure(error, { format, formatError })),
   })
 
   const choose = (next: string) => {
@@ -357,7 +358,10 @@ export function AdministrativeImportView({
     if (error._tag === 'ASSESSMENT_ADMINISTRATIVE_IMPORT_INVALID' && error.issues !== undefined) {
       return { issues: error.issues, sentence: null }
     }
-    return { issues: [] as readonly ImportIssue[], sentence: formatError(check.error) }
+    return {
+      issues: [] as readonly ImportIssue[],
+      sentence: sayEntryFailure(check.error, { format, formatError }),
+    }
   })()
   const stale = preview !== null && checkedBasis !== basis
   const flagged = (preview?.rows ?? []).filter((row) => row.issues.length > 0)

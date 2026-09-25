@@ -48,6 +48,25 @@ const SENTENCES: Record<string, MessageDescriptor> = {
   'not-requester': m.refuseNotRequester,
   'awaiting-supplement': m.refuseAwaitingSupplement,
   'review-not-open': m.refuseReviewNotOpen,
+  'item-not-fileable': m.refuseNotFileable,
+  'entry-not-returnable': m.refuseNotReturnable,
+  'reason-required': m.refuseReasonRequired,
+  'item-not-administrative': m.refuseNotAdministrative,
+  'attachment-required': m.refuseAttachmentRequired,
+  'chain-unreadable': m.refuseChainUnreadable,
+  'chain-ends-here': m.refuseChainEndsHere,
+  'decision-not-available': m.refuseDecisionNotAvailable,
+  // what storage said about an upload, passed through as the refusal's reason
+  'file-too-large': m.refuseFileTooLarge,
+  'owner-quota-exceeded': m.refuseStorageFull,
+  'tenant-quota-exceeded': m.refuseStorageFull,
+  'too-many-reservations': m.refuseUploadBusy,
+  'rate-limited': m.refuseUploadBusy,
+  'being-cleaned-up': m.refuseUploadBusy,
+  'not-uploaded': m.refuseUploadAgain,
+  expired: m.refuseUploadAgain,
+  failed: m.refuseUploadAgain,
+  oversized: m.refuseUploadAgain,
 }
 
 /** the sentence for a bare reason code, for a blocked act's tooltip */
@@ -59,4 +78,19 @@ export const entryRefusalMessage = (error: unknown): MessageDescriptor | null =>
   const refusal = error as { _tag?: string; reason?: string }
   if (refusal?._tag !== 'ASSESSMENT_ENTRY_ACTION_REFUSED') return null
   return SENTENCES[refusal.reason ?? ''] ?? m.refuseOther
+}
+
+/**
+ * What to tell a person about an act that failed: a refusal in its own
+ * words, anything else the way every error is said.
+ */
+export const sayEntryFailure = (
+  error: unknown,
+  words: {
+    format: (descriptor: MessageDescriptor) => string
+    formatError: (error: unknown) => string
+  },
+): string => {
+  const refusal = entryRefusalMessage(error)
+  return refusal === null ? words.formatError(error) : words.format(refusal)
 }

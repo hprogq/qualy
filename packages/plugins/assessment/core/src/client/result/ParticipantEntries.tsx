@@ -12,6 +12,7 @@ import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { EntryStanding } from '../entry/EntryStanding.tsx'
 import { ManagedEntrySheet } from '../entry/ManagedEntrySheet.tsx'
+import { sayEntryFailure } from '../entry/refusals.ts'
 import { sourceLabelOf } from '../entry/source.ts'
 import { useLingering } from '@qualy/ui/use-lingering'
 import type { ItemDto } from '../entry/model.ts'
@@ -183,7 +184,7 @@ export function ParticipantEntries({
         }),
       })
     },
-    onError: (error) => toast.error(formatError(error)),
+    onError: (error) => toast.error(sayEntryFailure(error, { format, formatError })),
   })
 
   const open = rows.find((one) => one.entry.id === entryId) ?? null

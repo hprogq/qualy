@@ -1043,6 +1043,57 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/refuse-out-of-scope',
       defaultMessage: 'The current stage does not cover the selected item or participant.',
     },
+    refuseNotFileable: {
+      id: 'assessment/entry/refuse-not-fileable',
+      defaultMessage: 'The item is scored automatically and takes no entries.',
+    },
+    refuseNotReturnable: {
+      id: 'assessment/entry/refuse-not-returnable',
+      defaultMessage:
+        'Only a participant\u2019s entry that is under review or approved can be returned for revision.',
+    },
+    refuseReasonRequired: {
+      id: 'assessment/entry/refuse-reason-required',
+      defaultMessage: 'Enter a reason.',
+    },
+    refuseNotAdministrative: {
+      id: 'assessment/entry/refuse-not-administrative',
+      defaultMessage: 'The item is not open to staff records.',
+    },
+    refuseAttachmentRequired: {
+      id: 'assessment/entry/refuse-attachment-required',
+      defaultMessage: 'The item needs attachments, so record it one person at a time.',
+    },
+    refuseChainUnreadable: {
+      id: 'assessment/entry/refuse-chain-unreadable',
+      defaultMessage:
+        'The review step the submission is at cannot be found. Contact a batch administrator.',
+    },
+    refuseChainEndsHere: {
+      id: 'assessment/entry/refuse-chain-ends-here',
+      defaultMessage:
+        'No later review step can take the submission. Contact a batch administrator.',
+    },
+    refuseDecisionNotAvailable: {
+      id: 'assessment/entry/refuse-decision-not-available',
+      defaultMessage: 'The current review step does not allow the decision.',
+    },
+    refuseFileTooLarge: {
+      id: 'assessment/entry/refuse-file-too-large',
+      defaultMessage: 'The file is larger than allowed.',
+    },
+    refuseStorageFull: {
+      id: 'assessment/entry/refuse-storage-full',
+      defaultMessage: 'There is no storage space left for the upload. Contact an administrator.',
+    },
+    refuseUploadBusy: {
+      id: 'assessment/entry/refuse-upload-busy',
+      defaultMessage: 'Too many uploads at once. Wait a moment and try again.',
+    },
+    refuseUploadAgain: {
+      id: 'assessment/entry/refuse-upload-again',
+      defaultMessage: 'The file did not finish uploading. Upload it again.',
+    },
     refuseOther: {
       id: 'assessment/entry/refuse-other',
       defaultMessage: 'The action is not available for the entry in its current state.',

@@ -26,7 +26,7 @@ import { useBatchLive } from '../live.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { entryStatusMessage, type EntryDto } from '../entry/model.ts'
-import { entryRefusalMessage } from '../entry/refusals.ts'
+import { sayEntryFailure } from '../entry/refusals.ts'
 import { reviewOutcomeMessage } from './events.ts'
 import { readRunScope, runRows, type InboxItemDto } from './model.ts'
 import { useReviewQueueQuery } from './queue.ts'
@@ -794,8 +794,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
         setLog((current) => current.filter((entry) => entry.instanceId !== staged.instanceId))
         setHeld(heldWordsOf(staged))
       }
-      const refusal = entryRefusalMessage(error)
-      toast.error(refusal === null ? formatError(error) : format(refusal))
+      toast.error(sayEntryFailure(error, { format, formatError }))
       refresh()
     },
   })
@@ -1058,7 +1057,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
       toast.success(format(m.supplementWithdrawn))
       refresh()
     },
-    onError: (error) => toast.error(formatError(error)),
+    onError: (error) => toast.error(sayEntryFailure(error, { format, formatError })),
   })
 
   const may = (act: 'approve' | 'reject' | 'escalate' | 'supplement') =>

@@ -2,7 +2,8 @@ import ParticipantResultsPage from '../src/client/result/ParticipantResultsPage.
 import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
-import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import zhCN from '../src/client/locales/zh-CN.ts'
+import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The staff account, as somebody uses it: find a person, read why their
 // total is what it is, follow a number back to the filing that earned it,
@@ -358,6 +359,30 @@ describe('the participant results screen', () => {
     const sent = interveneOnEntry.mock.calls[0]![0]
     expect(sent.params?.['entryId']).toBe(ENTRY_ID)
     expect(sent.payload).toEqual({ kind: 'return-for-revision', reason: '证书与本人不符' })
+  })
+
+  it('says why a send-back was refused, in the refusal’s own words', async () => {
+    const interveneOnEntry = vi.fn((_request: Request) =>
+      Effect.fail(
+        apiError('ASSESSMENT_ENTRY_ACTION_REFUSED', {
+          action: 'return',
+          reason: 'entry-not-returnable',
+        }),
+      ),
+    )
+    await screen(
+      { interveneOnEntry },
+      `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}&view=entries&entry=${ENTRY_ID}`,
+    )
+    await page.getByRole('button', { name: '退回修改' }).click()
+    await userEvent.fill(page.getByRole('textbox'), '证书与本人不符')
+    await page.getByRole('button', { name: '退回修改' }).last().click()
+    await vi.waitFor(() => expect(interveneOnEntry).toHaveBeenCalledTimes(1))
+    // which sentence, by its catalog entry: the general one tells nobody
+    // whether to wait or to do something else
+    await expect
+      .poll(() => document.querySelector('[data-sonner-toast]')?.textContent ?? '')
+      .toContain(zhCN['assessment/entry/refuse-not-returnable'])
   })
 
   it('never hands the band over to an empty heading', async () => {

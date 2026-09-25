@@ -7,6 +7,7 @@ import { useLingering } from '@qualy/ui/use-lingering'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { ManagedEntrySheet, type RecognitionDto } from '../entry/ManagedEntrySheet.tsx'
+import { sayEntryFailure } from '../entry/refusals.ts'
 import type { ItemDto } from '../entry/model.ts'
 
 // One administrative fact, read and corrected.
@@ -122,7 +123,7 @@ export function AdministrativeEntrySheet({
       })
       onClose()
     },
-    onError: (error) => toast.error(formatError(error)),
+    onError: (error) => toast.error(sayEntryFailure(error, { format, formatError })),
   })
 
   // A record that will not open has to say so.

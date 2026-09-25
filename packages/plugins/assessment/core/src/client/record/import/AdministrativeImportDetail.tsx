@@ -18,6 +18,7 @@ import { assessmentMessages as m } from '../../i18n.ts'
 import { EntryStanding } from '../../entry/EntryStanding.tsx'
 import { ReasonDialog } from '../../items/ReasonDialog.tsx'
 import { sizeLabel } from '../../entry/model.ts'
+import { sayEntryFailure } from '../../entry/refusals.ts'
 
 // One import, looked back on.
 //
@@ -243,7 +244,7 @@ export function AdministrativeImportDetail({
       toast.error(
         refused._tag === 'ASSESSMENT_ADMINISTRATIVE_IMPORT_INVALID' && refused.issues !== undefined
           ? format(m.importReverseRefused, { count: refused.issues.length })
-          : formatError(error),
+          : sayEntryFailure(error, { format, formatError }),
       )
     },
   })

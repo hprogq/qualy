@@ -14,6 +14,7 @@ import { toast } from '@qualy/ui/toast'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
+import { sayEntryFailure } from '../entry/refusals.ts'
 import { ReasonDialog } from '../items/ReasonDialog.tsx'
 import { RecordStanding } from './RecordStanding.tsx'
 import { useWhen } from './when.ts'
@@ -174,7 +175,7 @@ export function AdministrativeActDetail({
         }),
       })
     },
-    onError: (error) => toast.error(formatError(error)),
+    onError: (error) => toast.error(sayEntryFailure(error, { format, formatError })),
   })
 
   const found = detail.data
