@@ -9,7 +9,7 @@ services:
       TZ: Asia/Shanghai
       LANG: en_US.utf8
     ports:
-      - '${POSTGRES_PORT:-5432}:5432'
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
     volumes:
       # postgres:18 series images keep the data volume at /var/lib/postgresql
       # (not the older /data subdirectory); adjust when downgrading the image
@@ -44,8 +44,8 @@ services:
     container_name: qualy-mailpit
     restart: unless-stopped
     ports:
-      - '${MAILPIT_SMTP_PORT:-1025}:1025'
-      - '${MAILPIT_UI_PORT:-8025}:8025'
+      - '127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025'
+      - '127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025'
     logging:
       driver: json-file
       options:
@@ -71,7 +71,7 @@ services:
       - -c
       - full_page_writes=off
     ports:
-      - '${POSTGRES_TEST_PORT:-5433}:5432'
+      - '127.0.0.1:${POSTGRES_TEST_PORT:-5433}:5432'
     # tmpfs rather than a volume: nothing here outlives the container, which is
     # the same statement the settings above make
     tmpfs:
@@ -107,7 +107,7 @@ services:
       TZ: Asia/Shanghai
       LANG: en_US.utf8
     ports:
-      - '${POSTGRES_DEMO_PORT:-5434}:5432'
+      - '127.0.0.1:${POSTGRES_DEMO_PORT:-5434}:5432'
     volumes:
       - pg_demo_data:/var/lib/postgresql
     logging:
