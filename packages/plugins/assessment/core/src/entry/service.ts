@@ -78,7 +78,7 @@ import {
   insertRevisionAttachments,
   nextEntryRevisionNo,
   nextRoundNo,
-  nodePathOf,
+  standingPlace,
   participantOf,
   revisionAttachmentsOf,
   setEntryState,
@@ -1571,12 +1571,14 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 // there is nowhere to anchor a round, and no later grant can
                 // supply it - the configuration itself is wrong here
                 if (first === null) return yield* refuse(action, 'review-level-missing')
-                const nodePath = yield* nodePathOf(tenantId, first.nodeId!)
-                if (nodePath === null) return yield* refuse(action, 'review-level-missing')
+                const place = yield* standingPlace(tenantId, first)
+                if (place === null) return yield* refuse(action, 'review-level-missing')
                 // Nobody can act at the stage today - which is the round's
                 // problem, not this person's. The round is written down as
                 // blocked with its reason so the patrol and the alert panel
                 // own it, and it heals the moment somebody is appointed (§14).
+                // A vacant step with no unit at all is the same case, and
+                // stands blocked where it is rather than refusing the filing.
                 const arrived = yield* stageArrival({
                   tenantId,
                   batchId: entry.batchId,
@@ -1601,8 +1603,8 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                   route: 'normal',
                   stageId: first.id,
                   roleIds: first.roleIds,
-                  nodeId: first.nodeId!,
-                  nodePath,
+                  nodeId: place.nodeId,
+                  nodePath: place.nodePath,
                   state: arrived.state,
                   blockedReason: arrived.blockedReason,
                 })

@@ -87,7 +87,7 @@ import {
   type ResolvedPolicy,
   type ResolvedStage,
 } from './chain.ts'
-import { nodePathOf } from '../entry/db.ts'
+import { standingPlace } from '../entry/db.ts'
 import {
   activeReviewBatches,
   awaitingPage,
@@ -1882,11 +1882,11 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                     excludeJudgedOfInstanceId: instanceId,
                     conflictSkip: true,
                   })
-                  if (landing === null || landing.stage.nodeId === null) {
-                    return yield* refuse(action, 'chain-ends-here')
-                  }
-                  const nodePath = yield* nodePathOf(tenantId, landing.stage.nodeId)
-                  if (nodePath === null) return yield* refuse(action, 'chain-ends-here')
+                  if (landing === null) return yield* refuse(action, 'chain-ends-here')
+                  // a vacant rung is a place too: the round stands there
+                  // blocked, and the word that sent it keeps its effect
+                  const place = yield* standingPlace(tenantId, landing.stage)
+                  if (place === null) return yield* refuse(action, 'chain-ends-here')
                   const moved = yield* advanceReviewInstance({
                     tenantId,
                     instanceId,
@@ -1895,8 +1895,8 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                     toRoute: 'escalation',
                     toStageId: landing.stage.id,
                     roleIds: landing.stage.roleIds,
-                    nodeId: landing.stage.nodeId,
-                    nodePath,
+                    nodeId: place.nodeId,
+                    nodePath: place.nodePath,
                     state: landing.state,
                     blockedReason: landing.blockedReason,
                   })
@@ -2189,11 +2189,9 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                 // the ordinary route's onward step: this level has confirmed,
                 // the next one is owed the same look
                 const next = nextAfter(policy, here)
-                if (next === null || next.nodeId === null) {
-                  return yield* refuse(action, 'chain-ends-here')
-                }
-                const nodePath = yield* nodePathOf(tenantId, next.nodeId)
-                if (nodePath === null) return yield* refuse(action, 'chain-ends-here')
+                if (next === null) return yield* refuse(action, 'chain-ends-here')
+                const place = yield* standingPlace(tenantId, next)
+                if (place === null) return yield* refuse(action, 'chain-ends-here')
                 const arrived = yield* stageArrival({
                   tenantId,
                   batchId: row.batchId,
@@ -2212,8 +2210,8 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                   toRoute: next.route,
                   toStageId: next.id,
                   roleIds: next.roleIds,
-                  nodeId: next.nodeId,
-                  nodePath,
+                  nodeId: place.nodeId,
+                  nodePath: place.nodePath,
                   state: arrived.state,
                   blockedReason: arrived.blockedReason,
                 })
@@ -2453,11 +2451,9 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               actorId: filing.actorId,
               conflictSkip: true,
             })
-            if (landing === null || landing.stage.nodeId === null) {
-              return yield* refuse('appeal', 'review-level-missing')
-            }
-            const nodePath = yield* nodePathOf(tenantId, landing.stage.nodeId)
-            if (nodePath === null) return yield* refuse('appeal', 'review-level-missing')
+            if (landing === null) return yield* refuse('appeal', 'review-level-missing')
+            const place = yield* standingPlace(tenantId, landing.stage)
+            if (place === null) return yield* refuse('appeal', 'review-level-missing')
             const roundNo = yield* nextRoundNo(tenantId, entryId)
             const opened = yield* insertReviewInstance({
               tenantId,
@@ -2477,8 +2473,8 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               route: 'escalation',
               stageId: landing.stage.id,
               roleIds: landing.stage.roleIds,
-              nodeId: landing.stage.nodeId,
-              nodePath,
+              nodeId: place.nodeId,
+              nodePath: place.nodePath,
               state: landing.state,
               blockedReason: landing.blockedReason,
             })

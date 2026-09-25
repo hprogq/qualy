@@ -1201,20 +1201,24 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                   : input.effects.review?.missingCurrentStage === 'restart-route'
                     ? enterableFrom(resolved, round.route, 0)
                     : null
-        if (landing === null || landing.nodeId === null) {
+        if (landing === null) {
           // no guessing: a round whose step is gone stays where it is unless
           // the administrator said to start its route over
           keptOnOldPolicy += 1
           continue
         }
-        let nodePath = paths.get(landing.nodeId)
-        if (nodePath === undefined) {
-          nodePath = yield* nodePathOf(input.tenantId, landing.nodeId)
+        // A vacant step is a place the new round can stand, blocked, the
+        // same as every other entry to a step nobody holds (ADR 0007); only
+        // a unit whose path is gone keeps the round on its old policy.
+        let nodePath: string | null = null
+        if (landing.nodeId !== null) {
+          const known = paths.get(landing.nodeId)
+          nodePath = known === undefined ? yield* nodePathOf(input.tenantId, landing.nodeId) : known
           paths.set(landing.nodeId, nodePath)
-        }
-        if (nodePath === null) {
-          keptOnOldPolicy += 1
-          continue
+          if (nodePath === null) {
+            keptOnOldPolicy += 1
+            continue
+          }
         }
         const ended = yield* cancelReviewInstance({
           tenantId: input.tenantId,

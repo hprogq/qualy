@@ -621,6 +621,28 @@ export const nodePathOf = (tenantId: string, nodeId: string) =>
     .pipe(Effect.map((row) => (row ? String((row as Record<string, unknown>)['pathText']) : null)))
 
 /**
+ * Where a round standing at one step is recorded: the step's unit and that
+ * unit's live path, or neither at a vacancy.
+ *
+ * A vacant step - a `nearestRole` nobody holds anywhere on the lineage - has
+ * no unit to name and is still a place a round stands, blocked for want of
+ * an assignee (ADR 0007). Refusing to enter it left the judge below able
+ * only to approve, a sitting with any dissent unable ever to conclude, and a
+ * participant told the submission could not be reviewed at all. Null only
+ * when the step names a unit whose path is gone, which is data a write must
+ * not build on.
+ */
+export const standingPlace = (tenantId: string, stage: { readonly nodeId: string | null }) =>
+  Effect.gen(function* () {
+    const nodeId = stage.nodeId
+    if (nodeId === null) return { nodeId: null as string | null, nodePath: null as string | null }
+    const nodePath = yield* nodePathOf(tenantId, nodeId)
+    return nodePath === null
+      ? null
+      : { nodeId: nodeId as string | null, nodePath: nodePath as string | null }
+  })
+
+/**
  * Serializes work on these attachments across every batch.
  *
  * Entry writes serialize on their batch row, but two batches share no lock,
