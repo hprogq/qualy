@@ -412,6 +412,8 @@ export function ParticipantResultList({
     units.data === undefined
       ? { path: '', unknown: 0 }
       : unitPathOf(lineage, (nodeId) => byUnit.get(nodeId)?.name)
+  const chosenUnit = view.unit === '' ? undefined : byUnit.get(view.unit)
+
   // The unit the list is narrowed to can fall out of the tree: the tree is
   // read over the standing the list shows, and a unit with nobody of that
   // standing is not in it. The narrowing stays - the list answers the
@@ -421,8 +423,7 @@ export function ParticipantResultList({
   useEffect(() => {
     for (const unit of units.data?.units ?? []) named.current.set(unit.id, unit.name)
   }, [units.data])
-  const unitName =
-    view.unit === '' ? undefined : (byUnit.get(view.unit)?.name ?? named.current.get(view.unit))
+  const unitName = view.unit === '' ? undefined : (chosenUnit?.name ?? named.current.get(view.unit))
   const offTree =
     view.unit !== '' &&
     units.data !== undefined &&
