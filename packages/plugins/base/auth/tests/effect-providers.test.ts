@@ -1192,6 +1192,109 @@ describe.runIf(postgresAvailable)('an entrance a tenant adds', () => {
     }
   })
 
+  // A door in service whose secret stopped decrypting already lacks it; a
+  // save that leaves that as it was takes nothing more away, and whoever
+  // may only arrange doors cannot type a secret in to mend it first.
+  it('takes saves that leave a secret that does not decrypt as it was, and refuses what takes more', async () => {
+    const db = await createTestContext('providers-unreadable-unrelated')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const iam = yield* Iam
+            const arranger = one<{ id: string }>(
+              yield* runSql(sql`
+                insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+                select tenant_id, 'Arranger', user_type_id, primary_org_node_id
+                  from users where id = ${f.person} returning id`),
+            ).id
+            const role = one<{ id: string }>(
+              yield* runSql(sql`
+                insert into roles (tenant_id, code, name, kind, status, permission_mode)
+                values (${f.tenant}, 'arranger', 'Arranger', 'tenant', 'active', 'explicit')
+                returning id`),
+            ).id
+            yield* runSql(sql`
+              insert into role_permissions (tenant_id, role_id, permission_id)
+              select ${f.tenant}, ${role}, id from permissions where code = 'auth.provider.manage'`)
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id)
+              values (${f.tenant}, ${arranger}, ${role})`)
+            const arranging: Principal = { tenantId: f.tenant, userId: arranger, sessionId: 's' }
+            const id = yield* iam.providers.create(
+              f.tenant,
+              { type: 'campus', code: 'campus', name: 'Campus' },
+              f.as,
+            )
+            const set = yield* iam.providers.update(
+              f.tenant,
+              id,
+              {
+                expectedVersion: 1,
+                values: { server: 'https://cas.example.edu/', clientSecret: 's3cret' },
+              },
+              f.as,
+            )
+            const served = yield* iam.providers.setStatus(f.tenant, id, 'active', set, f.as)
+            yield* runSql(sql`
+              update secrets set auth_tag = decode(repeat('00', 16), 'hex') where owner_id = ${id}`)
+            const tried = <A>(write: Effect.Effect<A, unknown>) =>
+              Effect.map(Effect.result(write), (result) =>
+                result._tag === 'Success' ? 'Success' : tagOf(result),
+              )
+            const renamed = yield* tried(
+              iam.providers.update(
+                f.tenant,
+                id,
+                { expectedVersion: served, name: 'Campus login' },
+                arranging,
+              ),
+            )
+            const realm = yield* tried(
+              iam.providers.update(
+                f.tenant,
+                id,
+                { expectedVersion: served + 1, values: { realm: 'staff' } },
+                f.as,
+              ),
+            )
+            // the secret it needs, gone rather than merely unreadable
+            const cleared = yield* Effect.result(
+              iam.providers.clearSecret(f.tenant, id, 'clientSecret', served + 2, f.as),
+            )
+            const stood = yield* iam.providers.detail(f.tenant, id)
+            return {
+              renamed,
+              realm,
+              cleared: tagOf(cleared),
+              clearedMissing: failureOf(cleared)?.['missing'],
+              stood: {
+                name: stood.provider.name,
+                status: stood.provider.status,
+                missing: stood.missing,
+                secrets: stood.secrets,
+              },
+            }
+          }),
+        ),
+      )
+      expect(answer.renamed).toBe('Success')
+      expect(answer.realm).toBe('Success')
+      expect(answer.cleared).toBe('AUTH_PROVIDER_CONFIG_INCOMPLETE')
+      expect(answer.clearedMissing).toEqual([{ kind: 'field', key: 'clientSecret' }])
+      expect(answer.stood).toEqual({
+        name: 'Campus login',
+        status: 'active',
+        missing: [{ kind: 'secret-unreadable', key: 'clientSecret' }],
+        secrets: [{ key: 'clientSecret', stored: true, readable: false }],
+      })
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('asks only for the boxes it shows, and keeps what its driver works out', async () => {
     const db = await createTestContext('providers-shaped')
     try {

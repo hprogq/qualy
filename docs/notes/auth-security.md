@@ -208,7 +208,7 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
   所以生产显式写这把 key 也拒启。不接受任意口令再哈希:那看起来配好了,强度却是口令的。
 - **就绪判定只有一份**(`providerReadiness`):驱动已装配 + 每个 `required` 的非密钥字段有值 + 每个 `required` 的密钥已存。
   详情页、启用、匿名 `login-methods`、`resolveProvider`、恢复通道全部读它。不变量 **enabled ⇒ ready**:会让在用入口变得未就绪的写(清空必填框、清除必填密钥)一律拒绝,
-  要改先停用。
+  要改先停用。判定的是本次写入新开的缺口,写入前就有的(见下文「无法解密」)不算在这次写入头上。
 - **生命周期**:`POST /auth/providers { type, code, name }` 建一个停用的空壳 → `PATCH` 分多次补齐(缺省保持、显式空串清除;密钥缺省或空串保持,
   非空替换;`DELETE /auth/providers/{id}/secrets/{key}` 是唯一的清除动作)→ 就绪后才能 `PUT .../status` 启用 →
   `DELETE /auth/providers/{id}?version=` 删除(系统入口 `AUTH_PROVIDER_IS_SYSTEM`;删除置墓碑、撤销存活绑定、删该入口的会话、销毁其密钥、审计 `auth.provider.delete`、复核恢复通道)。
@@ -233,6 +233,9 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
   为 false,管理端提示「密钥无法解密,需要重新填写」;**原密文保留,不自动清除**,重新填写即覆盖。服务不因此拒启(要给修复留入口);
   启动时 `auth/entrance-secrets` 钩子逐个打开所有入口密钥,每个打不开的记一条 Warn,全部或至少 3 个同时打不开时再记一条 Error,
   提示 `QUALY_SECRETS_MASTER_KEY` 可能与写入时不同。钩子只报告,自身失败也只告警。暂不做主密钥轮换工具。
+  这样的入口仍是 `active`,而「在用即就绪」的复核只拒绝**本次写入新开的缺口**(写入前后比较 `missing`):改名称、改与密钥无关的
+  配置照常保存,只持有 `auth.provider.manage` 的人也能改名;清除这把密钥会把缺口从「无法解密」变成「未填写」,仍被拒绝。
+  重新填写密钥归 `auth.provider.trust.manage`。
 
 ## 租户寻址、公开地址与一次性 flow(2026-09-23 定案)
 

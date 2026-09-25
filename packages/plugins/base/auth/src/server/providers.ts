@@ -303,6 +303,11 @@ const replaceAudience = (
     )
   })
 
+/** one thing an entrance lacks, the same as another */
+const sameGap = (left: ReadinessGap, right: ReadinessGap) =>
+  left.kind === right.kind &&
+  ('key' in left ? left.key : undefined) === ('key' in right ? right.key : undefined)
+
 /**
  * A value bound as jsonb.
  *
@@ -400,14 +405,21 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
   /**
    * A door in service stays able to let people in: asked on the state being
    * committed, after any write that could take something it needs away.
+   *
+   * What it lacked before the write is not this write's doing. A secret that
+   * stopped decrypting leaves a door in service lacking it, and whoever may
+   * only arrange doors still has to be able to rename that one; so with the
+   * gaps it had before, only a gap the write opens is refused.
    */
   const stillReady = Effect.fn('Iam.providers.stillReady')(function* (
     provider: { tenantId: string; id: string; type: string; enabled: boolean },
     config: unknown,
+    before: readonly ReadinessGap[] = [],
   ) {
     if (!provider.enabled) return
     const answer = yield* readiness({ ...provider, config })
-    if (!answer.ready) return yield* new ProviderConfigIncomplete({ missing: answer.missing })
+    const opened = answer.missing.filter((gap) => !before.some((had) => sameGap(had, gap)))
+    if (opened.length > 0) return yield* new ProviderConfigIncomplete({ missing: opened })
   })
 
   return {
@@ -555,6 +567,7 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
       return yield* write(tenantId, as, [], () =>
         Effect.gen(function* () {
           const provider = yield* current(tenantId, providerId, input.expectedVersion)
+          const lacked = provider.enabled ? (yield* readiness(provider)).missing : []
           const previous = configOf(provider.config)
           const changed: string[] = []
           const renamed = input.name !== undefined && input.name !== provider.name
@@ -651,7 +664,7 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
               Redacted.make(value),
             )
           }
-          yield* stillReady(provider, config)
+          yield* stillReady(provider, config, lacked)
           yield* audit.record(ProviderUpdated, {
             tenantId,
             actor: yield* actorOf(tenantId, as),
@@ -678,9 +691,10 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
           if (!kind.fields.some((field) => field.key === key && field.kind === 'secret')) {
             return yield* new ProviderConfigInvalid({ field: key })
           }
+          const lacked = provider.enabled ? (yield* readiness(provider)).missing : []
           const removed = yield* secrets.delete({ ...entranceSecrets(tenantId, providerId), key })
           if (!removed) return provider.version
-          yield* stillReady(provider, provider.config)
+          yield* stillReady(provider, provider.config, lacked)
           yield* db.query((k) =>
             k
               .updateTable('AuthProvider')
