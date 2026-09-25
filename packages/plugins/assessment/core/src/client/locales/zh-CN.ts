@@ -350,6 +350,8 @@ export default {
   'assessment/result/unavailable-hint': '当前成绩暂时无法计算，请稍后重试。',
   'assessment/result/stale-title': '当前显示的分数可能不是最新',
   'assessment/result/stale-entries': '申报状态可能不是最新',
+  'assessment/result/stale-items': '项目信息可能不是最新',
+  'assessment/result/stale-reads': '项目信息与申报状态可能不是最新',
   'assessment/result/recalculate': '重新计算',
   'assessment/result/full': '本批次满分 {value}',
   'assessment/result/counted-in': '已计入成绩',

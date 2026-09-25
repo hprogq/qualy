@@ -1289,8 +1289,75 @@ describe('a round that moves while the page is open', () => {
     await expect.element(page.getByTestId('result-total')).toHaveTextContent('49.50')
     down = true
     release()
-    await expect.element(page.getByTestId('result-stale')).toHaveAttribute('data-reason', 'entries')
+    // the questions are what may be behind, not the claims
+    await expect.element(page.getByTestId('result-stale')).toHaveAttribute('data-reason', 'items')
     expect(itemRow('q8').getAttribute('data-value')).toBe('12.00')
+  })
+
+  it('says both reads beside the account may be behind when both fail', async () => {
+    const paper = normal()
+    let down = false
+    let release = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const told = (kind: 'item-changed' | 'entries-changed') =>
+      Stream.fromEffect(Effect.promise(() => gate).pipe(Effect.as({ kind })))
+    const failing = Effect.fail(apiError('ASSESSMENT_SCORING_UNAVAILABLE'))
+    await screen(paper, {
+      listItems: () =>
+        down ? failing : Effect.succeed({ items: paper.items, capabilities: { canManage: false } }),
+      listMyEntries: () => (down ? failing : filings(paper.entries)),
+      watchBatch: () =>
+        Effect.succeed(
+          Stream.concat(told('item-changed'), Stream.concat(told('entries-changed'), Stream.never)),
+        ),
+    })
+    await expect.element(page.getByTestId('result-total')).toHaveTextContent('49.50')
+    down = true
+    release()
+    const stale = page.getByTestId('result-stale')
+    await expect.element(stale).toHaveAttribute('data-reason', 'reads')
+    down = false
+    await stale.getByRole('button').click()
+    await expect.element(stale).not.toBeInTheDocument()
+  })
+
+  it('still offers to read the claims again beside an account past the ceiling', async () => {
+    const paper = normal()
+    let grown = false
+    let down = false
+    let scored = 0
+    const { wake, release } = wakeOnce('result-changed')
+    await screen(paper, {
+      getMyResult: () => {
+        scored += 1
+        return grown
+          ? Effect.fail(
+              apiError('ASSESSMENT_SCORING_ACCOUNT_TOO_LARGE', { evaluations: 612, limit: 500 }),
+            )
+          : Effect.succeed(paper.result)
+      },
+      listMyEntries: () =>
+        down ? Effect.fail(apiError('ASSESSMENT_SCORING_UNAVAILABLE')) : filings(paper.entries),
+      watchBatch: wake,
+    })
+    await expect.element(page.getByTestId('result-total')).toHaveTextContent('49.50')
+    grown = true
+    down = true
+    release()
+    const stale = page.getByTestId('result-stale')
+    await expect.element(stale).toHaveAttribute('data-reason', 'too-large')
+    await expect.element(stale).toHaveAttribute('data-behind', 'entries')
+    // one way on: the claims, read again; the account would meet the same ceiling
+    expect(stale.getByRole('button').elements()).toHaveLength(1)
+    const before = scored
+    down = false
+    await stale.getByRole('button').click()
+    await expect.poll(() => stale.element().hasAttribute('data-behind')).toBe(false)
+    await expect.element(stale).toHaveAttribute('data-reason', 'too-large')
+    expect(stale.getByRole('button').elements()).toHaveLength(0)
+    expect(scored).toBe(before)
   })
 
   it('says why an account that grew past the ceiling cannot be read again, and offers no recalculation', async () => {

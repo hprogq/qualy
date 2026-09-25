@@ -216,19 +216,38 @@ function Standing({ batchId, archived }: { batchId: string; archived: boolean })
         : mine.data === undefined
           ? mine.error
           : null
-  const stale: 'too-large' | 'score' | 'entries' | null =
+  // which of the two reads beside the account is behind: the questions, the
+  // claims, or both
+  const behind: 'items' | 'entries' | 'reads' | null =
+    items.error !== null
+      ? mine.error !== null
+        ? 'reads'
+        : 'items'
+      : mine.error !== null
+        ? 'entries'
+        : null
+  const stale: 'too-large' | 'score' | 'items' | 'entries' | 'reads' | null =
     result.error !== null
       ? isApiErrorCode(result.error, 'ASSESSMENT_SCORING_ACCOUNT_TOO_LARGE')
         ? 'too-large'
         : 'score'
-      : items.error !== null || mine.error !== null
-        ? 'entries'
-        : null
-  const readFailedAgain = () => {
-    if (result.error !== null) void result.refetch()
+      : behind
+  const readsAgain = () => {
     if (items.error !== null) void items.refetch()
     if (mine.error !== null) void mine.refetch()
   }
+  const readFailedAgain = () => {
+    if (result.error !== null) void result.refetch()
+    readsAgain()
+  }
+  const behindSaid = (which: 'items' | 'entries' | 'reads') =>
+    format(
+      which === 'items'
+        ? m.resultStaleItems
+        : which === 'entries'
+          ? m.resultStaleEntries
+          : m.resultStaleReads,
+    )
   return (
     <AsyncSection
       pending={result.isPending || items.isPending || mine.isPending}
@@ -267,14 +286,35 @@ function Standing({ batchId, archived }: { batchId: string; archived: boolean })
             <div
               data-testid="result-stale"
               data-reason={stale}
+              data-behind={behind ?? undefined}
               role="status"
               {...stylex.props(styles.stale)}
             >
-              <span>{format(stale === 'entries' ? m.resultStaleEntries : m.resultStaleTitle)}</span>
+              <span>
+                {stale === 'too-large' || stale === 'score'
+                  ? format(m.resultStaleTitle)
+                  : behindSaid(stale)}
+              </span>
               {stale === 'too-large' ? (
-                // the account grew past what one reading may evaluate: asking
-                // again cannot help, so the page says why instead
-                <span {...stylex.props(styles.staleWhy)}>{formatError(result.error)}</span>
+                <>
+                  {/* the account grew past what one reading may evaluate:
+                      asking again cannot help, so the page says why instead */}
+                  <span {...stylex.props(styles.staleWhy)}>{formatError(result.error)}</span>
+                  {/* the reads beside it can still be asked for again */}
+                  {behind !== null && (
+                    <>
+                      <span>{behindSaid(behind)}</span>
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        disabled={items.isFetching || mine.isFetching}
+                        onClick={readsAgain}
+                      >
+                        {format(commonMessages.retry)}
+                      </Button>
+                    </>
+                  )}
+                </>
               ) : (
                 <Button
                   variant="outline"
