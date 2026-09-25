@@ -392,6 +392,7 @@ const GUTTER = 20
 
 export function StructureRail({
   heading,
+  headingLevel = 1,
   totalLabel,
   outline,
   total,
@@ -410,6 +411,8 @@ export function StructureRail({
 }: {
   /** what the column is called: the reader's own filings, or somebody's account */
   heading: string
+  /** 1 where the column's name is the page's own; 2 under a page that has one */
+  headingLevel?: 1 | 2
   /** what the big figure is: counted so far, or the provisional total */
   totalLabel: string
   outline: Outline
@@ -656,7 +659,11 @@ export function StructureRail({
     >
       <div {...stylex.props(styles.head)}>
         <div {...stylex.props(styles.titleRow)}>
-          <h1 {...stylex.props(styles.title)}>{heading}</h1>
+          {headingLevel === 1 ? (
+            <h1 {...stylex.props(styles.title)}>{heading}</h1>
+          ) : (
+            <h2 {...stylex.props(styles.title)}>{heading}</h2>
+          )}
           {/* the escape hatch, not the mechanism: state flows in on its own,
               and this is for the reader who wants to ask again anyway */}
           <Button variant="ghost" size="icon-sm" disabled={refreshing} onClick={onRefresh}>
@@ -669,6 +676,7 @@ export function StructureRail({
             <span
               data-testid="entries-total"
               data-scored={scored}
+              data-cap={total.cap === null ? '' : trimAmount(String(total.cap))}
               {...stylex.props(styles.totalGot, (!scored || got === 0) && styles.totalMuted)}
             >
               {scored && total.got !== null ? two(total.got) : '–'}

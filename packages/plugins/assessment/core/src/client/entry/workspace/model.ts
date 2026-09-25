@@ -230,10 +230,23 @@ export interface EntryLine {
 
 const NUMERIC = new Set(['integer', 'decimal'])
 
+/**
+ * How the identity line puts its parts together, in the reader's language:
+ * a field's name beside its figure, and one part after another. The line is
+ * worked out here, the words for joining it are the catalog's.
+ */
+export interface LineWords {
+  /** a field's name and the figure filed under it */
+  readonly figure: (label: string, value: string) => string
+  /** two parts of the line side by side */
+  readonly join: (before: string, after: string) => string
+}
+
 export const entryLineOf = (
   entry: EntryDto,
   item: ItemDto,
   standing: Standing | null,
+  words: LineWords,
 ): EntryLine => {
   const payload = (entry.currentRevision?.payload ?? {}) as Record<string, unknown>
   const formConfig = item.currentRevision?.formConfig
@@ -283,7 +296,7 @@ export const entryLineOf = (
   const kept = figures.filter(
     (part) => counted === null || unitsOf(part.value) !== unitsOf(counted),
   )
-  const said = [...texts, ...kept.map((part) => `${part.label}　${part.value}`)]
+  const said = [...texts, ...kept.map((part) => words.figure(part.label, part.value))]
   if (said.length === 0) said.push(figures[0]?.label ?? item.title)
 
   const revised = entry.currentRevision?.createdAt ?? entry.createdAt
@@ -326,7 +339,7 @@ export const entryLineOf = (
 
   return {
     lead: said[0]!,
-    sub: said.slice(1).join('　'),
+    sub: said.slice(1).reduce((line, part) => (line === '' ? part : words.join(line, part)), ''),
     words: [item.title, ...parts.map((part) => part.value)].join(' ').toLowerCase(),
     amount,
     amountWord,
@@ -338,8 +351,23 @@ export const entryLineOf = (
   }
 }
 
-/** the filters above one question's claims, in the order they are offered */
-export type ChipKey = 'all' | 'todo' | 'waiting' | 'in_review' | 'approved' | 'rejected' | 'voided'
+/**
+ * The filters above one question's claims, in the order they are offered.
+ *
+ * Each counts what the head's cell of the same name counts, so a figure at
+ * the head and the filter under it never disagree. The owner's head folds
+ * appeals into "in review"; a staff reader's head gives re-examinations
+ * and appeals a cell of their own, and so a filter of their own.
+ */
+export type ChipKey =
+  | 'all'
+  | 'todo'
+  | 'waiting'
+  | 'in_review'
+  | 'contested'
+  | 'approved'
+  | 'rejected'
+  | 'voided'
 
 export interface Chip {
   readonly key: ChipKey
@@ -375,9 +403,21 @@ export const chipsFor = (viewer: Viewer): readonly Chip[] => [
     key: 'in_review',
     label: m.entryStatusInReview,
     test: (entry) =>
-      (entry.status === 'in_review' && entry.supplement === null) || contested(entry),
+      viewer === 'owner'
+        ? (entry.status === 'in_review' && entry.supplement === null) || contested(entry)
+        : entry.status === 'in_review' && entry.supplement === null && !contested(entry),
     urgent: false,
   },
+  ...(viewer === 'staff'
+    ? [
+        {
+          key: 'contested' as const,
+          label: m.entriesStatContested,
+          test: contested,
+          urgent: false,
+        },
+      ]
+    : []),
   {
     key: 'approved',
     label: m.entryStatusApproved,
@@ -419,7 +459,11 @@ export const headStatsOf = (viewer: Viewer, entries: readonly EntryDto[]): reado
       {
         key: 'in_review',
         label: m.entryStatusInReview,
-        count: count((e) => e.status === 'in_review'),
+        // the same claims the list's "in review" filter holds - a settled
+        // claim under appeal or re-examination is out with the reviewers
+        // again - plus the ones a reviewer has asked more of, which the
+        // filter keeps under the owner's to-do instead
+        count: count((e) => e.status === 'in_review' || contested(e)),
         waits: false,
       },
       {
@@ -471,28 +515,32 @@ export const headStatsOf = (viewer: Viewer, entries: readonly EntryDto[]): reado
   ]
 }
 
-/** what the head totals: the lifted root's own figures, or the paper's */
+/**
+ * What the head totals: the figure so far, and full marks.
+ *
+ * Full marks are the lifted root's own limit where it sets one, and
+ * otherwise what the limited sections at the top add up to. A top section
+ * with no limit - a deduction section, typically - adds nothing to them, so
+ * it neither raises the figure nor takes the figure away (§32.72, amended).
+ */
 export const totalsOf = (
   outline: Outline,
   standing: Standing | null,
 ): { readonly got: string | null; readonly cap: number | null } => {
   const capOf = (row: StructureRow) =>
     row.cap === null || row.cap === undefined || row.cap === '' ? null : Number(row.cap)
+  const caps = outline.tops.flatMap((row) => {
+    const cap = capOf(row)
+    return cap === null ? [] : [cap]
+  })
+  const summed = caps.length === 0 ? null : caps.reduce((sum, cap) => sum + cap, 0)
   if (outline.root !== null) {
     return {
       got: outline.root.right === '' ? (standing?.total ?? null) : outline.root.right,
-      cap: capOf(outline.root),
+      cap: capOf(outline.root) ?? summed,
     }
   }
-  const caps = outline.tops.map(capOf)
-  return {
-    got: standing?.total ?? null,
-    // a total only means something when every section at the top has one
-    cap:
-      caps.length > 0 && caps.every((cap) => cap !== null)
-        ? caps.reduce<number>((sum, cap) => sum + (cap ?? 0), 0)
-        : null,
-  }
+  return { got: standing?.total ?? null, cap: summed }
 }
 
 /** what the owner may put into one question now, and what to say where they may not */

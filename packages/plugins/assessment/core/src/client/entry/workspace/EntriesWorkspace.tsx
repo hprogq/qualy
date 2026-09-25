@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import {
   ChevronDownIcon,
@@ -33,6 +33,9 @@ import { filingOf, headStatsOf, movingOn, outlineOf, totalsOf, type Viewer } fro
 // structure first, then one question with a way back and a way to its
 // neighbours - the claim drawer rising from the foot over it.
 
+/** where a desk is wide enough for the broader structure and requirements columns */
+const WIDE = '@media (min-width: 1600px)'
+
 const styles = stylex.create({
   root: {
     display: 'flex',
@@ -62,11 +65,15 @@ const styles = stylex.create({
     flexBasis: '0%',
     gridTemplateRows: 'minmax(0, 1fr)',
   },
+  // a laptop's structure and requirements, and a wide screen's
   columnsDesk: {
-    gridTemplateColumns: 'clamp(300px, 22vw, 380px) minmax(0, 1fr) clamp(280px, 20vw, 360px)',
+    gridTemplateColumns: {
+      default: '340px minmax(0, 1fr) 300px',
+      [WIDE]: '380px minmax(0, 1fr) 360px',
+    },
   },
   columnsDeskGroup: {
-    gridTemplateColumns: 'clamp(300px, 22vw, 380px) minmax(0, 1fr)',
+    gridTemplateColumns: { default: '340px minmax(0, 1fr)', [WIDE]: '380px minmax(0, 1fr)' },
   },
   columnsTablet: { gridTemplateColumns: '300px minmax(0, 1fr)' },
   rail: {
@@ -285,7 +292,13 @@ export interface WorkspaceProps {
   notice?: ReactNode
   /** the row the address names; '' where it names none */
   open: string
-  onOpen: (id: string) => void
+  /**
+   * Open a row, or '' for the structure itself. `push` only where the reader
+   * went somewhere the back key should bring them out of: from a phone's
+   * structure into one question. Everything else - a neighbour, the way
+   * back up, any move at a desk - stands in place of where they were.
+   */
+  onOpen: (id: string, history: 'push' | 'replace') => void
   /** the owner's filing gates, per question */
   gates?: ReadonlyMap<string, FilingGateDto>
   busy: boolean
@@ -373,42 +386,99 @@ function Workspace({
   const [roomRef, room] = useRoomBelow(fit === 'window' && !phone)
   const selectedId = selected?.id ?? null
   const addressed = picked !== null
-  useEffect(() => {
+  // On a phone the structure and one question are two screens of one page.
+  // Going into a question remembers where the structure was scrolled to and
+  // which row was pressed, so coming back out lands there - scrolled where
+  // it was, with focus on that row - rather than at the top of a long paper.
+  const structureAt = useRef<number | null>(null)
+  const cameFrom = useRef<string | null>(null)
+  const wasAddressed = useRef(addressed)
+  useLayoutEffect(() => {
     if (!phone) {
+      wasAddressed.current = addressed
       if (scroller.current !== null) scroller.current.scrollTop = 0
       return
     }
     const node = rootNode.current
     if (node === null) return
     const page = scrollerAbove(node)
-    if (page === null) window.scrollTo({ top: 0 })
-    else page.scrollTop = 0
+    const scrollTo = (top: number) => {
+      if (page === null) window.scrollTo({ top })
+      else page.scrollTop = top
+    }
+    const before = wasAddressed.current
+    wasAddressed.current = addressed
+    if (!addressed) {
+      if (!before) return
+      scrollTo(structureAt.current ?? 0)
+      const row =
+        cameFrom.current === null
+          ? null
+          : node.querySelector(`[data-rail-row="${CSS.escape(cameFrom.current)}"]`)
+      if (row instanceof HTMLElement) row.focus({ preventScroll: true })
+      return
+    }
+    scrollTo(0)
+    cameFrom.current = selectedId
+    // a screen that changed under the reader says so: focus moves to what
+    // the new screen is about, and a reader who cannot see it hears its name
+    if (!before) {
+      const title = node.querySelector('[data-pane-title]')
+      if (title instanceof HTMLElement) title.focus({ preventScroll: true })
+    }
   }, [selectedId, phone, addressed])
+
+  /** where the phone's structure screen is scrolled to right now */
+  const structureScroll = (): number => {
+    const node = rootNode.current
+    const page = node === null ? null : scrollerAbove(node)
+    return page === null ? window.scrollY : page.scrollTop
+  }
 
   const asideOpen = asideFor !== null && asideFor === selected?.id
   const setAsideOpen = (now: boolean) => setAsideFor(now && selected !== null ? selected.id : null)
 
-  // a question on screen is a question looked at: its news is read
+  // A question on screen is a question looked at: its news is read - and
+  // news that lands while it is on screen is read too, so the dot never
+  // waits for the reader to leave and come back.
   const shown = onPane && item !== null ? selected : null
   useEffect(() => {
     if (shown !== null) onShow?.(shown)
     // the row is re-derived every render; what matters is which one it is
+    // and whether it holds news
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shown?.id])
+  }, [shown?.id, shown?.unread])
 
   const footed = phone && picked !== null && item !== null && filing !== null && filing.mayAdd
   useClaimScreenFoot(footed)
 
+  // Moving within a layer stands in place of where the reader was: stepping
+  // to a neighbour, a crumb, the way back up to the structure. Ten questions
+  // looked at are not ten presses of the back key.
+  const go = (id: string) => onOpen(id, 'replace')
+
   const rail = (layout: 'column' | 'screen') => (
     <StructureRail
       heading={heading}
+      // the page's own heading where somebody else's account sits under
+      // one: the owner's page has no other
+      headingLevel={viewer === 'owner' ? 1 : 2}
       totalLabel={totalLabel}
       outline={outline}
       total={totalsOf(outline, standing)}
       scored={scored}
       stats={headStatsOf(viewer, entries)}
       selectedId={phone ? null : (selected?.id ?? null)}
-      onSelect={onOpen}
+      onSelect={(id) => {
+        // from a phone's structure into a question is a layer deeper: the
+        // one move the back key should undo
+        if (phone) {
+          structureAt.current = structureScroll()
+          onOpen(id, 'push')
+        } else {
+          go(id)
+        }
+      }}
       todoOnly={todoOnly}
       onTodoOnly={setTodoOnly}
       isTodo={isTodo}
@@ -443,7 +513,7 @@ function Workspace({
         headerAction={itemAction?.(item)}
         onEntry={onEntry}
         onFile={() => onFile?.(item)}
-        onGoto={onOpen}
+        onGoto={go}
         onRequirements={() => setAsideOpen(true)}
       />
     ) : (
@@ -456,7 +526,7 @@ function Workspace({
         scored={scored}
         totalCap={totalsOf(outline, standing).cap}
         isTodo={isTodo}
-        onGoto={onOpen}
+        onGoto={go}
       />
     )
 
@@ -470,7 +540,7 @@ function Workspace({
         scored={scored}
         onGoto={(id) => {
           setAsideOpen(false)
-          onOpen(id)
+          go(id)
         }}
       />
     ) : null
@@ -521,7 +591,7 @@ function Workspace({
         {onPane && (
           <>
             <div {...stylex.props(styles.phoneBar)}>
-              <button type="button" onClick={() => onOpen('')} {...stylex.props(styles.back)}>
+              <button type="button" onClick={() => go('')} {...stylex.props(styles.back)}>
                 <ChevronLeftIcon aria-hidden {...stylex.props(styles.backIcon)} />
                 {format(m.paperStructure)}
                 {outline.items.filter(isTodo).length > 0 && viewer === 'owner' && (
@@ -535,7 +605,7 @@ function Workspace({
                 type="button"
                 aria-label={format(m.entriesPrevious)}
                 disabled={previous === null}
-                onClick={() => previous !== null && onOpen(previous.id)}
+                onClick={() => previous !== null && go(previous.id)}
                 {...stylex.props(styles.arrow)}
               >
                 <ChevronUpIcon aria-hidden {...stylex.props(styles.arrowIcon)} />
@@ -544,7 +614,7 @@ function Workspace({
                 type="button"
                 aria-label={format(m.entriesNext)}
                 disabled={next === null}
-                onClick={() => next !== null && onOpen(next.id)}
+                onClick={() => next !== null && go(next.id)}
                 {...stylex.props(styles.arrow)}
               >
                 <ChevronDownIcon aria-hidden {...stylex.props(styles.arrowIcon)} />
@@ -611,7 +681,7 @@ function Workspace({
               <button
                 type="button"
                 disabled={previous === null}
-                onClick={() => previous !== null && onOpen(previous.id)}
+                onClick={() => previous !== null && go(previous.id)}
                 {...stylex.props(styles.step, previous === null && styles.stepHidden)}
               >
                 <ChevronLeftIcon aria-hidden {...stylex.props(styles.stepIcon)} />
@@ -625,7 +695,7 @@ function Workspace({
               <button
                 type="button"
                 disabled={next === null}
-                onClick={() => next !== null && onOpen(next.id)}
+                onClick={() => next !== null && go(next.id)}
                 {...stylex.props(styles.step, styles.stepNext, next === null && styles.stepHidden)}
               >
                 {next !== null && (

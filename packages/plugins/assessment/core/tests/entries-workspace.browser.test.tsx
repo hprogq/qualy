@@ -1,7 +1,8 @@
 import MyEntriesPage from '../src/client/entry/MyEntriesPage.tsx'
-import { afterEach, describe, expect, it } from 'vitest'
+import { useNavigate } from 'react-router'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
-import { Effect } from 'effect'
+import { Effect, Stream } from 'effect'
 import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The entries workspace as a reader moves through it: the structure down
@@ -121,6 +122,22 @@ const group = (id: string, parentGroupId: string | null, name: string, sortOrder
   itemCount: 0,
 })
 
+/**
+ * The browser's own back key, which a router held in memory has no button
+ * for. Out of the layout, pressed from the test through the DOM.
+ */
+function BackKey() {
+  const navigate = useNavigate()
+  return (
+    <button type="button" hidden data-testid="history-back" onClick={() => void navigate(-1)}>
+      back
+    </button>
+  )
+}
+
+const pressBack = () =>
+  (document.querySelector('[data-testid="history-back"]') as HTMLButtonElement).click()
+
 const workspace = ({
   route,
   items = [
@@ -129,11 +146,22 @@ const workspace = ({
   ],
   entries = [],
   lines = [],
+  groups = [
+    group(ROOT, null, '综合素质测评', 0),
+    group(BAND_A, ROOT, '品德行为表现', 0),
+    group(BAND_B, ROOT, '学业发展', 1),
+    group(SUB_B, BAND_B, '学科竞赛', 0),
+    group(DEEP_B, SUB_B, '竞赛奖项', 0),
+  ],
+  stubs = {},
 }: {
   route: string
   items?: readonly unknown[]
   entries?: readonly unknown[]
   lines?: readonly unknown[]
+  groups?: readonly unknown[]
+  /** any read or write the case needs answered its own way */
+  stubs?: Record<string, unknown>
 }) =>
   renderScreen({
     client: fakeClient({
@@ -186,20 +214,11 @@ const workspace = ({
           }),
         listAwaitingSupplements: () => Effect.succeed({ items: [], nextCursor: null }),
         listScoreGroups: () =>
-          Effect.succeed({
-            groups: [
-              group(ROOT, null, '综合素质测评', 0),
-              group(BAND_A, ROOT, '品德行为表现', 0),
-              group(BAND_B, ROOT, '学业发展', 1),
-              group(SUB_B, BAND_B, '学科竞赛', 0),
-              group(DEEP_B, SUB_B, '竞赛奖项', 0),
-            ],
-            version: 1,
-            capabilities: { canManage: false },
-          }),
+          Effect.succeed({ groups, version: 1, capabilities: { canManage: false } }),
         getMyResult: () =>
           Effect.succeed({ mode: 'provisional', total: '0.00', groups: [], lines }),
         getEntryHistory: () => Effect.succeed({ revisions: [], events: [], rounds: [] }),
+        ...stubs,
       },
     }),
     route,
@@ -218,6 +237,7 @@ const workspace = ({
             }}
           >
             <main
+              data-testid="page-scroller"
               style={{
                 display: 'flex',
                 minHeight: 0,
@@ -228,6 +248,7 @@ const workspace = ({
             >
               <MyEntriesPage />
             </main>
+            <BackKey />
           </div>
         ),
       },
@@ -285,6 +306,29 @@ describe('finding a question', () => {
     await expect.element(sheet.getByText('按学校规定提交材料')).toBeVisible()
   })
 
+  it.each([
+    [1440, 340, 300],
+    [1920, 380, 360],
+  ] as const)(
+    'gives a %ipx desk a %ipx structure and %ipx of requirements',
+    async (wide, rail, aside) => {
+      await page.viewport(wide, 900)
+      await workspace({ route: `${base}?open=${itemId(2)}` })
+      const requirements = page.getByRole('complementary', { name: '填报要求' })
+      await expect.element(requirements).toBeVisible()
+      // the column the structure stands in, its rule included
+      await expect
+        .poll(() =>
+          Math.round(
+            page.getByTestId('structure-rail').element().parentElement!.getBoundingClientRect()
+              .width,
+          ),
+        )
+        .toBe(rail)
+      expect(Math.round(requirements.element().getBoundingClientRect().width)).toBe(aside)
+    },
+  )
+
   it('walks a phone from the structure into one question and back', async () => {
     await page.viewport(390, 844)
     await workspace({ route: base })
@@ -300,6 +344,61 @@ describe('finding a question', () => {
     await page.getByRole('button', { name: /评分结构/ }).click()
     await expect.poll(() => addressNow()).not.toContain('open=')
     await expect.poll(shape).toBe('structure')
+  })
+
+  // Going into a question is the one layer the back key undoes: looking at
+  // its neighbours, or pressing the way back up, stands in place of where
+  // the reader was rather than piling up behind them.
+  it('walks a phone back out one layer at a time, however many neighbours were looked at', async () => {
+    await page.viewport(390, 844)
+    await workspace({ route: base })
+    await expect.poll(shape).toBe('structure')
+    await page.getByRole('button', { name: /品德题目 3/ }).click()
+    await expect.poll(() => addressNow()).toContain(`open=${itemId(3)}`)
+    await page.getByRole('button', { name: '下一项' }).click()
+    await expect.poll(() => addressNow()).toContain(`open=${itemId(4)}`)
+    await page.getByRole('button', { name: '下一项' }).click()
+    await expect.poll(() => addressNow()).toContain(`open=${itemId(5)}`)
+    pressBack()
+    await expect.poll(() => addressNow()).not.toContain('open=')
+    await expect.poll(shape).toBe('structure')
+
+    // and the way back up does not leave the question behind it either
+    await page.getByRole('button', { name: /品德题目 2/ }).click()
+    await expect.poll(() => addressNow()).toContain(`open=${itemId(2)}`)
+    await page.getByRole('button', { name: /评分结构/ }).click()
+    await expect.poll(() => addressNow()).not.toContain('open=')
+    pressBack()
+    await expect.poll(() => addressNow()).not.toContain('open=')
+    await expect.poll(shape).toBe('structure')
+  })
+
+  // A long structure keeps its place: back out of a question, the reader is
+  // where they were in it, on the row they pressed; into one, they hear its
+  // name.
+  it('keeps a phone’s place in the structure, and its focus, across a question', async () => {
+    await page.viewport(390, 844)
+    await workspace({
+      route: base,
+      items: Array.from({ length: 30 }, (_, i) =>
+        question(i + 1, `品德题目 ${String(i + 1)}`, BAND_A),
+      ),
+    })
+    await expect.poll(shape).toBe('structure')
+    const scroller = page.getByTestId('page-scroller').element()
+    const row = () => document.querySelector(`[data-rail-row="${itemId(20)}"]`) as HTMLElement
+    row().scrollIntoView({ block: 'center' })
+    await expect.poll(() => scroller.scrollTop).toBeGreaterThan(200)
+    const was = scroller.scrollTop
+    await userEvent.click(row())
+    await expect.poll(shape).toBe('item')
+    await expect.poll(() => document.activeElement?.getAttribute('data-pane-title')).toBe('')
+    expect(document.activeElement?.textContent).toBe('品德题目 20')
+
+    await page.getByRole('button', { name: /评分结构/ }).click()
+    await expect.poll(shape).toBe('structure')
+    await expect.poll(() => Math.abs(scroller.scrollTop - was)).toBeLessThan(4)
+    expect(document.activeElement).toBe(row())
   })
 
   it('keeps the way to file at the foot of a phone, however little the question holds', async () => {
@@ -488,17 +587,18 @@ describe('reading one question’s claims', () => {
       lines: [line(1, GPA, '9.5000'), line(2, FITNESS, '2.0000'), line(3, PENALTY, '-2.0000')],
     })
     const only = () => rows()[0]!
+    const lead = () => only().querySelector('[data-part="lead"]')?.textContent ?? ''
     // a figure that differs from what it came to keeps its name beside it
     await expect.poll(() => only().getAttribute('data-entry')).toBe(entryId(1))
-    expect(only().textContent).toContain('课程加权平均分')
-    expect(only().textContent).toContain('95.02')
+    expect(lead()).toContain('课程加权平均分')
+    expect(lead()).toContain('95.02')
     expect(only().querySelector('[data-amount]')?.getAttribute('data-amount')).toBe('9.50')
 
-    // one that equals it is said once, in the amount; the field names the row
+    // one that equals it is said once, in the amount; the field alone names the row
     await userEvent.click(document.querySelector(`[data-rail-row="${FITNESS}"]`)!)
     await expect.poll(() => only().getAttribute('data-entry')).toBe(entryId(2))
-    expect(only().textContent).toContain('体质测试加分')
-    expect(only().textContent).not.toContain('2.00体')
+    expect(lead()).toBe('体质测试加分')
+    expect(only().textContent.split('2.00')).toHaveLength(2)
     expect(only().querySelector('[data-amount]')?.getAttribute('data-amount')).toBe('2.00')
 
     // a deduction keeps its words and says its figure once, as a deduction
@@ -532,5 +632,101 @@ describe('reading one question’s claims', () => {
     expect(rows()[0]!.querySelector('[data-amount]')?.getAttribute('data-amount')).toBe('')
     expect(page.getByTestId('file-claim').elements()).toHaveLength(0)
     await expect.element(page.getByText('已并入优秀学生干部')).toBeVisible()
+  })
+})
+
+describe('the head of the structure', () => {
+  // The head's "in review" and the list's filter of the same name hold the
+  // same claims: one the owner appealed is out with the reviewers again.
+  it('counts an appealed claim as in review, as its filter does', async () => {
+    await page.viewport(1440, 900)
+    await workspace({
+      route: `${base}?open=${itemId(1)}`,
+      entries: [
+        claim(1, itemId(1), 'in_review'),
+        claim(2, itemId(1), 'rejected', {
+          openRound: { origin: 'appeal' },
+        }),
+        claim(3, itemId(1), 'approved'),
+      ],
+    })
+    await expect
+      .poll(() => document.querySelector('[data-stat="in_review"]')?.getAttribute('data-count'))
+      .toBe('2')
+    expect(document.querySelector('[data-chip="in_review"]')?.getAttribute('data-count')).toBe('2')
+  })
+
+  // Full marks are what the limited sections add up to; a deduction section
+  // with no limit neither adds to them nor takes them away.
+  it('totals full marks over the limited sections, past one that sets none', async () => {
+    await page.viewport(1440, 900)
+    await workspace({
+      route: base,
+      items: [question(1, '学业成绩', BAND_A), question(2, '违纪扣分', BAND_B)],
+      groups: [group(BAND_A, null, '学业发展', 0), group(BAND_B, null, '纪律扣分', 1)],
+      stubs: {
+        // the limits the account applied, which is where the head reads them
+        getMyResult: () =>
+          Effect.succeed({
+            mode: 'provisional',
+            total: '4.00',
+            groups: [
+              { groupId: BAND_A, cap: '10.00', final: '6.00' },
+              { groupId: BAND_B, cap: null, final: '-2.00' },
+            ].map((one) => ({
+              ...one,
+              parentGroupId: null,
+              depth: 0,
+              name: one.groupId,
+              itemsTotal: one.final,
+              childrenTotal: '0.00',
+              raw: one.final,
+              floor: null,
+            })),
+            lines: [],
+          }),
+      },
+    })
+    await expect.element(page.getByTestId('entries-total')).toHaveAttribute('data-cap', '10')
+  })
+
+  // News landing on the question being read is read at once: the dot does
+  // not wait for the reader to leave and come back.
+  it('reads news that arrives on the question already open', async () => {
+    await page.viewport(1440, 900)
+    let unread: readonly string[] = []
+    const looked = vi.fn(() => Effect.succeed({ ok: true as const }))
+    let release = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await workspace({
+      route: `${base}?open=${itemId(2)}`,
+      stubs: {
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [],
+            nextCursor: null,
+            attention: { unreadItemIds: unread },
+          }),
+        markMyEntryRead: looked,
+        watchBatch: () =>
+          Effect.succeed(
+            Stream.concat(
+              Stream.fromEffect(
+                Effect.promise(() => gate).pipe(Effect.as({ kind: 'entries-changed' as const })),
+              ),
+              Stream.never,
+            ),
+          ),
+      },
+    })
+    await expect.element(page.getByRole('heading', { name: '品德题目 2' })).toBeVisible()
+    expect(looked).not.toHaveBeenCalled()
+    unread = [itemId(2)]
+    release()
+    await vi.waitFor(() => expect(looked).toHaveBeenCalledOnce())
+    await expect.poll(() => page.getByTestId('unread-dot').elements().length).toBe(0)
   })
 })

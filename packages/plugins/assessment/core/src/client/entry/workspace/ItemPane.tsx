@@ -20,7 +20,7 @@ import { recordedOnly, type EntryDto, type ItemDto } from '../model.ts'
 import type { Standing, StructureRow } from '../standing.ts'
 import { useWidthOf, type WorkspaceMode } from './layout.ts'
 import { EntryRow } from './EntryRow.tsx'
-import { useCalcLine } from './calc.ts'
+import { useCalcLine, useLineWords } from './calc.ts'
 import {
   chainOf,
   chipsFor,
@@ -529,9 +529,13 @@ export function ItemPane({
   const [oldestFirst, setOldestFirst] = useState(false)
   const [limit, setLimit] = useState(PAGE)
 
+  const lineWords = useLineWords()
   const lines = useMemo(
-    () => new Map(entries.map((entry) => [entry.id, entryLineOf(entry, item, standing)] as const)),
-    [entries, item, standing],
+    () =>
+      new Map(
+        entries.map((entry) => [entry.id, entryLineOf(entry, item, standing, lineWords)] as const),
+      ),
+    [entries, item, standing, lineWords],
   )
   const counts = new Map(
     chips.map((one) => [one.key, entries.filter((entry) => one.test(entry)).length] as const),
@@ -741,7 +745,13 @@ export function ItemPane({
           <span aria-hidden {...stylex.props(styles.titleNo)}>
             {outline.numbers.get(row.id)}.
           </span>
-          <h2 {...stylex.props(styles.title, voided && styles.titleGone)}>{item.title}</h2>
+          <h2
+            tabIndex={-1}
+            data-pane-title=""
+            {...stylex.props(styles.title, voided && styles.titleGone)}
+          >
+            {item.title}
+          </h2>
           {/* on a phone the owner's key stands in the bar at the foot, where
               the thumb is; everything else keeps its seat beside the title */}
           {headerAction ??

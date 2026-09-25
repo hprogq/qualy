@@ -1,6 +1,4 @@
-import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { MAX_ENTRIES_PER_ITEM } from '../../api.ts'
-import { assessmentMessages as m } from '../i18n.ts'
 import type { EvidencePayload } from './EvidenceForm.tsx'
 import {
   amountOf,
@@ -51,7 +49,10 @@ export interface Standing {
   }[]
 }
 
-/** the one word a row says about itself beside its name */
+/**
+ * Where a row stands, as one tag; the words for it are the workspace's
+ * (`rowWordOf`), so the rail, the pane and the section say the same thing.
+ */
 export type RowTag =
   | 'voided'
   | 'supplement'
@@ -64,20 +65,6 @@ export type RowTag =
   | 'recorded'
   | 'granted'
   | 'open'
-
-export const ROW_TAG: Record<RowTag, MessageDescriptor> = {
-  voided: m.itemsStatusVoided,
-  supplement: m.entryStatusAwaitingSupplement,
-  needs_revision: m.entryStatusNeedsRevision,
-  draft: m.entryStatusDraft,
-  in_review: m.entryStatusInReview,
-  rejected: m.entryStatusRejected,
-  partial: m.rowPartialApproved,
-  approved: m.entryStatusApproved,
-  recorded: m.myEntriesRecorded,
-  granted: m.rowGranted,
-  open: m.myEntriesOpen,
-}
 
 export interface StructureRow {
   id: string
@@ -112,14 +99,6 @@ export const itemScore = (standing: Standing | null, itemId: string): string | n
   const lines = standing.lines.filter((line) => line.kind === 'entry' && line.itemId === itemId)
   if (lines.length === 0) return null
   return amountOf(lines.reduce((sum, line) => sum + unitsOf(line.value), 0))
-}
-
-/** what one filed claim was granted, when it was granted anything */
-export const entryScore = (standing: Standing | null, entryId: string): string | null => {
-  const line = standing?.lines.find(
-    (one) => one.kind === 'entry' && one.provenance?.entryId === entryId,
-  )
-  return line === undefined ? null : trimAmount(line.value)
 }
 
 const liveCount = (entries: readonly EntryDto[]) =>

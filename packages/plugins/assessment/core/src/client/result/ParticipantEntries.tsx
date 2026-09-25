@@ -30,6 +30,7 @@ import { useWorkspaceMode } from '../entry/workspace/layout.ts'
 import { useParticipantEntries } from './participant-entries.ts'
 import { useReviewQueueQuery } from '../review/queue.ts'
 import { entryLineOf } from '../entry/workspace/model.ts'
+import { useLineWords } from '../entry/workspace/calc.ts'
 
 // One person's filings, read the way they read them: the same workspace as
 // their own page, with the staff reader's acts in place of the owner's.
@@ -99,6 +100,7 @@ export function ParticipantEntries({
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
+  const lineWords = useLineWords()
   const mode = useWorkspaceMode()
   // which question is open: the same address key the owner's page keeps
   const [open, setOpen] = usePageQueryState('open', '', {
@@ -382,7 +384,12 @@ export function ParticipantEntries({
           onIntervene={(kind, reason) =>
             intervene.mutate({ entryId: lingering.entry.id, kind, reason })
           }
-          summary={entryLineOf(lingering.entry, itemsById.get(lingering.entry.itemId)!, standing)}
+          summary={entryLineOf(
+            lingering.entry,
+            itemsById.get(lingering.entry.itemId)!,
+            standing,
+            lineWords,
+          )}
         />
       )}
     </>

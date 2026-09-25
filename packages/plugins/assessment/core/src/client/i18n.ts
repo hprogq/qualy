@@ -4200,6 +4200,14 @@ const i18n = definePluginMessages({
       id: 'assessment/entries/list-join',
       defaultMessage: ', ',
     },
+    entriesFigure: {
+      id: 'assessment/entries/figure',
+      defaultMessage: '{label} {value}',
+    },
+    entriesPartJoin: {
+      id: 'assessment/entries/part-join',
+      defaultMessage: '{before}, {after}',
+    },
     entriesNoMatch: {
       id: 'assessment/entries/no-match',
       defaultMessage: 'No entries match',
@@ -5281,9 +5289,7 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/questions',
       defaultMessage: '{count, plural, one {# item} other {# items}}',
     },
-    myEntriesRecorded: { id: 'assessment/entry/recorded', defaultMessage: 'Recorded by staff' },
     rowGranted: { id: 'assessment/entry/auto-granted', defaultMessage: 'Granted automatically' },
-    myEntriesOpen: { id: 'assessment/entry/open', defaultMessage: 'Open for submission' },
     myEntriesResume: { id: 'assessment/entry/resume', defaultMessage: 'Continue editing' },
     entryAlreadyFiled: {
       id: 'assessment/entry/already-filed',

@@ -12,7 +12,6 @@ import { useI18n, useList } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
-import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { toast } from '@qualy/ui/toast'
 import { useLingering } from '@qualy/ui/use-lingering'
@@ -30,6 +29,8 @@ import { EntrySheet } from './EntrySheet.tsx'
 import { standingRows } from './standing.ts'
 import { answerOf, fieldsOf, type EntryDto, type FilingGateDto, type ItemDto } from './model.ts'
 import { EntriesWorkspace } from './workspace/EntriesWorkspace.tsx'
+import { StandingNotice } from './workspace/StandingNotice.tsx'
+import { useLineWords } from './workspace/calc.ts'
 import { entryLineOf } from './workspace/model.ts'
 import { useWorkspaceMode } from './workspace/layout.ts'
 
@@ -51,20 +52,6 @@ const styles = stylex.create({
     flexDirection: 'column',
   },
   empty: { padding: 24, fontSize: 14, color: tokens.mutedForeground },
-  // the score's absence, said once above everything with the way to ask again
-  notice: {
-    display: 'flex',
-    flexShrink: 0,
-    alignItems: 'center',
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: tokens.divider,
-    backgroundColor: `color-mix(in oklab, ${tokens.warning} 10%, ${tokens.background})`,
-    paddingInline: 16,
-    paddingBlock: 8,
-  },
-  noticeWords: { flexGrow: 1, fontSize: 13, color: tokens.surfaceMutedForeground },
   // the page it is about to become, greyed
   skeleton: {
     display: 'grid',
@@ -131,7 +118,7 @@ function Body({
   // time. Side by side the layers are furniture beside a list, and choosing
   // ten questions must not cost ten presses of back to undo.
   const history = mode === 'phone' ? 'push' : 'replace'
-  const [open, setOpen] = usePageQueryState('open', '', { history })
+  const [open] = usePageQueryState('open')
   const [filing, setFiling] = usePageQueryState('entry', '', { history })
   const [detail, setDetail] = usePageQueryState('detail', '', { history })
   const updateQuery = usePageQueryUpdate()
@@ -228,6 +215,7 @@ function Body({
   // claim is handed on) is said by those fields' names and what is wrong
   // with each - not as a failed save.
   const listJoin = useList()
+  const lineWords = useLineWords()
   const sayFailure = (
     error: unknown,
     itemId: string,
@@ -496,27 +484,20 @@ function Body({
           scored={scored}
           notice={
             (scoreless || stale) && (
-              <div
-                data-testid="standing-unavailable"
-                data-standing={stale ? 'stale' : 'unavailable'}
-                {...stylex.props(styles.notice)}
-              >
-                <span {...stylex.props(styles.noticeWords)}>
-                  {format(stale ? m.resultStaleTitle : m.resultUnavailableTitle)}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={standing.isFetching}
-                  onClick={() => void standing.refetch()}
-                >
-                  {format(m.resultRecalculate)}
-                </Button>
-              </div>
+              <StandingNotice
+                error={standing.error}
+                stale={stale}
+                retrying={standing.isFetching}
+                onRetry={() => void standing.refetch()}
+              />
             )
           }
           open={open}
-          onOpen={(id) => setOpen(id)}
+          // a desk's question is furniture beside the list; only a phone's
+          // step from the structure into a question is somewhere to come back from
+          onOpen={(id, how) =>
+            updateQuery({ open: id }, { history: mode === 'phone' ? how : 'replace' })
+          }
           gates={gates}
           busy={setStatus.isPending || declare.isPending}
           refreshing={anyFetching}
@@ -589,6 +570,7 @@ function Body({
             detailed?.entry ?? lingeringDetail.entry,
             lingeringDetail.item,
             standing.data ?? null,
+            lineWords,
           )}
         />
       )}

@@ -322,7 +322,9 @@ export function GroupPane({
         <div {...stylex.props(styles.titleLine)}>
           <div {...stylex.props(styles.titleWords)}>
             <span {...stylex.props(styles.no)}>{outline.numbers.get(row.id)}</span>
-            <h2 {...stylex.props(styles.title)}>{row.name}</h2>
+            <h2 tabIndex={-1} data-pane-title="" {...stylex.props(styles.title)}>
+              {row.name}
+            </h2>
           </div>
           <span {...stylex.props(styles.ledger)} data-scored={scored}>
             <span {...stylex.props(styles.ledgerGot, (!scored || got === 0) && styles.ledgerZero)}>

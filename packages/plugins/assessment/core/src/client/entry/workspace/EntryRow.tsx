@@ -228,8 +228,14 @@ export function EntryRow({
     >
       <span {...stylex.props(styles.main)}>
         <span {...stylex.props(styles.identity)}>
-          <span {...stylex.props(styles.lead)}>{line.lead}</span>
-          {line.sub !== '' && <span {...stylex.props(styles.sub)}>{line.sub}</span>}
+          <span data-part="lead" {...stylex.props(styles.lead)}>
+            {line.lead}
+          </span>
+          {line.sub !== '' && (
+            <span data-part="sub" {...stylex.props(styles.sub)}>
+              {line.sub}
+            </span>
+          )}
         </span>
         <span {...stylex.props(styles.second)}>
           {compact && standing}
