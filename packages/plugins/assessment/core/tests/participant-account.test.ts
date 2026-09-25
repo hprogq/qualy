@@ -92,6 +92,75 @@ describe.runIf(postgresAvailable)("one participant's account, read by staff", ()
     expect(result.claims.entries[0]!.recognition!.source).toBe('review')
   })
 
+  // A round reopened for a stage still to come has happened once already
+  // (ruling of 2026-09-25 #27): while it waits for that stage, its
+  // participants keep reading what they filed and what it came to.
+  it('keeps a reopened round readable to its participants while its next stage waits', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('pa-reopened')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const s1 = f.principal(f.s1)
+          const admin = f.principal(f.admin)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          yield* assessment.decideReview(
+            f.t,
+            sent.currentReviewInstanceId!,
+            { decision: 'approve' },
+            f.principal(f.reviewer),
+          )
+          // the round runs to its last stage and is archived
+          const plan = yield* assessment.getPlan(f.t, g.batch.id, admin)
+          yield* assessment.advancePhase(
+            f.t,
+            g.batch.id,
+            { to: plan[plan.length - 1]!.id, force: true, reason: 'the round is over' },
+            admin,
+          )
+          yield* assessment.setBatchStatus(f.t, g.batch.id, { status: 'archived' }, admin)
+          yield* assessment.setBatchStatus(
+            f.t,
+            g.batch.id,
+            {
+              status: 'active',
+              reason: '补充申诉',
+              phase: { displayName: '补充申诉' },
+              plannedEntryAt: Date.now() + 24 * 3_600_000,
+            },
+            admin,
+          )
+          const listed = yield* assessment.listBatches(f.t, { limit: 10 }, s1)
+          const account = yield* assessment.getMyResult(f.t, g.batch.id, s1)
+          const mine = yield* assessment.listMyEntries(f.t, g.batch.id, {}, s1)
+          const detail = yield* assessment.getEntry(f.t, entry.id, s1)
+          const history = yield* assessment.getEntryHistory(f.t, entry.id, s1)
+          return {
+            listed: listed.map((row) => row.id),
+            total: account.total,
+            mine: mine.entries.map((row) => row.id),
+            detail: detail.id,
+            rounds: history.rounds.length,
+            batchId: g.batch.id,
+            entryId: entry.id,
+          }
+        }),
+      ),
+    )
+    expect(result.listed).toContain(result.batchId)
+    expect(result.total).toBe('3.00')
+    expect(result.mine).toEqual([result.entryId])
+    expect(result.detail).toBe(result.entryId)
+    expect(result.rounds).toBe(1)
+  })
+
   it('refuses everyone who does not administer this roster', async () => {
     const result = ok(
       await run(

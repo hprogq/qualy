@@ -223,21 +223,16 @@ export const withinReach = (held: AuthorizationScope) =>
  * morning in which the stage had opened its actions and the round it belongs
  * to was still invisible.
  *
- * Stages that began before the round was last closed do not count: reopening
- * keeps them, and they belong to the round as it was.
+ * Stages that began before the round was last closed count too (ruling of
+ * 2026-09-25 #27): a round reopened for a stage still to come has already
+ * happened once, and waiting for its next stage does not take back what its
+ * participants filed and were scored in it.
  */
 const hasBegun = sql<boolean>`exists (
   select 1 from batch_phases ph
   where ph.tenant_id = assessment_batches.tenant_id
     and ph.batch_id = assessment_batches.id
     and coalesce(ph.actual_entry_at, ph.planned_entry_at) <= now()
-    and coalesce(ph.actual_entry_at, ph.planned_entry_at) > coalesce(
-      (select max(le.occurred_at) from batch_lifecycle_events le
-        where le.tenant_id = assessment_batches.tenant_id
-          and le.batch_id = assessment_batches.id
-          and le.kind = 'archived'),
-      '-infinity'::timestamptz
-    )
 )`
 
 /**
