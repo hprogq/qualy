@@ -71,5 +71,40 @@ await runOverDemo(
       console.log(`  total     ${spread(totals)}`)
       for (const [name, values] of sections) console.log(`  ${name.padEnd(8)} ${spread(values)}`)
     }
+
+    // What those scores rest on, counted over every claim rather than
+    // sampled: a claim standing on a concluded round says what that round
+    // concluded, it stands on the newest of its determinations, and no
+    // round is open over a claim that does not point at it. A baseline that
+    // breaks any of these shows a visitor an appeal upheld on a claim that
+    // never moved.
+    const broken = (
+      (yield* runSql(sql`
+        select
+          (select count(*)::int from entries e
+            join review_instances ri
+              on ri.tenant_id = e.tenant_id and ri.id = e.current_review_instance_id
+            where ri.state = 'completed'
+              and e.status <> 'voided'
+              and ((ri.outcome = 'approved' and e.status <> 'approved')
+                or (ri.outcome = 'rejected' and e.status not in ('rejected', 'draft'))))
+            as verdicts,
+          (select count(*)::int from entries e
+            where exists (
+              select 1 from entry_recognitions r
+              where r.tenant_id = e.tenant_id and r.supersedes_id = e.current_recognition_id))
+            as determinations,
+          (select count(*)::int from review_instances ri
+            join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
+            where ri.state in ('active', 'blocked', 'awaiting_supplement')
+              and e.current_review_instance_id is distinct from ri.id)
+            as orphans`)) as {
+        rows: { verdicts: number; determinations: number; orphans: number }[]
+      }
+    ).rows[0]!
+    console.log(
+      `claims off their verdict ${broken.verdicts} · behind their determination ${broken.determinations} · open rounds nobody stands on ${broken.orphans}`,
+    )
+    if (broken.verdicts + broken.determinations + broken.orphans > 0) process.exitCode = 1
   }) as Effect.Effect<void, unknown, never>,
 )
