@@ -133,6 +133,7 @@ const screen = ({
   route,
   element = <ParticipantResultsPage />,
   capabilities,
+  queue = [],
   claims = [
     claim(1, OWN_ITEM, 'approved'),
     claim(2, OWN_ITEM, 'in_review'),
@@ -145,6 +146,8 @@ const screen = ({
   element?: ReactNode
   capabilities?: Record<string, boolean>
   claims?: readonly unknown[]
+  /** the reader's own review queue in the round */
+  queue?: readonly unknown[]
   who?: unknown
 }) =>
   renderScreen({
@@ -162,6 +165,11 @@ const screen = ({
               {
                 id: 'assessment/batch-record',
                 path: '/assessment/batches/:batchId/record',
+                layout: 'admin',
+              },
+              {
+                id: 'assessment/review-instance',
+                path: '/assessment/batches/:batchId/reviews/:instanceId',
                 layout: 'admin',
               },
             ],
@@ -228,6 +236,8 @@ const screen = ({
         listUserTypeOptions: () =>
           Effect.succeed({ userTypes: [{ id: 'type-student', code: 'student', name: '学生' }] }),
         getRecognitionContract: () => Effect.succeed({ contract: null }),
+        listReviewInbox: () =>
+          Effect.succeed({ items: queue, nextCursor: null, handledToday: 0, judging: true }),
         getEntryHistory: () => Effect.succeed({ revisions: [], rounds: [], events: [] }),
       },
     }),
@@ -296,6 +306,55 @@ describe('reading somebody’s entries', () => {
     await expect
       .poll(() => rows().map((row) => row.getAttribute('data-entry')))
       .toEqual([entryId(3)])
+  })
+
+  // What waits on this reader is the server's queue, never a guess from the
+  // claim's state: one of the two claims in review is theirs to decide.
+  it('marks what waits on the reader’s own decision, with the way to it', async () => {
+    await page.viewport(1440, 900)
+    const INSTANCE = '99999999-9999-4999-8999-999999999991'
+    await screen({
+      route: `${base}&view=entries&open=${OWN_ITEM}`,
+      capabilities: { review: true },
+      claims: [claim(1, OWN_ITEM, 'in_review'), claim(2, OWN_ITEM, 'in_review')],
+      queue: [
+        {
+          instanceId: INSTANCE,
+          entryId: entryId(2),
+          batchId: BATCH_ID,
+          batchName: '2026 春季综测',
+          itemId: OWN_ITEM,
+          itemTitle: '科研成果',
+          participantName: '郭航旗',
+          businessNo: '2023123456',
+          unitId: null,
+          unitName: null,
+          roundNo: 1,
+          route: 'normal',
+          values: [],
+          attachmentCount: 0,
+          submittedAt: '2026-03-01T00:00:00.000Z',
+        },
+      ],
+    })
+    await expect.element(page.getByTestId('awaiting-me')).toHaveAttribute('data-count', '1')
+    await expect
+      .poll(() =>
+        rows()
+          .filter((row) => row.hasAttribute('data-awaiting-me'))
+          .map((row) => row.getAttribute('data-entry')),
+      )
+      .toEqual([entryId(2)])
+    expect(
+      page.getByTestId('awaiting-me').getByRole('link').element().getAttribute('href'),
+    ).toContain(INSTANCE)
+  })
+
+  it('reads no queue for a reader who does not review in the round', async () => {
+    await page.viewport(1440, 900)
+    await screen({ route: `${base}&view=entries&open=${OWN_ITEM}` })
+    await expect.poll(() => rows().length).toBe(2)
+    expect(page.getByTestId('awaiting-me').elements()).toHaveLength(0)
   })
 
   it('offers the office’s own record only where the reader holds that power', async () => {

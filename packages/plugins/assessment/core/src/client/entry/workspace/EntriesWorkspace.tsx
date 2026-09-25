@@ -307,6 +307,8 @@ export interface WorkspaceProps {
   itemAction?: (item: ItemDto) => ReactNode
   /** a question came on screen */
   onShow?: (row: StructureRow) => void
+  /** claims whose open round waits on this staff reader's own decision */
+  awaitingMe?: ReadonlySet<string>
   /**
    * `parent`: fill a parent that bounds the height. `window`: take the room
    * from where it lands to the foot of the window, in a page that scrolls.
@@ -340,6 +342,7 @@ function Workspace({
   onFile,
   itemAction,
   onShow,
+  awaitingMe,
   fit,
   mode,
 }: WorkspaceProps & { mode: WorkspaceMode }) {
@@ -443,6 +446,7 @@ function Workspace({
         filing={filing}
         busy={busy}
         selectedEntryId={openEntryId}
+        {...(awaitingMe === undefined ? {} : { awaitingMe })}
         headerAction={itemAction?.(item)}
         onEntry={onEntry}
         onFile={() => onFile?.(item)}

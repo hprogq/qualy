@@ -108,6 +108,19 @@ const styles = stylex.create({
   noteWaits: {
     color: tokens.warningForeground,
   },
+  mine: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    height: 20,
+    borderRadius: 6,
+    boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${tokens.warning} 60%, transparent)`,
+    paddingInline: 7,
+    fontSize: 12,
+    fontWeight: 500,
+    whiteSpace: 'nowrap',
+    color: tokens.warningForeground,
+  },
   tagCell: {
     display: 'flex',
     justifyContent: 'center',
@@ -144,10 +157,13 @@ export function EntryRow({
   line,
   compact,
   selected,
+  awaitingMe = false,
   onOpen,
 }: {
   entry: EntryDto
   line: EntryLine
+  /** a staff reader's own review is what this claim waits on */
+  awaitingMe?: boolean
   /** tablet and phone: the status folds into the second line */
   compact: boolean
   /** the claim open in the drawer right now */
@@ -174,6 +190,7 @@ export function EntryRow({
       data-entry={entry.id}
       data-standing={standingOf(entry)}
       data-files={String(line.files)}
+      data-awaiting-me={awaitingMe || undefined}
       aria-current={selected ? 'true' : undefined}
       onClick={onOpen}
       {...stylex.props(
@@ -189,6 +206,7 @@ export function EntryRow({
         </span>
         <span {...stylex.props(styles.second)}>
           {compact && standing}
+          {awaitingMe && <span {...stylex.props(styles.mine)}>{format(m.entriesAwaitingYou)}</span>}
           <span {...stylex.props(styles.keep)}>
             {format(m.entriesWhen, { when, action: format(line.action) })}
           </span>

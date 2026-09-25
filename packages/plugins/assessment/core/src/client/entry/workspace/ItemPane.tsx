@@ -476,6 +476,7 @@ export function ItemPane({
   filing,
   busy,
   selectedEntryId,
+  awaitingMe,
   headerAction,
   onEntry,
   onFile,
@@ -495,6 +496,8 @@ export function ItemPane({
   filing: Filing | null
   busy: boolean
   selectedEntryId: string
+  /** claims whose open round waits on this staff reader's own decision */
+  awaitingMe?: ReadonlySet<string>
   /** somebody else's key for this question, where the owner's is not the one */
   headerAction?: ReactNode
   onEntry: (entry: EntryDto) => void
@@ -805,6 +808,7 @@ export function ItemPane({
                 line={lines.get(entry.id)!}
                 compact={compact}
                 selected={entry.id === selectedEntryId}
+                awaitingMe={awaitingMe?.has(entry.id) ?? false}
                 onOpen={() => onEntry(entry)}
               />
             ))}

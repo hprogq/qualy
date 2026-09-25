@@ -4193,6 +4193,19 @@ const i18n = definePluginMessages({
       id: 'assessment/entries/staff-total',
       defaultMessage: 'Current total, provisional',
     },
+    entriesAwaitingYou: {
+      id: 'assessment/entries/awaiting-you',
+      defaultMessage: 'Awaiting your review',
+    },
+    entriesAwaitingYouCount: {
+      id: 'assessment/entries/awaiting-you-count',
+      defaultMessage:
+        '{count, plural, one {# entry awaits your review} other {# entries await your review}}',
+    },
+    entriesGoReview: {
+      id: 'assessment/entries/go-review',
+      defaultMessage: 'Review',
+    },
     entriesRecordFor: {
       id: 'assessment/entries/record-for',
       defaultMessage: 'Record',

@@ -28,6 +28,7 @@ import { opensTo, type EntryDto, type ItemDto } from '../entry/model.ts'
 import { EntriesWorkspace } from '../entry/workspace/EntriesWorkspace.tsx'
 import { useWorkspaceMode } from '../entry/workspace/layout.ts'
 import { useParticipantEntries } from './participant-entries.ts'
+import { useReviewQueueQuery } from '../review/queue.ts'
 import { entryLineOf } from '../entry/workspace/model.ts'
 
 // One person's filings, read the way they read them: the same workspace as
@@ -39,6 +40,21 @@ import { entryLineOf } from '../entry/workspace/model.ts'
 // and record a finding into a question the office records.
 
 const styles = stylex.create({
+  // what waits on this reader, said once over the account with the way there
+  waiting: {
+    display: 'flex',
+    flexShrink: 0,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+    backgroundColor: `color-mix(in oklab, ${tokens.warning} 10%, ${tokens.background})`,
+    paddingInline: 16,
+    paddingBlock: 8,
+  },
+  waitingWords: { flexGrow: 1, fontSize: 13, color: tokens.surfaceMutedForeground },
   skeleton: {
     display: 'grid',
     gap: 16,
@@ -90,6 +106,13 @@ export function ParticipantEntries({
   })
 
   const entries = useQuery(useParticipantEntries(batchId, participantId))
+  // Which of these claims wait on this reader's own decision: the server's
+  // queue answers that, so nothing here guesses who may review what. Read
+  // only by a reader who reviews in this round, and shared with the queue
+  // page under the same key.
+  const batch = useQuery(query.assessment.getBatch.queryOptions({ params: { batchId } }))
+  const reviews = batch.data?.batch.capabilities.review === true
+  const queue = useQuery({ ...useReviewQueueQuery(batchId), enabled: reviews })
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
   const groups = useQuery(query.assessment.listScoreGroups.queryOptions({ params: { batchId } }))
   // read, not fetched twice: the detail above has it open already
@@ -195,6 +218,14 @@ export function ParticipantEntries({
     onError: (error) => setCorrectionProblem(sayEntryFailure(error, { format, formatError })),
   })
 
+  const mine = new Set(flat.map((entry) => entry.id))
+  const awaiting = new Map(
+    (reviews ? (queue.data?.items ?? []) : [])
+      .filter((row) => mine.has(row.entryId))
+      .map((row) => [row.entryId, row.instanceId] as const),
+  )
+  const firstAwaiting = [...awaiting.values()][0]
+
   const opened = claims.find((one) => one.entry.id === entryId) ?? null
   // kept mounted while the drawer shuts, or it would vanish rather than close
   const lingering = useLingering(opened)
@@ -289,6 +320,28 @@ export function ParticipantEntries({
                 </Button>
               ) : null
             }
+            awaitingMe={new Set(awaiting.keys())}
+            notice={
+              firstAwaiting !== undefined && (
+                <div
+                  data-testid="awaiting-me"
+                  data-count={awaiting.size}
+                  {...stylex.props(styles.waiting)}
+                >
+                  <span {...stylex.props(styles.waitingWords)}>
+                    {format(m.entriesAwaitingYouCount, { count: awaiting.size })}
+                  </span>
+                  <Button asChild size="sm" variant="outline">
+                    <PageLink
+                      page="assessment/review-instance"
+                      params={{ batchId, instanceId: firstAwaiting }}
+                    >
+                      {format(m.entriesGoReview)}
+                    </PageLink>
+                  </Button>
+                </div>
+              )
+            }
             fit="window"
           />
         )}
@@ -314,6 +367,18 @@ export function ParticipantEntries({
           busy={intervene.isPending || reopen.isPending || redetermine.isPending}
           may={may}
           onClose={() => onEntry('')}
+          provenance={
+            awaiting.has(lingering.entry.id) ? (
+              <Button asChild size="sm" variant="outline" data-testid="staff-review">
+                <PageLink
+                  page="assessment/review-instance"
+                  params={{ batchId, instanceId: awaiting.get(lingering.entry.id)! }}
+                >
+                  {format(m.entriesGoReview)}
+                </PageLink>
+              </Button>
+            ) : undefined
+          }
           onIntervene={(kind, reason) =>
             intervene.mutate({ entryId: lingering.entry.id, kind, reason })
           }

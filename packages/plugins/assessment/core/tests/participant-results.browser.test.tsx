@@ -182,6 +182,9 @@ const screen = (
               { id: 'n2', name: '软件2301班', parentId: 'n1' },
             ],
           }),
+        // the reader's own review queue, which marks what waits on them
+        listReviewInbox: () =>
+          Effect.succeed({ items: [], nextCursor: null, handledToday: 0, judging: true }),
         listUserTypeOptions: () =>
           Effect.succeed({
             userTypes: [
