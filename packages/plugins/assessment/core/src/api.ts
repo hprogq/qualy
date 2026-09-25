@@ -2792,7 +2792,14 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
           grant: Schema.Struct({ driver: Schema.String, payload: configJson }),
           expiresAt: Schema.String,
         }),
-        error: [BatchNotFound, ItemNotFound, BatchReadOnly, EntryActionRefused, AccessDenied],
+        error: [
+          BatchNotFound,
+          ItemNotFound,
+          BatchReadOnly,
+          EntryActionRefused,
+          AdministrativeImportInvalid,
+          AccessDenied,
+        ],
       },
     ).middleware(Authenticated),
   )

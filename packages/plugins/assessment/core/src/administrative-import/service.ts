@@ -59,6 +59,7 @@ import { provenColumns } from './columns.ts'
 import { judgeRows, markDuplicateFacts, summarise } from './preview.ts'
 import { readSourceBytes, SourceUnreadable } from './read-source.ts'
 import {
+  ADMIN_IMPORT_LIMITS,
   buildAdministrativeWorkbook,
   parseAdministrativeWorkbook,
   WorkbookUnreadable,
@@ -252,7 +253,12 @@ export interface AdministrativeImportMethods {
     as: Principal,
   ) => Effect.Effect<
     UploadTicket,
-    BatchNotFound | ItemNotFound | BatchReadOnly | EntryActionRefused | AccessDenied
+    | BatchNotFound
+    | ItemNotFound
+    | BatchReadOnly
+    | EntryActionRefused
+    | AdministrativeImportInvalid
+    | AccessDenied
   >
   readonly completeAdministrativeImportUpload: (
     tenantId: string,
@@ -948,11 +954,21 @@ export const makeAdministrativeImportMethods = (
             filename: input.filename,
             declaredMime: input.declaredMime,
             size: BigInt(input.size),
+            // no bigger than the reader will open: a larger file would be
+            // stored, counted against the uploader's quota, and refused on
+            // every preview
+            maxFileBytes: BigInt(ADMIN_IMPORT_LIMITS.maxFileBytes),
           })
           .pipe(
             Effect.catchTags({
               STORAGE_UPLOAD_REFUSED: (refused) =>
-                new EntryActionRefused({ action: 'import', reason: refused.reason }),
+                refused.reason === 'file-too-large'
+                  ? new AdministrativeImportInvalid({
+                      issues: [
+                        { rowNo: null, field: null, severity: 'error', reason: 'file-too-large' },
+                      ],
+                    })
+                  : new EntryActionRefused({ action: 'import', reason: refused.reason }),
               STORAGE_BACKEND_UNAVAILABLE: (error) => Effect.die(error),
             }),
           )

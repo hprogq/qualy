@@ -582,6 +582,41 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
     expect(found.after).toEqual({ imports: 0, entries: 0 })
   })
 
+  // A file larger than the reader will ever open was stored, counted against
+  // the uploader's quota, and refused by every preview after it.
+  it('stores no file larger than the reader opens', async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ai-upload-size')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          const item = yield* recordItem(f, g.batch.id)
+          const prepare = (size: number) =>
+            Effect.exit(
+              assessment.prepareAdministrativeImportUpload(
+                f.t,
+                g.batch.id,
+                {
+                  itemId: item.id,
+                  filename: 'import.xlsx',
+                  declaredMime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                  size: String(size),
+                },
+                f.principal(f.recorder),
+              ),
+            )
+          return { over: yield* prepare(20 * 1024 * 1024), within: yield* prepare(1024 * 1024) }
+        }),
+      ),
+    )
+    expect(
+      errorOf<{ issues: { reason: string }[] }>(found.over)?.issues.map((one) => one.reason),
+    ).toEqual(['file-too-large'])
+    expect(found.within._tag).toBe('Success')
+  })
+
   it('refuses an archived round outright', async () => {
     const found = ok(
       await run(
