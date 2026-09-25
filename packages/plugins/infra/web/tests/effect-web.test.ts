@@ -288,6 +288,28 @@ describe('the shell against the api mount', () => {
     expect(served).toBeGreaterThan(0)
   })
 
+  it('answers a range it cannot serve with the whole file, and finishes the answer', async () => {
+    // A backwards range made the file server write a 206 head and then throw:
+    // the response never finished and the client simply waited.
+    for (const address of ['/', '/assets/index-current.js']) {
+      for (const range of ['bytes=5-1', 'bytes=100-50', 'bytes=-5', 'bytes=0-1,4-5', 'lines=1-2']) {
+        const response = await fetch(`${base}${address}`, {
+          headers: { range },
+          signal: AbortSignal.timeout(5_000),
+        })
+        expect(response.status, `${address} ${range}`).toBe(200)
+        expect((await response.text()).length, `${address} ${range}`).toBeGreaterThan(5)
+      }
+    }
+    // an ordinary range is still a range
+    const partial = await fetch(`${base}/assets/index-current.js`, {
+      headers: { range: 'bytes=0-5' },
+      signal: AbortSignal.timeout(5_000),
+    })
+    expect(partial.status).toBe(206)
+    expect(await partial.text()).toBe('export')
+  })
+
   it('keeps serving an asset the current release does not name, for the tab that still needs it', async () => {
     const asset = await fetch(`${base}/assets/page-old.js`)
     expect(asset.status).toBe(200)

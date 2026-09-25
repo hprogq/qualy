@@ -195,6 +195,9 @@ const serve = (
       notFound(response)
       return
     }
+    // a range sirv would mishandle is not honoured at all: the whole file,
+    // which a client asking for a range must accept (RFC 9110, section 14.2)
+    if (!servableRange(request.headers.range)) delete request.headers.range
     if (url === mount || url.startsWith(`${mount}/`) || url.startsWith(`${mount}?`)) {
       // under the mount, rooted at the shared directory; a miss is a miss
       request.url = url.slice(mount.length) || '/'
@@ -203,6 +206,24 @@ const serve = (
     }
     shell(request, response, next)
   }
+}
+
+/**
+ * Whether sirv can serve a Range header as it stands.
+ *
+ * sirv 3.0.2 reads `bytes=x-y` with parseInt and compares only the start to
+ * the file's size. For `bytes=100-50` it wrote a 206 head and then threw from
+ * `createReadStream`, whose start lay past its end: the response never
+ * finished, the client waited, and every such request logged a 500 with a
+ * stack. A suffix range (`bytes=-500`) it read as the first 501 bytes, and a
+ * list of ranges as whatever parseInt made of it. One explicit, ordered
+ * range is what it gets right, so that is the only kind passed on.
+ */
+const servableRange = (header: string | undefined): boolean => {
+  if (header === undefined) return true
+  const parts = /^bytes=(\d+)-(\d*)$/.exec(header.trim())
+  if (parts === null) return false
+  return parts[2] === '' || Number(parts[1]) <= Number(parts[2])
 }
 
 const production = Effect.fn('Web.production')(function* (
