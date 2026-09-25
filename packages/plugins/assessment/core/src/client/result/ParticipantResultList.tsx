@@ -90,9 +90,11 @@ const TWO_COLUMNS = 1280
  * The roster's columns: the number it is scanned by, the person, what their
  * claims wait on, the total and the row's menu. The person has a floor and
  * the larger share of what is left, so the counts beside it can never
- * squeeze a name down to nothing.
+ * squeeze a name down to nothing. The total is wide enough for the longest
+ * reason there is none beside the button that asks again; a reason longer
+ * still, in some language, takes a second line rather than the button.
  */
-const COLUMNS = '7.5rem minmax(9rem, 3fr) minmax(0, 2fr) 6.5rem 2rem'
+const COLUMNS = '7.5rem minmax(9rem, 3fr) minmax(0, 2fr) 8.5rem 2rem'
 
 /**
  * A select cannot hold the empty string as a value, so "no narrowing" needs
@@ -218,7 +220,7 @@ const styles = stylex.create({
     display: 'grid',
     alignItems: 'center',
     gap: 12,
-    gridTemplateColumns: '7.5rem minmax(0, 3fr) minmax(0, 2fr) 6.5rem',
+    gridTemplateColumns: '7.5rem minmax(0, 3fr) minmax(0, 2fr) 8.5rem',
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.divider,
@@ -308,6 +310,11 @@ export function ParticipantResultList({
     enabled: ids.length > 0 && !participants.isPlaceholderData,
   })
   const scored = new Map((scores.data?.scores ?? []).map((one) => [one.participantId, one]))
+  // the scoring service down answers as one row saying so and the rest
+  // deferred, which is a page without totals as surely as a failed question
+  const serviceDown = (scores.data?.scores ?? []).some(
+    (one) => one.state === 'unavailable' && one.reason === 'scoring-unavailable',
+  )
 
   // Live: a claim that moved changes what somebody is waiting on and what
   // they have, so the page and its totals are read again. A burst of
@@ -633,11 +640,22 @@ export function ParticipantResultList({
           </div>
           {/* the rows stand without their totals; why, and the way to ask
               for them again, said once above them rather than on each row */}
-          {scores.isError && (
+          {scores.isError ? (
             <ScoresNotice
+              cause="request"
               reason={formatError(scores.error)}
+              busy={scores.isFetching}
               onRetry={() => void scores.refetch()}
             />
+          ) : (
+            serviceDown && (
+              <ScoresNotice
+                cause="scoring-unavailable"
+                reason={format(m.rosterScoreUnavailable)}
+                busy={scores.isFetching}
+                onRetry={() => void scores.refetch()}
+              />
+            )
           )}
           <AsyncSection
             pending={participants.isPending}

@@ -41,16 +41,29 @@ const REASONS = {
 const PASSING: ReadonlySet<string> = new Set(['scoring-unavailable', 'timed-out'])
 
 const styles = stylex.create({
+  // never wider than its cell: the way to ask again is what the cell is
+  // for when there is no total, and a cell clips whatever runs past it
   seat: {
     display: 'inline-flex',
+    maxWidth: '100%',
     minHeight: 24,
     alignItems: 'center',
     justifyContent: 'flex-end',
     gap: 2,
+    verticalAlign: 'middle',
     fontVariantNumeric: 'tabular-nums',
   },
   total: { fontSize: 14, fontWeight: 600, color: tokens.foreground },
-  reason: { fontSize: 12, color: tokens.mutedForeground, whiteSpace: 'nowrap' },
+  // a reason longer than the column takes a second line rather than
+  // pushing the button out of the cell
+  reason: {
+    minWidth: 0,
+    fontSize: 12,
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+    textAlign: 'end',
+    whiteSpace: 'normal',
+  },
   bone: { width: '3.5rem', height: 14, borderRadius: 4 },
 })
 
@@ -120,8 +133,8 @@ export function RosterScore({
   }
   if (said?.state === 'unavailable' && said.reason !== null) {
     return (
-      <span {...hooks} {...stylex.props(styles.seat, styles.reason)}>
-        {format(REASONS[said.reason])}
+      <span {...hooks} {...stylex.props(styles.seat)}>
+        <span {...stylex.props(styles.reason)}>{format(REASONS[said.reason])}</span>
         {PASSING.has(said.reason) && (
           <Button
             size="icon-xs"

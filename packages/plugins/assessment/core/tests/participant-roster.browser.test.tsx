@@ -94,8 +94,10 @@ const open = (
   route = `/assessment/batches/${BATCH_ID}/results`,
   /** the width the shell leaves the page, where a test stands in for the shell */
   width?: number,
+  locale: 'zh-CN' | 'en-US' = 'zh-CN',
 ) =>
   renderScreen({
+    locale,
     client: fakeClient({
       app: {
         getManifest: () =>
@@ -297,6 +299,110 @@ describe('the roster on the results page', () => {
     expect(addressNow()).not.toContain('participant=')
   })
 
+  // The way to ask again is what the total's cell is for when the scoring
+  // service is down, so it has to be inside the cell in either language,
+  // on a laptop beside the unit tree and on a tablet under it - and the
+  // page says once, above the rows, why none of them has a total.
+  it.each([
+    [1280, 'zh-CN'],
+    [1280, 'en-US'],
+    [834, 'zh-CN'],
+    [834, 'en-US'],
+  ] as const)(
+    'keeps the way to ask again inside the total at %i wide in %s',
+    async (width, locale) => {
+      await page.viewport(width, 800)
+      try {
+        const single = vi.fn((request: Request) =>
+          Effect.succeed({
+            scores: idsOf(request).map((participantId) => ({
+              participantId,
+              state: 'scored' as const,
+              total: '71.00',
+              reason: null,
+            })),
+          }),
+        )
+        await open(
+          {
+            listParticipantScores: (request: Request) => {
+              const ids = idsOf(request)
+              if (ids.length === 1) return single(request)
+              // the service down: the first row says so, the rest are deferred
+              return Effect.succeed({
+                scores: ids.map((participantId, index) =>
+                  index === 0
+                    ? {
+                        participantId,
+                        state: 'unavailable' as const,
+                        total: null,
+                        reason: 'scoring-unavailable' as const,
+                      }
+                    : { participantId, state: 'deferred' as const, total: null, reason: null },
+                ),
+              })
+            },
+          },
+          undefined,
+          // what the shell leaves the page: the rail and the margins on a
+          // laptop, the margins alone on a tablet, where the rail folds away
+          width === 1280 ? 1280 - 224 - 48 : 834 - 48,
+          locale,
+        )
+        const score = page.getByTestId('participant-score').first()
+        await expect.element(score).toHaveAttribute('data-score-reason', 'scoring-unavailable')
+        const cell = score.element().parentElement!.getBoundingClientRect()
+        const again = score.getByTestId('participant-score-again')
+        const button = again.element().getBoundingClientRect()
+        expect(button.width).toBeGreaterThan(0)
+        expect(button.left).toBeGreaterThanOrEqual(cell.left - 0.5)
+        expect(button.right).toBeLessThanOrEqual(cell.right + 0.5)
+        expect(button.top).toBeGreaterThanOrEqual(cell.top - 0.5)
+        expect(button.bottom).toBeLessThanOrEqual(cell.bottom + 0.5)
+        await expect
+          .element(page.getByTestId('roster-scores-failed'))
+          .toHaveAttribute('data-cause', 'scoring-unavailable')
+
+        await again.click()
+        await expect.element(score).toHaveAttribute('data-score', '71.00')
+        expect(idsOf(single.mock.calls[0]![0])).toEqual([id(1)])
+      } finally {
+        await page.viewport(1280, 800)
+      }
+    },
+  )
+
+  it('asks for the whole page again when the scoring service was down', async () => {
+    let down = true
+    const asked = vi.fn((request: Request) =>
+      Effect.succeed({
+        scores: idsOf(request).map((participantId, index) =>
+          !down
+            ? { participantId, state: 'scored' as const, total: '80.00', reason: null }
+            : index === 0
+              ? {
+                  participantId,
+                  state: 'unavailable' as const,
+                  total: null,
+                  reason: 'scoring-unavailable' as const,
+                }
+              : { participantId, state: 'deferred' as const, total: null, reason: null },
+        ),
+      }),
+    )
+    await open({ listParticipantScores: asked })
+    const notice = page.getByTestId('roster-scores-failed')
+    await expect.element(notice).toHaveAttribute('data-cause', 'scoring-unavailable')
+    down = false
+    await notice.getByRole('button', { name: '重试' }).click()
+    await expect.element(notice).not.toBeInTheDocument()
+    // every row of the page, not one at a time
+    await expect
+      .element(page.getByTestId('participant-score').nth(19))
+      .toHaveAttribute('data-score', '80.00')
+    expect(idsOf(asked.mock.calls.at(-1)![0])).toHaveLength(20)
+  })
+
   it('says why the page has no totals, and asks for them again', async () => {
     let down = true
     const asked = vi.fn((request: Request) =>
@@ -313,7 +419,7 @@ describe('the roster on the results page', () => {
     )
     await open({ listParticipantScores: asked })
     const notice = page.getByTestId('roster-scores-failed')
-    await expect.element(notice).toBeVisible()
+    await expect.element(notice).toHaveAttribute('data-cause', 'request')
     // every row can still ask about its own person
     await expect
       .element(page.getByTestId('participant-score').first())
