@@ -16,9 +16,16 @@ import { fromConnect, type ConnectMiddleware } from '../src/node.ts'
 const port = 3192
 const base = `http://127.0.0.1:${port}`
 
-/** answers /handled itself, declines everything else, faults on /broken */
+/** answers /handled itself, declines everything else, faults on /broken, throws on /throws* */
 const middleware: ConnectMiddleware = (request, response, next) => {
   if (request.url === '/broken') return next(new Error('middleware fault'))
+  if (request.url === '/throws-before-head') throw new Error('thrown before anything was sent')
+  if (request.url === '/throws-after-head') {
+    // what a static file server does when its read stream refuses the range
+    // it has already announced
+    response.writeHead(206, { 'content-length': '100', 'content-type': 'text/plain' })
+    throw new Error('thrown after the head went out')
+  }
   if (request.url !== '/handled') return next()
   response.writeHead(201, { 'content-type': 'text/plain', 'x-from': 'middleware' })
   response.end('served by the middleware')
@@ -72,5 +79,28 @@ describe('a connect middleware as a route handler', () => {
     // answering 404 would hide the fault and blame the caller
     const response = await fetch(`${base}/broken`)
     expect(response.status).toBe(500)
+  })
+
+  it('answers a middleware that throws before writing as a fault', async () => {
+    const response = await fetch(`${base}/throws-before-head`, {
+      signal: AbortSignal.timeout(5_000),
+    })
+    expect(response.status).toBe(500)
+  })
+
+  it('cuts the connection of a middleware that throws after its head went out', async () => {
+    // The head promised a hundred bytes and none are coming. Ended politely,
+    // the kept-alive connection left the client waiting for them; cut, the
+    // client learns at once that the answer is broken.
+    const outcome = await fetch(`${base}/throws-after-head`, {
+      signal: AbortSignal.timeout(5_000),
+    })
+      .then((response) => response.text())
+      .then(
+        () => 'finished',
+        (error: unknown) => (error instanceof Error ? error.name : 'failed'),
+      )
+    expect(outcome).not.toBe('TimeoutError')
+    expect(outcome).not.toBe('finished')
   })
 })

@@ -66,13 +66,21 @@ export const fromConnect = (middleware: ConnectMiddleware) =>
       // close without finish is a client that went away mid-response; the
       // request is over either way, and there is nothing left to fall back to
       nodeResponse.once('close', onFinish)
-      middleware(nodeRequest, nodeResponse, (error) =>
-        settle(
-          error === undefined
-            ? Effect.succeed(true)
-            : Effect.die(error instanceof Error ? error : new Error(String(error))),
-        ),
-      )
+      const fault = (error: unknown) =>
+        Effect.die(error instanceof Error ? error : new Error(String(error)))
+      try {
+        middleware(nodeRequest, nodeResponse, (error) =>
+          settle(error === undefined ? Effect.succeed(true) : fault(error)),
+        )
+      } catch (error) {
+        // Thrown rather than passed to next, and possibly after the head went
+        // out: a head that promised a length the body will never reach leaves
+        // the client waiting on a kept-alive connection for bytes that are
+        // not coming. Nothing can finish that answer honestly, so the
+        // connection is cut; the defect is still the request's 500.
+        if (nodeResponse.headersSent) nodeResponse.destroy()
+        settle(fault(error))
+      }
     })
 
     // Declining means no route matched anywhere, since this handler is the
