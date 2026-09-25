@@ -1,4 +1,6 @@
 import { Effect, Result } from 'effect'
+import { encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
+import { cursorUnusable } from '@qualy/api-kit/schema'
 import { hashCanonicalJson } from '@qualy/value-schema/hash'
 import { transaction, type Orm } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
@@ -82,6 +84,19 @@ import {
  * resumes on, so the next page needs nothing but the last one's id.
  */
 const ACT_ROWS_PAGE = 200
+
+const actRowsFingerprint = (operationId: string) =>
+  `assessment.administrative-record-rows:${operationId}`
+
+/**
+ * Where a page of one act's people resumes.
+ *
+ * The cursor is client-held and ends up compared as a uuid, so it is read
+ * the way every other page is read: bound to the act it came from, and
+ * refused as a bad request when it is not a key of that shape.
+ */
+export const actRowsCursor = (operationId: string, participantId: string) =>
+  encodeQueryCursor(actRowsFingerprint(operationId), [participantId])
 
 /** how the targets were chosen; history once the act is written */
 export type RecordTarget =
@@ -871,13 +886,15 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
     tenantId: string,
     operationId: string,
     as: Principal,
-    rowsAfter?: string,
+    rowsCursor?: string,
   ) {
     const act = yield* withDb(operationOf(tenantId, operationId))
     if (act === null) return yield* new AdministrativeRecordNotFound()
     if (!(yield* deps.holdsRecord(tenantId, act.batchId, as.userId))) {
       return yield* new AdministrativeRecordNotFound()
     }
+    const rowsAfter = readQueryCursor(rowsCursor, actRowsFingerprint(operationId), ['uuid'])
+    if (rowsAfter === null) return yield* cursorUnusable()
     const standing = yield* withDb(standingOfOperations(tenantId, [operationId]))
     const events = (yield* withDb(eventsOfOperation(tenantId, operationId))) as unknown as Record<
       string,
@@ -895,7 +912,7 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
         tenantId,
         operationId,
         limit: ACT_ROWS_PAGE + 1,
-        ...(rowsAfter === undefined ? {} : { after: rowsAfter }),
+        ...(rowsAfter === undefined ? {} : { after: rowsAfter[0]! }),
         // holding the permission in this round is what let the act be opened
         // at all; which of its people may be named is a separate question,
         // and these rows carry names and student numbers
@@ -914,7 +931,7 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
       voidedCount: standing.get(operationId)?.voided ?? 0,
       rowsNextCursor:
         found.length > ACT_ROWS_PAGE && lastRow !== undefined
-          ? String(lastRow['participantId'])
+          ? actRowsCursor(operationId, String(lastRow['participantId']))
           : null,
       rows: rows.map((row) => ({
         entryId: String(row['entryId']),

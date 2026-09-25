@@ -1211,7 +1211,7 @@ export class Assessment extends Context.Service<
       operationId: string,
       as: Principal,
       /** where the list of people resumes; an act may name thousands */
-      rowsAfter?: string,
+      rowsCursor?: string,
     ) => Effect.Effect<
       {
         id: string
@@ -1243,7 +1243,7 @@ export class Assessment extends Context.Service<
           createdAt: string
         }[]
       },
-      AdministrativeRecordNotFound
+      AdministrativeRecordNotFound | BadRequest
     >
     /** taking a whole act back, along the rows it actually wrote */
     readonly reverseAdministrativeRecord: (

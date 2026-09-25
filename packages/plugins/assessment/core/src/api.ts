@@ -3263,7 +3263,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
             }),
           ),
         }),
-        error: [AdministrativeRecordNotFound],
+        error: [AdministrativeRecordNotFound, BadRequest],
       },
     ).middleware(Authenticated),
   )

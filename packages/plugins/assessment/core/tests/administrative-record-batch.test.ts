@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import type { Orm } from '@qualy/plugin-database/server'
 import { Assessment } from '../src/server/index.ts'
+import { actRowsCursor } from '../src/administrative-record/service.ts'
 import { recordItem } from './support/administrative.ts'
 import { datedScoring, probeHold, probeScoring } from './support/catalogs.ts'
 import { errorOf, ok, one, run, runningBatch, seed, staged } from './support/round.ts'
@@ -698,12 +699,36 @@ describe.runIf(postgresAvailable).concurrent('recording one finding on a group',
             f.t,
             done.operationId,
             f.principal(f.recorder),
-            whole.rows[0]!.participantId,
+            actRowsCursor(done.operationId, whole.rows[0]!.participantId),
           )
-          return { whole, rest }
+          // a cursor is client-held: one that is not a key of this act is a
+          // bad request, not a query postgres fails to cast
+          const tampered = yield* Effect.exit(
+            assessment.getAdministrativeRecord(f.t, done.operationId, f.principal(f.recorder), 'x'),
+          )
+          const bare = yield* Effect.exit(
+            assessment.getAdministrativeRecord(
+              f.t,
+              done.operationId,
+              f.principal(f.recorder),
+              whole.rows[0]!.participantId,
+            ),
+          )
+          const elsewhere = yield* Effect.exit(
+            assessment.getAdministrativeRecord(
+              f.t,
+              done.operationId,
+              f.principal(f.recorder),
+              actRowsCursor(item.id, whole.rows[0]!.participantId),
+            ),
+          )
+          return { whole, rest, tampered, bare, elsewhere }
         }),
       ),
     )
+    expect(errorOf<{ _tag: string }>(found.tampered)?._tag).toBe('BAD_REQUEST')
+    expect(errorOf<{ _tag: string }>(found.bare)?._tag).toBe('BAD_REQUEST')
+    expect(errorOf<{ _tag: string }>(found.elsewhere)?._tag).toBe('BAD_REQUEST')
     expect(found.whole.rows.length).toBeGreaterThan(1)
     // the act fits in one page, and the detail says so rather than leaving a
     // reader to wonder whether the list in front of them is the act
