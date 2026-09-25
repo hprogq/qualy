@@ -84,6 +84,7 @@ import {
   tenantsWithOpenRounds,
 } from '../review/db.ts'
 import { stageById } from '../review/chain.ts'
+import { reviewersVeiled, unnamedUnlessOwn } from '../review/veil.ts'
 import { makeScoringMethods, type ScoringMethods } from '../scoring/service.ts'
 import { participantRowByUser } from '../scoring/db.ts'
 import { projectEntrySummary } from '../entry/summary.ts'
@@ -2977,6 +2978,17 @@ export const make = Effect.fn('Assessment.make')(function* () {
       )
       const pageRows = rows.slice(0, limit)
       const last = pageRows[pageRows.length - 1]
+      // the participant rows are all about the reader's own claims, and the
+      // people who acted on them are kept from the reader as on every other
+      // door (§32.85); the reviewer rows are the reader's own acts
+      const veiled =
+        standing.membership !== null &&
+        (yield* reviewersVeiled(phaseOpens, {
+          tenantId,
+          batchId,
+          subjectUserId: as.userId,
+          readerUserId: as.userId,
+        }))
       // each row says which claim it is, in the one projection every
       // surface shares (§32.74): parts off the claim's current version
       const summaried = yield* dieQuery(
@@ -3000,7 +3012,8 @@ export const make = Effect.fn('Assessment.make')(function* () {
           itemTitle: row.itemTitle,
           subjectName: row.subjectName,
           instanceId: row.instanceId,
-          actorName: row.actorName,
+          actorName: unnamedUnlessOwn(veiled && row.perspective === 'participant', as.userId, row)
+            .actorName,
           reason: row.reason,
           comment: row.comment,
           summary: identityOf.get(row.entryId) ?? [],

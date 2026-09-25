@@ -319,6 +319,156 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
     })
   })
 
+  // The same rule on every other door the filer reads through: the round
+  // itself, the answer to an ask, the desk, the activity line and the
+  // claim's own trail. Each of them once handed the names over while the
+  // claim's detail held them back.
+  it('keeps who judged from the participant on every door, and names them once the phase opens', async () => {
+    const told = async (slug: string, profile: readonly string[]) =>
+      ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const f = yield* seed(slug)
+            const assessment = yield* Assessment
+            const g = yield* runningBatch(f, { profile: [...profile] })
+            const s1 = f.principal(f.s1)
+            const reviewer = f.principal(f.reviewer)
+            const admin = f.principal(f.admin)
+            const entry = yield* assessment.createEntry(
+              f.t,
+              { itemId: g.item.id, participantId: g.p1, payload: {} },
+              s1,
+            )
+            const first = (yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1))
+              .currentReviewInstanceId!
+            yield* assessment.requestSupplement(
+              f.t,
+              first,
+              {
+                instructions: '请补充说明',
+                requirements: [{ label: '说明', kind: 'text', required: true }],
+              },
+              reviewer,
+            )
+            const asking = (yield* assessment.getMyOverview(f.t, g.batch.id, s1)).participant!
+            const ask = (yield* assessment.getEntry(f.t, entry.id, s1)).supplement!
+            const answered = yield* assessment.answerSupplement(
+              f.t,
+              ask.requestId,
+              { payload: { f1: '已补充' } },
+              s1,
+            )
+            yield* assessment.decideReview(
+              f.t,
+              first,
+              { decision: 'reject', comment: 'not enough' },
+              reviewer,
+            )
+            // a second round, read against how the first one ended
+            const second = (yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1))
+              .currentReviewInstanceId!
+            const firstRound = yield* assessment.getReviewInstance(f.t, first, s1)
+            const secondRound = yield* assessment.getReviewInstance(f.t, second, s1)
+            const staffFirst = yield* assessment.getReviewInstance(f.t, first, admin)
+            const staffSecond = yield* assessment.getReviewInstance(f.t, second, admin)
+            yield* assessment.decideReview(f.t, second, { decision: 'approve' }, reviewer)
+            yield* assessment.interveneOnEntry(
+              f.t,
+              entry.id,
+              { kind: 'return-for-revision', reason: '证书等级与填写不符' },
+              admin,
+            )
+            const returned = (yield* assessment.getMyOverview(f.t, g.batch.id, s1)).participant!
+            const history = yield* assessment.getEntryHistory(f.t, entry.id, s1)
+            const activity = yield* assessment.listMyActivity(
+              f.t,
+              g.batch.id,
+              { perspective: 'participant' },
+              s1,
+            )
+            const others = <A extends { actorId: string | null; actorName: string | null }>(
+              events: readonly A[],
+              people: readonly string[],
+            ) =>
+              events
+                .filter((event) => event.actorId === null || people.includes(event.actorId))
+                .map((event) => event.actorName)
+            const judges = [f.reviewer, f.admin]
+            const namesIn = (round: typeof firstRound) => ({
+              events: round.events
+                .filter((event) => event.actorId !== f.s1)
+                .map((event) => [event.kind, event.actorId, event.actorName]),
+              reviewers: [...round.chain.normal, ...round.chain.escalation].map(
+                (stage) => stage.reviewers,
+              ),
+              askedBy: round.supplements.map((one) => [one.requestedBy, one.requestedByName]),
+            })
+            return {
+              deskAsk: asking.actions.find((one) => one.kind === 'supplement')?.who ?? null,
+              deskReturn: returned.actions.find((one) => one.kind === 'revision')?.who ?? null,
+              answered: namesIn(answered),
+              firstRound: namesIn(firstRound),
+              secondRound: {
+                ...namesIn(secondRound),
+                previous: secondRound.context?.previous?.actorName ?? null,
+              },
+              staff: {
+                events: namesIn(staffFirst).events,
+                reviewers: namesIn(staffSecond).reviewers,
+                previous: staffSecond.context?.previous?.actorName ?? null,
+              },
+              trail: others(history.events, judges),
+              activity: activity.items
+                .filter((row) => row.kind !== 'entry-created' && row.kind !== 'entry-submitted')
+                .map((row) => [row.kind, row.actorName]),
+              // the participant's own acts keep their name in every reading
+              ownActivity: activity.items
+                .filter((row) => row.kind === 'entry-submitted')
+                .map((row) => row.actorName),
+            }
+          }),
+        ),
+      )
+
+    const shut = await told('veil-doors-shut', REVIEW_OPEN)
+    expect(shut.deskAsk).toBeNull()
+    expect(shut.deskReturn).toBeNull()
+    expect(shut.answered.events.length).toBeGreaterThan(0)
+    expect(shut.firstRound.events.length).toBeGreaterThan(0)
+    for (const round of [shut.answered, shut.firstRound, shut.secondRound]) {
+      expect(round.events.every(([, id, name]) => id === null && name === null)).toBe(true)
+      expect(round.reviewers.every((names) => names === null)).toBe(true)
+      expect(round.askedBy.every(([id, name]) => id === '' && name === null)).toBe(true)
+    }
+    expect(shut.answered.askedBy).toHaveLength(1)
+    expect(shut.secondRound.previous).toBeNull()
+    expect(shut.trail).toEqual([null])
+    expect(shut.activity.length).toBeGreaterThanOrEqual(4)
+    expect(shut.activity.every(([, name]) => name === null)).toBe(true)
+    expect(shut.ownActivity).toEqual(['Zhang San', 'Zhang San'])
+    // staff read the same door with the names on it
+    expect(shut.staff.previous).toBe('Reviewer')
+    expect(shut.staff.reviewers).toContainEqual(['Reviewer'])
+    expect(shut.staff.events.some(([, , name]) => name === 'Reviewer')).toBe(true)
+
+    const open = await told('veil-doors-open', [...REVIEW_OPEN, 'assessment.review.view-reviewers'])
+    expect(open.deskAsk).toBe('Reviewer')
+    expect(open.deskReturn).toBe('Admin')
+    expect(open.answered.askedBy).toEqual([[expect.any(String), 'Reviewer']])
+    expect(open.firstRound.events.some(([, , name]) => name === 'Reviewer')).toBe(true)
+    expect(open.secondRound.reviewers).toContainEqual(['Reviewer'])
+    expect(open.secondRound.previous).toBe('Reviewer')
+    expect(open.trail).toEqual(['Admin'])
+    expect(open.activity).toEqual(
+      expect.arrayContaining([
+        ['revision-required', 'Admin'],
+        ['review-rejected', 'Reviewer'],
+        ['supplement-requested', 'Reviewer'],
+      ]),
+    )
+  })
+
   it('keeps the round with its reviewer through an open ask, and a rejection ends it', async () => {
     const result = ok(
       await run(

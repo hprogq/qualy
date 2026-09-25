@@ -101,6 +101,7 @@ import {
   type SupplementRow,
   withdrawStandingsOf,
 } from '../review/db.ts'
+import { reviewersVeiled as veiledFor, unnamedUnlessOwn } from '../review/veil.ts'
 
 // One person's claim on one question: created, revised, submitted, withdrawn.
 //
@@ -1123,27 +1124,19 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
       // deciding whether to show a file; it is this process being broken
     ).pipe(Effect.orDie)
 
-  /**
-   * Whether this reader is kept from knowing who judged the claim.
-   *
-   * Only the claim's own participant is ever kept from it, and only while
-   * the phase of the moment does not open `view-reviewers`. The names are
-   * taken off on the server: a screen that received them and drew stars
-   * over them would have published them to anybody who opens the network
-   * panel.
-   */
+  /** whether this reader is kept from knowing who judged the claim (§32.85) */
   const reviewersVeiled = (
     tenantId: string,
     batchId: string,
     participant: ParticipantAnchor | null,
     as: Principal,
   ) =>
-    participant === null || participant.userId !== as.userId
-      ? Effect.succeed(false)
-      : Effect.map(
-          deps.phaseOpens(tenantId, batchId, 'assessment.review.view-reviewers'),
-          (open) => !open,
-        )
+    veiledFor(deps.phaseOpens, {
+      tenantId,
+      batchId,
+      subjectUserId: participant?.userId ?? null,
+      readerUserId: as.userId,
+    })
 
   /** the same view with the people who judged it left out */
   const veil = (shown: EntryView, veiled: boolean): EntryView =>
@@ -1936,6 +1929,9 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             pageRows.map((entry) => entry.id),
           )).map((one) => [one.entryId, one]),
         )
+        // a member of staff reading their own roster row is still the one
+        // who filed, and is told what the filer is told
+        const veiled = yield* reviewersVeiled(tenantId, batchId, participant, as)
         const entries: ParticipantEntryView[] = []
         for (const entry of pageRows) {
           const standing = recognitions.get(entry.id)
@@ -1944,17 +1940,20 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             // and the reader is not the participant. `view` answers `hidden`
             // for every one of them on its own, from the same ownership test
             // every other reader passes through.
-            entry: view(
-              entry,
-              yield* revisionView(tenantId, entry.currentRevisionId),
-              as,
-              participant,
-              undefined,
-              askedByEntry.get(entry.id) ?? null,
-              saidByEntry.get(entry.id) ?? null,
-              entry.currentReviewInstanceId === null
-                ? undefined
-                : standings.get(entry.currentReviewInstanceId),
+            entry: veil(
+              view(
+                entry,
+                yield* revisionView(tenantId, entry.currentRevisionId),
+                as,
+                participant,
+                undefined,
+                askedByEntry.get(entry.id) ?? null,
+                saidByEntry.get(entry.id) ?? null,
+                entry.currentReviewInstanceId === null
+                  ? undefined
+                  : standings.get(entry.currentReviewInstanceId),
+              ),
+              veiled,
             ),
             recognition:
               standing === undefined
@@ -1965,7 +1964,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                     entryRevisionId: standing.entryRevisionId,
                     values: standing.values,
                     createdAt: standing.createdAt,
-                    createdByName: standing.createdByName,
+                    createdByName: veiled ? null : standing.createdByName,
                   },
           })
         }
@@ -2036,9 +2035,10 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           // facts, and taking the name away must not turn one into the other
           const actor = (event: { actorId: string | null; actorName: string | null }) => ({
             byRound: event.actorId === null,
-            ...(veiled && event.actorId !== as.userId
-              ? { actorId: null, actorName: null }
-              : { actorId: event.actorId, actorName: event.actorName }),
+            ...unnamedUnlessOwn(veiled, as.userId, {
+              actorId: event.actorId,
+              actorName: event.actorName,
+            }),
           })
           return {
             reviewersShown: !veiled,
@@ -2091,10 +2091,14 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 veiled ? { ...asked, requestedBy: '', requestedByName: null } : asked,
               ),
             })),
+            // the claim's own trail under the same veil: the member of staff
+            // who sent it back is named nowhere else to this reader either
             events: ownEvents.map((event) => ({
               kind: event.kind,
-              actorId: event.actorId,
-              actorName: event.actorName,
+              ...unnamedUnlessOwn(veiled, as.userId, {
+                actorId: event.actorId,
+                actorName: event.actorName,
+              }),
               reason: event.reason,
               at: event.createdAt,
             })),
@@ -2314,6 +2318,14 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           batchId,
           participantId: membership.id,
         })
+        // every row is about the reader's own claims: the membership was
+        // looked up by them
+        const veiled = yield* veiledFor(deps.phaseOpens, {
+          tenantId,
+          batchId,
+          subjectUserId: as.userId,
+          readerUserId: as.userId,
+        })
         return {
           unreadItemIds: unread,
           actions: actions.map((row) => ({
@@ -2322,7 +2334,8 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             itemId: row.itemId,
             itemTitle: row.itemTitle,
             at: row.at,
-            who: row.who,
+            who: unnamedUnlessOwn(veiled, as.userId, { actorId: row.whoId, actorName: row.who })
+              .actorName,
             summary: row.summary,
           })),
         }

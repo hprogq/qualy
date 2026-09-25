@@ -1311,6 +1311,8 @@ export interface MyActionRow {
   at: string
   atMs: number
   who: string | null
+  /** whose act it is, so a veiled reader can be told it without the name (§32.85) */
+  whoId: string | null
   summary: string | null
 }
 
@@ -1330,6 +1332,7 @@ export const myActionRowsOf = (input: {
         at: string
         at_ms: number
         who: string | null
+        who_id: string | null
         summary: string | null
       }>`
         select 'supplement' as kind,
@@ -1337,6 +1340,7 @@ export const myActionRowsOf = (input: {
                to_char(sr.created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as at,
                (extract(epoch from sr.created_at) * 1000)::float8 as at_ms,
                u.display_name as who,
+               sr.requested_by as who_id,
                sr.instructions as summary
         from review_supplement_requests sr
         join review_instances ri
@@ -1355,6 +1359,7 @@ export const myActionRowsOf = (input: {
                to_char(ev.created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
                (extract(epoch from ev.created_at) * 1000)::float8,
                u.display_name,
+               ev.actor_id,
                ev.reason
         from entries e
         join assessment_items i on i.tenant_id = e.tenant_id and i.id = e.item_id
@@ -1384,6 +1389,7 @@ export const myActionRowsOf = (input: {
           at: row.at,
           atMs: row.at_ms,
           who: row.who,
+          whoId: row.who_id,
           summary: row.summary,
         })),
       ),
@@ -1399,6 +1405,8 @@ export interface UserActivityRow {
   itemTitle: string
   subjectName: string | null
   instanceId: string | null
+  /** whose act the row tells, so a veiled reader loses the name with it (§32.85) */
+  actorId: string | null
   actorName: string | null
   reason: string | null
   comment: string | null
@@ -1481,6 +1489,7 @@ export const userActivityPage = (input: {
                  case when er.revision_no = 1 then 'entry-created' else 'entry-revised' end as kind,
                  m.id as entry_id, m.item_id, m.title as item_title,
                  null::text as subject_name, null::uuid as instance_id,
+                 null::uuid as actor_id,
                  null::text as actor_name, null::text as reason, null::text as comment,
                  er.created_at
           from entry_revisions er
@@ -1496,7 +1505,7 @@ export const userActivityPage = (input: {
                  end,
                  m.id, m.item_id, m.title,
                  null, null,
-                 u.display_name, re.reason, re.comment,
+                 re.actor_id, u.display_name, re.reason, re.comment,
                  re.created_at
           from review_events re
           join review_instances ri
@@ -1517,7 +1526,7 @@ export const userActivityPage = (input: {
                  end,
                  m.id, m.item_id, m.title,
                  null, null,
-                 u.display_name, ee.reason, null,
+                 ee.actor_id, u.display_name, ee.reason, null,
                  ee.created_at
           from entry_events ee
           join mine m on m.id = ee.entry_id
@@ -1531,12 +1540,12 @@ export const userActivityPage = (input: {
                  case ri.outcome when 'approved' then 'review-approved' else 'review-rejected' end,
                  m.id, m.item_id, m.title,
                  null, null,
-                 said.display_name, said.reason, said.comment,
+                 said.actor_id, said.display_name, said.reason, said.comment,
                  ri.completed_at
           from review_instances ri
           join mine m on m.id = ri.entry_id
           left join lateral (
-            select u.display_name, re2.reason, re2.comment
+            select re2.actor_id, u.display_name, re2.reason, re2.comment
             from review_events re2
             left join users u on u.tenant_id = re2.tenant_id and u.id = re2.actor_id
             where re2.tenant_id = ri.tenant_id
@@ -1554,7 +1563,7 @@ export const userActivityPage = (input: {
           select sr.id, 'supp-req', 'participant', 'supplement-requested',
                  m.id, m.item_id, m.title,
                  null, null,
-                 u.display_name, null, sr.instructions,
+                 sr.requested_by, u.display_name, null, sr.instructions,
                  sr.created_at
           from review_supplement_requests sr
           join review_instances ri
@@ -1567,7 +1576,7 @@ export const userActivityPage = (input: {
           select sr.id, 'supp-ans', 'participant', 'supplement-submitted',
                  m.id, m.item_id, m.title,
                  null, null,
-                 null, null, null,
+                 null, null, null, null,
                  sr.answered_at
           from review_supplement_requests sr
           join review_instances ri
@@ -1580,7 +1589,7 @@ export const userActivityPage = (input: {
           select sr.id, 'supp-cxl', 'participant', 'supplement-cancelled',
                  m.id, m.item_id, m.title,
                  null, null,
-                 u.display_name, null, null,
+                 sr.cancelled_by, u.display_name, null, null,
                  sr.cancelled_at
           from review_supplement_requests sr
           join review_instances ri
@@ -1640,6 +1649,7 @@ export const userActivityPage = (input: {
                  end as kind,
                  theirs.entry_id, theirs.item_id, theirs.item_title,
                  theirs.subject_name, ${openDoor} as instance_id,
+                 null::uuid as actor_id,
                  null::text as actor_name, re.reason, re.comment,
                  re.created_at
           from review_events re
@@ -1655,7 +1665,7 @@ export const userActivityPage = (input: {
           select sr.id, 'r-supp-req', 'reviewer', 'supplement-requested',
                  theirs.entry_id, theirs.item_id, theirs.item_title,
                  theirs.subject_name, ${openDoor},
-                 null, null, sr.instructions,
+                 null, null, null, sr.instructions,
                  sr.created_at
           from review_supplement_requests sr
           join review_instances ri
@@ -1669,7 +1679,7 @@ export const userActivityPage = (input: {
           select sr.id, 'r-supp-cxl', 'reviewer', 'supplement-cancelled',
                  theirs.entry_id, theirs.item_id, theirs.item_title,
                  theirs.subject_name, ${openDoor},
-                 null, null, null,
+                 null, null, null, null,
                  sr.cancelled_at
           from review_supplement_requests sr
           join review_instances ri
@@ -1685,7 +1695,7 @@ export const userActivityPage = (input: {
           select sr.id, 'r-supp-ans', 'reviewer', 'supplement-answered',
                  theirs.entry_id, theirs.item_id, theirs.item_title,
                  theirs.subject_name, ${openDoor},
-                 null, null, null,
+                 null, null, null, null,
                  sr.answered_at
           from review_supplement_requests sr
           join review_instances ri
@@ -1702,7 +1712,7 @@ export const userActivityPage = (input: {
                                  else 'review-vote-rejected' end,
                  theirs.entry_id, theirs.item_id, theirs.item_title,
                  theirs.subject_name, ${openDoor},
-                 null, v.reason, v.comment,
+                 null, null, v.reason, v.comment,
                  v.created_at
           from review_votes v
           join review_panels pnl on pnl.tenant_id = v.tenant_id and pnl.id = v.panel_id
@@ -1726,6 +1736,7 @@ export const userActivityPage = (input: {
         item_title: string
         subject_name: string | null
         instance_id: string | null
+        actor_id: string | null
         actor_name: string | null
         reason: string | null
         comment: string | null
@@ -1759,7 +1770,7 @@ export const userActivityPage = (input: {
         )}
         )
         select id, source, perspective, kind, entry_id, item_id, item_title,
-               subject_name, instance_id, actor_name, reason, comment,
+               subject_name, instance_id, actor_id, actor_name, reason, comment,
                to_char(created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as at,
                (extract(epoch from created_at) * 1000)::float8 as at_ms,
                created_at::text as cursor_at
@@ -1786,6 +1797,7 @@ export const userActivityPage = (input: {
           itemTitle: row.item_title,
           subjectName: row.subject_name,
           instanceId: row.instance_id,
+          actorId: row.actor_id,
           actorName: row.actor_name,
           reason: row.reason,
           comment: row.comment,

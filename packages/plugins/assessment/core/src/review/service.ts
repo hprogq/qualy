@@ -46,6 +46,7 @@ import { cursorUnusable, pageSize, type BadRequest } from '@qualy/api-kit/schema
 import type { ItemTypeDriver } from '../plugin.ts'
 import { announce } from '../live/events.ts'
 import { bumpParticipantAttention } from '../entry/db.ts'
+import { reviewersVeiled, unnamedUnlessOwn } from './veil.ts'
 import {
   BatchNotFound,
   BatchReadOnly,
@@ -679,6 +680,12 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
        * (how many steps) stays, because the rail draws it.
        */
       veilAhead?: boolean
+      /**
+       * Keep from the reader who judged the round: the round's own subject,
+       * while the phase does not open `view-reviewers` (§32.85). Their own
+       * acts keep their name; nobody else in the round has one.
+       */
+      veilReviewers?: boolean
       canCancelSupplement?: boolean
       /**
        * The caller-side half of "may answer the open ask": the subject of a
@@ -692,8 +699,12 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       const revision = (yield* entryRevisionOf(tenantId, row.revisionId))!
       const itemRevision = yield* revisionOf(tenantId, row.itemRevisionId)
       const attachments = yield* revisionAttachmentsOf(tenantId, row.revisionId)
+      const veiled = view.veilReviewers === true
       const events = yield* reviewEventsOf(tenantId, row.id)
-      const supplements = yield* supplementsOf(tenantId, row.id)
+      const asked = yield* supplementsOf(tenantId, row.id)
+      const supplements = veiled
+        ? asked.map((one) => ({ ...one, requestedBy: '', requestedByName: null }))
+        : asked
       const policy = row.effectivePolicy
       const everyStage = [...policy.normal, ...policy.escalation]
       const names = yield* chainNames({
@@ -706,7 +717,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       // round's own subject and author go in so a step never names somebody
       // the queue and the decision endpoint would refuse.
       const reviewersByStage = new Map<string, readonly string[]>()
-      if (view.resolveReviewers) {
+      if (view.resolveReviewers && !veiled) {
         for (const stage of everyStage) {
           if (stage.nodeId === null) continue
           reviewersByStage.set(
@@ -796,7 +807,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                   kind: previous.kind,
                   reason: previous.reason,
                   comment: previous.comment,
-                  actorName: previous.actorName,
+                  actorName: veiled ? null : previous.actorName,
                   at: previous.createdAt,
                 },
           previousRevision:
@@ -809,7 +820,9 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                   payload: before.payload,
                 },
           // everything before the one shown in full, most recent first
-          earlier: older.filter((one) => one.roundNo !== previous?.roundNo),
+          earlier: older
+            .filter((one) => one.roundNo !== previous?.roundNo)
+            .map((one) => (veiled ? { ...one, actorName: null } : one)),
         }
       }
       const standingAt = [...policy.normal, ...policy.escalation].find(
@@ -842,7 +855,8 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           label: stage.label,
           nodeName: stage.nodeId === null ? null : (names.nodes.get(stage.nodeId) ?? null),
           roleNames: stage.roleIds.map((roleId) => names.roles.get(roleId) ?? roleId),
-          reviewers: view.resolveReviewers ? (reviewersByStage.get(stage.id) ?? []) : null,
+          reviewers:
+            view.resolveReviewers && !veiled ? (reviewersByStage.get(stage.id) ?? []) : null,
           // the resolution-time reasons off the snapshot, and the run-time
           // one off the round's own trail: a staffed step stepped over
           // because only conflicted people held it
@@ -851,7 +865,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             said === undefined
               ? null
               : said.map((vote) => ({
-                  who: vote.voterName,
+                  who: veiled ? null : vote.voterName,
                   decision: vote.decision,
                   reason: vote.reason,
                   comment: vote.comment,
@@ -890,8 +904,10 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         context,
         events: events.map((event) => ({
           kind: event.kind,
-          actorId: event.actorId,
-          actorName: event.actorName,
+          ...unnamedUnlessOwn(veiled, row.subjectUserId, {
+            actorId: event.actorId,
+            actorName: event.actorName,
+          }),
           reason: event.reason,
           comment: event.comment,
           suggestedPayload: event.suggestedPayload,
@@ -1101,12 +1117,21 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
     // and closes: during an appeal window there is nothing to escalate
     // about, because an appeal is already on the escalation route
     const escalationDecision = yield* deps.escalateGate(tenantId, row.batchId)
+    // the subject reads their own round through this door as well, and the
+    // people judging it are kept from them here as on every other door
+    const veilReviewers = yield* reviewersVeiled(deps.phaseOpens, {
+      tenantId,
+      batchId: row.batchId,
+      subjectUserId: row.subjectUserId,
+      readerUserId: as.userId,
+    })
     return yield* dieQuery(
       withDb(
         assembleDetail(tenantId, row, {
           canDecide,
           mayEscalate: escalationDecision.allowed,
           resolveReviewers: true,
+          veilReviewers,
           veilAhead: !(yield* deps.phaseOpens(
             tenantId,
             row.batchId,
@@ -2519,6 +2544,13 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             return yield* assembleDetail(tenantId, written, {
               canDecide: false,
               resolveReviewers: false,
+              // the caller is the subject: the answer is read by them
+              veilReviewers: yield* reviewersVeiled(deps.phaseOpens, {
+                tenantId,
+                batchId: written.batchId,
+                subjectUserId: written.subjectUserId,
+                readerUserId: as.userId,
+              }),
             })
           }),
         ).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
@@ -2995,6 +3027,13 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           return yield* assembleDetail(tenantId, written, {
             canDecide: false,
             resolveReviewers: false,
+            // the caller is the subject: the answer is read by them
+            veilReviewers: yield* reviewersVeiled(deps.phaseOpens, {
+              tenantId,
+              batchId: written.batchId,
+              subjectUserId: written.subjectUserId,
+              readerUserId: as.userId,
+            }),
           })
         }),
       ).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
