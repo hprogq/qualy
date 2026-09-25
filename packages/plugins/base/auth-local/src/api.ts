@@ -41,7 +41,10 @@ export const authLocalApiGroup = HttpApiGroup.make('authLocal').add(
     // about them, and a password set before a rule changed still opens it.
     payload: Schema.Struct({
       email: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(320)),
-      password: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+      // bounded as it is where a password is set: the rule counts characters
+      // once normalized, and a password of wide characters is twice as many
+      // utf-16 units as it is characters
+      password: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1024)),
       // sent again with the same request once a challenge it was answered with is met
       captcha: Schema.optional(CaptchaProof),
     }),

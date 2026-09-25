@@ -19,7 +19,7 @@ import {
   type CaptchaProof,
 } from '@qualy/plugin-captcha/contract'
 import { CaptchaChallenge, useCaptchaGate } from '@qualy/plugin-captcha/client'
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '../rules.ts'
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, passwordLength } from '../rules.ts'
 import { clock, PAUSE_MS, useHold } from './hold.ts'
 import { localMessages as m } from './i18n.ts'
 import { authLocalApi } from './api.ts'
@@ -181,17 +181,16 @@ export default function LocalLoginMethod({
 
   const address = normalizeEmail(email)
   const emailSaid = left.email && address === null ? format(m.emailInvalid) : null
+  // counted in characters, as the rule a password was set under counts them
+  const typed = passwordLength(password)
   const passwordSaid = !left.password
     ? null
-    : password.length < PASSWORD_MIN_LENGTH
+    : typed < PASSWORD_MIN_LENGTH
       ? format(m.passwordShort, { min: PASSWORD_MIN_LENGTH })
-      : password.length > PASSWORD_MAX_LENGTH
+      : typed > PASSWORD_MAX_LENGTH
         ? format(m.passwordLong, { max: PASSWORD_MAX_LENGTH })
         : null
-  const ready =
-    address !== null &&
-    password.length >= PASSWORD_MIN_LENGTH &&
-    password.length <= PASSWORD_MAX_LENGTH
+  const ready = address !== null && typed >= PASSWORD_MIN_LENGTH && typed <= PASSWORD_MAX_LENGTH
 
   /** one attempt at the door, with the proof a met challenge produced when there is one */
   const attempt = async (proof?: CaptchaProof) => {

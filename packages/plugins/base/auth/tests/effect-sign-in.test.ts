@@ -366,6 +366,27 @@ describe.runIf(postgresAvailable)('signing in', () => {
     expect(response.status).toBe(200)
   })
 
+  it('opens for a password of wide characters, counted as it was set', async () => {
+    // seventy emoji are seventy characters, which a password may be, and a
+    // hundred and forty utf-16 units, which the door once refused outright
+    const wide = '\u{1F30A}'.repeat(70)
+    const bindingOf = (digest: string) =>
+      Effect.runPromise(
+        runSql(sql`
+          update user_auth_bindings set credential_hash = ${digest}
+           where user_id = (select id from users where email = ${SEEDED_EMAILS.mei})`).pipe(
+          Effect.provide(probeInfra()),
+        ),
+      )
+    await bindingOf(await hashPassword(wide))
+    try {
+      const response = await login({ email: SEEDED_EMAILS.mei, password: wide })
+      expect(response.status).toBe(200)
+    } finally {
+      await bindingOf(await hashPassword('short'))
+    }
+  })
+
   it('stores only the hash of a session token', async () => {
     // from local-login.test.ts of the same name. A readable token column is a
     // password file: anyone with a database dump could present one.
