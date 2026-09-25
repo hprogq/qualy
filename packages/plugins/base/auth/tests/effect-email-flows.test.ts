@@ -4,7 +4,14 @@ import { compileCatalog } from '@qualy/rbac-contract/plugin'
 import { permissions as authPermissions } from '@qualy/plugin-auth/permissions'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
-import { Cause, Deferred, Effect, Exit, Fiber, Layer, Option } from 'effect'
+import { Cause, Deferred, Effect, Exit, Fiber, Layer, Option, Scope } from 'effect'
+import { NodeHttpServer } from '@effect/platform-node'
+import { HttpRouter } from 'effect/unstable/http'
+import { HttpApiBuilder } from 'effect/unstable/httpapi'
+import { createServer } from 'node:http'
+import { QUALY_API_PREFIX } from '@qualy/api-kit'
+import { Api } from '@qualy/api-kit/plugin'
+import { requestContext } from '@qualy/api-kit/request'
 import { describe, expect, it, vi } from 'vitest'
 import {
   createTestContext,
@@ -33,7 +40,11 @@ import {
 import { userActions } from '../src/actions.ts'
 import { AuthConfig } from '../src/server/auth-config.ts'
 import { EmailFlows, emailFlowsLayer } from '../src/server/email-flows.ts'
-import { Iam, serviceLayer as authLayer } from '../src/server/index.ts'
+import { Iam, identityApiHandlers, serviceLayer as authLayer } from '../src/server/index.ts'
+import { identityApiGroup } from '../src/api.ts'
+import { layer as sessionLayer } from '../src/server/session.ts'
+import { noticeFor } from '../src/server/mail-copy.ts'
+import { hashSessionToken } from '../src/session.ts'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
 import { HARD_LIMITS, RISK_RULES } from '../src/server/limiter.ts'
 import { lockTenant } from '../src/server/db.ts'
@@ -96,6 +107,9 @@ const countingDoor = (
   })
 
 const PUBLIC_URL = 'https://qualy.example.edu'
+
+/** where the administrator's screen reaches the api, for the one case that goes over http */
+const adminPort = 3237
 
 const stack = (
   url: string,
@@ -1333,6 +1347,99 @@ describe.runIf(postgresAvailable)('an email address', () => {
       // nobody was signed out, so the message does not say anybody was
       expect(answer.quiet.text).not.toContain('signed out')
     } finally {
+      await db.dispose()
+    }
+  })
+
+  // The notice is sent by the handler once the change has committed, from
+  // what the service hands back: a handler that stopped reading it would
+  // leave the one place an unasked-for move is noticed silent.
+  it('tells the old address when an administrator moves it over the api, in the language asked for', async () => {
+    const db = await createTestContext('email-change-by-administrator-http')
+    const mail = memoryMailBackend()
+    const scope = await Effect.runPromise(Scope.make())
+    try {
+      const f = await seed(db.url)
+      const services = stack(db.url, mail.backend)
+      const application = HttpRouter.serve(
+        HttpApiBuilder.layer(Api.local(identityApiGroup)).pipe(
+          Layer.provide(
+            identityApiHandlers.pipe(Layer.provide(sessionLayer.pipe(Layer.provide(services)))),
+          ),
+        ),
+        { middleware: requestContext() },
+      ).pipe(
+        Layer.provide(services),
+        Layer.provide(NodeHttpServer.layer(createServer, { port: adminPort })),
+      )
+      await Effect.runPromise(Layer.buildWithScope(application, scope))
+      const token = 'administrator-over-http'
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const role = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status, permission_mode, system_key)
+              values (${f.tenant}, 'admin', 'Admin', 'tenant', 'active', 'all-active', 'tenant-admin')
+              returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id)
+            values (${f.tenant}, ${f.admin}, ${role})`)
+          const session = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at)
+              values (${f.tenant}, ${f.admin}, ${f.local}, ${hashSessionToken(token)},
+                      now() + interval '1 day')
+              returning id`),
+          ).id
+          yield* reauthenticated(session)
+        }).pipe(Effect.provide(databaseFor(db.url, { migrations: 'off', entities: authClosure }))),
+      )
+      const versionOf = (userId: string) =>
+        Effect.runPromise(
+          Effect.map(
+            runSql<{ version: number }>(sql`select version from users where id = ${userId}`),
+            (result) => result.rows[0]!.version,
+          ).pipe(Effect.provide(databaseFor(db.url, { migrations: 'off', entities: authClosure }))),
+        )
+      const patch = async (userId: string, fields: Record<string, string>) =>
+        fetch(`http://127.0.0.1:${adminPort}${QUALY_API_PREFIX}/iam/users/${userId}`, {
+          method: 'PATCH',
+          headers: {
+            'content-type': 'application/json',
+            cookie: `qualy_session=${token}`,
+            'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
+          },
+          body: JSON.stringify({ version: await versionOf(userId), ...fields }),
+        })
+
+      // Lin's address was never proven: nobody there to tell
+      const lin = await patch(f.lin, { email: 'lin.moved@school.edu' })
+      // a name is not an address
+      const renamed = await patch(f.ada, { displayName: 'Ada L.' })
+      // Ada's was, and she signs in with a password
+      const moved = await patch(f.ada, { email: 'ada.moved@school.edu' })
+      expect([lin.status, renamed.status, moved.status]).toEqual([200, 200, 200])
+
+      const told = await vi.waitFor(
+        () => {
+          const found = mail.outbox.filter((message) => message.to === 'ada@school.edu')
+          if (found.length === 0) throw new Error('nothing told to ada@school.edu yet')
+          return found
+        },
+        { timeout: 3_000 },
+      )
+      const expected = noticeFor('email-changed-by-administrator', 'zh-CN', {
+        to: 'ada@school.edu',
+        workspace: 'D',
+        origin: null,
+        signedOut: true,
+      })
+      expect(told).toHaveLength(1)
+      expect(told[0]!.subject).toBe(expected.subject)
+      expect(mail.outbox.filter((message) => message.to === 'lin@school.edu')).toEqual([])
+    } finally {
+      await Effect.runPromise(Scope.close(scope, Exit.void))
       await db.dispose()
     }
   })
