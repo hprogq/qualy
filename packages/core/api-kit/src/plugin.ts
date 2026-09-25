@@ -4,6 +4,7 @@ import type { HttpApi as HttpApiType, HttpApiGroup } from 'effect/unstable/httpa
 import { ExtensionPoint, Plugin, type AnyLayer, type PluginFeature } from '@qualy/plugin-kit'
 import { QUALY_API_ID, QUALY_API_PREFIX } from './index.ts'
 import { Api as BrowserSafeApi } from './local.ts'
+import { storableBodies } from './storable-text.ts'
 
 // The http api's face in the descriptor model.
 //
@@ -114,6 +115,10 @@ export const Api = {
             Layer.mergeAll(
               HttpApiBuilder.layer(runtime, docs.spec ? { openapiPath: docs.spec } : {}).pipe(
                 Layer.provide(handlers),
+                // route middleware, so it knows which endpoint a body is for:
+                // a JSON body is checked where a payload is decoded, and a
+                // door that streams its body is left alone
+                Layer.provide(storableBodies(runtime)),
               ),
               docs.reference ? HttpApiScalar.layer(runtime, { path: docs.reference }) : Layer.empty,
             ),

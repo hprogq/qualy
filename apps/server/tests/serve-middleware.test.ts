@@ -164,26 +164,29 @@ describe('how heavy a request body may be', () => {
 })
 
 describe('text the database could not keep', () => {
-  it('is refused before a route reads it, in the address or a JSON body', async () => {
+  it('is refused in the address before a route sees it', async () => {
     // a NUL, or half a surrogate pair, passed any schema not built from the
     // kit's primitives and was refused by postgres instead: a 500 for anybody
-    const body = await fetch(`${base}${QUALY_API_PREFIX}/swallow`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', origin: base },
-      body: '{"email":"a\\u0000@example.edu"}',
-    })
-    expect(body.status).toBe(400)
-    expect(await body.json()).toMatchObject({ _tag: 'BAD_REQUEST' })
     const address = await fetch(`${base}${QUALY_API_PREFIX}/echo?search=%00`)
     expect(address.status).toBe(400)
-    // and what can be kept goes through, read by the route as it was sent
-    const ordinary = await fetch(`${base}${QUALY_API_PREFIX}/swallow`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', origin: base },
-      body: '{"email":"a@example.edu"}',
-    })
-    expect(ordinary.status).toBe(200)
-    expect(await ordinary.json()).toEqual({ read: 25 })
+    expect(await address.json()).toMatchObject({ _tag: 'BAD_REQUEST' })
+  })
+
+  it('leaves every body to the route, which alone knows whether it is decoded', async () => {
+    // A JSON body is checked on the api's own routes, where the endpoint it
+    // is for is known (api-kit's storable-text suite, and the aggregate in
+    // effect-api); read here, in front of the router, the upload door got
+    // an exhausted stream for any body that named itself JSON. So the chain
+    // reads nothing, and the route reads every byte that was sent.
+    for (const body of ['{"email":"a@example.edu"}', '{"email":"a\\u0000@example.edu"}']) {
+      const response = await fetch(`${base}${QUALY_API_PREFIX}/swallow`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: base },
+        body,
+      })
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({ read: body.length })
+    }
   })
 
   it('is refused in a body sent with no content type, before a route reads it', async () => {

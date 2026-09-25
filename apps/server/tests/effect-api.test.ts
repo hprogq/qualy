@@ -474,4 +474,36 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
       await teardownStaged('parity', scope, db)
     }
   }, 120_000)
+
+  // The aggregate carries the body half of the storable-text guard itself,
+  // as route middleware, because only past the router is it known which
+  // endpoint a body is for. What that buys is on both sides of one line: a
+  // payload an endpoint decodes is refused before anything reads it, even
+  // ahead of the session check, and the local upload door, whose contract
+  // declares no payload, gets its bytes whatever type the request names.
+  it('reads a JSON body where an endpoint decodes one, and nowhere else', async () => {
+    const db = await createTestContext('effect-api-storable-bodies')
+    const scope = await Effect.runPromise(Scope.make())
+    try {
+      await Effect.runPromise(Layer.buildWithScope(shell(db.url), scope))
+      const unstorable = '{"code":"a\\u0000b","name":"x"}'
+      const role = await fetch(`${base}${QUALY_API_PREFIX}/iam/roles`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: unstorable,
+      })
+      expect(role.status).toBe(400)
+      expect(await role.json()).toMatchObject({ _tag: 'BAD_REQUEST' })
+
+      // no such ticket, so the door itself answers; refused as unstorable
+      // text, it would have been the guard, with the stream already read
+      const upload = await fetch(
+        `${base}${QUALY_API_PREFIX}/storage/local/uploads/00000000-0000-7000-8000-000000000000`,
+        { method: 'PUT', headers: { 'content-type': 'application/json' }, body: unstorable },
+      )
+      expect(upload.status).toBe(404)
+    } finally {
+      await teardownStaged('storable-bodies', scope, db)
+    }
+  }, 120_000)
 })

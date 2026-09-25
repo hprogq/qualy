@@ -35,11 +35,15 @@ import { responseHeaders } from './response-headers.ts'
 // protocol check, inside the origin guard so that a request from elsewhere
 // learns nothing about the window before it is refused, and outside the
 // router so that a page this api no longer speaks to never reaches a
-// handler. Inside that, and inside the body ceiling because it reads the
-// body, the check that an address or JSON body carries no text PostgreSQL
-// could not store. The api's own not-found is not here: the platform writes the
-// router's empty 404 before any serve middleware runs, so that answer is a
-// catch-all route of the mount instead (api-kit's route fallback).
+// handler. Inside that, the check that an address carries no text
+// PostgreSQL could not store and that a body names its type. A JSON body is
+// checked past the router instead, on the api's own routes (api-kit's
+// `storableBodies`), because only there is it known whether the endpoint
+// decodes the body or streams it; the body ceiling is provided around the
+// router for that read as much as for the endpoint's. The api's own
+// not-found is not here: the platform writes the router's empty 404 before
+// any serve middleware runs, so that answer is a catch-all route of the
+// mount instead (api-kit's route fallback).
 
 /**
  * What one request body may weigh.

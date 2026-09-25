@@ -6,14 +6,15 @@ import { createServer } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { QUALY_API_PREFIX } from '../src/index.ts'
 import { schemaRefusals } from '../src/schema-refusal.ts'
-import { storableTextGuard } from '../src/storable-text.ts'
+import { storableBodies, storableTextGuard } from '../src/storable-text.ts'
 
 // Text PostgreSQL cannot keep - a NUL, half of a surrogate pair - passed
 // every schema not built from the kit's primitives: a login email, a search
 // box, a path parameter, a free-form payload headed for a jsonb column. The
 // database refused it instead, and the defect answered 500 to anybody who
 // typed `%00`. The endpoints below take any string at all, which is exactly
-// what those fields do, so what they are refused by is the guard.
+// what those fields do, so what they are refused by is the guard - both
+// halves of it, mounted the way the host and the api provider mount them.
 
 const port = 3288
 const base = `http://127.0.0.1:${port}${QUALY_API_PREFIX}`
@@ -81,7 +82,11 @@ let scope: Scope.Closeable
 
 beforeAll(async () => {
   const layer = HttpRouter.serve(
-    Layer.mergeAll(HttpApiBuilder.layer(api).pipe(Layer.provide(handlers)), bytes, schemaRefusals),
+    Layer.mergeAll(
+      HttpApiBuilder.layer(api).pipe(Layer.provide(handlers), Layer.provide(storableBodies(api))),
+      bytes,
+      schemaRefusals,
+    ),
     { disableLogger: true, middleware: storableTextGuard },
   ).pipe(Layer.provide(NodeHttpServer.layer(createServer, { port })))
   scope = await Effect.runPromise(Scope.make())
@@ -153,6 +158,28 @@ describe('text postgres cannot keep', () => {
     })
     expect(await refusedAsBadRequest(untyped)).toEqual({ status: 415, tag: 'BAD_REQUEST' })
     expect(streamed).toEqual([bytes.byteLength])
+  })
+
+  it('never reads the body of a streaming door, whatever type it names', async () => {
+    // a .json file uploaded by a tool that names the type from the
+    // extension: read first, it reached the door as nothing, or cut off
+    // past the read ceiling, and a NUL in it was refused as if it were a
+    // payload to store
+    streamed.length = 0
+    const files = [
+      new TextEncoder().encode(JSON.stringify({ note: 'x'.repeat(4096) })),
+      new TextEncoder().encode(JSON.stringify({ note: 'x'.repeat(4096), raw: '\u0000' })),
+    ]
+    for (const file of files) {
+      const response = await fetch(`${base}/probe/stream`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: file,
+      })
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({ length: file.byteLength })
+    }
+    expect(streamed).toEqual(files.map((file) => file.byteLength))
   })
 
   it('is refused in an address, path and query alike', async () => {
