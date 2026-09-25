@@ -22,6 +22,7 @@ import {
 import { Button } from '@qualy/ui/button'
 import { StatusBadge } from '../batch/StatusBadge.tsx'
 import { useWhen } from '../batch/when.ts'
+import { zoneMarkOf } from '../batch/zone.ts'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import type { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -98,15 +99,45 @@ const styles = stylex.create({
   more: {
     alignSelf: 'flex-start',
   },
+  // the offset goes under the time rather than off the end of the cell,
+  // whose clip would take it first
+  moment: {
+    whiteSpace: 'normal',
+  },
+  momentPart: {
+    whiteSpace: 'nowrap',
+  },
 })
 
 /** one page of a person's rounds, as the api answers */
 export type BatchMembershipPage = ApiResult<typeof assessmentApi, 'assessment', 'listUserBatches'>
 
-/** a moment of one round, read on that round's own clock */
-function RoundMoment({ at, zone }: { at: string; zone: string }) {
-  return useWhen(zone).moment(Date.parse(at))
+/**
+ * A moment of one round, read on that round's own clock. The list is inside
+ * no round, so nothing else on it says whose clock that is: the moment
+ * carries the round's offset for a reader whose device reads it on another.
+ */
+function RoundMoment({ at, zone, mark }: { at: string; zone: string; mark: string | null }) {
+  const moment = useWhen(zone).moment(Date.parse(at))
+  return (
+    <span
+      data-testid="round-moment"
+      {...(mark === null ? {} : { 'data-zone-mark': mark })}
+      {...stylex.props(styles.moment)}
+    >
+      <span {...stylex.props(styles.momentPart)}>{moment}</span>
+      {mark !== null && (
+        <>
+          {' '}
+          <span {...stylex.props(styles.momentPart)}>{mark}</span>
+        </>
+      )}
+    </span>
+  )
 }
+
+/** the moment column, wider once any row carries an offset, so most fit on one line */
+const MOMENT_COLUMN = { bare: '8.5rem', marked: '11rem' } as const
 
 export function BatchMemberships({
   queryKey,
@@ -117,7 +148,7 @@ export function BatchMemberships({
   /** one page, from where the last one ended */
   fetchPage: (cursor: string | undefined) => Promise<BatchMembershipPage>
 }) {
-  const { format, formatError } = useI18n()
+  const { format, formatError, locale } = useI18n()
   const navigate = usePageNavigate()
   // a row is a way into the round only for a reader who may open rounds
   const batchReachable = usePageHref('assessment/batch', { params: { batchId: '0' } }) !== undefined
@@ -128,6 +159,10 @@ export function BatchMemberships({
     ...cursorPages,
   })
   const items = rows.data?.pages.flatMap((page) => page.items) ?? []
+  const marks = items.map(({ batch, membership }) =>
+    zoneMarkOf(batch.timezone, locale, membership.includedAt),
+  )
+  const momentColumn = MOMENT_COLUMN[marks.some((mark) => mark !== null) ? 'marked' : 'bare']
 
   return (
     <div {...stylex.props(styles.page)}>
@@ -147,14 +182,17 @@ export function BatchMemberships({
           {items.length === 0 ? (
             <CardEmpty>{format(m.personBatchesEmpty)}</CardEmpty>
           ) : (
-            <Table columns="minmax(0, 1.4fr) minmax(0, 1fr) 6rem 8.5rem" openable={batchReachable}>
+            <Table
+              columns={`minmax(0, 1.4fr) minmax(0, 1fr) 6rem ${momentColumn}`}
+              openable={batchReachable}
+            >
               <TableHead>
                 <span>{format(m.personBatchColumn)}</span>
                 <span>{format(m.personAnchorColumn)}</span>
                 <span>{format(m.personMembershipColumn)}</span>
                 <span>{format(m.personIncludedColumn)}</span>
               </TableHead>
-              {items.map(({ batch, membership }) => (
+              {items.map(({ batch, membership }, index) => (
                 <TableRow
                   key={batch.id}
                   data-testid="person-batch"
@@ -186,7 +224,11 @@ export function BatchMemberships({
                     </Status>
                   </Cell>
                   <Cell numeric>
-                    <RoundMoment at={membership.includedAt} zone={batch.timezone} />
+                    <RoundMoment
+                      at={membership.includedAt}
+                      zone={batch.timezone}
+                      mark={marks[index] ?? null}
+                    />
                   </Cell>
                 </TableRow>
               ))}
