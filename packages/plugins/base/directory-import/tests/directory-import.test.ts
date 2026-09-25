@@ -259,6 +259,26 @@ const staged = (tenant: string, who: string, rows: readonly (readonly string[])[
     return meta.id
   })
 
+/** any bytes at all, staged the way a browser stages a file */
+const stagedBytes = (tenant: string, who: string, bytes: Buffer) =>
+  Effect.gen(function* () {
+    const storageService = yield* Storage
+    const ticket = yield* storageService.prepareUpload({
+      tenantId: tenant,
+      ownerUserId: who,
+      filename: 'anything.bin',
+      declaredMime: 'application/octet-stream',
+      size: BigInt(bytes.byteLength),
+    })
+    backend.put(`attachments/${tenant}/${ticket.attachmentId}`, bytes)
+    const meta = yield* storageService.completeUpload({
+      tenantId: tenant,
+      ownerUserId: who,
+      reservationId: ticket.reservationId,
+    })
+    return meta.id
+  })
+
 const HEADER = ['学号', '姓名', '年级', '班级'] as const
 
 describe.runIf(postgresAvailable)('importing people from a spreadsheet', () => {
@@ -384,6 +404,45 @@ describe.runIf(postgresAvailable)('importing people from a spreadsheet', () => {
       ],
     )
     expect(result.listed.items.map((item) => item.id)).toEqual([result.done.importId])
+  }, 120_000)
+
+  it('reads no file for somebody who administers users nowhere', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('d')
+          const service = yield* DirectoryImport
+          const student = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, business_no)
+              values (${f.tenant}, '学生', ${f.student}, ${f.software}, 's1') returning id`),
+          ).id
+          const who: Principal = { tenantId: f.tenant, userId: student, sessionId: student }
+          // a file staged through some other door: not a workbook at all, so
+          // reading it would answer with the parser's refusal
+          const attachmentId = yield* stagedBytes(f.tenant, student, Buffer.from('not a workbook'))
+          const request = {
+            attachmentId,
+            sheet: '名单',
+            headerRow: 1,
+            userTypeId: f.student,
+            mapping: {
+              displayName: { column: 'B' },
+              businessNo: { column: 'A' },
+              organization: { anchorNodeId: f.software, levels: [] },
+            },
+          }
+          const inspected = yield* Effect.exit(service.inspect(f.tenant, attachmentId, {}, who))
+          const previewed = yield* Effect.exit(service.preview(f.tenant, request, who))
+          const committed = yield* Effect.exit(
+            service.commit(f.tenant, { ...request, expectedPlanFingerprint: 'x' }, who),
+          )
+          return [tagOf(inspected), tagOf(previewed), tagOf(committed)]
+        }),
+      ),
+    )
+    expect(result).toEqual(['ACCESS_DENIED', 'ACCESS_DENIED', 'ACCESS_DENIED'])
   }, 120_000)
 
   it('refuses a file with a wrong row whole, and reads a person already on the books as present', async () => {

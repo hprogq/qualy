@@ -16,6 +16,7 @@ import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import {
   openWorkbook,
   readTable,
+  readWorkbook,
   sheetsOf,
   SpreadsheetUnreadable,
   type SheetTable,
@@ -126,6 +127,20 @@ export const make = Effect.gen(function* () {
       ),
     )
 
+  /**
+   * The door every file-reading step opens with: somebody who administers
+   * users nowhere has no import to prepare, and a file they staged for
+   * anything else is not this door's to read. Asked before a byte is read.
+   */
+  const requireManageSomewhere = Effect.fn('DirectoryImport.requireManageSomewhere')(function* (
+    as: Principal,
+  ) {
+    const scope = yield* rbac.listAuthorizedScope(as, MANAGE)
+    if (!scope.tenantWide && scope.anchors.length === 0) {
+      return yield* new AccessDenied({ reason: 'auth.user.manage is not held anywhere' })
+    }
+  })
+
   /** a unit and everything above it, root first, walked parent by parent */
   const ancestryOf = Effect.fn('DirectoryImport.ancestryOf')(function* (
     tenantId: string,
@@ -214,14 +229,18 @@ export const make = Effect.gen(function* () {
           issues: [{ rowNo: null, field: null, severity: 'error', reason: 'unreadable' }],
         })
 
+  /** one sheet of the staged file as a table, read under the process's one workbook permit */
   const tableOf = Effect.fn('DirectoryImport.tableOf')(function* (
-    bytes: Uint8Array,
+    tenantId: string,
+    attachmentId: string,
+    as: Principal,
     sheet: string,
     headerRow: number,
   ) {
-    return yield* Effect.tryPromise({
-      try: async () => readTable(await openWorkbook(bytes), sheet, { headerRow }),
-      catch: unreadable,
+    return yield* readWorkbook({
+      bytes: bytesOf(tenantId, attachmentId, as),
+      read: async (bytes) => readTable(await openWorkbook(bytes), sheet, { headerRow }),
+      refused: unreadable,
     })
   })
 
@@ -231,10 +250,11 @@ export const make = Effect.gen(function* () {
     choice: { readonly sheet?: string; readonly headerRow?: number },
     as: Principal,
   ) {
+    yield* requireManageSomewhere(as)
     yield* stagedFile(tenantId, attachmentId, as)
-    const bytes = yield* bytesOf(tenantId, attachmentId, as)
-    return yield* Effect.tryPromise({
-      try: async () => {
+    return yield* readWorkbook({
+      bytes: bytesOf(tenantId, attachmentId, as),
+      read: async (bytes) => {
         const book = await openWorkbook(bytes)
         const sheets = sheetsOf(book)
         const sheet = choice.sheet ?? sheets[0]?.name ?? ''
@@ -250,7 +270,7 @@ export const make = Effect.gen(function* () {
           },
         }
       },
-      catch: unreadable,
+      refused: unreadable,
     })
   })
 
@@ -268,14 +288,11 @@ export const make = Effect.gen(function* () {
     as: Principal,
     prepared?: { readonly meta: AttachmentMeta; readonly table: SheetTable },
   ) {
+    if (prepared === undefined) yield* requireManageSomewhere(as)
     const meta = prepared?.meta ?? (yield* stagedFile(tenantId, input.attachmentId, as))
     const table =
       prepared?.table ??
-      (yield* tableOf(
-        yield* bytesOf(tenantId, input.attachmentId, as),
-        input.sheet,
-        input.headerRow,
-      ))
+      (yield* tableOf(tenantId, input.attachmentId, as, input.sheet, input.headerRow))
 
     const [root, types, rules] = yield* Effect.all([
       org.rootNode(tenantId),
@@ -495,12 +512,9 @@ export const make = Effect.gen(function* () {
   ) {
     // the file is read outside the lock: nothing about a workbook needs the
     // tenant serialized behind it
+    yield* requireManageSomewhere(as)
     const meta = yield* stagedFile(tenantId, input.attachmentId, as)
-    const table = yield* tableOf(
-      yield* bytesOf(tenantId, input.attachmentId, as),
-      input.sheet,
-      input.headerRow,
-    )
+    const table = yield* tableOf(tenantId, input.attachmentId, as, input.sheet, input.headerRow)
     return yield* withDb(
       transaction(
         Effect.gen(function* () {
@@ -869,10 +883,7 @@ export const make = Effect.gen(function* () {
   const options = Effect.fn('DirectoryImport.options')(function* (tenantId: string, as: Principal) {
     // the screen is behind manage somewhere; the grammar is not a secret
     // from somebody who may create people
-    const scope = yield* rbac.listAuthorizedScope(as, MANAGE)
-    if (!scope.tenantWide && scope.anchors.length === 0) {
-      return yield* new AccessDenied({ reason: 'auth.user.manage is not held anywhere' })
-    }
+    yield* requireManageSomewhere(as)
     const [types, rules, root, userTypes] = yield* Effect.all([
       org.types(tenantId),
       org.rules(tenantId),
@@ -892,10 +903,7 @@ export const make = Effect.gen(function* () {
     input: { readonly filename: string; readonly declaredMime: string; readonly size: string },
     as: Principal,
   ) {
-    const scope = yield* rbac.listAuthorizedScope(as, MANAGE)
-    if (!scope.tenantWide && scope.anchors.length === 0) {
-      return yield* new AccessDenied({ reason: 'auth.user.manage is not held anywhere' })
-    }
+    yield* requireManageSomewhere(as)
     return yield* storage
       .prepareUpload({
         tenantId,
