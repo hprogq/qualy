@@ -3,12 +3,22 @@ import { sql } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Assessment } from '../src/server/index.ts'
-import { GATED, ok, run, runningBatch, seed } from './support/round.ts'
+import { recordItem } from './support/administrative.ts'
+import { appointStaff } from './support/correction.ts'
+import { GATED, ok, one, run, runningBatch, seed, type Seeded } from './support/round.ts'
+
+/** the seed's second class, under college B */
+const classB = (f: Seeded) =>
+  Effect.map(
+    runSql(sql`select id from org_nodes where tenant_id = ${f.t} and name = 'Class B1'`),
+    (result) => one<{ id: string }>(result).id,
+  )
 
 // One person's record, as this plugin contributes to it: the rounds they
 // are in, and what they filed. Both are narrowed to what the READER may
-// see - which rounds, and in which rounds a claim is anybody's business
-// but the owner's and the staff's.
+// see (ruling of 2026-09-25 #21): a round shows up to whoever administers
+// it or works on it, never to a fellow participant; a claim shows up only
+// to a reader who may read that very claim.
 
 describe.runIf(postgresAvailable)('what one person’s record says about assessment', () => {
   let db: Awaited<ReturnType<typeof createTestContext>>
@@ -50,10 +60,17 @@ describe.runIf(postgresAvailable)('what one person’s record says about assessm
             { limit: 10 },
             f.principal(f.admin),
           )
-          // a fellow participant may see the round, so may see who is in it
+          // a fellow participant sees the round, and their own place in it,
+          // but being in a round with somebody is not a way in to theirs
           const byPeer = yield* assessment.listUserBatches(
             f.t,
             f.s1,
+            { limit: 10 },
+            f.principal(f.s3),
+          )
+          const ownByPeer = yield* assessment.listUserBatches(
+            f.t,
+            f.s3,
             { limit: 10 },
             f.principal(f.s3),
           )
@@ -75,6 +92,7 @@ describe.runIf(postgresAvailable)('what one person’s record says about assessm
             ofS2: ofS2.map((row) => [row.membershipStatus, row.excludedAt !== null]),
             manageable: ofS1[0]?.manageable,
             byPeer: byPeer.length,
+            ownByPeer: ownByPeer.length,
             byOutsider: byOutsider.length,
             batchId: g.batch.id,
           }
@@ -84,11 +102,12 @@ describe.runIf(postgresAvailable)('what one person’s record says about assessm
     expect(result.ofS1).toEqual([[result.batchId, 'active', 'Class A1']])
     expect(result.ofS2).toEqual([['excluded', true]])
     expect(result.manageable).toBe(true)
-    expect(result.byPeer).toBe(1)
+    expect(result.byPeer).toBe(0)
+    expect(result.ownByPeer).toBe(1)
     expect(result.byOutsider).toBe(0)
   })
 
-  it('lists what somebody filed to the round’s staff, and never to a fellow participant', async () => {
+  it('lists each claim only to a reader who may read that claim', async () => {
     const result = ok(
       await run(
         db.url,
@@ -97,41 +116,58 @@ describe.runIf(postgresAvailable)('what one person’s record says about assessm
           const assessment = yield* Assessment
           const g = yield* runningBatch(f, { profile: [...GATED] })
           const s1 = f.principal(f.s1)
-          const entry = yield* assessment.createEntry(
+          const filed = yield* assessment.createEntry(
             f.t,
             { itemId: g.item.id, participantId: g.p1, payload: {} },
             s1,
           )
-          const byAdmin = yield* assessment.listUserEntries(
+          const office = yield* recordItem(f, g.batch.id)
+          const recorded = yield* assessment.createEntry(
             f.t,
-            f.s1,
-            { limit: 10 },
-            f.principal(f.admin),
-          )
-          // the recorder works on this round, and so may look
-          const byStaff = yield* assessment.listUserEntries(
-            f.t,
-            f.s1,
-            { limit: 10 },
+            { itemId: office.id, participantId: g.p1, payload: {}, note: '校发〔2026〕3 号' },
             f.principal(f.recorder),
           )
-          const byPeer = yield* assessment.listUserEntries(
-            f.t,
-            f.s1,
-            { limit: 10 },
-            f.principal(f.s3),
-          )
+          // re-determining over the student's class, and over the other one
+          const near = yield* appointStaff(f, g.batch.id, {
+            name: 'Near Inspector',
+            at: f.classA,
+            codes: ['assessment.entry.redetermine'],
+          })
+          const far = yield* appointStaff(f, g.batch.id, {
+            name: 'Far Inspector',
+            at: yield* classB(f),
+            codes: ['assessment.entry.redetermine'],
+          })
+          const idsBy = (who: string) =>
+            Effect.map(
+              assessment.listUserEntries(f.t, f.s1, { limit: 10 }, f.principal(who)),
+              (rows) => rows.map((row) => row.id).sort(),
+            )
           return {
-            byAdmin: byAdmin.map((row) => [row.id, row.batchName, row.itemTitle, row.status]),
-            byStaff: byStaff.length,
-            byPeer: byPeer.length,
-            entryId: entry.id,
+            byAdmin: yield* idsBy(f.admin),
+            byOwner: yield* idsBy(f.s1),
+            byRecorder: yield* idsBy(f.recorder),
+            byNear: yield* idsBy(near.who),
+            byFar: yield* idsBy(far.who),
+            byReviewer: yield* idsBy(f.reviewer),
+            byPeer: yield* idsBy(f.s3),
+            filed: filed.id,
+            recorded: recorded.id,
           }
         }),
       ),
     )
-    expect(result.byAdmin).toEqual([[result.entryId, 'Round', '退役复学', 'draft']])
-    expect(result.byStaff).toBe(1)
-    expect(result.byPeer).toBe(0)
+    const both = [result.filed, result.recorded].sort()
+    expect(result.byAdmin).toEqual(both)
+    expect(result.byOwner).toEqual(both)
+    // recording authority reads the facts it could have written, not what
+    // the student filed about themselves
+    expect(result.byRecorder).toEqual([result.recorded])
+    // re-determining reads every claim of the people it covers, and no others
+    expect(result.byNear).toEqual(both)
+    expect(result.byFar).toEqual([])
+    // working on the round in another capacity, or being in it, reads none
+    expect(result.byReviewer).toEqual([])
+    expect(result.byPeer).toEqual([])
   })
 })

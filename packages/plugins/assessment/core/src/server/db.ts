@@ -510,6 +510,10 @@ export const listBatchesPage = (
  * The rounds one person is or was in, newest membership first, among those
  * the reader may see at all. The visibility predicate is the batch list's
  * own, pushed into the statement: nothing is fetched and then filtered.
+ *
+ * Except that being in a round with somebody is not a way in to their
+ * membership (ruling of 2026-09-25 #21): asked about anybody else, only
+ * administering the round or working on it counts.
  */
 export const userBatchesPage = (
   tenantId: string,
@@ -555,7 +559,11 @@ export const userBatchesPage = (
       ])
       .where('bp.tenantId', '=', tenantId)
       .where('bp.userId', '=', userId)
-      .where(visibleTo(viewer))
+      .where(
+        userId === viewer.userId
+          ? visibleTo(viewer)
+          : sql<boolean>`(${withinReach(viewer.held)} or ${isStaff(viewer.userId)})`,
+      )
       .orderBy('bp.includedAt', 'desc')
       .orderBy('bp.id', 'desc')
       .limit(filter.limit)
@@ -570,9 +578,13 @@ export const userBatchesPage = (
 export type UserBatchRow = Effect.Success<ReturnType<typeof userBatchesPage>>[number]
 
 /**
- * What one person filed, newest first, in the rounds the reader administers
- * or works on. A round the reader is merely in with them is left out: a
- * claim is its owner's and the round's staff's, never the room's.
+ * What one person filed, newest first, each claim only when the reader may
+ * read that claim (ruling of 2026-09-25 #21): the same four doors
+ * `mayReadEntry` asks one at a time, pushed into the statement - the
+ * claim's own person, whoever administers its round, whoever may
+ * re-determine over its participant, and for an administrative fact
+ * whoever may record over them. Working on a round in any other capacity,
+ * or merely being in it, reads none of its claims.
  */
 export const userEntriesPage = (
   tenantId: string,
@@ -608,7 +620,26 @@ export const userEntriesPage = (
       .select([sql<string>`e.created_at::text`.as('cursorAt')])
       .where('e.tenantId', '=', tenantId)
       .where('bp.userId', '=', userId)
-      .where(sql<boolean>`(${withinReach(viewer.held)} or ${isStaff(viewer.userId)})`)
+      .where((eb) => {
+        const reachOver = (permissionCode: string) =>
+          staffReachOver({
+            tenantId,
+            batchId: sql.ref('e.batch_id'),
+            userId: viewer.userId,
+            permissionCode,
+            anchorNodeId: sql.ref('bp.assessment_anchor_node_id'),
+            anchorPath: sql.ref('bp.anchor_path'),
+          })
+        return eb.or([
+          eb('bp.userId', '=', viewer.userId),
+          withinReach(viewer.held),
+          reachOver('assessment.entry.redetermine'),
+          eb.and([
+            eb('e.source', 'in', ['record', 'import']),
+            reachOver('assessment.entry.record'),
+          ]),
+        ])
+      })
       .orderBy('e.createdAt', 'desc')
       .orderBy('e.id', 'desc')
       .limit(filter.limit)

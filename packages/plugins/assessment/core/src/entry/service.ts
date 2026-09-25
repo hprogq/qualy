@@ -1195,7 +1195,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
    * And a fourth (ruling of 2026-09-25 #33): whoever may re-determine claims
    * over this participant reads every claim of theirs, filed or recorded -
    * a result cannot be re-made by somebody who may not read what it was
-   * made from.
+   * made from. `userEntriesPage` asks the same four in sql.
    */
   const mayReadEntry = (
     tenantId: string,
