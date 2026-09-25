@@ -219,6 +219,7 @@ export function ConfirmDialog({
   otherLabel,
   pending,
   tone = 'default',
+  descriptionData,
   onConfirm,
   onOther,
   onCancel,
@@ -238,6 +239,12 @@ export function ConfirmDialog({
   pending?: boolean
   /** destructive colours the confirming button, for what cannot be undone */
   tone?: 'default' | 'destructive'
+  /**
+   * Facts about what is being asked, carried on the description as data
+   * attributes: which case of a question the sentence speaks to, for a test
+   * that must not read the sentence to find out.
+   */
+  descriptionData?: Readonly<Record<`data-${string}`, string>>
   onConfirm: () => void
   onOther?: () => void
   onCancel: () => void
@@ -262,7 +269,9 @@ export function ConfirmDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>{shown.title}</AlertDialogTitle>
           {shown.description !== undefined && (
-            <AlertDialogDescription>{shown.description}</AlertDialogDescription>
+            <AlertDialogDescription {...descriptionData}>
+              {shown.description}
+            </AlertDialogDescription>
           )}
         </AlertDialogHeader>
         <AlertDialogFooter>
