@@ -9,8 +9,9 @@ import { APPEAL_REASONS, CADRE_POSTS, REJECTIONS } from '../catalog.ts'
 import type { FieldSpec, ItemSpec, Term } from '../rules.ts'
 import { claimsOf, type Claim } from './claims.ts'
 import { addMinutes, cst, principalOf, type Random, type Story } from './context.ts'
+import { episodesOf, TRIAL_ITEM, type Episode } from './episodes.ts'
 import { stageProof, stageWorkbook } from './files.ts'
-import { buildTermItems, type Versions } from './items.ts'
+import { buildTermItems, reviewPolicyOf, scoringConfigOf, type Versions } from './items.ts'
 import { EventQueue } from './queue.ts'
 import type { Student, World } from './world.ts'
 
@@ -112,10 +113,13 @@ const ENTRY = [
   'assessment.review.process',
   'assessment.review.escalate',
 ]
+// staff may send a concluded claim through the escalation route again while
+// review and the appeals that follow it run
 const REVIEW = [
   'assessment.review.process',
   'assessment.review.escalate',
   'assessment.entry.record',
+  'assessment.review.reopen',
 ]
 const APPEAL = [
   'assessment.entry.appeal',
@@ -142,6 +146,8 @@ interface Filed {
   status: 'draft' | 'in_review' | 'approved' | 'rejected' | 'needs_revision'
   revised: boolean
   appealed: boolean
+  /** an episode's claim, which the random appeals and reviews leave alone */
+  readonly scripted: boolean
 }
 
 export interface TermOutcome {
@@ -153,14 +159,19 @@ export interface TermOutcome {
 export const runTerm = (input: {
   world: World
   plan: TermPlan
+  /** which term of the six this is, from 0 */
+  index: number
   versions: Versions
   story: Story
   random: Random
   /** people who go on leave during this term, chosen before it starts */
   onLeave: readonly Student[]
+  /** the student a visitor signs in as, whose term is written out (episodes.ts) */
+  persona: Student
 }) =>
   Effect.gen(function* () {
-    const { world, plan, versions, story, random } = input
+    const { world, plan, versions, story, random, persona } = input
+    const episodes = episodesOf(plan.term, input.index)
     const assessment = yield* Assessment
     const t = world.tenantId
     const lead = principalOf(t, world.staff.manager.id)
@@ -189,7 +200,34 @@ export const runTerm = (input: {
       assessment.replacePlan(t, batch.id, { specs: PHASES.map((phase) => ({ ...phase })) }, lead),
       300,
     )
-    const { items } = yield* buildTermItems(world, plan.term, batch.id, versions, story, lead)
+    const built = yield* buildTermItems(world, plan.term, batch.id, versions, story, lead)
+    const items = new Map(built.items)
+    if (episodes.some((episode) => episode.kind === 'item-void')) {
+      // a question tried for this term, and voided a day into filing
+      const trial = yield* story.step(
+        assessment.createItem(
+          t,
+          batch.id,
+          {
+            itemType: 'evidence',
+            title: TRIAL_ITEM.title,
+            scoreGroupId: built.groups.get(TRIAL_ITEM.group)!,
+            maxEntries: TRIAL_ITEM.maxEntries,
+            sortOrder: items.size,
+            config: {
+              entryChannels: ['participant'],
+              formConfig: { fields: TRIAL_ITEM.fields },
+              scoringConfig: scoringConfigOf(TRIAL_ITEM, versions),
+              reviewPolicy: reviewPolicyOf(world),
+            },
+          },
+          lead,
+        ),
+        40,
+      )
+      yield* story.step(assessment.setItemStatus(t, trial.id, { status: 'active' }, lead), 20)
+      items.set(TRIAL_ITEM.key, { id: trial.id, spec: TRIAL_ITEM })
+    }
     const phases = yield* assessment.getPlan(t, batch.id, lead)
     const participants = new Map<string, string>()
     for (const row of (
@@ -204,6 +242,12 @@ export const runTerm = (input: {
     const queue = new EventQueue(story)
     const itemOf = (key: string) => items.get(key)!
     const asStudent = (student: Student) => principalOf(t, student.id)
+    /** the round a claim stands on now, whoever opened it */
+    const currentRoundOf = (entryId: string) =>
+      Effect.map(
+        runSql(sql`select current_review_instance_id as id from entries where id = ${entryId}`),
+        (found) => (found as { rows: { id: string | null }[] }).rows[0]?.id ?? null,
+      )
 
     // --- the phases, on their dates ---------------------------------------
 
@@ -261,7 +305,8 @@ export const runTerm = (input: {
 
     const review = (entry: Filed, when: Date) => queue.at(when, 'review', () => decideNormal(entry))
 
-    const submit = (entry: Filed) =>
+    /** sends a claim in; `review` false leaves its judging to whoever scheduled it */
+    const submit = (entry: Filed, review_ = true) =>
       Effect.gen(function* () {
         const sent = yield* assessment.setEntryStatus(
           t,
@@ -271,12 +316,17 @@ export const runTerm = (input: {
         )
         entry.status = 'in_review'
         entry.instanceId = sent.currentReviewInstanceId ?? null
+        if (!review_) return
         const delay = random.int(3 * 60, 3 * 24 * 60)
         const when = addMinutes(queue.now, delay)
         review(entry, when < at(1, '19:00') ? addMinutes(at(1, '19:00'), random.int(0, 180)) : when)
       })
 
-    const file = (student: Student, claim: Claim) =>
+    /**
+     * Files a claim. Left alone, a few stay drafts and the rest are sent and
+     * reviewed as they come; an episode sends its own and judges it itself.
+     */
+    const file = (student: Student, claim: Claim, scripted = false) =>
       Effect.gen(function* () {
         const item = itemOf(claim.item)
         const me = asStudent(student)
@@ -298,16 +348,42 @@ export const runTerm = (input: {
           status: 'draft',
           revised: false,
           appealed: false,
+          scripted,
         }
         filed.push(state)
+        if (scripted) {
+          yield* submit(state, false)
+          return state
+        }
         // a few are left as drafts and never sent
-        if (random.chance(0.025)) return
+        if (random.chance(0.025)) return state
         yield* submit(state)
+        return state
       })
+
+    // the persona's own claims leave room for what their episodes file
+    const roomLeft = (student: Student, claims: Claim[]) => {
+      if (student.id !== persona.id) return claims
+      const taken = new Map<string, number>()
+      for (const episode of episodes) {
+        for (const claim of [episode.claim, episode.refiled]) {
+          if (claim !== undefined) taken.set(claim.item, (taken.get(claim.item) ?? 0) + 1)
+        }
+      }
+      const kept: Claim[] = []
+      for (const claim of claims) {
+        const most = items.get(claim.item)?.spec.maxEntries ?? null
+        const used = taken.get(claim.item) ?? 0
+        if (most !== null && used >= most) continue
+        taken.set(claim.item, used + 1)
+        kept.push(claim)
+      }
+      return kept
+    }
 
     for (const student of present) {
       if (input.onLeave.some((one) => one.id === student.id)) continue
-      const claims = claimsOf(student, plan.term, random, plan.material)
+      const claims = roomLeft(student, claimsOf(student, plan.term, random, plan.material))
       for (const claim of claims) {
         // evenings mostly, over the four filing days; a last-minute rush on the last one
         const dayOffset = random.weighted([
@@ -322,7 +398,9 @@ export const runTerm = (input: {
           at(dayOffset, `${String(hour).padStart(2, '0')}:00`),
           random.int(0, 59),
         )
-        queue.at(when < at(0, '08:05') ? at(0, '08:30') : when, 'file', () => file(student, claim))
+        queue.at(when < at(0, '08:05') ? at(0, '08:30') : when, 'file', () =>
+          Effect.asVoid(file(student, claim)),
+        )
       }
     }
 
@@ -382,6 +460,13 @@ export const runTerm = (input: {
           return
         }
         yield* approve(entry, judge, 0.04)
+        // a route with more than one step: the next one looks at it later
+        const after = yield* assessment.getReviewInstance(t, entry.instanceId, lead)
+        if (after.state === 'active') {
+          queue.at(addMinutes(queue.now, random.int(2 * 60, 20 * 60)), 'review', () =>
+            decideNormal(entry),
+          )
+        }
       })
 
     /** approves, now and then correcting what the student filed */
@@ -474,26 +559,31 @@ export const runTerm = (input: {
       }
     }
 
-    const answer = (entry: Filed) =>
+    const answer = (
+      entry: Filed,
+      text = '活动由学院学生会组织，时间为学期第十二周周六，已补充组织方盖章证明。',
+      review_ = true,
+    ) =>
       Effect.gen(function* () {
         const me = asStudent(entry.student)
         const round = yield* assessment.getReviewInstance(t, entry.instanceId!, me)
         const ask = round.supplements.find((one) => one.status === 'open')
         if (ask === undefined) return
-        yield* assessment.answerSupplement(
-          t,
-          ask.id,
-          {
-            payload: { f1: '活动由学院学生会组织，时间为学期第十二周周六，已补充组织方盖章证明。' },
-          },
-          me,
-        )
+        yield* assessment.answerSupplement(t, ask.id, { payload: { f1: text } }, me)
+        if (!review_) return
         queue.at(addMinutes(queue.now, random.int(4 * 60, 30 * 60)), 'review', () =>
           decideNormal(entry),
         )
       })
 
-    const revise = (entry: Filed) =>
+    const revise = (
+      entry: Filed,
+      options: {
+        readonly payload?: Readonly<Record<string, unknown>>
+        readonly note?: string
+        readonly review?: boolean
+      } = {},
+    ) =>
       Effect.gen(function* () {
         const me = asStudent(entry.student)
         const item = itemOf(entry.claim.item)
@@ -508,11 +598,14 @@ export const runTerm = (input: {
         yield* assessment.appendEntryRevision(
           t,
           entry.entryId,
-          { payload: { ...entry.claim.payload, proof: [proof] }, note: '已按意见补充证明材料' },
+          {
+            payload: { ...entry.claim.payload, ...options.payload, proof: [proof] },
+            note: options.note ?? '已按意见补充证明材料',
+          },
           me,
         )
         entry.revised = true
-        yield* submit(entry)
+        yield* submit(entry, options.review ?? true)
       })
 
     /**
@@ -868,14 +961,550 @@ export const runTerm = (input: {
       )
     }
 
+    // --- the persona's own term, written out (episodes.ts) -------------------
+
+    type Judge = NonNullable<Effect.Success<ReturnType<typeof judgeOf>>>
+    type Verdict =
+      | {
+          readonly kind: 'approve'
+          /** filed values the judge determines differently, by field */
+          readonly override?: Readonly<Record<string, unknown>>
+          readonly comment?: string
+        }
+      | { readonly kind: 'reject'; readonly reason: string; readonly comment: string }
+    // the counsellor a visitor signs in as keeps the records these episodes make
+    const recorder = counsellors[0]!
+
+    /** approves, with the listed filed fields determined as given */
+    const approveWith = (
+      entry: Filed,
+      judge: Judge,
+      override: Readonly<Record<string, unknown>> | undefined,
+      comment: string | undefined,
+    ) =>
+      Effect.gen(function* () {
+        const form = judge.round.recognitionForm
+        const said = comment === undefined ? {} : { comment }
+        if (form === null || form.fields.length === 0) {
+          yield* assessment.decideReview(
+            t,
+            entry.instanceId!,
+            { decision: 'approve', ...said },
+            judge.as,
+          )
+          return
+        }
+        const values: Record<string, unknown> = { ...(form.locked?.values ?? form.seed) }
+        let changed = false
+        if (override !== undefined && form.locked === null) {
+          for (const [id, key] of Object.entries(form.sources)) {
+            if (Object.hasOwn(override, key) && values[id] !== override[key]) {
+              values[id] = override[key]
+              changed = true
+            }
+          }
+        }
+        yield* assessment.decideReview(
+          t,
+          entry.instanceId!,
+          {
+            decision: 'approve',
+            ...said,
+            recognition:
+              changed && comment !== undefined ? { values, reason: comment } : { values },
+          },
+          judge.as,
+        )
+      })
+
+    /**
+     * One decision at the step judging the claim now; the next step, if the
+     * round goes on, a few hours later. Every step says the same thing: a
+     * contested claim that is granted is agreed with on the way up.
+     */
+    const walk = (
+      entry: Filed,
+      verdict: Verdict,
+      gapMinutes: number,
+    ): Effect.Effect<void, unknown, unknown> =>
+      Effect.gen(function* () {
+        const judge = yield* judgeOf(entry.instanceId!, entry.student)
+        if (judge === null) {
+          console.warn(`WARNING: nobody can decide the persona's ${entry.claim.item} claim now`)
+          return
+        }
+        if (verdict.kind === 'approve') {
+          yield* approveWith(entry, judge, verdict.override, verdict.comment)
+        } else {
+          yield* assessment.decideReview(
+            t,
+            entry.instanceId!,
+            { decision: 'reject', reason: verdict.reason, comment: verdict.comment },
+            judge.as,
+          )
+        }
+        const after = yield* assessment.getReviewInstance(t, entry.instanceId!, lead)
+        if (after.state === 'active') {
+          queue.at(addMinutes(queue.now, gapMinutes), 'episode', () =>
+            walk(entry, verdict, gapMinutes),
+          )
+          return
+        }
+        entry.status = after.outcome === 'approved' ? 'approved' : 'rejected'
+      })
+
+    /** the values a claim stands determined on, with the listed filed fields changed */
+    const determinedWith = (entry: Filed, override: Readonly<Record<string, unknown>>) =>
+      Effect.gen(function* () {
+        const view = yield* assessment.getEntry(t, entry.entryId, lead)
+        const values: Record<string, unknown> = { ...view.recognition?.values }
+        const stored = (yield* assessment.getItem(t, itemOf(entry.claim.item).id, lead))
+          .currentRevision!.scoringConfig as {
+          recognitions?: Record<string, { defaultFromFieldId: string | null }>
+        }
+        for (const [id, recognition] of Object.entries(stored.recognitions ?? {})) {
+          const key = recognition.defaultFromFieldId
+          if (key !== null && Object.hasOwn(override, key)) values[id] = override[key]
+        }
+        return values
+      })
+
+    const materialDay = (days: number) =>
+      new Date(new Date(`${plan.material.start}T00:00:00Z`).getTime() + days * 86_400_000)
+        .toISOString()
+        .slice(0, 10)
+    /** a competition claim carries its award day inside the term's window */
+    const dated = (claim: Claim): Claim =>
+      claim.item === 'competition' && claim.payload['awarded-on'] === undefined
+        ? { ...claim, payload: { ...claim.payload, 'awarded-on': materialDay(47) } }
+        : claim
+
+    const play = (episode: Episode, order: number) => {
+      const held: { entry?: Filed } = {}
+      // episodes of one term keep a few minutes apart
+      const on = (
+        days: number,
+        time: string,
+        run: (entry: Filed) => Effect.Effect<void, unknown, unknown>,
+      ) => queue.at(addMinutes(at(days, time), order * 7), 'episode', () => run(held.entry!))
+      const fileAt = (days: number, time: string, claim: Claim) =>
+        queue.at(addMinutes(at(days, time), order * 7), 'episode', () =>
+          Effect.map(file(persona, dated(claim), true), (entry) => {
+            held.entry = entry
+          }),
+        )
+      /** the step judging now, as whoever sits there sees it */
+      const judged = (
+        entry: Filed,
+        act: (judge: Judge) => Effect.Effect<unknown, unknown, unknown>,
+      ) =>
+        Effect.gen(function* () {
+          const judge = yield* judgeOf(entry.instanceId!, entry.student)
+          if (judge === null)
+            return yield* Effect.die(new Error(`episode ${episode.kind}: no judge`))
+          yield* act(judge)
+        })
+      const approveNow =
+        (comment?: string, override?: Readonly<Record<string, unknown>>) => (entry: Filed) =>
+          judged(entry, (judge) =>
+            Effect.tap(approveWith(entry, judge, override, comment), () =>
+              Effect.sync(() => {
+                entry.status = 'approved'
+              }),
+            ),
+          )
+      const rejectNow = (reason: string, comment: string) => (entry: Filed) =>
+        judged(entry, (judge) =>
+          Effect.tap(
+            assessment.decideReview(
+              t,
+              entry.instanceId!,
+              { decision: 'reject', reason, comment },
+              judge.as,
+            ),
+            () =>
+              Effect.sync(() => {
+                entry.status = 'rejected'
+              }),
+          ),
+        )
+      const appeal = (reason: string) => (entry: Filed) =>
+        Effect.gen(function* () {
+          const round = yield* assessment.appealEntry(
+            t,
+            entry.entryId,
+            { reason },
+            asStudent(entry.student),
+          )
+          entry.appealed = true
+          entry.instanceId = round.id
+        })
+
+      switch (episode.kind) {
+        case 'supplement':
+          fileAt(0, '20:30', episode.claim!)
+          on(1, '19:30', (entry) =>
+            judged(entry, (judge) =>
+              assessment.requestSupplement(
+                t,
+                entry.instanceId!,
+                {
+                  instructions: '证书上未显示名次，请补充获奖名单公示页截图',
+                  requirements: [{ label: '补充说明', kind: 'text', required: true }],
+                },
+                judge.as,
+              ),
+            ),
+          )
+          on(2, '12:10', (entry) =>
+            answer(entry, '已补充学校官网获奖名单公示页截图，本人位列二等奖第 3 名。', false),
+          )
+          on(2, '20:40', approveNow())
+          return
+        case 'revise':
+          fileAt(0, '21:00', episode.claim!)
+          on(
+            1,
+            '19:50',
+            rejectNow(
+              '现有材料不足以支持申报内容',
+              '仅有活动现场照片，请补充组织单位盖章的参与证明',
+            ),
+          )
+          on(2, '13:00', (entry) =>
+            revise(entry, { note: '已补充社区居委会盖章的服务证明', review: false }),
+          )
+          on(3, '19:30', approveNow())
+          return
+        case 'rounds':
+          fileAt(0, '21:10', episode.claim!)
+          on(1, '20:05', rejectNow('证明材料无法清晰辨识', '证书照片模糊，请重新上传清晰的证书'))
+          on(2, '12:30', (entry) => revise(entry, { note: '已重新拍摄证书', review: false }))
+          on(
+            2,
+            '20:15',
+            rejectNow(
+              '申报内容与证明材料不一致',
+              '证书上为第二名，与申报的第一名不一致，请核对后修改',
+            ),
+          )
+          on(3, '12:40', (entry) =>
+            revise(entry, {
+              payload: episode.corrected ?? {},
+              note: '已按证书改为第二名',
+              review: false,
+            }),
+          )
+          on(3, '20:10', approveNow())
+          return
+        case 'return':
+          fileAt(0, '21:30', episode.claim!)
+          on(1, '10:30', (entry) =>
+            Effect.gen(function* () {
+              yield* assessment.interveneOnEntry(
+                t,
+                entry.entryId,
+                {
+                  kind: 'return-for-revision',
+                  reason: '证明材料为赛事海报，无法证明本人参赛，请上传成绩册或获奖证书',
+                },
+                lead,
+              )
+              entry.status = 'needs_revision'
+            }),
+          )
+          on(1, '20:30', (entry) =>
+            revise(entry, { note: '已上传赛事成绩册中本人所在页', review: false }),
+          )
+          on(2, '19:40', approveNow())
+          return
+        case 'panel':
+          fileAt(1, '20:00', episode.claim!)
+          on(2, '19:30', (entry) =>
+            judged(entry, (judge) =>
+              assessment.decideReview(
+                t,
+                entry.instanceId!,
+                {
+                  decision: 'escalate',
+                  reason: '认定标准存在争议',
+                  comment: '证书为赛区一等奖，是否按省级认定请专业负责人核定',
+                },
+                judge.as,
+              ),
+            ),
+          )
+          on(3, '10:00', (entry) => walk(entry, { kind: 'approve' }, 4 * 60))
+          return
+        case 'appeal-corrected':
+          fileAt(0, '22:00', episode.claim!)
+          on(1, '20:20', rejectNow('现有材料不足以支持申报内容', '未上传获奖证书，仅有参赛照片'))
+          on(9, '10:40', appeal('获奖证书当时漏传了，现已补充'))
+          on(9, '16:00', (entry) =>
+            walk(entry, { kind: 'approve', comment: '补充的获奖证书真实有效，予以认定' }, 5 * 60),
+          )
+          return
+        case 'appeal-upheld':
+          fileAt(1, '21:00', episode.claim!)
+          on(2, '20:00', rejectNow('相关时间不在有效范围内', '活动时间不在本学期材料范围内'))
+          on(9, '11:10', appeal('活动在本学期举办，证书上的日期是颁奖日期'))
+          on(9, '18:00', (entry) =>
+            walk(
+              entry,
+              {
+                kind: 'reject',
+                reason: '相关时间不在有效范围内',
+                comment: '经复核，该活动举办于上一学期，维持原决定',
+              },
+              5 * 60,
+            ),
+          )
+          return
+        case 'reopen':
+          fileAt(0, '20:50', episode.claim!)
+          on(1, '20:30', approveNow('证书所载名次与申报不符，按证书认定', { rank: 2 }))
+          on(6, '10:20', (entry) =>
+            Effect.gen(function* () {
+              const round = yield* assessment.reopenEntry(
+                t,
+                entry.entryId,
+                { reason: '参评人提交了组委会更正后的获奖名单，名次为第一名，请复核' },
+                recorder,
+              )
+              entry.instanceId = round.id
+            }),
+          )
+          on(6, '15:00', (entry) =>
+            walk(
+              entry,
+              {
+                kind: 'approve',
+                override: { rank: 1 },
+                comment: '按组委会更正后的获奖名单认定为第一名',
+              },
+              4 * 60,
+            ),
+          )
+          return
+        case 'raise':
+          fileAt(1, '20:40', episode.claim!)
+          on(2, '19:50', approveNow())
+          on(12, '10:00', (entry) =>
+            Effect.gen(function* () {
+              const values = yield* determinedWith(entry, { participation: '0.5' })
+              yield* assessment.redetermineEntry(
+                t,
+                entry.entryId,
+                {
+                  decision: 'approve',
+                  recognition: { values },
+                  reason: '经核对活动通知，工作人员参与分为 0.5 分，原认定按观众计算',
+                },
+                lead,
+              )
+            }),
+          )
+          return
+        case 'revoke':
+          fileAt(0, '21:40', episode.claim!)
+          on(1, '21:00', approveNow())
+          on(12, '10:20', (entry) =>
+            Effect.gen(function* () {
+              yield* assessment.redetermineEntry(
+                t,
+                entry.entryId,
+                {
+                  decision: 'reject',
+                  reason: '与本学期另一条「图书馆志愿服务」申报为同一次活动，按重复申报处理',
+                },
+                lead,
+              )
+              entry.status = 'rejected'
+            }),
+          )
+          return
+        case 'record-void': {
+          const recorded: { entryId?: string } = {}
+          queue.at(addMinutes(at(2, '16:30'), order * 7), 'episode', () =>
+            Effect.gen(function* () {
+              yield* recordFor(
+                'moral-other',
+                [persona],
+                { value: '-0.5', basis: '寝室违规使用大功率电器，宿管中心通报' },
+                '学生公寓管理中心通报',
+                recorder,
+              )
+              const row = (
+                (yield* runSql(sql`
+                  select e.id from entries e
+                   where e.participant_id = ${participants.get(persona.id)!}
+                     and e.item_id = ${itemOf('moral-other').id}
+                     and e.source = 'record'
+                   order by e.created_at desc, e.id desc limit 1`)) as { rows: { id: string }[] }
+              ).rows[0]!
+              recorded.entryId = row.id
+            }),
+          )
+          queue.at(addMinutes(at(7, '10:00'), order * 7), 'episode', () =>
+            Effect.asVoid(
+              assessment.interveneOnEntry(
+                t,
+                recorded.entryId!,
+                {
+                  kind: 'void',
+                  reason: '经宿管中心复核，违规电器属同寝室他人，撤销对该生的扣分',
+                },
+                recorder,
+              ),
+            ),
+          )
+          return
+        }
+        case 'item-void': {
+          fileAt(0, '20:10', episode.claim!)
+          // a few classmates tried the new question too
+          const others = present
+            .filter(
+              (one) =>
+                one.id !== persona.id &&
+                !world.personas.has(one.id) &&
+                !input.onLeave.some((away) => away.id === one.id),
+            )
+            .sort((a, b) => b.activity - a.activity)
+            .slice(0, 5)
+          others.forEach((student, index) =>
+            queue.at(addMinutes(at(0, '21:00'), index * 23), 'episode', () =>
+              Effect.asVoid(
+                file(
+                  student,
+                  {
+                    ...episode.claim!,
+                    payload: { ...episode.claim!.payload, hours: 4 + index * 3 },
+                  },
+                  true,
+                ),
+              ),
+            ),
+          )
+          queue.at(addMinutes(at(1, '11:00'), order * 7), 'episode', () =>
+            Effect.asVoid(
+              assessment.setItemStatus(
+                t,
+                itemOf(TRIAL_ITEM.key).id,
+                {
+                  status: 'voided',
+                  reason: '本题与「社会实践与志愿服务」重复，已停用，请在该题申报',
+                },
+                lead,
+              ),
+            ),
+          )
+          const refiled: { entry?: Filed } = {}
+          queue.at(addMinutes(at(1, '20:40'), order * 7), 'episode', () =>
+            Effect.map(file(persona, episode.refiled!, true), (entry) => {
+              refiled.entry = entry
+            }),
+          )
+          queue.at(addMinutes(at(2, '20:00'), order * 7), 'episode', () =>
+            approveNow()(refiled.entry!),
+          )
+          return
+        }
+        case 'reroute':
+          fileAt(1, '21:00', episode.claim!)
+          queue.at(addMinutes(at(3, '10:30'), order * 7), 'route-change', () =>
+            rerouteCompetition(held),
+          )
+          return
+      }
+    }
+
+    /**
+     * The lead adds a counsellor's confirmation after the class lead's step
+     * on competitions, and moves every competition under review onto the new
+     * route from its start. What was moved is judged again from there; the
+     * persona's own claim by its episode, the rest as they come.
+     */
+    const rerouteCompetition = (held: { entry?: Filed }) =>
+      Effect.gen(function* () {
+        const item = itemOf('competition')
+        const current = (yield* assessment.getItem(t, item.id, lead)).currentRevision!
+        const base = reviewPolicyOf(world)
+        const config = {
+          entryChannels: [...current.entryChannels],
+          formConfig: current.formConfig,
+          scoringConfig: current.scoringConfig,
+          displayConfig: current.displayConfig,
+          reviewPolicy: {
+            ...base,
+            normal: {
+              stages: [
+                ...base.normal.stages,
+                {
+                  id: 'counsellor-confirm',
+                  label: '辅导员确认',
+                  selector: {
+                    kind: 'roleAt',
+                    nodeTypeId: world.types.grade,
+                    roleIds: [world.roles.counsellor],
+                  },
+                  quorum: { type: 'any' },
+                },
+              ],
+            },
+          },
+        }
+        const asked = yield* Effect.result(assessment.updateItem(t, item.id, { config }, lead))
+        if (asked._tag === 'Failure') {
+          const report = asked.failure as unknown as { impactToken?: string }
+          if (report.impactToken === undefined) return yield* Effect.die(asked.failure)
+          yield* assessment.updateItem(
+            t,
+            item.id,
+            {
+              config,
+              reason: '竞赛类加分改为班级审核后由辅导员确认',
+              effects: {
+                impactToken: report.impactToken,
+                review: {
+                  open: 'reroute-all',
+                  missingCurrentStage: 'restart-route',
+                  landing: 'route-start',
+                },
+              },
+            },
+            lead,
+          )
+        }
+        for (const entry of filed) {
+          if (entry.claim.item !== 'competition') continue
+          const round = yield* currentRoundOf(entry.entryId)
+          if (round === null) continue
+          const seen = yield* assessment.getReviewInstance(t, round, lead)
+          if (seen.state === 'completed') continue
+          const moved = round !== entry.instanceId
+          entry.instanceId = round
+          if (entry === held.entry) {
+            queue.at(at(3, '20:00'), 'episode', () => walk(entry, { kind: 'approve' }, 15 * 60))
+          } else if (moved && !entry.scripted) {
+            review(entry, addMinutes(queue.now, random.int(4 * 60, 30 * 60)))
+          }
+        }
+      })
+
+    episodes.forEach((episode, order) => play(episode, order))
+
     // --- appeals -----------------------------------------------------------
 
     queue.at(at(9, '09:30'), 'appeals', () =>
       Effect.sync(() => {
-        const rejected = filed.filter((one) => one.status === 'rejected' && !one.revised)
+        const rejected = filed.filter(
+          (one) => one.status === 'rejected' && !one.revised && !one.scripted,
+        )
         const approved = filed.filter(
           (one) =>
             one.status === 'approved' &&
+            !one.scripted &&
             ['campus', 'competition', 'sport'].includes(one.claim.item),
         )
         const wanted = Math.min(plan.appeals, rejected.length + approved.length)
@@ -921,7 +1550,11 @@ export const runTerm = (input: {
     queue.at(at(12, '20:00'), 'sweep', () =>
       Effect.gen(function* () {
         for (const entry of filed) {
-          if (entry.instanceId === null) continue
+          // whatever round the claim stands on now: an episode or a route
+          // change may have opened one this list never heard of
+          const current = yield* currentRoundOf(entry.entryId)
+          if (current === null) continue
+          entry.instanceId = current
           const round = yield* assessment.getReviewInstance(t, entry.instanceId, lead)
           if (round.state === 'completed') continue
           if (round.state === 'awaiting_supplement') {

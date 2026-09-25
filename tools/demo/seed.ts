@@ -193,7 +193,16 @@ const program = Effect.gen(function* () {
         !world.personas.has(student.id),
     )
     const onLeave = [...eligible].sort((a, b) => a.activity - b.activity).slice(0, plan.onLeave)
-    const outcome = yield* runTerm({ world, plan, versions, story, random, onLeave })
+    const outcome = yield* runTerm({
+      world,
+      plan,
+      index,
+      versions,
+      story,
+      random,
+      onLeave,
+      persona: personaStudent,
+    })
     leaving = onLeave
     console.log(
       `${plan.term}: ${outcome.participants.size} participants, ${[...outcome.counts.entries()]

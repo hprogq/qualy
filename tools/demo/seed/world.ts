@@ -69,6 +69,7 @@ export interface World {
     readonly counsellor: string
     readonly manager: string
     readonly ruleKeeper: string
+    readonly inspector: string
   }
   readonly staff: {
     readonly counsellors: readonly { id: string; name: string }[]
@@ -329,6 +330,16 @@ export const buildWorld = (input: {
       faculty,
       null,
     )
+    // correcting a concluded claim outside any round is granted on purpose,
+    // never implied by judging at the end of a route; the college's
+    // inspection office holds it, and every batch accepts it at creation
+    const inspector = yield* role(
+      'assessment-inspector',
+      '综测督查',
+      ['assessment.entry.redetermine'],
+      faculty,
+      '学院',
+    )
 
     const grants = new Map<string, string>()
     const grant = (
@@ -369,6 +380,7 @@ export const buildWorld = (input: {
     yield* grant(majorLeads[0]!, gradeLead, grade)
     for (const id of staffIds.slice(0, 2)) yield* grant(id, counsellor, grade, 'subtree')
     yield* grant(staffIds[2]!, manager, college, 'subtree')
+    yield* grant(staffIds[2]!, inspector, college, 'subtree')
     grants.set(
       `${staffIds[2]!}:${ruleKeeper}`,
       yield* story.step(
@@ -395,7 +407,7 @@ export const buildWorld = (input: {
       classes,
       userTypes: { student, faculty },
       students,
-      roles: { classLead, majorLead, gradeLead, counsellor, manager, ruleKeeper },
+      roles: { classLead, majorLead, gradeLead, counsellor, manager, ruleKeeper, inspector },
       staff: {
         counsellors: staffIds
           .slice(0, 2)
