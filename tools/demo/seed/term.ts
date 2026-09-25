@@ -390,6 +390,8 @@ export const runTerm = (input: {
       entry: Filed,
       judge: { as: Principal; round: { recognitionForm: unknown } },
       correctRate: number,
+      /** what the judge says when approving what was already determined */
+      note?: string,
     ) =>
       Effect.gen(function* () {
         const form = judge.round.recognitionForm as {
@@ -405,15 +407,17 @@ export const runTerm = (input: {
             ? corrected(entry, form.seed)
             : null
         const asks = form !== null && form.fields.length > 0
+        const said = note === undefined ? {} : { comment: note }
         yield* assessment
           .decideReview(
             t,
             entry.instanceId!,
             !asks
-              ? { decision: 'approve' }
+              ? { decision: 'approve', ...said }
               : correction === null
                 ? {
                     decision: 'approve',
+                    ...said,
                     recognition: { values: { ...(locked?.values ?? form.seed) } },
                   }
                 : {
@@ -512,10 +516,14 @@ export const runTerm = (input: {
         yield* submit(entry)
       })
 
-    /** the escalation ladder: the major leads together, then the grade lead, then a counsellor */
+    /**
+     * The escalation ladder: the major leads together, then the grade lead,
+     * then a counsellor. `missing` is an appeal against a refusal, `wrong`
+     * one against what an approval determined.
+     */
     const decideEscalated = (
       entry: Filed,
-      why: 'claim' | 'appeal',
+      why: 'claim' | 'missing' | 'wrong',
       accept = true,
     ): Effect.Effect<void, unknown, unknown> =>
       Effect.gen(function* () {
@@ -537,6 +545,13 @@ export const runTerm = (input: {
             )
             continue
           }
+          if (!accept && last && why === 'wrong') {
+            // Not upholding an appeal against an approval is 维持: the
+            // approval stands on what it determined. A refusal here would
+            // be 撤销 - it takes the approval away.
+            yield* approve(entry, judge, 0, '经复核，原认定无误，予以维持')
+            return
+          }
           if (!accept && last) {
             yield* assessment.decideReview(
               t,
@@ -545,8 +560,8 @@ export const runTerm = (input: {
                 decision: 'reject',
                 reason: '现有材料不足以支持申报内容',
                 comment:
-                  why === 'appeal'
-                    ? '经复核，所附材料不能证明该项符合加分条件，维持原认定'
+                  why === 'missing'
+                    ? '经复核，所附材料仍不能证明该项符合加分条件，维持原决定'
                     : '经复核，材料不足以支持申报内容',
               },
               judge.as,
@@ -554,7 +569,7 @@ export const runTerm = (input: {
             entry.status = 'rejected'
             return
           }
-          yield* approve(entry, judge, why === 'appeal' ? 0 : 0.1)
+          yield* approve(entry, judge, why === 'claim' ? 0.1 : 0)
           // a panel approves seat by seat; the round moves on only when all have
           const after = yield* assessment.getReviewInstance(t, entry.instanceId!, lead)
           if (after.state !== 'active') return
@@ -894,7 +909,7 @@ export const runTerm = (input: {
               entry.instanceId = round.success.id
               const accept = random.chance(kind === 'missing' ? 0.72 : 0.6)
               queue.at(addMinutes(queue.now, random.int(6 * 60, 30 * 60)), 'appeal-review', () =>
-                decideEscalated(entry, 'appeal', accept),
+                decideEscalated(entry, kind, accept),
               )
             }),
           )
