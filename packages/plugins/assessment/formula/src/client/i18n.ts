@@ -697,6 +697,10 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/editor/keep-mine-anyway',
       defaultMessage: 'Keep mine and save over it',
     },
+    remoteMovedSaveHeld: {
+      id: 'assessment-formula/editor/remote-moved-save-held',
+      defaultMessage: 'Choose first: keep your edits, or discard them and load the latest draft.',
+    },
     loadFailed: {
       id: 'assessment-formula/editor/load-failed',
       defaultMessage: 'The formula could not be loaded.',

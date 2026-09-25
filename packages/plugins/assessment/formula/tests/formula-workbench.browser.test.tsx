@@ -1,6 +1,11 @@
 import FormulaEditorPage from '../src/client/FormulaEditorPage.tsx'
 import { MINIMAL_EXAMPLE } from '../src/client/starter-source.ts'
-import { forgetLocalDraft, keepLocalDraft, readLocalDraft } from '../src/client/local-draft.ts'
+import {
+  draftFingerprint,
+  forgetLocalDraft,
+  keepLocalDraft,
+  readLocalDraft,
+} from '../src/client/local-draft.ts'
 import { monaco } from '@qualy/plugin-assessment-formula/client/monaco-setup'
 import { Effect } from 'effect'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -55,22 +60,38 @@ const draft = {
 }
 
 const open = (
-  wrote: { status: unknown[]; tries?: unknown[]; deleted?: unknown[] } = { status: [] },
+  wrote: { status: unknown[]; tries?: unknown[]; deleted?: unknown[]; saves?: unknown[] } = {
+    status: [],
+  },
   published?: { readonly source: string; readonly tests: unknown },
-) =>
-  renderScreen({
+) => {
+  // the draft as the server holds it, which a save moves on
+  let served =
+    published === undefined
+      ? draft
+      : { ...draft, latestVersionNo: 1, latestReleaseName: '秋季规则' }
+  return renderScreen({
     client: fakeClient({
       app: { getManifest: emptyManifest() },
       assessmentFormula: {
         getFormulaFunction: () =>
           Effect.succeed({
-            function:
-              published === undefined
-                ? draft
-                : { ...draft, latestVersionNo: 1, latestReleaseName: '秋季规则' },
+            function: served,
             versions: [],
             copiedFrom: null,
           }),
+        updateFormulaDraft: (request: {
+          payload: { draftSourceTs?: string; draftTests?: typeof draft.draftTests }
+        }) => {
+          wrote.saves?.push(request.payload)
+          served = {
+            ...served,
+            draftRevision: served.draftRevision + 1,
+            draftSourceTs: request.payload.draftSourceTs ?? served.draftSourceTs,
+            draftTests: request.payload.draftTests ?? served.draftTests,
+          }
+          return Effect.succeed({ function: served })
+        },
         getFormulaVersion: () =>
           Effect.succeed({
             version: {
@@ -129,6 +150,7 @@ const open = (
     path: '/assessment/formulas/:functionId',
     children: <FormulaEditorPage />,
   })
+}
 
 /** the model the page's draft editor draws, once it is drawn */
 const draftModel = async (): Promise<monaco.editor.ITextModel> => {
@@ -361,6 +383,78 @@ describe('the formula workbench', () => {
       await expect
         .element(page.getByTestId('formula-save-state'))
         .toHaveAttribute('data-state', 'dirty')
+    } finally {
+      await view.unmount()
+      await forgetLocalDraft(FN_ID)
+    }
+  }, 60_000)
+
+  // Two tabs on one formula keep their unsaved edits in one row. A tab whose
+  // work has just been saved has nothing left to keep, and used to clear the
+  // row whoever had written it last.
+  it("lets go only of the edits this page kept, never another tab's", async () => {
+    const wrote = { status: [] as unknown[], saves: [] as unknown[] }
+    const view = await open(wrote)
+    try {
+      const model = await draftModel()
+      model.setValue('const typed_here = 1\n')
+      await vi.waitFor(
+        async () => expect((await readLocalDraft(FN_ID))?.source).toBe('const typed_here = 1\n'),
+        { timeout: 5_000 },
+      )
+      // the other tab keeps its own unsaved edits after this one did
+      await keepLocalDraft({
+        functionId: FN_ID,
+        name: '认定分值',
+        source: 'const typed_elsewhere = 2\n',
+        tests: [],
+        baseRevision: 3,
+        keptBy: 'another-tab',
+        keptAt: Date.now(),
+      })
+      await page.getByTestId('formula-save').click()
+      await vi.waitFor(() => expect(wrote.saves).toHaveLength(1), { timeout: 5_000 })
+      await expect
+        .element(page.getByTestId('formula-save-state'))
+        .toHaveAttribute('data-state', 'clean')
+      // past the moment this page would have kept or cleared anything
+      await new Promise((resolve) => setTimeout(resolve, 1_500))
+      expect((await readLocalDraft(FN_ID))?.source).toBe('const typed_elsewhere = 2\n')
+    } finally {
+      await view.unmount()
+      await forgetLocalDraft(FN_ID)
+    }
+  }, 60_000)
+
+  // A revision number counts again once the database is put back from a
+  // copy, so edits kept on revision 3 may meet a different revision 3.
+  it('holds kept edits whose revision now names a different draft until the author chooses', async () => {
+    await keepLocalDraft({
+      functionId: FN_ID,
+      name: '认定分值',
+      source: 'const before_the_restore = 2\n',
+      tests: [{ name: 'seed', inputText: '{"base":"1","bonus":0}', expected: '1' }],
+      baseRevision: 3,
+      baseFingerprint: draftFingerprint('a draft that is not the one on the server now'),
+      keptBy: 'an-earlier-visit',
+      keptAt: Date.now() - 60_000,
+    })
+    const wrote = { status: [] as unknown[], saves: [] as unknown[] }
+    const view = await open(wrote)
+    try {
+      await page.getByTestId('formula-local-draft-take').click()
+      await expect.element(page.getByTestId('formula-remote-moved')).toBeVisible()
+      await page.getByTestId('formula-save').click()
+      await expect.element(page.getByTestId('formula-failure')).toBeVisible()
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      expect(wrote.saves).toEqual([])
+
+      // keeping them is a choice the author makes, and then it saves
+      await page.getByRole('button', { name: '保留我的修改并覆盖保存' }).click()
+      await expect.element(page.getByTestId('formula-remote-moved')).not.toBeInTheDocument()
+      await page.getByTestId('formula-save').click()
+      await vi.waitFor(() => expect(wrote.saves).toHaveLength(1), { timeout: 5_000 })
+      expect(wrote.saves[0]).toMatchObject({ draftSourceTs: 'const before_the_restore = 2\n' })
     } finally {
       await view.unmount()
       await forgetLocalDraft(FN_ID)

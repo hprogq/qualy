@@ -95,7 +95,13 @@ import { sourceMark, useTryRecords, type TryRecord } from './try-records.ts'
 import { NewExampleDialog } from './NewExampleDialog.tsx'
 import { LazyFormulaCodeEditor } from './lazy-editors.ts'
 import { holdEditorLease } from './editor-lease.ts'
-import { forgetLocalDraft, keepLocalDraft, readLocalDraft, type LocalDraft } from './local-draft.ts'
+import {
+  draftFingerprint,
+  forgetLocalDraft,
+  keepLocalDraft,
+  readLocalDraft,
+  type LocalDraft,
+} from './local-draft.ts'
 import { forgetFormulaLocally } from './local-store.ts'
 import { shortWhen } from './library-styles.ts'
 import { workbenchStyles as w } from './workbench-styles.ts'
@@ -842,6 +848,12 @@ export default function FormulaEditorPage() {
   const [remoteMoved, setRemoteMoved] = useState(false)
   // edits this browser kept from an earlier visit, offered before anything else is kept
   const [localDraft, setLocalDraft] = useState<LocalDraft | null>(null)
+  // what the draft held at baseRevision, when this page knows it
+  const baseFingerprint = useRef<string | null>(null)
+  // this page among the tabs that may keep edits for the same formula
+  const [keeper] = useState(
+    () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
+  )
   // bumps exactly when the buffer must ADOPT `source` (discard local, a
   // clean refetch); the editor never infers adoption from value changes
   const [editorSeed, setEditorSeed] = useState(0)
@@ -1168,8 +1180,31 @@ export default function FormulaEditorPage() {
       expected: test.expected,
     }))
 
+  /** what a server draft holds, as the fingerprint a kept edit names its base by */
+  const serverFingerprint = (held: {
+    readonly draftSourceTs: string
+    readonly draftTests: readonly {
+      readonly name: string
+      readonly input: unknown
+      readonly expected: string
+    }[]
+  }): string =>
+    draftFingerprint(
+      `${held.draftSourceTs}\u0000${JSON.stringify(
+        comparableTests(
+          held.draftTests.map((test) => ({
+            key: '',
+            name: test.name,
+            inputText: JSON.stringify(test.input),
+            expected: test.expected,
+          })),
+        ),
+      )}`,
+    )
+
   /** takes the server's draft as the editor's, dropping what was held locally */
   const adopt = (loaded: NonNullable<typeof fn>) => {
+    baseFingerprint.current = serverFingerprint(loaded)
     setSource(loaded.draftSourceTs)
     if (!isBlankSource(loaded.draftSourceTs)) setStarted(true)
     setTests(seededTests(loaded))
@@ -1233,6 +1268,7 @@ export default function FormulaEditorPage() {
    */
   const rebaseOnRemote = () => {
     if (fn === undefined) return
+    baseFingerprint.current = serverFingerprint(fn)
     setBaseRevision(fn.draftRevision)
     setRemoteMoved(false)
   }
@@ -1240,12 +1276,21 @@ export default function FormulaEditorPage() {
   /** puts the edits this browser kept back into the editor, as one undoable step */
   const takeLocalDraft = () => {
     if (fn === undefined || localDraft === null) return
+    // the same number is not yet the same draft: a draft put back from a
+    // copy counts its revisions again, so what it held has to match too
+    const sameBase =
+      localDraft.baseRevision === fn.draftRevision &&
+      (localDraft.baseFingerprint === undefined ||
+        localDraft.baseFingerprint === serverFingerprint(fn))
     setSource(localDraft.source)
     setTests(localDraft.tests.map((test) => ({ key: newTestKey(), ...test })))
+    baseFingerprint.current = localDraft.baseFingerprint ?? null
     setBaseRevision(localDraft.baseRevision)
-    setRemoteMoved(localDraft.baseRevision !== fn.draftRevision)
+    setRemoteMoved(!sameBase)
     setEditorSeed((seed) => seed + 1)
     setLocalDraft(null)
+    // the kept row is this page's from here on
+    void keepLocalDraft({ ...localDraft, keptBy: keeper, keptAt: Date.now() })
   }
 
   const dropLocalDraft = () => {
@@ -1301,6 +1346,13 @@ export default function FormulaEditorPage() {
     readonly tests: { name: string; input: unknown; expected: string }[] | null
   }
 
+  /** what a save answers with: the draft as the server now holds it */
+  interface SavedDraft {
+    readonly draftRevision: number
+    readonly draftSourceTs: string
+    readonly draftTests: readonly { name: string; input: unknown; expected: string }[]
+  }
+
   // a real PATCH: only what changed travels, so a clean save is a business
   // no-op instead of a new revision and a new audit row
   const saveEffect = (patch: SavePatch) =>
@@ -1318,9 +1370,10 @@ export default function FormulaEditorPage() {
   const save = useMutation({
     mutationFn: (patch: SavePatch) => saveEffect(patch),
     onMutate: () => setFailure(null),
-    onSuccess: async (result: { function: { draftRevision: number } }) => {
+    onSuccess: async (result: { function: SavedDraft }) => {
       // this page's own save: the revision it made is already the editor's,
       // so the refetch below adopts nothing over what was typed meanwhile
+      baseFingerprint.current = serverFingerprint(result.function)
       setBaseRevision(result.function.draftRevision)
       toast.success(format(m.saved))
       await refresh()
@@ -1334,6 +1387,12 @@ export default function FormulaEditorPage() {
   // request ever sent, which explained nothing)
   const saveDraft = () => {
     if (view.kind !== 'draft') return
+    // the draft moved under these edits: saving waits for the choice the
+    // notice above offers, rather than writing over it unasked
+    if (remoteMoved) {
+      setFailure(format(m.remoteMovedSaveHeld))
+      return
+    }
     const wantTests = testsDirty()
     const canTests = wantTests && testsSaveable()
     const patchSource = sourceChanged() ? source : null
@@ -1363,9 +1422,12 @@ export default function FormulaEditorPage() {
         source,
         tests: bareTests(tests),
         baseRevision,
+        ...(baseFingerprint.current === null ? {} : { baseFingerprint: baseFingerprint.current }),
+        keptBy: keeper,
         keptAt: Date.now(),
       })
-    else void forgetLocalDraft(fn.id)
+    // only what this page kept: another tab's unsaved edits stay kept
+    else void forgetLocalDraft(fn.id, keeper)
   }
   useEffect(() => {
     const timer = setTimeout(() => keepNow.current(), 800)
@@ -1437,6 +1499,7 @@ export default function FormulaEditorPage() {
       publishedSource.current = source
       let revision = baseRevision ?? fn!.draftRevision
       if (dirty()) {
+        if (remoteMoved) return Promise.reject(new LocalFinding(format(m.remoteMovedSaveHeld)))
         // publication needs the whole draft coherent: tests that changed
         // must be checkable against the CURRENT buffer's contract
         if (testsDirty() && !testsSaveable())
@@ -1449,10 +1512,9 @@ export default function FormulaEditorPage() {
         const savedNow = (await saveEffect({
           source: sourceChanged() ? source : null,
           tests: testsDirty() ? parsed.tests : null,
-        })) as {
-          function: { draftRevision: number }
-        }
+        })) as { function: SavedDraft }
         revision = savedNow.function.draftRevision
+        baseFingerprint.current = serverFingerprint(savedNow.function)
         setBaseRevision(revision)
       }
       return run(
@@ -2382,7 +2444,11 @@ export default function FormulaEditorPage() {
   const notices = (
     <>
       {failure === null ? null : (
-        <div role="alert" {...stylex.props(styles.notice, styles.noticeDanger)}>
+        <div
+          role="alert"
+          data-testid="formula-failure"
+          {...stylex.props(styles.notice, styles.noticeDanger)}
+        >
           {failure}
         </div>
       )}

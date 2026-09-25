@@ -184,6 +184,8 @@ export default {
     '你编辑期间，其他人保存了这份草稿。当前本地内容未被覆盖，放弃本地修改后即可载入最新版本。',
   'assessment-formula/editor/discard-local': '放弃本地修改并刷新',
   'assessment-formula/editor/keep-mine-anyway': '保留我的修改并覆盖保存',
+  'assessment-formula/editor/remote-moved-save-held':
+    '请先选择保留本地修改，还是放弃后载入最新草稿。',
   'assessment-formula/editor/load-failed': '公式加载失败。',
   'assessment-formula/list/all': '全部公式',
   'assessment-formula/list/name-column': '名称与说明',
