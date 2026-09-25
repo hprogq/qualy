@@ -1057,11 +1057,15 @@ describe.runIf(postgresAvailable)('the sitting', () => {
             yield* runSql(sql`
               select id, created_by from entry_recognitions where review_instance_id = ${round}`),
           )
-          return { before, during, after, outcome, settled }
+          const assessment = yield* Assessment
+          const read = yield* assessment.getEntry(f.t, w.entryId, f.principal(f.admin))
+          return { before, during, after, outcome, settled, byPanel: read.recognition?.byPanel }
         }),
       ),
     )
     expect(result.before).toMatchObject({ status: 'rejected', current_recognition_id: null })
+    // told as the sitting's, because a sitting resolved on that round
+    expect(result.byPanel).toBe(true)
     // the appeal is a reconsideration, not a withdrawal of the refusal
     expect(result.during.status).toBe('rejected')
     expect(result.outcome).toEqual({ state: 'completed', outcome: 'approved' })

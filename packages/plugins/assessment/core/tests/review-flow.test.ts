@@ -334,7 +334,12 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const withdraw = yield* Effect.exit(
             assessment.setEntryStatus(f.t, entryId, 'draft', f.principal(f.s1)),
           )
-          return { before, approved, again, entry, withdraw }
+          // single reviewers' determinations were once written unsigned; an
+          // unsigned one is still not a sitting's
+          yield* runSql(sql`
+            update entry_recognitions set created_by = null where review_instance_id = ${instanceId}`)
+          const unsigned = yield* assessment.getEntry(f.t, entryId, f.principal(f.admin))
+          return { before, approved, again, entry, withdraw, unsigned }
         }),
       ),
     )
@@ -349,6 +354,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     expect(result.entry.status).toBe('approved')
     // one judge determined it, and is not taken for a sitting
     expect(result.entry.recognition?.byPanel).toBe(false)
+    expect(result.unsigned.recognition?.byPanel).toBe(false)
     expect(refusalOf(result.withdraw)?.reason).toBe('entry-not-withdrawable')
   })
 

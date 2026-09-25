@@ -623,9 +623,12 @@ const refuse = (action: string, reason: string) => new EntryActionRefused({ acti
  * Whether a sitting determined it rather than one person: a round's
  * determination names its judge, except when several reviewers resolved it
  * together, and then it names nobody (a single voter is not its author).
+ * Unsigned alone proves nothing - single reviewers' determinations were once
+ * written unsigned - so the round must also have resolved a sitting; an
+ * unsigned one without is shown unsigned, never as a panel's.
  */
-const byPanel = (standing: { source: string; createdBy: string | null }) =>
-  standing.source === 'review' && standing.createdBy === null
+const byPanel = (standing: { source: string; createdBy: string | null; panelResolved: boolean }) =>
+  standing.source === 'review' && standing.createdBy === null && standing.panelResolved
 
 /** filings handed on for review, and the refusals, with nothing else in the labels */
 const entrySubmitCount = boundedCounter('qualy.assessment.entry.submit', {

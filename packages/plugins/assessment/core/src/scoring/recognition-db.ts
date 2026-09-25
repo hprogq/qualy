@@ -140,6 +140,8 @@ export interface RecognitionDetail extends RecognitionRow {
   readonly createdAt: number
   readonly createdBy: string | null
   readonly createdByName: string | null
+  /** the round that wrote it resolved a sitting of several reviewers */
+  readonly panelResolved: boolean
 }
 
 export const currentRecognitionsOfEntries = (tenantId: string, entryIds: readonly string[]) =>
@@ -169,6 +171,21 @@ export const currentRecognitionsOfEntries = (tenantId: string, entryIds: readonl
               'u.displayName as createdByName',
             ])
             .select([epoch('r.created_at').as('createdMs')])
+            // a sitting that actually resolved on the round that wrote it: an
+            // unsigned determination is not proof of one, since single
+            // reviewers' determinations were once written unsigned too
+            .select((eb) =>
+              eb
+                .exists(
+                  eb
+                    .selectFrom('ReviewPanel as pn')
+                    .select(eb.lit(1).as('one'))
+                    .whereRef('pn.tenantId', '=', 'r.tenantId')
+                    .whereRef('pn.reviewInstanceId', '=', 'r.reviewInstanceId')
+                    .where('pn.state', '=', 'resolved'),
+                )
+                .as('panelResolved'),
+            )
             .where('r.tenantId', '=', tenantId)
             .where('r.entryId', 'in', [...entryIds])
             .execute(),
@@ -188,6 +205,7 @@ export const currentRecognitionsOfEntries = (tenantId: string, entryIds: readonl
                 createdAt: Number(one['createdMs'] ?? 0),
                 createdBy: one['createdBy'] == null ? null : String(one['createdBy']),
                 createdByName: one['createdByName'] == null ? null : String(one['createdByName']),
+                panelResolved: one['panelResolved'] === true,
               } satisfies RecognitionDetail
             }),
           ),
