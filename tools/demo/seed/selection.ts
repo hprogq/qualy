@@ -563,17 +563,26 @@ export const runSelection = (input: {
         return null
       })
 
+    type Form = {
+      fields: readonly { id: string }[]
+      seed: Record<string, unknown>
+      locked: { values: Record<string, unknown> } | null
+    } | null
+    const approval = (form: Form) =>
+      form === null || form.fields.length === 0
+        ? { decision: 'approve' as const }
+        : {
+            decision: 'approve' as const,
+            recognition: { values: { ...(form.locked?.values ?? form.seed) } },
+          }
+
     const decide = (entry: Filed): Effect.Effect<void, unknown, unknown> =>
       Effect.gen(function* () {
         if (entry.instanceId === null) return
         const judge = yield* judgeFor(entry.instanceId)
         if (judge === null) return
         const roll = random.next()
-        const form = judge.round.recognitionForm as {
-          fields: readonly { id: string }[]
-          seed: Record<string, unknown>
-          locked: { values: Record<string, unknown> } | null
-        } | null
+        const form = judge.round.recognitionForm as Form
         if (roll < 0.08 && entry.item !== 'application') {
           const rejection = random.weighted(REJECTIONS)
           yield* assessment.decideReview(
@@ -641,17 +650,7 @@ export const runSelection = (input: {
           }
           return
         }
-        yield* assessment.decideReview(
-          t,
-          entry.instanceId,
-          form === null || form.fields.length === 0
-            ? { decision: 'approve' }
-            : {
-                decision: 'approve',
-                recognition: { values: { ...(form.locked?.values ?? form.seed) } },
-              },
-          judge.as,
-        )
+        yield* assessment.decideReview(t, entry.instanceId, approval(form), judge.as)
       })
 
     const file = (
@@ -768,10 +767,34 @@ export const runSelection = (input: {
     }
 
     // the student a visitor signs in as sent one award in on the last
-    // evening, and it is still on the counsellor's desk
+    // evening; the major's step passed it on the same night, and it waits
+    // on the desk of the counsellor a visitor signs in as
     const persona = applicants.find((student) => world.personas.has(student.id))
     if (persona !== undefined) {
-      queue.at(new Date(entryEnds.getTime() - 5 * 3_600_000), 'file', () =>
+      const sentAt = new Date(entryEnds.getTime() - 5 * 3_600_000)
+      queue.at(addMinutes(sentAt, 50), 'review', () =>
+        Effect.gen(function* () {
+          const entry = [...filed]
+            .reverse()
+            .find((one) => one.student.id === persona.id && one.item === 'competition')
+          if (entry?.instanceId == null) return
+          for (let step = 0; step < 3; step++) {
+            const round = yield* assessment.getReviewInstance(t, entry.instanceId, lead)
+            if (round.state !== 'active' || round.chain.stageId === 'counsellor') break
+            const judge = yield* judgeFor(entry.instanceId)
+            if (judge === null) break
+            const form = judge.round.recognitionForm as Form
+            yield* assessment.decideReview(t, entry.instanceId, approval(form), judge.as)
+          }
+          const desk = principalOf(t, world.staff.counsellors[0]!.id)
+          const seen = yield* Effect.result(assessment.getReviewInstance(t, entry.instanceId, desk))
+          if (seen._tag !== 'Success' || !seen.success.capabilities.canDecide)
+            console.warn(
+              'WARNING: the persona student\'s last award is not waiting for the counsellor persona',
+            )
+        }),
+      )
+      queue.at(sentAt, 'file', () =>
         file(
           persona,
           'competition',
@@ -935,7 +958,13 @@ export const runSelection = (input: {
     queue.at(ago(8, '15:05'), 'transfer', () =>
       Effect.gen(function* () {
         const iam = yield* Iam
-        const mover = applicants.find((student) => student.major === 'se')!
+        // never somebody a visitor signs in as, nor a class's lead: the
+        // demonstration needs them where they are
+        const leads = new Set([...world.classLeads.values()].flat())
+        const mover = applicants.find(
+          (student) =>
+            student.major === 'se' && !world.personas.has(student.id) && !leads.has(student.id),
+        )!
         const target = [...world.classes.values()].find(
           (unit) =>
             unit.major === 'se' && unit.key !== mover.classKey && unit.key.startsWith('2023-'),
