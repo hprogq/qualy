@@ -121,22 +121,47 @@ await runOverDemo(
             where not exists (
               select 1 from review_supplement_attachments ra
                where ra.tenant_id = rr.tenant_id and ra.response_id = rr.id))
-            as bare`)) as {
+            as bare,
+          -- and what comes back is not, byte for byte, a picture the claim
+          -- was already filed with
+          (select count(*)::int from review_supplement_requests r
+            join review_instances ri on ri.tenant_id = r.tenant_id and ri.id = r.review_instance_id
+            join entry_revisions er on er.tenant_id = ri.tenant_id and er.id = ri.revision_id
+            join review_supplement_responses rr
+              on rr.tenant_id = r.tenant_id and rr.request_id = r.id
+            join review_supplement_attachments ra
+              on ra.tenant_id = rr.tenant_id and ra.response_id = rr.id
+            join storage_attachments answer
+              on answer.tenant_id = ra.tenant_id and answer.id = ra.attachment_id
+            where exists (
+              select 1 from jsonb_array_elements_text(coalesce(er.payload->'proof', '[]'::jsonb)) filed(id)
+                join storage_attachments original
+                  on original.tenant_id = er.tenant_id and original.id = filed.id::uuid
+               where original.integrity_value = answer.integrity_value))
+            as repeated`)) as {
         rows: {
           verdicts: number
           determinations: number
           orphans: number
           textonly: number
           bare: number
+          repeated: number
         }[]
       }
     ).rows[0]!
     console.log(
       `claims off their verdict ${broken.verdicts} · behind their determination ${broken.determinations} · open rounds nobody stands on ${broken.orphans}`,
     )
-    console.log(`asks for no file ${broken.textonly} · answers without the file ${broken.bare}`)
+    console.log(
+      `asks for no file ${broken.textonly} · answers without the file ${broken.bare} · answers repeating the filed picture ${broken.repeated}`,
+    )
     if (
-      broken.verdicts + broken.determinations + broken.orphans + broken.textonly + broken.bare >
+      broken.verdicts +
+        broken.determinations +
+        broken.orphans +
+        broken.textonly +
+        broken.bare +
+        broken.repeated >
       0
     ) {
       process.exitCode = 1

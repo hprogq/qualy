@@ -10,7 +10,6 @@ import { runSql } from '@qualy/plugin-database/testkit'
 import { transaction } from '@qualy/plugin-database/server'
 import {
   COMPETITIONS,
-  PAPER_REJECTIONS,
   REJECTIONS,
   RESEARCH_KINDS,
   RESEARCH_ROLES,
@@ -21,6 +20,7 @@ import { answerAsk, askFor, requestAsk, type Ask } from './asks.ts'
 import { addMinutes, awake, principalOf, type Random, type Story } from './context.ts'
 import { PROOF_ASSETS, stageProof, stageWorkbook } from './files.ts'
 import { scoringConfigOf, type Versions } from './items.ts'
+import { CET4_REPORTS, PAPERS } from './papers.ts'
 import { EventQueue } from './queue.ts'
 import { ESCALATE_REASONS } from './term.ts'
 import type { SeedOptions } from '../options.ts'
@@ -267,9 +267,6 @@ const SELECTION_ITEMS: readonly ItemSpec[] = [
     aggregator: 'sum',
   },
 ]
-
-/** the qualifying papers: forms and reports, judged for being complete and legible */
-const PAPERS = new Set(['application', 'conduct', 'transcript', 'cet4'])
 
 /**
  * The selection's phases. Re-examination opens while material is reviewed
@@ -617,6 +614,8 @@ export const runSelection = (input: {
       instanceId: string | null
       /** judged by the scene that filed it, never by chance */
       scripted: boolean
+      /** the last ask made on the claim, which the student answers with its picture */
+      asked: Ask | null
     }
     const filed: Filed[] = []
     const judgeFor = (instanceId: string) =>
@@ -655,6 +654,35 @@ export const runSelection = (input: {
             recognition: { values: { ...(form.locked?.values ?? form.seed) } },
           }
 
+    /**
+     * Asks for what `ask` names. Most answer within a day or two and are
+     * looked at again; the rest are still out when the story stops.
+     */
+    const askAndWait = (entry: Filed, ask: Ask, as: Principal) =>
+      Effect.gen(function* () {
+        yield* requestAsk(t, entry.instanceId!, ask, as)
+        entry.asked = ask
+        const answered = addMinutes(queue.now, random.int(4 * 60, 36 * 60))
+        if (random.chance(0.65) && answered.getTime() < now.getTime() - 1.5 * DAY) {
+          queue.at(answered, 'supplement-answer', () =>
+            Effect.gen(function* () {
+              const sent = yield* answerAsk({
+                tenantId: t,
+                batchId: batch.id,
+                itemId: items.get(entry.item)!.id,
+                instanceId: entry.instanceId!,
+                ask,
+                as: principalOf(t, entry.student.id),
+              })
+              if (!sent) return
+              const again = awake(addMinutes(queue.now, random.int(3 * 60, 20 * 60)))
+              if (again.getTime() < now.getTime() - DAY)
+                queue.at(again, 'review', () => decide(entry))
+            }),
+          )
+        }
+      })
+
     const decide = (entry: Filed): Effect.Effect<void, unknown, unknown> =>
       Effect.gen(function* () {
         if (entry.instanceId === null) return
@@ -662,10 +690,33 @@ export const runSelection = (input: {
         if (judge === null) return
         const roll = random.next()
         const form = judge.round.recognitionForm as Form
-        if (roll < 0.08 && entry.item !== 'application') {
-          const reasons: readonly { reason: string; comment: string; weight: number }[] =
-            PAPERS.has(entry.item) ? PAPER_REJECTIONS : REJECTIONS
-          const rejection = random.weighted(reasons)
+        // A qualifying paper is judged for being whole: the whole one passes,
+        // and the one lacking something is asked for it or refused for it.
+        // Once an ask in the round is answered, what it lacked has come in.
+        const paper = PAPERS[entry.item]
+        if (paper !== undefined) {
+          const ask = askFor(entry)
+          const answered = judge.round.supplements.some((one) => one.status === 'answered')
+          if (ask === undefined || answered) {
+            yield* assessment.decideReview(t, entry.instanceId, approval(form), judge.as)
+            return
+          }
+          const canAsk = judge.round.actions.supplement.state === 'available'
+          if (canAsk && (paper.refusal === undefined || roll < 0.65)) {
+            yield* askAndWait(entry, ask, judge.as)
+            return
+          }
+          if (paper.refusal === undefined) return
+          yield* assessment.decideReview(
+            t,
+            entry.instanceId,
+            { decision: 'reject', ...paper.refusal },
+            judge.as,
+          )
+          return
+        }
+        if (roll < 0.08) {
+          const rejection = random.weighted(REJECTIONS)
           yield* assessment.decideReview(
             t,
             entry.instanceId,
@@ -697,30 +748,13 @@ export const runSelection = (input: {
             queue.at(settled, 'review', () => decide(entry))
           return
         }
-        if (roll < 0.21 && judge.round.actions.supplement.state === 'available') {
-          const ask = askFor(entry.item)
-          yield* requestAsk(t, entry.instanceId, ask, judge.as)
-          // most answer within a day or two and are looked at again; the
-          // rest are still out when the story stops
-          const answered = addMinutes(queue.now, random.int(4 * 60, 36 * 60))
-          if (random.chance(0.65) && answered.getTime() < now.getTime() - 1.5 * DAY) {
-            queue.at(answered, 'supplement-answer', () =>
-              Effect.gen(function* () {
-                const sent = yield* answerAsk({
-                  tenantId: t,
-                  batchId: batch.id,
-                  itemId: items.get(entry.item)!.id,
-                  instanceId: entry.instanceId!,
-                  ask,
-                  as: principalOf(t, entry.student.id),
-                })
-                if (!sent) return
-                const again = awake(addMinutes(queue.now, random.int(3 * 60, 20 * 60)))
-                if (again.getTime() < now.getTime() - DAY)
-                  queue.at(again, 'review', () => decide(entry))
-              }),
-            )
-          }
+        const ask = askFor(entry)
+        if (
+          roll < 0.21 &&
+          ask !== undefined &&
+          judge.round.actions.supplement.state === 'available'
+        ) {
+          yield* askAndWait(entry, ask, judge.as)
           return
         }
         yield* assessment.decideReview(t, entry.instanceId, approval(form), judge.as)
@@ -756,6 +790,7 @@ export const runSelection = (input: {
           proof: proofAsset,
           instanceId: null,
           scripted: waiting,
+          asked: null,
         }
         filed.push(state)
         if (!submit) return state
@@ -785,24 +820,36 @@ export const runSelection = (input: {
       const onDesk = (item: string) =>
         (item === 'conduct' && classmates.some((one) => one.id === student.id)) ||
         (item === 'transcript' && student === others[4])
+      // Some papers come in lacking something (papers.ts). The scenes' own
+      // lack exactly what they are asked for or refused for: two classmates'
+      // conduct forms their head teacher's page, one transcript its stamp.
+      const flawedOnDesk = (item: string) =>
+        item === 'conduct' ? student === classmates[1] || student === classmates[2] : true
+      const report = random.pick(CET4_REPORTS)
       const papers = [
-        ['application', {}, 'application-1', '推免生申请表.jpg'],
-        ['conduct', {}, 'conduct-1', '思想品德考核表.jpg'],
-        ['transcript', {}, 'transcript-1', '成绩单.jpg'],
+        ['application', {}],
+        ['conduct', {}],
+        ['transcript', {}],
         [
           'cet4',
-          {
-            'report-no': `2024${random.int(10000000000, 99999999999)}`,
-            score: random.int(440, 640),
-          },
-          'certificate-1',
-          '四级成绩报告单.jpg',
+          { 'report-no': `2024${random.int(10000000000, 99999999999)}`, score: report.score },
         ],
       ] as const
-      for (const [index, [item, payload, asset, name]] of papers.entries()) {
+      for (const [index, [item, payload]] of papers.entries()) {
+        const paper = PAPERS[item]!
+        const flawed = onDesk(item) ? flawedOnDesk(item) : random.chance(0.2)
+        const whole = item === 'cet4' ? report.asset : paper.whole
         queue.at(at(index * 0.3), 'file', () =>
           Effect.asVoid(
-            file(student, item, { ...payload }, asset, name, !lateStarter, onDesk(item)),
+            file(
+              student,
+              item,
+              { ...payload },
+              flawed ? paper.flawed : whole,
+              paper.filename,
+              !lateStarter,
+              onDesk(item),
+            ),
           ),
         )
       }
@@ -956,13 +1003,21 @@ export const runSelection = (input: {
         if (judge === null || judge.round.chain.stageId === stop) return
         yield* assessment.decideReview(t, round, approval(judge.round.recognitionForm), judge.as)
       })
-    const askAs = (entry: Filed, as: Principal, ask: Ask) =>
+    /** asks for `ask`, or for what the claim's own question asks of it */
+    const askAs = (entry: Filed, as: Principal, ask: Ask | undefined = askFor(entry)) =>
       Effect.gen(function* () {
+        if (ask === undefined) {
+          return yield* Effect.die(new Error(`scene: nothing to ask of ${entry.item}`))
+        }
         const round = yield* pointerOf(entry)
         yield* requestAsk(t, round!, ask, as)
+        entry.asked = ask
       })
-    const answerAs = (entry: Filed, ask: Ask) =>
+    /** the student answers the last ask with the picture it names */
+    const answerAs = (entry: Filed) =>
       Effect.gen(function* () {
+        const ask = entry.asked
+        if (ask === null) return yield* Effect.die(new Error('scene: no ask made'))
         const round = yield* pointerOf(entry)
         const sent = yield* answerAsk({
           tenantId: t,
@@ -1073,21 +1128,18 @@ export const runSelection = (input: {
         )!,
       )
 
-      // the student: every paper in, two awards, two results, one draft
+      // the student: every paper in, two awards, two results, one draft;
+      // the transcript came without the registry's stamp
+      const report = CET4_REPORTS[0]
       const papers = [
-        ['application', {}, 'application-1', '推免生申请表.jpg'],
-        ['conduct', {}, 'conduct-1', '思想品德考核表.jpg'],
-        ['transcript', {}, 'transcript-1', '成绩单.jpg'],
-        [
-          'cet4',
-          { 'report-no': '202406118800417', score: 583 },
-          'certificate-1',
-          '四级成绩报告单.jpg',
-        ],
+        ['application', {}, PAPERS['application']!.whole],
+        ['conduct', {}, PAPERS['conduct']!.whole],
+        ['transcript', {}, PAPERS['transcript']!.flawed],
+        ['cet4', { 'report-no': '202406118800417', score: report.score }, report.asset],
       ] as const
-      papers.forEach(([item, payload, asset, name], index) =>
+      papers.forEach(([item, payload, asset], index) =>
         scene(addMinutes(ago(15, '20:10'), index * 3), () =>
-          fileFor(held, item, persona, item, { ...payload }, asset, name),
+          fileFor(held, item, persona, item, { ...payload }, asset, PAPERS[item]!.filename),
         ),
       )
       const awardA = {
@@ -1190,7 +1242,7 @@ export const runSelection = (input: {
         note: '项目已于 2025 年 11 月升为省级立项',
       }
       scene(ago(12, '16:00'), () => askAs(one('research-a'), desk, provincial))
-      scene(ago(11, '20:30'), () => answerAs(one('research-a'), provincial))
+      scene(ago(11, '20:30'), () => answerAs(one('research-a')))
       scene(ago(11, '16:00'), () =>
         assessment.interveneOnEntry(
           t,
@@ -1232,14 +1284,7 @@ export const runSelection = (input: {
           comment: '考核表为往年模板，请使用学院今年下发的模板',
         }),
       )
-      scene(ago(2, '16:00'), () =>
-        askAs(one('transcript'), desk, {
-          instructions: '成绩单扫描件的教务处印章不清晰，请上传盖章页的清晰照片',
-          file: '盖章页清晰照片',
-          asset: 'transcript-1',
-          filename: '成绩单盖章页.jpg',
-        }),
-      )
+      scene(ago(2, '16:00'), () => askAs(one('transcript'), desk))
       if (reviewing) {
         // the working group asks, inside the appeal, for the notice the
         // student's reason rests on
@@ -1257,7 +1302,7 @@ export const runSelection = (input: {
           ),
         )
         scene(ago(3, '10:00'), () => askAs(one('award-b'), lead, notice))
-        scene(ago(2, '19:30'), () => answerAs(one('award-b'), notice))
+        scene(ago(2, '19:30'), () => answerAs(one('award-b')))
         // the class's two leads sit on the student's appeal; one has voted
         scene(ago(5, '12:10'), () =>
           appealAs(one('conduct'), '学院通知允许沿用往年模板，只要求内容完整，请班级综测小组复核'),
@@ -1268,10 +1313,9 @@ export const runSelection = (input: {
       // the class leads' desk: five classmates' conduct forms, the first of
       // them still waiting for either lead
       const [, y, z, w, v] = classmates
-      const signature = askFor('conduct')
       if (y !== undefined) {
-        scene(ago(6, '20:00'), () => askAs(papersOf(y, 'conduct'), partner, signature))
-        scene(ago(5, '12:30'), () => answerAs(papersOf(y, 'conduct'), signature))
+        scene(ago(6, '20:00'), () => askAs(papersOf(y, 'conduct'), partner))
+        scene(ago(5, '12:30'), () => answerAs(papersOf(y, 'conduct')))
       }
       if (z !== undefined) {
         scene(ago(9, '20:30'), () =>
@@ -1286,8 +1330,8 @@ export const runSelection = (input: {
           scene(ago(5, '19:40'), () =>
             appealAs(papersOf(z, 'conduct'), '班主任已在考核表上签字，请复核'),
           )
-          scene(ago(4, '21:00'), () => askAs(papersOf(z, 'conduct'), partner, signature))
-          scene(ago(3, '12:30'), () => answerAs(papersOf(z, 'conduct'), signature))
+          scene(ago(4, '21:00'), () => askAs(papersOf(z, 'conduct'), partner))
+          scene(ago(3, '12:30'), () => answerAs(papersOf(z, 'conduct')))
         }
       }
       if (w !== undefined) {
@@ -1331,7 +1375,6 @@ export const runSelection = (input: {
 
     // the working group's desk
     const [a1, a2, a3, a4, a5] = others
-    const listing = askFor('competition')
     if (a1 !== undefined) {
       scene(ago(15, '21:00'), () =>
         fileFor(
@@ -1359,8 +1402,8 @@ export const runSelection = (input: {
       )
       scene(ago(13, '20:00'), () => reviseAs(one('a1'), '已重新拍摄证书'))
       scene(ago(9, '14:00'), () => passStep(one('a1'), 'counsellor'))
-      scene(ago(8, '10:00'), () => askAs(one('a1'), desk, listing))
-      scene(ago(7, '20:00'), () => answerAs(one('a1'), listing))
+      scene(ago(8, '10:00'), () => askAs(one('a1'), desk))
+      scene(ago(7, '20:00'), () => answerAs(one('a1')))
       scene(ago(6, '11:00'), () =>
         decideAs(one('a1'), desk, {
           decision: 'escalate',
@@ -1467,9 +1510,8 @@ export const runSelection = (input: {
     }
     // the counsellor's desk: a transcript back with the stamped page it lacked
     if (a5 !== undefined) {
-      const stamp = askFor('transcript')
-      scene(ago(4, '11:00'), () => askAs(papersOf(a5, 'transcript'), desk, stamp))
-      scene(ago(3, '20:00'), () => answerAs(papersOf(a5, 'transcript'), stamp))
+      scene(ago(4, '11:00'), () => askAs(papersOf(a5, 'transcript'), desk))
+      scene(ago(3, '20:00'), () => answerAs(papersOf(a5, 'transcript')))
     }
 
     // --- what the college imports -------------------------------------------

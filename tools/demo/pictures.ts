@@ -70,18 +70,51 @@ const table = (
     '#fff',
   )
 
-/** a form the applicant fills and signs: rows of what it asks, a statement, a place to sign */
+/** a signature: a stroke of ink, never a name */
+const scrawl = `<svg width="150" height="44" viewBox="0 0 150 44" style="vertical-align:middle">
+  <path d="M4 30 C 14 6, 24 40, 34 20 S 52 8, 58 28 S 78 38, 86 16 S 104 30, 112 22 S 134 12, 146 18"
+        fill="none" stroke="#1f2f6b" stroke-width="2.6" stroke-linecap="round"/></svg>`
+
+/**
+ * A form an applicant fills in: rows of what it asks, a statement, and a line
+ * for each person who signs it, signed or left blank.
+ */
 const form = (
   title: string,
   rows: readonly (readonly [string, string])[],
   statement: string,
-  signer: string,
+  signatures: readonly { readonly who: string; readonly signed: boolean }[],
 ) =>
   page(
     `<div class="plain"><div class="bar"></div><h2>${title}</h2>
      <table>${rows.map(([label, value]) => `<tr><th style="width:32%">${label}</th><td>${value}</td></tr>`).join('')}</table>
      <p style="margin-top:26px;font-size:21px;text-indent:0">${statement}</p>
-     <div class="sign">${signer}：________<br/>二〇二六年九月</div></div>`,
+     <div class="sign">${signatures
+       .map(({ who, signed }) => `${who}：${signed ? scrawl : '________'}`)
+       .join('<br/>')}<br/>二〇二六年九月</div></div>`,
+    '#fff',
+  )
+
+/** a CET-4 score report, whole */
+const cet4Report = (total: string, listening: string, reading: string, writing: string) =>
+  table(
+    '全国大学英语等级考试 成绩报告（示例）',
+    ['考试科目', '总分', '听力', '阅读', '写作和翻译'],
+    [['英语四级', total, listening, reading, writing]],
+    '本截图仅用于系统演示，成绩与任何个人无关。',
+  )
+
+/** the transcript, with the registry's stamp or without it */
+const transcript = (stamped: boolean) =>
+  page(
+    `<div class="plain"><div class="bar"></div><h2>学生成绩单（前三学年，节选）</h2>
+     <table><tr><th>学年</th><th>课程</th><th>学分</th><th>成绩</th></tr>
+     <tr><td>2023-2024</td><td>高等数学</td><td>5</td><td>91</td></tr>
+     <tr><td>2023-2024</td><td>程序设计基础</td><td>4</td><td>95</td></tr>
+     <tr><td>2024-2025</td><td>数据结构</td><td>4</td><td>93</td></tr>
+     <tr><td>2025-2026</td><td>操作系统</td><td>4</td><td>89</td></tr></table>
+     <p style="margin-top:26px;font-size:19px;color:#555;text-indent:0">教务处盖章后有效，本页为演示用截图。</p>
+     ${stamped ? seal('示例大学教务处') : ''}</div>`,
     '#fff',
   )
 
@@ -134,17 +167,26 @@ export const PICTURES: Readonly<Record<string, string>> = {
     '该同学在市大学生程序设计竞赛中荣获<b>二等奖</b>。',
     '滨海市大学生竞赛委员会',
   ),
-  'certificate-1': table(
-    '全国大学英语等级考试 成绩报告（示例）',
-    ['考试科目', '总分', '听力', '阅读', '写作和翻译'],
-    [['英语四级', '531', '189', '196', '146']],
-    '本截图仅用于系统演示，成绩与任何个人无关。',
-  ),
+  'certificate-1': cet4Report('531', '189', '196', '146'),
   'certificate-2': table(
     '全国大学英语等级考试 成绩报告（示例）',
     ['考试科目', '总分', '听力', '阅读', '写作和翻译'],
     [['英语六级', '476', '162', '181', '133']],
     '本截图仅用于系统演示，成绩与任何个人无关。',
+  ),
+  // the other two CET-4 reports the selection's applicants file
+  'certificate-5': cet4Report('562', '198', '206', '158'),
+  'certificate-6': cet4Report('598', '212', '221', '165'),
+  // a CET-4 report cut off above its scores, as a careless screenshot is
+  'certificate-4': page(
+    `<div class="plain" style="background:#d9dce3">
+       <div style="position:absolute;left:0;top:0;width:960px;height:196px;overflow:hidden;background:#fff;
+                   box-shadow:0 6px 14px rgba(0,0,0,0.25);padding:48px 56px">
+         <div class="bar"></div><h2>全国大学英语等级考试 成绩报告（示例）</h2>
+         <table><tr><th>考试科目</th><th>总分</th><th>听力</th><th>阅读</th><th>写作和翻译</th></tr>
+         <tr><td>英语四级</td><td>531</td><td>189</td><td>196</td><td>146</td></tr></table>
+       </div></div>`,
+    '#d9dce3',
   ),
   'certificate-3': certificate(
     '合格证书',
@@ -215,10 +257,11 @@ export const PICTURES: Readonly<Record<string, string>> = {
     '获奖名单公示（节选）',
     ['序号', '学院', '作品或队伍编号', '奖项'],
     [
-      ['15', '计算机学院', 'DEMO-2025-0388', '二等奖'],
-      ['16', '信息学院', 'DEMO-2025-0402', '二等奖'],
-      ['17', '软件学院', 'DEMO-2025-0415', '二等奖'],
-      ['18', '软件学院', 'DEMO-2025-0521', '三等奖'],
+      ['14', '信息学院', 'DEMO-0297', '一等奖'],
+      ['15', '计算机学院', 'DEMO-0388', '二等奖'],
+      ['16', '信息学院', 'DEMO-0402', '二等奖'],
+      ['17', '软件学院', 'DEMO-0415', '二等奖'],
+      ['18', '软件学院', 'DEMO-0521', '三等奖'],
     ],
     '名单截取自竞赛组委会公示页面，本页为演示用截图。',
   ),
@@ -244,6 +287,8 @@ export const PICTURES: Readonly<Record<string, string>> = {
     '省教育厅高等教育处（示例）',
     '二〇二五年十一月',
   ),
+  // the qualifying papers, whole, and each with the one thing missing that
+  // an ask or a refusal names (seed/papers.ts)
   'application-1': form(
     '推荐免试研究生申请表',
     [
@@ -252,7 +297,17 @@ export const PICTURES: Readonly<Record<string, string>> = {
       ['英语水平', '全国大学英语四级'],
     ],
     '本人自愿申请推荐免试攻读硕士学位研究生，保证所填信息与所附材料真实有效。',
-    '申请人（签字）',
+    [{ who: '申请人（签字）', signed: true }],
+  ),
+  'application-2': form(
+    '推荐免试研究生申请表',
+    [
+      ['申请类别', '学术学位'],
+      ['前三学年平均学分绩', '见学院导入数据'],
+      ['英语水平', '全国大学英语四级'],
+    ],
+    '本人自愿申请推荐免试攻读硕士学位研究生，保证所填信息与所附材料真实有效。',
+    [{ who: '申请人（签字）', signed: false }],
   ),
   'conduct-1': form(
     '推免生思想品德考核表',
@@ -260,9 +315,23 @@ export const PICTURES: Readonly<Record<string, string>> = {
       ['政治表现', '积极参加理论学习与主题教育活动'],
       ['遵纪守法', '无违纪处分记录'],
       ['集体活动', '积极参加班级与学院组织的集体活动'],
+      ['班主任意见', '思想政治表现良好，遵守校纪校规，同意推荐'],
     ],
     '本人鉴定：在校期间认真学习，遵守校纪校规，团结同学，积极参加志愿服务。',
-    '本人（签字）',
+    [
+      { who: '本人（签字）', signed: true },
+      { who: '班主任（签字）', signed: true },
+    ],
+  ),
+  'conduct-2': form(
+    '推免生思想品德考核表（本人填写部分）',
+    [
+      ['政治表现', '积极参加理论学习与主题教育活动'],
+      ['遵纪守法', '无违纪处分记录'],
+      ['集体活动', '积极参加班级与学院组织的集体活动'],
+    ],
+    '本人鉴定：在校期间认真学习，遵守校纪校规，团结同学，积极参加志愿服务。',
+    [{ who: '本人（签字）', signed: true }],
   ),
   'signature-1': certificate(
     '考核意见',
@@ -271,15 +340,37 @@ export const PICTURES: Readonly<Record<string, string>> = {
     '班主任（签字）　二〇二六年九月',
     '#f3f8f3',
   ),
-  'transcript-1': page(
-    `<div class="plain"><div class="bar"></div><h2>学生成绩单（前三学年，节选）</h2>
-     <table><tr><th>学年</th><th>课程</th><th>学分</th><th>成绩</th></tr>
-     <tr><td>2023-2024</td><td>高等数学</td><td>5</td><td>91</td></tr>
-     <tr><td>2023-2024</td><td>程序设计基础</td><td>4</td><td>95</td></tr>
-     <tr><td>2024-2025</td><td>数据结构</td><td>4</td><td>93</td></tr>
-     <tr><td>2025-2026</td><td>操作系统</td><td>4</td><td>89</td></tr></table>
-     <p style="margin-top:26px;font-size:19px;color:#555;text-indent:0">教务处盖章后有效，本页为演示用截图。</p>
-     ${seal('示例大学教务处')}</div>`,
-    '#fff',
+  'transcript-1': transcript(true),
+  'transcript-2': transcript(false),
+  // what a reviewer asks for on a question with no more to it than its filing
+  'campus-5': table(
+    '校园文化活动通知（节选）：参与分值',
+    ['参与形式', '参与分', '说明'],
+    [
+      ['观众', '0.2', '签到、签退齐全'],
+      ['观众（全天）', '1', '全天签到四次'],
+      ['工作人员、志愿者', '0.5', '以主办单位确认的名单为准'],
+      ['裁判员、方队队员、仪仗队', '0.8', '以主办单位确认的名单为准'],
+      ['讲座听众', '0.1', '部分讲座为 0.2，以当次通知为准'],
+    ],
+    '参与分以学院发布的活动通知为准，本页为演示用截图。',
+  ),
+  'practice-4': certificate(
+    '实践鉴定意见',
+    '该生在实践（服务）期间按要求完成各项任务，工作认真，表现良好。经核实，所报实践（服务）情况属实。',
+    '实践接收单位（示例）',
+    undefined,
+    '#f3f8f3',
+  ),
+  'research-4': table(
+    '项目任务书（成员分工页，节选）',
+    ['成员身份', '承担工作', '本人确认'],
+    [
+      ['主持人', '总体设计与组织实施', '已签字'],
+      ['第一参与人', '核心模块设计与实现', '已签字'],
+      ['第二参与人', '数据采集与测试', '已签字'],
+      ['第三参与人', '文献调研与文档撰写', '已签字'],
+    ],
+    '任务书经指导教师与学院审核，本页为演示用截图。',
   ),
 }

@@ -286,13 +286,6 @@ export const REJECTIONS = [
   { reason: '不符合本项认定条件', comment: '该活动不属于学校或学院组织的校园文化活动', weight: 5 },
 ] as const
 
-/** why a form or a report is sent back: it is judged for being whole and legible */
-export const PAPER_REJECTIONS = [
-  { reason: '证明材料无法清晰辨识', comment: '扫描件模糊，请重新上传清晰的扫描件', weight: 50 },
-  { reason: '申报信息不完整', comment: '材料缺页，请上传完整的扫描件', weight: 35 },
-  { reason: '申报内容与证明材料不一致', comment: '所附材料与本项要求的材料不符', weight: 15 },
-] as const
-
 /**
  * What a student writes when contesting a result, by kind. An appeal carries
  * a reason and nothing else, so none of these says something is attached:

@@ -157,6 +157,8 @@ interface Filed {
   appealed: boolean
   /** an episode's claim, which the random appeals and reviews leave alone */
   readonly scripted: boolean
+  /** the last ask made on the claim, which the student answers with its picture */
+  asked: Ask | null
 }
 
 export interface TermOutcome {
@@ -360,6 +362,7 @@ export const runTerm = (input: {
           revised: false,
           appealed: false,
           scripted,
+          asked: null,
         }
         filed.push(state)
         if (scripted) {
@@ -455,8 +458,14 @@ export const runTerm = (input: {
           )
           return
         }
-        if (roll < 0.105 && judge.round.actions.supplement.state === 'available') {
-          yield* requestAsk(t, entry.instanceId, askFor(entry.claim.item), judge.as)
+        // only where the question has an ask of its own that fits the claim
+        const ask = askFor(entry.claim)
+        if (
+          roll < 0.105 &&
+          ask !== undefined &&
+          judge.round.actions.supplement.state === 'available'
+        ) {
+          yield* askOn(entry, ask, judge.as)
           queue.at(addMinutes(queue.now, random.int(3 * 60, 20 * 60)), 'supplement-answer', () =>
             answer(entry),
           )
@@ -559,9 +568,21 @@ export const runTerm = (input: {
       }
     }
 
+    /** asks for what `ask` names at the step judging the claim now, and remembers it */
+    const askOn = (entry: Filed, ask: Ask, as: Principal) =>
+      Effect.tap(requestAsk(t, entry.instanceId!, ask, as), () =>
+        Effect.sync(() => {
+          entry.asked = ask
+        }),
+      )
+
     /** the student answers the open ask with what it names; looked at again later unless `review_` is false */
-    const answer = (entry: Filed, ask: Ask = askFor(entry.claim.item), review_ = true) =>
+    const answer = (entry: Filed, review_ = true) =>
       Effect.gen(function* () {
+        const ask = entry.asked
+        if (ask === null) {
+          return yield* Effect.die(new Error(`no ask recorded on ${entry.claim.item}`))
+        }
         const answered = yield* answerAsk({
           tenantId: t,
           batchId: batch.id,
@@ -1150,10 +1171,8 @@ export const runTerm = (input: {
             note: '本人在二等奖名单第 17 行',
           }
           fileAt(0, '20:30', episode.claim!)
-          on(1, '19:30', (entry) =>
-            judged(entry, (judge) => requestAsk(t, entry.instanceId!, ask, judge.as)),
-          )
-          on(2, '12:10', (entry) => answer(entry, ask, false))
+          on(1, '19:30', (entry) => judged(entry, (judge) => askOn(entry, ask, judge.as)))
+          on(2, '12:10', (entry) => answer(entry, false))
           on(2, '20:40', approveNow())
           return
         }
@@ -1258,10 +1277,8 @@ export const runTerm = (input: {
             rejectNow('申报内容与证明材料不一致', '所附证书为市级程序设计竞赛，与申报的竞赛不符'),
           )
           on(9, '10:40', appeal('上传时选错了证书，该竞赛的获奖证书可以补交，请复核'))
-          on(9, '15:00', (entry) =>
-            judged(entry, (judge) => requestAsk(t, entry.instanceId!, ask, judge.as)),
-          )
-          on(9, '20:10', (entry) => answer(entry, ask, false))
+          on(9, '15:00', (entry) => judged(entry, (judge) => askOn(entry, ask, judge.as)))
+          on(9, '20:10', (entry) => answer(entry, false))
           on(10, '10:00', (entry) =>
             walk(entry, { kind: 'approve', comment: '补充的获奖证书真实有效，予以认定' }, 5 * 60),
           )
@@ -1310,10 +1327,8 @@ export const runTerm = (input: {
               entry.instanceId = round.id
             }),
           )
-          on(6, '14:30', (entry) =>
-            judged(entry, (judge) => requestAsk(t, entry.instanceId!, ask, judge.as)),
-          )
-          on(6, '20:40', (entry) => answer(entry, ask, false))
+          on(6, '14:30', (entry) => judged(entry, (judge) => askOn(entry, ask, judge.as)))
+          on(6, '20:40', (entry) => answer(entry, false))
           on(7, '10:00', (entry) =>
             walk(
               entry,
@@ -1612,9 +1627,7 @@ export const runTerm = (input: {
           entry.instanceId = current
           const round = yield* assessment.getReviewInstance(t, entry.instanceId, lead)
           if (round.state === 'completed') continue
-          if (round.state === 'awaiting_supplement') {
-            yield* answer(entry, askFor(entry.claim.item), false)
-          }
+          if (round.state === 'awaiting_supplement') yield* answer(entry, false)
           for (let step = 0; step < 6; step++) {
             const judge = yield* judgeOf(entry.instanceId, entry.student)
             if (judge === null) break
