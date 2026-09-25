@@ -119,7 +119,7 @@
 
 **ADR-1 正式公示永远是不可变快照。** 系统只有两类成绩：实时预览（provisional，随审核/撤回/评分/更正不断变化）与正式公示（released，immutable）。学生申诉必须能指着"第一次公示中的这一行"；因此 S1 永不原地改成 S2，申诉更正产生新输入、生成 S2，S1 原样保留。只有完整、通过 preflight、由 READY 的 ScoreRun 支撑的快照才可进入 SCHEDULED；SCHEDULED 存续期间一切影响其输入的写操作被拒绝（先取消预告）。不存在"动态正式公示"。
 
-**ADR-2 审核中的"不确定"与学生"申诉"是两个工作流。** 审核员点"不确定，向上提审"= Review Escalation，走主链的疑点延伸段，动作词汇是 通过/驳回/上提；学生对已公示结果或既有决定的异议 = Appeal，终局动作词汇是 **维持原决定 / 更正原决定 / 上提复核**。（修订 2026-08-09：**概念仍分，存储统一为"轮"**——申诉/复查是 review_instances 的新一轮而非独立表，词汇、锚定、仅终点可驳、审计可分四条动机全部保留，见 ADR 0005 修订段与 §15、§32.14。）
+**ADR-2 审核中的"不确定"与学生"申诉"是两个工作流。** 审核员点"不确定，向上提审"= Review Escalation，走主链的疑点延伸段，动作词汇是 通过/驳回/上提；学生对已公示结果或既有决定的异议 = Appeal，终局动作词汇是 **维持原决定 / 更正原决定 / 上提复核**。（修订 2026-08-09：**概念仍分，存储统一为"轮"**——申诉/复查是 review_instances 的新一轮而非独立表，词汇、锚定、仅终点可驳、审计可分四条动机全部保留，见 ADR 0005 修订段与 §15、§32.14。）（**再修订 2026-09-25**：审核员只回答「通过 / 不通过，通过时认定为什么」，「维持 / 更正 / 撤销」由系统比较前后事实派生，不是审核员的按钮；复核链改为意见流水线；复查走完整复核链，见 §32.87。）
 
 **ADR-3 审核路线冻结，普通审核人实时解析。** 每个参与者在批次内有唯一冻结的 assessmentAnchor；审核路线（有效链结构：哪些 stage、锚在哪些节点、quorum、normalTerminal、被跳过的 stage 及原因）在提交时快照。但 **single/any 节点不保存具体审核人 user id**——收件箱按"当前 stage 的角色@节点 × RBAC 授予"实时解析：班长换届，旧班长收件箱即时清空、新班长即时可见，零任务迁移。只有 all / atLeast(n) 计票节点在进入时快照 voter set（稳定分母）；已投票永久有效。
 
@@ -240,7 +240,8 @@ authorize(principal, code, resource) =
 | assessment.entry.record        | ✓               | **行政认定**：扣分与特殊加分，trusted 直接生效不走审核（§13）           |
 | assessment.entry.resubmit      | ✓               | 对**终态条目**发起新一轮（申诉窗内即申诉轮，§15）                       |
 | assessment.review.process      | ✓               | 审核链动作（approve/reject/escalate/投票）                              |
-| assessment.review.reopen       | ✓               | 工作组主动复查：对已定结果开 staff 轮，直达链条终点（§15）              |
+| assessment.review.reopen       | ✓               | 复查：替参评人对已定结论发起申诉，走完整复核链，不消耗其申诉（§32.87）  |
+| assessment.entry.redetermine   | ×               | 重新认定：流程外直接给出新结论，系统管理员不天然拥有（§32.87）          |
 | assessment.result.view-peers   | ✓               | 看他人公示（≠ 看排名）                                                  |
 | assessment.ranking.view        | ✓               | 看排名                                                                  |
 
@@ -381,7 +382,7 @@ record/import 来源 ──创建即──▶ approved（trusted，不建审核�
 - **告警是派生视图，不是实体**：告警面板 = `state='blocked'` 实例按 (batch, role, node, reason) 分组的投影，实例恢复即消失，不存在"删除告警"这个动作。即时性走读路径的显式动作：面板每张卡带"立即复查"按钮（对该组的 scoped 巡检）——管理员补完任命点一下秒级恢复，不点五分钟内也自愈。
 - **滞留水位**（同一次巡检顺手做）：实例同 stage 停留超 N 天 → 不 block，进 batch-admin 审核异常面板（"软件2401 班长处 12 条滞留 5 天"）——运营上更常见的卡死不是没人，是有人不干活。preflight 的 BLOCKED 计数继续作公示前兜底。学生侧对这一切保持中性文案"等待审核中"——组织配置问题是管理员的事。
 - **计票节点：快照 panel ∩ 当前精确持有者**（裁决 §32.28——统一的实时拉取会让新任者看到旧 panel、被撤者名存实亡，快照分母失效）：进入时快照 panel（review_stage_panels），投票入 review_votes（append-only）；**可行动集合 = panel ∩ 当前仍在该 (roleId, nodeId) 精确锚点持有角色者**；新任 holder **绝不自动进入**旧 panel；已投票即使其后撤角色**永久有效**。可达性 = 已有有效票数 + panel 内仍具资格的未投票者（够不到 quorum → BLOCKED 告警）。收件箱 SQL 相应分叉：single/any 走等值匹配，quorum stage 额外 join panel 过滤成员。**不可达的恢复路径，零新机制**：① 原成员恢复任职 → 交集回涨 → 巡检双向自愈自动解 BLOCKED（巡检对 quorum stage 的重解析即按此可达性公式）；② 仍具资格的任一成员 escalate 短路上行；③ 都不行走管理员终态裁决（void）。**panel 重组（重新快照成员）不做**——旧票是否计入新分母的语义等真实发生再设计，触发条件记 §27。**任一成员 escalate 即短路当前 stage**（保留已产生的意见），不许"2 人已同意、第 3 人有疑问"卡死会签。
-- **动作与文案解耦**：底层 outcome 枚举 `APPROVE | REJECT | ESCALATE | RECOMMEND_APPROVE | RECOMMEND_REJECT | COMMENT`。普通模式 stage：approve/reject/escalate；escalated 模式中间 stage：comment/recommend_*/escalate，**仅 terminal 可 approve/reject**。前端文案（通过/驳回/不确定，向上提审）走 i18n message。**驳回票数已冻结（裁决 §32.15）：quorum 只管 APPROVE，普通模式下任一有效审核人 REJECT 即整体驳回**——驳回是低成本可恢复动作（修订重提开新轮、S1 后还有申诉窗），通过才是授益动作（计分、占用 claim），不对称门槛正当；现行政策也没有任何条款真正要求投票驳回。补三条使其完备：① 驳回即刻终结该 stage，已投的 approve 票作为事件保留（不伪造未投者立场），其余人收件箱随实例离开 active 自然清空；② escalate 与 reject 竞态无需仲裁——先落库者生效，事务序即答案；③ escalated 模式下终点若配了 panel，approve 照 quorum、reject 仍一票，同一条规则无特例。rejectionQuorum 留档为升级路径，触发条件："某学院细则明文要求驳回须多数决"——届时连同弃权与双阈值死锁规则一起设计。
+- **动作与文案解耦**：底层 outcome 枚举 `APPROVE | REJECT | ESCALATE | RECOMMEND_APPROVE | RECOMMEND_REJECT | COMMENT`。普通模式 stage：approve/reject/escalate；escalated 模式中间 stage：comment/recommend_*/escalate，**仅 terminal 可 approve/reject**。（**修订 2026-09-25，§32.87**：审核员在任何环节都只答通过 / 不通过（+ 认定）/ 提复核；复核链中间环节的通过与不通过是意见（`opinion-approved` / `opinion-rejected`），随轮上提，下一环节以认定建议预填、仍须自行判断；只有路线的最后一个有效环节产生权威认定与条目状态。普通链语义不变。）前端文案（通过/驳回/不确定，向上提审）走 i18n message。**驳回票数已冻结（裁决 §32.15）：quorum 只管 APPROVE，普通模式下任一有效审核人 REJECT 即整体驳回**——驳回是低成本可恢复动作（修订重提开新轮、S1 后还有申诉窗），通过才是授益动作（计分、占用 claim），不对称门槛正当；现行政策也没有任何条款真正要求投票驳回。补三条使其完备：① 驳回即刻终结该 stage，已投的 approve 票作为事件保留（不伪造未投者立场），其余人收件箱随实例离开 active 自然清空；② escalate 与 reject 竞态无需仲裁——先落库者生效，事务序即答案；③ escalated 模式下终点若配了 panel，approve 照 quorum、reject 仍一票，同一条规则无特例。rejectionQuorum 留档为升级路径，触发条件："某学院细则明文要求驳回须多数决"——届时连同弃权与双阈值死锁规则一起设计。
 - **审核决定不带分值**（裁决 §32.4）。全链任何人（含终点）只有 approve / reject（+建议）/ escalate 三个动作，decision 事件里没有分数字段。需要人定值的条款（见义勇为 1–6、三等功额外加分、建议采纳 1–2）一律是 **administrative 题目**：值由录入者写进条目 payload，按配置的 `[min,max]` 在**创建时**校验，越界当场拒绝。于是"审核只裁真伪、定价永远来自配置或录入事实"成为不变量，收件箱里也不再有数值输入框。
 - **事件 + 投影，不做 Event Sourcing**：一个事务内 `validate guard → append review_events/votes → update ReviewInstance 投影`。事件服务审计/时间线/申诉回放；投影服务查询/索引/收件箱。**禁止** replay 重建当前态的架构（不承担 projection rebuild / event schema migration 成本）。
 
@@ -421,20 +422,22 @@ record/import 来源 ──创建即──▶ approved（trusted，不建审核�
   条目从未建过审核实例，第一次 appeal/reopen 开轮时，按该 EntryRevision 引用的
   `item_revision.review_policy` + participant 冻结 `anchor_lineage` **现场解析并快照进本轮**。
   推论：**administrative 题目必须配置 review_policy**（正常录入永不走它，它是救济链），
-  配置校验强制。入口：participant 轮从 normalTerminal 之后第一个存活 stage 进入
+  配置校验强制。（**修订 2026-09-25，§32.87**：申诉与复查都从复核链第一个有效环节走完整条链，中间环节只给意见，最后有效环节终局；下文「staff 轮直达 terminal」作废。）入口：participant 轮从 normalTerminal 之后第一个存活 stage 进入
   （normalTerminal 已是末位则直达 terminal），staff 轮直达 terminal。中间节点只能
   comment / recommend / escalate，仅终点可终局。
-- **终局动作映射**：被驳回条目的申诉轮——终点 approve = **更正原决定**（entry 转 approved、
+- **终局动作映射**（**修订 2026-09-25，§32.87**：以下词汇不再是审核员的按钮，而是系统比较轮前后事实派生的结果描述 upheld / corrected / revoked / overturned，按钮始终是通过 / 不通过；申诉可往任何方向，含调低与撤销原通过）：被驳回条目的申诉轮——终点 approve = **更正原决定**（entry 转 approved、
   占用 claim）、终点 reject = **维持原决定**；已通过条目的复查轮——终点 reject =
   **撤销原通过**（释放 claim）。前端文案按 origin 渲染"维持原决定 / 更正原决定 / 上提复核"。
 - **origin 三值**（裁决 §32.32）：`initial`（首轮与驳回后修订重提的新轮）、`appeal`（participant
   异议，约束 initiator=participant）、`reopen`（staff 主动复查，约束 initiator=staff）——
   审核整理期的 reopen 不必再硬穿 appeal 词汇，前端文案按 origin 渲染。
+- **申诉次数与重新认定**（2026-09-25，§32.87）：每个不可变结论只享有一次参评人申诉，申诉轮自己的结论不能再被参评人申诉，新 Revision 经审核形成的新结论重新获得一次（数据库部分唯一索引钉住：一个结论至多是一次申诉的根目标，reroute 不算第二次）；复查不消耗该次数，复查与重新认定形成的新结论参评人各可申诉一次。**重新认定**（`assessment.entry.redetermine`）不走任何流程：持有者直接给出通过 / 不通过（+ 认定），系统比较当前结论写 `recognition-corrected / approval-revoked / rejection-overturned`，无变化不写事实，在途申诉 / 复查轮以 `superseded-by-redetermination` 终结。
 - **发起权**：`assessment.entry.resubmit`（participant，受 phase 门控 + ResourcePolicy）；
   `assessment.review.reopen`（staff，工作组主动复查——政策"经过复查，确有错漏，经辅导员
   复核批准，予以更正或增补"本就不要求学生先申诉；staff 轮默认**直达链条终点**，恰好对应
   "辅导员复核批准"）。参与者集合冻结后的例外处置（申诉期内学生被开除等）也走 staff 复查轮，
-  逐案审计。
+  逐案审计。（**修订 2026-09-25，§32.87**：复查是工作人员替参评人发起申诉，从复核链第一个有效
+  环节走完整条链，不再直达终点；题目未配置复核链时不能复查，改用重新认定。）
 - **S1 后新形成的不利终局，学生有一次复议权**（裁决 §32.31——本轮最隐蔽的救济缺口，含审计
   未扫到的孪生案）：两种事实在申诉窗关闭后才出生——S1 后新录的行政条目（处分迟到）、
   申诉处理期 staff 复查轮**撤销**了 S1 里的 approved（发现造假）。公示申诉窗约束的是
@@ -694,7 +697,7 @@ sandbox/llm ✓，formula ✗（有综测语义）、grades ✗（有自有业�
 - **Phase**：PHASE_GATED fail closed（集合内缺席于 Profile 即拒，集合外恒放行）；scheduled transition 幂等；actual_entry_at 不可回改；PhaseGate 只能收窄 RBAC。**时间模型**：effectivePhase 按时钟精确到秒（调度停机不影响截止判定，物化只是追认）；队头武装——manual 边界之后的 scheduled 绝不自燃；硬计划越过未发生的 manual 边界被校验拒绝；偏移在事件时刻物化，早于上游 actual 被拒；scoped 阶段只放行范围内的创建族动作；review.process/reopen 不受两种 scope，resubmit 不受 item-scope 但受 participant-scope。
 - **配置生命周期**：active 批次自由编辑落配置事件；config_revision 递增使旧 ScoreRun 过期（preflight 判"试算需重跑"）；作废终结在途实例、释放 source_claims、breakdown 留痕；恢复作废遇占用冲突失败；SCHEDULED 冻结集合逐项拒绝、纯草稿放行；发布时刻断言中止带病发布。
 - **巡检**：双向自愈（撤角色 → blocked，补任命 → 自动 active）；与手工操作并发安全（条件更新）；"立即复查"scoped 生效；滞留进面板不 block；到站检查覆盖提交/流转/上提三个入口。
-- **轮与驳回**：每次提审新实例（withdraw 取消回 draft、rejected 修订开新轮，round_no 递增）；申诉轮锚定 (publication, line) 且在原链上越过 normalTerminal；复查轮直达终点；一票驳回（已投 approve 票留事件、竞态先落库者生效、escalated 终点 panel 的 reject 仍一票）；record 条目任何时段不建实例（单调谓词无条件成立）。
+- **轮与驳回**：每次提审新实例（withdraw 取消回 draft、rejected 修订开新轮，round_no 递增）；申诉轮锚定 (publication, line) 且在原链上越过 normalTerminal；复查轮走完整复核链且不消耗申诉（修订 §32.87）；每个结论一次申诉（申诉轮的结论不可再申诉、同一根目标的第二次申诉被唯一索引拒绝）；复核链中间环节只给意见、最后有效环节终局；重新认定无变化不写事实、终结在途轮；职位空缺在提交 / 流转 / 上提 / 申诉 / 复查 / reroute 各入口都落 blocked 而不拒绝；一票驳回（已投 approve 票留事件、竞态先落库者生效、escalated 终点 panel 的 reject 仍一票）；record 条目任何时段不建实例（单调谓词无条件成立）。
 - **精度**：行级 2dp 量化后逐行相加恒等于各级小计与总分；HALF_AWAY_FROM_ZERO 边界（83.245→83.25、-0.125→-0.13）；权威路径无 JS float；排名用展示精度。
 - **S1 后**：普通途径改评分语义被拒；retract → 修正 → 重发新 preliminary 全流程；effectivePublished 时钟判定（调度停机不延迟公示可见与申诉窗）、取消预告仅限 publish_at 前。
 - **Review**：普通路径恒为疑点链前缀；禁止自审；职位空缺不自动上浮；terminal 必须存在；voter panel 分母稳定；single 换届实时生效；escalate 短路会签。
@@ -1629,3 +1632,15 @@ Entry。批量撤销沿这些已物化的记录进行，**绝不按 target 说�
 ⑨**同一个 roster 写守卫**：同步与保留都走 `rosterWriteGuards`（锁批次、roster 管理权、归档只读），公示预告冻结落地后随之生效；外部漂移本身不是公示 blocker，显式应用才是 roster 变更。
 ⑩**领域历史**：`batch_participant_events` 增 `placement-synced` / `placement-kept` 两种事件与 `details jsonb`（同步记 previous / observed / result，保留记 round / observed），reason 为管理员填写的备注；这是领域历史，不再写 Audit Trail。
 界面：参评名单顶部一行「{n} 人的组织信息有变化」+「查看差异」，弹窗「检查组织变更」逐人显示本批次归属与当前组织、可全选本页后「同步所选 / 保留所选」，**不提供不经查看的全部同步**；名单行内只加一个轻标记「组织信息已变化」，不在主表铺开变化详情。迁移 `20260923052834_participant-placement-reconciliation.sql`。
+
+**32.87 审核只答通过与否；复核链是意见流水线；每个结论一次申诉；复查与重新认定**（2026-09-25，用户裁决 #5–#11，第二波审查后）。
+推翻或修订：§7 ADR-2 与 ADR 0005 的「终局词汇由审核员选」、§15 的「staff 轮直达终点」与「终局动作映射」、§32.66 一的「复核链中间 approve → 整轮终局通过」。
+①**审核员只回答通过 / 不通过，通过时认定为什么**。「维持 / 更正 / 撤销 / 改判通过」是系统比较轮前后事实派生的结果描述：`getEntryHistory` 的申诉与复查轮带 `effect`（`upheld / corrected / revoked / overturned`），前状态取被申诉的结论（被申诉轮的结论与其认定、被申诉的认定、被申诉的撤销），后状态取本轮结论与本轮写下的认定，同为通过时按认定的规范 hash 区分维持与更正。审核员的按钮始终是通过 / 退回，历史里的轮标题显示派生结果。
+②**复核链是纯流水线**（普通链语义不变：中间通过交下一环节，中间驳回即终局）。复核链中间环节：通过写 `opinion-approved` 并携带认定建议（`recognitionPayload`），不通过写 `opinion-rejected`，提复核写 `escalated`，三者都上提；下一环节在轨迹里看到意见，认定表单以建议预填（`recognitionSeed` 取本轮最后一条带认定的事件），与建议不同须写调整说明；只有路线的**最后一个有效环节**（按解析，`isRouteEnd`）产生权威 Recognition 与条目状态。合议同理：中间合议全票同意写无主语的 `opinion-approved`（冻结文本作为建议）并上提，分歧照旧上提；只有落在最后有效环节的合议终局（全票通过 / 分歧即不通过），也只有它需要试算求证。`opinion-approved` 计入同轮回避与「审核已开始」。审核台 `actions.approvalConcludes`（与 `rejectionReturns` 对称）告诉界面这一步的通过是否为结论，按钮提示与对话框标题据此区分「意见」与「结论」。
+③**申诉可往任何方向**（维持、调高、调低、撤销原通过）。申诉对话框在发起前提示复核可能改变原认定结果、同一结论只能申诉一次。
+④**每个不可变结论只享有一次参评人申诉**。结论的定义统一在 `review/conclusion.ts`，卡片能力与申诉写入同读：条目站在已完成、判的是当前版本的轮上（round）；无轮时，行政记录 / 导入 / 重新认定写下的 Recognition（recognition），或重新认定撤销那一刻的 EntryEvent（revocation）。申诉轮（含 reroute 后继）的结论不能再被参评人申诉（能力 `blocked: appeal-exhausted`，写入拒 `appeal-exhausted`）；新 Revision 经审核形成的新结论重新获得一次。迁移 `20260925064858_appeal-once.sql`：`review_instances.appealed_event_id` 及复合外键（为此新增 `uq_entry_events_tenant_entry_id`）；`chk_review_instances_appealed_one` 改为 appeal 与 reopen 都恰好带一个目标；三条部分唯一索引 `uq_review_instances_appeal_of_{instance,recognition,event}`（`origin='appeal' AND supersedes_instance_id IS NULL`）——一个结论至多是一次申诉的根目标，reroute 后继带同一目标但 `supersedes_instance_id` 非空，不算第二次。**按字面实施的一处取舍**：根目标的计数不看申诉如何结束，被系统终止的申诉（题目作废时取消、参评人移出时终止）也用掉了这一次；若要「没得出结论的申诉不计数」，需把索引谓词收窄到已结论的申诉，待用户确认。
+⑤**复查**（`POST /assessment/entries/{entryId}/reopenings`，`assessment.review.reopen`，受阶段门控）= 工作人员替参评人发起申诉：与申诉共用开轮逻辑（`openContestingRound`），从复核链第一个有效环节走完整条链，`origin='reopen'`、`initiator='staff'`，与申诉一样记下被复查的结论；不消耗参评人的申诉机会；复查形成的新结论参评人可申诉一次（「不利」无法机械判定，统一按「每个非申诉结论一次」处理）；题目未配置复核链时拒绝 `no-appeal-route`，名单页复查按钮置灰并提示改用重新认定；参评人须在册；不得复查本人的申报（`self-reopen-refused`）；reroute 时保持 reopen 身份。
+⑥**重新认定**（`POST /assessment/entries/{entryId}/redeterminations`，新权限 `assessment.entry.redetermine`，org-node，进 `BATCH_STAFF_CODES` 与接纳基线，不进 `PHASE_GATED_CODES`）：不走任何流程，不从「是否终审人」推导。**系统管理员不天然拥有**：批次接纳时，`permission_mode='all-active'` 的角色不带入 `EXPLICIT_ONLY_STAFF_CODES`（即本码），需要者经显式角色授予（含给自己）。守卫：批次未归档、条目 approved / rejected（否则 `nothing-to-redetermine`）、题目在用、授权范围覆盖参评人（`participant-out-of-reach`）、不得处理本人申报（`self-redetermine-refused`）、理由必填；在册状态不是守卫。一次事务：客户端只交 `{decision, recognition?, reason}`；approve 按题目当天方案校验并试算求证，追加 `source='redetermination'`、supersedes 旧认定的新 Recognition；写 EntryEvent `recognition-corrected / approval-revoked / rejection-overturned`（理由入 reason）；条目离开轮指针，撤销时原认定保留为历史；结果无变化（同为通过且认定 hash 相同，或已不通过再判不通过）拒绝 `redetermination-unchanged`，不写任何事实。原认定 append-only，绝不 UPDATE。适用于一切已形成结论的条目，含行政条目。
+⑦**在途申诉 / 复查轮遇重新认定**：同一事务锁批次与在途轮，轮以 `superseded-by-redetermination` 终结（合议解散、开放补件置 superseded）并写同名 review event（执行人 + 理由），再写新结论；旧轮不删除、不能再被决定。界面确认时明示将终止该轮。重新认定形成的新结论参评人可再申诉一次（撤销以 EntryEvent 为申诉目标）。
+⑧**三格归属**：复查与重新认定都是领域历史（轮与事件、EntryEvent 与 Recognition），不写 Audit Trail。
+⑨**职位空缺 BLOCKED 的写入方补齐**（V3-review-engine#1.4，§32.62 八）：提交、普通链流转、复核链上提、申诉 / 复查开轮、reroute 落在 `nearestRole` 无人持有的环节时，轮以 `blocked / no-assignee`、无单位的形态停在该环节，不再拒绝（`chain-ends-here` / `review-level-missing` 只留给真正的链尾与读不到路径的单位）。迁移 `20260925060000_review-vacancy-ends.sql` 放宽 `chk_review_instances_standing_place`，允许已完成的轮停在无单位的位置（撤回、作废这类轮）。补任命后仍由管理员 reroute 解除（巡检不重解析冻结路线，STATUS 待裁决项不变）。
