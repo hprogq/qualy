@@ -7,7 +7,7 @@ import { Badge } from '@qualy/ui/badge'
 import { Ticker } from '@qualy/ui/ticker'
 import { useIsMobile } from '@qualy/ui/use-mobile'
 import { assessmentMessages as m } from '../i18n.ts'
-import { inZone, useBatchZone } from './zone.ts'
+import { inZone, marked, useBatchZone, useZoneMark } from './zone.ts'
 import {
   displayKey,
   progressOf,
@@ -215,6 +215,7 @@ export function BatchProgress({
 }) {
   const { format, locale } = useI18n()
   const zone = useBatchZone()
+  const mark = useZoneMark(locale)
   // One threshold: under a tablet the bar has no room for the stage, so the
   // stage goes and the clock takes its name instead - "3 hours left in stage"
   // rather than a number beside nothing. A caller that asks for `single` has
@@ -250,11 +251,16 @@ export function BatchProgress({
           spanMessage(m, progress, form),
         )
       : progress.kind === 'starts'
-        ? new Date(progress.at).toLocaleString(locale, {
-            dateStyle: 'medium',
-            timeStyle: 'short',
-            ...inZone(zone),
-          })
+        ? // the one moment this says outright, so the one that carries the
+          // batch's offset for a reader whose device keeps another clock
+          marked(
+            new Date(progress.at).toLocaleString(locale, {
+              dateStyle: 'medium',
+              timeStyle: 'short',
+              ...inZone(zone),
+            }),
+            mark,
+          )
         : null
 
   if (stage === null && said === null) return null
@@ -303,6 +309,7 @@ export function BatchProgress({
                 'data-rest': String(progress.span.rest),
               }
             : {})}
+          {...(progress.kind === 'starts' && mark !== null ? { 'data-zone-mark': mark } : {})}
           {...stylex.props(styles.clock, tone)}
         >
           {filled !== null && !flat && <Ring fraction={filled} />}

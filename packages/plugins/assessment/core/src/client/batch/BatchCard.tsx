@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy
 import { assessmentMessages as m } from '../i18n.ts'
 import { dotDay, dotMoment } from './dates.ts'
 import { BatchZone } from './BatchZone.tsx'
-import { useBatchZone } from './zone.ts'
+import { marked, useBatchZone, useZoneMark } from './zone.ts'
 import { lastDay } from '../entry/model.ts'
 import { StatusBadge } from './StatusBadge.tsx'
 import { BatchProgress } from './BatchProgress.tsx'
@@ -601,7 +601,8 @@ function useLaneFit(lanes: RefObject<HTMLDivElement | null>, count: number): Lan
 
 function StageLanes({ timeline, now }: { timeline: readonly TimelineLike[]; now: number }) {
   const zone = useBatchZone()
-  const { format } = useI18n()
+  const { format, locale } = useI18n()
+  const mark = useZoneMark(locale)
   const plan = planOf(timeline, now)
   const at = (fraction: number) => `${(Math.min(1, Math.max(0, fraction)) * 100).toFixed(2)}%`
   const lanesRef = useRef<HTMLDivElement>(null)
@@ -658,8 +659,13 @@ function StageLanes({ timeline, now }: { timeline: readonly TimelineLike[]; now:
         </div>
       </TooltipProvider>
       {plan.start !== null && (
-        <div {...stylex.props(styles.axis)}>
-          <span {...stylex.props(styles.axisStart)}>{dotDay(plan.start, zone)}</span>
+        <div
+          data-testid="stage-axis"
+          {...(mark === null ? {} : { 'data-zone-mark': mark })}
+          {...stylex.props(styles.axis)}
+        >
+          {/* the axis is one clock, so its first date says whose */}
+          <span {...stylex.props(styles.axisStart)}>{marked(dotDay(plan.start, zone), mark)}</span>
           {plan.today !== null && (
             <span {...stylex.props(styles.axisToday(at(plan.today)))}>{format(m.today)}</span>
           )}
@@ -896,8 +902,9 @@ function CardBody({
   entered = null,
   now = Date.now(),
 }: BatchCardProps): ReactNode {
-  const { format } = useI18n()
+  const { format, locale } = useI18n()
   const zone = useBatchZone()
+  const mark = useZoneMark(locale)
   // the card's own shape changes, not just its width, so the choice is made
   // here rather than in a media query
   const narrow = useIsMobile()
@@ -907,7 +914,9 @@ function CardBody({
   // same reasoning written a second time, and only one of the two knew
   // what to do with a round that is unscheduled or has not begun
   const where = progressOf(row.timeline, now)
-  const closes = where.kind === 'until' ? where.at : null
+  // the close on the batch's clock, spelled once for the sentence and the
+  // fact beside it
+  const closes = where.kind === 'until' ? dotMoment(where.at, zone) : null
 
   // The phone card is a different order, not a narrower one: what the
   // reader has to do moves above the run of stages. Two orders cannot be
@@ -1057,8 +1066,13 @@ function CardBody({
                 截止 　 12 days left"; a stage with no close only says how
                 long it has run */}
               {closes !== null && (
-                <span {...stylex.props(styles.stageWhen)}>
-                  {format(m.stageDeadline, { when: dotMoment(closes, zone) })}
+                <span
+                  data-testid="stage-deadline"
+                  data-moment={closes}
+                  {...(mark === null ? {} : { 'data-zone-mark': mark })}
+                  {...stylex.props(styles.stageWhen)}
+                >
+                  {format(m.stageDeadline, { when: marked(closes, mark) })}
                 </span>
               )}
               <BatchProgress timeline={row.timeline} single />

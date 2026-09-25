@@ -98,3 +98,28 @@ export const zoneNameOf = (
   ),
   offset: zonePart(locale, zone, at, 'shortOffset') ?? zone,
 })
+
+/**
+ * The batch's offset, "GMT+5:45", to write after a time read on its clock -
+ * or null for a reader whose device keeps the same clock, to whom the bare
+ * time is already their own. Where a whole plan is on screen, `ZoneNote`
+ * says it once instead; this is for a time that stands alone, on a card or
+ * in a row of a list.
+ */
+export const zoneMarkOf = (
+  zone: string | null | undefined,
+  locale: string,
+  now: number = Date.now(),
+): string | null => {
+  const clock = readableZone(zone)
+  return clock !== undefined && deviceDiffers(clock, now)
+    ? zoneNameOf(clock, locale, now).offset
+    : null
+}
+
+/** `zoneMarkOf` for the batch this screen belongs to, said in `locale` */
+export const useZoneMark = (locale: string): string | null => zoneMarkOf(useBatchZone(), locale)
+
+/** a time with the batch's offset after it, when the reader needs one */
+export const marked = (time: string, mark: string | null): string =>
+  mark === null ? time : `${time} ${mark}`

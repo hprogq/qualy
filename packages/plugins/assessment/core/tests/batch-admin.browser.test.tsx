@@ -575,6 +575,76 @@ describe('the batch list', () => {
     await page.viewport(1280, 800)
   })
 
+  // The list is inside no batch, so no notice at the head of it says whose
+  // clock a time is on: every time on it read on a batch's clock carries that
+  // clock's offset, for a reader whose device keeps another. The suite's
+  // device keeps Shanghai's; Kathmandu runs 2:15 behind it.
+  const KATHMANDU = 'Asia/Kathmandu'
+  // 23:00 in Kathmandu, 01:15 the next day on the device
+  const CLOSE = '2030-09-04T17:15:00.000Z'
+  const offsetOf = (timeZone: string) =>
+    new Intl.DateTimeFormat('zh-CN', { timeZone, timeZoneName: 'shortOffset' })
+      .formatToParts(Date.now())
+      .find((part) => part.type === 'timeZoneName')!.value
+  const runningIn = (timezone: string) => ({
+    listBatches: () =>
+      Effect.succeed({
+        items: [
+          listRow({ status: 'active', currentPhaseId: ENTRY_PHASE_ID, timezone }, [
+            {
+              phaseId: ENTRY_PHASE_ID,
+              displayName: '正式填报',
+              description: '',
+              entryNote: '',
+              status: 'current',
+              entry: { kind: 'entered', at: '2026-01-01T00:00:00.000Z' },
+            },
+            {
+              phaseId: REVIEW_PHASE_ID,
+              displayName: '审核',
+              description: '',
+              entryNote: '',
+              status: 'future',
+              entry: { kind: 'planned', at: CLOSE },
+            },
+          ]),
+        ],
+        nextCursor: null,
+        total: 1,
+        capabilities: { create: true },
+      }),
+  })
+
+  it("marks a round's times with its clock where the device keeps another", async () => {
+    await page.viewport(1280, 800)
+    await screen(runningIn(KATHMANDU), '/assessment/batches')
+    const mark = offsetOf(KATHMANDU)
+
+    // the card's close, on the round's clock and saying so
+    const deadline = page.getByTestId('stage-deadline')
+    await expect.element(deadline).toHaveAttribute('data-moment', '09.04 23:00')
+    await expect.element(deadline).toHaveAttribute('data-zone-mark', mark)
+    expect(deadline.element().textContent).toContain(`09.04 23:00 ${mark}`)
+    // the run of stages under it is on the same clock
+    await expect.element(page.getByTestId('stage-axis')).toHaveAttribute('data-zone-mark', mark)
+    // and the table's date: the round's 4 September, the device's 5th
+    const when = page.getByTestId('batch-when')
+    await expect.element(when).toHaveAttribute('data-zone-mark', mark)
+    expect(when.element().textContent).toContain(`2030.09.04 ${mark}`)
+  })
+
+  it("leaves a round's times bare where the device keeps its clock", async () => {
+    await page.viewport(1280, 800)
+    await screen(runningIn('Asia/Shanghai'), '/assessment/batches')
+
+    const deadline = page.getByTestId('stage-deadline')
+    await expect.element(deadline).toHaveAttribute('data-moment', '09.05 01:15')
+    expect(deadline.element().hasAttribute('data-zone-mark')).toBe(false)
+    expect(page.getByTestId('stage-axis').element().hasAttribute('data-zone-mark')).toBe(false)
+    await expect.element(page.getByTestId('batch-when')).toBeVisible()
+    expect(page.getByTestId('batch-when').element().hasAttribute('data-zone-mark')).toBe(false)
+  })
+
   it('opens a batch from the table and comes back', async () => {
     await screen({}, '/assessment/batches')
     await expect.element(page.getByRole('heading', { name: '测评批次' })).toBeVisible()
@@ -1216,6 +1286,41 @@ describe('the stage plan', () => {
     await expect.element(page.getByTestId('batch-zone')).toHaveAttribute('data-device', 'different')
     // and once, at the head of the section, for a reader whose device is elsewhere
     await expect.element(page.getByTestId('batch-zone-away')).toBeVisible()
+  })
+
+  it('marks when a round begins with its clock, in the bar above every section', async () => {
+    await page.viewport(1280, 800)
+    const opens = '2030-09-04T17:15:00.000Z'
+    await screen({
+      getBatch: () => Effect.succeed({ batch: batch({ status: 'active', timezone: ZONE }) }),
+      getTimeline: () =>
+        Effect.succeed({
+          timeline: [
+            {
+              phaseId: ENTRY_PHASE_ID,
+              displayName: '正式填报',
+              description: '',
+              entryNote: '',
+              status: 'future' as const,
+              entry: { kind: 'planned' as const, at: opens },
+            },
+          ],
+        }),
+    })
+
+    const clock = page.getByTestId('stage-clock')
+    await expect.element(clock).toHaveAttribute('data-span', 'starts')
+    const mark = new Intl.DateTimeFormat('zh-CN', { timeZone: ZONE, timeZoneName: 'shortOffset' })
+      .formatToParts(Date.now())
+      .find((part) => part.type === 'timeZoneName')!.value
+    await expect.element(clock).toHaveAttribute('data-zone-mark', mark)
+    // the moment as the reader reads it, on the round's clock
+    const spelled = new Intl.DateTimeFormat('zh-CN', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: ZONE,
+    }).format(new Date(opens))
+    expect(clock.element().textContent).toContain(`${spelled} ${mark}`)
   })
 
   it('says nothing about the device when it keeps the batch its own clock', async () => {
