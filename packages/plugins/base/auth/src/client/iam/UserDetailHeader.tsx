@@ -370,7 +370,15 @@ export default function UserDetailHeader() {
             </div>
             {manageable && (
               <div {...stylex.props(styles.actions)}>
-                <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    // what the band last said was about something else
+                    setFeedback(null)
+                    setEditing(true)
+                  }}
+                >
                   {format(m.editProfile)}
                 </Button>
                 {/* moving somebody is a section of their record, with the rules

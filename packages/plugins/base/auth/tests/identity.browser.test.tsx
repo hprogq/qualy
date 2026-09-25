@@ -881,6 +881,28 @@ describe("a person's header", () => {
       children: <UserDetailHeader />,
     })
 
+  it('says why a disable was refused once the question is put away, and not in the form after', async () => {
+    const status = vi.fn(() => Effect.fail(apiError('LAST_ADMINISTRATOR')))
+    await mount({ setUserStatus: status })
+    await page.getByRole('button', { name: '更多操作' }).click()
+    await page.getByRole('menuitem', { name: '停用' }).click()
+    const asked = page.getByRole('alertdialog')
+    await expect.element(asked).toBeInTheDocument()
+    await asked.getByTestId('confirm-accept').click()
+    await vi.waitFor(() => expect(status).toHaveBeenCalledTimes(1))
+    // answering puts the question away, and the band says what refused it,
+    // under no overlay
+    await expect.poll(() => document.querySelector('[role="alertdialog"]')).toBeNull()
+    const band = page.getByTestId('feedback')
+    await expect.element(band).toHaveAttribute('data-tone', 'error')
+    expect(band.element().closest('[aria-hidden="true"], [inert]')).toBeNull()
+    // the form opened next is about the profile, and says nothing of it
+    await page.getByRole('button', { name: '编辑资料' }).click()
+    const dialog = page.getByRole('dialog')
+    await expect.element(dialog.getByRole('textbox', { name: '邮箱' })).toBeInTheDocument()
+    expect(dialog.element().querySelector('[data-testid="feedback"]')).toBeNull()
+  })
+
   it('says in the form what a save was refused, and keeps nothing once it is put away', async () => {
     const update = vi.fn(() => Effect.fail(apiError('USER_EMAIL_CONFLICT')))
     await mount({ updateUser: update })
