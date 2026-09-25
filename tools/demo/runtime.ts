@@ -52,8 +52,12 @@ const BOOT_HOOKS: Readonly<Record<string, 'run' | 'skip'>> = {
   'rbac/permission-catalog': 'run',
   'auth/recovery-channel': 'run',
   'auth/public-origin': 'run',
+  // reads stored entrance secrets and only logs what does not decrypt
+  'auth/entrance-secrets': 'skip',
   'assessment/scoring-plans': 'run',
   'storage/cleanup-scheduler': 'skip',
+  // a loop that removes staging files; the seeder places objects directly
+  'storage-local/staging-sweep': 'skip',
   'assessment/live-listener': 'skip',
   'assessment/phase-scheduler': 'skip',
 }
