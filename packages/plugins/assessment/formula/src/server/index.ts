@@ -1,6 +1,6 @@
 import { contractIdentityOf, sha256Hex } from './contract-identity.ts'
 import { decodeFormulaEnvelope } from './envelope.ts'
-import { Clock, Context, Effect, Layer, Option, Ref } from 'effect'
+import { Clock, Context, Effect, Fiber, Layer, Option, Ref, Semaphore } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
 import { sql } from 'kysely'
@@ -125,6 +125,16 @@ export const TESTS_LIMIT = 128 * 1024
  */
 const DRAFT_WRITE_BURST = 40
 const DRAFT_WRITE_REFILL_MS = 6_000
+
+/**
+ * How many runs - previews, try-runs, publications, published versions
+ * tried - one person may have under way at once. Two, so a draft and a
+ * publication can be tried side by side; one more is refused, not queued.
+ */
+const RUNS_PER_PERSON = 2
+
+/** what a case left unrun after an earlier one was interrupted says on its row */
+const NOT_RUN = 'not run: an earlier case was interrupted'
 
 /** the examples' own weight check, the same at every door a draft is written through */
 const testsTooLarge = (tests: readonly unknown[]): boolean =>
@@ -498,7 +508,10 @@ interface FormulaLibraryShape {
     functionId: string,
     sourceTs: string,
     as: Principal,
-  ) => Effect.Effect<DraftPreview, AccessDenied | FormulaFunctionNotFound | DraftRefusal>
+  ) => Effect.Effect<
+    DraftPreview,
+    AccessDenied | FormulaFunctionNotFound | DraftRefusal | FormulaAuthoringBusy
+  >
   readonly evaluateDraft: (
     tenantId: string,
     functionId: string,
@@ -507,7 +520,7 @@ interface FormulaLibraryShape {
     as: Principal,
   ) => Effect.Effect<
     DraftPreview & { readonly results: readonly EvaluatedCase[] },
-    AccessDenied | FormulaFunctionNotFound | DraftRefusal
+    AccessDenied | FormulaFunctionNotFound | DraftRefusal | FormulaAuthoringBusy
   >
   readonly managedDraft: (
     tenantId: string,
@@ -607,6 +620,7 @@ interface FormulaLibraryShape {
     | FormulaReleaseNameTaken
     | FormulaVersionUnchanged
     | CompileRefusal
+    | FormulaAuthoringBusy
   >
   readonly listDraftRevisions: (
     tenantId: string,
@@ -686,6 +700,7 @@ interface FormulaLibraryShape {
     | FormulaVersionNotFound
     | FormulaVersionUnrunnable
     | FormulaCompileUnavailable
+    | FormulaAuthoringBusy
   >
 }
 
@@ -728,6 +743,53 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       })
       if (!granted) return yield* new FormulaAuthoringBusy()
     })
+
+  // Every run this library asks of the runtime sandbox passes one permit.
+  // Scoring shares that sandbox and never takes the permit, so however many
+  // authors try formulas at once, a score waits behind at most one of their
+  // runs. A run keeps the permit until the sandbox answers even when its
+  // caller has gone: an abandoned run still occupies the sandbox until it
+  // ends, and the next one must not be queued behind it meanwhile.
+  const lane = yield* Semaphore.make(1)
+  const onLane = <A, E>(run: Effect.Effect<A, E>): Effect.Effect<A, E> =>
+    Effect.uninterruptibleMask((restore) =>
+      Effect.gen(function* () {
+        yield* restore(lane.take(1))
+        const held = yield* Effect.forkDetach(Effect.ensuring(run, lane.release(1)))
+        return yield* restore(Fiber.join(held))
+      }),
+    )
+
+  // What one person has running, so that one person cannot hold the lane
+  // above, or the compiler's queue, on everybody else's behalf.
+  const running = yield* Ref.make<ReadonlyMap<string, number>>(new Map())
+  const admitted = <A, E, R>(
+    as: Principal,
+    work: Effect.Effect<A, E, R>,
+  ): Effect.Effect<A, E | FormulaAuthoringBusy, R> => {
+    const key = `${as.tenantId}:${as.userId}`
+    return Effect.acquireUseRelease(
+      Ref.modify(running, (held) => {
+        const now = held.get(key) ?? 0
+        if (now >= RUNS_PER_PERSON) return [false, held] as const
+        const next = new Map(held)
+        next.set(key, now + 1)
+        return [true, next] as const
+      }),
+      (seated): Effect.Effect<A, E | FormulaAuthoringBusy, R> =>
+        seated ? work : Effect.fail(new FormulaAuthoringBusy()),
+      (seated) =>
+        seated
+          ? Ref.update(running, (held) => {
+              const next = new Map(held)
+              const left = (held.get(key) ?? 1) - 1
+              if (left > 0) next.set(key, left)
+              else next.delete(key)
+              return next
+            })
+          : Effect.void,
+    )
+  }
 
   const latestNoSubquery = sql<number | null>`(
     select max(v.version_no) from assessment_formula_versions v
@@ -922,6 +984,10 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       // the identity of whoever answered; one round must be answered by one
       // process, or its provenance names an instance that ran only part of it
       let runtime: SandboxRuntimeIdentity | null = null
+      // one case that ran out of time is the whole round's answer about
+      // time: the cases after it are reported unrun rather than each given
+      // the same deadline to spend in the sandbox everybody scores through
+      let interrupted = false
       for (const test of cases) {
         // the row always carries what was expected, in the canonical spelling
         // the comparison uses; a lexically broken expectation shows as typed
@@ -961,8 +1027,15 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           })
           continue
         }
-        const outcome = yield* sandbox
-          .invoke({
+        if (interrupted) {
+          report.push({
+            ...(expected === undefined ? {} : { passed: false, expected }),
+            defect: NOT_RUN,
+          })
+          continue
+        }
+        const outcome = yield* onLane(
+          sandbox.invoke({
             artifact,
             artifactHash,
             entrypoint: '__qualyInvoke',
@@ -974,27 +1047,32 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
               softDeadlineMs: 2_000,
               hardDeadlineMs: 10_000,
             },
-          })
-          .pipe(
-            Effect.map((answer) => ({ kind: 'answered', answer }) as const),
-            // an example that exhausts the engine is that EXAMPLE failing,
-            // reported on its row - never the whole publish dressed up as an
-            // infrastructure outage
-            Effect.catchTags({
-              SandboxEvalFailed: (failure) =>
-                Effect.succeed({ kind: 'defect', message: failure.message } as const),
-              SandboxTimeout: () =>
-                Effect.succeed({ kind: 'defect', message: 'execution interrupted' } as const),
-              SandboxMemoryExceeded: () =>
-                Effect.succeed({ kind: 'defect', message: 'execution out of memory' } as const),
-              SandboxStackExceeded: () =>
-                Effect.succeed({ kind: 'defect', message: 'execution stack overflow' } as const),
-              SandboxOutputTooLarge: () =>
-                Effect.succeed({ kind: 'defect', message: 'the answer was too large' } as const),
-            }),
-            Effect.mapError(() => new FormulaCompileUnavailable()),
-          )
+          }),
+        ).pipe(
+          Effect.map((answer) => ({ kind: 'answered', answer }) as const),
+          // an example that exhausts the engine is that EXAMPLE failing,
+          // reported on its row - never the whole publish dressed up as an
+          // infrastructure outage
+          Effect.catchTags({
+            SandboxEvalFailed: (failure) =>
+              Effect.succeed({ kind: 'defect', message: failure.message } as const),
+            SandboxTimeout: () =>
+              Effect.succeed({
+                kind: 'defect',
+                message: 'execution interrupted',
+                interrupted: true,
+              } as const),
+            SandboxMemoryExceeded: () =>
+              Effect.succeed({ kind: 'defect', message: 'execution out of memory' } as const),
+            SandboxStackExceeded: () =>
+              Effect.succeed({ kind: 'defect', message: 'execution stack overflow' } as const),
+            SandboxOutputTooLarge: () =>
+              Effect.succeed({ kind: 'defect', message: 'the answer was too large' } as const),
+          }),
+          Effect.mapError(() => new FormulaCompileUnavailable()),
+        )
         if (outcome.kind === 'defect') {
+          if ('interrupted' in outcome) interrupted = true
           report.push({
             ...(expected === undefined ? {} : { passed: false, expected }),
             defect: outcome.message,
@@ -1068,8 +1146,8 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     },
     CompileRefusal
   > =>
-    sandbox
-      .invoke({
+    onLane(
+      sandbox.invoke({
         artifact,
         artifactHash,
         entrypoint: '__qualyContract',
@@ -1082,56 +1160,54 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           softDeadlineMs: 2_000,
           hardDeadlineMs: 10_000,
         },
-      })
-      .pipe(
-        // the guest wrote this string, so it is not known to be json until it
-        // parses. Thrown here it would be a defect - a 500 on a publish - for
-        // the same thing the branch below already calls the author's problem.
-        Effect.flatMap((answer) =>
-          Effect.try({
-            try: () => ({
-              contract: JSON.parse(answer.output) as { input?: unknown; output?: unknown },
-              runtime: answer.runtime,
-            }),
-            catch: () =>
-              new FormulaContractInvalid({ issues: [{ path: '', reason: 'contract-error' }] }),
+      }),
+    ).pipe(
+      // the guest wrote this string, so it is not known to be json until it
+      // parses. Thrown here it would be a defect - a 500 on a publish - for
+      // the same thing the branch below already calls the author's problem.
+      Effect.flatMap((answer) =>
+        Effect.try({
+          try: () => ({
+            contract: JSON.parse(answer.output) as { input?: unknown; output?: unknown },
+            runtime: answer.runtime,
           }),
-        ),
-        Effect.catchTags({
-          // the guest's own failure to hand a contract out is the author's
-          // problem, classified as such - never a 503
-          SandboxEvalFailed: (failure) =>
-            Effect.fail(
-              new FormulaContractInvalid({
-                issues: (() => {
-                  const refused = profileRefusals(failure.message)
-                  return refused.length === 0 ? [{ path: '', reason: 'contract-error' }] : refused
-                })(),
-                detail: `${failure.name}: ${failure.message}`,
-              }),
-            ),
-          SandboxOutputTooLarge: () =>
-            Effect.fail(
-              new FormulaContractInvalid({ issues: [{ path: '', reason: 'contract-too-large' }] }),
-            ),
-          SandboxTimeout: (failure) =>
-            Effect.fail(
-              new FormulaExecutionLimitExceeded({ phase: 'contract', verdict: failure.phase }),
-            ),
-          SandboxMemoryExceeded: () =>
-            Effect.fail(
-              new FormulaExecutionLimitExceeded({ phase: 'contract', verdict: 'memory' }),
-            ),
-          SandboxStackExceeded: () =>
-            Effect.fail(new FormulaExecutionLimitExceeded({ phase: 'contract', verdict: 'stack' })),
+          catch: () =>
+            new FormulaContractInvalid({ issues: [{ path: '', reason: 'contract-error' }] }),
         }),
-        Effect.mapError((failure) =>
-          failure instanceof FormulaContractInvalid ||
-          failure instanceof FormulaExecutionLimitExceeded
-            ? failure
-            : new FormulaCompileUnavailable(),
-        ),
-      )
+      ),
+      Effect.catchTags({
+        // the guest's own failure to hand a contract out is the author's
+        // problem, classified as such - never a 503
+        SandboxEvalFailed: (failure) =>
+          Effect.fail(
+            new FormulaContractInvalid({
+              issues: (() => {
+                const refused = profileRefusals(failure.message)
+                return refused.length === 0 ? [{ path: '', reason: 'contract-error' }] : refused
+              })(),
+              detail: `${failure.name}: ${failure.message}`,
+            }),
+          ),
+        SandboxOutputTooLarge: () =>
+          Effect.fail(
+            new FormulaContractInvalid({ issues: [{ path: '', reason: 'contract-too-large' }] }),
+          ),
+        SandboxTimeout: (failure) =>
+          Effect.fail(
+            new FormulaExecutionLimitExceeded({ phase: 'contract', verdict: failure.phase }),
+          ),
+        SandboxMemoryExceeded: () =>
+          Effect.fail(new FormulaExecutionLimitExceeded({ phase: 'contract', verdict: 'memory' })),
+        SandboxStackExceeded: () =>
+          Effect.fail(new FormulaExecutionLimitExceeded({ phase: 'contract', verdict: 'stack' })),
+      }),
+      Effect.mapError((failure) =>
+        failure instanceof FormulaContractInvalid ||
+        failure instanceof FormulaExecutionLimitExceeded
+          ? failure
+          : new FormulaCompileUnavailable(),
+      ),
+    )
 
   // prepare's error union is CompileRefusal for reuse; the draft tools can
   // never see a test failure out of it, and the narrowing keeps that a type
@@ -2371,9 +2447,9 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     requireAuthor,
     chargeDraftWrite,
     previewDraft: (tenantId, functionId, sourceTs, as) =>
-      withDb(previewDraft(tenantId, functionId, sourceTs, as)),
+      admitted(as, withDb(previewDraft(tenantId, functionId, sourceTs, as))),
     evaluateDraft: (tenantId, functionId, sourceTs, cases, as) =>
-      withDb(evaluateDraft(tenantId, functionId, sourceTs, cases, as)),
+      admitted(as, withDb(evaluateDraft(tenantId, functionId, sourceTs, cases, as))),
     managedDraft: (tenantId, functionId, as) => withDb(managedDraft(tenantId, functionId, as)),
     listFunctions: (tenantId, page, as) => withDb(listFunctions(tenantId, page, as)),
     createFunction: (tenantId, input, as) => withDb(createFunction(tenantId, input, as)),
@@ -2385,13 +2461,13 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     deleteFunction: (tenantId, functionId, expectedDraftRevision, as) =>
       withDb(deleteFunction(tenantId, functionId, expectedDraftRevision, as)),
     publish: (tenantId, functionId, request, as) =>
-      withDb(publish(tenantId, functionId, request, as)),
+      admitted(as, withDb(publish(tenantId, functionId, request, as))),
     getVersion: (tenantId, functionId, versionNo, as) =>
       withDb(getVersion(tenantId, functionId, versionNo, as)),
     updateVersionInfo: (tenantId, functionId, versionNo, request, as) =>
       withDb(updateVersionInfo(tenantId, functionId, versionNo, request, as)),
     evaluateVersion: (tenantId, functionId, versionNo, cases, as) =>
-      withDb(evaluateVersion(tenantId, functionId, versionNo, cases, as)),
+      admitted(as, withDb(evaluateVersion(tenantId, functionId, versionNo, cases, as))),
     listDraftRevisions: (tenantId, functionId, page, as) =>
       withDb(listDraftRevisions(tenantId, functionId, page, as)),
     getDraftRevision: (tenantId, functionId, revisionNo, as) =>
