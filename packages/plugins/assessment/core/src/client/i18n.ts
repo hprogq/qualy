@@ -2043,6 +2043,11 @@ const i18n = definePluginMessages({
       defaultMessage: 'Nobody in this round stands in these units',
     },
     recordUnitRosterPage: recordUnitRosterPageMessage,
+    recordUnitKinds: { id: 'assessment/record/unit-kinds', defaultMessage: 'Kinds of people' },
+    recordUnitKindsHint: {
+      id: 'assessment/record/unit-kinds-hint',
+      defaultMessage: 'None ticked includes every kind',
+    },
     recordUnitsOnce: {
       id: 'assessment/record/units-once',
       defaultMessage:

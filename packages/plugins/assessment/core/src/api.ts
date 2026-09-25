@@ -3365,7 +3365,9 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
      * People the reader could put on this roster, from their own authority to
      * run rounds rather than from the directory: who may be added is who this
      * reader manages, so that is the list, whether or not they may also read
-     * the directory.
+     * the directory. Bringing somebody onto the round's staff looks for them
+     * among the same people; what they may be made there is `staffOptions`'s
+     * answer, pair by pair.
      */
     HttpApiEndpoint.get(
       'listParticipantCandidates',

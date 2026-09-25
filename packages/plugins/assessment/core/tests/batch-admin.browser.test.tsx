@@ -17,6 +17,9 @@ import { WorkspaceCapabilityScope, useWorkspaceCapabilities } from '@qualy/web-r
 import type { assessmentApi } from '@qualy/plugin-assessment/client/api'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
+const OrgNodePickerView = lazy(() => import('@qualy/plugin-auth/client/iam/OrgNodePickerView'))
+const PeoplePickerView = lazy(() => import('@qualy/plugin-auth/client/iam/PeoplePickerView'))
+
 // loaded through the registry the host actually uses, so a screen that lost
 // its key would fail here rather than at runtime
 // the picker iam contributes, held the way the registry holds one
@@ -1817,8 +1820,8 @@ describe('who may work on a batch', () => {
   it('says why no role is offered when the selection itself is refused', async () => {
     // the pickers as their owners contribute them, reduced to the one press
     // this case needs: somebody chosen, somewhere chosen
-    const PickPeople = ({ context }: { context: { onChange: (ids: string[]) => void } }) => (
-      <button type="button" onClick={() => context.onChange([USER_ID])}>
+    const PickPeople = ({ context }: { context: { onToggle: (id: string) => void } }) => (
+      <button type="button" onClick={() => context.onToggle(USER_ID)}>
         pick people
       </button>
     )
@@ -1839,8 +1842,8 @@ describe('who may work on a batch', () => {
               ...emptyManifest(),
               pages: PAGES,
               slots: {
-                'iam/people-picker': [{ id: 'test/people', order: 0 }],
-                'iam/org-node-picker': [{ id: 'test/units', order: 0 }],
+                'iam/people-picker-view': [{ id: 'test/people', order: 0 }],
+                'iam/org-node-picker-view': [{ id: 'test/units', order: 0 }],
               },
             }),
         },
@@ -1858,10 +1861,10 @@ describe('who may work on a batch', () => {
       route: `/assessment/batches/${BATCH_ID}/access`,
       registry: {
         slots: {
-          'iam/people-picker': {
+          'iam/people-picker-view': {
             'test/people': lazy(() => Promise.resolve({ default: PickPeople })),
           },
-          'iam/org-node-picker': {
+          'iam/org-node-picker-view': {
             'test/units': lazy(() => Promise.resolve({ default: PickUnits })),
           },
         },
@@ -1876,6 +1879,82 @@ describe('who may work on a batch', () => {
     // the refusal is what the step says, not an empty list of roles
     await expect.element(page.getByTestId('add-staff-refused')).toBeVisible()
     expect(page.getByRole('radiogroup').elements()).toHaveLength(0)
+  })
+
+  // A round's administrator need not browse the directory: whom they may
+  // bring in, and where, is read from this round and drawn by the views that
+  // ask for no permission of their own.
+  it('brings somebody in without the directory, from the people and units of this round', async () => {
+    const addStaff = vi.fn((_request: Request) => Effect.succeed({ staff: [] }))
+    const probed = vi.fn((request: Request) =>
+      Effect.succeed({
+        nodes: [{ id: NODE_ID, name: '软件学院', parentId: null, orgTypeId: NODE_ID }],
+        roles:
+          request.query?.['userIds'] === undefined
+            ? []
+            : [{ id: 'role-reviewer', name: '学院审核员', refusal: null }],
+      }),
+    )
+    await renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              pages: PAGES,
+              // the directory's own pickers are not delivered to this reader
+              slots: {
+                'iam/people-picker-view': [{ id: 'auth/people-picker-view', order: 0 }],
+                'iam/org-node-picker-view': [{ id: 'auth/org-node-picker-view', order: 0 }],
+              },
+            }),
+        },
+        assessment: assessmentStubs({
+          getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
+          staffOptions: probed,
+          listParticipantCandidates: () =>
+            Effect.succeed({
+              items: [
+                {
+                  userId: USER_ID,
+                  displayName: '王老师',
+                  businessNo: 'T001',
+                  userTypeName: '教职工',
+                  roster: null,
+                },
+              ],
+              total: 1,
+              page: 1,
+              pageSize: 20,
+            }),
+          addStaff,
+        }),
+      }),
+      routes: [
+        { path: '/assessment/batches/:batchId/access', element: workspace(<BatchAccessPage />) },
+      ],
+      route: `/assessment/batches/${BATCH_ID}/access`,
+      registry: {
+        slots: {
+          'iam/people-picker-view': { 'auth/people-picker-view': PeoplePickerView },
+          'iam/org-node-picker-view': { 'auth/org-node-picker-view': OrgNodePickerView },
+        },
+      },
+    })
+
+    await page.getByRole('button', { name: '添加工作人员' }).click()
+    await page.getByRole('checkbox', { name: '王老师' }).click()
+    await page.getByRole('button', { name: '下一步' }).click()
+    await page.getByRole('checkbox', { name: '软件学院' }).click()
+    await page.getByRole('button', { name: '下一步' }).click()
+    await page.getByRole('radio', { name: '学院审核员' }).click()
+    await page.getByRole('button', { name: '添加', exact: true }).click()
+    await vi.waitFor(() => expect(addStaff).toHaveBeenCalledTimes(1))
+    expect(addStaff.mock.calls[0]![0].payload).toMatchObject({
+      userIds: [USER_ID],
+      orgNodeIds: [NODE_ID],
+      roleId: 'role-reviewer',
+    })
   })
 
   it('only offers to remove somebody this round brought in, and asks first', async () => {

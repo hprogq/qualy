@@ -4,7 +4,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useQuery } from '@tanstack/react-query'
 import { UiSlot, useApiQuery } from '@qualy/web-runtime'
-import { orgNodePicker, peoplePicker } from '@qualy/ui-contract'
+import { orgNodePickerView, peoplePickerView } from '@qualy/ui-contract'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Button } from '@qualy/ui/button'
@@ -21,6 +21,7 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { Steps } from '@qualy/ui/steps'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
+import { useCandidates } from '../roster/candidates.ts'
 import { RolePicker } from './RolePicker.tsx'
 
 // Bringing somebody in for this round only, one question at a time.
@@ -30,6 +31,12 @@ import { RolePicker } from './RolePicker.tsx'
 // would mean showing a role list that is wrong until the other two are
 // settled. Going back is free; going forward is not offered until the step
 // has an answer.
+//
+// Who and where come from this domain, drawn by the pickers' permission-free
+// views: the people this round's administrator manages, and the units this
+// round covers. Administering a round does not take the directory's read
+// permission, and the directory's own pickers drew nothing for a reader
+// without it.
 
 const STEPS = [m.addStaffStepWho, m.addStaffStepWhere, m.addStaffStepAs] as const
 
@@ -103,6 +110,9 @@ export function AddStaffDialog({
     ...query.assessment.staffOptions.queryOptions({ params: { batchId }, query: {} }),
     enabled: open,
   })
+  // who may be brought in: the people this reader manages, the population
+  // the roster's own add dialog offers
+  const candidates = useCandidates(batchId, open)
   // Roles depend on who and where, and are asked for once both are settled.
   // Every chosen person is checked against every chosen unit and only what
   // holds everywhere is offered: an offer that is true of one pair and false
@@ -143,8 +153,14 @@ export function AddStaffDialog({
           {step === 0 && (
             <div {...stylex.props(styles.step)}>
               <UiSlot
-                token={peoplePicker}
-                context={{ value: chosen, onChange: setChosen }}
+                token={peoplePickerView}
+                context={candidates.context({
+                  value: chosen,
+                  onToggle: (userId: string) =>
+                    setChosen((now) =>
+                      now.includes(userId) ? now.filter((id) => id !== userId) : [...now, userId],
+                    ),
+                })}
                 fallback={<p {...stylex.props(styles.quiet)}>{format(m.pickerUnavailable)}</p>}
                 loading={<Skeleton className={stylex.props(styles.waitingFill).className} />}
               />
@@ -155,7 +171,7 @@ export function AddStaffDialog({
             <div {...stylex.props(styles.stepWords)}>
               <p {...stylex.props(styles.quiet)}>{format(m.addStaffWhereHint)}</p>
               <UiSlot
-                token={orgNodePicker}
+                token={orgNodePickerView}
                 context={{
                   value: orgNodeIds,
                   onChange: setOrgNodeIds,

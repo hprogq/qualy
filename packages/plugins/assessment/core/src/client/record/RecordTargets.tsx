@@ -1,9 +1,11 @@
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { peopleImportPicker } from '@qualy/ui-contract'
-import { UiSlot } from '@qualy/web-runtime'
+import { orgNodePickerView } from '@qualy/ui-contract'
+import { UiSlot, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import { AsyncSection, CheckboxGroup } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import {
   Dialog,
@@ -16,6 +18,7 @@ import {
 } from '@qualy/ui/dialog'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
+import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { RosterPeoplePicker } from './RosterPeoplePicker.tsx'
 import { UnitRoster } from './UnitRoster.tsx'
@@ -30,8 +33,11 @@ import { UnitRoster } from './UnitRoster.tsx'
 // expect a group that maintains itself.
 //
 // Neither dialog implements any people UI of its own. `peoplePickerView`
-// draws them and `peopleImportPicker` draws the units; what belongs here is
-// only which population is being drawn from.
+// draws the people and `orgNodePickerView` the units; what belongs here is
+// only which population is being drawn from - this round's roster, within
+// the reader's own reach, never the directory. A recorder need not hold the
+// directory's read permission, and a picker that asked for it drew nothing
+// for them.
 
 const styles = stylex.create({
   row: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
@@ -47,6 +53,11 @@ const styles = stylex.create({
     gridTemplateColumns: { default: null, [breakpoints.desktop]: 'minmax(0, 1fr) minmax(0, 1fr)' },
   },
   quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
+  // the tree takes the height the dialog gives and the kinds keep theirs at
+  // the foot, so the dialog body never scrolls around a tree that scrolls
+  unitsSide: { display: 'flex', minHeight: 0, minWidth: 0, flexDirection: 'column', gap: 16 },
+  kinds: { display: 'flex', flexShrink: 0, flexDirection: 'column', gap: 4 },
+  kindsHint: { fontSize: 12, color: tokens.mutedForeground },
 })
 
 /** what the caller has chosen, in the shape the wire takes */
@@ -161,11 +172,7 @@ export function RecordTargets({
           </DialogHeader>
           <DialogBody xstyle={styles.body}>
             <div {...stylex.props(styles.unitsSplit)}>
-              <UiSlot
-                token={peopleImportPicker}
-                context={{ value: units, onChange: setUnits }}
-                fallback={<p {...stylex.props(styles.quiet)}>{format(m.pickerUnavailable)}</p>}
-              />
+              <RosterUnits batchId={batchId} value={units} onChange={setUnits} />
               {/* the people it comes to, read before anybody confirms it:
                   choosing a class is choosing the people in it today */}
               <UnitRoster
@@ -195,6 +202,65 @@ export function RecordTargets({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+/**
+ * Units and kinds of people out of this round's own roster: the units its
+ * people were admitted from and the kinds it admitted them as, both within
+ * this reader's reach and both read from this domain.
+ */
+function RosterUnits({
+  batchId,
+  value,
+  onChange,
+}: {
+  batchId: string
+  value: { orgNodeIds: readonly string[]; userTypeIds: readonly string[] }
+  onChange: (next: { orgNodeIds: readonly string[]; userTypeIds: readonly string[] }) => void
+}) {
+  const query = useApiQuery(assessmentApi)
+  const { format, formatError } = useI18n()
+  const roster = useQuery(
+    query.assessment.listRosterUnits.queryOptions({ params: { batchId }, query: {} }),
+  )
+  const kinds = roster.data?.userTypes ?? []
+  return (
+    <div {...stylex.props(styles.unitsSide)} data-testid="record-units">
+      <AsyncSection
+        pending={false}
+        error={roster.isError ? formatError(roster.error) : null}
+        loadingLabel={format(commonMessages.loading)}
+        retryLabel={format(commonMessages.retry)}
+        onRetry={() => void roster.refetch()}
+      >
+        <UiSlot
+          token={orgNodePickerView}
+          context={{
+            value: value.orgNodeIds,
+            onChange: (orgNodeIds: string[]) => onChange({ ...value, orgNodeIds }),
+            nodes: roster.data?.units ?? [],
+            loading: roster.isPending,
+            fill: true,
+          }}
+          fallback={<p {...stylex.props(styles.quiet)}>{format(m.pickerUnavailable)}</p>}
+        />
+        {/* one kind of people is no choice; several are, and choosing none
+            of them is choosing all */}
+        {kinds.length > 1 && (
+          <div {...stylex.props(styles.kinds)}>
+            <CheckboxGroup
+              legend={format(m.recordUnitKinds)}
+              options={kinds.map((kind) => ({ value: kind.id, label: kind.name }))}
+              selected={[...value.userTypeIds]}
+              onChange={(userTypeIds) => onChange({ ...value, userTypeIds })}
+              emptyLabel=""
+            />
+            <p {...stylex.props(styles.kindsHint)}>{format(m.recordUnitKindsHint)}</p>
+          </div>
+        )}
+      </AsyncSection>
     </div>
   )
 }
