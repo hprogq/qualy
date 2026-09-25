@@ -2,13 +2,14 @@ import MyResultPage from '../src/client/result/MyResultPage.tsx'
 import { ResultLedger } from '../src/client/result/ResultLedger.tsx'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
-import { Effect } from 'effect'
+import { Effect, Stream } from 'effect'
 import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The score page as its reader uses it: one column of account, an outline
-// beside it at a desk and a row of chips over it on a phone, and claims
-// opened in place and followed to the filing page. Business facts are read
-// off data-* hooks; the copy is the catalog's business.
+// beside it at a desk and a row of chips over it on a phone, claims opened
+// in place and followed to the filing page, and the page keeping current
+// while the round moves. Business facts are read off data-* hooks; the
+// copy is the catalog's business.
 
 const BATCH_ID = '11111111-1111-4111-8111-111111111111'
 const PARTICIPANT_ID = '22222222-2222-4222-8222-222222222222'
@@ -654,6 +655,60 @@ describe('an account that cannot be computed', () => {
     expect(panel.getByRole('button').elements()).toHaveLength(1)
     await panel.getByRole('button').click()
     await expect.element(page.getByTestId('entries-page')).toBeInTheDocument()
+  })
+})
+
+describe('a round that moves while the page is open', () => {
+  const wakeOnce = () => {
+    let release = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const wake = () =>
+      Effect.succeed(
+        Stream.concat(
+          Stream.fromEffect(
+            Effect.promise(() => gate).pipe(Effect.as({ kind: 'result-changed' as const })),
+          ),
+          Stream.never,
+        ),
+      )
+    return { wake, release: () => release() }
+  }
+
+  it('reads the account again when the round says it moved', async () => {
+    const paper = normal()
+    let total = '49.50'
+    const { wake, release } = wakeOnce()
+    await screen(paper, {
+      getMyResult: () => Effect.succeed({ ...paper.result, total }),
+      watchBatch: wake,
+    })
+    await expect.element(page.getByTestId('result-total')).toHaveTextContent('49.50')
+    total = '55.50'
+    release()
+    await expect.element(page.getByTestId('result-total')).toHaveTextContent('55.50')
+  })
+
+  it('keeps what it read when a later read fails, and says it may be behind', async () => {
+    const paper = normal()
+    let down = false
+    const { wake, release } = wakeOnce()
+    await screen(paper, {
+      getMyResult: () =>
+        down
+          ? Effect.fail(apiError('ASSESSMENT_SCORING_UNAVAILABLE'))
+          : Effect.succeed(paper.result),
+      watchBatch: wake,
+    })
+    await expect.element(page.getByTestId('result-total')).toHaveTextContent('49.50')
+    down = true
+    release()
+    await expect.element(page.getByTestId('result-stale')).toBeVisible()
+    await expect.element(page.getByTestId('result-total')).toHaveTextContent('49.50')
+    down = false
+    await page.getByTestId('result-stale').getByRole('button').click()
+    await expect.element(page.getByTestId('result-stale')).not.toBeInTheDocument()
   })
 })
 

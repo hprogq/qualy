@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -13,6 +13,7 @@ import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import type { EntryDto } from '../entry/model.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
+import { useBatchLive } from '../live.ts'
 import { ResultLedger, ResultUnavailable } from './ResultLedger.tsx'
 import { useMyEntriesQuery } from '../entry/my-entries.ts'
 
@@ -20,9 +21,9 @@ import { useMyEntriesQuery } from '../entry/my-entries.ts'
 //
 // The account itself is `ResultLedger`, which this page shares with the
 // staff view of a participant. What belongs to this page is everything
-// around it: reading the three answers, what to say when the arithmetic
-// cannot be reached, and where a line leads - to the claim, on this
-// reader's own filing page.
+// around it: reading the three answers, keeping them current while the
+// round moves, what to say when the arithmetic cannot be reached, and where
+// a line leads - to the claim, on this reader's own filing page.
 
 export default function MyResultPage() {
   const { format } = useI18n()
@@ -75,14 +76,60 @@ const styles = stylex.create({
     borderTopColor: tokens.divider,
   },
   skBone: { height: 13, borderRadius: 4 },
+  stale: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 10,
+    width: '100%',
+    maxWidth: 1076,
+    marginInline: 'auto',
+    paddingInline: 14,
+    paddingBlock: 10,
+    borderRadius: tokens.radiusMd,
+    backgroundColor: `color-mix(in oklab, ${tokens.warning} 12%, transparent)`,
+    fontSize: 13,
+    color: tokens.warningForeground,
+  },
 })
 
 function Standing({ batchId }: { batchId: string }) {
   const query = useApiQuery(assessmentApi)
+  const queryClient = useQueryClient()
   const navigate = usePageNavigate()
   const { format, formatError } = useI18n()
 
-  const result = useQuery(query.assessment.getMyResult.queryOptions({ params: { batchId } }))
+  // Wake-ups say "read again" and name what moved: a decision moves the
+  // account, a filing moves the counts beside it, and a change to the paper
+  // moves how the account is laid out.
+  const { live } = useBatchLive(batchId, (kind) => {
+    const stale = (key: readonly unknown[]) => void queryClient.invalidateQueries({ queryKey: key })
+    switch (kind) {
+      case 'sync':
+      case 'phase-changed':
+        stale(query.assessment.key())
+        return
+      case 'entries-changed':
+        stale(query.assessment.listMyEntries.key({ params: { batchId }, query: {} }))
+        return
+      case 'review-instance-changed':
+      case 'result-changed':
+        stale(query.assessment.getMyResult.key({ params: { batchId } }))
+        stale(query.assessment.listMyEntries.key({ params: { batchId }, query: {} }))
+        return
+      case 'item-changed':
+        stale(query.assessment.listItems.key({ params: { batchId } }))
+        stale(query.assessment.getMyResult.key({ params: { batchId } }))
+        return
+      default:
+        return
+    }
+  })
+
+  const result = useQuery({
+    ...query.assessment.getMyResult.queryOptions({ params: { batchId } }),
+    refetchInterval: live ? 120_000 : 30_000,
+  })
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
   // the filings, for what is still moving and for which claim a line was
   const mine = useQuery(useMyEntriesQuery(batchId))
@@ -99,9 +146,10 @@ function Standing({ batchId }: { batchId: string }) {
     </Button>
   )
 
-  // The arithmetic out of reach: no figure on this page would be true, so
-  // none is drawn - only why, and what can be done.
+  // Nothing read yet and the arithmetic out of reach: no figure on this page
+  // would be true, so none is drawn - only why, and what can be done.
   const unreadable =
+    result.data === undefined &&
     result.error !== null &&
     (isApiErrorCode(result.error, 'ASSESSMENT_SCORING_UNAVAILABLE') ||
       isApiErrorCode(result.error, 'ASSESSMENT_SCORING_ACCOUNT_TOO_LARGE'))
@@ -118,7 +166,7 @@ function Standing({ batchId }: { batchId: string }) {
     )
   }
 
-  const error = result.error ?? items.error ?? mine.error
+  const error = result.data === undefined ? result.error : (items.error ?? mine.error)
   return (
     <AsyncSection
       pending={result.isPending || items.isPending || mine.isPending}
@@ -153,6 +201,20 @@ function Standing({ batchId }: { batchId: string }) {
     >
       {result.data !== undefined && (
         <div {...stylex.props(styles.page)}>
+          {/* a later read failed: what was read stays, and says it may be behind */}
+          {result.error !== null && (
+            <div data-testid="result-stale" role="status" {...stylex.props(styles.stale)}>
+              <span>{format(m.resultStaleTitle)}</span>
+              <Button
+                variant="outline"
+                size="xs"
+                disabled={result.isFetching}
+                onClick={() => void result.refetch()}
+              >
+                {format(m.resultRecalculate)}
+              </Button>
+            </div>
+          )}
           <ResultLedger
             result={result.data}
             items={items.data?.items ?? []}
