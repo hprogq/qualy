@@ -466,12 +466,14 @@ const oneGrant = (tenantId: string, grantId: string) =>
   )
 
 /**
- * A grant nobody has withdrawn yet, run out or not, and whether it is still
- * in force.
+ * A grant nobody has withdrawn yet, run out or not, and whether it has run
+ * out.
  *
  * What the owner of an object closes: a grant past its term confers nothing,
  * but its record still names it, and marking it withdrawn is what lets the
- * record go.
+ * record go. Run out means past `valid_until` and nothing else: a grant whose
+ * term has not begun yet is not in force either, but it will be, so it is
+ * not over.
  */
 const unrevokedGrant = (tenantId: string, grantId: string) =>
   db.query((k) =>
@@ -485,11 +487,10 @@ const unrevokedGrant = (tenantId: string, grantId: string) =>
         'g.resourceNamespace',
         'g.resourceType',
         'g.resourceId',
-        inForce({
-          revokedAt: eb.ref('g.revokedAt'),
-          validFrom: eb.ref('g.validFrom'),
-          validUntil: eb.ref('g.validUntil'),
-        }).as('inForce'),
+        eb
+          .and([eb('g.validUntil', 'is not', null), eb('g.validUntil', '<=', sql<Date>`now()`)])
+          .$castTo<boolean>()
+          .as('lapsed'),
       ])
       .where('g.tenantId', '=', tenantId)
       .where('g.id', '=', grantId)
@@ -1253,7 +1254,9 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
      * owner: the other door, beside `revoke`, which refuses these.
      *
      * `appointment` asks what `revoke` asks (`mayTakeBack`); a grant already
-     * past its term takes nothing away, so nothing is asked of it. The
+     * past its term takes nothing away, so nothing is asked of it, while one
+     * whose term has not begun yet will confer everything it names, so it
+     * asks the same as one in force. The
      * owner closing its own record of the appointment asks nothing: it has
      * authorized closing the record, and a grant outliving its record could
      * never be revoked again. Either way only a grant confined to the object
@@ -1277,7 +1280,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
           ) {
             return yield* new AccessDenied({ reason: 'grant not confined to this resource' })
           }
-          if (input.authority === 'appointment' && grant.inForce) {
+          if (input.authority === 'appointment' && !grant.lapsed) {
             yield* mayTakeBack(input.actor, input.tenantId, grant, targetOf(grant))
           }
           yield* revokeGrant(input.tenantId, input.grantId, input.actor.userId)

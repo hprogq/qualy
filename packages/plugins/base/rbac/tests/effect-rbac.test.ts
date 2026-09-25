@@ -2150,17 +2150,18 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
             roleId: string,
             nodeId: string,
             resourceId: string | null,
-            lapsed = false,
+            term: 'current' | 'lapsed' | 'pending' = 'current',
           ) =>
             Effect.map(
               runSql(sql`
                 insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage,
                                          resource_namespace, resource_type, resource_id,
-                                         valid_until)
+                                         valid_from, valid_until)
                 values (${f.tenant}, ${userId}, ${roleId}, ${nodeId}, 'subtree',
                         ${resourceId === null ? null : 'assessment'},
                         ${resourceId === null ? null : 'batch'}, ${resourceId},
-                        ${lapsed ? sql`now() - interval '1 day'` : null})
+                        ${term === 'pending' ? sql`now() + interval '1 day'` : null},
+                        ${term === 'lapsed' ? sql`now() - interval '1 day'` : null})
                 returning id`),
               (result) => one<{ id: string }>(result).id,
             )
@@ -2171,11 +2172,18 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
               insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
               values (${f.tenant}, 'Li', ${f.userType}, ${f.child}) returning id`),
           ).id
+          const wang = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.tenant}, 'Wang', ${f.userType}, ${f.child}) returning id`),
+          ).id
           // an office the actor appoints, one they do not, the same one run
-          // out, one confined to another object, and one confined to nothing
+          // out, the same one not begun yet, one confined to another object,
+          // and one confined to nothing
           const appointable = yield* hold(li, counsellor, f.child, batch)
           const peer = yield* hold(li, collegeAdmin, f.child, batch)
-          const lapsedPeer = yield* hold(li, collegeAdmin, f.root, batch, true)
+          const lapsedPeer = yield* hold(li, collegeAdmin, f.root, batch, 'lapsed')
+          const pendingPeer = yield* hold(wang, collegeAdmin, f.child, batch, 'pending')
           const elsewhere = yield* hold(li, counsellor, f.root, otherBatch)
           const general = yield* hold(li, collegeAdmin, f.root, null)
 
@@ -2216,6 +2224,9 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
             appointable: yield* take(appointable, f.anchored, 'appointment'),
             // a grant past its term takes nothing away
             lapsed: yield* take(lapsedPeer, f.anchored, 'appointment'),
+            // one whose term has not begun will, so it asks like one in force
+            pending: yield* take(pendingPeer, f.anchored, 'appointment'),
+            pendingLive: yield* live(pendingPeer),
             // the owner closing its own record asks nothing of the actor
             closing: yield* take(peer, f.anchored, 'record-closing'),
             closed: yield* live(peer),
@@ -2242,6 +2253,9 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
       expect(answer.stillThere).toBe(true)
       expect(answer.appointable).toBe(true)
       expect(answer.lapsed).toBe(true)
+      expect(answer.pending).toMatchObject({ _tag: 'ACCESS_DENIED' })
+      expect((answer.pending as { reason: string }).reason).toContain('GRANT_RULE_REFUSED')
+      expect(answer.pendingLive).toBe(true)
       expect(answer.closing).toBe(true)
       expect(answer.closed).toBe(false)
       expect(answer.again).toBe(false)

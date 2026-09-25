@@ -220,8 +220,9 @@ export interface RbacShape {
      * would take to give it now - the same questions a grant asks of its
      * giver (grant administration of that reach there, the administrator
      * role's reservation, the office being theirs to appoint) - and one's
-     * own with grant administration alone. A grant that has already run out
-     * takes nothing away, so nothing is asked of it.
+     * own with grant administration alone. A grant already past its term
+     * takes nothing away, so nothing is asked of it; one whose term has not
+     * begun yet is asked like one in force.
      *
      * `record-closing`: the owner is closing its own record of the
      * appointment - the object is going, or what it accepted from the grant
