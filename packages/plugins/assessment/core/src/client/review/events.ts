@@ -24,6 +24,14 @@ const WITH_ACTOR: Record<string, MessageDescriptor> = {
   'returned-for-revision': m.eventReturnedForRevision,
   'revision-required': m.eventReturnedForRevision,
   appealed: m.eventAppealed,
+  // staff contesting a conclusion on the participant's behalf
+  reopened: m.eventReopened,
+  // a result re-determined outside any round, on the claim's own log, and
+  // the round it ended
+  'recognition-corrected': m.eventRecognitionCorrected,
+  'approval-revoked': m.eventApprovalRevoked,
+  'rejection-overturned': m.eventRejectionOverturned,
+  'superseded-by-redetermination': m.eventSupersededByRedetermination,
   'abandoned-by-submitter': m.eventAbandoned,
   'supplement-requested': m.eventSupplementRequested,
   'supplement-submitted': m.eventSupplementSubmitted,

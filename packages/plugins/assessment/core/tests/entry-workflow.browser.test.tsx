@@ -1432,6 +1432,81 @@ describe('filing a claim', () => {
     ).toBe('started')
   })
 
+  // What an appeal did to the result is the system's word (ruling of
+  // 2026-09-25): the round's heading carries it, never the reviewer's.
+  it('heads an appeal with what it did to the result', async () => {
+    const DECIDED = '88888888-8888-4888-8888-888888888886'
+    const APPEAL = '88888888-8888-4888-8888-888888888887'
+    const round = (over: Record<string, unknown>) => ({
+      state: 'completed',
+      revisionId: REVISION_ID,
+      supersedesInstanceId: null,
+      appealedInstanceId: null,
+      appealedRecognitionId: null,
+      effect: null,
+      submittedAt: '2026-08-20T14:06:18.000Z',
+      completedAt: '2026-08-20T15:49:37.000Z',
+      events: [],
+      supplements: [],
+      ...over,
+    })
+    await screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [entry({ status: 'rejected' })],
+            nextCursor: null,
+            attention: { unreadItemIds: [] },
+          }),
+        getEntryHistory: () =>
+          Effect.succeed({
+            entry: entry({ status: 'rejected' }),
+            events: [],
+            revisions: [
+              {
+                id: REVISION_ID,
+                revisionNo: 1,
+                itemRevisionId: REVISION_ID,
+                payload: { summary: '入伍经历' },
+                note: null,
+                source: 'self',
+                actorId: PARTICIPANT_ID,
+                subjectId: PARTICIPANT_ID,
+                attachments: [],
+                createdAt: '2026-08-20T14:00:00.000Z',
+              },
+            ],
+            rounds: [
+              round({ id: DECIDED, roundNo: 1, outcome: 'approved', origin: 'initial' }),
+              round({
+                id: APPEAL,
+                roundNo: 2,
+                outcome: 'rejected',
+                origin: 'appeal',
+                appealedInstanceId: DECIDED,
+                effect: 'revoked',
+                submittedAt: '2026-08-21T09:00:00.000Z',
+                completedAt: '2026-08-21T10:00:00.000Z',
+              }),
+            ],
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    await page.getByRole('button', { name: /2024 年入伍/ }).click()
+    await page.getByRole('button', { name: /审核记录/ }).click()
+    await expect.element(page.getByTestId('trail-round').first()).toBeVisible()
+    const sections = page.getByTestId('trail-round').elements()
+    expect(sections[0]?.getAttribute('data-round-no')).toBe('2')
+    expect(sections[0]?.querySelector('[data-effect]')?.getAttribute('data-effect')).toBe('revoked')
+    // a first look revisited nothing, and says only that it ended
+    expect(sections[1]?.querySelector('[data-effect]')).toBeNull()
+  })
+
   it('puts the reviewer’s request on the claim, and both halves of it in the account', async () => {
     const asked = {
       requestId: REQUEST_ID,

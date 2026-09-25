@@ -853,7 +853,7 @@ const administrativeEntryView = Schema.Struct({
        * screen borrowing the filing's author says the office decided
        * something it did not.
        */
-      source: Schema.Literals(['review', 'record', 'import', 'system']),
+      source: Schema.Literals(['review', 'record', 'import', 'system', 'redetermination']),
       actorName: Schema.NullOr(Schema.String),
       createdAt: Schema.String,
     }),
@@ -1032,7 +1032,7 @@ const entryView = Schema.Struct({
   recognition: Schema.NullOr(
     Schema.Struct({
       id: Schema.String,
-      source: Schema.Literals(['review', 'record', 'import', 'system']),
+      source: Schema.Literals(['review', 'record', 'import', 'system', 'redetermination']),
       /** the filing version it judged; a later one means it judged older material */
       entryRevisionId: Schema.String,
       /** opaque ids with the frozen schemas that name them, in order */
@@ -1315,7 +1315,7 @@ const breakdownLine = Schema.Struct({
  */
 const recognitionView = Schema.Struct({
   id: Schema.String,
-  source: Schema.Literals(['review', 'record', 'import', 'system']),
+  source: Schema.Literals(['review', 'record', 'import', 'system', 'redetermination']),
   /** the filing this determination judged, which is not always the current one */
   entryRevisionId: Schema.String,
   values: configJson,
@@ -1326,6 +1326,11 @@ const recognitionView = Schema.Struct({
 /** one claim as a staff account reads it: the claim, and where it stands */
 const participantEntryView = Schema.Struct({
   entry: entryView,
+  /** what this reader may do to correct the claim's conclusion */
+  corrections: Schema.Struct({
+    reopen: actionAvailability,
+    redetermine: actionAvailability,
+  }),
   recognition: Schema.NullOr(recognitionView),
 })
 
@@ -1962,6 +1967,14 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
             appealedInstanceId: Schema.NullOr(Schema.String),
             /** the determination contested, where no round produced it */
             appealedRecognitionId: Schema.NullOr(Schema.String),
+            /**
+             * What a round that revisited a conclusion did to it, derived by
+             * the system from where the claim stood before and after; null
+             * for every other round
+             */
+            effect: Schema.NullOr(
+              Schema.Literals(['upheld', 'corrected', 'revoked', 'overturned']),
+            ),
             submittedAt: Schema.String,
             completedAt: Schema.NullOr(Schema.String),
             events: Schema.Array(
@@ -2116,6 +2129,62 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // by the claim, not by the round: an administrative record has no round
     // and is still a decision its subject may disagree with
     HttpApiEndpoint.post('appealEntry', '/assessment/entries/:entryId/appeals', {
+      params: Schema.Struct({ entryId: uuidInput }),
+      payload: Schema.Struct({ reason: boundedText(2000) }),
+      success: Schema.Struct({ review: reviewDetailView }),
+      error: [
+        ReviewNotFound,
+        BatchNotFound,
+        BatchReadOnly,
+        EntryActionRefused,
+        AccessDenied,
+        BadRequest,
+      ],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // Correcting a concluded claim outside any round: the same question a
+    // reviewer answers - yes or no, and when yes what it is recognised as -
+    // compared by the server with where the claim stands. A round still
+    // contesting the claim ends with it.
+    HttpApiEndpoint.post('redetermineEntry', '/assessment/entries/:entryId/redeterminations', {
+      params: Schema.Struct({ entryId: uuidInput }),
+      payload: Schema.Struct({
+        decision: Schema.Literals(['approve', 'reject']),
+        recognition: Schema.optional(Schema.Struct({ values: configJson })),
+        /** why it is being corrected; kept with the claim's own record */
+        reason: boundedText(500),
+      }),
+      success: Schema.Struct({
+        redetermination: Schema.Struct({
+          kind: Schema.Literals([
+            'recognition-corrected',
+            'approval-revoked',
+            'rejection-overturned',
+          ]),
+          status: Schema.Literals(['approved', 'rejected']),
+          /** whether a round contesting the claim was ended by it */
+          endedRound: Schema.Boolean,
+        }),
+      }),
+      error: [
+        EntryNotFound,
+        BatchReadOnly,
+        EntryActionRefused,
+        EntryPayloadInvalid,
+        ItemRevisionConflict,
+        DeterminationRefused,
+        ScoringUnavailable,
+        AccessDenied,
+        BadRequest,
+      ],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // Staff contesting a claim's conclusion on its participant's behalf: a
+    // round on the whole escalation route, as an appeal walks it, that does
+    // not spend the participant's own appeal
+    HttpApiEndpoint.post('reopenEntry', '/assessment/entries/:entryId/reopenings', {
       params: Schema.Struct({ entryId: uuidInput }),
       payload: Schema.Struct({ reason: boundedText(2000) }),
       success: Schema.Struct({ review: reviewDetailView }),

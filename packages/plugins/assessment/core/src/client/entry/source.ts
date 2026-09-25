@@ -18,6 +18,8 @@ export const sourceLabelOf = (source: string) => {
       return m.entrySourceImport
     case 'system':
       return m.entrySourceSystem
+    case 'redetermination':
+      return m.entrySourceRedetermination
     default:
       return m.entrySourceSelf
   }

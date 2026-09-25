@@ -66,6 +66,20 @@ export const permissions = [
     target: 'org-node',
   },
   {
+    // Correcting a concluded claim outside any round (ruling of
+    // 2026-09-25): granted on purpose - an inspection group, say - and never
+    // implied by judging at the end of a route
+    code: 'assessment.entry.redetermine',
+    name: message('assessment/permission/entry-redetermine', 'Re-determine concluded claims'),
+    description: message(
+      'assessment/permission-hint/entry-redetermine',
+      'Correct the result of a concluded claim directly; the participant can appeal the new result.',
+    ),
+    groupKey: 'assessment',
+    group: message('assessment/permission-group/assessment', 'Assessment'),
+    target: 'org-node',
+  },
+  {
     code: 'assessment.review.process',
     name: message('assessment/permission/review-process', 'Review submissions'),
     groupKey: 'assessment',
@@ -74,10 +88,10 @@ export const permissions = [
   },
   {
     code: 'assessment.review.reopen',
-    name: message('assessment/permission/review-reopen', 'Reopen completed reviews'),
+    name: message('assessment/permission/review-reopen', 'Re-examine concluded claims'),
     description: message(
       'assessment/permission-hint/review-reopen',
-      'Reopen a review that has already ended.',
+      'Send a concluded claim through the escalation workflow again on the participant\u2019s behalf.',
     ),
     groupKey: 'assessment',
     group: message('assessment/permission-group/assessment', 'Assessment'),
@@ -175,12 +189,24 @@ export const REVIEW_ACTION_CODES = [
 export const BATCH_STAFF_CODES = [
   'assessment.entry.proxy',
   'assessment.entry.record',
+  // not phase gated: correcting a conclusion is not a window the calendar
+  // opens, and the batch's acceptance is what bounds it
+  'assessment.entry.redetermine',
   'assessment.review.process',
   'assessment.review.reopen',
   'assessment.result.view-peers',
   'assessment.ranking.view',
   'assessment.publication.manage',
 ] as const
+
+/**
+ * Staff codes a role does not carry into a batch merely by holding every
+ * permission by its mode (the canonical tenant administrator's
+ * `all-active`). Re-determining a concluded claim is granted on purpose
+ * (ruling of 2026-09-25): a system administrator who needs it gives it to
+ * themselves through a role that names it, which the record then shows.
+ */
+export const EXPLICIT_ONLY_STAFF_CODES: readonly string[] = ['assessment.entry.redetermine']
 
 export const PHASE_GATED_CODES = [
   'assessment.entry.create',

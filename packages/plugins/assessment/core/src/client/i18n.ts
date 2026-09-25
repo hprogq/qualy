@@ -872,7 +872,7 @@ const i18n = definePluginMessages({
     entryAppealHint: {
       id: 'assessment/entry/appeal-hint',
       defaultMessage:
-        'Appealing does not change the submitted material. Edit and resubmit if the material itself needs to change.',
+        'The review may change the original result, up or down, and a result can be appealed only once. To change the material itself, edit it and submit again',
     },
     entryAppealReason: {
       id: 'assessment/entry/appeal-reason',
@@ -988,6 +988,63 @@ const i18n = definePluginMessages({
     refuseAppealNotWithdrawable: {
       id: 'assessment/entry/refuse-appeal-not-withdrawable',
       defaultMessage: 'An appeal in progress cannot be withdrawn.',
+    },
+    staffReopen: { id: 'assessment/staff/reopen', defaultMessage: 'Re-examine' },
+    staffReopenTitle: {
+      id: 'assessment/staff/reopen-title',
+      defaultMessage: 'Re-examine this result',
+    },
+    staffReopenHint: {
+      id: 'assessment/staff/reopen-hint',
+      defaultMessage:
+        'It goes through the escalation workflow from the first step. The participant keeps their own appeal',
+    },
+    staffReopenNoRoute: {
+      id: 'assessment/staff/reopen-no-route',
+      defaultMessage: 'This item has no escalation workflow. Re-determine the result instead',
+    },
+    staffReopened: { id: 'assessment/staff/reopened', defaultMessage: 'Re-examination started' },
+    staffRedetermine: { id: 'assessment/staff/redetermine', defaultMessage: 'Re-determine' },
+    staffRedetermineTitle: {
+      id: 'assessment/staff/redetermine-title',
+      defaultMessage: 'Re-determine the result',
+    },
+    staffRedetermineHint: {
+      id: 'assessment/staff/redetermine-hint',
+      defaultMessage: 'Give the result directly. The participant can appeal the new result once',
+    },
+    staffRedetermineDecision: {
+      id: 'assessment/staff/redetermine-decision',
+      defaultMessage: 'Result',
+    },
+    staffRedetermineReject: {
+      id: 'assessment/staff/redetermine-reject',
+      defaultMessage: 'Do not pass',
+    },
+    staffRedetermineReason: {
+      id: 'assessment/staff/redetermine-reason',
+      defaultMessage: 'Reason',
+    },
+    staffRedetermineEndsRound: {
+      id: 'assessment/staff/redetermine-ends-round',
+      defaultMessage: 'An appeal or re-examination of this claim is under way. Confirming ends it',
+    },
+    staffRedetermined: { id: 'assessment/staff/redetermined', defaultMessage: 'Result updated' },
+    refuseRedeterminationUnchanged: {
+      id: 'assessment/entry/refuse-redetermination-unchanged',
+      defaultMessage: 'The result has not changed.',
+    },
+    refuseNothingToRedetermine: {
+      id: 'assessment/entry/refuse-nothing-to-redetermine',
+      defaultMessage: 'This claim has no result to correct yet.',
+    },
+    refuseOwnClaim: {
+      id: 'assessment/entry/refuse-own-claim',
+      defaultMessage: 'You cannot do this to your own claim.',
+    },
+    refuseAppealExhausted: {
+      id: 'assessment/entry/refuse-appeal-exhausted',
+      defaultMessage: 'This result has already been appealed once.',
     },
     refuseNoAppealRoute: {
       id: 'assessment/entry/refuse-no-appeal-route',
@@ -1276,6 +1333,39 @@ const i18n = definePluginMessages({
     },
     // a middle step of the escalation route agreeing: an opinion the next
     // step starts from, never the verdict
+    eventRecognitionCorrected: {
+      id: 'assessment/event/recognition-corrected',
+      defaultMessage: '{who} re-determined the result and corrected it',
+    },
+    eventApprovalRevoked: {
+      id: 'assessment/event/approval-revoked',
+      defaultMessage: '{who} re-determined the result and revoked the approval',
+    },
+    eventRejectionOverturned: {
+      id: 'assessment/event/rejection-overturned',
+      defaultMessage: '{who} re-determined the claim as approved',
+    },
+    eventSupersededByRedetermination: {
+      id: 'assessment/event/superseded-by-redetermination',
+      defaultMessage: '{who} re-determined the result, which ended this round',
+    },
+    entryEffectUpheld: { id: 'assessment/entry/effect-upheld', defaultMessage: 'Upheld' },
+    entryEffectCorrected: {
+      id: 'assessment/entry/effect-corrected',
+      defaultMessage: 'Result corrected',
+    },
+    entryEffectRevoked: {
+      id: 'assessment/entry/effect-revoked',
+      defaultMessage: 'Approval revoked',
+    },
+    entryEffectOverturned: {
+      id: 'assessment/entry/effect-overturned',
+      defaultMessage: 'Now approved',
+    },
+    eventReopened: {
+      id: 'assessment/event/reopened',
+      defaultMessage: '{who} asked for the result to be examined again',
+    },
     eventOpinionApproved: {
       id: 'assessment/event/opinion-approved',
       defaultMessage: '{who} agreed and passed it to the next step',
@@ -1474,6 +1564,10 @@ const i18n = definePluginMessages({
     entrySourceSystem: {
       id: 'assessment/entry/source-system',
       defaultMessage: 'Created by system',
+    },
+    entrySourceRedetermination: {
+      id: 'assessment/entry/source-redetermination',
+      defaultMessage: 'Re-determined',
     },
     // the determination in force, and where it came from
     recognitionTitle: {
@@ -3288,8 +3382,7 @@ const i18n = definePluginMessages({
     },
     reviewAppealBannerBody: {
       id: 'assessment/review/appeal-banner-body',
-      defaultMessage:
-        'The participant is contesting a decision already made. This round settles whether it stands.',
+      defaultMessage: 'The participant contests the original result. Judge again whether it passes',
     },
     reviewEscBannerBody: {
       id: 'assessment/review/esc-banner-body',
@@ -3326,6 +3419,19 @@ const i18n = definePluginMessages({
     reviewAppealBannerTitle: {
       id: 'assessment/review/appeal-banner-title',
       defaultMessage: 'Appeal review',
+    },
+    reviewReopenBannerTitle: {
+      id: 'assessment/review/reopen-banner-title',
+      defaultMessage: 'Re-examination',
+    },
+    reviewReopenBannerBody: {
+      id: 'assessment/review/reopen-banner-body',
+      defaultMessage:
+        'Staff asked for the original result to be examined again. Judge again whether it passes',
+    },
+    staffReopenReason: {
+      id: 'assessment/staff/reopen-reason',
+      defaultMessage: 'Reason for re-examination',
     },
     reviewAboutGroupCapNamed: {
       id: 'assessment/review/about-group-cap-named',
@@ -5487,7 +5593,13 @@ const i18n = definePluginMessages({
     },
     'permission-hint.assessment.review.reopen': {
       id: 'assessment/permission-hint/review-reopen',
-      defaultMessage: 'Reopen a review that has already ended.',
+      defaultMessage:
+        'Send a concluded claim through the escalation workflow again on the participant\u2019s behalf.',
+    },
+    'permission-hint.assessment.entry.redetermine': {
+      id: 'assessment/permission-hint/entry-redetermine',
+      defaultMessage:
+        'Correct the result of a concluded claim directly; the participant can appeal the new result.',
     },
     'permission-hint.assessment.result.view-peers': {
       id: 'assessment/permission-hint/result-view-peers',
@@ -5554,7 +5666,11 @@ const i18n = definePluginMessages({
     },
     'permission.assessment.review.reopen': {
       id: 'assessment/permission/review-reopen',
-      defaultMessage: 'Reopen completed reviews',
+      defaultMessage: 'Re-examine concluded claims',
+    },
+    'permission.assessment.entry.redetermine': {
+      id: 'assessment/permission/entry-redetermine',
+      defaultMessage: 'Re-determine concluded claims',
     },
     'permission.assessment.result.view-peers': {
       id: 'assessment/permission/result-view-peers',

@@ -65,7 +65,7 @@ export interface EntryDto {
   /** what it currently stands recognised as, under the version that judged it */
   recognition: {
     id: string
-    source: 'review' | 'record' | 'import' | 'system'
+    source: 'review' | 'record' | 'import' | 'system' | 'redetermination'
     entryRevisionId: string
     fields: readonly { id: string; schema: unknown }[]
     values: unknown

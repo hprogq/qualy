@@ -393,7 +393,13 @@ function Trail({ data, subject }: { data: History; subject: string | undefined }
               <h4 {...stylex.props(styles.roundTitle)}>
                 {format(m.entryTrailRound, { no: item.round.roundNo })}
               </h4>
-              {item.round.state === 'completed' ? (
+              {item.round.effect != null ? (
+                // what an appeal or a re-examination did to the result, as
+                // the system tells it by comparing before and after
+                <Badge variant="secondary" data-effect={item.round.effect}>
+                  {format(roundEffectMessage(item.round.effect))}
+                </Badge>
+              ) : item.round.state === 'completed' ? (
                 <Badge variant="secondary">{format(m.entryRoundEnded)}</Badge>
               ) : (
                 <Badge variant="outline" className={stylex.props(styles.ongoingBadge).className}>
@@ -897,11 +903,25 @@ function Act({
 const commentLabelOf = (kind: string) =>
   kind === 'appealed'
     ? m.entryAppealReason
-    : kind === 'escalated'
-      ? m.reviewEscalateReason
-      : kind === 'rerouted'
-        ? m.entryTrailReasonLabel
-        : m.reviewComment
+    : kind === 'reopened'
+      ? m.staffReopenReason
+      : kind === 'superseded-by-redetermination'
+        ? m.staffRedetermineReason
+        : kind === 'escalated'
+          ? m.reviewEscalateReason
+          : kind === 'rerouted'
+            ? m.entryTrailReasonLabel
+            : m.reviewComment
+
+/** what a round that revisited a result did to it, in words */
+const roundEffectMessage = (effect: 'upheld' | 'corrected' | 'revoked' | 'overturned') =>
+  effect === 'upheld'
+    ? m.entryEffectUpheld
+    : effect === 'corrected'
+      ? m.entryEffectCorrected
+      : effect === 'revoked'
+        ? m.entryEffectRevoked
+        : m.entryEffectOverturned
 
 function Ask({ supplement, subject }: { supplement: Supplement; subject: string | undefined }) {
   const { format } = useI18n()

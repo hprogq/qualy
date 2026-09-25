@@ -400,10 +400,8 @@ describe.runIf(postgresAvailable)('the sitting', () => {
             entry: one<{ status: string }>(
               yield* runSql(sql`select status from entries where id = ${w.entryId}`),
             ),
-            recognitions: (yield* runSql(sql`
-              select id from entry_recognitions where entry_id = ${w.entryId}`)) as {
-              rows: unknown[]
-            },
+            recognitions: yield* runSql(sql`
+              select id from entry_recognitions where entry_id = ${w.entryId}`),
           }
           const votes = yield* runSql(sql`
             select decision from review_votes v
@@ -1076,9 +1074,11 @@ describe.runIf(postgresAvailable)('the sitting', () => {
   })
 
   // A correction upheld by a sitting replaces the determination the claim
-  // stood on, and the next one replaces that: one line of determinations,
-  // each superseding the one before, the claim always pointing at the last.
-  it('keeps one line of determinations across appeals a sitting upholds', async () => {
+  // stood on: one line of determinations, each superseding the one before,
+  // the claim always pointing at the last. And that is the one appeal the
+  // conclusion had (ruling of 2026-09-25): what the appeal concluded is not
+  // appealed again.
+  it('keeps one line of determinations when a sitting upholds an appeal, and takes no second', async () => {
     const result = ok(
       await run(
         db.url,
@@ -1087,32 +1087,29 @@ describe.runIf(postgresAvailable)('the sitting', () => {
           const w = yield* appealWorld(f, 'approve', { lastRung: 'nowhere' })
           const first = yield* w.standing()
           const once = yield* w.appeal('认定等级有误')
-          for (const who of [w.b1, w.b2, w.b3]) yield* w.vote(once, who, 'approve')
-          const second = yield* w.standing()
-          const twice = yield* w.appeal('仍有异议')
           const votes: Exit.Exit<unknown, unknown>[] = []
           for (const who of [w.b1, w.b2, w.b3]) {
-            votes.push(yield* Effect.exit(w.vote(twice, who, 'approve')))
+            votes.push(yield* Effect.exit(w.vote(once, who, 'approve')))
           }
-          const third = yield* w.standing()
+          const second = yield* w.standing()
+          const twice = yield* Effect.exit(w.appeal('仍有异议'))
           const chain = (yield* runSql(sql`
             select id, supersedes_id from entry_recognitions
             where entry_id = ${w.entryId} order by created_at, id`)) as {
             rows: { id: string; supersedes_id: string | null }[]
           }
-          return { first, second, third, votes, chain: chain.rows }
+          return { first, second, twice, votes, chain: chain.rows }
         }),
       ),
     )
     expect(result.votes.every((exit) => Exit.isSuccess(exit))).toBe(true)
-    expect(result.chain).toHaveLength(3)
-    const [r1, r2, r3] = result.chain
+    expect(result.chain).toHaveLength(2)
+    const [r1, r2] = result.chain
     expect(r1!.supersedes_id).toBeNull()
     expect(r2!.supersedes_id).toBe(r1!.id)
-    expect(r3!.supersedes_id).toBe(r2!.id)
     expect(result.first.current_recognition_id).toBe(r1!.id)
     expect(result.second).toMatchObject({ status: 'approved', current_recognition_id: r2!.id })
-    expect(result.third).toMatchObject({ status: 'approved', current_recognition_id: r3!.id })
+    expect(errorOf<{ reason: string }>(result.twice)?.reason).toBe('appeal-exhausted')
   })
 
   // A sitting that the walk made the end of the ladder owns the final no.

@@ -47,6 +47,7 @@ import type { ItemTypeDriver } from '../plugin.ts'
 import { announce } from '../live/events.ts'
 import { bumpParticipantAttention } from '../entry/db.ts'
 import { reviewersVeiled, unnamedUnlessOwn } from './veil.ts'
+import { conclusionOfEntry, targetColumns, type ConclusionTarget } from './conclusion.ts'
 import {
   BatchNotFound,
   BatchReadOnly,
@@ -72,6 +73,7 @@ import {
   participantOf,
   revisionAttachmentsOf,
   setEntryState,
+  staffReachesParticipant,
 } from '../entry/db.ts'
 import type { GateDecision } from '../phase/gate.ts'
 import {
@@ -542,6 +544,20 @@ export interface ReviewMethods {
    * delete a penalty but not to argue with it.
    */
   readonly appealEntry: (
+    tenantId: string,
+    entryId: string,
+    input: { reason: string },
+    as: Principal,
+  ) => Effect.Effect<
+    ReviewDetailView,
+    ReviewNotFound | BatchReadOnly | EntryActionRefused | BatchNotFound
+  >
+  /**
+   * Staff contesting a claim's conclusion on its participant's behalf: a
+   * round that walks the whole escalation route, as an appeal does, without
+   * spending the participant's appeal.
+   */
+  readonly reopenEntry: (
     tenantId: string,
     entryId: string,
     input: { reason: string },
@@ -1305,6 +1321,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       readonly origin: 'initial' | 'appeal' | 'reopen' | 'reroute'
       readonly appealedInstanceId: string | null
       readonly appealedRecognitionId: string | null
+      readonly appealedEventId: string | null
       readonly supersedesInstanceId: string | null
     },
   ) =>
@@ -1322,12 +1339,11 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
    * The determination this round exists to revisit, if it exists to revisit
    * one at all.
    *
-   * An appeal names the round it contests. A re-route names the round it
-   * replaced, and walks back through a chain of them - an administrator may
-   * move an open round more than once - to whatever the last of them
-   * determined. A reopen has no round of its own to point at, so it takes
-   * the claim's standing determination, which is exactly what reopening
-   * means. A first look at a filing revisits nothing.
+   * An appeal names the conclusion it contests, and so does a staff
+   * reopening, which contests it on the participant's behalf. A re-route
+   * names the round it replaced, and walks back through a chain of them -
+   * an administrator may move an open round more than once - to whatever the
+   * last of them determined. A first look at a filing revisits nothing.
    */
   const revisitedRecognition = (
     tenantId: string,
@@ -1337,15 +1353,12 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       readonly origin: 'initial' | 'appeal' | 'reopen' | 'reroute'
       readonly appealedInstanceId: string | null
       readonly appealedRecognitionId: string | null
+      readonly appealedEventId: string | null
       readonly supersedesInstanceId: string | null
     },
   ): Effect.Effect<RecognitionValues | null, QueryFailed, Orm> =>
     Effect.gen(function* () {
       if (row.origin === 'initial') return null
-      if (row.origin === 'reopen') {
-        const standing = yield* currentRecognitionOf(tenantId, row.entryId)
-        return standing === null ? null : standing.values
-      }
       // A moved round first asks the rounds it replaced: a re-route may
       // have interrupted a ladder mid-climb, and a correction a stage below
       // had already made is the most recent word - more recent than whatever
@@ -1360,21 +1373,25 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         const older = yield* instanceLineageOf(tenantId, previous)
         previous = older === null ? null : older.supersedesInstanceId
       }
-      if (row.origin === 'appeal') {
+      if (row.origin === 'appeal' || row.origin === 'reopen') {
         // The round wrote down what it is contesting; the seed follows that
         // pointer and nothing else. An appeal against a determination made
-        // without a round - an administrative record - names the
-        // determination itself, and inheriting anything other than exactly
-        // it would let "approve as it stands" quietly stand for something
-        // the office never wrote.
+        // without a round - an administrative record, a re-determination -
+        // names the determination itself, and inheriting anything other than
+        // exactly it would let "approve as it stands" quietly stand for
+        // something the office never wrote.
         if (row.appealedRecognitionId !== null) {
           const named = yield* recognitionById(tenantId, row.entryId, row.appealedRecognitionId)
           return named === null ? null : named.values
         }
-        if (row.appealedInstanceId === null) return null
-        const contested = yield* recognitionOfInstance(tenantId, row.appealedInstanceId)
-        if (contested !== null) return contested
-        // The contested round determined nothing - it was a rejection. If
+        if (row.appealedInstanceId !== null) {
+          const contested = yield* recognitionOfInstance(tenantId, row.appealedInstanceId)
+          if (contested !== null) return contested
+        } else if (row.appealedEventId === null) {
+          return null
+        }
+        // The contested conclusion determined nothing - a rejection, or a
+        // revocation. If
         // the claim still stands on a determination made about THIS filing,
         // that is the word being revisited; a determination made about an
         // older filing is about material this round is not looking at, and
@@ -2364,6 +2381,162 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
     })
 
   /**
+   * Opens the round that contests a claim's conclusion: an appeal by its
+   * participant, or a reopening by staff on the participant's behalf
+   * (ruling of 2026-09-25). Both walk the whole escalation route from its
+   * first live step, and both leave the claim standing where it stood until
+   * the round concludes. The callers have already locked the batch and
+   * judged the caller; this is the part that is the same for both.
+   */
+  const openContestingRound = (input: {
+    tenantId: string
+    row: {
+      readonly entryId: string
+      readonly batchId: string
+      readonly itemId: string
+      /** a conclusion stands on a decided claim, and the round leaves it so */
+      readonly status: 'approved' | 'rejected'
+      readonly participantId: string
+      readonly revisionId: string
+      readonly subjectUserId: string
+    }
+    target: ConclusionTarget
+    origin: 'appeal' | 'reopen'
+    actorUserId: string
+    reason: string
+  }) =>
+    Effect.gen(function* () {
+      const { tenantId, row } = input
+      const action = input.origin
+      const item = yield* itemOf(tenantId, row.itemId)
+      if (item === null || item.currentRevisionId === null) {
+        return yield* refuse(action, 'item-not-configured')
+      }
+      // a withdrawn question ends the rounds it was asking (§12), and
+      // it does not start new ones; its decided claims stand as they are
+      if (item.status !== 'active') return yield* refuse(action, 'item-not-active')
+      const live = yield* revisionOf(tenantId, item.currentRevisionId)
+      if (live === null) return yield* refuse(action, 'item-not-configured')
+      const filing = yield* revisionAuthorOf(tenantId, row.revisionId)
+      if (filing === null) return yield* refuse(action, 'nothing-to-appeal')
+      const participant = yield* participantOf(tenantId, row.batchId, row.participantId)
+      if (participant === null || participant.status !== 'active') {
+        return yield* refuse(action, 'participant-not-active')
+      }
+      const policy = yield* resolvePolicy({
+        tenantId,
+        batchId: row.batchId,
+        policy: readPolicy(live.reviewPolicy),
+        lineage: participant.anchorLineage,
+      })
+      // A contesting round walks the escalation route and nothing else,
+      // from its first live step; a question with none configured has
+      // nowhere to hear one, which is a different answer from one whose
+      // steps name no level above this person. The walk applies the
+      // arrival rules (§32.66): a step held only by conflicted people -
+      // the participant themselves, say - is stepped over, an unstaffed
+      // one blocks. The prior round's judges are eligible again on
+      // purpose: this is a fresh round, and their word is a fact of the
+      // old one.
+      if (policy.escalation.length === 0) return yield* refuse(action, 'no-appeal-route')
+      const landing = yield* resolveArrival({
+        tenantId,
+        batchId: row.batchId,
+        policy,
+        route: 'escalation',
+        from: 0,
+        subjectUserId: participant.userId,
+        actorId: filing.actorId,
+        conflictSkip: true,
+      })
+      if (landing === null) return yield* refuse(action, 'review-level-missing')
+      const place = yield* standingPlace(tenantId, landing.stage)
+      if (place === null) return yield* refuse(action, 'review-level-missing')
+      const roundNo = yield* nextRoundNo(tenantId, row.entryId)
+      const opened = yield* insertReviewInstance({
+        tenantId,
+        entryId: row.entryId,
+        // the same filing: an appeal disputes the conclusion, not the
+        // material, and changing the material is the other door
+        revisionId: row.revisionId,
+        roundNo,
+        origin: input.origin,
+        initiator: input.origin === 'appeal' ? 'participant' : 'staff',
+        ...targetColumns(input.target),
+        policyRevisionId: live.id,
+        recognitionRevisionId: live.id,
+        effectivePolicy: policy,
+        route: 'escalation',
+        stageId: landing.stage.id,
+        roleIds: landing.stage.roleIds,
+        nodeId: place.nodeId,
+        nodePath: place.nodePath,
+        state: landing.state,
+        blockedReason: landing.blockedReason,
+      })
+      yield* insertReviewEvent({
+        tenantId,
+        reviewInstanceId: opened,
+        kind: input.origin === 'appeal' ? 'appealed' : 'reopened',
+        actorId: input.actorUserId,
+        route: 'escalation',
+        stageId: landing.stage.id,
+        comment: input.reason,
+      })
+      for (const stepped of landing.skipped) {
+        yield* insertReviewEvent({
+          tenantId,
+          reviewInstanceId: opened,
+          kind: 'stage-skipped',
+          actorId: null,
+          route: 'escalation',
+          stageId: stepped.id,
+        })
+      }
+      if (landing.state === 'blocked') {
+        yield* insertReviewEvent({
+          tenantId,
+          reviewInstanceId: opened,
+          kind: 'assignee-not-found',
+          actorId: null,
+          route: 'escalation',
+          stageId: landing.stage.id,
+        })
+      } else if (isPanelStage(landing.stage)) {
+        yield* createPanel({
+          tenantId,
+          reviewInstanceId: opened,
+          route: 'escalation',
+          stageId: landing.stage.id,
+          members: landing.eligible,
+        })
+      }
+      // The claim keeps the standing it already had (§32.21): a round
+      // is a reconsideration of a settled decision, not a withdrawal of
+      // it, and status moves only in the round's own terminal
+      // transaction. Moving it here made contesting a deduction the way
+      // to stop the deduction counting - the 「分数悬置」 reading that
+      // ruling voids in as many words. What a reader needs in order to
+      // know a round is open is the round itself, which is attached in
+      // the same statement.
+      const moved = yield* setEntryState({
+        tenantId,
+        entryId: row.entryId,
+        from: ['approved', 'rejected'],
+        to: row.status,
+        currentReviewInstanceId: opened,
+      })
+      if (!moved) return yield* refuse(action, 'nothing-to-appeal')
+      yield* announce(tenantId, row.batchId, [
+        { kind: 'review-instance-changed' },
+        { kind: 'review-inbox-changed' },
+        { kind: 'entries-changed', subjectUserId: row.subjectUserId },
+        { kind: 'result-changed', subjectUserId: row.subjectUserId },
+      ])
+      return opened
+    })
+
+  /**
    * Contesting a decision that has already been made.
    *
    * A round of its own, against the same filing: nothing was rewritten, and
@@ -2422,165 +2595,31 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               .pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', (error) => Effect.die(error)))
             if (!decision.allowed) return yield* refuse('appeal', decision.reason)
 
-            // What is being contested: the round the claim stands on, or -
-            // for a fact recorded without one - the determination itself.
-            // A claim approved by the rule alone stands on neither: nobody
-            // formed an opinion there, the configuration did, and the way to
-            // change that is to change the question.
-            if (row.status !== 'approved' && row.status !== 'rejected') {
-              return yield* refuse('appeal', 'nothing-to-appeal')
-            }
-            const contested = yield* Effect.gen(function* () {
-              if (row.currentReviewInstanceId !== null) {
-                const standing = yield* instanceOf(tenantId, row.currentReviewInstanceId)
-                if (
-                  standing === null ||
-                  standing.state !== 'completed' ||
-                  (standing.outcome !== 'approved' && standing.outcome !== 'rejected') ||
-                  standing.revisionId !== row.revisionId
-                ) {
-                  return null
-                }
-                return { instanceId: standing.id, recognitionId: null }
-              }
-              // an administrative record, or one an import carried in
-              if (
-                (row.source === 'record' || row.source === 'import') &&
-                row.currentRecognitionId !== null
-              ) {
-                return { instanceId: null, recognitionId: row.currentRecognitionId }
-              }
-              return null
-            })
+            // What is being contested: the conclusion the claim stands on -
+            // the round, or for a fact decided without one the determination
+            // or the revocation itself. A claim approved by the rule alone
+            // stands on none of these: nobody formed an opinion there, the
+            // configuration did, and the way to change that is to change the
+            // question.
+            const contested = yield* conclusionOfEntry(tenantId, entryId)
             if (contested === null) return yield* refuse('appeal', 'nothing-to-appeal')
-            const item = yield* itemOf(tenantId, row.itemId)
-            if (item === null || item.currentRevisionId === null) {
-              return yield* refuse('appeal', 'item-not-configured')
-            }
-            // a withdrawn question ends the rounds it was asking (§12), and
-            // it does not start new ones; its decided claims stand as they are
-            if (item.status !== 'active') return yield* refuse('appeal', 'item-not-active')
-            const live = yield* revisionOf(tenantId, item.currentRevisionId)
-            if (live === null) return yield* refuse('appeal', 'item-not-configured')
-            const filing = yield* revisionAuthorOf(tenantId, row.revisionId)
-            if (filing === null) return yield* refuse('appeal', 'nothing-to-appeal')
-            const participant = yield* participantOf(tenantId, row.batchId, row.participantId)
-            if (participant === null || participant.status !== 'active') {
-              return yield* refuse('appeal', 'participant-not-active')
-            }
-            const policy = yield* resolvePolicy({
+            // One appeal per conclusion (ruling of 2026-09-25): a conclusion
+            // an appeal itself reached is not contested again, and neither
+            // is one somebody already contested. The database holds the same
+            // line; this says it in words first.
+            if (contested.exhausted) return yield* refuse('appeal', 'appeal-exhausted')
+            const opened = yield* openContestingRound({
               tenantId,
-              batchId: row.batchId,
-              policy: readPolicy(live.reviewPolicy),
-              lineage: participant.anchorLineage,
-            })
-            // An appeal walks the escalation route and nothing else; a
-            // question with none configured has nowhere to hear one. The
-            // walk applies the arrival rules (§32.66): a rung held only by
-            // conflicted people - the appellant themselves, say - is stepped
-            // over, a genuinely unstaffed one blocks. The prior round's
-            // judges are eligible again on purpose: an appeal is a fresh
-            // round, and their earlier word is a fact of the old one.
-            // a question configured with no escalation step at all is a
-            // different answer from one whose steps name no level above
-            // this person, and the appellant is told which
-            if (policy.escalation.length === 0) return yield* refuse('appeal', 'no-appeal-route')
-            const landing = yield* resolveArrival({
-              tenantId,
-              batchId: row.batchId,
-              policy,
-              route: 'escalation',
-              from: 0,
-              subjectUserId: participant.userId,
-              actorId: filing.actorId,
-              conflictSkip: true,
-            })
-            if (landing === null) return yield* refuse('appeal', 'review-level-missing')
-            const place = yield* standingPlace(tenantId, landing.stage)
-            if (place === null) return yield* refuse('appeal', 'review-level-missing')
-            const roundNo = yield* nextRoundNo(tenantId, entryId)
-            const opened = yield* insertReviewInstance({
-              tenantId,
-              entryId,
-              // the same filing: an appeal disputes the conclusion, not the
-              // material, and changing the material is the other door
-              revisionId: row.revisionId,
-              roundNo,
+              row: {
+                ...row,
+                revisionId: row.revisionId,
+                status: row.status === 'approved' ? 'approved' : 'rejected',
+              },
+              target: contested.target,
               origin: 'appeal',
-              initiator: 'participant',
-              ...(contested.instanceId === null
-                ? { appealedRecognitionId: contested.recognitionId }
-                : { appealedInstanceId: contested.instanceId }),
-              policyRevisionId: live.id,
-              recognitionRevisionId: live.id,
-              effectivePolicy: policy,
-              route: 'escalation',
-              stageId: landing.stage.id,
-              roleIds: landing.stage.roleIds,
-              nodeId: place.nodeId,
-              nodePath: place.nodePath,
-              state: landing.state,
-              blockedReason: landing.blockedReason,
+              actorUserId: as.userId,
+              reason,
             })
-            yield* insertReviewEvent({
-              tenantId,
-              reviewInstanceId: opened,
-              kind: 'appealed',
-              actorId: as.userId,
-              route: 'escalation',
-              stageId: landing.stage.id,
-              comment: reason,
-            })
-            for (const stepped of landing.skipped) {
-              yield* insertReviewEvent({
-                tenantId,
-                reviewInstanceId: opened,
-                kind: 'stage-skipped',
-                actorId: null,
-                route: 'escalation',
-                stageId: stepped.id,
-              })
-            }
-            if (landing.state === 'blocked') {
-              yield* insertReviewEvent({
-                tenantId,
-                reviewInstanceId: opened,
-                kind: 'assignee-not-found',
-                actorId: null,
-                route: 'escalation',
-                stageId: landing.stage.id,
-              })
-            } else if (isPanelStage(landing.stage)) {
-              yield* createPanel({
-                tenantId,
-                reviewInstanceId: opened,
-                route: 'escalation',
-                stageId: landing.stage.id,
-                members: landing.eligible,
-              })
-            }
-            // The claim keeps the standing it already had (§32.21): a round
-            // is a reconsideration of a settled decision, not a withdrawal of
-            // it, and status moves only in the round's own terminal
-            // transaction. Moving it here made contesting a deduction the way
-            // to stop the deduction counting - the 「分数悬置」 reading that
-            // ruling voids in as many words. What a reader needs in order to
-            // know a round is open is the round itself, which is attached in
-            // the same statement.
-            const moved = yield* setEntryState({
-              tenantId,
-              entryId,
-              from: ['approved', 'rejected'],
-              to: row.status,
-              currentReviewInstanceId: opened,
-            })
-            if (!moved) return yield* refuse('appeal', 'nothing-to-appeal')
-            yield* announce(tenantId, row.batchId, [
-              { kind: 'review-instance-changed' },
-              { kind: 'review-inbox-changed' },
-              { kind: 'entries-changed', subjectUserId: row.subjectUserId },
-              { kind: 'result-changed', subjectUserId: row.subjectUserId },
-            ])
             const written = (yield* instanceOf(tenantId, opened))!
             return yield* assembleDetail(tenantId, written, {
               canDecide: false,
@@ -2592,6 +2631,85 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                 subjectUserId: written.subjectUserId,
                 readerUserId: as.userId,
               }),
+            })
+          }),
+        ).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
+      )
+    },
+  )
+
+  /**
+   * Staff contesting a claim's conclusion on its participant's behalf
+   * (ruling of 2026-09-25): the whole escalation route, from its first live
+   * step, exactly as an appeal walks it. It is not the participant's appeal
+   * and does not spend it - the conclusion it reaches is new, and its
+   * participant may contest that one. A question without an escalation
+   * route cannot be reopened; re-determining is the other way to correct a
+   * conclusion, and needs no route.
+   */
+  const reopenEntry: ReviewMethods['reopenEntry'] = Effect.fn('Assessment.reopenEntry')(
+    function* (tenantId, entryId, input, as) {
+      const located = yield* dieQuery(withDb(appealContextOf(tenantId, entryId)))
+      if (located === null) return yield* new ReviewNotFound()
+      return yield* withDb(
+        transaction(
+          Effect.gen(function* () {
+            const locked = yield* lockBatch(tenantId, located.batchId)
+            if (locked!.status === 'archived') return yield* new BatchReadOnly()
+            // Authority first, on the locked connection: somebody who holds
+            // nothing here learns nothing about the claim, not even that it
+            // exists.
+            const decision = yield* deps
+              .authorize(as, 'assessment.review.reopen', located.batchId, {
+                participantId: located.participantId,
+              })
+              .pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', (error) => Effect.die(error)))
+            if (!decision.allowed && decision.layer === 'authority') {
+              const admin = yield* deps.rosterReach(as, tenantId, located.batchId)
+              if (!admin) return yield* new ReviewNotFound()
+            }
+            if (!decision.allowed) return yield* refuse('reopen', decision.reason)
+            const reason = input.reason.trim()
+            if (reason === '') return yield* refuse('reopen', 'reason-required')
+            const row = yield* appealContextOf(tenantId, entryId)
+            if (row === null) return yield* new ReviewNotFound()
+            if (row.revisionId === null) return yield* refuse('reopen', 'nothing-to-appeal')
+            // a claim of one's own is contested by appealing it, which is
+            // counted; reopening it would be a second appeal by another door
+            if (row.subjectUserId === as.userId) {
+              return yield* refuse('reopen', 'self-reopen-refused')
+            }
+            const participant = yield* participantOf(tenantId, row.batchId, row.participantId)
+            if (participant === null) return yield* new ReviewNotFound()
+            const reaches = yield* staffReachesParticipant({
+              tenantId,
+              batchId: row.batchId,
+              userId: as.userId,
+              permissionCode: 'assessment.review.reopen',
+              participant,
+            })
+            if (!reaches) return yield* refuse('reopen', 'participant-out-of-reach')
+            if (yield* hasOpenRound(tenantId, entryId)) {
+              return yield* refuse('reopen', 'review-already-open')
+            }
+            const contested = yield* conclusionOfEntry(tenantId, entryId)
+            if (contested === null) return yield* refuse('reopen', 'nothing-to-appeal')
+            const opened = yield* openContestingRound({
+              tenantId,
+              row: {
+                ...row,
+                revisionId: row.revisionId,
+                status: row.status === 'approved' ? 'approved' : 'rejected',
+              },
+              target: contested.target,
+              origin: 'reopen',
+              actorUserId: as.userId,
+              reason,
+            })
+            const written = (yield* instanceOf(tenantId, opened))!
+            return yield* assembleDetail(tenantId, written, {
+              canDecide: false,
+              resolveReviewers: false,
             })
           }),
         ).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
@@ -3104,6 +3222,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
     getReviewInstance,
     decideReview,
     appealEntry,
+    reopenEntry,
     requestSupplement,
     cancelSupplement,
     answerSupplement,

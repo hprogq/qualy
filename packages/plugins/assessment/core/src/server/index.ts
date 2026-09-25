@@ -34,7 +34,11 @@ import { effectiveState, normalizePlan } from '../phase/engine/queue.ts'
 import { deriveTimeline, type TimelineEntry } from '../phase/engine/timeline.ts'
 import type { EpochMillis, PhasePlan, PhaseSnapshot } from '../phase/engine/types.ts'
 import { gateAllows, type GateContext, type GateDecision } from '../phase/gate.ts'
-import { PARTICIPANT_ACTION_CODES, BATCH_STAFF_CODES } from '../permissions.ts'
+import {
+  PARTICIPANT_ACTION_CODES,
+  BATCH_STAFF_CODES,
+  EXPLICIT_ONLY_STAFF_CODES,
+} from '../permissions.ts'
 import {
   ItemTypeCatalog,
   ScoringDefinitionCatalog,
@@ -64,6 +68,7 @@ import { recognitionFormFields } from '../scoring/recognition.ts'
 
 import { makeEntryMethods, type EntryMethods, type EntryView } from '../entry/service.ts'
 import { makeReviewMethods, type ReviewDetailView, type ReviewMethods } from '../review/service.ts'
+import { makeRedetermineMethods, type RedetermineMethods } from '../entry/redetermine.ts'
 import {
   entryCountsByBatchOf,
   openAskCountsByBatchOf,
@@ -195,6 +200,7 @@ import {
   phaseRowsForBatches,
   listTemplatesPage,
   lockBatch,
+  allActiveRoleIds,
   nodesByIds,
   oneBatch,
   oneParticipant,
@@ -257,7 +263,7 @@ interface AdministrativeEntryView {
     readonly values: Record<string, unknown>
     readonly fields: readonly { readonly id: string; readonly schema: unknown }[]
     /** whose determination it is, off its own row rather than the filing's */
-    readonly source: 'review' | 'record' | 'import' | 'system'
+    readonly source: 'review' | 'record' | 'import' | 'system' | 'redetermination'
     readonly actorName: string | null
     readonly createdAt: string
   } | null
@@ -1516,6 +1522,10 @@ export class Assessment extends Context.Service<
     readonly previewDetermination: ReviewMethods['previewDetermination']
     readonly decideReview: ReviewMethods['decideReview']
     readonly appealEntry: ReviewMethods['appealEntry']
+    /** staff contesting a conclusion on the participant's behalf */
+    readonly reopenEntry: ReviewMethods['reopenEntry']
+    /** correcting a concluded claim outside any round */
+    readonly redetermineEntry: RedetermineMethods['redetermineEntry']
     /** the supplement exchange: ask, take back, answer (§32.65 ⑤) */
     readonly requestSupplement: ReviewMethods['requestSupplement']
     readonly cancelSupplement: ReviewMethods['cancelSupplement']
@@ -2296,11 +2306,37 @@ export const make = Effect.fn('Assessment.make')(function* () {
       // the anchors of the people in it: there is no standing scope any more,
       // and this is the only place authority over this round can come from
       const anchors = yield* dieQuery(withDb(rosterAnchors(tenantId, batchId)))
-      return yield* rbac.listApplicableAssignments({
+      return yield* bringable(
         tenantId,
-        codes: [...BATCH_STAFF_CODES],
-        nodeIds: anchors,
-        resource: batchResource(batchId),
+        yield* rbac.listApplicableAssignments({
+          tenantId,
+          codes: [...BATCH_STAFF_CODES],
+          nodeIds: anchors,
+          resource: batchResource(batchId),
+        }),
+      )
+    })
+
+  /**
+   * What each assignment can bring into a batch: the staff codes it carries,
+   * less those a role holding every permission by its mode does not carry
+   * without naming them. Asked at creation and at every synchronisation, so
+   * acceptance and its preview agree.
+   */
+  const bringable = (tenantId: string, assignments: readonly ApplicableAssignment[]) =>
+    Effect.gen(function* () {
+      const everything = yield* dieQuery(
+        withDb(
+          allActiveRoleIds(
+            tenantId,
+            assignments.map((assignment) => assignment.roleId),
+          ),
+        ),
+      )
+      return assignments.flatMap((assignment) => {
+        if (!everything.has(assignment.roleId)) return [assignment]
+        const codes = assignment.codes.filter((code) => !EXPLICIT_ONLY_STAFF_CODES.includes(code))
+        return codes.length === 0 ? [] : [{ ...assignment, codes }]
       })
     })
 
@@ -2672,6 +2708,14 @@ export const make = Effect.fn('Assessment.make')(function* () {
       return decide(view, 'assessment.review.process', undefined)
     })
 
+  const redetermineMethods = makeRedetermineMethods({
+    withDb,
+    authorize: authorizeAction,
+    rosterReach: (as, tenantId, batchId) =>
+      Effect.map(Effect.result(requireRosterReach(as, tenantId, batchId)), Result.isSuccess),
+    parseRange,
+  })
+
   const reviewMethods = makeReviewMethods({
     withDb,
     authorize: authorizeAction,
@@ -2795,6 +2839,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
     getAdministrativeRecord: recordMethods.detail,
     reverseAdministrativeRecord: recordMethods.reverse,
     ...reviewMethods,
+    ...redetermineMethods,
     ...scoringMethods,
     ...attachmentMethods,
     createBatch: Effect.fn('Assessment.createBatch')(function* (tenantId, input, as) {
@@ -2856,11 +2901,14 @@ export const make = Effect.fn('Assessment.make')(function* () {
             yield* acceptAssignments(
               tenantId,
               batchId,
-              yield* rbac.listApplicableAssignments({
+              yield* bringable(
                 tenantId,
-                codes: [...BATCH_STAFF_CODES],
-                nodeIds,
-              }),
+                yield* rbac.listApplicableAssignments({
+                  tenantId,
+                  codes: [...BATCH_STAFF_CODES],
+                  nodeIds,
+                }),
+              ),
               'inherited',
               as.userId,
             )
@@ -6722,6 +6770,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           participantId: page.participantId,
           entries: page.entries.map((one) => ({
             entry: entryDto(one.entry),
+            corrections: one.corrections,
             recognition: one.recognition,
           })),
           nextCursor: page.nextCursor,
@@ -7095,6 +7144,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             supersedesInstanceId: round.supersedesInstanceId,
             appealedInstanceId: round.appealedInstanceId,
             appealedRecognitionId: round.appealedRecognitionId,
+            effect: round.effect,
             submittedAt: new Date(round.submittedAt).toISOString(),
             completedAt:
               round.completedAt === null ? null : new Date(round.completedAt).toISOString(),
@@ -7426,6 +7476,40 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
         const review = yield* assessment.appealEntry(
+          principal.tenantId,
+          params.entryId,
+          payload,
+          principal,
+        )
+        return { review: reviewDto(review) }
+      }),
+    )
+    .handle(
+      'redetermineEntry',
+      Effect.fn('assessment.redetermineEntry.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const redetermination = yield* assessment.redetermineEntry(
+          principal.tenantId,
+          params.entryId,
+          {
+            decision: payload.decision,
+            reason: payload.reason,
+            ...(payload.recognition === undefined
+              ? {}
+              : { recognition: { values: payload.recognition.values } }),
+          },
+          principal,
+        )
+        return { redetermination }
+      }),
+    )
+    .handle(
+      'reopenEntry',
+      Effect.fn('assessment.reopenEntry.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const review = yield* assessment.reopenEntry(
           principal.tenantId,
           params.entryId,
           payload,

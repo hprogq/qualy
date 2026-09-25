@@ -77,7 +77,12 @@ export function EscalationNotice({ review }: { review: ReviewDto }) {
   // the guard lives here, once: only a live escalation round carries the
   // card, wherever the layout chooses to stand it
   if (review.state === 'completed' || review.chain.route !== 'escalation') return null
-  const appealed = review.events.find((event) => event.kind === 'appealed')
+  // an appeal and a staff reopening both contest a conclusion, and both
+  // lead with the grounds given for it
+  const appealed = review.events.find(
+    (event) => event.kind === 'appealed' || event.kind === 'reopened',
+  )
+  const reopened = appealed?.kind === 'reopened'
   // an administrator sending it up says why too, and that sentence was the
   // one thing the card never showed
   const escalated = review.events.find((event) => event.kind === 'escalated')
@@ -86,18 +91,32 @@ export function EscalationNotice({ review }: { review: ReviewDto }) {
       <CircleArrowUpIcon aria-hidden className={stylex.props(styles.escalationIcon).className} />
       <div {...stylex.props(styles.escalationWords)}>
         <p {...stylex.props(styles.escalationTitle)}>
-          {format(appealed !== undefined ? m.reviewAppealBannerTitle : m.reviewEscBannerTitle)}
+          {format(
+            reopened
+              ? m.reviewReopenBannerTitle
+              : appealed !== undefined
+                ? m.reviewAppealBannerTitle
+                : m.reviewEscBannerTitle,
+          )}
         </p>
         {/* What this round is, before what anybody said in it: a title and a
             quotation with nothing between them read as the system saying
             "测试申诉", and the reviewer had to work out whose sentence it
             was. The grounds are still their own words - named. */}
         <p {...stylex.props(styles.escalationBody)}>
-          {format(appealed !== undefined ? m.reviewAppealBannerBody : m.reviewEscBannerBody)}
+          {format(
+            reopened
+              ? m.reviewReopenBannerBody
+              : appealed !== undefined
+                ? m.reviewAppealBannerBody
+                : m.reviewEscBannerBody,
+          )}
         </p>
         {appealed !== undefined && appealed.comment !== null && appealed.comment !== '' && (
           <p {...stylex.props(styles.escalationGrounds)}>
-            <span {...stylex.props(styles.groundsLabel)}>{format(m.entryAppealReason)}</span>
+            <span {...stylex.props(styles.groundsLabel)}>
+              {format(reopened ? m.staffReopenReason : m.entryAppealReason)}
+            </span>
             {appealed.comment}
           </p>
         )}

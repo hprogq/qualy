@@ -6,12 +6,15 @@ import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { EntryDetail } from './EntryDetail.tsx'
 import { ReasonDialog } from '../items/ReasonDialog.tsx'
 import { sourceLabelOf } from './source.ts'
+import { entryRefusalReason } from './refusals.ts'
+import { RedetermineDialog, type RedetermineInput } from './RedetermineDialog.tsx'
 import type { EntryDto, ItemDto } from './model.ts'
 
 // The staff drawer: somebody else's claim, read in full, with the two acts
@@ -28,10 +31,10 @@ import type { EntryDto, ItemDto } from './model.ts'
 // determination and its whole history, because "recognised as provincial,
 // then withdrawn" is two facts in order and not a value somebody overwrote.
 //
-// Re-opening a settled review is deliberately NOT here. The model has a
-// place for it - a new round with `reopen` as its origin - and a button that
-// pretended to be it by moving the claim's status backwards would be the
-// wrong fact recorded permanently.
+// A concluded claim has two more corrections, each its own power: reopening
+// it (the escalation workflow again, on the participant's behalf) and
+// re-determining it (a new result, directly). The server says which of them
+// this reader may offer on this claim; neither moves the status backwards.
 
 const styles = stylex.create({
   spacer: { flexGrow: 1 },
@@ -62,7 +65,7 @@ const styles = stylex.create({
 /** what a determination carries, as the staff read model answers it */
 export interface RecognitionDto {
   readonly id: string
-  readonly source: 'review' | 'record' | 'import' | 'system'
+  readonly source: 'review' | 'record' | 'import' | 'system' | 'redetermination'
   readonly entryRevisionId: string
   readonly values: unknown
   readonly createdAt: number
@@ -74,6 +77,10 @@ export function ManagedEntrySheet({
   entry,
   item,
   recognition,
+  corrections,
+  correctionProblem = null,
+  onReopen,
+  onRedetermine,
   trail,
   busy,
   may,
@@ -86,6 +93,16 @@ export function ManagedEntrySheet({
   item: ItemDto
   /** what it currently stands recognised as, if anything has been determined */
   recognition: RecognitionDto | null
+  /** the corrections of a concluded claim this reader may offer, as the server decided */
+  corrections?: {
+    readonly reopen: { readonly state: string; readonly reason: string | null }
+    readonly redetermine: { readonly state: string; readonly reason: string | null }
+  }
+  /** what the last correction was refused for, in the reader's words */
+  correctionProblem?: string | null
+  onReopen?: (reason: string) => void
+  /** resolves true once the claim has its new result, and the dialog closes */
+  onRedetermine?: (input: RedetermineInput) => Promise<boolean>
   /** the groups above the question, outermost first */
   trail: readonly string[]
   busy: boolean
@@ -103,6 +120,13 @@ export function ManagedEntrySheet({
 }) {
   const { format } = useI18n()
   const [asking, setAsking] = useState<'return-for-revision' | 'void' | null>(null)
+  const [correcting, setCorrecting] = useState<'reopen' | 'redetermine' | null>(null)
+  // a correction offered but not open now carries the server's reason; the
+  // same code reads differently on this desk for a question without a route
+  const why = (reason: string | null) =>
+    reason === 'no-appeal-route'
+      ? format(m.staffReopenNoRoute)
+      : format(entryRefusalReason(reason ?? '') ?? m.refuseOther)
   // Which correction fits is a fact about where the claim came from. A
   // participant's own filing is theirs to change, so it goes back to them; an
   // administrative record has no author to return it to, so the fix is to
@@ -130,6 +154,30 @@ export function ManagedEntrySheet({
           <>
             {provenance}
             <span {...stylex.props(styles.spacer)} />
+            {corrections !== undefined && corrections.redetermine.state !== 'hidden' && (
+              <CorrectionKey
+                act="redetermine"
+                label={format(m.staffRedetermine)}
+                blocked={
+                  corrections.redetermine.state === 'blocked'
+                    ? why(corrections.redetermine.reason)
+                    : null
+                }
+                busy={busy}
+                onPress={() => setCorrecting('redetermine')}
+              />
+            )}
+            {corrections !== undefined && corrections.reopen.state !== 'hidden' && (
+              <CorrectionKey
+                act="reopen"
+                label={format(m.staffReopen)}
+                blocked={
+                  corrections.reopen.state === 'blocked' ? why(corrections.reopen.reason) : null
+                }
+                busy={busy}
+                onPress={() => setCorrecting('reopen')}
+              />
+            )}
             {withdrawable && (
               <Button
                 variant="ghost"
@@ -165,7 +213,82 @@ export function ManagedEntrySheet({
         }}
         onClose={() => setAsking(null)}
       />
+      <ReasonDialog
+        open={correcting === 'reopen'}
+        title={format(m.staffReopenTitle)}
+        description={format(m.staffReopenHint)}
+        confirmLabel={format(m.staffReopen)}
+        busy={busy}
+        onConfirm={(reason) => {
+          setCorrecting(null)
+          onReopen?.(reason)
+        }}
+        onClose={() => setCorrecting(null)}
+      />
+      {correcting === 'redetermine' && (
+        <RedetermineDialog
+          open
+          itemId={item.id}
+          standing={{
+            status: entry.status,
+            values:
+              recognition === null ? null : ((recognition.values ?? {}) as Record<string, unknown>),
+          }}
+          running={entry.openRound !== null}
+          busy={busy}
+          problem={correctionProblem}
+          onConfirm={(input) => {
+            void onRedetermine?.(input).then((done) => {
+              if (done) setCorrecting(null)
+            })
+          }}
+          onClose={() => setCorrecting(null)}
+        />
+      )}
     </>
+  )
+}
+
+/**
+ * One correction of a concluded claim: offered, or standing disabled with
+ * the server's reason on hover.
+ */
+function CorrectionKey({
+  act,
+  label,
+  blocked,
+  busy,
+  onPress,
+}: {
+  act: 'reopen' | 'redetermine'
+  label: string
+  /** why it is not open now, or null when it is */
+  blocked: string | null
+  busy: boolean
+  onPress: () => void
+}) {
+  const key = (
+    <Button
+      variant="outline"
+      size="sm"
+      data-testid={`staff-${act}`}
+      data-offer={blocked === null ? 'available' : 'blocked'}
+      disabled={busy || blocked !== null}
+      onClick={onPress}
+    >
+      {label}
+    </Button>
+  )
+  if (blocked === null) return key
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span>{key}</span>
+        </TooltipTrigger>
+        <TooltipContent>{blocked}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }
 

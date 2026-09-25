@@ -3,6 +3,7 @@ import {
   insertRecognition,
   currentRecognitionOf,
   currentRecognitionsOfEntries,
+  recognitionsOfEntry,
 } from '../scoring/recognition-db.ts'
 import { recordAdministrativeEntryTx, voidAdministrativeEntryTx } from './administrative-write.ts'
 import { bindCitedAttachments } from './bind-attachments.ts'
@@ -102,6 +103,13 @@ import {
   withdrawStandingsOf,
 } from '../review/db.ts'
 import { reviewersVeiled as veiledFor, unnamedUnlessOwn } from '../review/veil.ts'
+import {
+  conclusionOfEntry,
+  conclusionsOf,
+  roundEffectOf,
+  type Conclusion,
+  type RoundEffect,
+} from '../review/conclusion.ts'
 
 // One person's claim on one question: created, revised, submitted, withdrawn.
 //
@@ -199,7 +207,7 @@ export interface EntryView {
 
 export interface EntryRecognitionView {
   readonly id: string
-  readonly source: 'review' | 'record' | 'import' | 'system'
+  readonly source: 'review' | 'record' | 'import' | 'system' | 'redetermination'
   /** the filing version it judged: a later revision means it judged older material */
   readonly entryRevisionId: string
   /** opaque ids with the frozen schemas that name them, in the contract's order */
@@ -282,6 +290,12 @@ export interface EntryRoundView {
   readonly supersedesInstanceId: string | null
   readonly appealedInstanceId: string | null
   readonly appealedRecognitionId: string | null
+  /**
+   * What a round that revisited a conclusion did to it - upheld, corrected,
+   * revoked, overturned - derived by the system from where the claim stood
+   * before and after; null for every other round.
+   */
+  readonly effect: RoundEffect | null
   readonly submittedAt: number
   readonly completedAt: number | null
   readonly events: readonly {
@@ -346,9 +360,18 @@ export interface EntryHistoryView {
  */
 export interface ParticipantEntryView {
   readonly entry: EntryView
+  /**
+   * What this reader may do to correct the claim's conclusion: reopen it
+   * through the escalation route on the participant's behalf, or
+   * re-determine it directly. Discovery through the doors the acts pass.
+   */
+  readonly corrections: {
+    readonly reopen: ActionAvailability
+    readonly redetermine: ActionAvailability
+  }
   readonly recognition: {
     readonly id: string
-    readonly source: 'review' | 'record' | 'import' | 'system'
+    readonly source: 'review' | 'record' | 'import' | 'system' | 'redetermination'
     readonly entryRevisionId: string
     readonly values: Record<string, unknown>
     readonly createdAt: number
@@ -627,6 +650,12 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
     standing?: { origin: string; begun: boolean; open: boolean },
     /** what it stands recognised as, where the caller read it */
     recognition?: EntryRecognitionView | null,
+    /**
+     * The conclusion the claim stands on and whether it may still be
+     * appealed, where the caller read it; the same answer the appeal itself
+     * reads under the lock.
+     */
+    conclusion?: Conclusion | null,
   ): EntryView => {
     const own = participant !== null && participant.userId === as.userId
     const active = own && participant.status === 'active'
@@ -738,13 +767,23 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           // sentence about a round the reader started.
           standing?.open === true
             ? { state: 'blocked', reason: 'review-already-open' }
-            : when(
-                (entry.status === 'approved' || entry.status === 'rejected') &&
-                  (entry.currentReviewInstanceId !== null ||
-                    ((entry.source === 'record' || entry.source === 'import') &&
-                      entry.currentRecognitionId !== null)),
-                gates?.appeal,
-              ),
+            : conclusion !== undefined
+              ? // one appeal per conclusion (ruling of 2026-09-25): a
+                // conclusion an appeal reached, or one already contested,
+                // stays on the card with the reason rather than vanishing
+                when(
+                  conclusion !== null,
+                  conclusion?.exhausted === true
+                    ? { allowed: false, layer: 'policy', reason: 'appeal-exhausted' }
+                    : gates?.appeal,
+                )
+              : when(
+                  (entry.status === 'approved' || entry.status === 'rejected') &&
+                    (entry.currentReviewInstanceId !== null ||
+                      ((entry.source === 'record' || entry.source === 'import') &&
+                        entry.currentRecognitionId !== null)),
+                  gates?.appeal,
+                ),
         // Giving a claim up is open across the whole life of the claim,
         // approved included (§32.69): "the school recognized it" and "its
         // owner still uses it this term" are different facts. The phase
@@ -1229,6 +1268,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 ? undefined
                 : standings.get(entry.currentReviewInstanceId),
               yield* recognitionOf(tenantId, entry, veiled),
+              yield* conclusionOfEntry(tenantId, entryId),
             ),
             veiled,
           )
@@ -1849,6 +1889,11 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               .filter((one) => one.status === 'rejected' || one.status === 'needs_revision')
               .map((one) => one.id),
           )
+          // what each claim stands on, and whether it is still appealable
+          const conclusions = yield* conclusionsOf(
+            tenantId,
+            pageRows.map((one) => one.id),
+          )
           const entries: EntryView[] = []
           const veiled = yield* reviewersVeiled(tenantId, batchId, participant, as)
           for (const entry of pageRows) {
@@ -1866,6 +1911,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                     ? undefined
                     : standings.get(entry.currentReviewInstanceId),
                   yield* recognitionOf(tenantId, entry, veiled),
+                  conclusions.get(entry.id) ?? null,
                 ),
                 veiled,
               ),
@@ -1912,6 +1958,97 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
       )
     },
   )
+
+  /**
+   * The two corrections a member of staff may offer on one person's claims,
+   * decided once per page: the authority and the phase through the same
+   * door the acts pass, the reach over this participant, and the question
+   * each claim answers. Somebody without the authority, or reading their own
+   * claims, is offered neither - not a disabled button.
+   */
+  const correctionOffers = (
+    tenantId: string,
+    batch: { readonly id: string; readonly status: string },
+    participant: ParticipantAnchor,
+    rows: readonly EntryRow[],
+    as: Principal,
+  ) =>
+    Effect.gen(function* () {
+      const door = (code: string) =>
+        Effect.gen(function* () {
+          if (participant.userId === as.userId || batch.status === 'archived') return null
+          const decision = yield* deps
+            .authorize(as, code, batch.id, { participantId: participant.id })
+            .pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', (error) => Effect.die(error)))
+          if (!decision.allowed && decision.layer === 'authority') return null
+          const reaches = yield* staffReachesParticipant({
+            tenantId,
+            batchId: batch.id,
+            userId: as.userId,
+            permissionCode: code,
+            participant,
+          })
+          return reaches ? decision : null
+        })
+      const reopen = yield* door('assessment.review.reopen')
+      const redetermine = yield* door('assessment.entry.redetermine')
+      const conclusions =
+        reopen === null
+          ? new Map<string, Conclusion>()
+          : yield* conclusionsOf(
+              tenantId,
+              rows.map((row) => row.id),
+            )
+      const questions = new Map<string, { active: boolean; escalation: boolean }>()
+      if (reopen !== null || redetermine !== null) {
+        for (const itemId of new Set(rows.map((row) => row.itemId))) {
+          const item = yield* itemOf(tenantId, itemId)
+          const live =
+            item === null || item.currentRevisionId === null
+              ? null
+              : yield* revisionOf(tenantId, item.currentRevisionId)
+          questions.set(itemId, {
+            active: item !== null && item.status === 'active',
+            escalation: live !== null && readPolicy(live.reviewPolicy).escalation.length > 0,
+          })
+        }
+      }
+      const hidden: ActionAvailability = { state: 'hidden', reason: null }
+      const blocked = (reason: string): ActionAvailability => ({ state: 'blocked', reason })
+      const open: ActionAvailability = { state: 'available', reason: null }
+      return (entry: EntryRow, running: boolean): ParticipantEntryView['corrections'] => {
+        const question = questions.get(entry.itemId)
+        const decided = entry.status === 'approved' || entry.status === 'rejected'
+        return {
+          // the escalation route again: a conclusion to contest, no round
+          // already running, and a route to walk
+          reopen:
+            reopen === null || !conclusions.has(entry.id)
+              ? hidden
+              : running
+                ? blocked('review-already-open')
+                : question?.active !== true
+                  ? blocked('item-not-active')
+                  : !question.escalation
+                    ? blocked('no-appeal-route')
+                    : participant.status !== 'active'
+                      ? blocked('participant-not-active')
+                      : !reopen.allowed
+                        ? blocked(reopen.reason)
+                        : open,
+          // a new result for any decided claim; a round still running is
+          // ended with it, which the screen says before it is pressed
+          redetermine:
+            redetermine === null || !decided
+              ? hidden
+              : question?.active !== true
+                ? blocked('item-not-active')
+                : !redetermine.allowed
+                  ? blocked(redetermine.reason)
+                  : open,
+        }
+      }
+    })
 
   const listParticipantEntries: EntryMethods['listParticipantEntries'] = Effect.fn(
     'Assessment.listParticipantEntries',
@@ -1968,10 +2105,21 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
         // a member of staff reading their own roster row is still the one
         // who filed, and is told what the filer is told
         const veiled = yield* reviewersVeiled(tenantId, batchId, participant, as)
+        const corrections = yield* correctionOffers(
+          tenantId,
+          { id: batchId, status: batch.status },
+          participant,
+          pageRows,
+          as,
+        )
         const entries: ParticipantEntryView[] = []
         for (const entry of pageRows) {
           const standing = recognitions.get(entry.id)
+          const running =
+            entry.currentReviewInstanceId !== null &&
+            standings.get(entry.currentReviewInstanceId)?.open === true
           entries.push({
+            corrections: corrections(entry, running),
             // no gates: the acts this view carries are the participant's own,
             // and the reader is not the participant. `view` answers `hidden`
             // for every one of them on its own, from the same ownership test
@@ -2051,6 +2199,13 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             revisions.map((revision) => revision.id),
           )
           const rounds = yield* roundsOfEntry(tenantId, entryId)
+          // every determination the claim has had, for telling what each
+          // round that revisited a conclusion did to it
+          const determinations = (yield* recognitionsOfEntry(tenantId, entryId)).map((one) => ({
+            id: one.id,
+            reviewInstanceId: one.reviewInstanceId,
+            hash: recognitionHash(one.values),
+          }))
           const events = yield* eventsOfRounds(
             tenantId,
             rounds.map((round) => round.id),
@@ -2113,6 +2268,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               supersedesInstanceId: round.supersedesInstanceId,
               appealedInstanceId: round.appealedInstanceId,
               appealedRecognitionId: round.appealedRecognitionId,
+              effect: roundEffectOf(round, rounds, determinations),
               submittedAt: round.createdAt,
               completedAt: round.completedAt,
               events: (events.get(round.id) ?? []).map((event) => ({

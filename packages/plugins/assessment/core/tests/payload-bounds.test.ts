@@ -1,6 +1,7 @@
 import { Result, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { assessmentApiGroup, MAX_PLAN_PHASES, MAX_SCORE_GROUPS } from '../src/api.ts'
+import { BATCH_STAFF_CODES } from '../src/permissions.ts'
 
 // What one request may carry.
 //
@@ -145,8 +146,11 @@ describe('a staff sync selection', () => {
   })
 
   it('takes no more capabilities for one change than a batch accepts', () => {
-    const many = Array.from({ length: 8 }, () => 'assessment.review.process')
-    expect(accepts(sync, { accept: [choice(1, many.slice(0, 7))] })).toBe(true)
+    const many = Array.from(
+      { length: BATCH_STAFF_CODES.length + 1 },
+      () => 'assessment.review.process',
+    )
+    expect(accepts(sync, { accept: [choice(1, many.slice(0, -1))] })).toBe(true)
     expect(accepts(sync, { accept: [choice(1, many)] })).toBe(false)
   })
 })

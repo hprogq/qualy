@@ -410,6 +410,97 @@ describe('the participant results screen', () => {
     expect(page.getByRole('button', { name: '退回修改' }).elements()).toHaveLength(0)
   })
 
+  // The two corrections of a concluded claim (ruling of 2026-09-25) are
+  // the server's to offer: this reader re-determines, and the claim's own
+  // appeal is still running, which the dialog says before it is confirmed.
+  const correctable = (corrections: {
+    reopen: { state: string; reason: string | null }
+    redetermine: { state: string; reason: string | null }
+  }) => ({
+    listParticipantEntries: () =>
+      Effect.succeed({
+        participantId: PARTICIPANT_ID,
+        entries: [
+          {
+            entry: entry({ openRound: { origin: 'appeal' } }),
+            corrections,
+            recognition: {
+              id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+              source: 'review' as const,
+              entryRevisionId: REVISION_ID,
+              values: { 'dddddddd-dddd-4ddd-8ddd-dddddddddddd': '省级' },
+              createdAt: Date.parse('2026-03-02T00:00:00.000Z'),
+              createdByName: '王老师',
+            },
+          },
+        ],
+        nextCursor: null,
+      }),
+  })
+
+  it('re-determines a concluded claim, warning that the running appeal ends', async () => {
+    const redetermineEntry = vi.fn((_request: Request) =>
+      Effect.succeed({
+        redetermination: { kind: 'approval-revoked', status: 'rejected', endedRound: true },
+      }),
+    )
+    await screen(
+      {
+        ...correctable({
+          reopen: { state: 'blocked', reason: 'review-already-open' },
+          redetermine: { state: 'available', reason: null },
+        }),
+        redetermineEntry,
+      },
+      `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}&view=entries&entry=${ENTRY_ID}`,
+    )
+    await expect.element(page.getByTestId('staff-reopen')).toHaveAttribute('data-offer', 'blocked')
+    await page.getByTestId('staff-redetermine').click()
+    await expect.element(page.getByTestId('redetermine-ends-round')).toBeVisible()
+    await page.getByRole('radio', { name: '不通过' }).click()
+    await expect
+      .element(page.getByTestId('redetermine-form'))
+      .toHaveAttribute('data-decision', 'reject')
+    await userEvent.fill(page.getByRole('textbox'), '证书与本人不符')
+    await page.getByRole('dialog').getByRole('button', { name: '重新认定' }).click()
+    await vi.waitFor(() => expect(redetermineEntry).toHaveBeenCalledTimes(1))
+    const sent = redetermineEntry.mock.calls[0]![0]
+    expect(sent.params?.['entryId']).toBe(ENTRY_ID)
+    expect(sent.payload).toEqual({ decision: 'reject', reason: '证书与本人不符' })
+  })
+
+  it('offers neither correction where the server offers none', async () => {
+    await screen(
+      correctable({
+        reopen: { state: 'hidden', reason: null },
+        redetermine: { state: 'hidden', reason: null },
+      }),
+      `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}&view=entries&entry=${ENTRY_ID}`,
+    )
+    await expect.element(page.getByTestId('entry-recognition')).toBeVisible()
+    expect(page.getByTestId('staff-reopen').elements()).toHaveLength(0)
+    expect(page.getByTestId('staff-redetermine').elements()).toHaveLength(0)
+  })
+
+  it('re-examines a concluded claim through the escalation workflow, with a reason', async () => {
+    const reopenEntry = vi.fn((_request: Request) => Effect.fail(apiError('BAD', {})))
+    await screen(
+      {
+        ...correctable({
+          reopen: { state: 'available', reason: null },
+          redetermine: { state: 'hidden', reason: null },
+        }),
+        reopenEntry,
+      },
+      `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}&view=entries&entry=${ENTRY_ID}`,
+    )
+    await page.getByTestId('staff-reopen').click()
+    await userEvent.fill(page.getByRole('textbox'), '抽查发现证书存疑')
+    await page.getByRole('dialog').getByRole('button', { name: '复查' }).click()
+    await vi.waitFor(() => expect(reopenEntry).toHaveBeenCalledTimes(1))
+    expect(reopenEntry.mock.calls[0]![0].payload).toEqual({ reason: '抽查发现证书存疑' })
+  })
+
   const recorded = {
     listParticipantEntries: () =>
       Effect.succeed({

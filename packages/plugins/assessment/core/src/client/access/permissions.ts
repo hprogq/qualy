@@ -14,6 +14,7 @@ export type StaffCode = (typeof BATCH_STAFF_CODES)[number]
 const LABELS = {
   'assessment.entry.proxy': m['permission.assessment.entry.proxy'],
   'assessment.entry.record': m['permission.assessment.entry.record'],
+  'assessment.entry.redetermine': m['permission.assessment.entry.redetermine'],
   'assessment.review.process': m['permission.assessment.review.process'],
   'assessment.review.reopen': m['permission.assessment.review.reopen'],
   'assessment.result.view-peers': m['permission.assessment.result.view-peers'],
@@ -24,6 +25,7 @@ const LABELS = {
 const HINTS = {
   'assessment.entry.proxy': m['permission-hint.assessment.entry.proxy'],
   'assessment.entry.record': m['permission-hint.assessment.entry.record'],
+  'assessment.entry.redetermine': m['permission-hint.assessment.entry.redetermine'],
   'assessment.review.process': m['permission-hint.assessment.review.process'],
   'assessment.review.reopen': m['permission-hint.assessment.review.reopen'],
   'assessment.result.view-peers': m['permission-hint.assessment.result.view-peers'],

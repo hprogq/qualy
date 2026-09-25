@@ -3019,3 +3019,19 @@ export const userTypeOptions = (tenantId: string) =>
         .execute(),
     )
     .pipe(Effect.map((found) => found as { id: string; code: string; name: string }[]))
+
+/** which of these roles hold every permission by their mode, not by naming it */
+export const allActiveRoleIds = (tenantId: string, roleIds: readonly string[]) =>
+  roleIds.length === 0
+    ? Effect.succeed(new Set<string>())
+    : db
+        .query((k) =>
+          k
+            .selectFrom('Role')
+            .select(['id'])
+            .where('tenantId', '=', tenantId)
+            .where('id', 'in', [...new Set(roleIds)])
+            .where('permissionMode', '=', 'all-active')
+            .execute(),
+        )
+        .pipe(Effect.map((rows) => new Set(rows.map((row) => String(row.id)))))

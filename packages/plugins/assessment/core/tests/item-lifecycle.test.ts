@@ -483,8 +483,10 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
   // exists, even though the claim itself stands: the claim keeps its
   // standing while appealed (§32.21), so the void finds the round by the
   // round. The claim goes back to standing on the decision it was
-  // contesting, the withdrawn question takes no new appeals, and once it is
-  // restored the claim can be contested again.
+  // contesting, and the withdrawn question takes no new appeals. The appeal
+  // it ended was that decision's one appeal (ruling of 2026-09-25: a
+  // conclusion is the root target of one appeal, however that appeal
+  // ended), so restoring the question does not open a second.
   it('ends an appeal on a decided claim with its question, and takes no new one', async () => {
     const result = ok(
       await run(
@@ -593,7 +595,7 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
     expect(result.card.edit).toEqual({ state: 'blocked', reason: 'item-not-active' })
     expect(result.card.submit).toEqual({ state: 'blocked', reason: 'item-not-active' })
     expect(refusalOf(result.lateAppeal)?.reason).toBe('item-not-active')
-    expect(result.appealedAgain._tag).toBe('Success')
+    expect(refusalOf(result.appealedAgain)?.reason).toBe('appeal-exhausted')
   })
 
   // A claim that went with its question is told as that, with who and why,

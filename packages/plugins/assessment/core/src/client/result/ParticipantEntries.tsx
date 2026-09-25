@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
@@ -12,6 +13,7 @@ import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { EntryStanding } from '../entry/EntryStanding.tsx'
 import { ManagedEntrySheet } from '../entry/ManagedEntrySheet.tsx'
+import type { RedetermineInput } from '../entry/RedetermineDialog.tsx'
 import { sayEntryFailure } from '../entry/refusals.ts'
 import { sourceLabelOf } from '../entry/source.ts'
 import { useLingering } from '@qualy/ui/use-lingering'
@@ -190,6 +192,57 @@ export function ParticipantEntries({
     onError: (error) => toast.error(sayEntryFailure(error, { format, formatError })),
   })
 
+  // what the score and the list are made of changes with either correction
+  const refresh = () => {
+    void queryClient.invalidateQueries({
+      queryKey: query.assessment.listParticipantEntries.key({
+        params: { batchId, participantId },
+        query: {},
+      }),
+    })
+    void queryClient.invalidateQueries({
+      queryKey: query.assessment.getParticipantResult.key({
+        params: { batchId, participantId },
+      }),
+    })
+  }
+  const reopen = useMutation({
+    mutationFn: (input: { entryId: string; reason: string }) =>
+      run(
+        api.assessment.reopenEntry({
+          params: { entryId: input.entryId },
+          payload: { reason: input.reason },
+        }),
+      ),
+    onSuccess: () => {
+      toast.success(format(m.staffReopened))
+      refresh()
+    },
+    onError: (error) => toast.error(sayEntryFailure(error, { format, formatError })),
+  })
+  const [correctionProblem, setCorrectionProblem] = useState<string | null>(null)
+  const redetermine = useMutation({
+    mutationFn: (input: { entryId: string; value: RedetermineInput }) =>
+      run(
+        api.assessment.redetermineEntry({
+          params: { entryId: input.entryId },
+          payload: {
+            decision: input.value.decision,
+            reason: input.value.reason,
+            ...(input.value.recognition === undefined
+              ? {}
+              : { recognition: { values: input.value.recognition.values } }),
+          },
+        }),
+      ),
+    onMutate: () => setCorrectionProblem(null),
+    onSuccess: () => {
+      toast.success(format(m.staffRedetermined))
+      refresh()
+    },
+    onError: (error) => setCorrectionProblem(sayEntryFailure(error, { format, formatError })),
+  })
+
   const open = rows.find((one) => one.entry.id === entryId) ?? null
   // kept mounted while the drawer shuts, or it would vanish rather than close
   const lingering = useLingering(open)
@@ -338,8 +391,17 @@ export function ParticipantEntries({
           entry={lingering.entry}
           item={itemsById.get(lingering.entry.itemId)!}
           recognition={lingering.recognition}
+          corrections={lingering.corrections}
+          correctionProblem={correctionProblem}
+          onReopen={(reason) => reopen.mutate({ entryId: lingering.entry.id, reason })}
+          onRedetermine={(value) =>
+            redetermine.mutateAsync({ entryId: lingering.entry.id, value }).then(
+              () => true,
+              () => false,
+            )
+          }
           trail={trailOf(itemsById.get(lingering.entry.itemId)!, groupsById)}
-          busy={intervene.isPending}
+          busy={intervene.isPending || reopen.isPending || redetermine.isPending}
           may={may}
           onClose={() => onEntry('')}
           onIntervene={(kind, reason) =>

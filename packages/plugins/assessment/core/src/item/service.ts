@@ -1263,8 +1263,10 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
           // a newer chain is still an appeal: withdrawal reads origin off
           // the round a claim currently stands on, and a replacement that
           // called itself an ordinary re-route made a contested verdict
-          // withdrawable, which would wash it back to a draft.
-          origin: round.origin === 'appeal' ? 'appeal' : 'reroute',
+          // withdrawable, which would wash it back to a draft - and the
+          // conclusion it reaches would have looked appealable again. A
+          // staff reopening stays one for the same reasons.
+          origin: round.origin === 'appeal' || round.origin === 'reopen' ? round.origin : 'reroute',
           // and what it was contesting travels with it - whichever pointer
           // it held. An appeal against an administrative determination that
           // lost this on a re-route would quietly re-seed from the filing,
@@ -1275,6 +1277,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
           ...(round.appealedRecognitionId !== null
             ? { appealedRecognitionId: round.appealedRecognitionId }
             : {}),
+          ...(round.appealedEventId !== null ? { appealedEventId: round.appealedEventId } : {}),
           initiator: 'staff',
           supersedesInstanceId: round.id,
           policyRevisionId: input.newRevisionId,

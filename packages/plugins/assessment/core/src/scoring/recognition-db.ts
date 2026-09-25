@@ -25,7 +25,7 @@ export interface RecognitionWrite {
   readonly itemId: string
   readonly itemRevisionId: string
   readonly values: Readonly<Record<string, unknown>>
-  readonly source: 'review' | 'record' | 'import' | 'system'
+  readonly source: 'review' | 'record' | 'import' | 'system' | 'redetermination'
   readonly reviewInstanceId?: string | null
   readonly reviewEventId?: string | null
   readonly supersedesId?: string | null
@@ -136,7 +136,7 @@ export interface RecognitionDetail extends RecognitionRow {
   readonly entryId: string
   /** the question version it was judged under, which names its own fields */
   readonly itemRevisionId: string
-  readonly source: 'review' | 'record' | 'import' | 'system'
+  readonly source: 'review' | 'record' | 'import' | 'system' | 'redetermination'
   readonly createdAt: number
   readonly createdBy: string | null
   readonly createdByName: string | null
@@ -192,3 +192,26 @@ export const currentRecognitionsOfEntries = (tenantId: string, entryIds: readonl
             }),
           ),
         )
+
+/** every determination one claim has had, oldest first, for telling its history */
+export const recognitionsOfEntry = (tenantId: string, entryId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('EntryRecognition')
+        .select(['id', 'reviewInstanceId', 'values'])
+        .where('tenantId', '=', tenantId)
+        .where('entryId', '=', entryId)
+        .orderBy('createdAt')
+        .orderBy('id')
+        .execute(),
+    )
+    .pipe(
+      Effect.map((rows) =>
+        rows.map((row) => ({
+          id: String(row.id),
+          reviewInstanceId: row.reviewInstanceId == null ? null : String(row.reviewInstanceId),
+          values: row.values ?? {},
+        })),
+      ),
+    )

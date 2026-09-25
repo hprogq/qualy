@@ -972,6 +972,13 @@ export const EntryEvent = defineEntity({
   },
   checks: [{ name: 'chk_entry_events_kind_format', expression: `kind ~ ${CODE}` }],
   indexes: [
+    // the target of "this appeal contests that entry's revocation"
+    // references, which is what stops an appeal naming another entry's event
+    {
+      name: 'uq_entry_events_tenant_entry_id',
+      expression:
+        'create unique index uq_entry_events_tenant_entry_id on entry_events (tenant_id, entry_id, id)',
+    },
     {
       name: 'idx_entry_events_tenant_entry_created',
       expression:
@@ -1087,7 +1094,9 @@ export const EntryRecognition = defineEntity({
   checks: [
     {
       name: 'chk_entry_recognitions_source',
-      expression: `source IN ('review', 'record', 'import', 'system')`,
+      // redetermination: a member of staff holding the power to re-determine
+      // a concluded claim, outside any round (ruling of 2026-09-25)
+      expression: `source IN ('review', 'record', 'import', 'system', 'redetermination')`,
     },
     {
       // an object of recognised facts, never a list or a bare number that
@@ -1225,6 +1234,13 @@ export const ReviewInstance = defineEntity({
      * able to say so against the determination itself.
      */
     appealedRecognitionId: p.uuid().nullable(),
+    /**
+     * The revocation being contested, when a member of staff re-determined
+     * an approved claim as not recognised. A revocation writes no
+     * determination to name, so the entry event that records it is the
+     * conclusion an appeal stands against.
+     */
+    appealedEventId: p.uuid().nullable(),
     // both routes, resolved once against this participant's frozen lineage
     // and frozen with the round. The column keeps its old name: what it
     // holds grew a second route, and renaming it would cost a rewrite of
@@ -1267,9 +1283,11 @@ export const ReviewInstance = defineEntity({
     { name: 'chk_review_instances_round_positive', expression: 'round_no >= 1' },
     {
       name: 'chk_review_instances_appealed_one',
-      // an appeal contests exactly one thing - a round, or a determination
-      // made without one - and nothing else carries a target at all
-      expression: `(origin = 'appeal' AND ((appealed_instance_id IS NULL) <> (appealed_recognition_id IS NULL))) OR (origin <> 'appeal' AND appealed_instance_id IS NULL AND appealed_recognition_id IS NULL)`,
+      // an appeal contests exactly one conclusion - a round, a
+      // determination made without one, or a revocation - and so does a
+      // reopening, which is staff contesting it on the participant's behalf;
+      // nothing else carries a target at all
+      expression: `((origin = 'appeal' OR origin = 'reopen') AND num_nonnulls(appealed_instance_id, appealed_recognition_id, appealed_event_id) = 1) OR (origin <> 'appeal' AND origin <> 'reopen' AND appealed_instance_id IS NULL AND appealed_recognition_id IS NULL AND appealed_event_id IS NULL)`,
     },
     {
       name: 'chk_review_instances_origin',
@@ -1345,6 +1363,23 @@ export const ReviewInstance = defineEntity({
       // expression indexes textually, and any prettier spelling of this
       // predicate diffs against its own introspection forever
       expression: `create unique index uq_review_instances_open_entry on review_instances (entry_id) where ((state)::text = ANY ((ARRAY['active'::character varying, 'blocked'::character varying, 'awaiting_supplement'::character varying])::text[]))`,
+    },
+    // One participant appeal per conclusion (ruling of 2026-09-25): a
+    // conclusion is the root target of at most one appeal. A re-routed
+    // appeal carries its target on to the round that replaces it, which is
+    // the same appeal, so only a round that replaced nothing counts.
+    // Spelled as pg_get_indexdef reports it, for the same reason as above.
+    {
+      name: 'uq_review_instances_appeal_of_instance',
+      expression: `create unique index uq_review_instances_appeal_of_instance on review_instances (tenant_id, appealed_instance_id) where (((origin)::text = 'appeal'::text) AND (supersedes_instance_id IS NULL))`,
+    },
+    {
+      name: 'uq_review_instances_appeal_of_recognition',
+      expression: `create unique index uq_review_instances_appeal_of_recognition on review_instances (tenant_id, appealed_recognition_id) where (((origin)::text = 'appeal'::text) AND (supersedes_instance_id IS NULL))`,
+    },
+    {
+      name: 'uq_review_instances_appeal_of_event',
+      expression: `create unique index uq_review_instances_appeal_of_event on review_instances (tenant_id, appealed_event_id) where (((origin)::text = 'appeal'::text) AND (supersedes_instance_id IS NULL))`,
     },
     // the inbox join: open rounds standing at my node
     {
@@ -2155,6 +2190,8 @@ export const compositeForeignKeys = [
     foreign key (tenant_id, id, current_recognition_id) references entry_recognitions (tenant_id, entry_id, id) on delete set null (current_recognition_id)`,
   `alter table review_instances add constraint fk_review_instances_appealed_recognition
     foreign key (tenant_id, entry_id, appealed_recognition_id) references entry_recognitions (tenant_id, entry_id, id) on delete restrict`,
+  `alter table review_instances add constraint fk_review_instances_appealed_event
+    foreign key (tenant_id, entry_id, appealed_event_id) references entry_events (tenant_id, entry_id, id) on delete restrict`,
   `alter table review_instances add constraint fk_review_instances_recognition_revision
     foreign key (tenant_id, recognition_revision_id) references assessment_item_revisions (tenant_id, id) on delete restrict`,
   `alter table entries add constraint fk_entries_current_review_instance

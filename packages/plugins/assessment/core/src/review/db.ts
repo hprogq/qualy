@@ -423,6 +423,8 @@ export interface ReviewInstanceDetailRow {
   appealedInstanceId: string | null
   /** or the determination it contests, when no round produced that one */
   appealedRecognitionId: string | null
+  /** or the revocation it contests, which wrote no determination */
+  appealedEventId: string | null
   /** the round this one replaced, when a policy change opened it */
   supersedesInstanceId: string | null
   currentNodeId: string | null
@@ -557,6 +559,7 @@ export const instanceOf = (tenantId: string, instanceId: string) =>
           'ri.origin',
           'ri.appealedInstanceId',
           'ri.appealedRecognitionId',
+          'ri.appealedEventId',
           'ri.supersedesInstanceId',
           'ri.currentNodeId',
           'ri.currentRoleIds',
@@ -604,6 +607,7 @@ export const instanceOf = (tenantId: string, instanceId: string) =>
               origin: row.origin as ReviewInstanceDetailRow['origin'],
               appealedInstanceId: row.appealedInstanceId,
               appealedRecognitionId: row.appealedRecognitionId,
+              appealedEventId: row.appealedEventId,
               supersedesInstanceId: row.supersedesInstanceId,
               currentNodeId: row.currentNodeId,
               currentRoleIds: row.currentRoleIds,
@@ -2190,6 +2194,21 @@ export const mayReviewEntry = (input: { tenantId: string; userId: string; entryI
 // referee of last resort.
 
 /** the round row itself, taken for update: panel votes serialize on it */
+/** the round of this claim still running, if one is, taken under lock */
+export const openRoundOf = (tenantId: string, entryId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('ReviewInstance')
+        .select(['id', 'origin'])
+        .where('tenantId', '=', tenantId)
+        .where('entryId', '=', entryId)
+        .where('state', 'in', [...OPEN_REVIEW_STATES])
+        .forUpdate()
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => (row === undefined ? null : { id: row.id, origin: row.origin })))
+
 export const lockReviewInstance = (tenantId: string, instanceId: string) =>
   db
     .query((k) =>

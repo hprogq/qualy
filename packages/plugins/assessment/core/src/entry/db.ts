@@ -637,9 +637,7 @@ export const standingPlace = (tenantId: string, stage: { readonly nodeId: string
     const nodeId = stage.nodeId
     if (nodeId === null) return { nodeId: null as string | null, nodePath: null as string | null }
     const nodePath = yield* nodePathOf(tenantId, nodeId)
-    return nodePath === null
-      ? null
-      : { nodeId: nodeId as string | null, nodePath: nodePath as string | null }
+    return nodePath === null ? null : { nodeId, nodePath }
   })
 
 /**
@@ -789,8 +787,12 @@ export const insertReviewInstance = (input: {
   entryId: string
   revisionId: string
   roundNo: number
-  /** why this round exists; 'initial' is a submission, 'appeal' contests one */
-  origin?: 'initial' | 'appeal' | 'reroute'
+  /**
+   * Why this round exists: 'initial' is a submission, 'appeal' is its
+   * participant contesting a conclusion, 'reopen' is staff contesting one on
+   * the participant's behalf, 'reroute' a round moved onto a newer policy.
+   */
+  origin?: 'initial' | 'appeal' | 'reopen' | 'reroute'
   initiator?: 'participant' | 'staff'
   /** the round this one replaced, when a policy change opened it */
   supersedesInstanceId?: string | null
@@ -798,6 +800,8 @@ export const insertReviewInstance = (input: {
   appealedInstanceId?: string | null
   /** or the determination it contests, when no round produced that one */
   appealedRecognitionId?: string | null
+  /** or the revocation it contests, which wrote no determination to name */
+  appealedEventId?: string | null
   /** where this round may be ended; frozen when it opens (§32.63) */
   /** which version of the question's review policy this round walks */
   policyRevisionId: string
@@ -828,13 +832,13 @@ export const insertReviewInstance = (input: {
         insert into review_instances
           (tenant_id, entry_id, revision_id, round_no, origin, initiator,
            supersedes_instance_id, appealed_instance_id, appealed_recognition_id,
-           policy_revision_id, recognition_revision_id, effective_chain,
+           appealed_event_id, policy_revision_id, recognition_revision_id, effective_chain,
            current_route, current_stage_id, state, blocked_reason,
            current_role_ids, current_node_id, current_node_path)
         values (${input.tenantId}, ${input.entryId}, ${input.revisionId}, ${input.roundNo},
                 ${input.origin ?? 'initial'}, ${input.initiator ?? 'participant'},
                 ${input.supersedesInstanceId ?? null}, ${input.appealedInstanceId ?? null},
-                ${input.appealedRecognitionId ?? null},
+                ${input.appealedRecognitionId ?? null}, ${input.appealedEventId ?? null},
                 ${input.policyRevisionId}, ${input.recognitionRevisionId},
                 ${jsonb(input.effectivePolicy)},
                 ${input.route}, ${input.stageId}, ${input.state},
@@ -1182,6 +1186,8 @@ export interface EntryRoundRow {
   appealedInstanceId: string | null
   /** the determination contested, where the appeal named one instead of a round */
   appealedRecognitionId: string | null
+  /** the revocation contested, where the conclusion was one */
+  appealedEventId: string | null
   createdAt: number
   completedAt: number | null
 }
@@ -1202,6 +1208,7 @@ export const roundsOfEntry = (tenantId: string, entryId: string) =>
           'supersedesInstanceId',
           'appealedInstanceId',
           'appealedRecognitionId',
+          'appealedEventId',
         ])
         .select([epoch('created_at').as('createdMs'), epoch('completed_at').as('completedMs')])
         .where('tenantId', '=', tenantId)
@@ -1221,6 +1228,7 @@ export const roundsOfEntry = (tenantId: string, entryId: string) =>
           supersedesInstanceId: row.supersedesInstanceId,
           appealedInstanceId: row.appealedInstanceId,
           appealedRecognitionId: row.appealedRecognitionId,
+          appealedEventId: row.appealedEventId,
           createdAt: msOf(row.createdMs),
           completedAt: row.completedMs == null ? null : msOf(row.completedMs),
         })),

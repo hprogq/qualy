@@ -1530,8 +1530,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const withdrawn = yield* Effect.exit(
             assessment.setEntryStatus(f.t, entry.id, 'draft', s1),
           )
-          // the replacement is decided like any appeal, and the claim can
-          // be contested again afterwards: it stands on a concluded round
+          // the replacement is decided like any appeal, and it is still the
+          // one appeal: what it concludes cannot be appealed again
           yield* assessment.decideReview(
             f.t,
             moved.id,
@@ -1562,7 +1562,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     })
     expect(result.openRound).toEqual({ origin: 'appeal' })
     expect(refusalOf(result.withdrawn)?.reason).toBe('appeal-not-withdrawable')
-    expect(Exit.isSuccess(result.again)).toBe(true)
+    expect(refusalOf(result.again)?.reason).toBe('appeal-exhausted')
   })
 
   // An appeal walks the escalation route alone (§32.62). A question
