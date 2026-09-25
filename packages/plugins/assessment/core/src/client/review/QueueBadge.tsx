@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { usePageRouteParams } from '@qualy/web-runtime'
+import { useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { useReviewQueueQuery } from './queue.ts'
+import { assessmentApi } from '../api.ts'
 
 // How many submissions are waiting for this reader, beside the rail entry
 // that opens them.
@@ -11,6 +11,11 @@ import { useReviewQueueQuery } from './queue.ts'
 // its own entry and renders nothing for any other, so a rail full of other
 // plugins' pages stays untouched. Nothing while the queue is empty either -
 // a badge saying zero is a badge saying nothing.
+//
+// The number is the server's own count of the queue, read with the reader's
+// desk, not the queue walked page by page: the rail stands on every page of
+// the round, and walking the whole list every half minute to count it cost
+// a request per page of work for a figure one query answers.
 
 const styles = stylex.create({
   count: {
@@ -35,11 +40,12 @@ export default function QueueBadge({ navigationId }: { navigationId?: string }) 
 
 function Count() {
   const { batchId } = usePageRouteParams('batchId')
-  const inbox = useQuery({
-    ...useReviewQueueQuery(batchId),
+  const query = useApiQuery(assessmentApi)
+  const desk = useQuery({
+    ...query.assessment.getMyOverview.queryOptions({ params: { batchId } }),
     refetchInterval: 30_000,
   })
-  const waiting = (inbox.data?.items ?? []).length
+  const waiting = desk.data?.reviewer?.pendingCount ?? 0
   if (waiting === 0) return null
   return (
     <span {...stylex.props(styles.count)} data-testid="queue-badge" data-count={waiting}>

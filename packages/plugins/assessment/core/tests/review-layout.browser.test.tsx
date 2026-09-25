@@ -856,10 +856,28 @@ describe('a queue longer than one page', () => {
     expect(seen).toContain('second-page')
   })
 
-  it('badges the rail with the whole count', async () => {
+  // The rail stands on every page of the round, so its count is the one the
+  // server keeps, not the queue walked a page at a time every half minute.
+  it('badges the rail with the queue\u2019s own count, without walking the queue', async () => {
     const seen: (string | undefined)[] = []
+    const base = stubs(seen)
     await renderScreen({
-      client: fakeClient(stubs(seen)),
+      client: fakeClient({
+        ...base,
+        assessment: {
+          ...base.assessment,
+          getMyOverview: () =>
+            Effect.succeed({
+              participant: null,
+              reviewer: {
+                pendingCount: 2,
+                answeredAskCount: 0,
+                queueGroups: [{ name: '学业', count: 2 }],
+                answeredAsks: [],
+              },
+            }),
+        },
+      }),
       routes: [
         {
           path: '/assessment/batches/:batchId/reviews',
@@ -870,5 +888,43 @@ describe('a queue longer than one page', () => {
     })
 
     await expect.element(page.getByTestId('queue-badge')).toHaveAttribute('data-count', '2')
+    expect(seen).toEqual([])
+  })
+
+  it('keeps the queue it showed when a later read of it fails', async () => {
+    await page.viewport(1280, 800)
+    let reachable = true
+    let refused = 0
+    const seen: (string | undefined)[] = []
+    const base = stubs(seen)
+    const listed = paged(seen)
+    await renderScreen({
+      client: fakeClient({
+        ...base,
+        assessment: {
+          ...base.assessment,
+          listReviewInbox: (input: { query: { cursor?: string } }) =>
+            reachable
+              ? listed(input)
+              : Effect.sync(() => {
+                  refused += 1
+                }).pipe(Effect.andThen(Effect.fail(apiError('ASSESSMENT_BATCH_NOT_FOUND')))),
+        },
+      }),
+      routes: [
+        { path: '/assessment/batches/:batchId/reviews', element: <ReviewInboxPage /> },
+      ] as never,
+      route: `/assessment/batches/${BATCH_ID}/reviews`,
+    })
+    await expect.element(page.getByTestId('review-stats')).toHaveAttribute('data-pending', '2')
+
+    // read again in the background, and this time the read fails
+    reachable = false
+    window.dispatchEvent(new Event('visibilitychange'))
+    await vi.waitFor(() => expect(refused).toBeGreaterThan(0))
+    await new Promise((settle) => setTimeout(settle, 300))
+
+    // the queue it had stands; the page is not swapped for an error
+    await expect.element(page.getByTestId('review-stats')).toHaveAttribute('data-pending', '2')
   })
 })

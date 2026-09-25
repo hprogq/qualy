@@ -707,6 +707,10 @@ function Workbench({ batch }: { batch: BatchDto }) {
         void queryClient.invalidateQueries({
           queryKey: query.assessment.listReviewInbox.key({ query: { batchId: batch.id } }),
         })
+        // the rail's count is the desk's, not this list's
+        void queryClient.invalidateQueries({
+          queryKey: query.assessment.getMyOverview.key({ params: { batchId: batch.id } }),
+        })
         return
       default:
         return

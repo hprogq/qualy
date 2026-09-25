@@ -621,6 +621,10 @@ function Queue({
     void queryClient.invalidateQueries({
       queryKey: query.assessment.listAwaitingSupplements.key({ query: { batchId } }),
     })
+    // and the rail's count, which is the desk's rather than this list's
+    void queryClient.invalidateQueries({
+      queryKey: query.assessment.getMyOverview.key({ params: { batchId } }),
+    })
   })
   const inbox = useQuery({
     ...useReviewQueueQuery(batchId),
@@ -669,7 +673,9 @@ function Queue({
   return (
     <AsyncSection
       pending={inbox.isPending}
-      error={inbox.error ? formatError(inbox.error) : null}
+      // a read that failed only in the background keeps the queue it last
+      // showed: the page is somebody's place in their work
+      error={inbox.data === undefined && inbox.error ? formatError(inbox.error) : null}
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
       onRetry={() => void inbox.refetch()}
