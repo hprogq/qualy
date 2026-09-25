@@ -2,7 +2,7 @@ import { NodeHttpServer } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
 import { HttpRouter } from 'effect/unstable/http'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { Api, type ApiDocumentation } from '@qualy/api-kit/plugin'
 import { NodeServer } from '@qualy/api-kit/node'
@@ -24,6 +24,7 @@ import { platformTracerOff } from '@qualy/api-kit/request'
 import type { LoggingSettings } from './logging.ts'
 import { healthApi, healthHandlers } from './health.ts'
 import { mark } from './boot-timing.ts'
+import { createHttpServer } from './http-server.ts'
 import { onShutdownRequested } from './shutdown.ts'
 
 // The composition root.
@@ -78,7 +79,7 @@ const hostPlugin = Plugin.define(
  * which is safe because Node runs 'request' listeners in registration order.
  */
 const nodeServerLayer = Layer.sync(NodeServer, () => {
-  const server = createServer()
+  const server = createHttpServer()
   const starting = (_request: IncomingMessage, response: ServerResponse) => {
     if (server.listenerCount('request') > 1) {
       server.off('request', starting)
