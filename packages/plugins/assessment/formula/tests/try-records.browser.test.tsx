@@ -1,8 +1,13 @@
 import { act } from 'react'
 import { renderHook } from 'vitest-browser-react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useTryRecords } from '../src/client/try-records.ts'
-import { forgetFormulaLocally } from '../src/client/local-store.ts'
+import { TRIES_PER_FORMULA, TRIES_PER_SOURCE, useTryRecords } from '../src/client/try-records.ts'
+import {
+  BY_FUNCTION,
+  TRY_RECORDS,
+  forgetFormulaLocally,
+  inStores,
+} from '../src/client/local-store.ts'
 import { keepLocalDraft, readLocalDraft } from '../src/client/local-draft.ts'
 
 // The window between asking this browser what it remembers and being told.
@@ -22,16 +27,43 @@ import { keepLocalDraft, readLocalDraft } from '../src/client/local-draft.ts'
 // was what let one stray row become a whole run's red.
 
 let FN = ''
+/** a second formula of the same person's, for what must be left alone */
+let OTHER = ''
 
 const outcome = { actual: '7.5' } as never
 
 beforeEach(() => {
   FN = crypto.randomUUID()
+  OTHER = crypto.randomUUID()
 })
 
 afterEach(async () => {
   await forgetFormulaLocally(FN)
+  await forgetFormulaLocally(OTHER)
 })
+
+/** the ids this browser holds for one formula, whichever source they ran against */
+const storedIds = (functionId: string) =>
+  inStores<readonly string[]>(
+    [TRY_RECORDS],
+    'readonly',
+    (open) => {
+      const held = open(TRY_RECORDS).index(BY_FUNCTION).getAll(IDBKeyRange.only(functionId))
+      return () => (held.result as { id: string }[]).map((one) => one.id)
+    },
+    [],
+  )
+
+/** tries somebody ran long ago, written straight into the store */
+const earlierTries = (functionId: string, scope: string, count: number, from: number) =>
+  Array.from({ length: count }, (_, n) => ({
+    id: `${functionId}/${scope}/${String(n)}`,
+    at: from + n,
+    input: { base: String(n) },
+    outcome: { actual: '1' },
+    functionId,
+    scopeKey: `${functionId}/${scope}`,
+  }))
 
 /** waits until the hook's list says something, so no assertion races the read */
 const settles = async (read: () => readonly { id: string }[], count: number) =>
@@ -130,5 +162,41 @@ describe('what this browser remembers about its tries', () => {
     await new Promise((resolve) => setTimeout(resolve, 300))
     expect(backRelease.result.current.records).toEqual([])
     await backRelease.unmount()
+  })
+
+  it("keeps a bounded number of tries per formula, the oldest going first and never another formula's", async () => {
+    // as many as a formula keeps, spread over saved revisions tried long ago
+    const perSource = 10
+    expect(perSource).toBeLessThan(TRIES_PER_SOURCE)
+    const earlier = Array.from({ length: TRIES_PER_FORMULA / perSource }, (_, n) =>
+      earlierTries(FN, `revision/${String(n + 1)}`, perSource, 1_000 + n * perSource),
+    ).flat()
+    const theirs = earlierTries(OTHER, 'draft', 5, 500)
+    await inStores(
+      [TRY_RECORDS],
+      'readwrite',
+      (open) => {
+        for (const one of [...earlier, ...theirs]) open(TRY_RECORDS).put(one)
+      },
+      undefined,
+    )
+    expect(await storedIds(FN)).toHaveLength(TRIES_PER_FORMULA)
+
+    const draft = await renderHook(() => useTryRecords(FN, 'draft'))
+    act(() => draft.result.current.add({ input: { base: 'now' }, outcome }))
+    await settles(() => draft.result.current.records, 1)
+    const added = draft.result.current.records[0]!.id
+    await draft.unmount()
+
+    // the one just run is kept and the very oldest went to make room for it
+    await vi.waitFor(async () => expect(await storedIds(FN)).toContain(added), {
+      timeout: 5_000,
+    })
+    const kept = await storedIds(FN)
+    expect(kept).toHaveLength(TRIES_PER_FORMULA)
+    expect(kept).not.toContain(earlier[0]!.id)
+    expect(kept).toContain(earlier[1]!.id)
+    // the other formula's tries are not this formula's to count
+    expect(await storedIds(OTHER)).toHaveLength(theirs.length)
   })
 })

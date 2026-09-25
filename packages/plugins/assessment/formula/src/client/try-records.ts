@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { BY_SCOPE_AND_TIME, TRY_RECORDS, inStores } from './local-store.ts'
+import { BY_FUNCTION, BY_SCOPE_AND_TIME, TRY_RECORDS, inStores } from './local-store.ts'
 import type { TryOutcome } from './TryRunPanel.tsx'
 
 // The tries a person ran, kept in this browser.
@@ -34,7 +34,16 @@ interface StoredTryRecord extends TryRecord {
 }
 
 /** how many tries one scope keeps; older ones go as newer ones arrive */
-const LIMIT = 20
+export const TRIES_PER_SOURCE = 20
+
+/**
+ * How many tries one formula keeps across all of its sources, oldest going
+ * first. Saved revisions come and go on the server, so the sources a formula
+ * was tried against are not a bounded set, and a ceiling per source alone
+ * would still let one formula's tries grow without end - those of revisions
+ * long gone among them.
+ */
+export const TRIES_PER_FORMULA = 100
 
 /** one identity for "nothing", so a scope change does not rerender forever */
 const EMPTY: readonly TryRecord[] = []
@@ -43,7 +52,7 @@ const EMPTY: readonly TryRecord[] = []
 const newestFirst = (records: readonly TryRecord[]): readonly TryRecord[] => {
   const byId = new Map<string, TryRecord>()
   for (const one of records) if (!byId.has(one.id)) byId.set(one.id, one)
-  return [...byId.values()].sort((a, b) => b.at - a.at).slice(0, LIMIT)
+  return [...byId.values()].sort((a, b) => b.at - a.at).slice(0, TRIES_PER_SOURCE)
 }
 
 const isRecord = (value: unknown): value is StoredTryRecord => {
@@ -73,7 +82,7 @@ const read = (scopeKey: string): Promise<readonly TryRecord[]> =>
         .openCursor(scopeRange(scopeKey), 'prev')
       cursor.onsuccess = () => {
         const at = cursor.result
-        if (at === null || found.length >= LIMIT) return
+        if (at === null || found.length >= TRIES_PER_SOURCE) return
         if (isRecord(at.value)) found.push(at.value)
         at.continue()
       }
@@ -172,16 +181,21 @@ export const useTryRecords = (functionId: string, scope: string) => {
         (open) => {
           const store = open(TRY_RECORDS)
           store.put(stored)
-          // the oldest beyond the limit leave with the same transaction that
-          // brought this one in, so the scope never grows past what it keeps
-          let seen = 0
-          const cursor = store.index(BY_SCOPE_AND_TIME).openCursor(scopeRange(scopeKey), 'prev')
-          cursor.onsuccess = () => {
-            const at = cursor.result
-            if (at === null) return
-            seen += 1
-            if (seen > LIMIT) at.delete()
-            at.continue()
+          // The oldest past what one source keeps, and past what the whole
+          // formula keeps, leave with the same transaction that brought this
+          // one in - read after the put, so it counts itself - and neither
+          // ever grows past its ceiling. Only this formula's rows are read.
+          const held = store.index(BY_FUNCTION).getAll(IDBKeyRange.only(functionId))
+          held.onsuccess = () => {
+            const newest = (held.result as unknown[]).filter(isRecord).sort((a, b) => b.at - a.at)
+            const perSource = new Map<string, number>()
+            let kept = 0
+            for (const one of newest) {
+              const inSource = (perSource.get(one.scopeKey) ?? 0) + 1
+              perSource.set(one.scopeKey, inSource)
+              if (inSource > TRIES_PER_SOURCE || kept >= TRIES_PER_FORMULA) store.delete(one.id)
+              else kept += 1
+            }
           }
         },
         undefined,
