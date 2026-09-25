@@ -37,6 +37,8 @@ const WITHOUT_ACTOR: Record<string, MessageDescriptor> = {
   'assignee-not-found': m.eventNoReviewer,
   'assignee-found': m.eventReviewerFound,
   'cancelled-item-voided': m.eventItemVoided,
+  // the claim's own trail, where no round was open to say it
+  'voided-with-item': m.eventEntryItemVoided,
   // the route under the round changed, by an administrator's configuration
   // decision rather than by anything anybody said about the filing
   rerouted: m.eventRerouted,

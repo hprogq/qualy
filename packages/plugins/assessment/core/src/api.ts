@@ -1821,6 +1821,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
               'entry-withdrawn',
               'entry-abandoned',
               'entry-voided',
+              'entry-voided-with-item',
               'review-approved',
               'review-rejected',
               'review-escalated',

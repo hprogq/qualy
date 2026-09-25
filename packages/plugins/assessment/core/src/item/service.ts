@@ -2297,6 +2297,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               if (!moved) return yield* refuse('void', 'item-not-active')
               // open work dies with the question; decided work stands
               for (const entry of yield* openEntriesOfItem(tenantId, itemId)) {
+                let told = false
                 if (entry.status === 'in_review' && entry.currentReviewInstanceId !== null) {
                   const cancelled = yield* cancelReviewInstance({
                     tenantId,
@@ -2310,14 +2311,29 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                       kind: 'cancelled-item-voided',
                       actorId: as.userId,
                     })
+                    told = true
                   }
                 }
-                yield* setEntryState({
+                const voided = yield* setEntryState({
                   tenantId,
                   entryId: entry.id,
                   from: ['draft', 'in_review', 'needs_revision'],
                   to: 'voided',
                 })
+                if (!voided) continue
+                // A claim with no round to say it is told on its own trail,
+                // so a draft that went with its question is never mistaken
+                // for one its owner gave up; either way its owner hears.
+                if (!told) {
+                  yield* insertEntryEvent({
+                    tenantId,
+                    entryId: entry.id,
+                    kind: 'voided-with-item',
+                    actorId: as.userId,
+                    reason,
+                  })
+                }
+                yield* bumpParticipantAttention(tenantId, entry.id)
               }
               // An appeal is open work too, on a decided claim: the claim
               // keeps the standing it had while it is appealed (§32.21), so

@@ -1505,6 +1505,7 @@ export const userActivityPage = (input: {
                    when 'submitted' then 'entry-submitted'
                    when 'appealed' then 'appeal-filed'
                    when 'escalated' then 'review-escalated'
+                   when 'cancelled-item-voided' then 'entry-voided-with-item'
                  end,
                  m.id, m.item_id, m.title,
                  null, null,
@@ -1516,7 +1517,7 @@ export const userActivityPage = (input: {
           join mine m on m.id = ri.entry_id
           left join users u on u.tenant_id = re.tenant_id and u.id = re.actor_id
           where re.tenant_id = ${input.tenantId}
-            and re.kind in ('submitted', 'appealed', 'escalated')
+            and re.kind in ('submitted', 'appealed', 'escalated', 'cancelled-item-voided')
 
           union all
           select ee.id, 'entry-event', 'participant',
@@ -1526,6 +1527,7 @@ export const userActivityPage = (input: {
                    when 'voided-by-staff' then 'entry-voided'
                    when 'revision-required' then 'revision-required'
                    when 'auto-approved' then 'review-approved'
+                   when 'voided-with-item' then 'entry-voided-with-item'
                  end,
                  m.id, m.item_id, m.title,
                  null, null,
@@ -1536,7 +1538,8 @@ export const userActivityPage = (input: {
           left join users u on u.tenant_id = ee.tenant_id and u.id = ee.actor_id
           where ee.tenant_id = ${input.tenantId}
             and ee.kind in ('withdrawn-by-submitter', 'abandoned-by-submitter',
-                            'voided-by-staff', 'revision-required', 'auto-approved')
+                            'voided-by-staff', 'revision-required', 'auto-approved',
+                            'voided-with-item')
 
           union all
           select ri.id, 'verdict', 'participant',

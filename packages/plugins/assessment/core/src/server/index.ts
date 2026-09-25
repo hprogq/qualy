@@ -711,6 +711,7 @@ export type UserActivityKind =
   | 'entry-withdrawn'
   | 'entry-abandoned'
   | 'entry-voided'
+  | 'entry-voided-with-item'
   | 'review-approved'
   | 'review-rejected'
   | 'review-escalated'

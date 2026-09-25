@@ -524,6 +524,85 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
     expect(result.appealedAgain._tag).toBe('Success')
   })
 
+  // A claim that went with its question is told as that, with who and why,
+  // and its owner hears of it: otherwise a voided draft reads exactly like
+  // one its owner gave up, and restoring the question revives neither.
+  it('tells the owner their claim went with its question, and why', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('il-void-told')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const drafted = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            f.principal(f.s1),
+          )
+          const inReview = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p2, payload: {} },
+            f.principal(f.s2),
+          )
+          yield* assessment.setEntryStatus(f.t, inReview.id, 'in_review', f.principal(f.s2))
+          // both owners have looked at their question before it goes
+          for (const who of [f.s1, f.s2]) {
+            yield* assessment.markMyEntryRead(f.t, g.batch.id, g.item.id, f.principal(who))
+          }
+          yield* assessment.setItemStatus(
+            f.t,
+            g.item.id,
+            { status: 'voided', reason: 'policy withdrawn for the term' },
+            admin,
+          )
+          const trailOf = (entryId: string) =>
+            Effect.map(
+              runSql(sql`
+                select kind, actor_id, reason from entry_events
+                where entry_id = ${entryId} order by created_at, id`),
+              (rows) =>
+                (rows as { rows: { kind: string; actor_id: string; reason: string }[] }).rows,
+            )
+          const seenBy = (who: string) =>
+            Effect.gen(function* () {
+              const desk = yield* assessment.getMyOverview(f.t, g.batch.id, f.principal(who))
+              const activity = yield* assessment.listMyActivity(
+                f.t,
+                g.batch.id,
+                { perspective: 'participant' },
+                f.principal(who),
+              )
+              return {
+                unread: desk.participant!.unreadItemIds,
+                activity: activity.items.map((row) => row.kind),
+              }
+            })
+          return {
+            draftTrail: yield* trailOf(drafted.id),
+            reviewTrail: yield* trailOf(inReview.id),
+            draftOwner: yield* seenBy(f.s1),
+            reviewOwner: yield* seenBy(f.s2),
+          }
+        }),
+      ),
+    )
+    expect(result.draftTrail).toEqual([
+      {
+        kind: 'voided-with-item',
+        actor_id: expect.any(String),
+        reason: 'policy withdrawn for the term',
+      },
+    ])
+    // a round was open and says it there; the claim's own trail stays quiet
+    expect(result.reviewTrail).toEqual([])
+    for (const owner of [result.draftOwner, result.reviewOwner]) {
+      expect(owner.unread).toHaveLength(1)
+      expect(owner.activity[0]).toBe('entry-voided-with-item')
+    }
+  })
+
   it('lets a file be read by its story’s people and nobody else, retirement included', async () => {
     const result = ok(
       await run(

@@ -620,6 +620,7 @@ const SAID: Record<'participant' | 'reviewer', Partial<Record<ActivityItem['kind
     'entry-withdrawn': m['activity.entry-withdrawn'],
     'entry-abandoned': m['activity.entry-abandoned'],
     'entry-voided': m['activity.entry-voided'],
+    'entry-voided-with-item': m['activity.entry-voided-with-item'],
     'review-approved': m['activity.review-approved'],
     'review-rejected': m['activity.review-rejected'],
     'review-escalated': m['activity.review-escalated'],

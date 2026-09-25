@@ -1269,6 +1269,10 @@ const i18n = definePluginMessages({
       id: 'assessment/event/item-voided',
       defaultMessage: 'The item was disabled, ending the current review',
     },
+    eventEntryItemVoided: {
+      id: 'assessment/event/entry-item-voided',
+      defaultMessage: 'The item was disabled, voiding the entry',
+    },
     eventOther: { id: 'assessment/event/other', defaultMessage: 'The record was updated' },
     eventSomebody: { id: 'assessment/event/somebody', defaultMessage: 'Someone' },
     eventReviewer: { id: 'assessment/event/reviewer', defaultMessage: 'A reviewer' },
@@ -4661,6 +4665,10 @@ const i18n = definePluginMessages({
     'activity.entry-voided': {
       id: 'assessment/activity/entry-voided',
       defaultMessage: '{who} withdrew the recorded entry',
+    },
+    'activity.entry-voided-with-item': {
+      id: 'assessment/activity/entry-voided-with-item',
+      defaultMessage: 'The item was disabled, voiding your entry',
     },
     'activity.review-approved': {
       id: 'assessment/activity/review-approved',
