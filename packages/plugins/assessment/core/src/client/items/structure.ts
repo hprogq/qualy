@@ -176,3 +176,55 @@ export const structureRows = (
   if (paperId !== null) walk(paperId, '', 0)
   return rows
 }
+
+/**
+ * The places a group's questions take after a drop, as sort orders.
+ *
+ * `sequence` is the group in its new order. A voided question keeps the
+ * place it had - nothing about it may be written, its sort order included -
+ * so the live ones are numbered around it: each run of live questions
+ * between two voided ones takes values strictly between theirs, and a run
+ * whose values already read in order stays as it is. Numbering by position
+ * instead gave a question dropped beside a voided one the voided one's own
+ * value, and the tie went to whichever was older, so the drop did not take.
+ *
+ * Where two voided questions stand closer than the questions dropped
+ * between them need, nothing that may be written can say the order; those
+ * take the nearest values there are.
+ */
+export const sortOrdersAfterDrop = (
+  sequence: readonly { id: string; sortOrder: number; voided: boolean }[],
+): ReadonlyMap<string, number> => {
+  const placed = new Map<string, number>()
+  let run: { id: string; sortOrder: number }[] = []
+  let below: number | null = null
+  const settle = (above: number | null) => {
+    const count = run.length
+    if (count === 0) return
+    const inOrder = run.every(
+      (one, index) =>
+        (index === 0 || one.sortOrder > run[index - 1]!.sortOrder) &&
+        (below === null || one.sortOrder > below) &&
+        (above === null || one.sortOrder < above),
+    )
+    const start = inOrder
+      ? null
+      : below !== null
+        ? below + 1
+        : above === null || above >= count
+          ? 0
+          : above - count
+    run.forEach((one, index) => placed.set(one.id, start === null ? one.sortOrder : start + index))
+    run = []
+  }
+  for (const one of sequence) {
+    if (!one.voided) {
+      run.push(one)
+      continue
+    }
+    settle(one.sortOrder)
+    below = below === null ? one.sortOrder : Math.max(below, one.sortOrder)
+  }
+  settle(null)
+  return placed
+}

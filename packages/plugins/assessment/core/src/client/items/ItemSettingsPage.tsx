@@ -26,7 +26,7 @@ import { ItemEditor } from './editor/ItemEditor.tsx'
 import { GroupEditor } from './GroupEditor.tsx'
 import { PaperStart } from './PaperStart.tsx'
 import { StructureTable } from './StructureTable.tsx'
-import { itemCeiling, structureRows, type StructureRow } from './structure.ts'
+import { itemCeiling, sortOrdersAfterDrop, structureRows, type StructureRow } from './structure.ts'
 import type { GroupTarget, Placement, TreeDraft, TreeGroup, TreeSelection } from './paper.ts'
 import type { Draft as QuestionDraft } from './editor/model.ts'
 import { ReasonDialog } from './ReasonDialog.tsx'
@@ -502,18 +502,27 @@ function Editor({
       orderedItemIds: readonly string[]
       reason: string | null
     }) => {
-      for (const [index, id] of input.orderedItemIds.entries()) {
+      const sequence = input.orderedItemIds.flatMap((id) => {
         const current = allItems.find((item) => item.id === id)
-        // a voided question keeps the place it had: nothing about it may be
-        // written any more, its place in the order included
-        if (current === undefined || current.status === 'voided') continue
+        return current === undefined
+          ? []
+          : [{ id, sortOrder: current.sortOrder, voided: current.status === 'voided' }]
+      })
+      // a voided question keeps the place it had: nothing about it may be
+      // written any more, its place in the order included, so the live ones
+      // are numbered around it
+      const placed = sortOrdersAfterDrop(sequence)
+      for (const id of input.orderedItemIds) {
+        const current = allItems.find((item) => item.id === id)
+        const sortOrder = placed.get(id)
+        if (current === undefined || sortOrder === undefined) continue
         const movedGroup = id === input.itemId && current.scoreGroupId !== input.groupId
-        if (current.sortOrder !== index || movedGroup) {
+        if (current.sortOrder !== sortOrder || movedGroup) {
           await run(
             api.assessment.updateItem({
               params: { itemId: id },
               payload: {
-                sortOrder: index,
+                sortOrder,
                 ...(movedGroup ? { scoreGroupId: input.groupId } : {}),
                 // where a live question counts is scoring semantics, and the
                 // api refuses to move one on a running round unsaid

@@ -1591,6 +1591,51 @@ describe('rearranging the structure', () => {
     expect(touched).not.toContain(VOIDED)
   })
 
+  // Numbered by position, a question dropped right before a voided one took
+  // the voided one's own value, and the list reads ties by age - so the
+  // older voided question stayed first and the drop did not take.
+  it('puts a question dropped beside a voided one where it was dropped', async () => {
+    const FIRST = '66666666-6666-4666-8666-6666666666b1'
+    const VOIDED = '66666666-6666-4666-8666-6666666666b2'
+    const LAST = '66666666-6666-4666-8666-6666666666b3'
+    const touched: string[] = []
+    const saved: { sortOrder?: number }[] = []
+    const question = (id: string, title: string, sortOrder: number, createdAt: string) => ({
+      ...officerItem(),
+      id,
+      title,
+      scoreGroupId: PAPER_ID,
+      sortOrder,
+      createdAt,
+      ...(id === VOIDED ? { status: 'voided', voidReason: '重复设置' } : {}),
+    })
+    const items = [
+      question(FIRST, '志愿服务', 0, '2026-02-01T00:00:00.000Z'),
+      question(VOIDED, '社会实践', 1, '2026-01-01T00:00:00.000Z'),
+      question(LAST, '文艺演出', 2, '2026-03-01T00:00:00.000Z'),
+    ]
+    await open({ items, touched, saved: saved as never })
+    await vi.waitFor(() =>
+      expect(document.querySelectorAll('[draggable="true"]').length).toBeGreaterThanOrEqual(3),
+    )
+
+    dragOnto('文艺演出', '社会实践')
+    await vi.waitFor(() => expect(touched).toContain(LAST))
+    await new Promise((settle) => setTimeout(settle, 300))
+
+    // the order the list will read back: by sort order, ties by age
+    const now = new Map(items.map((one) => [one.id, one.sortOrder]))
+    touched.forEach((id, index) => {
+      const written = saved[index]?.sortOrder
+      if (written !== undefined) now.set(id, written)
+    })
+    const read = [...items]
+      .sort((a, b) => now.get(a.id)! - now.get(b.id)! || a.createdAt.localeCompare(b.createdAt))
+      .map((one) => one.id)
+    expect(read).toEqual([FIRST, LAST, VOIDED])
+    expect(touched).not.toContain(VOIDED)
+  })
+
   it('reorders a section among its siblings, and offers no way to drop one inside another', async () => {
     const section = (id: string, name: string, sortOrder: number) => ({
       id,
