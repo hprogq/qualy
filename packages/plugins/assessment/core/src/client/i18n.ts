@@ -6793,7 +6793,8 @@ const i18n = definePluginMessages({
     },
     itemsFailFullHint: {
       id: 'assessment/items/fail-full-hint',
-      defaultMessage: 'Delete a draft question the round no longer needs, then add this one',
+      defaultMessage:
+        'Delete a draft question the round no longer needs, or contact the platform administrator',
     },
     itemsFailScoringTitle: {
       id: 'assessment/items/fail-scoring-title',

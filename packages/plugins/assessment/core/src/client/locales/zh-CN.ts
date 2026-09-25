@@ -2104,7 +2104,7 @@ export default {
   'assessment/items/fail-gone-title': '保存失败，项目已不存在',
   'assessment/items/fail-gone-hint': '它在打开期间被其他人删除了',
   'assessment/items/fail-full-title': '未能添加，本批次的项目数已达上限',
-  'assessment/items/fail-full-hint': '删除不再需要的草稿项目后再添加',
+  'assessment/items/fail-full-hint': '删除不再需要的草稿项目，或联系平台管理员',
   'assessment/items/fail-scoring-title': '保存失败，计分服务暂时不可用',
   'assessment/items/fail-scoring-hint': '已填写的内容不会丢失，请稍后重试',
   'assessment/items/fail-incompatible-title': '保存失败，新的计分规则与已认定的记录不兼容',
