@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { inspect } from 'node:util'
 import { sql } from 'kysely'
-import { Effect, Exit, Layer } from 'effect'
+import { Deferred, Effect, Exit, Fiber, Layer } from 'effect'
 import { beforeAll, afterAll, describe, expect, it } from 'vitest'
 import {
   createTestContext,
@@ -27,7 +27,7 @@ import { booted } from '@qualy/rbac-contract/testkit'
 import { compileCatalog } from '@qualy/rbac-contract/plugin'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
 import { Rbac } from '@qualy/rbac-contract/effect'
-import type { Orm } from '@qualy/plugin-database/server'
+import { transaction, type Orm } from '@qualy/plugin-database/server'
 import { entities } from '../src/db/entities.ts'
 import { permissions as assessmentPermissions } from '../src/permissions.ts'
 import {
@@ -37,6 +37,7 @@ import {
   type PhaseSpecInput,
 } from '../src/server/index.ts'
 import { participantEvents, type PhaseRow } from '../src/server/db.ts'
+import { batchesAtNode } from '../src/server/node-usage.ts'
 import { catalogLayers, storageForTest } from './support/catalogs.ts'
 import { startBatch } from './support/lifecycle.ts'
 
@@ -2315,6 +2316,80 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
       reasonsOf(failed).map((entry) => (entry.error as { reason?: string }).reason)
     expect(reasonOf(again)).toEqual(['already-staffed'])
     expect(reasonOf(alongside)).toEqual(['already-staffed'])
+  })
+
+  // A unit is binned under the tenant's lock after asking, under it, what
+  // stands there. A round created meanwhile read its units before that lock
+  // and anchored itself to one the delete had already found empty.
+  it('anchors a round behind a unit being binned, never on the binned unit', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('anchor-under-lock')
+        const assessment = yield* Assessment
+        const empty = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into org_nodes (tenant_id, org_type_id, parent_id, name, path, depth)
+            values (${f.tenant}, ${f.classType}, ${f.gradeB}, 'Empty', 'r.b.e', 2)
+            returning id`),
+        ).id
+        const reporter = yield* batchesAtNode.bind
+        const locked = yield* Deferred.make<void>()
+        // what org's delete does once it holds the lock: ask what stands on
+        // the unit, and bin it when nothing does
+        const binning = yield* Effect.forkChild(
+          transaction(
+            Effect.gen(function* () {
+              yield* runSql(sql`select 1 from tenants where id = ${f.tenant} for update`)
+              yield* Deferred.succeed(locked, undefined)
+              let queued = false
+              for (let waited = 0; waited < 200 && !queued; waited += 1) {
+                yield* runSql(sql`select pg_stat_clear_snapshot()`)
+                queued =
+                  one<{ n: number }>(
+                    yield* runSql(sql`
+                      select count(*)::int as n from pg_stat_activity
+                       where datname = current_database()
+                         and pg_backend_pid() = any(pg_blocking_pids(pid))`),
+                  ).n > 0
+                if (!queued) yield* Effect.sleep('20 millis')
+              }
+              const usage = yield* reporter(f.tenant, empty)
+              const held = usage.some((one) => one.clearable && one.count > 0)
+              if (!held) {
+                yield* runSql(sql`update org_nodes set deleted_at = now() where id = ${empty}`)
+              }
+              return queued
+            }),
+          ),
+        )
+        yield* Deferred.await(locked)
+        const created = yield* Effect.exit(
+          assessment.createBatch(
+            f.tenant,
+            {
+              name: 'Racing',
+              materialRange: { start: '2026-03-01', end: '2026-09-01' },
+              import: { orgNodeIds: [empty], userTypeIds: [f.studentType] },
+            },
+            f.principal,
+          ),
+        )
+        const queued = yield* Fiber.join(binning)
+        const stranded = one<{ n: number }>(
+          yield* runSql(sql`
+            select count(*)::int as n from batch_management_anchors a
+              join org_nodes n on n.tenant_id = a.tenant_id and n.id = a.org_node_id
+             where a.tenant_id = ${f.tenant} and n.deleted_at is not null`),
+        ).n
+        return { queued, created: tagOf(created) ?? 'created', stranded }
+      }),
+    )
+    expect(ok(exit)).toEqual({
+      queued: true,
+      created: 'ASSESSMENT_BATCH_REFERENCE_INVALID',
+      stranded: 0,
+    })
   })
 
   // Appointing somebody again after their appointment ran out used to leave

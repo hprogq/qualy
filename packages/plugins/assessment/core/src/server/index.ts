@@ -203,6 +203,7 @@ import {
   listTemplatesPage,
   lockBatch,
   allActiveRoleIds,
+  lockTenant,
   nodesByIds,
   oneBatch,
   oneParticipant,
@@ -2149,6 +2150,13 @@ export const make = Effect.fn('Assessment.make')(function* () {
     Effect.gen(function* () {
       const locked = yield* lockBatch(tenantId, batchId)
       if (!locked) return yield* new BatchNotFound()
+      // A roster write places anchors on units, so it queues with whoever is
+      // binning one before it reads where anybody stands. The batch's lock
+      // comes first, as in every write here: another write on this batch
+      // holds that lock while its inserts ask for a key share on the tenant
+      // row, which a tenant lock already held here would refuse, and each
+      // would wait on the other.
+      yield* lockTenant(tenantId)
       yield* requireRosterReach(as, tenantId, batchId)
       // A draft's roster is exactly what a draft is for. It is drawn when the
       // batch is created (§32.45), and the point of the gap before the first
@@ -2852,6 +2860,10 @@ export const make = Effect.fn('Assessment.make')(function* () {
       return yield* withDb(
         transaction(
           Effect.gen(function* () {
+            // the units are read, and anchored to, behind whoever is binning
+            // one of them: asked before the lock, a unit binned in between
+            // would be written down as where the round is run from
+            yield* lockTenant(tenantId)
             const nodes = yield* validateScopeSelection(tenantId, input.import.orgNodeIds)
             for (const node of nodes) yield* rbac.requireAt(as, MANAGE, node.id)
             if (input.timezone !== undefined) yield* requireKnownZone(input.timezone)
@@ -3621,7 +3633,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
               // reason this one needs it: two administrators pressing sync at
               // the same moment both saw the same source as new and both
               // inserted it, and the loser met a unique index as a database
-              // fault - a 500 for having been second.
+              // fault - a 500 for having been second. What the organization
+              // withdrew is revoked through rbac, which takes the tenant's lock
+              // after this one, the order every write here asks in.
               const locked = yield* lockBatch(tenantId, batchId)
               if (!locked) return yield* new BatchNotFound()
               // A closed round takes on nobody new and no more of anybody:

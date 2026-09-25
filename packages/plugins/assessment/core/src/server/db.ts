@@ -42,6 +42,25 @@ const instant = (ms: number) => sql`to_timestamp(${ms} / 1000.0)`
 
 const jsonb = (value: unknown) => sql`${JSON.stringify(value)}::jsonb`
 
+/**
+ * Serializes this plugin's structural writes with org's, auth's and rbac's.
+ *
+ * A round's anchors and its appointments stand on units: a unit is binned
+ * under this lock after asking, under it, what still stands there. A write
+ * that places an anchor, or appoints through rbac (which takes this lock
+ * itself), takes it first - before the batch's own lock, so that every
+ * transaction here asks for the two in the same order.
+ */
+export const lockTenant = (tenantId: string) =>
+  db.query((k) =>
+    k
+      .selectFrom('Tenant')
+      .select(sql<number>`1`.as('locked'))
+      .where('id', '=', tenantId)
+      .forUpdate()
+      .execute(),
+  )
+
 /** serializes writes on one batch; also how "does it exist" is asked before one */
 export const lockBatch = (tenantId: string, batchId: string) =>
   db
