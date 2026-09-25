@@ -1,6 +1,6 @@
 import type { UiText } from '@qualy/i18n-contract'
 import { Effect } from 'effect'
-import { orgNodeExists, userExists } from './db.ts'
+import { orgNodeRowExists, userExists } from './db.ts'
 
 import type { ActivePermission } from '@qualy/rbac-contract'
 import { explainRows } from './authorization.ts'
@@ -57,8 +57,9 @@ export const make = Effect.fn('Rbac.diagnostics.make')(function* (
     }
     if (orgNodeId !== undefined) {
       // an unknown node has no authority to explain, and answering as though
-      // it did would disagree with canAt, which refuses it
-      if (!(yield* orgNodeExists(tenantId, orgNodeId).pipe(Effect.orDie))) {
+      // it did would disagree with canAt, which refuses it. A binned one is
+      // not unknown: canAt still answers for it, so this does too.
+      if (!(yield* orgNodeRowExists(tenantId, orgNodeId).pipe(Effect.orDie))) {
         return yield* new GrantNodeNotFound()
       }
     }

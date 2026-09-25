@@ -82,6 +82,24 @@ export const orgNodeExists = (tenantId: string, orgNodeId: string) =>
     .pipe(Effect.map((row) => row !== undefined))
 
 /**
+ * Whether the node's row is there at all, in the bin or not.
+ *
+ * What the decision joins against: canAt answers for a binned unit (restoring
+ * one is authorized there), so the explanation has to be able to as well.
+ */
+export const orgNodeRowExists = (tenantId: string, orgNodeId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('OrgNode')
+        .select('id')
+        .where('tenantId', '=', tenantId)
+        .where('id', '=', orgNodeId)
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row !== undefined))
+
+/**
  * One role or all of a tenant's, with the sets a role screen needs.
  *
  * Shared because the role screen and the grant picker both read it, and a

@@ -2823,6 +2823,37 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
     }
   })
 
+  it('explains a unit in the bin the same way the decision answers for it', async () => {
+    const db = await createTestContext('effect-explain-binned')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const access = yield* Access
+          const rbac = yield* Rbac
+          yield* runSql(sql`update org_nodes set deleted_at = now() where id = ${f.child}`)
+          const evaluated = yield* Effect.result(
+            access.diagnostics.evaluate(f.tenant, {
+              userId: f.user,
+              permissionCode: 'org.tree.manage',
+              orgNodeId: f.child,
+            }),
+          )
+          return {
+            decided: yield* rbac.canAt(f.principal, 'org.tree.manage', f.child),
+            explained: evaluated._tag === 'Success' ? evaluated.success.allowed : tagOf(evaluated),
+          }
+        }),
+      )
+      // restoring a binned unit is authorized there, so the explanation of
+      // that authority cannot claim the unit does not exist
+      expect(ok(exit)).toEqual({ decided: true, explained: true })
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('explains a tenant capability the same way require does, node or no node', async () => {
     const db = await createTestContext('effect-explain-tenant')
     try {
