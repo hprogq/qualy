@@ -762,7 +762,7 @@ export function ResultLedger({
   onEntryOpen,
   onItemOpen,
   heading,
-  reader = 'owner',
+  reader,
   stickyTop = 0,
   align = 'center',
   closed = null,
@@ -778,8 +778,11 @@ export function ResultLedger({
   onItemOpen?: (itemId: string) => void
   /** the page's own name, when the ledger is the page */
   heading?: ReactNode
-  /** whose account this is to the person reading it */
-  reader?: 'owner' | 'staff'
+  /**
+   * whose account this is to the person reading it; every page says, since
+   * the one reading their own account is told what to do and staff are not
+   */
+  reader: 'owner' | 'staff'
   /** how far down the scroller something of the page's own is already pinned */
   stickyTop?: number
   /** centred when the ledger is the page; at the start inside a page that lines up there */

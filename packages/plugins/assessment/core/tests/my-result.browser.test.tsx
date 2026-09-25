@@ -1400,6 +1400,15 @@ describe('the ledger inside another page', () => {
     expect(Math.abs(band.left - seat.left)).toBeLessThan(2)
   })
 
+  it('asks every page that shows it to say who is reading', () => {
+    const paper = normal()
+    const unsaid = (
+      // @ts-expect-error a page must say whose account it shows
+      <ResultLedger result={paper.result} items={paper.items} entries={paper.entries} />
+    )
+    expect(unsaid.props).not.toHaveProperty('reader')
+  })
+
   it('does not speak to a staff reader as the one who must act', async () => {
     await page.viewport(1440, 900)
     const paper = normal()
