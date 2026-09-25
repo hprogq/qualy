@@ -1574,13 +1574,15 @@ function ItemRow({
         )}
       </span>
       <span
+        data-testid="ledger-value"
         {...stylex.props(
           styles.value,
           item.cents === 0 && styles.valueZero,
           item.cents < 0 && styles.negative,
         )}
       >
-        {two(item.cents)}
+        {/* a withdrawn question is not scored at all, which a zero would not say */}
+        {item.voided ? '—' : two(item.cents)}
       </span>
       <span {...stylex.props(styles.madeCell)}>
         <span data-made={made.kind} {...stylex.props(styles.made)}>

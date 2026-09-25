@@ -595,8 +595,11 @@ describe('the rows of the account', () => {
     const silent = itemRow('q2')
     expect(silent.getAttribute('data-value')).toBe('0.00')
     expect(silent.querySelector('[data-line-kind]')).toBeNull()
-    // a withdrawn question stays, marked as withdrawn
+    // a withdrawn question stays, marked as withdrawn, and shows no figure
+    // rather than a zero it was never scored to
     expect(itemRow('q13').getAttribute('data-voided')).toBe('true')
+    expect(itemRow('q13').querySelector('[data-testid="ledger-value"]')?.textContent).toBe('—')
+    expect(itemRow('q2').querySelector('[data-testid="ledger-value"]')?.textContent).toBe('0.00')
   })
 
   it('tells a claim its owner gave up from one that was refused', async () => {
