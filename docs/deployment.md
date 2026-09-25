@@ -121,7 +121,9 @@ database。出现第二种有持久部署副作用的能力时,先设计启动�
 `idle_in_transaction_session_timeout` 60s(`@qualy/plugin-database` 的 `DATABASE_TIMEOUTS`)。超过任一上限、连接断开或库拒绝新连接时,
 该请求答 503 `SERVICE_UNAVAILABLE`,访问日志以 Error 记下原因;约束冲突与业务拒绝照旧。`/health/ready` 每个探针最多等 4s,超时即 503。
 要放宽某一项,在 `DATABASE_URL` 上加同名参数(如 `?statement_timeout=120000`,`0` 为关闭),例如对库跑耗时较长的
-`qualy assessment audit-scoring` 时;取连接的 5s 不开放配置。迁移(`migrate` job 与开发态 apply)用自己的会话,不受这些上限约束。
+`qualy assessment audit-scoring` 时;取连接的 5s 不开放配置。迁移(`migrate` job 与开发态 apply)用自己的会话,不受这些上限约束:
+迁移器每开一个会话都先把这几项设为 0,URL 上的参数与库侧的 `ALTER ROLE / DATABASE … SET` 都不作用于迁移;它只限制等待迁移锁的时长
+(`QUALY_MIGRATION_LOCK_TIMEOUT_MS`,默认 120s)。
 
 **远程或托管 PostgreSQL 的 TLS**:compose 拓扑里 server 与 `migrate` 经内网连 `postgres` 服务,不需要 TLS。连远程或托管库时在
 `DATABASE_URL` 上写 `sslmode`,但要按 node-postgres(pg-connection-string 2.x)的口径理解:`sslmode=require`、`prefer`、`verify-ca`

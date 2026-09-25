@@ -4,6 +4,7 @@ import path from 'node:path'
 import { Migration, Migrator } from '@mikro-orm/migrations'
 import type { EntitySchema, MigrationObject } from '@mikro-orm/core'
 import { MikroORM } from '@mikro-orm/postgresql'
+import { CompiledQuery, type DatabaseConnection } from 'kysely'
 import { Client } from 'pg'
 import { driverConnection } from './connection.ts'
 import { QualyNamingStrategy } from './naming.ts'
@@ -70,14 +71,44 @@ const lockTimeoutMs = (): number => {
   return Number.isFinite(declared) && declared > 0 ? declared : DEFAULT_LOCK_TIMEOUT_MS
 }
 
+/**
+ * The session limits a migration does not run under, each set to 0 (off) on
+ * every session the migrator opens, right after it connects.
+ *
+ * The application's limits (`DATABASE_TIMEOUTS`) are for requests, and a
+ * deployment loosens or tightens them with parameters on DATABASE_URL - the
+ * url this module is handed too, where pg sends the same parameters as
+ * startup settings - or on the database side with `ALTER ROLE ... SET`,
+ * which a pooler that drops startup parameters needs. A session inherits
+ * either way. A backfill that runs past the statement limit, DDL queued
+ * behind a running server's lock past the lock limit, or the lock session
+ * sitting idle for the length of a migration would each end the run
+ * halfway. So the migrator sets its own values rather than taking whatever
+ * the session came with; the one wait it does bound, on the advisory lock,
+ * it bounds itself.
+ */
+const UNBOUNDED = [
+  'statement_timeout',
+  'lock_timeout',
+  'idle_in_transaction_session_timeout',
+  'idle_session_timeout',
+] as const
+
+/** one statement setting every limit in `UNBOUNDED`, `lock_timeout` to `$1` */
+const sessionLimits = `select ${UNBOUNDED.map((name) =>
+  name === 'lock_timeout'
+    ? `set_config('${name}', $1, false)`
+    : `set_config('${name}', '0', false)`,
+).join(', ')}`
+
 /** the body under the database's migration lock, waiting its turn, or a refusal that names the target */
 async function withMigrationLock<A>(url: string, body: () => Promise<A>): Promise<A> {
   const client = new Client({ connectionString: url })
   await client.connect()
   try {
-    // `lock_timeout` bounds the wait on the advisory lock itself; the value
-    // is a whole number of milliseconds and cannot be bound as a parameter
-    await client.query(`set lock_timeout = ${Math.round(lockTimeoutMs())}`)
+    // `lock_timeout` bounds the wait on the advisory lock itself, in
+    // milliseconds; nothing else on this session is bounded
+    await client.query(sessionLimits, [String(Math.round(lockTimeoutMs()))])
     try {
       await client.query('select pg_advisory_lock($1)', [MIGRATION_LOCK_KEY])
     } catch (error) {
@@ -182,6 +213,11 @@ async function assertDatabaseExists(url: string): Promise<void> {
  * than borrowing the application's - and it takes one connection, because the
  * lineage is a sequence. A full pool held during layer construction is a pool
  * every suite in a parallel run is also holding.
+ *
+ * Every connection the pool opens has the limits in `UNBOUNDED` switched off
+ * before its first statement: `onCreateConnection` is awaited once per new
+ * connection, ahead of any query on it (kysely 0.29 PostgresDriver
+ * `acquireConnection`, which @mikro-orm/postgresql 7.2 hands the option to).
  */
 export async function withMigrator<A>(
   url: string,
@@ -192,6 +228,9 @@ export async function withMigrator<A>(
   const orm = await MikroORM.init({
     entities: [...options.entities] as EntitySchema[],
     ...driverConnection(url),
+    onCreateConnection: async (connection) => {
+      await (connection as DatabaseConnection).executeQuery(CompiledQuery.raw(sessionLimits, ['0']))
+    },
     namingStrategy: QualyNamingStrategy,
     discovery: { warnWhenNoEntities: false },
     pool: { min: 1, max: 1 },

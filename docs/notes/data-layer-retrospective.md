@@ -137,6 +137,11 @@ pg-pool 取连接无期限排队(`connectionTimeoutMillis` 为 0),会话没有 `
 - `DATABASE_TIMEOUTS`(`src/defaults.ts`):取连接 / 建连 5s、`statement_timeout` 30s、`lock_timeout` 10s、
   `idle_in_transaction_session_timeout` 60s,作为应用连接池的 driver 选项(三个 PostgreSQL 参数随启动报文下发)。
   `DATABASE_URL` 上的同名参数覆盖后三项(0 为关闭),不新增环境变量。迁移器(deploy job 与开发态 apply)用自己的会话,不继承这些上限。
+  起初「不继承」只是没给迁移器的会话传这组 driver 选项,URL 上的同名参数照样随启动报文到了迁移锁连接与 `withMigrator` 的连接
+  (`migrate` 与 server 共用一份 `.env`,照文档放宽请求上限就会让长回填、排在运行中 server 锁后的 DDL 被取消,等待迁移锁也按 57014 失败);
+  库侧的 `ALTER ROLE / DATABASE … SET` 同理。现在迁移器每开一个会话,第一条语句就把 `statement_timeout`、`lock_timeout`、
+  `idle_in_transaction_session_timeout`、`idle_session_timeout` 设为 0(迁移锁连接的 `lock_timeout` 设为自己的等待上限),
+  `tests/migrator.test.ts` 两条(URL 带上限、库侧默认值带上限)守住。
 - 分类归 database 插件:`QueryFailed` 构造时判断失败是否表示「数据库暂时无法服务」——取连接超时、连接断开、
   57014 / 55P03 / 25P03 / 57P01-03 / 57P05 / 53300 / 08 类,以及没有 SQLSTATE 的驱动断线消息——是则带上 api-kit 的 `unavailable` 标记。
   `transaction` 的 begin 与 commit 失败也改为以 `QueryFailed` 抛出,同样会被标记。

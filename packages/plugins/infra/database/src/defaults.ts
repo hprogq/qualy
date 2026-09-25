@@ -34,7 +34,7 @@ export const MIGRATION_FILE = /^(\d{14})(?:_[a-z0-9]+(?:-[a-z0-9]+)*)?\.sql$/
  * session opens. A `statement_timeout`, `lock_timeout` or
  * `idle_in_transaction_session_timeout` parameter on DATABASE_URL overrides
  * the one here, 0 turning it off. The migrator opens sessions of its own and
- * keeps its own limits.
+ * switches all three off on them, the url's included.
  */
 export interface DatabaseTimeouts {
   readonly connectMs: number

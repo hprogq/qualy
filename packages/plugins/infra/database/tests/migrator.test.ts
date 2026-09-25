@@ -197,6 +197,80 @@ describe.runIf(postgresAvailable)('applying a lineage', () => {
     }
   })
 
+  // The application's request limits travel on DATABASE_URL, and the deploy
+  // job reads the same .env: a url tightened for requests used to end a long
+  // backfill, a DDL queued behind a running server, or the wait for another
+  // run's lock - which then failed as a canceled statement rather than
+  // with the refusal that names the target.
+  it('runs under none of the request limits the url carries', async () => {
+    const target = await emptyDatabase('migrator-url-limits')
+    await target.db.query('create table held_probe (id int)')
+    const folder = lineage({
+      '00000000000001_slow.sql': [
+        // queued behind a transaction holding the table
+        'alter table held_probe add column noted int;',
+        // longer than the url's statement limit
+        'select pg_sleep(0.3);',
+        `create table limits_probe as select
+           current_setting('statement_timeout') as statement,
+           current_setting('lock_timeout') as lock,
+           current_setting('idle_in_transaction_session_timeout') as idle_in_transaction,
+           current_setting('idle_session_timeout') as idle;`,
+      ].join('\n'),
+    })
+    const limited = new URL(target.db.url)
+    limited.searchParams.set('statement_timeout', '100')
+    limited.searchParams.set('lock_timeout', '100')
+    limited.searchParams.set('idle_in_transaction_session_timeout', '100')
+    // another run holding the migration lock, and a transaction holding the
+    // table, each for longer than the url allows a wait
+    const run = new Client({ connectionString: target.db.url })
+    const reader = new Client({ connectionString: target.db.url })
+    await run.connect()
+    await reader.connect()
+    try {
+      await run.query('select pg_advisory_lock($1)', [MIGRATION_LOCK_KEY])
+      await reader.query('begin')
+      await reader.query('lock table held_probe in access share mode')
+      const applying = runMigrations(limited.href, { folder, entities: [] })
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      await run.query('select pg_advisory_unlock($1)', [MIGRATION_LOCK_KEY])
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      await reader.query('commit')
+
+      const { applied } = await applying
+      expect(applied).toBe(1)
+      const seen = await target.db.query<Record<string, string>>('select * from limits_probe')
+      expect(seen.rows).toEqual([
+        { statement: '0', lock: '0', idle_in_transaction: '0', idle: '0' },
+      ])
+    } finally {
+      await reader.end().catch(() => {})
+      await run.end().catch(() => {})
+      await target.dispose()
+      fs.rmSync(folder, { recursive: true, force: true })
+    }
+  })
+
+  // A pooler that drops startup parameters leaves the limits to the
+  // database's own defaults (docs/deployment.md), which every new session
+  // takes, the migrator's included.
+  it('runs under none of the limits the database gives its sessions either', async () => {
+    const target = await emptyDatabase('migrator-database-limits')
+    const folder = lineage({
+      '00000000000001_slow.sql': 'select pg_sleep(0.3);\ncreate table slow_probe (id int);\n',
+    })
+    const name = new URL(target.db.url).pathname.slice(1)
+    await target.db.query(`alter database "${name}" set statement_timeout = 100`)
+    try {
+      const { applied } = await runMigrations(target.db.url, { folder, entities: [] })
+      expect(applied).toBe(1)
+    } finally {
+      await target.dispose()
+      fs.rmSync(folder, { recursive: true, force: true })
+    }
+  })
+
   it('records nothing for a migration that failed, and applies it once it is fixed', async () => {
     const target = await emptyDatabase('migrator-failure')
     const folder = lineage({

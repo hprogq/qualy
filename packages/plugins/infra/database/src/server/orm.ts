@@ -588,8 +588,10 @@ const reportWhileClosing = (
  * lib/client.js for the rest). The three PostgreSQL settings go out as
  * startup parameters, so a session has them before its first statement; a
  * parameter of the same name on the url wins over the value here, and 0
- * leaves it off. The migrator connects without these on purpose: a migration
- * may lock and rewrite a table for as long as it takes.
+ * leaves it off. The migrator does not run under these: a migration may lock
+ * and rewrite a table for as long as it takes, so it switches them off on
+ * every session it opens, whatever the url says (`UNBOUNDED` in
+ * ../migrator.ts).
  */
 const sessionLimits = (timeouts: DatabaseTimeouts) => ({
   connectionTimeoutMillis: timeouts.connectMs,
