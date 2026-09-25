@@ -1580,13 +1580,17 @@ function DecisionBar({
   onDialog: (next: 'approve' | 'reject' | 'escalate' | 'supplement') => void
 }) {
   const { format } = useI18n()
-  // What each word will do from here, told on hover. On the ladder every
-  // step's approval settles the matter, a middle step's rejection climbs
-  // with its opinion, and escalating climbs without one; the ordinary route
-  // reads as it always did.
+  // What each word will do from here, told on hover. The server says
+  // whether an approval or a rejection said here concludes the round: in
+  // the middle of the escalation route both are opinions the next step
+  // reads, and escalating climbs without one; the ordinary route hands an
+  // approval on until its last step.
   const onLadder = review.chain.route === 'escalation'
-  const route = onLadder ? review.chain.escalation : review.chain.normal
-  const lastStep = route[route.length - 1]?.id === review.chain.stageId
+  const approveTip = review.actions.approvalConcludes
+    ? m.reviewTipApprove
+    : onLadder
+      ? m.reviewTipApproveOpinion
+      : m.reviewTipApproveMid
 
   return (
     <footer {...stylex.props(styles.decisionFooter)}>
@@ -1632,7 +1636,8 @@ function DecisionBar({
           label={format(m.reviewReject)}
           icon={<CornerUpLeftIcon aria-hidden />}
           kbd="R"
-          why={format(onLadder && !lastStep ? m.reviewTipRejectMid : m.reviewTipReject)}
+          why={format(review.actions.rejectionReturns ? m.reviewTipReject : m.reviewTipRejectMid)}
+          concludes={review.actions.rejectionReturns}
           xstyle={[styles.rejectKey, styles.phoneVerdict]}
           kbdClassName="bg-[color-mix(in_oklab,var(--q-danger)_12%,transparent)] text-[var(--q-danger)]"
           onPress={() => onDialog('reject')}
@@ -1643,9 +1648,8 @@ function DecisionBar({
           label={format(m.reviewApprove)}
           icon={<CheckIcon aria-hidden />}
           kbd="A"
-          // an ordinary middle step's approval hands the round on; the
-          // ladder's every step and the ordinary route's last one settle it
-          why={format(onLadder || lastStep ? m.reviewTipApprove : m.reviewTipApproveMid)}
+          why={format(approveTip)}
+          concludes={review.actions.approvalConcludes}
           xstyle={[styles.approveKey, styles.phoneVerdict]}
           kbdClassName="bg-[color-mix(in_oklab,var(--q-success)_12%,transparent)] text-[var(--q-success-foreground)]"
           onPress={() => onDialog('approve')}
@@ -1672,6 +1676,7 @@ function ActionKey({
   icon,
   xstyle,
   kbdClassName,
+  concludes,
   onPress,
 }: {
   act: 'approve' | 'reject' | 'escalate' | 'supplement'
@@ -1680,6 +1685,8 @@ function ActionKey({
   kbd: string
   /** what the act will do, told on hover while it is offered */
   why: string
+  /** whether the verdict said here concludes the round, for a verdict key */
+  concludes?: boolean
   /** the act's glyph, in the key's own ink */
   icon?: ReactNode
   xstyle?: stylex.StyleXStyles | readonly stylex.StyleXStyles[]
@@ -1697,6 +1704,7 @@ function ActionKey({
       data-offer={blocked ? 'blocked' : 'available'}
       // why it is not on offer, as the fact rather than the sentence
       data-blocked-reason={blocked ? offer.reason : undefined}
+      data-concludes={concludes === undefined ? undefined : String(concludes)}
       aria-disabled={blocked || undefined}
       className={
         stylex.props(!fine && styles.touchKey, xstyle, blocked && styles.blockedKey).className

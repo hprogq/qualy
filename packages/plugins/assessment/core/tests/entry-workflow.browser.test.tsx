@@ -1775,6 +1775,7 @@ describe('judging a submission', () => {
       supplement: { state: 'available' as const, reason: null },
       // a normal-route round: a rejection here goes back to whoever filed
       rejectionReturns: true,
+      approvalConcludes: true,
     },
     capabilities: {
       canDecide: true,

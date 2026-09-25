@@ -1046,7 +1046,10 @@ export function ApproveDialog({
       <DecisionSheet
         open={open}
         title={format(m.reviewApprove)}
-        hint={format(m.reviewApproveSheetHint)}
+        // in the middle of the escalation route approving is an opinion
+        hint={format(
+          review.actions.approvalConcludes ? m.reviewApproveSheetHint : m.reviewOpinionFoot,
+        )}
         slideLabel={format(m.reviewSlideApprove)}
         waiting={format(m.reviewSheetFillFirst)}
         ready={ready}
@@ -1073,7 +1076,10 @@ export function ApproveDialog({
     <FormDialog
       open={open}
       size={form === null ? 'default' : 'wide'}
-      title={format(m.reviewApproveTitle, { name: review.participantName })}
+      title={format(
+        review.actions.approvalConcludes ? m.reviewApproveTitle : m.reviewApproveOpinionTitle,
+        { name: review.participantName },
+      )}
       description={format(m.reviewRejectSubtitle, {
         item: review.itemTitle,
         no: review.revision.revisionNo,
@@ -1566,7 +1572,7 @@ export function RejectDialog({
       <DecisionSheet
         open={open}
         title={format(m.reviewReject)}
-        hint={format(m.reviewRejectFoot)}
+        hint={format(review.actions.rejectionReturns ? m.reviewRejectFoot : m.reviewOpinionFoot)}
         slideLabel={format(m.reviewSlideReject)}
         waiting={format(m.reviewSheetFillFirst)}
         ready={ready}
@@ -1597,7 +1603,10 @@ export function RejectDialog({
       open={open}
       size="wide"
       restfulFocus={reasons.length > 0}
-      title={format(m.reviewRejectTitle, { name: review.participantName })}
+      title={format(
+        review.actions.rejectionReturns ? m.reviewRejectTitle : m.reviewRejectOpinionTitle,
+        { name: review.participantName },
+      )}
       description={format(m.reviewRejectSubtitle, {
         item: review.itemTitle,
         no: review.revision.revisionNo,
@@ -1605,7 +1614,9 @@ export function RejectDialog({
       onClose={onClose}
       footer={
         <div {...stylex.props(styles.footerRow)}>
-          <p {...stylex.props(recognitionStyles.quietNote)}>{format(m.reviewRejectFoot)}</p>
+          <p {...stylex.props(recognitionStyles.quietNote)}>
+            {format(review.actions.rejectionReturns ? m.reviewRejectFoot : m.reviewOpinionFoot)}
+          </p>
           <span {...stylex.props(styles.spacer)} />
           <Button variant="outline" onClick={onClose}>
             {format(commonMessages.cancel)}

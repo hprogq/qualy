@@ -114,7 +114,7 @@ export interface RoundActorRefs extends ReviewerRefs {
 }
 
 /** the event kinds that count as a formal judgment by their actor */
-const JUDGED_KINDS = `('approved', 'rejected', 'escalated', 'opinion-rejected')`
+const JUDGED_KINDS = `('approved', 'rejected', 'escalated', 'opinion-approved', 'opinion-rejected')`
 
 /**
  * Same-round independence (§32.66): once a round is in the escalation
@@ -460,7 +460,7 @@ export interface ReviewInstanceDetailRow {
  * policy edit would quietly re-open a door the work had closed. Arrival
  * noise (submitted, assignee-not-found, stage-skipped) is not work.
  */
-const WORK_KINDS = `('approved', 'rejected', 'escalated', 'opinion-rejected', 'supplement-requested')`
+const WORK_KINDS = `('approved', 'rejected', 'escalated', 'opinion-approved', 'opinion-rejected', 'supplement-requested')`
 
 export const withdrawStandingsOf = (tenantId: string, instanceIds: readonly string[]) =>
   instanceIds.length === 0
@@ -1427,8 +1427,8 @@ export const decisionsToday = (input: {
         where re.tenant_id = ${input.tenantId}
           and e.batch_id = ${input.batchId}
           and re.actor_id = ${input.userId}
-          and re.kind in ('approved', 'rejected', 'escalated', 'opinion-rejected', 'comment',
-                          'recommend-approve', 'recommend-reject')
+          and re.kind in ('approved', 'rejected', 'escalated', 'opinion-approved',
+                          'opinion-rejected', 'comment', 'recommend-approve', 'recommend-reject')
           and re.created_at >=
             date_trunc('day', now() at time zone ${input.timezone}) at time zone ${input.timezone}
       `.execute(k),

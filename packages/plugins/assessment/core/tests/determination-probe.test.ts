@@ -682,6 +682,13 @@ describe.runIf(postgresAvailable)('proving a determination before it is a fact',
           const b1 = yield* appoint(f, g.batch.id, 'B1', panelRole)
           const b2 = yield* appoint(f, g.batch.id, 'B2', panelRole)
           const b3 = yield* appoint(f, g.batch.id, 'B3', panelRole)
+          // the step after the sitting names a level nobody here stands
+          // under, so the sitting is the route's last live step: only a
+          // sitting that concludes writes a fact, and only that one is proven
+          const faculty = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into org_types (tenant_id, name) values (${f.t}, 'Faculty') returning id`),
+          ).id
           const groups = yield* assessment.listScoreGroups(f.t, g.batch.id, admin)
           const config = (scoring: unknown) => ({
             entryChannels: ['participant'] as const,
@@ -706,7 +713,7 @@ describe.runIf(postgresAvailable)('proving a determination before it is a fact',
                   },
                   {
                     id: 'd2',
-                    selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+                    selector: { kind: 'roleAt', nodeTypeId: faculty, roleIds: [f.reviewRole] },
                     quorum: { type: 'any' },
                   },
                 ],

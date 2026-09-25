@@ -102,6 +102,7 @@ const review = () => ({
     supplement: { state: 'available' as const, reason: null },
     // a normal-route round: a rejection here goes back to whoever filed
     rejectionReturns: true,
+    approvalConcludes: true,
   },
   recognitionForm: {
     fields: [

@@ -714,7 +714,10 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     ])
   })
 
-  it('hands an escalation to the ladder, where any rung may settle it', async () => {
+  // The escalation route is a pipeline (re-ruled 2026-09-25): a middle step
+  // agreeing is an opinion the next step starts from, and only the route's
+  // last live step concludes.
+  it('hands an escalation to the route, where a middle step only gives an opinion', async () => {
     const result = ok(
       await run(
         db.url,
@@ -793,20 +796,58 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const escalatorRead = yield* Effect.exit(
             assessment.getReviewInstance(f.t, instanceId, reviewer),
           )
-          // a rung of the ladder settles the matter itself: approval here is
-          // the round approved, not a hand-on to the next rung
+          // a middle step agreeing hands the round on with its opinion;
+          // it does not settle anything
           const escalated = yield* assessment.getReviewInstance(
             f.t,
             instanceId,
             f.principal(second),
           )
+          const opined = yield* assessment.decideReview(
+            f.t,
+            instanceId,
+            { decision: 'approve', comment: '材料可信' },
+            f.principal(second),
+          )
+          const midway = one<{ status: string; recognitions: number }>(
+            yield* runSql(sql`
+              select e.status,
+                (select count(*)::int from entry_recognitions r where r.entry_id = e.id)
+                  as recognitions
+              from entries e where e.id = ${entry.id}`),
+          )
+          // both judges at the class are spent for this round: a third one
+          // is appointed, and the last step concludes
+          const third = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.t}, 'Third Judge', ${f.studentType}, ${f.classA}) returning id`),
+          ).id
+          const thirdGrant = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+              values (${f.t}, ${third}, ${f.reviewRole}, ${f.classA}, 'self') returning id`),
+          ).id
+          yield* accept(f.t, g.batch.id, third, thirdGrant)
+          yield* assessment.patrolReviewRounds
+          const atEnd = yield* assessment.getReviewInstance(f.t, instanceId, f.principal(third))
           const settled = yield* assessment.decideReview(
             f.t,
             instanceId,
             { decision: 'approve' },
-            f.principal(second),
+            f.principal(third),
           )
-          return { onNormal, raised, escalatorQueue, escalatorRead, escalated, settled }
+          return {
+            onNormal,
+            raised,
+            escalatorQueue,
+            escalatorRead,
+            escalated,
+            opined,
+            midway,
+            atEnd,
+            settled,
+          }
         }),
       ),
     )
@@ -826,16 +867,25 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     expect(errorOf<{ _tag: string }>(result.escalatorRead)?._tag).toBe(
       'ASSESSMENT_REVIEW_NOT_FOUND',
     )
-    // a middle rung of the ladder holds every word, escalating included
+    // a middle step holds every word, escalating included, and approving
+    // there is not the verdict
     expect(result.escalated.actions).toMatchObject({
       approve: { state: 'available' },
       reject: { state: 'available' },
       escalate: { state: 'available' },
+      approvalConcludes: false,
     })
+    expect(result.opined.state).toBe('blocked')
+    expect(result.opined.chain.stageId).toBe('d2')
+    expect(result.midway).toEqual({ status: 'in_review', recognitions: 0 })
+    expect(result.atEnd.actions.approvalConcludes).toBe(true)
     expect(result.settled.outcome).toBe('approved')
     expect(result.settled.events.map((event) => event.kind)).toEqual([
       'submitted',
       'escalated',
+      'opinion-approved',
+      'assignee-not-found',
+      'assignee-found',
       'approved',
     ])
   })

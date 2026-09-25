@@ -1235,6 +1235,11 @@ const reviewDetailView = Schema.Struct({
      * only the first kind, so this is what says whether to offer it.
      */
     rejectionReturns: Schema.Boolean,
+    /**
+     * Whether an approval said here concludes the round. At a middle step
+     * of the escalation route it is an opinion the next step starts from.
+     */
+    approvalConcludes: Schema.Boolean,
   }),
   events: Schema.Array(
     Schema.Struct({

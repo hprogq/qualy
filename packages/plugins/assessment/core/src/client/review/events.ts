@@ -31,6 +31,9 @@ const WITH_ACTOR: Record<string, MessageDescriptor> = {
   // a middle step of the escalation route objecting: an opinion that climbs
   // with the round rather than a verdict on it
   'opinion-rejected': m.eventOpinionRejected,
+  // and one agreeing: the determination it suggests is where the next step
+  // starts, and the verdict is still to come
+  'opinion-approved': m.eventOpinionApproved,
 }
 
 const WITHOUT_ACTOR: Record<string, MessageDescriptor> = {
@@ -58,6 +61,7 @@ const WITHOUT_ACTOR: Record<string, MessageDescriptor> = {
 const ROUND_VOICE: Record<string, MessageDescriptor> = {
   approved: m.eventPanelApproved,
   escalated: m.eventPanelEscalated,
+  'opinion-approved': m.eventPanelOpinionApproved,
 }
 
 /**

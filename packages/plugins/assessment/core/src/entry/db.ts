@@ -1682,6 +1682,9 @@ export const userActivityPage = (input: {
                    when 'rejected' then 'review-rejected'
                    when 'escalated' then 'review-escalated'
                    when 'opinion-rejected' then 'review-opinion-rejected'
+                   -- a middle step of the escalation route agreeing: the
+                   -- round went on, the same as a confirmation that hands it on
+                   when 'opinion-approved' then 'review-stage-approved'
                  end as kind,
                  theirs.entry_id, theirs.item_id, theirs.item_title,
                  theirs.subject_name, ${openDoor} as instance_id,
@@ -1695,7 +1698,8 @@ export const userActivityPage = (input: {
           join theirs on theirs.entry_id = ri.entry_id
           where re.tenant_id = ${input.tenantId}
             and re.actor_id = ${input.userId}
-            and re.kind in ('approved', 'rejected', 'escalated', 'opinion-rejected')
+            and re.kind in ('approved', 'rejected', 'escalated', 'opinion-approved',
+                            'opinion-rejected')
 
           union all
           select sr.id, 'r-supp-req', 'reviewer', 'supplement-requested',

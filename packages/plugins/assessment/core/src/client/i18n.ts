@@ -1274,6 +1274,16 @@ const i18n = definePluginMessages({
       id: 'assessment/event/panel-escalated',
       defaultMessage: 'No agreement at this step; handed to the next one',
     },
+    // a middle step of the escalation route agreeing: an opinion the next
+    // step starts from, never the verdict
+    eventOpinionApproved: {
+      id: 'assessment/event/opinion-approved',
+      defaultMessage: '{who} agreed and passed it to the next step',
+    },
+    eventPanelOpinionApproved: {
+      id: 'assessment/event/panel-opinion-approved',
+      defaultMessage: 'Every reviewer at this step agreed; passed to the next step',
+    },
     eventAppealed: {
       id: 'assessment/event/appealed',
       defaultMessage: '{who} appealed the review decision',
@@ -2926,6 +2936,22 @@ const i18n = definePluginMessages({
     reviewTipRejectMid: {
       id: 'assessment/review/tip-reject-mid',
       defaultMessage: 'Record your objection; the next review step rules on it',
+    },
+    reviewTipApproveOpinion: {
+      id: 'assessment/review/tip-approve-opinion',
+      defaultMessage: 'Agree and suggest a determination; the next review step decides',
+    },
+    reviewApproveOpinionTitle: {
+      id: 'assessment/review/approve-opinion-title',
+      defaultMessage: 'Agree with {name}’s claim',
+    },
+    reviewRejectOpinionTitle: {
+      id: 'assessment/review/reject-opinion-title',
+      defaultMessage: 'Disagree with {name}’s claim',
+    },
+    reviewOpinionFoot: {
+      id: 'assessment/review/opinion-foot',
+      defaultMessage: 'The next review step reads your opinion and decides.',
     },
     reviewTipEscalateMid: {
       id: 'assessment/review/tip-escalate-mid',

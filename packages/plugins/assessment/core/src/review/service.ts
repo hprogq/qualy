@@ -251,6 +251,12 @@ export interface ReviewActionsView {
    * had filled.
    */
   readonly rejectionReturns: boolean
+  /**
+   * Whether an approval said here concludes the round. False at a middle
+   * step of the escalation route, where approving is an opinion the next
+   * step starts from, so the workbench does not present it as the verdict.
+   */
+  readonly approvalConcludes: boolean
 }
 
 /** one ask and its answer, as a reader sees them */
@@ -378,12 +384,13 @@ export interface ReviewContextView {
  * to the next step and ends it at the last, reject ends it anywhere,
  * escalate hands it to the escalation route while the phase opens that.
  *
- * The escalation route is a ladder of settlements (§32.66, re-ruled
- * 2026-08-20): every step of it is qualified to settle the matter
- * positively, so approve ends the round wherever it is said. A middle
- * step's reject is an opinion that climbs - the final negative word belongs
- * to the route's end alone - and escalate climbs without an opinion.
- * Nothing on the ladder is phase-gated: the phase gates entering it.
+ * The escalation route is a pipeline of opinions (re-ruled 2026-09-25,
+ * replacing §32.66's ladder of settlements): a middle step's approve or
+ * reject is an opinion - the judgment, the determination it would make, the
+ * words - that climbs to the next step, which reads it, starts from its
+ * determination and still judges for itself. Only the route's last live
+ * step writes the conclusion. Escalate climbs without an opinion. Nothing
+ * on the route is phase-gated: the phase gates entering it.
  */
 export type ReviewDecision = 'approve' | 'reject' | 'escalate'
 
@@ -411,10 +418,17 @@ const reviewDecisionCount = boundedCounter('qualy.assessment.review.decision', {
   decision: ['approve', 'reject', 'escalate'],
 })
 
-/** whether this word, said here, ends the round rather than moving it */
+/**
+ * Whether this word, said here, ends the round rather than moving it.
+ *
+ * An approval ends a round only at the last live step of its route, on
+ * either route. A refusal ends an ordinary round wherever it is said, and an
+ * escalation round only at its end: a middle step's no is an opinion for
+ * the step above.
+ */
 const wordEnds = (policy: ResolvedPolicy, here: ResolvedStage, action: ReviewDecision): boolean =>
   action === 'approve'
-    ? here.route === 'escalation' || isRouteEnd(policy, here)
+    ? isRouteEnd(policy, here)
     : action === 'reject'
       ? here.route === 'normal' || isRouteEnd(policy, here)
       : false
@@ -760,6 +774,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         escalate: act(offered.includes('escalate'), escalateReason),
         supplement: act(view.canDecide, null),
         rejectionReturns: here !== null && wordEnds(policy, here, 'reject'),
+        approvalConcludes: here !== null && wordEnds(policy, here, 'approve'),
       }
       // what the concluded sittings said, for the judge now standing after
       // them; and which steps this round stepped over, off its own trail
@@ -1511,9 +1526,9 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               if (here === null) return yield* refuse(action, 'chain-unreadable')
               // Where this round stands decides what may be said here (§14,
               // §32.66): the ordinary route confirms step by step and may hand
-              // the round to the escalation ladder while the phase opens that;
-              // every rung of the ladder may settle the matter, and only its
-              // last rung may finally refuse it.
+              // the round to the escalation route while the phase opens that;
+              // every middle step of that route gives an opinion, and only its
+              // last live step concludes.
               const escalationDecision =
                 action === 'escalate' && here.route === 'normal'
                   ? yield* deps.escalateGate(tenantId, row.batchId)
@@ -2038,6 +2053,11 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                 // frozen text.
                 const frozen = yield* panelRecognitionOf(tenantId, panel.id)
                 let ballotHash = frozen === null ? null : frozen.hash
+                // A sitting in the middle of the escalation route concludes
+                // nothing: its agreement is an opinion the next step starts
+                // from. Only one standing at the route's last live step can
+                // make its text a fact, and only that one is proven.
+                const atEnd = isRouteEnd(policy, here)
                 if (action === 'approve') {
                   // Two ballots carry a determination toward becoming a fact:
                   // the first, which fixes the text every later approval must
@@ -2064,7 +2084,9 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                         })),
                       })
                     }
-                    yield* proveDetermination('first-ballot', opening, { cast: cast.length })
+                    if (atEnd) {
+                      yield* proveDetermination('first-ballot', opening, { cast: cast.length })
+                    }
                     yield* lockPanelRecognition({
                       tenantId,
                       panelId: panel.id,
@@ -2085,6 +2107,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                       issues: [{ field: 'recognition', reason: 'panel-recognition-locked' }],
                     })
                   } else if (
+                    atEnd &&
                     cast.length + 1 >= panel.seatCount &&
                     cast.every((vote) => vote.decision === 'approve')
                   ) {
@@ -2107,17 +2130,29 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                 if (votes.length >= panel.seatCount) {
                   const unanimous = votes.every((vote) => vote.decision === 'approve')
                   // What the sitting amounted to, settled before it is written
-                  // down: a split at the ladder's end is the refusal, and
+                  // down: a split at the route's end is the refusal, and
                   // resolving as 'escalated' first left the row saying it had
                   // handed the matter up while the round closed rejected.
-                  const ends = !unanimous && isRouteEnd(policy, here)
+                  const ends = !unanimous && atEnd
                   const closed = yield* resolvePanel({
                     tenantId,
                     panelId: panel.id,
                     resolution: unanimous ? 'approved' : ends ? 'rejected' : 'escalated',
                   })
                   if (!closed) return yield* new ReviewConflict()
-                  if (unanimous) {
+                  if (unanimous && !atEnd) {
+                    // Agreement in the middle of the route is the sitting's
+                    // opinion: its frozen text travels up as the next step's
+                    // starting point, and the round goes on.
+                    const sitting = yield* panelRecognitionOf(tenantId, panel.id)
+                    if (sitting === null) return yield* new ReviewConflict()
+                    yield* sayFrom('opinion-approved', null, {
+                      recognitionPayload: sitting.values,
+                      recognitionHash: sitting.hash,
+                      recognitionReason: sitting.reason,
+                    })
+                    yield* climb(here.index + 1)
+                  } else if (unanimous) {
                     const won = yield* completeInstance({
                       tenantId,
                       instanceId,
@@ -2138,7 +2173,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                     const recognitionId = yield* settle(sitting.values, eventId, null)
                     yield* concludeClaim('approved', recognitionId)
                   } else if (ends) {
-                    // The end of the ladder owns the final no, and a sitting
+                    // The end of the route owns the final no, and a sitting
                     // held there has nowhere to hand a split to: the split is
                     // the refusal. A panel is forbidden on the route's last
                     // step, but that is checked by POSITION while the round
@@ -2157,7 +2192,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                     yield* concludeClaim('rejected')
                   } else {
                     // anything short of every voice saying yes climbs, the
-                    // 0-for-all case included: the ladder's end owns the final
+                    // 0-for-all case included: the route's end owns the final
                     // no, and it climbs with all the opinions attached
                     yield* sayFrom('escalated', null)
                     yield* climb(here.index + 1)
@@ -2185,7 +2220,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                 return yield* written()
               }
 
-              if (action === 'approve') {
+              if (action === 'approve' && here.route === 'normal') {
                 // the ordinary route's onward step: this level has confirmed,
                 // the next one is owed the same look
                 const next = nextAfter(policy, here)
@@ -2231,10 +2266,18 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               }
 
               // The climbing words. The word goes on the record first, then
-              // the ladder is walked: the walker's independence rule reads the
+              // the route is walked: the walker's independence rule reads the
               // trail, and the very act being taken must already count -
-              // whoever escalates or objects here is done with this round.
-              yield* say(action === 'escalate' ? 'escalated' : 'opinion-rejected')
+              // whoever escalates or gives an opinion here is done with this
+              // round. An approving opinion carries the determination it
+              // would make, which is where the next step starts from.
+              yield* say(
+                action === 'escalate'
+                  ? 'escalated'
+                  : action === 'approve'
+                    ? 'opinion-approved'
+                    : 'opinion-rejected',
+              )
               yield* climb(here.route === 'normal' ? 0 : here.index + 1)
               return yield* written()
             }),
@@ -2325,8 +2368,9 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
    *
    * A round of its own, against the same filing: nothing was rewritten, and
    * what is being disputed is the conclusion. It opens on the escalation
-   * route and behaves like any other walk of it (§32.66): every rung may
-   * settle it positively, the last rung alone may finally refuse it.
+   * route and behaves like any other walk of it: every middle step gives an
+   * opinion, and the last live step concludes, in either direction - an
+   * appeal can end better or worse than the decision it contests.
    *
    * The other way out of a rejection is to change the material and submit
    * again, which is a different act on a different route. The two are

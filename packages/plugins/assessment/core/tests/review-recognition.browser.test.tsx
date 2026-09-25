@@ -138,6 +138,7 @@ const review = (over: Record<string, unknown> = {}) => ({
     supplement: { state: 'available' as const, reason: null },
     // a normal-route round: a rejection here goes back to whoever filed
     rejectionReturns: true,
+    approvalConcludes: true,
   },
   recognitionForm: recognitionForm(),
   capabilities: { canDecide: true, canCancelSupplement: false, canAnswerSupplement: false },
@@ -640,5 +641,29 @@ describe('approving with a determination', () => {
     await expect.element(page.getByRole('dialog')).toBeVisible()
     // advice is for the person who filed, and this word never reaches them
     expect(page.getByRole('checkbox', { name: /修改建议/ }).elements()).toEqual([])
+  })
+
+  // In the middle of the escalation route both verdicts are opinions the
+  // next step reads (re-ruled 2026-09-25): the keys say they do not conclude,
+  // which is what their hover and the dialog's heading are drawn from.
+  it('marks both verdicts as opinions in the middle of the escalation route', async () => {
+    const base = review({ recognitionForm: null })
+    await open(
+      {
+        ...base,
+        actions: { ...base.actions, rejectionReturns: false, approvalConcludes: false },
+      },
+      { decideReview: stagedDecide() },
+    )
+    await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
+    await expect.element(page.getByTestId('act-approve')).toHaveAttribute('data-concludes', 'false')
+    await expect.element(page.getByTestId('act-reject')).toHaveAttribute('data-concludes', 'false')
+  })
+
+  it('marks the verdicts as concluding where the round ends', async () => {
+    await open(review({ recognitionForm: null }), { decideReview: stagedDecide() })
+    await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
+    await expect.element(page.getByTestId('act-approve')).toHaveAttribute('data-concludes', 'true')
+    await expect.element(page.getByTestId('act-reject')).toHaveAttribute('data-concludes', 'true')
   })
 })

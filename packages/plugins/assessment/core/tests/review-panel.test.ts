@@ -10,8 +10,10 @@ import { errorOf, GATED, ok, one, run, runningBatch, seed, type Seeded } from '.
 //
 // Constituted from whoever is independent when the round arrives, frozen at
 // that size, replaceable seat by seat, resolved only when every seat has
-// spoken - unanimous approval settles the round, anything else climbs with
-// the opinions attached. Everything here attacks that constitution: the
+// spoken. Unanimous approval is the sitting's opinion, handed up as the next
+// step's starting point - or the conclusion, where the sitting is the
+// route's last live step - and anything else climbs with the opinions
+// attached. Everything here attacks that constitution: the
 // freeze, the blindness, the replacement rules, and the one dissolution
 // (fresh evidence) that hands the same people the question again.
 
@@ -372,7 +374,9 @@ describe.runIf(postgresAvailable)('the sitting', () => {
     expect(result.asB3.events.map((event) => event.kind)).toEqual(['submitted', 'escalated'])
   })
 
-  it('approves only when every seat agrees, and the round itself says so', async () => {
+  // The escalation route is a pipeline (re-ruled 2026-09-25): a sitting in
+  // the middle of it agreeing is its opinion, and the step above concludes.
+  it('hands a unanimous sitting up as an opinion, and lets the step above conclude', async () => {
     const result = ok(
       await run(
         db.url,
@@ -386,26 +390,50 @@ describe.runIf(postgresAvailable)('the sitting', () => {
             { decision: 'approve', comment: '材料充分' },
             f.principal(w.b2),
           )
-          const settled = yield* assessment.decideReview(
+          const agreed = yield* assessment.decideReview(
             f.t,
             w.instanceId,
             { decision: 'approve' },
             f.principal(w.b3),
           )
-          const entry = one<{ status: string }>(
-            yield* runSql(sql`select status from entries where id = ${w.entryId}`),
-          )
-          const determination = one<{ created_by: string | null }>(
-            yield* runSql(sql`
-              select created_by from entry_recognitions where review_instance_id = ${w.instanceId}`),
-          )
+          const midway = {
+            entry: one<{ status: string }>(
+              yield* runSql(sql`select status from entries where id = ${w.entryId}`),
+            ),
+            recognitions: (yield* runSql(sql`
+              select id from entry_recognitions where entry_id = ${w.entryId}`)) as {
+              rows: unknown[]
+            },
+          }
           const votes = yield* runSql(sql`
             select decision from review_votes v
             join review_panels p on p.id = v.panel_id
             where p.review_instance_id = ${w.instanceId} order by v.created_at`)
           // the vote is the voter's own act, so it is their feed's to tell
           const feed = yield* assessment.listMyActivity(f.t, w.batchId, {}, f.principal(w.b2))
+          const asCloser = yield* assessment.getReviewInstance(
+            f.t,
+            w.instanceId,
+            f.principal(w.closer),
+          )
+          const settled = yield* assessment.decideReview(
+            f.t,
+            w.instanceId,
+            { decision: 'approve' },
+            f.principal(w.closer),
+          )
+          const determination = one<{ created_by: string | null }>(
+            yield* runSql(sql`
+              select created_by from entry_recognitions where review_instance_id = ${w.instanceId}`),
+          )
+          const entry = one<{ status: string }>(
+            yield* runSql(sql`select status from entries where id = ${w.entryId}`),
+          )
           return {
+            closer: w.closer,
+            agreed,
+            midway,
+            asCloser,
             settled,
             entry,
             determination,
@@ -416,19 +444,25 @@ describe.runIf(postgresAvailable)('the sitting', () => {
       ),
     )
 
+    expect(result.votes).toEqual(['approve', 'approve'])
+    // the sitting's agreement moved the round on and settled nothing
+    expect(result.agreed.state).toBe('active')
+    expect(result.agreed.chain.stageId).toBe('d2')
+    expect(result.midway.entry.status).toBe('in_review')
+    expect(result.midway.recognitions.rows).toEqual([])
+    // the opinion belongs to the sitting, not to whoever voted last
+    const opinion = result.agreed.events[result.agreed.events.length - 1]!
+    expect(opinion.kind).toBe('opinion-approved')
+    expect(opinion.actorId).toBeNull()
+    // the step above reads the sitting's word and may still conclude
+    expect(result.asCloser.actions.approvalConcludes).toBe(true)
     expect(result.settled.state).toBe('completed')
     expect(result.settled.outcome).toBe('approved')
     expect(result.entry.status).toBe('approved')
-    expect(result.votes).toEqual(['approve', 'approve'])
-    // the conclusion belongs to the sitting, not to whoever voted last
-    const conclusion = result.settled.events[result.settled.events.length - 1]!
-    expect(conclusion.kind).toBe('approved')
-    expect(conclusion.actorId).toBeNull()
-    // and so does the determination it wrote: the text was frozen by the
-    // first approving ballot and adopted by all, so no one voter made it
-    expect(result.determination.created_by).toBeNull()
+    // and the determination is the concluding judge's
+    expect(result.determination.created_by).toBe(result.closer)
     // the voter's feed tells the vote as a vote, never as the verdict, and
-    // hands out no door into the finished round (§32.74)
+    // hands out no door into the round the sitting has left (§32.74)
     expect(result.feed.map((one) => one.kind)).toEqual(['review-vote-approved'])
     expect(result.feed[0]!.perspective).toBe('reviewer')
     expect(result.feed[0]!.instanceId).toBeNull()
@@ -586,8 +620,9 @@ describe.runIf(postgresAvailable)('the sitting', () => {
     // nothing the voter tried moved the sitting: had the escalate landed,
     // this would already read resolved/escalated
     expect(result.panel.state).toBe('open')
-    expect(result.settled.state).toBe('completed')
-    expect(result.settled.outcome).toBe('approved')
+    // the other seat agreeing concludes the sitting, which hands the round up
+    expect(result.settled.chain.stageId).toBe('d2')
+    expect(result.settled.events.at(-1)?.kind).toBe('opinion-approved')
   })
 
   it('holds the seat lock even where independence would not', async () => {
@@ -783,7 +818,8 @@ describe.runIf(postgresAvailable)('the sitting', () => {
     expect(result.healed).toEqual({ state: 'active', blocked_reason: null })
     expect(result.b4Queue).toContain(result.settled.id)
     // two of the sitting's judgments: the fallen voter's and the newcomer's
-    expect(result.settled.outcome).toBe('approved')
+    expect(result.settled.chain.stageId).toBe('d2')
+    expect(result.settled.events.at(-1)?.kind).toBe('opinion-approved')
     expect(result.size.seat_count).toBe(2)
     // the seat's story: constituted, emptied for cause, taken over
     expect(result.seats.map((seat) => [seat.who, seat.ended_reason])).toEqual([
@@ -927,9 +963,10 @@ describe.runIf(postgresAvailable)('the sitting', () => {
     // answering dissolved it and constituted a fresh one, same size
     expect(result.panels.map((panel) => panel.state).sort()).toEqual(['open', 'superseded'])
     expect(result.panels.every((panel) => panel.seat_count === 2)).toBe(true)
-    // the earlier voter is asked again, and this time it settles
+    // the earlier voter is asked again, and this time the sitting concludes
     expect(result.b2Again).toContain(result.settled.id)
-    expect(result.settled.outcome).toBe('approved')
+    expect(result.settled.chain.stageId).toBe('d2')
+    expect(result.settled.events.at(-1)?.kind).toBe('opinion-approved')
   })
 
   it('lets a sitting refuse without first inventing a determination', async () => {
@@ -1008,7 +1045,8 @@ describe.runIf(postgresAvailable)('the sitting', () => {
         db.url,
         Effect.gen(function* () {
           const f = yield* seed('pn-appeal-upheld')
-          const w = yield* appealWorld(f, 'reject')
+          // the sitting is the route's last live step, so its word concludes
+          const w = yield* appealWorld(f, 'reject', { lastRung: 'nowhere' })
           const before = yield* w.standing()
           const round = yield* w.appeal('证书已补交，请复核')
           const during = yield* w.standing()
@@ -1017,9 +1055,9 @@ describe.runIf(postgresAvailable)('the sitting', () => {
           const outcome = one<{ state: string; outcome: string }>(
             yield* runSql(sql`select state, outcome from review_instances where id = ${round}`),
           )
-          const settled = one<{ id: string }>(
+          const settled = one<{ id: string; created_by: string | null }>(
             yield* runSql(sql`
-              select id from entry_recognitions where review_instance_id = ${round}`),
+              select id, created_by from entry_recognitions where review_instance_id = ${round}`),
           )
           return { before, during, after, outcome, settled }
         }),
@@ -1032,6 +1070,9 @@ describe.runIf(postgresAvailable)('the sitting', () => {
     // and the claim now stands approved, on the sitting's determination
     expect(result.after.status).toBe('approved')
     expect(result.after.current_recognition_id).toBe(result.settled.id)
+    // the text was frozen by the first approving ballot and adopted by all,
+    // so no one voter is its author
+    expect(result.settled.created_by).toBeNull()
   })
 
   // A correction upheld by a sitting replaces the determination the claim
@@ -1043,7 +1084,7 @@ describe.runIf(postgresAvailable)('the sitting', () => {
         db.url,
         Effect.gen(function* () {
           const f = yield* seed('pn-appeal-twice')
-          const w = yield* appealWorld(f, 'approve')
+          const w = yield* appealWorld(f, 'approve', { lastRung: 'nowhere' })
           const first = yield* w.standing()
           const once = yield* w.appeal('认定等级有误')
           for (const who of [w.b1, w.b2, w.b3]) yield* w.vote(once, who, 'approve')
@@ -1108,7 +1149,7 @@ describe.runIf(postgresAvailable)('the sitting', () => {
         db.url,
         Effect.gen(function* () {
           const f = yield* seed('pn-appeal-orphan')
-          const w = yield* appealWorld(f, 'reject')
+          const w = yield* appealWorld(f, 'reject', { lastRung: 'nowhere' })
           const round = yield* w.appeal('请复核')
           yield* w.vote(round, w.b1, 'approve')
           yield* w.vote(round, w.b2, 'approve')
