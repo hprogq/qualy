@@ -296,8 +296,15 @@ export const make = Effect.fn('Iam.self.make')(function* () {
           const again = found.flatMap(({ door, driver }) => {
             if (!opens(driver, door, row)) return []
             if (!provesPresence(driver, configOf(door.config))) return []
-            if (driver.presentation.mode !== 'redirect') return []
-            const href = sameOriginPath(driver.presentation.href({ code: door.code }))
+            // its own way back to the credentials, or its sign-in when every
+            // sign-in there asks for them
+            const declared =
+              driver.reauthenticate?.({ code: door.code }) ??
+              (driver.presentation.mode === 'redirect'
+                ? driver.presentation.href({ code: door.code })
+                : undefined)
+            if (declared === undefined) return []
+            const href = sameOriginPath(declared)
             return href === undefined
               ? []
               : [{ providerId: door.id, name: door.name, type: door.type, href }]

@@ -1079,7 +1079,7 @@ describe.runIf(postgresAvailable)('showing it is you again', () => {
     }
   })
 
-  it('is a sign-in through a way in that asked for the credentials just now', async () => {
+  it('is a sign-in the driver saw ask for the credentials just now, on its word alone', async () => {
     const db = await createTestContext('flows-sign-in-reauthenticates')
     try {
       const f = await seed(db.url)
@@ -1088,27 +1088,36 @@ describe.runIf(postgresAvailable)('showing it is you again', () => {
           db.url,
           Effect.gen(function* () {
             const sessions = yield* LoginSessions
-            const signIn = (providerId: string) =>
+            const signIn = (providerId: string, present?: boolean) =>
               signingIn(
-                sessions.completeLogin({ tenantId: f.tenant, providerId, userId: f.person }),
+                sessions.completeLogin({
+                  tenantId: f.tenant,
+                  providerId,
+                  userId: f.person,
+                  ...(present === undefined ? {} : { present }),
+                }),
               )
-            yield* signIn(f.local.id)
+            yield* signIn(f.local.id, true)
             const password = yield* newestGrants(f.person)
             yield* signIn(f.door.id)
             const riding = yield* newestGrants(f.person)
-            // the same entrance, told to ask for the password every time
+            // the entrance is now told to ask for the password every time;
+            // a sign-in its driver checked before that says nothing more
             yield* runSql(
               sql`update auth_providers set config = '{"renew": true}' where id = ${f.door.id}`,
             )
             yield* signIn(f.door.id)
+            const settingsMoved = yield* newestGrants(f.person)
+            yield* signIn(f.door.id, true)
             const asking = yield* newestGrants(f.person)
-            return { password, riding, asking }
+            return { password, riding, settingsMoved, asking }
           }),
         ),
       )
       expect(answer).toEqual({
         password: ['qualy:reauthenticated'],
         riding: [],
+        settingsMoved: [],
         asking: ['qualy:reauthenticated'],
       })
     } finally {

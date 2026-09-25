@@ -40,12 +40,7 @@ import { Audit } from '@qualy/audit-contract/effect'
 import { AnonymousTenantResolver } from './tenancy.ts'
 import { PublicOriginResolver } from './public-origin.ts'
 import { isDemoAccount } from './demo-accounts.ts'
-import {
-  CORE_GRANT_PREFIX,
-  makeReauthentication,
-  provesPresence,
-  sessionGrantRef,
-} from './reauthentication.ts'
+import { CORE_GRANT_PREFIX, makeReauthentication, sessionGrantRef } from './reauthentication.ts'
 
 export { AuthConfig }
 import { sessionCookieName, TooManyAttempts } from '@qualy/auth-contract/session'
@@ -240,17 +235,6 @@ const touchBinding = (bindingId: string, displayLabel: string | undefined) =>
       })
       .where('id', '=', bindingId)
       .execute(),
-  )
-
-/** the entrance a session is being opened through, as its driver is asked about it */
-const doorOf = (tenantId: string, providerId: string) =>
-  db.query((k) =>
-    k
-      .selectFrom('AuthProvider')
-      .select(['type', 'config'])
-      .where('tenantId', '=', tenantId)
-      .where('id', '=', providerId)
-      .executeTakeFirst(),
   )
 
 const insertGrant = (input: {
@@ -1143,6 +1127,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         bindingId?: string
         bindingDisplayLabel?: string
         grants?: readonly SessionGrantInput[]
+        present?: boolean
       }) {
         const provider = { tenantId: input.tenantId, providerId: input.providerId }
         // the account state is re-read here rather than trusted from the proof:
@@ -1173,12 +1158,11 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
             )
           }
         }
-        // a sign-in through a way in that asked for the person's credentials
-        // just now is as good as asking them again
-        const door = yield* doorOf(input.tenantId, input.providerId).pipe(Effect.orDie)
-        const present =
-          door !== undefined &&
-          provesPresence((yield* drivers.forType(door.type))?.driver, configOf(door.config))
+        // a sign-in the driver saw ask for the person's credentials just now
+        // is as good as asking them again - the driver's word, from the check
+        // it made, and not the door's settings read again here: those may
+        // have moved between that check and this line
+        const present = input.present === true
         // one transaction: the session, the binding's last-used stamp, what
         // the session keeps from the other side and the sign-in event exist
         // together or not at all

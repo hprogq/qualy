@@ -174,6 +174,8 @@ const handlers = HttpApiBuilder.group(local, 'authLocal', (handlers) =>
         providerId: resolved.providerId,
         userId: person.userId,
         bindingId: binding.id,
+        // the password was typed just now
+        present: true,
       })
       // an unusable account was recorded by the core, with the precise reason
       if (!user) return yield* new InvalidCredentials()

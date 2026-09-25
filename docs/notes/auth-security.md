@@ -442,10 +442,15 @@ smtp 后端对着 Mailpit 跑同一套,CI 设 `QUALY_REQUIRE_MAILPIT_TESTS=1`,�
   4. 连这样的入口也没有 → `unavailable`,界面提示联系管理员——**做不到可靠重新认证的入口,不允许仅凭会话改关键凭据**。
 - **拒绝码**:缺少近期重新认证 `AUTH_REAUTHENTICATION_REQUIRED`;用错方式(有密码却要验证码等)`AUTH_REAUTHENTICATION_METHOD_UNAVAILABLE`;
   验证码错或过期 `AUTH_REAUTHENTICATION_CODE_INVALID`。
-- **「重新登录」算不算**:驱动声明 `provesPresence(provider)`——这个入口的一次登录是否证明「人此刻在键盘前」。本地密码入口恒为真
-  (刚输入过密码);CAS 只在该入口配置了「每次都要求重新输入密码」(`renew`,跳转与校验两处都带)时为真;GitHub、OIDC 不声明
-  (对方可能凭自己的会话直接放行)。
-  `completeLogin` 对声明为真的登录在新会话上直接记下重新认证,所以刚用密码登录的人 10 分钟内改邮箱不会被再问一次。
+- **「重新登录」算不算**:驱动声明 `provesPresence(provider)`——这个入口**能否**证明「人此刻在键盘前」,只决定它会不会被列为
+  重新认证的方式(有 `reauthenticate(code)` 就用那个起点,否则用登录起点)。本地密码入口恒为真(刚输入过密码);CAS 只在该入口配置了
+  「每次都要求重新输入密码」(`renew`,跳转与校验两处都带)时为真;**OIDC 为真(2026-09-25 裁决 #31)**:重新认证起点
+  `?intent=reauthenticate` 让授权请求带 `prompt=login`、`max_age=0`,flow 的密封 payload 记下发起时刻,回调时 ID Token 的
+  `auth_time` 不早于发起时刻(减去该入口的时钟容差)才算;对方凭旧会话放行或不给 `auth_time`,登录照常完成但不算重新认证
+  (记一条 Info)。普通 OIDC 登录不带这两个参数,也不算。GitHub 不声明(OAuth 没有可靠的「重新输入凭据」语义)。
+- **这一次登录是否证明了在场,由刚完成校验的驱动说**:`completeLogin({ present })`,本地密码恒为 true,CAS 按**校验票据时用的**
+  设置里的 `renew` 给出,OIDC 按上面的 `auth_time` 判定;核心只采信这个值,不再事后另读入口配置推断(配置可能在两次读取之间被改)。
+  为 true 时在新会话上直接记下重新认证,所以刚用密码登录的人 10 分钟内改邮箱不会被再问一次。
 - **状态放在哪**:会话上的一条核心自有授予 `session_auth_grants(kind = 'qualy:reauthenticated')`,`expires_at` 即有效期;待填的验证码是
   `kind = 'qualy:reauthentication-code'`(密封存放,10 分钟)。两者都随会话级联删除——退出、被结束、过期即失效。`qualy:` 前缀归核心,
   驱动交来的授予若用这个前缀,`completeLogin` 按缺陷拒绝。没有新增表或列(复用已有表,不触发数据层冻结规则)。

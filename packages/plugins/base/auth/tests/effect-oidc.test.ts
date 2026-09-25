@@ -480,6 +480,65 @@ describe.runIf(postgresAvailable)('an OpenID Connect account', () => {
     expect(bind.response.headers.get('location')).not.toContain('/authorize')
   })
 
+  it('counts as showing it is them only when asked for afresh and signed in after the asking', async () => {
+    // somebody whose account at the provider is bound here already
+    const bea = await Effect.runPromise(
+      Effect.gen(function* () {
+        const person = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+            select tenant_id, 'Bea', user_type_id, primary_org_node_id from users where id = ${ada}
+            returning id`),
+        ).id
+        yield* runSql(sql`
+          insert into user_auth_bindings (tenant_id, user_id, auth_provider_id, subject)
+          select tenant_id, ${person}, ${providerId}, 'sub-bea' from users where id = ${person}`)
+        return person
+      }).pipe(Effect.provide(probeInfra())),
+    )
+    /** what the newest session of hers keeps of the core's */
+    const newest = () =>
+      Effect.runPromise(
+        runSql<{ kind: string }>(sql`
+          select g.kind from session_auth_grants g
+           where g.session_id = (select id from sessions where user_id = ${bea}
+                                  order by created_at desc, id desc limit 1)
+             and g.expires_at > now()`).pipe(
+          Effect.map((result) => result.rows.map((row) => row.kind)),
+          Effect.provide(probeInfra()),
+        ),
+      )
+
+    // asked for afresh: the provider is told to ask whatever session it keeps
+    const afresh = await depart(
+      'op',
+      `?intent=reauthenticate&returnTo=${encodeURIComponent('/me')}`,
+    )
+    expect(afresh.away.searchParams.get('prompt')).toBe('login')
+    expect(afresh.away.searchParams.get('max_age')).toBe('0')
+    const fresh = await visit(
+      op.authorize(afresh.away, { sub: 'sub-bea', auth_time: now() }),
+      afresh.browser,
+    )
+    expect(fresh.headers.get('location')).toBe('/me')
+    expect(await newest()).toEqual(['qualy:reauthenticated'])
+
+    // a provider that let an earlier sign-in through, or does not say when
+    for (const claims of [{ sub: 'sub-bea', auth_time: now() - 3600 }, { sub: 'sub-bea' }]) {
+      const lax = await depart('op', '?intent=reauthenticate')
+      const back = await visit(op.authorize(lax.away, claims), lax.browser)
+      expect(back.status, JSON.stringify(claims)).toBe(303)
+      expect(await newest(), JSON.stringify(claims)).toEqual([])
+    }
+
+    // and an ordinary sign-in, however recent, did not ask again
+    const plain = await depart()
+    expect(plain.away.searchParams.get('prompt')).toBeNull()
+    expect(plain.away.searchParams.get('max_age')).toBeNull()
+    await visit(op.authorize(plain.away, { sub: 'sub-bea', auth_time: now() }), plain.browser)
+    expect(await newest()).toEqual([])
+  })
+
   it('refuses an ID Token that is for another client, from another issuer, for another nonce, long expired, or signed by anybody else', async () => {
     for (const claims of [
       { sub: 'sub-ada', forged: true },

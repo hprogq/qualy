@@ -43,6 +43,16 @@ describe('an OpenID Connect entrance', () => {
     ).toEqual(['issuer', 'clientId'])
   })
 
+  it('is offered for showing it is you again, through a sign-in asked for afresh', () => {
+    expect(driver.provesPresence?.({ config: {} })).toBe(true)
+    const href = new URL(driver.reauthenticate!({ code: 'op' }), 'http://qualy.invalid')
+    expect(href.searchParams.get('intent')).toBe('reauthenticate')
+    // an ordinary sign-in does not ask afresh
+    const plain =
+      driver.presentation.mode === 'redirect' ? driver.presentation.href({ code: 'op' }) : ''
+    expect(new URL(plain, 'http://qualy.invalid').searchParams.get('intent')).toBeNull()
+  })
+
   it('tells a provider that refused from one that could not be asked', () => {
     expect(
       sortFailure({ name: 'ResponseBodyError', code: 'OAUTH_RESPONSE_BODY_ERROR', status: 400 })

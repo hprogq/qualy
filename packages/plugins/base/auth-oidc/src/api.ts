@@ -38,7 +38,9 @@ export const authOidcApiGroup = HttpApiGroup.make('authOidc')
     HttpApiEndpoint.get('start', '/auth/oidc/:providerCode/start', {
       params: Schema.Struct({ providerCode }),
       query: Schema.Struct({
-        intent: Schema.optional(Schema.Literal('bind')),
+        // `reauthenticate`: a sign-in the provider is asked to make afresh,
+        // whatever session it keeps, to show the person is there now
+        intent: Schema.optional(Schema.Literals(['bind', 'reauthenticate'])),
         returnTo: Schema.optional(Schema.String.check(Schema.isMaxLength(RETURN_PATH_MAX_LENGTH))),
       }),
       success: HttpApiSchema.Empty(302),

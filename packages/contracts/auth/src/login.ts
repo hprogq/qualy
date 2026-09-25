@@ -363,18 +363,28 @@ export interface LoginDriver {
    */
   readonly callback?: (provider: { readonly code: string }) => string
   /**
-   * Whether signing in through this entrance proves the person is at the
-   * keyboard now, rather than riding a session the other side kept: a
-   * password typed here, or a single sign-on server told to ask for the
-   * password every time. Such a sign-in counts as having just shown it is
-   * them, which a change to how the account is reached asks for.
+   * Whether this entrance can prove the person is at the keyboard now,
+   * rather than riding a session the other side kept: a password typed
+   * here, a single sign-on server told to ask for the password every time,
+   * an OpenID provider asked to sign the person in afresh. Such an entrance
+   * is offered to somebody asked to show it is them again, before a change
+   * to how the account is reached.
    *
-   * Absent means it does not: an entrance whose other side may let the
-   * person straight through cannot stand for asking them again.
+   * Only the offer: whether one sign-in did prove it is the driver's to say
+   * as it completes that sign-in (`completeLogin`'s `present`), from the
+   * check it just made. Absent means it cannot: an entrance whose other side
+   * may let the person straight through cannot stand for asking them again.
    */
   readonly provesPresence?: (provider: {
     readonly config: Readonly<Record<string, unknown>>
   }) => boolean
+  /**
+   * Where somebody is sent to show it is them again through this entrance,
+   * as a same-origin path of one of the driver's own routes. Absent means
+   * the address its sign-in presentation sends people to, for an entrance
+   * every sign-in of which asks for the credentials.
+   */
+  readonly reauthenticate?: (provider: { readonly code: string }) => string
 }
 
 /**
@@ -840,6 +850,14 @@ export interface LoginSessionsShape {
     bindingDisplayLabel?: string
     /** what the new session keeps from the other side, written with it */
     grants?: readonly SessionGrantInput[]
+    /**
+     * Whether the check just made proved the person at the keyboard now:
+     * the password typed, the server seen to have asked for the credentials
+     * again. The new session then counts as having shown it is its owner's.
+     * Said by the driver from what it checked, never worked out afterwards
+     * from settings that may have moved since; absent is no.
+     */
+    present?: boolean
   }) => Effect.Effect<SignedInUser | undefined, never, HttpServerRequest>
 }
 

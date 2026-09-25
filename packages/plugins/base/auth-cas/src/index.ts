@@ -323,6 +323,9 @@ const handlers = HttpApiBuilder.group(local, 'authCas', (handlers) =>
           tenantId: provider.tenantId,
           providerId: provider.providerId,
           userId: person.userId,
+          // the ticket was validated under these settings: with renew, the
+          // server refuses one it issued from a standing session
+          present: settings.renew === true,
         })
         // an account that may not come in was recorded with its reason
         if (user === undefined) return failed(new SignInPersonNotFound())

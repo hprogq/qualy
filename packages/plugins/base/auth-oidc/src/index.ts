@@ -178,6 +178,12 @@ export const driver: LoginDriver = {
       urls.authOidc.start({ params: { providerCode: code }, query: { intent: 'bind' } }),
   },
   callback: ({ code }) => urls.authOidc.callback({ params: { providerCode: code }, query: {} }),
+  // any provider can be asked to sign the person in afresh (prompt=login,
+  // max_age=0); whether one did is read from the ID Token's auth_time when
+  // the person comes back, and only then does the sign-in count
+  provesPresence: () => true,
+  reauthenticate: ({ code }) =>
+    urls.authOidc.start({ params: { providerCode: code }, query: { intent: 'reauthenticate' } }),
 }
 
 const away = (location: string, status: 302 | 303 = 302) =>
@@ -209,13 +215,23 @@ const bindFailure = (reason: BindingRejection) => {
 interface Carried {
   readonly verifier: string
   readonly nonce: string
+  /**
+   * For a sign-in the provider was asked to make afresh: when it was asked,
+   * in seconds. An authentication the provider reports as older than this
+   * happened before anybody asked.
+   */
+  readonly askedAt?: number
 }
 
 const carriedOf = (payload: Redacted.Redacted<string>): Carried | undefined => {
   try {
     const parsed = JSON.parse(Redacted.value(payload)) as Partial<Carried>
     return typeof parsed.verifier === 'string' && typeof parsed.nonce === 'string'
-      ? { verifier: parsed.verifier, nonce: parsed.nonce }
+      ? {
+          verifier: parsed.verifier,
+          nonce: parsed.nonce,
+          ...(typeof parsed.askedAt === 'number' ? { askedAt: parsed.askedAt } : {}),
+        }
       : undefined
   } catch {
     return undefined
@@ -272,6 +288,15 @@ const handlers = HttpApiBuilder.group(local, 'authOidc', (handlers) =>
         const callback = yield* sessions.callbackUrl(provider).pipe(Effect.option)
         if (callback._tag === 'None') return failed(new SignInMethodUnavailable())
         const { verifier, challenge, nonce } = yield* Effect.promise(beginning)
+        // a sign-in asked for afresh: the provider is told to ask for the
+        // credentials whatever session it keeps, and the moment of asking is
+        // kept to hold its answer against
+        const afresh = query.intent === 'reauthenticate'
+        const carried: Carried = {
+          verifier,
+          nonce,
+          ...(afresh ? { askedAt: Math.floor(Date.now() / 1000) } : {}),
+        }
         const started = yield* sessions
           .startFlow({
             provider,
@@ -280,7 +305,7 @@ const handlers = HttpApiBuilder.group(local, 'authOidc', (handlers) =>
               ? { binding: { userId: viewer!.userId, sessionId: viewer!.sessionId } }
               : {}),
             ...(query.returnTo === undefined ? {} : { returnPath: query.returnTo }),
-            payload: Redacted.make(JSON.stringify({ verifier, nonce } satisfies Carried)),
+            payload: Redacted.make(JSON.stringify(carried)),
           })
           .pipe(Effect.result)
         if (started._tag === 'Failure') {
@@ -303,6 +328,7 @@ const handlers = HttpApiBuilder.group(local, 'authOidc', (handlers) =>
             state: Redacted.value(started.success.state),
             challenge,
             nonce,
+            afresh,
           }),
         )
       }),
@@ -384,12 +410,26 @@ const handlers = HttpApiBuilder.group(local, 'authOidc', (handlers) =>
           yield* sessions.failAttempt(provider, { reason: 'binding-not-found' })
           return failed(new ExternalAccountUnbound())
         }
+        // asked for afresh, and the provider says the person authenticated
+        // after the asking: that is them at the keyboard now. A provider that
+        // let an older session through signs the person in all the same, and
+        // that sign-in shows nothing more than any other
+        const present =
+          carried.askedAt !== undefined &&
+          answer.authTime !== undefined &&
+          answer.authTime >= carried.askedAt - configured.settings.clockSkewSeconds
+        if (carried.askedAt !== undefined && !present) {
+          yield* Effect.logInfo(
+            'oidc provider answered a fresh sign-in with an earlier authentication',
+          ).pipe(Effect.annotateLogs({ provider: provider.code }))
+        }
         const user = yield* sessions.completeLogin({
           tenantId: provider.tenantId,
           providerId: provider.providerId,
           userId: binding.userId,
           bindingId: binding.id,
           ...(answer.label === undefined ? {} : { bindingDisplayLabel: answer.label }),
+          present,
         })
         if (user === undefined) return failed(new SignInPersonNotFound())
         return away(flow.returnPath ?? '/', 303)

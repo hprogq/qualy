@@ -196,7 +196,13 @@ const fromNetwork = (error: unknown): string | undefined => {
 }
 
 export type OidcAnswer =
-  | { readonly kind: 'account'; readonly subject: string; readonly label: string | undefined }
+  | {
+      readonly kind: 'account'
+      readonly subject: string
+      readonly label: string | undefined
+      /** when the provider says the person last authenticated, in seconds; absent when it does not say */
+      readonly authTime?: number
+    }
   | { readonly kind: 'rejected'; readonly reason: string }
   | { readonly kind: 'unavailable'; readonly reason: string }
 
@@ -257,7 +263,13 @@ export const identify = async (
       // a name is a courtesy; the sign-in stands on the ID Token
     }
   }
-  return { kind: 'account', subject, label }
+  const authTime = claims?.auth_time
+  return {
+    kind: 'account',
+    subject,
+    label,
+    ...(typeof authTime === 'number' && Number.isFinite(authTime) ? { authTime } : {}),
+  }
 }
 
 /** what a departure carries: a PKCE verifier and its challenge, and a nonce */
@@ -278,6 +290,8 @@ export const authorizeRedirect = (
     state: string
     challenge: string
     nonce: string
+    /** ask for the credentials whatever session the provider keeps */
+    afresh?: boolean
   },
 ): string =>
   client
@@ -288,5 +302,8 @@ export const authorizeRedirect = (
       nonce: input.nonce,
       code_challenge: input.challenge,
       code_challenge_method: 'S256',
+      // OpenID Connect Core 3.1.2.1: sign the person in again now, and say
+      // when in the ID Token's auth_time
+      ...(input.afresh === true ? { prompt: 'login', max_age: '0' } : {}),
     })
     .toString()
