@@ -4,14 +4,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import * as stylex from '@stylexjs/stylex'
 import { ArrowLeftIcon, CheckIcon, CircleAlertIcon, EyeIcon, MailCheckIcon } from 'lucide-react'
-import {
-  PageLink,
-  useApi,
-  useApiQuery,
-  usePageHref,
-  usePageNavigate,
-  useRunApi,
-} from '@qualy/web-runtime'
+import { PageLink, useApi, useApiQuery, usePageHref, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { normalizeEmail } from '@qualy/auth-contract/email'
@@ -243,8 +236,9 @@ function Badge({ tone, children }: { tone?: 'danger'; children: ReactNode }) {
 
 export default function ResetPasswordPage() {
   const hash = useLocation().hash
-  // read once and kept: the address bar lets go of it below
-  const [token] = useState(() => new URLSearchParams(hash.slice(1)).get('token'))
+  // read once and kept: the address bar lets go of it below, so asking for
+  // a new link is this page forgetting it rather than a navigation
+  const [token, setToken] = useState(() => new URLSearchParams(hash.slice(1)).get('token'))
   useEffect(() => {
     // out of the history and out of a screenshot; the router is not told,
     // since nothing it renders depends on the fragment any more
@@ -256,7 +250,11 @@ export default function ResetPasswordPage() {
       )
     }
   }, [token])
-  return <AuthShell>{token === null ? <Ask /> : <SetNew token={token} />}</AuthShell>
+  return (
+    <AuthShell>
+      {token === null ? <Ask /> : <SetNew token={token} onAskAgain={() => setToken(null)} />}
+    </AuthShell>
+  )
 }
 
 /**
@@ -449,11 +447,10 @@ function Ask() {
   )
 }
 
-function SetNew({ token }: { token: string }) {
+function SetNew({ token, onAskAgain }: { token: string; onAskAgain: () => void }) {
   const api = useApi(authApi)
   const query = useApiQuery(authApi)
   const run = useRunApi()
-  const navigate = usePageNavigate()
   const { format, formatError } = useI18n()
   // what a password here has to be, said while it is typed
   const rule = useQuery(query.auth.listLoginMethods.queryOptions()).data?.passwordRule ?? null
@@ -535,7 +532,7 @@ function SetNew({ token }: { token: string }) {
               type="button"
               {...stylex.props(styles.primary)}
               style={{ flex: 1, marginTop: 0 }}
-              onClick={() => navigate('auth/reset-password')}
+              onClick={onAskAgain}
             >
               {format(m.resetAgain)}
             </button>

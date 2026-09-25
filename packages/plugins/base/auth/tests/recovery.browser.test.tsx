@@ -197,6 +197,12 @@ describe('a forgotten password', () => {
     })
     await expect.element(page.getByTestId('reset-expired')).toBeInTheDocument()
     expect(inspect).toHaveBeenCalledWith({ payload: { token: 'spent-token' } })
+
+    // and the way on from there is the form that sends a new one
+    await page.getByRole('button', { name: '重新获取链接' }).click()
+    await expect.element(page.getByLabelText('邮箱')).toBeInTheDocument()
+    await expect.element(page.getByTestId('reset-expired')).not.toBeInTheDocument()
+    expect(inspect).toHaveBeenCalledTimes(1)
   })
 })
 
