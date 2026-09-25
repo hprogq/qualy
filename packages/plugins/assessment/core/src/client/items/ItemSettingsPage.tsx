@@ -323,9 +323,9 @@ function Editor({
   batchStatus,
   materialRange,
   participantCount,
-  question,
+  question: addressQuestion,
   onQuestion,
-  composing: composingId,
+  composing: addressComposing,
   composingGroup,
   onComposing,
 }: {
@@ -369,6 +369,29 @@ function Editor({
   // set by the open editor: publishing what is on screen would be a lie while
   // the screen says something the round has not been told
   const [unsaved, setUnsaved] = useState(false)
+  // What is open is what the address says - until the address moves away
+  // from a saved question with unsaved changes. The browser's back button,
+  // the band's arrows and every other move of the address arrive after the
+  // fact, so the question stays on screen until the reader lets its changes
+  // go. A composition needs no such hold: it is kept in the structure.
+  const [kept, setKept] = useState({ question: addressQuestion, composing: addressComposing })
+  const moved = kept.question !== addressQuestion || kept.composing !== addressComposing
+  const holding = moved && unsaved && kept.composing === null && kept.question !== ''
+  if (moved && !holding) setKept({ question: addressQuestion, composing: addressComposing })
+  const question = holding ? kept.question : addressQuestion
+  const composingId = holding ? kept.composing : addressComposing
+  // Staying puts the question back in the address once: the dialog answers
+  // a cancel twice, and a second entry in the history would take the next
+  // back press nowhere.
+  const restoring = useRef(false)
+  useEffect(() => {
+    if (!moved) restoring.current = false
+  }, [moved])
+  const stay = () => {
+    if (restoring.current) return
+    restoring.current = true
+    onQuestion(kept.question)
+  }
   // a drop that crosses groups on a running round waits here for its sentence
   const [pendingMove, setPendingMove] = useState<{
     itemId: string
@@ -402,8 +425,9 @@ function Editor({
     )
   }, [composingId, composingGroup])
 
-  /** leave whatever is open and go back to the structure */
+  /** leave whatever is open and go back to the structure, its changes let go already */
   const close = () => {
+    setUnsaved(false)
     onComposing(null)
     onQuestion('')
   }
@@ -642,6 +666,8 @@ function Editor({
 
   /** a saved question, opened where the reader already is */
   const opened = async (itemId: string) => {
+    // saved, so nothing on screen is waiting to be let go
+    setUnsaved(false)
     // the created row has to be in hand before it can be opened, or the
     // screen has nothing to show between the save and the refetch. The
     // reader stays where they were, so nothing travels.
@@ -825,6 +851,16 @@ function Editor({
           }}
         />
       )}
+
+      <ConfirmDialog
+        open={holding}
+        tone="destructive"
+        title={format(m.itemsLeaveUnsaved)}
+        confirmLabel={format(m.discardEdits)}
+        cancelLabel={format(commonMessages.cancel)}
+        onConfirm={() => setUnsaved(false)}
+        onCancel={stay}
+      />
 
       <ConfirmDialog
         open={deleting !== null}

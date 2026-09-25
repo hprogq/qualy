@@ -1,9 +1,10 @@
 import ItemSettingsPage from '../src/client/items/ItemSettingsPage.tsx'
 import { lazy } from 'react'
+import { useNavigate } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
-import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The question editor as its author works it: handling chosen in the open,
 // the arithmetic's parameters fed from fixed values or determinations, a
@@ -364,6 +365,8 @@ const open = (
     regrouped?: unknown[]
     /** held until it settles: a save's answer does not arrive before it */
     answerAfter?: Promise<void>
+    /** a press that does what the browser's back button does */
+    withBack?: boolean
   } = {},
 ) => {
   // what the server holds, so a save is read back as it was stored
@@ -439,7 +442,15 @@ const open = (
       },
     }),
     routes: [
-      { path: '/assessment/batches/:batchId/items', element: <ItemSettingsPage /> },
+      {
+        path: '/assessment/batches/:batchId/items',
+        element: (
+          <>
+            <ItemSettingsPage />
+            {had.withBack === true && <BrowserBack />}
+          </>
+        ),
+      },
     ] as never,
     registry: {
       slots: {
@@ -462,6 +473,20 @@ const open = (
 }
 
 const editor = () => page.getByTestId('item-editor')
+
+/**
+ * The browser's back button, as the router hears it. The harness routes in
+ * memory, so the press goes to the router itself; what the page sees is the
+ * same pop of the address a real back press is.
+ */
+function BrowserBack() {
+  const navigate = useNavigate()
+  return (
+    <button type="button" data-testid="browser-back" onClick={() => void navigate(-1)}>
+      back
+    </button>
+  )
+}
 
 /** into the editor of a question being composed */
 const composeQuestion = async () => {
@@ -580,6 +605,40 @@ describe('choosing how a question is handled', () => {
     await page.getByTestId('item-back').click()
     await page.getByRole('alertdialog').getByTestId('confirm-accept').click()
     await vi.waitFor(() => expect(document.querySelector('[data-testid="item-editor"]')).toBeNull())
+  })
+
+  it('holds a question with unsaved changes when the browser goes back', async () => {
+    // filed straight under the paper, so the structure lists it
+    await open({ items: [{ ...officerItem(), scoreGroupId: PAPER_ID }], withBack: true })
+    await vi.waitFor(() =>
+      expect(page.getByText('学生干部任职').elements().length).toBeGreaterThan(0),
+    )
+    // the row in the seat this width shows
+    await userEvent.click(
+      page
+        .getByText('学生干部任职')
+        .elements()
+        .find((one) => (one as HTMLElement).checkVisibility())!,
+    )
+    await expect.element(page.getByRole('textbox', { name: '项目名称' })).toBeVisible()
+    expect(addressNow()).toContain(`question=${ITEM_ID}`)
+    await page.getByRole('textbox', { name: '项目名称' }).fill('学生干部任职（改）')
+
+    // the address has gone back; the question has not, until the reader says so
+    await page.getByTestId('browser-back').click()
+    const asked = page.getByRole('alertdialog')
+    await expect.element(asked).toBeVisible()
+    await expect.element(editor()).toBeVisible()
+    await asked.getByRole('button', { name: '取消' }).click()
+    await vi.waitFor(() => expect(addressNow()).toContain(`question=${ITEM_ID}`))
+    await expect
+      .element(page.getByRole('textbox', { name: '项目名称' }))
+      .toHaveValue('学生干部任职（改）')
+
+    await page.getByTestId('browser-back').click()
+    await page.getByRole('alertdialog').getByTestId('confirm-accept').click()
+    await vi.waitFor(() => expect(document.querySelector('[data-testid="item-editor"]')).toBeNull())
+    expect(addressNow()).not.toContain('question=')
   })
 
   it('leaves at once when nothing was changed', async () => {
