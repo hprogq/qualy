@@ -372,6 +372,8 @@ export interface ParticipantEntryView {
    * re-determine it directly. Discovery through the doors the acts pass.
    */
   readonly corrections: {
+    /** handing the claim back to its owner to revise, which the roster's administrator may */
+    readonly returnForRevision: ActionAvailability
     readonly reopen: ActionAvailability
     readonly redetermine: ActionAvailability
   }
@@ -634,6 +636,35 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
   const { withDb, storage } = deps
 
   const driverOf = (item: ItemRow) => deps.itemTypes.get(item.itemType)
+
+  /**
+   * Whether a claim's owner could revise it and send it again right now: on
+   * the roster, on a live question whose current version asks participants
+   * to file and is filed at all (not derived), with the phase opening both
+   * edit and submit to them. The one condition under which an approved
+   * claim may be handed back (ruling of 2026-09-25 #13) - otherwise it would
+   * stop counting with nobody able to make it count again. The hand-back and
+   * the offer of it on a staff screen ask this one question.
+   */
+  const ownerMayRefile = (
+    tenantId: string,
+    batchId: string,
+    item: ItemRow,
+    participant: ParticipantAnchor,
+  ) =>
+    Effect.gen(function* () {
+      if (participant.status !== 'active' || item.status !== 'active') return false
+      const revision =
+        item.currentRevisionId === null ? null : yield* revisionOf(tenantId, item.currentRevisionId)
+      if (revision === null || !opensTo(revision.entryChannels, 'participant')) return false
+      const driver = driverOf(item)
+      if (driver === undefined || driver.interaction === 'derived') return false
+      const ctx = { itemId: item.id, participantId: participant.id }
+      const edit = yield* deps.subjectGate(tenantId, batchId, 'assessment.entry.edit', ctx)
+      if (!edit.allowed) return false
+      const submit = yield* deps.subjectGate(tenantId, batchId, 'assessment.entry.submit', ctx)
+      return submit.allowed
+    })
 
   /**
    * A payload through its driver: decoded against the exact configuration
@@ -2043,11 +2074,13 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
   )
 
   /**
-   * The two corrections a member of staff may offer on one person's claims,
+   * The corrections a member of staff may offer on one person's claims,
    * decided once per page: the authority and the phase through the same
    * door the acts pass, the reach over this participant, and the question
    * each claim answers. Somebody without the authority, or reading their own
-   * claims, is offered neither - not a disabled button.
+   * claims, is offered neither reopening nor re-determining - not a disabled
+   * button. Handing a claim back is offered to whoever administers the
+   * roster, on the same `ownerMayRefile` the hand-back asks.
    */
   const correctionOffers = (
     tenantId: string,
@@ -2075,6 +2108,25 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
         })
       const reopen = yield* door('assessment.review.reopen')
       const redetermine = yield* door('assessment.entry.redetermine')
+      // Handing a claim back is running the round: the roster's own door,
+      // with no phase in it. For an approved claim, whether its owner could
+      // take it up again now is asked of the same question the hand-back
+      // itself asks, once per question on the page.
+      const administers =
+        batch.status !== 'archived' &&
+        Result.isSuccess(yield* Effect.result(deps.requireRosterReach(as, tenantId, batch.id)))
+      const refilable = new Map<string, boolean>()
+      if (administers) {
+        for (const itemId of new Set(
+          rows.filter((row) => row.status === 'approved').map((row) => row.itemId),
+        )) {
+          const item = yield* itemOf(tenantId, itemId)
+          refilable.set(
+            itemId,
+            item !== null && (yield* ownerMayRefile(tenantId, batch.id, item, participant)),
+          )
+        }
+      }
       const conclusions =
         reopen === null
           ? new Map<string, Conclusion>()
@@ -2102,7 +2154,16 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
       return (entry: EntryRow, running: boolean): ParticipantEntryView['corrections'] => {
         const question = questions.get(entry.itemId)
         const decided = entry.status === 'approved' || entry.status === 'rejected'
+        const filed = entry.source !== 'record' && entry.source !== 'import'
         return {
+          // back to its owner: a filing under review whatever the phase, or
+          // an approved one only while its owner could take it up again
+          returnForRevision:
+            !administers || !filed || (entry.status !== 'in_review' && entry.status !== 'approved')
+              ? hidden
+              : entry.status === 'approved' && refilable.get(entry.itemId) !== true
+                ? blocked('owner-cannot-refile')
+                : open,
           // the escalation route again: a conclusion to contest, no round
           // already running, and a route to walk
           reopen:
@@ -2501,21 +2562,13 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           }
           // An approved claim handed back stops counting at once, and only
           // its owner can make it count again - by revising and sending it.
-          // So it goes back only while its owner could do both right now:
-          // on the roster, on a live question, with the phase opening edit
-          // and submit to them. Otherwise it would sit handed back with
+          // So it goes back only while its owner could do both right now
+          // (`ownerMayRefile`). Otherwise it would sit handed back with
           // nobody able to act, and the way to correct it is reopening or
           // redetermining. A claim still under review keeps the rescue it
           // has always had, whatever the phase.
           if (entry.status === 'approved') {
-            const ctx = { itemId: entry.itemId, participantId: participant.id }
-            const refile =
-              participant.status === 'active' &&
-              loaded.item.status === 'active' &&
-              (yield* deps.subjectGate(tenantId, entry.batchId, 'assessment.entry.edit', ctx))
-                .allowed &&
-              (yield* deps.subjectGate(tenantId, entry.batchId, 'assessment.entry.submit', ctx))
-                .allowed
+            const refile = yield* ownerMayRefile(tenantId, entry.batchId, loaded.item, participant)
             if (!refile) return yield* refuse('return', 'owner-cannot-refile')
           }
           if (entry.currentReviewInstanceId !== null) {

@@ -1245,6 +1245,14 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             { to: plan[1]!.id, force: true, reason: 'test closes filing' },
             admin,
           )
+          // and the staff screen says so before the press
+          const offered = (yield* assessment.listParticipantEntries(
+            f.t,
+            g.batch.id,
+            g.p1,
+            {},
+            admin,
+          )).entries[0]!.corrections.returnForRevision
           const closed = yield* giveBack(mine)
           const rescued = yield* giveBack(stuck.entryId)
           const statusOf = (entryId: string) =>
@@ -1254,6 +1262,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             )
           return {
             excluded,
+            offered,
             closed,
             rescued,
             mine: yield* statusOf(mine),
@@ -1264,10 +1273,62 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     )
 
     expect(refusalOf(result.excluded)?.reason).toBe('owner-cannot-refile')
+    expect(result.offered).toEqual({ state: 'blocked', reason: 'owner-cannot-refile' })
     expect(refusalOf(result.closed)?.reason).toBe('owner-cannot-refile')
     expect(result.mine).toBe('approved')
     expect(result.theirs).toBe('approved')
     expect(result.rescued._tag).toBe('Success')
+  })
+
+  // The same question asked before the press: the staff screen offers the
+  // hand-back from the server, so a button that is lit is a call that goes
+  // through. And "could file it again" includes the question still asking
+  // participants to file (ruling of 2026-09-25 #13).
+  it('offers the hand-back only where it would go through, and asks the question too', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-return-offer')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const admin = f.principal(f.admin)
+          const reviewer = f.principal(f.reviewer)
+          const sent = yield* submitted(f, g, g.p1, f.s1)
+          yield* assessment.decideReview(f.t, sent.instanceId, { decision: 'approve' }, reviewer)
+          const pending = yield* submitted(f, g, g.p2, f.s2)
+          const offerOf = (participantId: string) =>
+            Effect.map(
+              assessment.listParticipantEntries(f.t, g.batch.id, participantId, {}, admin),
+              (page) => page.entries[0]!.corrections.returnForRevision,
+            )
+          const whileOpen = yield* offerOf(g.p1)
+          const underReview = yield* offerOf(g.p2)
+
+          // the question stops asking participants to file
+          yield* runSql(sql`
+            update assessment_item_revisions set entry_channels = '["administrative"]'::jsonb
+            where id = (select current_revision_id from assessment_items where id = ${g.item.id})`)
+          const noDoor = yield* offerOf(g.p1)
+          const refused = yield* Effect.exit(
+            assessment.interveneOnEntry(
+              f.t,
+              sent.entryId,
+              { kind: 'return-for-revision', reason: '证书需要重新上传' },
+              admin,
+            ),
+          )
+          // a claim under review keeps its rescue, whatever the question says
+          const stillRescued = yield* offerOf(g.p2)
+          return { whileOpen, underReview, noDoor, refused, stillRescued, pending }
+        }),
+      ),
+    )
+    expect(result.whileOpen).toEqual({ state: 'available', reason: null })
+    expect(result.underReview).toEqual({ state: 'available', reason: null })
+    expect(result.noDoor).toEqual({ state: 'blocked', reason: 'owner-cannot-refile' })
+    expect(refusalOf(result.refused)?.reason).toBe('owner-cannot-refile')
+    expect(result.stillRescued).toEqual({ state: 'available', reason: null })
   })
 
   it('carries a stranded round onto the level the administrator just fixed', async () => {

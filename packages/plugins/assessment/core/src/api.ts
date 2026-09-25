@@ -1356,6 +1356,7 @@ const participantEntryView = Schema.Struct({
   entry: entryView,
   /** what this reader may do to correct the claim's conclusion */
   corrections: Schema.Struct({
+    returnForRevision: actionAvailability,
     reopen: actionAvailability,
     redetermine: actionAvailability,
   }),

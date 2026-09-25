@@ -97,6 +97,8 @@ export function ManagedEntrySheet({
   recognition: RecognitionDto | null
   /** the corrections of a concluded claim this reader may offer, as the server decided */
   corrections?: {
+    /** the server's word on handing it back; absent where no server offer was read */
+    readonly returnForRevision?: { readonly state: string; readonly reason: string | null }
     readonly reopen: { readonly state: string; readonly reason: string | null }
     readonly redetermine: { readonly state: string; readonly reason: string | null }
   }
@@ -138,10 +140,17 @@ export function ManagedEntrySheet({
   // only what the api would take: a withdrawn record stays withdrawn, and
   // only a filing under review or approved goes back to its owner
   const withdrawable = may.withdraw && administrative && entry.status !== 'voided'
+  // Handing back is the server's to offer where it said (an approved claim
+  // goes back only while its owner could take it up again, which no screen
+  // can work out); the claim's own state decides where it did not.
+  const returnOffer = corrections?.returnForRevision
   const returnable =
     may.returnForRevision &&
-    !administrative &&
-    (entry.status === 'in_review' || entry.status === 'approved')
+    (returnOffer !== undefined
+      ? returnOffer.state !== 'hidden'
+      : !administrative && (entry.status === 'in_review' || entry.status === 'approved'))
+  const returnBlocked =
+    returnOffer !== undefined && returnOffer.state === 'blocked' ? why(returnOffer.reason) : null
 
   return (
     <>
@@ -192,9 +201,14 @@ export function ManagedEntrySheet({
               </Button>
             )}
             {returnable && (
-              <Button size="sm" disabled={busy} onClick={() => setAsking('return-for-revision')}>
-                {format(m.staffReturnEntry)}
-              </Button>
+              <CorrectionKey
+                act="return"
+                variant="default"
+                label={format(m.staffReturnEntry)}
+                blocked={returnBlocked}
+                busy={busy}
+                onPress={() => setAsking('return-for-revision')}
+              />
             )}
           </>
         }
@@ -257,12 +271,14 @@ export function ManagedEntrySheet({
  */
 function CorrectionKey({
   act,
+  variant = 'outline',
   label,
   blocked,
   busy,
   onPress,
 }: {
-  act: 'reopen' | 'redetermine'
+  act: 'return' | 'reopen' | 'redetermine'
+  variant?: 'default' | 'outline'
   label: string
   /** why it is not open now, or null when it is */
   blocked: string | null
@@ -271,7 +287,7 @@ function CorrectionKey({
 }) {
   const key = (
     <Button
-      variant="outline"
+      variant={variant}
       size="sm"
       data-testid={`staff-${act}`}
       data-offer={blocked === null ? 'available' : 'blocked'}

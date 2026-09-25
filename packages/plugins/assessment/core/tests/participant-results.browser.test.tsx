@@ -525,6 +525,28 @@ describe('the participant results screen', () => {
     await vi.waitFor(() => expect(redetermineEntry).toHaveBeenCalledTimes(1))
   })
 
+  // the hand-back is the server's to offer: an approved claim whose owner
+  // cannot take it up again now is shown held, with the reason, rather than
+  // lit and then refused (ruling of 2026-09-25 #13)
+  it('holds the hand-back where the server says its owner could not refile', async () => {
+    const interveneOnEntry = vi.fn((_request: Request) => Effect.succeed({ entry: entry() }))
+    await screen(
+      {
+        ...correctable({
+          returnForRevision: { state: 'blocked', reason: 'owner-cannot-refile' },
+          reopen: { state: 'hidden', reason: null },
+          redetermine: { state: 'hidden', reason: null },
+        } as never),
+        interveneOnEntry,
+      },
+      `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}&view=entries&entry=${ENTRY_ID}`,
+    )
+    const key = page.getByTestId('staff-return')
+    await expect.element(key).toHaveAttribute('data-offer', 'blocked')
+    await expect.element(key).toBeDisabled()
+    expect(interveneOnEntry).not.toHaveBeenCalled()
+  })
+
   // a record the office revoked stays on the account at zero, marked as
   // revoked rather than drawn like a refusal or a plain zero (ruling #25)
   it('marks a revoked record apart from a refused claim on the account', async () => {
