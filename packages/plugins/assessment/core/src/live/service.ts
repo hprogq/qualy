@@ -2,6 +2,11 @@ import { Context, Effect, Layer, PubSub, Result, Schedule, Schema, Stream } from
 import { DatabaseNotifications } from '@qualy/plugin-database/server'
 import { Assembled } from '@qualy/api-kit/assembled'
 import { ASSESSMENT_LIVE_CHANNEL, liveEventSchema, type AssessmentLiveEvent } from './events.ts'
+import {
+  connectionLedger,
+  DEFAULT_CONNECTION_LIMITS,
+  type ConnectionLedger,
+} from './connections.ts'
 
 // The receiving half of the live bus: one dedicated LISTEN session per
 // process, fanned out in-process to however many SSE connections are open.
@@ -20,6 +25,8 @@ export class AssessmentLive extends Context.Service<
   {
     /** every announcement in this tenant's database, as this process hears them */
     readonly events: Stream.Stream<AssessmentLiveEvent>
+    /** how many streams this process keeps open, and for how long */
+    readonly connections: ConnectionLedger
   }
 >()('@qualy/plugin-assessment/AssessmentLive') {
   static readonly layer: Layer.Layer<AssessmentLive, never, DatabaseNotifications | Assembled> =
@@ -74,7 +81,10 @@ export class AssessmentLive extends Context.Service<
           }),
         })
 
-        return AssessmentLive.of({ events: Stream.fromPubSub(pubsub) })
+        return AssessmentLive.of({
+          events: Stream.fromPubSub(pubsub),
+          connections: connectionLedger(DEFAULT_CONNECTION_LIMITS),
+        })
       }),
     )
 }

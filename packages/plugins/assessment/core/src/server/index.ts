@@ -5717,8 +5717,9 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         // Standing is read once, at connect. `capabilitiesFor` is coarse on
         // purpose - "a reviewer here" does not flicker with the phases - so
         // a connection is not re-judged per event; someone stripped of a
-        // role mid-connection keeps hearing bare wake-ups until reconnect,
-        // and every read those wake-ups trigger is authorized on its own.
+        // role mid-connection keeps hearing bare wake-ups until the stream's
+        // lifetime ends it and the page dials again, and every read those
+        // wake-ups trigger is authorized on its own.
         const standing = yield* assessment.capabilitiesFor(
           principal.tenantId,
           params.batchId,
@@ -5765,9 +5766,14 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         )
         // sync first, always: whatever this connection missed - including
         // everything, on a fresh page - the instruction is to read again
-        return Stream.concat(
-          Stream.succeed({ kind: 'sync' as const }),
-          Stream.merge(changes, heartbeat),
+        const sync = Stream.succeed({ kind: 'sync' as const })
+        // Counted against the session and the process, and ended once its
+        // lifetime is up so the next dial is authenticated afresh. Refused,
+        // the page is told to read once and goes on polling.
+        return live.connections.admit(
+          principal.sessionId,
+          Stream.concat(sync, Stream.merge(changes, heartbeat)),
+          sync,
         )
       }),
     )
