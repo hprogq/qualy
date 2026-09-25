@@ -3542,6 +3542,21 @@ export const scopeOptions = (tenantId: string, held: AuthorizationScope) =>
       ),
     )
 
+/** the kinds of these units, named, for a picker that narrows by kind */
+export const orgTypesNamed = (tenantId: string, orgTypeIds: readonly string[]) =>
+  orgTypeIds.length === 0
+    ? Effect.succeed([] as readonly { id: string; name: string }[])
+    : db.query((k) =>
+        k
+          .selectFrom('OrgType')
+          .select(['id', 'name'])
+          .where('tenantId', '=', tenantId)
+          .where('id', 'in', [...orgTypeIds])
+          .orderBy('name')
+          .orderBy('id')
+          .execute(),
+      )
+
 export const userTypeOptions = (tenantId: string) =>
   db
     .query((k) =>

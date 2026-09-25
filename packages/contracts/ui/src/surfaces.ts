@@ -638,4 +638,10 @@ export const orgNodePickerView = defineUiSlot({
 
 export interface OrgNodePickerViewContext extends OrgNodePickerContext {
   nodes: NonNullable<OrgNodePickerContext['nodes']>
+  /**
+   * The kinds of those units, named, when the caller has them: the picker
+   * then offers to narrow by kind, as the directory's own does. Without them
+   * it offers search alone.
+   */
+  orgTypes?: readonly { id: string; name: string }[]
 }

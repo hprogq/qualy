@@ -598,6 +598,41 @@ describe('the roster on the results page', () => {
     expect([asked['userTypeIds']].flat()).toEqual([TYPE])
   })
 
+  it('finds a unit to import from by searching or by its kind', async () => {
+    await open({
+      listScopeOptions: () =>
+        Effect.succeed({
+          nodes: [
+            { id: COLLEGE, name: '软件学院', parentId: null, depth: 0, orgTypeId: 'college' },
+            { id: CLASS_A, name: '软件 2301 班', parentId: COLLEGE, depth: 1, orgTypeId: 'c' },
+          ],
+          orgTypes: [
+            { id: 'c', name: '班级' },
+            { id: 'college', name: '学院' },
+          ],
+        }),
+    })
+    await page.getByRole('button', { name: '从组织导入' }).click()
+    const units = page.getByTestId('import-units')
+    await expect.element(units.getByRole('checkbox', { name: /软件学院/ })).toBeVisible()
+
+    // by kind: the classes alone, as a list
+    await units.getByRole('combobox', { name: '组织类型' }).click()
+    await page.getByRole('option', { name: '班级' }).click()
+    await expect.element(units.getByRole('checkbox', { name: /软件 2301 班/ })).toBeVisible()
+    expect(units.getByRole('checkbox', { name: /软件学院/ }).elements()).toHaveLength(0)
+
+    // by name, over every kind again
+    await units.getByRole('combobox', { name: '组织类型' }).click()
+    await page.getByRole('option', { name: '全部类型' }).click()
+    await userEvent.fill(units.getByPlaceholder('搜索组织名称'), '学院')
+    await expect.element(units.getByRole('checkbox', { name: /软件学院/ })).toBeVisible()
+    expect(units.getByRole('checkbox', { name: /2301/ }).elements()).toHaveLength(0)
+    // and what is ticked in the list is what the import asks for
+    await units.getByRole('checkbox', { name: /软件学院/ }).click()
+    await expect.element(units.getByTestId('chosen-units')).toBeVisible()
+  })
+
   it('adds people from the round’s own candidates, and not somebody already on it', async () => {
     const added = vi.fn((_request: Request) => Effect.succeed({ added: 1, skipped: 0 }))
     await open({

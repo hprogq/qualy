@@ -3856,6 +3856,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
             orgTypeId: Schema.String,
           }),
         ),
+        /** the kinds of those units, named, so a picker can narrow by kind */
+        orgTypes: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
       }),
       error: [AccessDenied],
     }).middleware(Authenticated),

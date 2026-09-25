@@ -3,7 +3,8 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useQuery } from '@tanstack/react-query'
-import { useApiQuery } from '@qualy/web-runtime'
+import { orgNodePickerView } from '@qualy/ui-contract'
+import { UiSlot, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, CheckboxGroup, Field } from '@qualy/ui/admin'
@@ -29,7 +30,9 @@ import { assessmentMessages as m } from '../i18n.ts'
 // created from: the units this reader manages and the kinds of people there
 // are, served by this domain. Running a round needs assessment authority and
 // nothing else - not the directory's own read permission, which a round's
-// administrator need not hold. What it would do here is said as a number
+// administrator need not hold. The units are drawn by the organization's own
+// permission-free view, so a school of a thousand units can still be
+// searched and narrowed by kind. What it would do here is said as a number
 // before the button will do anything.
 
 interface Selection {
@@ -39,6 +42,8 @@ interface Selection {
 
 const styles = stylex.create({
   body: { maxHeight: '62vh' },
+  units: { display: 'flex', minWidth: 0, flexDirection: 'column' },
+  // the plain tree, where the organization's view is not there to draw one
   tree: {
     maxHeight: 280,
     overflowY: 'auto',
@@ -124,12 +129,29 @@ export function ImportDialog({
             <FieldGroup>
               <Field label={format(m.scopeLegend)}>
                 {() => (
-                  <div data-testid="import-units" {...stylex.props(styles.tree)}>
-                    <TreeSelect
-                      value={selection.orgNodeIds}
-                      onChange={(orgNodeIds) => setSelection((now) => ({ ...now, orgNodeIds }))}
-                      nodes={nodes.data?.nodes ?? []}
-                      emptyLabel={format(m.scopeEmpty)}
+                  <div data-testid="import-units" {...stylex.props(styles.units)}>
+                    <UiSlot
+                      token={orgNodePickerView}
+                      context={{
+                        value: selection.orgNodeIds,
+                        onChange: (orgNodeIds: string[]) =>
+                          setSelection((now) => ({ ...now, orgNodeIds })),
+                        nodes: nodes.data?.nodes ?? [],
+                        orgTypes: nodes.data?.orgTypes ?? [],
+                        loading: nodes.isPending,
+                      }}
+                      fallback={
+                        <div {...stylex.props(styles.tree)}>
+                          <TreeSelect
+                            value={selection.orgNodeIds}
+                            onChange={(orgNodeIds) =>
+                              setSelection((now) => ({ ...now, orgNodeIds }))
+                            }
+                            nodes={nodes.data?.nodes ?? []}
+                            emptyLabel={format(m.scopeEmpty)}
+                          />
+                        </div>
+                      }
                     />
                   </div>
                 )}

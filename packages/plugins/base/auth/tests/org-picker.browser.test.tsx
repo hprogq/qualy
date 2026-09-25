@@ -136,5 +136,43 @@ describe('the unit tree over units the caller supplies', () => {
     await expect.element(college).toBeVisible()
     await college.click()
     await expect.element(college).toHaveAttribute('aria-current', 'true')
+    // no kinds were named, so there is no kind to narrow by
+    expect(page.getByRole('combobox', { name: '组织类型' }).elements()).toHaveLength(0)
+  })
+
+  function Named() {
+    const [value, setValue] = useState<readonly string[]>([])
+    return (
+      <OrgNodePickerView
+        context={{
+          value,
+          onChange: setValue,
+          nodes: nodes.map((node) => ({
+            id: node.orgNodeId,
+            name: node.name,
+            parentId: node.parentId,
+            orgTypeId: node.orgTypeId,
+          })),
+          orgTypes: [
+            { id: TYPE(2), name: '学院' },
+            { id: TYPE(4), name: '班级' },
+          ],
+        }}
+      />
+    )
+  }
+
+  it('narrows by kind when the caller names the kinds, still without the directory', async () => {
+    const client = fakeClient({
+      app: { getManifest: () => Effect.succeed(emptyManifest()) },
+    })
+    await renderScreen({ client, children: <Named /> })
+
+    await page.getByRole('combobox', { name: '组织类型' }).click()
+    await page.getByRole('option', { name: '班级' }).click()
+    // the classes, as a flat list, and nothing of any other kind
+    await expect.element(page.getByRole('checkbox', { name: /软件工程 2301 班/ })).toBeVisible()
+    await expect.element(page.getByRole('checkbox', { name: /软件工程 2302 班/ })).toBeVisible()
+    expect(page.getByRole('checkbox', { name: /软件学院/ }).elements()).toHaveLength(0)
   })
 })

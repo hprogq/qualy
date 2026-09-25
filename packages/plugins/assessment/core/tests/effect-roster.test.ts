@@ -638,7 +638,7 @@ describe.runIf(postgresAvailable).concurrent('the roster management face', () =>
           select ${f.tenant}, ${f.classType}, ${f.gradeB},
                  'Wing ' || n, ('r.b.k' || lpad(n::text, 4, '0'))::ltree, 2
           from generate_series(1, 600) as n`)
-        const offered = yield* assessment.scopeOptions(f.tenant, f.principal)
+        const offered = (yield* assessment.scopeOptions(f.tenant, f.principal)).nodes
         const total = one<{ count: string }>(
           yield* runSql(sql`
             select count(*)::text as count from org_nodes where tenant_id = ${f.tenant}`),

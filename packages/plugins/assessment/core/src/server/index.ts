@@ -234,6 +234,7 @@ import {
   replacePhaseScopes,
   rosterAnchors,
   scopeOptions as scopeOptionRows,
+  orgTypesNamed,
   scopesForBatch,
   setCurrentPhase,
   setParticipantStatus,
@@ -1529,17 +1530,21 @@ export class Assessment extends Context.Service<
       | ParticipantPlacementChanged
       | AccessDenied
     >
+    /** the units a batch may face, and their kinds named, for a picker that narrows by kind */
     readonly scopeOptions: (
       tenantId: string,
       as: Principal,
     ) => Effect.Effect<
-      readonly {
-        id: string
-        name: string
-        parentId: string | null
-        depth: number
-        orgTypeId: string
-      }[],
+      {
+        nodes: readonly {
+          id: string
+          name: string
+          parentId: string | null
+          depth: number
+          orgTypeId: string
+        }[]
+        orgTypes: readonly { id: string; name: string }[]
+      },
       AccessDenied
     >
     readonly userTypeOptions: (
@@ -5439,7 +5444,11 @@ export const make = Effect.fn('Assessment.make')(function* () {
       // to name their own unit: path order is pre-order, so a cut leaves a
       // coherent tree that is simply missing everything after the cut, and
       // nothing on the screen says so.
-      return yield* dieQuery(withDb(scopeOptionRows(tenantId, held)))
+      const nodes = yield* dieQuery(withDb(scopeOptionRows(tenantId, held)))
+      const orgTypes = yield* dieQuery(
+        withDb(orgTypesNamed(tenantId, [...new Set(nodes.map((node) => node.orgTypeId))])),
+      )
+      return { nodes, orgTypes }
     }),
 
     /**
@@ -7490,7 +7499,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
       Effect.fn('assessment.listScopeOptions.handler')(function* () {
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
-        return { nodes: yield* assessment.scopeOptions(principal.tenantId, principal) }
+        return yield* assessment.scopeOptions(principal.tenantId, principal)
       }),
     )
     .handle(

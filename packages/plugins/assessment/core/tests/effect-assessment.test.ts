@@ -3915,7 +3915,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
 
         // and everything building a round of their own needs is still theirs
         // to read: the units they run, the kinds of people, the templates
-        const units = yield* assessment.scopeOptions(f.tenant, asLocal)
+        const units = (yield* assessment.scopeOptions(f.tenant, asLocal)).nodes
         const kinds = yield* assessment.userTypeOptions(f.tenant, asLocal)
         const offered = yield* assessment.listTemplates(f.tenant, { limit: 50 }, asLocal)
         const theirs = yield* assessment.createBatch(

@@ -645,4 +645,22 @@ describe.runIf(postgresAvailable)('the people an administrator could add', () =>
     ])
     expect(errorOf<{ _tag: string }>(result.reviewer)?._tag).toBe('ACCESS_DENIED')
   })
+
+  it('names the kinds of the units it offers to import from', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rc-kinds')
+          const assessment = yield* Assessment
+          return yield* assessment.scopeOptions(f.t, f.principal(f.admin))
+        }),
+      ),
+    )
+    // every kind a unit on offer is of, named, and none that is not
+    expect(result.orgTypes.map((type) => type.name)).toEqual(['Class', 'College'])
+    expect(new Set(result.nodes.map((node) => node.orgTypeId))).toEqual(
+      new Set(result.orgTypes.map((type) => type.id)),
+    )
+  })
 })
