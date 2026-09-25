@@ -121,9 +121,25 @@ database。出现第二种有持久部署副作用的能力时,先设计启动�
 `idle_in_transaction_session_timeout` 60s(`@qualy/plugin-database` 的 `DATABASE_TIMEOUTS`)。超过任一上限、连接断开或库拒绝新连接时,
 该请求答 503 `SERVICE_UNAVAILABLE`,访问日志以 Error 记下原因;约束冲突与业务拒绝照旧。`/health/ready` 每个探针最多等 4s,超时即 503。
 要放宽某一项,在 `DATABASE_URL` 上加同名参数(如 `?statement_timeout=120000`,`0` 为关闭),例如对库跑耗时较长的
-`qualy assessment audit-scoring` 时;取连接的 5s 不开放配置。迁移(`migrate` job 与开发态 apply)用自己的会话,不受这些上限约束:
+`qualy assessment audit-scoring` 时;取连接的 5s 不开放配置。**值是毫秒整数**:驱动按 `parseInt` 读,`?statement_timeout=30s`
+会变成 30 毫秒,要写 `30000`。只为一条命令放宽时不要改 server 与 `migrate` 共用的 `.env`,在那条命令上单独给,例如
+`docker compose exec -e DATABASE_URL='postgres://…?statement_timeout=0' server node apps/cli/src/main.ts <命令>`(在运行中的 server 容器里,
+卷与沙箱 socket 都在)。
+迁移(`migrate` job 与开发态 apply)用自己的会话,不受这些上限约束:
 迁移器每开一个会话都先把这几项设为 0,URL 上的参数与库侧的 `ALTER ROLE / DATABASE … SET` 都不作用于迁移;它只限制等待迁移锁的时长
 (`QUALY_MIGRATION_LOCK_TIMEOUT_MS`,默认 120s)。
+
+**库前有 PgBouncer 这类连接池代理时**:上面三项 PostgreSQL 上限是随每条连接的启动报文(startup parameters)下发的。PgBouncer 默认拒绝
+它不认识的启动参数,每条连接都报 `unsupported startup parameter`,server 起不来;而只把这三项加进 `ignore_startup_parameters`,
+上限就被悄悄丢掉,库一慢请求又会一直等下去。二选一:
+
+- 不经代理,server 与 `migrate` 直连库(compose 拓扑就是这样);
+- 或在 `ignore_startup_parameters` 里列出 `statement_timeout,lock_timeout,idle_in_transaction_session_timeout`,同时在库侧给应用角色设同样的值
+  (`ALTER ROLE <角色> SET statement_timeout = 30000` 等三条,只对之后新建的会话生效)。这时 URL 上的覆盖不再起作用,要放宽只能改角色默认值,
+  或让那条命令直连库。迁移不受角色默认值影响(见上)。
+
+代理必须是 session 池化模式(`pool_mode = session`):迁移锁是会话级 advisory lock,通知监听要一条会话一直 `LISTEN`,
+transaction 池化下会话不跟着客户端走,两者都不成立。
 
 **远程或托管 PostgreSQL 的 TLS**:compose 拓扑里 server 与 `migrate` 经内网连 `postgres` 服务,不需要 TLS。连远程或托管库时在
 `DATABASE_URL` 上写 `sslmode`,但要按 node-postgres(pg-connection-string 2.x)的口径理解:`sslmode=require`、`prefer`、`verify-ca`
