@@ -58,7 +58,7 @@ const closure = [
 
 export const backend = memoryBackend()
 
-const stack = (url: string) => {
+export const stack = (url: string) => {
   const services = booted(
     rbacLayer.pipe(
       // the writer the audited services record through, on the same database
