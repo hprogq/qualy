@@ -10,7 +10,8 @@ import { assessmentMessages as m } from '../i18n.ts'
 /** the payload refusals the driver can raise, as sentences about one field */
 const ISSUE_SENTENCES: Record<string, MessageDescriptor> = {
   required: m.entryIssueRequired,
-  // a value past the field's own bounds, a number or a date alike
+  // a value past the field's own bounds; a date field bound to the round's
+  // window reports its window with the same code (see issueSentence)
   'out-of-range': m.entryIssueOutOfRange,
   // a date the scoring rule reads, outside the round's material window
   'out-of-material-range': m.entryIssueOutOfMaterialRange,
@@ -36,9 +37,22 @@ const ISSUE_SENTENCES: Record<string, MessageDescriptor> = {
   'duplicate-attachment': m.entryIssueFileElsewhere,
 }
 
-/** the sentence for one field's problem, completing the field's name */
-export const issueSentence = (reason: string): MessageDescriptor =>
-  ISSUE_SENTENCES[reason] ?? m.entryIssueOther
+/**
+ * The sentence for one field's problem, completing the field's name.
+ *
+ * The evidence driver reports a date outside the round's material window as
+ * `out-of-range`, the same code a number past its bounds raises: the window
+ * is folded into the date field's own bounds. So which news it is depends
+ * on the field - a date the window binds is outside the round's material
+ * period, anything else is outside what the field allows.
+ */
+export const issueSentence = (
+  reason: string,
+  field?: { readonly type?: string; readonly inMaterialRange?: boolean },
+): MessageDescriptor =>
+  reason === 'out-of-range' && field?.type === 'date' && field.inMaterialRange === true
+    ? m.entryIssueOutOfMaterialRange
+    : (ISSUE_SENTENCES[reason] ?? m.entryIssueOther)
 
 /** the fields a save was refused over, or null when the failure is not that */
 export const payloadIssuesOf = (

@@ -723,7 +723,13 @@ function EntryDialogBody({
             <ul {...stylex.props(styles.issueList)}>
               {issues.map((issue, index) => (
                 <li key={index}>
-                  {labelOf(issue.field)} {format(issueSentence(issue.reason))}
+                  {labelOf(issue.field)}{' '}
+                  {format(
+                    issueSentence(
+                      issue.reason,
+                      fields.find((field) => field.key === issue.field),
+                    ),
+                  )}
                 </li>
               ))}
             </ul>

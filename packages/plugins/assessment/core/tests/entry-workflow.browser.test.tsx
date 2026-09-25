@@ -455,6 +455,71 @@ describe('filing a claim', () => {
     },
   )
 
+  // The evidence driver folds the round's material window into a date
+  // field's own bounds and reports a date outside it as `out-of-range`, the
+  // code a number past its limits also raises. Which sentence it is depends
+  // on the field: a date the window binds is outside the material period.
+  it.each([
+    [true, WINDOW, BOUNDS],
+    [false, BOUNDS, WINDOW],
+  ] as const)(
+    'reads a date refused as out of range by whether the window binds it (window: %s)',
+    async (bound, sentence, other) => {
+      const dated = item({
+        currentRevision: {
+          ...item().currentRevision!,
+          formConfig: {
+            fields: [
+              { key: 'summary', type: 'text', label: '事项说明', required: true },
+              {
+                key: 'served-on',
+                type: 'date',
+                label: '服务日期',
+                ...(bound ? { inMaterialRange: true } : {}),
+              },
+            ],
+          },
+        },
+      })
+      const submitted = vi.fn(() =>
+        Effect.fail(
+          Object.assign(new Error('ASSESSMENT_ENTRY_PAYLOAD_INVALID'), {
+            _tag: 'ASSESSMENT_ENTRY_PAYLOAD_INVALID',
+            issues: [{ field: 'served-on', reason: 'out-of-range' }],
+          }),
+        ),
+      )
+      await screen(
+        {
+          listItems: () => Effect.succeed({ items: [dated], capabilities: { canManage: false } }),
+          listMyEntries: () =>
+            Effect.succeed({
+              participantId: PARTICIPANT_ID,
+              entries: [entry()],
+              nextCursor: null,
+              attention: { unreadItemIds: [] },
+            }),
+          setEntryStatus: submitted,
+        },
+        `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
+        [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+      )
+
+      await page.getByRole('button', { name: /2024 年入伍/ }).click()
+      const drawer = page.getByRole('dialog')
+      await drawer.getByRole('button', { name: '提交审核' }).click()
+      await page.getByTestId('confirm-accept').click()
+      await vi.waitFor(() => expect(submitted).toHaveBeenCalledOnce())
+
+      await expect
+        .poll(() => document.querySelector('[data-sonner-toast]')?.textContent ?? '')
+        .toContain('服务日期')
+      const said = document.querySelector('[data-sonner-toast]')?.textContent ?? ''
+      expect(said).toContain(zhCN[sentence])
+      expect(said).not.toContain(zhCN[other])
+    },
+  )
+
   it('offers keeping the claim from inside the question that hands it on', async () => {
     const created = vi.fn(() => Effect.succeed({ entry: entry() }))
     const submitted = vi.fn(() => Effect.succeed({ entry: entry({ status: 'in_review' }) }))

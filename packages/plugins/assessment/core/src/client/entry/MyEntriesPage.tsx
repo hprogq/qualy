@@ -237,7 +237,7 @@ function Body({
       const fields = fieldsOf(asked?.currentRevision?.formConfig)
       const said = issues.map((issue) => {
         const field = fields.find((one) => one.key === issue.field)
-        return `${field?.label ?? issue.field} ${format(issueSentence(issue.reason))}`
+        return `${field?.label ?? issue.field} ${format(issueSentence(issue.reason, field))}`
       })
       return format(m.entryListIssues, { issues: listJoin(said) })
     }
