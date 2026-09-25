@@ -195,6 +195,7 @@ export async function makeApplication(
           middleware: serveMiddleware({
             trustedProxies: config.trustedProxies,
             access: logging.access,
+            warnUntrustedProxy: config.production,
           }),
         },
       ).pipe(

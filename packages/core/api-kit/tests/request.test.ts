@@ -1,6 +1,6 @@
 import { NodeHttpClient, NodeHttpServer } from '@effect/platform-node'
-import { Effect, Exit, Layer, Metric, Option, Scope } from 'effect'
-import { HttpRouter, HttpServerResponse } from 'effect/unstable/http'
+import { Effect, Exit, Layer, Logger, Metric, Option, Scope } from 'effect'
+import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
 import { OtlpSerialization, OtlpTracer } from 'effect/unstable/observability'
 import { createServer, type Server } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -396,5 +396,70 @@ describe('the labels a request becomes', () => {
           state.attributes?.['http.route'] === undefined,
       ),
     ).toBe(true)
+  })
+})
+
+// A deployment whose proxy nobody declared works, and records every visitor
+// under the proxy's own address - which then shares one set of sign-in
+// limits. Nothing else says so, so the first request that shows it does.
+describe('a proxy nobody declared', () => {
+  /** the warnings one middleware writes over a run of requests, each from a peer with headers */
+  const warningsOver = (
+    options: Parameters<typeof requestContext>[0],
+    requests: readonly { readonly peer: string; readonly headers?: Record<string, string> }[],
+  ) => {
+    const warnings: string[] = []
+    const logger = Logger.make((entry) => {
+      if (entry.logLevel !== 'Warn') return
+      warnings.push(String(Array.isArray(entry.message) ? entry.message[0] : entry.message))
+    })
+    const middleware = requestContext(options)
+    return Effect.runPromise(
+      Effect.forEach(requests, ({ peer, headers }) =>
+        middleware(Effect.succeed('answered')).pipe(
+          Effect.provideService(
+            HttpServerRequest.HttpServerRequest,
+            HttpServerRequest.fromWeb(new Request('http://qualy.test/api/x', { headers })).modify({
+              remoteAddress: Option.some(peer),
+            }),
+          ),
+        ),
+      ).pipe(Effect.provide(Logger.layer([logger])), Effect.as(warnings)),
+    )
+  }
+
+  const forwarded = { 'x-forwarded-for': '203.0.113.9' }
+
+  it('is named once, pointing at the setting, when a private peer forwards', async () => {
+    const warnings = await warningsOver({ trustedProxies: [], warnUntrustedProxy: true }, [
+      // the compose network's gateway, which is what a published port shows
+      { peer: '172.30.53.1', headers: forwarded },
+      { peer: '172.30.53.1', headers: forwarded },
+      { peer: '127.0.0.1', headers: forwarded },
+    ])
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('QUALY_TRUSTED_PROXIES')
+    expect(warnings[0]).toContain('172.30.53.1')
+  })
+
+  it('is not named for a declared proxy, a public peer, or no forwarding at all', async () => {
+    expect(
+      await warningsOver({ trustedProxies: ['172.30.53.1'], warnUntrustedProxy: true }, [
+        { peer: '172.30.53.1', headers: forwarded },
+      ]),
+    ).toEqual([])
+    // a public peer writing the header is a client writing its own, ignored as it should be
+    expect(
+      await warningsOver({ trustedProxies: [], warnUntrustedProxy: true }, [
+        { peer: '198.51.100.7', headers: forwarded },
+        { peer: '172.30.53.1' },
+      ]),
+    ).toEqual([])
+  })
+
+  it('stays quiet where nobody asked, as in development behind its own proxy', async () => {
+    expect(
+      await warningsOver({ trustedProxies: [] }, [{ peer: '127.0.0.1', headers: forwarded }]),
+    ).toEqual([])
   })
 })

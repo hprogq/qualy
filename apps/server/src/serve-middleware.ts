@@ -60,9 +60,14 @@ export const serveMiddleware = (options: {
   readonly access: LoggingSettings['access']
   /** the generations of web client this api speaks; the contract's unless a test says otherwise */
   readonly clientProtocol?: ProtocolWindow
+  /** say once when an undeclared proxy on this network forwards requests; production does */
+  readonly warnUntrustedProxy?: boolean
 }) => {
   const withServerSpan = serverSpans({ trustedProxies: options.trustedProxies })
-  const withRequestContext = requestContext({ trustedProxies: options.trustedProxies })
+  const withRequestContext = requestContext({
+    trustedProxies: options.trustedProxies,
+    warnUntrustedProxy: options.warnUntrustedProxy,
+  })
   const withMetrics = httpMetrics({ trustedProxies: options.trustedProxies })
   const withAccessLog = accessLog(options.access)
   const guard = requestOriginGuard({ trustedProxies: options.trustedProxies })

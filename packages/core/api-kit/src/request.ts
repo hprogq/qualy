@@ -491,8 +491,16 @@ export const httpMetrics = (options?: {
  */
 export const requestContext = (options?: {
   readonly trustedProxies?: readonly string[] | undefined
+  /**
+   * Say once, at Warn, that a proxy the setting does not name is forwarding
+   * requests. Production turns it on; in development the Vite proxy on this
+   * machine forwards every request and is meant to go unbelieved.
+   */
+  readonly warnUntrustedProxy?: boolean | undefined
 }) => {
   const trusted = trustedProxies(options?.trustedProxies ?? [])
+  // per middleware, which the host builds once per process
+  let warned = options?.warnUntrustedProxy !== true
   return <A, E, R>(
     httpApp: Effect.Effect<A, E, R>,
   ): Effect.Effect<A, E, Exclude<R, RequestContext> | HttpServerRequest.HttpServerRequest> =>
@@ -501,7 +509,7 @@ export const requestContext = (options?: {
       const span = Context.getOption(fiber.context, Tracer.ParentSpan)
       let sessionId: string | undefined
       let endpoint: string | undefined
-      return Effect.provideService(httpApp, RequestContext, {
+      const provided = Effect.provideService(httpApp, RequestContext, {
         requestId: randomUUID(),
         clientIp: clientAddressOf(
           Option.getOrUndefined(request.remoteAddress ?? Option.none()),
@@ -532,5 +540,45 @@ export const requestContext = (options?: {
             endpoint = route
           }),
       })
+      if (warned) return provided
+      const peer = normalizeIp(Option.getOrUndefined(request.remoteAddress ?? Option.none()))
+      if (
+        peer === undefined ||
+        trusted(peer) ||
+        !onThisNetwork(peer) ||
+        request.headers['x-forwarded-for'] === undefined
+      ) {
+        return provided
+      }
+      warned = true
+      return Effect.andThen(
+        Effect.logWarning(
+          `a proxy at ${peer} is forwarding requests, and QUALY_TRUSTED_PROXIES does not name it: every client is recorded as ${peer} and shares its sign-in limits until it does`,
+        ),
+        provided,
+      )
     })
 }
+
+/**
+ * Whether a peer is on this machine or its private network, where the proxy
+ * of a misconfigured deployment stands.
+ *
+ * The case the warning above is for: a forwarded header from a public peer is
+ * a client writing its own, which is ignored as it should be; one from a
+ * private or loopback peer is almost always the deployment's own proxy - the
+ * compose network's gateway, a sidecar - that nobody declared. Nothing says
+ * so otherwise: the process works, and every visitor has the proxy's address.
+ */
+const localNetworks = new BlockList()
+localNetworks.addSubnet('127.0.0.0', 8, 'ipv4')
+localNetworks.addSubnet('10.0.0.0', 8, 'ipv4')
+localNetworks.addSubnet('172.16.0.0', 12, 'ipv4')
+localNetworks.addSubnet('192.168.0.0', 16, 'ipv4')
+localNetworks.addSubnet('169.254.0.0', 16, 'ipv4')
+localNetworks.addAddress('::1', 'ipv6')
+localNetworks.addSubnet('fc00::', 7, 'ipv6')
+localNetworks.addSubnet('fe80::', 10, 'ipv6')
+
+const onThisNetwork = (ip: string): boolean =>
+  localNetworks.check(ip, isIP(ip) === 4 ? 'ipv4' : 'ipv6')

@@ -57,7 +57,10 @@ compose network's gateway (`.env.example` has it). Check it once the edge is
 up: sign in through the public address and look at the sign-in record under
 the account's security page, or at the server's json access log. The address
 there must be your own public one; a `172.30.53.1` means the proxy is not
-trusted and every visitor shares that address in the rate limits.
+trusted and every visitor shares that address in the rate limits. The server
+also says so itself: the first request a private or loopback peer forwards
+without being named there is logged once, at Warn, naming
+`QUALY_TRUSTED_PROXIES`.
 
 Do not run these commands from a development checkout's working copy against
 its own Docker: the deployment is its own project (`qualy-deployment`), but

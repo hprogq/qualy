@@ -11,7 +11,12 @@ export { manifestPath }
 
 export class ServerConfig extends Context.Service<
   ServerConfig,
-  { readonly port: number; readonly trustedProxies: readonly string[] }
+  {
+    readonly port: number
+    readonly trustedProxies: readonly string[]
+    /** whether this is a production process, which warns about an undeclared proxy */
+    readonly production: boolean
+  }
 >()('@qualy/app/ServerConfig') {
   static readonly layer = Layer.effect(
     ServerConfig,
@@ -25,6 +30,9 @@ export class ServerConfig extends Context.Service<
           .split(',')
           .map((entry) => entry.trim())
           .filter((entry) => entry !== ''),
+        production:
+          (yield* Config.String('NODE_ENV').pipe(Config.withDefault('development'))) ===
+          'production',
       })
     }),
   )
