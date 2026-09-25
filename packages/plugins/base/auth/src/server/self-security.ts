@@ -6,7 +6,7 @@ import { pageWindow } from '@qualy/api-kit/schema'
 import type { Principal } from '@qualy/rbac-contract'
 import { SessionsEnded } from '../actions.ts'
 import { actorOf } from './audit-actor.ts'
-import { db } from './db.ts'
+import { db, lockTenant } from './db.ts'
 import { retireChallenges } from './email-flows.ts'
 import { SessionNotFound, UserNotFound } from './errors.ts'
 
@@ -147,6 +147,10 @@ export const make = Effect.fn('Iam.selfSecurity.make')(function* () {
     return yield* withDb(
       transaction(
         Effect.gen(function* () {
+          // in line behind a move to another address being asked for under
+          // the lock right now, so the link that asking writes is among the
+          // ones retired below rather than committed just after them
+          yield* lockTenant(principal.tenantId)
           const person = yield* personOf(principal.tenantId, principal.userId)
           if (person === undefined) return yield* new UserNotFound()
           const ended = yield* db.query((k) => {

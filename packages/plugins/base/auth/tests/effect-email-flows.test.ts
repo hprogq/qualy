@@ -1192,6 +1192,60 @@ describe.runIf(postgresAvailable)('an email address', () => {
     }
   })
 
+  it('does not change once its owner signs that session out, even while the move is still being asked for', async () => {
+    const db = await createTestContext('email-change-signed-out-racing')
+    const mail = memoryMailBackend()
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const flows = yield* EmailFlows
+            const iam = yield* Iam
+            const withDb = yield* withDatabase
+            const ada = f.as(f.ada, f.adaHere)
+            // whoever holds another of Ada's sessions is asking to move her
+            // address: under the tenant's lock, the link written, not yet
+            // committed
+            const asked = yield* Deferred.make<void>()
+            const release = yield* Deferred.make<void>()
+            const asking = yield* withDb(
+              transaction(
+                Effect.gen(function* () {
+                  yield* lockTenant(f.tenant)
+                  yield* flows.requestChange(f.as(f.ada, f.adaElsewhere), {
+                    newEmail: 'thief@elsewhere.example',
+                    locale: 'en',
+                  })
+                  yield* Deferred.succeed(asked, undefined)
+                  yield* Deferred.await(release)
+                }),
+              ),
+            ).pipe(Effect.forkChild)
+            yield* Deferred.await(asked)
+            // and Ada signs that session out, right then
+            const signingOut = yield* iam.selfSecurity
+              .endSession(ada, f.adaElsewhere)
+              .pipe(Effect.forkChild)
+            yield* Effect.sleep('1 second')
+            yield* Deferred.succeed(release, undefined)
+            yield* Fiber.join(asking)
+            yield* Fiber.join(signingOut)
+            const link = yield* Effect.promise(() => tokenFrom(mail, 'thief@elsewhere.example'))
+            const redeemed = tagOf(yield* Effect.result(flows.redeemChange(link.token)))
+            const email = yield* runSql<{ email: string }>(
+              sql`select email from users where id = ${f.ada}`,
+            )
+            return { redeemed, email: email.rows[0]!.email }
+          }).pipe(Effect.provide(stack(db.url, mail.backend))),
+        ),
+      )
+      expect(answer).toEqual({ redeemed: 'AUTH_CHALLENGE_INVALID', email: 'ada@school.edu' })
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('says an address is somebody else’s only as often as it would send a link', async () => {
     const db = await createTestContext('email-change-probe')
     const mail = memoryMailBackend()
