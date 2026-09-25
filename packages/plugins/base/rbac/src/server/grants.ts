@@ -442,21 +442,21 @@ const oneGrant = (tenantId: string, grantId: string) =>
   )
 
 /**
- * Every grant that confers something on one person now: in force, of an
- * active role, general or confined to one resource.
+ * Every grant one person holds in force, general or confined to one
+ * resource, whatever the state of its role.
  *
- * A disabled role's grant is left out because it confers nothing, and a
- * confined one is kept because it is authority inside its resource.
+ * A grant of a role disabled for now is kept (ruled 2026-09-25): it confers
+ * nothing today, and all of it again the day the role is enabled - which
+ * nobody re-asks about whoever changed the holder's account meanwhile. A
+ * confined one is kept because it is authority inside its resource. A grant
+ * revoked or past its term is not held.
  */
 const conferredOn = (tenantId: string, userId: string) =>
   db.query((k) =>
     k
       .selectFrom('RoleGrant as g')
       .innerJoin('Role as r', (join) =>
-        join
-          .onRef('r.tenantId', '=', 'g.tenantId')
-          .onRef('r.id', '=', 'g.roleId')
-          .on('r.status', '=', 'active'),
+        join.onRef('r.tenantId', '=', 'g.tenantId').onRef('r.id', '=', 'g.roleId'),
       )
       .select((eb) => [
         'g.roleId',

@@ -3055,9 +3055,12 @@ describe
               subtreeByNarrow: yield* asks(narrow, across),
               // an office the actor has no edge to
               unappointedByWide: yield* asks(wide, elsewhere),
-              // holding nothing, or only a role that confers nothing
+              // holding nothing
               nobodyByNarrow: yield* asks(narrow, nobody),
+              // a role disabled for now is still held, and all of it comes
+              // back the day the role is enabled again
               disabledByNarrow: yield* asks(narrow, lapsedOffice),
+              disabledByAdmin: yield* asks(f.user, lapsedOffice),
               // authority confined to one resource is authority there
               confinedByNarrow: yield* asks(narrow, confined),
               confinedByWide: yield* asks(wide, confined),
@@ -3074,7 +3077,8 @@ describe
           subtreeByNarrow: false,
           unappointedByWide: false,
           nobodyByNarrow: true,
-          disabledByNarrow: true,
+          disabledByNarrow: false,
+          disabledByAdmin: true,
           confinedByNarrow: false,
           confinedByWide: true,
         })

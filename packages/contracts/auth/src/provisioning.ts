@@ -93,6 +93,12 @@ export class UserProvisioning extends Context.Service<
      * ended, the deletion audited. Somebody already gone is skipped; a
      * system account is skipped too. The tenant must still have an
      * administrator afterwards.
+     *
+     * Each person is asked about the way deleting them alone would be:
+     * `auth.user.manage` and `auth.user.delete` where they stand, and every
+     * grant they hold - a role disabled for now included - one the caller
+     * could grant them. One the caller could not refuses the whole call with
+     * `AccessDenied`, whose reason says so, and nobody is retired.
      */
     readonly retireUsers: (
       tenantId: string,

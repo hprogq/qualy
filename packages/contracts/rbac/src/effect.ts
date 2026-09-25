@@ -224,7 +224,9 @@ export interface RbacShape {
    * Whether the actor could give this person, now, every authority they
    * hold: each live grant asked the way granting it would be asked - reach
    * over grants there, the administrator role's reservation, the office
-   * being theirs to appoint. Somebody holding nothing is within anybody's.
+   * being theirs to appoint. A grant of a role disabled for now counts: it
+   * is all back the day the role is. One revoked or past its term does not.
+   * Somebody holding nothing is within anybody's.
    *
    * What administering a person's account is measured by: their ways in,
    * the names a door finds them by, whether they are in service, where they
