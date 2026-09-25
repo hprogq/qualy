@@ -7,7 +7,11 @@ import {
   WRITTEN_TEXT_WIDTHS,
   type PreviewInput,
 } from '../src/administrative-import/preview.ts'
-import { MAX_ENTRIES_PER_ACCOUNT, MAX_ENTRIES_PER_ITEM } from '../src/api.ts'
+import {
+  MAX_ADMINISTRATIVE_ENTRIES_PER_ACCOUNT,
+  MAX_ENTRIES_PER_ACCOUNT,
+  MAX_ENTRIES_PER_ITEM,
+} from '../src/api.ts'
 import type { ParsedWorkbook, TemplateColumn } from '../src/administrative-import/workbook.ts'
 import { AdministrativeEntryImportRow, EntryRevision } from '../src/db/entities.ts'
 
@@ -295,7 +299,7 @@ describe('judging a whole workbook', () => {
         reachable: reachable('0001', 'p1', '张三'),
         participantUserIds: new Map([['p1', 'u1']]),
         maxEntries: 2,
-        held: new Map([['p1', { onItem: 1, inRound: 1 }]]),
+        held: new Map([['p1', { onItem: 1, inRound: { participant: 0, administrative: 1 } }]]),
       }),
     )
     // one already held plus two in the file is one too many, and the row it
@@ -319,7 +323,13 @@ describe('judging a whole workbook', () => {
         participantUserIds: new Map([['p1', 'u1']]),
         maxEntries: null,
         held: new Map([
-          ['p1', { onItem: MAX_ENTRIES_PER_ITEM - 1, inRound: MAX_ENTRIES_PER_ITEM - 1 }],
+          [
+            'p1',
+            {
+              onItem: MAX_ENTRIES_PER_ITEM - 1,
+              inRound: { participant: 0, administrative: MAX_ENTRIES_PER_ITEM - 1 },
+            },
+          ],
         ]),
       }),
     )
@@ -329,7 +339,7 @@ describe('judging a whole workbook', () => {
     expect(rows[1]!.issues.map((one) => one.reason)).toContain('entry-ceiling-reached')
   })
 
-  it('stops a person at the round ceiling even with room left on the question', () => {
+  it('stops a person at the office allowance even with room left on the question', () => {
     const rows = judgeRows(
       base({
         parsed: parsed(
@@ -343,11 +353,51 @@ describe('judging a whole workbook', () => {
         participantUserIds: new Map([['p1', 'u1']]),
         maxEntries: null,
         // nothing on this question yet, and one place left in the round
-        held: new Map([['p1', { onItem: 0, inRound: MAX_ENTRIES_PER_ACCOUNT - 1 }]]),
+        held: new Map([
+          [
+            'p1',
+            {
+              onItem: 0,
+              inRound: {
+                participant: 0,
+                administrative: MAX_ADMINISTRATIVE_ENTRIES_PER_ACCOUNT - 1,
+              },
+            },
+          ],
+        ]),
       }),
     )
     expect(reasonsOf([rows[0]!])).not.toContain('account-ceiling-reached')
     expect(reasonsOf([rows[1]!])).toContain('account-ceiling-reached')
+  })
+
+  it('does not count what the person filed themselves against the office allowance', () => {
+    const rows = judgeRows(
+      base({
+        parsed: parsed(
+          [],
+          [
+            { rowNo: 2, businessNo: '0001', displayName: '张三', cells: {}, basis: '甲' },
+            { rowNo: 3, businessNo: '0001', displayName: '张三', cells: {}, basis: '乙' },
+          ],
+        ),
+        reachable: reachable('0001', 'p1', '张三'),
+        participantUserIds: new Map([['p1', 'u1']]),
+        maxEntries: null,
+        // however many the person filed themselves - here as many as the
+        // whole account may hold - the office's allowance is untouched
+        held: new Map([
+          [
+            'p1',
+            {
+              onItem: 0,
+              inRound: { participant: MAX_ENTRIES_PER_ACCOUNT, administrative: 0 },
+            },
+          ],
+        ]),
+      }),
+    )
+    expect(reasonsOf(rows)).not.toContain('account-ceiling-reached')
   })
 
   it('warns about the same fact twice, and is not fooled by a different basis', () => {

@@ -495,7 +495,11 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
         why(admitted.reason)
         continue
       }
-      const full = entryRefusalOf(shape.item.maxEntries, held.get(person.id) ?? NOTHING_HELD)
+      const full = entryRefusalOf(
+        shape.item.maxEntries,
+        held.get(person.id) ?? NOTHING_HELD,
+        'administrative',
+      )
       if (full !== null) {
         why(full)
         continue
@@ -666,7 +670,11 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
               refused.push({ participantId: person.id, reason: admitted.reason })
               continue
             }
-            const full = entryRefusalOf(current.maxEntries, held.get(person.id) ?? NOTHING_HELD)
+            const full = entryRefusalOf(
+              current.maxEntries,
+              held.get(person.id) ?? NOTHING_HELD,
+              'administrative',
+            )
             if (full !== null) refused.push({ participantId: person.id, reason: full })
           }
           // one refusal and the transaction carries nothing: the act was

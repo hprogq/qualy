@@ -5,7 +5,7 @@ import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-data
 import { DatabaseNotifications, transaction, type Orm } from '@qualy/plugin-database/server'
 import { Assessment } from '../src/server/index.ts'
 import { ASSESSMENT_LIVE_CHANNEL } from '../src/live/events.ts'
-import { MAX_ENTRIES_PER_ACCOUNT, MAX_ENTRIES_PER_ITEM } from '../src/api.ts'
+import { MAX_ADMINISTRATIVE_ENTRIES_PER_ACCOUNT, MAX_ENTRIES_PER_ITEM } from '../src/api.ts'
 import { counts, numbered, recordItem, workbook } from './support/administrative.ts'
 import { errorOf, ok, one, run, runningBatch, seed } from './support/round.ts'
 import { datedScoring, gradedScoring } from './support/catalogs.ts'
@@ -1071,7 +1071,7 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
       expect(found.after).toEqual({ imports: 0, entries: 0 })
     })
 
-    it('refuses at the round ceiling when the person filled it elsewhere first', async () => {
+    it('refuses at the office allowance when findings elsewhere filled it first', async () => {
       const found = ok(
         await run(
           db.url,
@@ -1082,8 +1082,8 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
               g.batch.id,
               runSql(sql`
                 insert into entries (tenant_id, batch_id, item_id, participant_id, source, status)
-                select ${f.t}, ${g.batch.id}, ${g.item.id}, ${g.p1}, 'self', 'draft'
-                from generate_series(1, ${MAX_ENTRIES_PER_ACCOUNT}::int)`),
+                select ${f.t}, ${g.batch.id}, ${g.item.id}, ${g.p1}, 'record', 'draft'
+                from generate_series(1, ${MAX_ADMINISTRATIVE_ENTRIES_PER_ACCOUNT}::int)`),
               commit,
             )
             return { ...race, after: yield* counts(f) }

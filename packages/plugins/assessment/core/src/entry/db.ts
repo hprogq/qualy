@@ -2,6 +2,7 @@ import { Effect } from 'effect'
 import { sql, type RawBuilder } from 'kysely'
 import { heldThroughOpenAsk, mayActOn } from '../review/db.ts'
 import { db, staffReachOver } from '../server/db.ts'
+import { PARTICIPANT_SOURCES, type HeldEntries, type HeldInRound } from './limit.ts'
 
 // The entry rows and everything the resource policy needs to know about the
 // people around them. Same conventions as the neighbouring modules: epoch
@@ -81,8 +82,8 @@ export const entryOf = (tenantId: string, entryId: string) =>
 
 /**
  * Entries one participant holds on one item and in their whole round, voided
- * ones excepted. A roster row belongs to one round, so the participant alone
- * scopes the second count.
+ * ones excepted, the round's split by the door each came in through. A roster
+ * row belongs to one round, so the participant alone scopes the second count.
  */
 export const heldEntriesOf = (tenantId: string, itemId: string, participantId: string) =>
   db
@@ -91,14 +92,57 @@ export const heldEntriesOf = (tenantId: string, itemId: string, participantId: s
         .selectFrom('Entry')
         .select(({ fn }) => [
           fn.countAll<string>().filterWhere('itemId', '=', itemId).as('onItem'),
-          fn.countAll<string>().as('inRound'),
+          fn
+            .countAll<string>()
+            .filterWhere('source', 'in', [...PARTICIPANT_SOURCES])
+            .as('participant'),
+          fn
+            .countAll<string>()
+            .filterWhere('source', 'not in', [...PARTICIPANT_SOURCES])
+            .as('administrative'),
         ])
         .where('tenantId', '=', tenantId)
         .where('participantId', '=', participantId)
         .where('status', '<>', 'voided')
         .executeTakeFirstOrThrow(),
     )
-    .pipe(Effect.map((row) => ({ onItem: Number(row.onItem), inRound: Number(row.inRound) })))
+    .pipe(
+      Effect.map((row): HeldEntries => ({
+        onItem: Number(row.onItem),
+        inRound: {
+          participant: Number(row.participant),
+          administrative: Number(row.administrative),
+        },
+      })),
+    )
+
+/** the round half of `heldEntriesOf` alone, for a reader asking about no one question */
+export const heldInRoundOf = (tenantId: string, participantId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('Entry')
+        .select(({ fn }) => [
+          fn
+            .countAll<string>()
+            .filterWhere('source', 'in', [...PARTICIPANT_SOURCES])
+            .as('participant'),
+          fn
+            .countAll<string>()
+            .filterWhere('source', 'not in', [...PARTICIPANT_SOURCES])
+            .as('administrative'),
+        ])
+        .where('tenantId', '=', tenantId)
+        .where('participantId', '=', participantId)
+        .where('status', '<>', 'voided')
+        .executeTakeFirstOrThrow(),
+    )
+    .pipe(
+      Effect.map((row): HeldInRound => ({
+        participant: Number(row.participant),
+        administrative: Number(row.administrative),
+      })),
+    )
 
 /** every question currently being asked, for the filing gates to answer per item */
 export const activeItemIdsOf = (tenantId: string, batchId: string) =>

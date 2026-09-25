@@ -2,7 +2,7 @@ import type { AtomicSchema } from '@qualy/value-schema'
 import { kindOf } from '@qualy/value-schema'
 import { hashCanonicalJson } from '@qualy/value-schema/hash'
 import type { ParsedWorkbook, RawRow, TemplateColumn } from './workbook.ts'
-import { entryRefusalOf, type HeldEntries } from '../entry/limit.ts'
+import { entryRefusalOf, heldWith, NOTHING_HELD, type HeldEntries } from '../entry/limit.ts'
 
 // What a workbook would do, worked out without writing anything.
 //
@@ -230,10 +230,11 @@ export const judgeRows = (input: PreviewInput): readonly PreviewRow[] => {
     if (matched !== undefined) {
       const already = input.held.get(matched.id)
       const takenHere = takenInFile.get(matched.id) ?? 0
-      const full = entryRefusalOf(input.maxEntries, {
-        onItem: (already?.onItem ?? 0) + takenHere,
-        inRound: (already?.inRound ?? 0) + takenHere,
-      })
+      const full = entryRefusalOf(
+        input.maxEntries,
+        heldWith(already ?? NOTHING_HELD, 'administrative', takenHere),
+        'administrative',
+      )
       if (full !== null) issues.push(issue('error', null, full))
       takenInFile.set(matched.id, takenHere + 1)
     }

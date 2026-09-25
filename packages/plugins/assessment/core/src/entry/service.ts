@@ -6,7 +6,7 @@ import {
   recognitionsOfEntry,
 } from '../scoring/recognition-db.ts'
 import { recordAdministrativeEntryTx, voidAdministrativeEntryTx } from './administrative-write.ts'
-import { entryRefusalOf } from './limit.ts'
+import { accountRefusalOf, entryRefusalOf } from './limit.ts'
 import { bindCitedAttachments } from './bind-attachments.ts'
 import { questionFactsOf, type QuestionFacts } from './question-facts.ts'
 import { boundIssues } from '../issues.ts'
@@ -71,6 +71,7 @@ import {
   eventsOfRounds,
   roundsOfEntry,
   heldEntriesOf,
+  heldInRoundOf,
   hasOpenRound,
   entryOf,
   entryRevisionOf,
@@ -400,7 +401,10 @@ export interface EntryMethods {
     {
       participantId: string
       entries: readonly EntryView[]
-      /** the phase gate's word on filing into each active question */
+      /**
+       * The phase gate's word on filing into each active question, and on
+       * creating, the owner's own allowance in the round
+       */
       filing: readonly {
         itemId: string
         create: ActionAvailability
@@ -1064,9 +1068,13 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 }
               }
 
+              // each door counts against its own allowance for the round, so
+              // a participant's drafts never shut the office out and the
+              // office's findings never shut the participant out
               const full = entryRefusalOf(
                 item.maxEntries,
                 yield* heldEntriesOf(tenantId, item.id, participant.id),
+                administrative ? 'administrative' : 'participant',
               )
               if (full !== null) return yield* refuse('create', full)
 
@@ -2070,11 +2078,13 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               ),
             )
           }
-          // What filing into each question would meet at the gate, before
-          // any claim exists. Discovery only, like the per-claim block: the
-          // act itself is authorized again on the way in. Structural reasons
-          // (quota, source, a voided item) stay with the screen - these rows
-          // answer for the phase.
+          // What filing into each question would meet, before any claim
+          // exists. Discovery only, like the per-claim block: the act itself
+          // is authorized again on the way in. These rows answer for the
+          // phase and for the owner's own allowance in the round, which the
+          // screen cannot count from one page of claims; the other structural
+          // reasons (the question's own quota, its doors, a voided item) stay
+          // with the screen. The phase is asked first, as the write asks it.
           const own = participant.userId === as.userId && participant.status === 'active'
           const opening = (decision?: ActionDecision): ActionAvailability =>
             !own
@@ -2082,9 +2092,18 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               : decision !== undefined && !decision.allowed
                 ? { state: 'blocked', reason: decision.reason }
                 : { state: 'available', reason: null }
+          const roundFull = own
+            ? accountRefusalOf(yield* heldInRoundOf(tenantId, membership.id), 'participant')
+            : null
+          const creating = (decision?: ActionDecision): ActionAvailability => {
+            const gated = opening(decision)
+            return gated.state === 'available' && roundFull !== null
+              ? { state: 'blocked', reason: roundFull }
+              : gated
+          }
           const filing = activeItems.map((itemId) => {
             const gate = gatesByItem.get(itemId)
-            return { itemId, create: opening(gate?.create), submit: opening(gate?.submit) }
+            return { itemId, create: creating(gate?.create), submit: opening(gate?.submit) }
           })
           const last = pageRows[pageRows.length - 1]
           const lastIso =

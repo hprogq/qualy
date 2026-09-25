@@ -2,7 +2,7 @@ import { Effect } from 'effect'
 import { sql } from 'kysely'
 import { db, staffReachOver } from '../server/db.ts'
 import type { EntryStatus } from '../entry/db.ts'
-import type { HeldEntries } from '../entry/limit.ts'
+import { PARTICIPANT_SOURCES, type HeldEntries } from '../entry/limit.ts'
 
 // The reads a bulk administrative act needs, each of them one statement.
 //
@@ -84,7 +84,8 @@ export const resolveImportParticipants = (input: {
 
 /**
  * How many effective claims each of these people already has, on a question
- * and in their whole round.
+ * and in their whole round, the round's split by the door each came in
+ * through.
  *
  * One aggregate rather than a count per row, and voided claims are not in
  * it - a withdrawn fact does not hold a place, which is what makes "void
@@ -105,7 +106,14 @@ export const effectiveEntryCounts = (input: {
             .select('participantId')
             .select(({ fn }) => [
               fn.countAll<string>().filterWhere('itemId', '=', input.itemId).as('onItem'),
-              fn.countAll<string>().as('inRound'),
+              fn
+                .countAll<string>()
+                .filterWhere('source', 'in', [...PARTICIPANT_SOURCES])
+                .as('participant'),
+              fn
+                .countAll<string>()
+                .filterWhere('source', 'not in', [...PARTICIPANT_SOURCES])
+                .as('administrative'),
             ])
             .where('tenantId', '=', input.tenantId)
             .where('status', '<>', 'voided')
@@ -119,7 +127,13 @@ export const effectiveEntryCounts = (input: {
               new Map(
                 rows.map((row): [string, HeldEntries] => [
                   row.participantId,
-                  { onItem: Number(row.onItem), inRound: Number(row.inRound) },
+                  {
+                    onItem: Number(row.onItem),
+                    inRound: {
+                      participant: Number(row.participant),
+                      administrative: Number(row.administrative),
+                    },
+                  },
                 ]),
               ),
           ),

@@ -337,15 +337,37 @@ export const MAX_PLAN_PHASES = 50
 export const MAX_ENTRIES_PER_ITEM = 100
 
 /**
- * The most live claims one participant may hold across a whole round, on
+ * The most live claims one participant may hold across a whole round that
+ * they filed themselves (or that were filed for them as if by them), on
  * every question together, counted the same way as the per-question
- * ceiling. It is what keeps an account readable: one reading evaluates at
- * most one amount per granted question and one per approved claim, so as
- * long as the questions a round may hold plus this ceiling stay within
- * MAX_ACCOUNT_EVALUATIONS, no account the writes admit is refused on
- * reading. Every door that adds a claim refuses past it.
+ * ceiling. Filing refuses past it.
+ *
+ * An allowance of its own, not a share of one pool with the office's
+ * records: a participant who could fill a shared pool with drafts would
+ * shut the office out of recording anything about them - a deduction
+ * included - and nobody else may give those drafts up for them.
  */
-export const MAX_ENTRIES_PER_ACCOUNT = 300
+export const MAX_PARTICIPANT_ENTRIES_PER_ACCOUNT = 200
+
+/**
+ * The most live administrative facts the office may hold about one
+ * participant across a whole round, recorded or imported, on every question
+ * together. Recording and importing refuse past it; nothing the participant
+ * files counts against it.
+ */
+export const MAX_ADMINISTRATIVE_ENTRIES_PER_ACCOUNT = 100
+
+/**
+ * The two allowances together: the most live claims one participant's
+ * account can hold. It is what keeps an account readable: one reading
+ * evaluates at most one amount per granted question and one per approved
+ * claim, so as long as the questions a round may hold plus this stay within
+ * MAX_ACCOUNT_EVALUATIONS, no account the writes admit is refused on
+ * reading. No door counts against it directly; each counts against its own
+ * allowance.
+ */
+export const MAX_ENTRIES_PER_ACCOUNT =
+  MAX_PARTICIPANT_ENTRIES_PER_ACCOUNT + MAX_ADMINISTRATIVE_ENTRIES_PER_ACCOUNT
 
 /**
  * The most distinct evaluations one reading of an account may ask for: the
@@ -1789,8 +1811,11 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
          * any claim exists - so the "file a claim" press and the submit half
          * of the dialog render the refusal instead of discovering it. Per
          * item, because a scoped supplementary phase admits some questions
-         * and not others. Structural reasons (quota, entry source, a voided
-         * item) stay with the screen; these rows answer for the phase.
+         * and not others. `create` also answers for the caller's own
+         * allowance in the round (`account-ceiling-reached`), which one page
+         * of claims cannot count. The other structural reasons (the
+         * question's own quota, entry source, a voided item) stay with the
+         * screen.
          */
         filing: Schema.Array(
           Schema.Struct({

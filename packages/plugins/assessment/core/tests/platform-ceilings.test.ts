@@ -6,11 +6,13 @@ import { Assessment } from '../src/server/index.ts'
 import { ScoringRuntimeCatalog } from '../src/plugin.ts'
 import {
   MAX_ACCOUNT_EVALUATIONS,
+  MAX_ADMINISTRATIVE_ENTRIES_PER_ACCOUNT,
   MAX_ENTRIES_PER_ACCOUNT,
   MAX_ENTRIES_PER_ITEM,
+  MAX_PARTICIPANT_ENTRIES_PER_ACCOUNT,
 } from '../src/api.ts'
 import { ITEMS_PER_BATCH_MOST } from '../src/item/config.ts'
-import { recordItem } from './support/administrative.ts'
+import { currentRevisionOf, numbered, recordItem, workbook } from './support/administrative.ts'
 import {
   errorOf,
   ok,
@@ -27,22 +29,38 @@ import {
 // ceiling, and one reading of an account refuses outright past the most
 // evaluations it may run, rather than scoring part of it.
 
-/** this many live claims for one person on one question, written around the service */
-const hold = (f: Seeded, batchId: string, itemId: string, participantId: string, count: number) =>
+/**
+ * This many live claims for one person on one question, written around the
+ * service: recorded by the office unless said otherwise, or filed by the
+ * person themselves.
+ */
+const hold = (
+  f: Seeded,
+  batchId: string,
+  itemId: string,
+  participantId: string,
+  count: number,
+  source: 'record' | 'self' = 'record',
+) =>
   runSql(sql`
     insert into entries (tenant_id, batch_id, item_id, participant_id, source, status)
-    select ${f.t}, ${batchId}, ${itemId}, ${participantId}, 'record', 'draft'
+    select ${f.t}, ${batchId}, ${itemId}, ${participantId}, ${source}, 'draft'
     from generate_series(1, ${count}::int)`)
 
 describe('the ceilings together', () => {
   it('leave every account the writes admit readable', () => {
     // one evaluation per granted question and at most one per live claim:
-    // a round of the most questions, with a participant at the round
-    // ceiling, is still one reading
+    // a round of the most questions, with a participant at both of the
+    // round's allowances, is still one reading
+    expect(MAX_ENTRIES_PER_ACCOUNT).toBe(
+      MAX_PARTICIPANT_ENTRIES_PER_ACCOUNT + MAX_ADMINISTRATIVE_ENTRIES_PER_ACCOUNT,
+    )
     expect(ITEMS_PER_BATCH_MOST + MAX_ENTRIES_PER_ACCOUNT).toBeLessThanOrEqual(
       MAX_ACCOUNT_EVALUATIONS,
     )
-    expect(MAX_ENTRIES_PER_ITEM).toBeLessThanOrEqual(MAX_ENTRIES_PER_ACCOUNT)
+    // a question with no limit of its own fits in either allowance
+    expect(MAX_ENTRIES_PER_ITEM).toBeLessThanOrEqual(MAX_PARTICIPANT_ENTRIES_PER_ACCOUNT)
+    expect(MAX_ENTRIES_PER_ITEM).toBeLessThanOrEqual(MAX_ADMINISTRATIVE_ENTRIES_PER_ACCOUNT)
   })
 })
 
@@ -181,7 +199,7 @@ describe.runIf(postgresAvailable)('the platform ceilings', () => {
     ).toEqual(['entry-ceiling-reached'])
   })
 
-  it('refuses a claim past the round ceiling by every door, with room left on the question', async () => {
+  it('refuses a finding past the office allowance by every administrative door, and the participant still files', async () => {
     const result = ok(
       await run(
         db.url,
@@ -189,11 +207,11 @@ describe.runIf(postgresAvailable)('the platform ceilings', () => {
           const f = yield* seed('pc-round')
           const assessment = yield* Assessment
           const g = yield* runningBatch(f)
-          // the round's whole allowance held on a question of its own, so
+          // the office's whole allowance held on a question of its own, so
           // the questions asked below still have every place free
           const elsewhere = yield* recordItem(f, g.batch.id, { maxEntries: null })
           const recorded = yield* recordItem(f, g.batch.id, { maxEntries: null })
-          yield* hold(f, g.batch.id, elsewhere.id, g.p1, MAX_ENTRIES_PER_ACCOUNT - 1)
+          yield* hold(f, g.batch.id, elsewhere.id, g.p1, MAX_ADMINISTRATIVE_ENTRIES_PER_ACCOUNT - 1)
           const recorder = f.principal(f.recorder)
           const revision = one<{ id: string }>(
             yield* runSql(
@@ -226,13 +244,6 @@ describe.runIf(postgresAvailable)('the platform ceilings', () => {
               recorder,
             ),
           )
-          const filed = yield* Effect.exit(
-            assessment.createEntry(
-              f.t,
-              { itemId: g.item.id, participantId: g.p1, payload: {} },
-              f.principal(f.s1),
-            ),
-          )
           const single = yield* Effect.exit(
             assessment.createEntry(
               f.t,
@@ -246,7 +257,22 @@ describe.runIf(postgresAvailable)('the platform ceilings', () => {
             { ...input, target: { kind: 'people', participantIds: [g.p1, g.p2] } },
             recorder,
           )
-          // a voided claim holds no place in the round either
+          // the office's findings take no place in the participant's own
+          // allowance: offered, and taken
+          const offered = (yield* assessment.listMyEntries(
+            f.t,
+            g.batch.id,
+            {},
+            f.principal(f.s1),
+          )).filing.find((one) => one.itemId === g.item.id)?.create
+          const filed = yield* Effect.exit(
+            assessment.createEntry(
+              f.t,
+              { itemId: g.item.id, participantId: g.p1, payload: {} },
+              f.principal(f.s1),
+            ),
+          )
+          // a voided finding holds no place in the round either
           yield* runSql(sql`
             update entries set status = 'voided'
             where id = (select id from entries where item_id = ${elsewhere.id}
@@ -254,22 +280,130 @@ describe.runIf(postgresAvailable)('the platform ceilings', () => {
           const fitted = yield* Effect.exit(
             assessment.createEntry(
               f.t,
-              { itemId: g.item.id, participantId: g.p1, payload: {} },
-              f.principal(f.s1),
+              { itemId: recorded.id, participantId: g.p1, payload: {}, note: '校发〔2026〕6 号' },
+              recorder,
             ),
           )
-          return { written, filed, single, at, fitted }
+          return { written, single, at, offered, filed, fitted }
         }),
       ),
     )
     expect(
       errorOf<{ blocked: { reason: string }[] }>(result.written)?.blocked.map((one) => one.reason),
     ).toEqual(['account-ceiling-reached'])
-    expect(refusalOf(result.filed)?.reason).toBe('account-ceiling-reached')
     expect(refusalOf(result.single)?.reason).toBe('account-ceiling-reached')
     expect(result.at.blocked.map((one) => one.reason)).toEqual(['account-ceiling-reached'])
     expect(result.at.eligibleCount).toBe(1)
+    expect(result.offered).toEqual({ state: 'available', reason: null })
+    expect(Exit.isSuccess(result.filed)).toBe(true)
     expect(Exit.isSuccess(result.fitted)).toBe(true)
+  })
+
+  // A participant who could use up a pool shared with the office would shut
+  // the office out of recording anything about them - a deduction included
+  // - and nobody else may give up those drafts for them.
+  it('refuses a filing past the participant allowance, and every administrative door still takes a finding', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('pc-own')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          yield* numbered(f)
+          const s1 = f.principal(f.s1)
+          const recorder = f.principal(f.recorder)
+          const offer = Effect.map(
+            assessment.listMyEntries(f.t, g.batch.id, {}, s1),
+            (mine) => mine.filing.find((one) => one.itemId === g.item.id)?.create,
+          )
+          // the participant's whole allowance held in drafts on a question
+          // of its own, so the questions asked below still have every place
+          const elsewhere = yield* recordItem(f, g.batch.id, { maxEntries: null })
+          const recorded = yield* recordItem(f, g.batch.id, { maxEntries: null })
+          yield* hold(
+            f,
+            g.batch.id,
+            elsewhere.id,
+            g.p1,
+            MAX_PARTICIPANT_ENTRIES_PER_ACCOUNT - 1,
+            'self',
+          )
+          const offeredBelow = yield* offer
+          yield* hold(f, g.batch.id, elsewhere.id, g.p1, 1, 'self')
+          const offered = yield* offer
+          const filed = yield* Effect.exit(
+            assessment.createEntry(
+              f.t,
+              { itemId: g.item.id, participantId: g.p1, payload: {} },
+              s1,
+            ),
+          )
+
+          // one finding at a time
+          const single = yield* Effect.exit(
+            assessment.createEntry(
+              f.t,
+              { itemId: recorded.id, participantId: g.p1, payload: {}, note: '校发〔2026〕7 号' },
+              recorder,
+            ),
+          )
+          // one finding for several people, looked at and then written
+          const input = {
+            itemId: recorded.id,
+            expectedItemRevisionId: yield* currentRevisionOf(recorded.id),
+            target: { kind: 'people' as const, participantIds: [g.p1] },
+            payload: {},
+            basis: '校发〔2026〕8 号',
+          }
+          const seen = yield* assessment.previewAdministrativeRecord(
+            f.t,
+            g.batch.id,
+            input,
+            recorder,
+          )
+          const bulk = yield* Effect.exit(
+            assessment.recordAdministrativeBatch(
+              f.t,
+              g.batch.id,
+              {
+                ...input,
+                excludedParticipantIds: [],
+                expectedTargetFingerprint: seen.targetFingerprint,
+              },
+              recorder,
+            ),
+          )
+          // and a workbook, previewed and committed
+          const importing = {
+            attachmentId: yield* workbook(f, recorded.id, f.recorder, [
+              ['2023001', 'Zhang San', '校发〔2026〕9 号'],
+            ]),
+            itemId: recorded.id,
+            expectedItemRevisionId: input.expectedItemRevisionId,
+          }
+          const previewed = yield* assessment.previewAdministrativeImport(
+            f.t,
+            g.batch.id,
+            importing,
+            recorder,
+          )
+          const imported = yield* Effect.exit(
+            assessment.commitAdministrativeImport(f.t, g.batch.id, importing, recorder),
+          )
+          return { offeredBelow, offered, filed, single, seen, bulk, previewed, imported }
+        }),
+      ),
+    )
+    expect(result.offeredBelow).toEqual({ state: 'available', reason: null })
+    expect(result.offered).toEqual({ state: 'blocked', reason: 'account-ceiling-reached' })
+    expect(refusalOf(result.filed)?.reason).toBe('account-ceiling-reached')
+    expect(Exit.isSuccess(result.single)).toBe(true)
+    expect(result.seen.blocked).toEqual([])
+    expect(result.seen.eligibleCount).toBe(1)
+    expect(Exit.isSuccess(result.bulk)).toBe(true)
+    expect(result.previewed.rows.flatMap((row) => row.issues)).toEqual([])
+    expect(Exit.isSuccess(result.imported)).toBe(true)
   })
 
   it('evaluates claims determined alike once, and refuses an account past the ceiling', async () => {

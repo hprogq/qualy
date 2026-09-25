@@ -25,7 +25,7 @@ import {
   voidAdministrativeEntryTx,
 } from '../entry/administrative-write.ts'
 import type { EntryStatus } from '../entry/db.ts'
-import { entryRefusalOf } from '../entry/limit.ts'
+import { entryRefusalOf, heldWith, NOTHING_HELD } from '../entry/limit.ts'
 import { itemOf, revisionOf as itemRevisionOf, revisionsByIdOf } from '../item/db.ts'
 import { opensTo } from '../item/channels.ts'
 import { boundEvidenceKeys, fillBoundEvidence } from '../scoring/bound-evidence.ts'
@@ -1164,10 +1164,11 @@ export const makeAdministrativeImportMethods = (
               if (!admitted.allowed) return yield* refuse('businessNo', admitted.reason)
               const already = held.get(person.participantId)
               const here = takenHere.get(person.participantId) ?? 0
-              const full = entryRefusalOf(ready.item.maxEntries, {
-                onItem: (already?.onItem ?? 0) + here,
-                inRound: (already?.inRound ?? 0) + here,
-              })
+              const full = entryRefusalOf(
+                ready.item.maxEntries,
+                heldWith(already ?? NOTHING_HELD, 'administrative', here),
+                'administrative',
+              )
               if (full !== null) return yield* refuse(null, full)
               takenHere.set(person.participantId, here + 1)
               if (row.basis.trim() === '') return yield* refuse('basis', 'basis-required')
