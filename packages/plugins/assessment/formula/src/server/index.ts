@@ -96,7 +96,7 @@ import {
 import { BindableFormulaCatalog } from './binding-catalog.ts'
 import { contractWordsIssues } from '../contract-words.ts'
 import { invokeForScore } from '../scoring/invoke.ts'
-import { FORMULA_SCORING_LIMITS } from '../scoring/limits.ts'
+import { REFERENCE_INPUT, REFERENCE_SOURCE } from '../scoring/reference.ts'
 
 /**
  * The capability to write scoring formulas at all - tenant-wide, because
@@ -1360,6 +1360,28 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       return { ...prepared, report } satisfies CompiledFormula
     })
 
+  // The reference formula (../scoring/reference.ts), compiled the first time
+  // a publication needs it and kept: the same source through the same
+  // compiler is the same artifact. A compile that failed is not kept.
+  const referenceHeld = yield* Ref.make<
+    Option.Option<{ readonly runtimeJs: string; readonly runtimeSha256: string }>
+  >(Option.none())
+  const referenceArtifact = Effect.gen(function* () {
+    const held = yield* Ref.get(referenceHeld)
+    if (Option.isSome(held)) return held.value
+    const compiled = yield* authoring.compile(REFERENCE_SOURCE).pipe(
+      Effect.tapError((error) =>
+        Effect.logWarning(`the scoring reference formula did not compile: ${error._tag}`),
+      ),
+      // the reference is the host's own yardstick, not the author's code:
+      // whatever keeps it from compiling leaves the question unanswered
+      Effect.mapError(() => new FormulaCompileUnavailable()),
+    )
+    const artifact = { runtimeJs: compiled.artifact, runtimeSha256: compiled.runtimeSha256 }
+    yield* Ref.set(referenceHeld, Option.some(artifact))
+    return artifact
+  })
+
   /**
    * Whether a version's own examples can be scored in the scoring budget.
    *
@@ -1367,12 +1389,15 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
    * start; a score is asked under a far tighter one, and a version whose own
    * examples cannot be scored in it would pass here and fail every
    * settlement and every read that meets it. So each is asked the way a
-   * score asks it. The deadline is wall clock, so an example that misses it
-   * is weighed against the same artifact asked only for its contract: when
-   * that fits the budget and the example again does not, the time is the
-   * example's own; when even that does not fit, the host is too busy to say
-   * anything about the formula, and the question is left unanswered rather
-   * than answered against it.
+   * score asks it - which loads the whole artifact, so whatever the module
+   * does as it loads is counted with the run.
+   *
+   * The deadline is wall clock, so an example that misses it is weighed
+   * against the reference formula asked the same way: when the reference
+   * fits and the example again does not, the time is the example's own and
+   * the version is refused; when even the reference does not fit, the host
+   * cannot say anything about the formula right now, and the publication is
+   * refused as unavailable, to be asked again - never let through unasked.
    */
   const scoringBudgetCheck = (
     compiled: CompiledFormula,
@@ -1394,33 +1419,21 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             Effect.succeed(`failed under the scoring budget: ${refused._tag}`),
           ),
         )
-      const control = outageOrVerdict(
-        sandbox
-          .invoke({
-            artifact: compiled.artifact,
-            artifactHash: compiled.runtimeSha256,
-            entrypoint: '__qualyContract',
-            arguments: [],
-            limits: { ...FORMULA_SCORING_LIMITS, outputBytes: MAX_CONTRACT_TRANSPORT_BYTES },
-          })
-          .pipe(
-            Effect.retry({
-              times: 1,
-              while: (error) => error._tag === 'SandboxTimeout' && error.phase === 'soft',
-            }),
-          ),
-      )
+      const reference = Effect.gen(function* () {
+        const yardstick = yield* referenceArtifact
+        return yield* outageOrVerdict(invokeForScore(sandbox, yardstick, REFERENCE_INPUT))
+      })
       const report = [...compiled.report]
       for (const [index, test] of tests.entries()) {
         let verdict: string | null = null
         for (let round = 0; round < SCORING_BUDGET_ROUNDS; round += 1) {
           verdict = yield* outageOrVerdict(invokeForScore(sandbox, artifact, test.input))
           if (verdict !== OVER_SCORING_BUDGET) break
-          if ((yield* control) !== null) {
+          if ((yield* reference) !== null) {
             yield* Effect.logWarning(
               'the sandbox is too busy to tell whether a formula fits the scoring budget',
             )
-            return
+            return yield* new FormulaCompileUnavailable()
           }
         }
         if (verdict !== null) report[index] = { ...report[index]!, passed: false, defect: verdict }

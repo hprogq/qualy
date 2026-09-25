@@ -11,6 +11,7 @@ import type { Rbac } from '@qualy/rbac-contract/effect'
 import { FormulaLibrary, layer as formulaLayer } from '../src/server/index.ts'
 import { FormulaRuntimeStore, runtimeStoreLayer } from '../src/server/runtime-store.ts'
 import { FORMULA_SCORING_LIMITS } from '../src/scoring/limits.ts'
+import { REFERENCE_INPUT } from '../src/scoring/reference.ts'
 import { seedFormulaFixture, servicesFor } from './support/stack.ts'
 
 // The runtime sandbox is one worker in production, shared by everything that
@@ -23,10 +24,12 @@ interface Probe {
   peak: number
   /** example runs asked under the scoring budget, and which of them answer out of time */
   scored: number
+  /** runs of the host's reference formula asked under the scoring budget */
+  referenced: number
   starve: 'nothing' | 'examples' | 'everything'
 }
 
-const fresh = (): Probe => ({ live: 0, peak: 0, scored: 0, starve: 'nothing' })
+const fresh = (): Probe => ({ live: 0, peak: 0, scored: 0, referenced: 0, starve: 'nothing' })
 
 // Authoring runs carry the publication-sized deadline; scoring never does.
 // Each authoring run is held a moment before it goes in, so that any two
@@ -40,8 +43,10 @@ const counted = (probe: Probe) =>
         invoke: (call: SandboxInvocation) =>
           call.limits?.softDeadlineMs === FORMULA_SCORING_LIMITS.softDeadlineMs
             ? Effect.suspend(() => {
-                const example = call.entrypoint === '__qualyInvoke'
+                const reference = call.arguments[0] === JSON.stringify(REFERENCE_INPUT)
+                const example = call.entrypoint === '__qualyInvoke' && !reference
                 if (example) probe.scored += 1
+                if (reference) probe.referenced += 1
                 const starved =
                   probe.starve === 'everything' || (probe.starve === 'examples' && example)
                 return starved
@@ -101,6 +106,15 @@ export default defineFormula({
   },
 })
 `
+
+/** the same few hundred milliseconds spent as the module loads, with a run that costs nothing */
+const SLOW_TO_LOAD = MOODY.replace(
+  'export default defineFormula({',
+  `let spent = 0
+for (let step = 0; step < 8_000_000; step += 1) spent = (spent + step) % 7
+
+export default defineFormula({`,
+).replace('return input.value', 'return spent >= 0 ? input.value : input.value')
 
 /** a few hundred milliseconds of arithmetic: nothing to a try-run, far past a score's budget */
 const SLOW = MOODY.replace(
@@ -294,12 +308,17 @@ describe.runIf(postgresAvailable)('the runtime sandbox, shared by scoring and au
             library.publish(f.t, created.id, { expectedDraftRevision: 2, releaseName: '慢' }, as),
           )
           const after = yield* library.getFunction(f.t, created.id, as)
-          return { published, versions: after.versions.length, scored: probe.scored }
+          return {
+            published,
+            versions: after.versions.length,
+            scored: probe.scored,
+            referenced: probe.referenced,
+          }
         }),
       ).then(ok)
     }
-    // the artifact loads within the budget and the example never finishes in
-    // it: the time is the example's own
+    // the reference formula runs within the budget and the example never
+    // finishes in it: the time is the example's own
     const slow = await attempt('examples', 'ss-budget-slow')
     expect(slow.published._tag).toBe('Failure')
     expect(slow.published._tag === 'Failure' ? slow.published.failure : null).toMatchObject({
@@ -309,11 +328,16 @@ describe.runIf(postgresAvailable)('the runtime sandbox, shared by scoring and au
     // asked the way a score asks - once more past a soft deadline - in each
     // of the rounds the host was fit to judge
     expect(slow.scored).toBe(6)
+    expect(slow.referenced).toBe(3)
     expect(slow.versions).toBe(0)
-    // nothing fits the budget at all: that is the host, not the formula
+    // nothing fits the budget at all, the reference included: that is the
+    // host, and the question is left to be asked again rather than waved on
     const busy = await attempt('everything', 'ss-budget-busy')
-    expect(busy.published._tag).toBe('Success')
-    expect(busy.versions).toBe(1)
+    expect(busy.published._tag).toBe('Failure')
+    expect(busy.published._tag === 'Failure' ? busy.published.failure : null).toMatchObject({
+      _tag: 'ASSESSMENT_FORMULA_COMPILE_UNAVAILABLE',
+    })
+    expect(busy.versions).toBe(0)
   }, 120_000)
 
   it('refuses to publish a formula too slow to score, however well it tries', async () => {
@@ -351,5 +375,52 @@ describe.runIf(postgresAvailable)('the runtime sandbox, shared by scoring and au
       _tag: 'ASSESSMENT_FORMULA_TEST_FAILED',
       report: [{ name: 'fine', passed: false, defect: 'exceeds the scoring time budget' }],
     })
+  }, 120_000)
+
+  // Loading the artifact is part of every score: a module that spends the
+  // budget as it loads makes its own contract as slow as its examples, which
+  // once read as a busy host and let the version through.
+  it('refuses to publish a formula whose module is too slow to load for a score', async () => {
+    const probe = fresh()
+    const outcome = ok(
+      await run(
+        db.url,
+        probe,
+        Effect.gen(function* () {
+          const f = yield* seedFormulaFixture('ss-slow-load')
+          const library = yield* FormulaLibrary
+          const as = f.principal(f.authorA)
+          const created = yield* library.createFunction(f.t, { name: '加载慢' }, as)
+          yield* library.updateDraft(
+            f.t,
+            created.id,
+            {
+              expectedDraftRevision: 1,
+              draftSourceTs: SLOW_TO_LOAD,
+              draftTests: [{ name: 'fine', input: FINE, expected: '1' }],
+            },
+            as,
+          )
+          const tried = yield* library.evaluateDraft(
+            f.t,
+            created.id,
+            SLOW_TO_LOAD,
+            [{ input: FINE }],
+            as,
+          )
+          const refused = yield* Effect.flip(
+            library.publish(f.t, created.id, { expectedDraftRevision: 2, releaseName: '慢' }, as),
+          )
+          const after = yield* library.getFunction(f.t, created.id, as)
+          return { tried, refused, versions: after.versions.length }
+        }),
+      ),
+    )
+    expect(outcome.tried.results[0]!.actual).toBe('1')
+    expect(outcome.refused).toMatchObject({
+      _tag: 'ASSESSMENT_FORMULA_TEST_FAILED',
+      report: [{ name: 'fine', passed: false, defect: 'exceeds the scoring time budget' }],
+    })
+    expect(outcome.versions).toBe(0)
   }, 120_000)
 })
