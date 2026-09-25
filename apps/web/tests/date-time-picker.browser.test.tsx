@@ -19,7 +19,7 @@ import '../src/app.css'
 // digits hands the caret on by itself, and a box refuses a value it cannot
 // mean rather than accepting one and complaining later.
 
-function Harness({ initial }: { initial: string | null }) {
+function Harness({ initial, timeZone }: { initial: string | null; timeZone?: string }) {
   const [value, setValue] = useState(initial)
   return (
     <UiProvider scheme="light">
@@ -32,6 +32,7 @@ function Harness({ initial }: { initial: string | null }) {
         secondLabel="second"
         clearLabel="clear"
         localeTag="en-US"
+        timeZone={timeZone}
       />
       {/* the value itself, where an assertion can read it without going
           through anything this component chose to display */}
@@ -133,5 +134,21 @@ describe('choosing an instant', () => {
     await userEvent.click(page.getByRole('button', { name: 'clear' }))
     expect(page.getByTestId('value').element().textContent).toBe('')
     vi.useRealTimers()
+  })
+
+  // A schedule that belongs to a place is read and typed on that place's
+  // wall, whatever wall the device keeps. Kathmandu runs 5:45 ahead of UTC,
+  // an offset no test machine keeps, so the device's own clock cannot pass
+  // for it.
+  it('shows and takes the time on the wall of the zone it is given', async () => {
+    await render(<Harness initial="2026-08-25T03:45:00.000Z" timeZone="Asia/Kathmandu" />)
+    await open()
+    await expect.element(hourBox()).toHaveValue('09')
+    await expect.element(minuteBox()).toHaveValue('30')
+
+    await userEvent.click(hourBox())
+    await userEvent.keyboard('140000')
+
+    expect(page.getByTestId('value').element().textContent).toBe('2026-08-25T08:15:00.000Z')
   })
 })

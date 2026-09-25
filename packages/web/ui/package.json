@@ -12,6 +12,7 @@
     "./inert-background": "./src/lib/inert-background.ts",
     "./download": "./src/lib/download.ts",
     "./flight": "./src/lib/flight.ts",
+    "./instant": "./src/lib/instant.ts",
     "./button": "./src/components/button.tsx",
     "./count": "./src/components/count.tsx",
     "./input": "./src/components/input.tsx",
