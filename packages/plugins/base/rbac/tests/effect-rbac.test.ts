@@ -1,5 +1,6 @@
 import { literal } from '@qualy/i18n-contract'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
+import { UiAuthorizer } from '@qualy/plugin-ui-registry/server/authorizer'
 import { sql } from 'kysely'
 import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
@@ -68,7 +69,7 @@ const stack = (url: string) =>
     { catalog },
   )
 
-const run = <A, E>(url: string, effect: Effect.Effect<A, E, Rbac | Access | Orm>) =>
+const run = <A, E>(url: string, effect: Effect.Effect<A, E, Rbac | Access | Orm | UiAuthorizer>) =>
   Effect.runPromiseExit(Effect.provide(effect, stack(url)))
 
 /** the lists a policy names, or null when it names everything */
@@ -2818,6 +2819,41 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
       expect(answer.closed).toBe(true)
       expect(answer.twice).toBe('ACCESS_DENIED')
       expect(answer.reason).toBe('scoped grant refused: GRANT_EXISTS')
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('shows the grant screens to somebody who may manage grants without the read code', async () => {
+    const db = await createTestContext('effect-ui-manage-implies-read')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const authorizer = yield* UiAuthorizer
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const manage = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into permissions (code, plugin, name, target_kind)
+              values ('iam.grant.manage', 'rbac', 'manage', 'org-node')
+              on conflict (code) do update set code = excluded.code returning id`),
+          ).id
+          // a personnel office carrying only grant administration
+          yield* runSql(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            values (${f.tenant}, ${f.plainRole}, ${manage})`)
+          const held = yield* authorizer.permissionsFor(f.anchored)
+          return {
+            manage: held.has('iam.grant.manage'),
+            read: held.has('iam.grant.read'),
+            tenantRead: held.has('iam.tenant-grant.read'),
+          }
+        }),
+      )
+      // the grant reads already let manage see what it administers; the
+      // screen they are read on is shown on the same terms, and nothing more
+      expect(ok(exit)).toEqual({ manage: true, read: true, tenantRead: false })
     } finally {
       await db.dispose()
     }

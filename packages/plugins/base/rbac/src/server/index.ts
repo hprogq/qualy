@@ -544,6 +544,20 @@ export class Access extends Context.Service<
  * administration surface, which no peer reaches through a tag.
  */
 /** the service alone; the entry composes it with the screen it registers */
+/**
+ * Grant administration a screen is shown for, as the grant reads answer it.
+ *
+ * The reads already treat managing grants as seeing them (a holder who may
+ * revoke what they cannot see has a broken screen, not a narrower
+ * permission). The pages that administer grants are gated on the read code,
+ * so a holder of manage alone was never shown the one screen their authority
+ * is exercised on.
+ */
+const MANAGE_IMPLIES_READ = [
+  ['iam.grant.manage', 'iam.grant.read'],
+  ['iam.tenant-grant.manage', 'iam.tenant-grant.read'],
+] as const
+
 export const serviceLayer: Layer.Layer<
   Rbac | Access | UiAuthorizer,
   never,
@@ -566,13 +580,15 @@ export const serviceLayer: Layer.Layer<
       // quietly showing every signed-in viewer nothing but public pages.
       Context.add(UiAuthorizer, {
         permissionsFor: (principal) =>
-          shape
-            .getProfile(principal)
-            .pipe(
-              Effect.map(
-                (profile) => new Set([...profile.tenantPermissions, ...profile.orgPermissions]),
-              ),
-            ),
+          shape.getProfile(principal).pipe(
+            Effect.map((profile) => {
+              const held = new Set([...profile.tenantPermissions, ...profile.orgPermissions])
+              for (const [manage, read] of MANAGE_IMPLIES_READ) {
+                if (held.has(manage)) held.add(read)
+              }
+              return held
+            }),
+          ),
       }),
     )
   }),
