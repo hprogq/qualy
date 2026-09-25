@@ -1144,6 +1144,89 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     expect(result.afterApproval.status).toBe('needs_revision')
   })
 
+  // An approved claim handed back stops counting, and only its owner can
+  // make it count again. So it goes back only while they could revise and
+  // send it right now; a claim still under review keeps its rescue whatever
+  // the phase says.
+  it('hands an approved claim back only while its owner could file it again', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-return-gate')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const admin = f.principal(f.admin)
+          const reviewer = f.principal(f.reviewer)
+          const giveBack = (entryId: string) =>
+            Effect.exit(
+              assessment.interveneOnEntry(
+                f.t,
+                entryId,
+                { kind: 'return-for-revision', reason: '证书需要重新上传' },
+                admin,
+              ),
+            )
+          const approvedOf = (participantId: string, who: string) =>
+            Effect.gen(function* () {
+              const sent = yield* submitted(f, g, participantId, who)
+              yield* assessment.decideReview(
+                f.t,
+                sent.instanceId,
+                { decision: 'approve' },
+                reviewer,
+              )
+              return sent.entryId
+            })
+          const mine = yield* approvedOf(g.p1, f.s1)
+          const theirs = yield* approvedOf(g.p2, f.s2)
+          // under review at a level nobody holds: the rescue this exists for
+          const stuck = yield* submitted(f, g, g.p3, f.s3)
+
+          // off the roster: nobody could file it again
+          yield* assessment.setParticipantStatus(
+            f.t,
+            g.batch.id,
+            g.p2,
+            'excluded',
+            undefined,
+            admin,
+          )
+          const excluded = yield* giveBack(theirs)
+
+          // the phase stops taking edits and submissions
+          const plan = yield* assessment.getPlan(f.t, g.batch.id, admin)
+          yield* assessment.advancePhase(
+            f.t,
+            g.batch.id,
+            { to: plan[1]!.id, force: true, reason: 'test closes filing' },
+            admin,
+          )
+          const closed = yield* giveBack(mine)
+          const rescued = yield* giveBack(stuck.entryId)
+          const statusOf = (entryId: string) =>
+            Effect.map(
+              runSql(sql`select status from entries where id = ${entryId}`),
+              (rows) => one<{ status: string }>(rows).status,
+            )
+          return {
+            excluded,
+            closed,
+            rescued,
+            mine: yield* statusOf(mine),
+            theirs: yield* statusOf(theirs),
+          }
+        }),
+      ),
+    )
+
+    expect(refusalOf(result.excluded)?.reason).toBe('owner-cannot-refile')
+    expect(refusalOf(result.closed)?.reason).toBe('owner-cannot-refile')
+    expect(result.mine).toBe('approved')
+    expect(result.theirs).toBe('approved')
+    expect(result.rescued._tag).toBe('Success')
+  })
+
   it('carries a stranded round onto the level the administrator just fixed', async () => {
     const result = ok(
       await run(

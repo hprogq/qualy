@@ -55,6 +55,7 @@ const SENTENCES: Record<string, MessageDescriptor> = {
   'review-not-open': m.refuseReviewNotOpen,
   'item-not-fileable': m.refuseNotFileable,
   'entry-not-returnable': m.refuseNotReturnable,
+  'owner-cannot-refile': m.refuseOwnerCannotRefile,
   'reason-required': m.refuseReasonRequired,
   'item-not-administrative': m.refuseNotAdministrative,
   'attachment-required': m.refuseAttachmentRequired,

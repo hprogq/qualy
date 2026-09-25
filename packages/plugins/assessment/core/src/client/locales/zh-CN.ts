@@ -137,6 +137,8 @@ export default {
   'assessment/entry/refuse-out-of-scope': '当前阶段不包含该项目或该参评人员。',
   'assessment/entry/refuse-not-fileable': '该项目自动计分，无需申报。',
   'assessment/entry/refuse-not-returnable': '仅审核中或已通过的参评人员申报可以退回修改。',
+  'assessment/entry/refuse-owner-cannot-refile':
+    '参评人当前无法修改并重新提交，不能退回；请改用复查或重新认定。',
   'assessment/entry/refuse-reason-required': '请填写原因。',
   'assessment/entry/refuse-not-administrative': '该项目未开放统一认定。',
   'assessment/entry/refuse-attachment-required': '该项目需要附件，请逐人录入认定。',

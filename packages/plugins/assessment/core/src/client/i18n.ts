@@ -1104,6 +1104,11 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/refuse-not-fileable',
       defaultMessage: 'The item is scored automatically and takes no entries.',
     },
+    refuseOwnerCannotRefile: {
+      id: 'assessment/entry/refuse-owner-cannot-refile',
+      defaultMessage:
+        'The participant cannot edit and resubmit right now, so the entry cannot be returned. Reopen it for review or redetermine it instead.',
+    },
     refuseNotReturnable: {
       id: 'assessment/entry/refuse-not-returnable',
       defaultMessage:

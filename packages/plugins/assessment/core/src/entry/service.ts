@@ -551,6 +551,18 @@ export interface EntryDeps {
   ) => Effect.Effect<ReadonlyMap<string, EntryGates>, BatchNotFound>
   /** whether the batch's phase of the moment opens a gated code */
   readonly phaseOpens: (tenantId: string, batchId: string, code: string) => Effect.Effect<boolean>
+  /**
+   * The phase gate alone, for an act of the participant a claim belongs to,
+   * asked by somebody else: whether that person could take it right now.
+   */
+  readonly subjectGate: (
+    tenantId: string,
+    batchId: string,
+    code: string,
+    ctx: GateContext,
+  ) => Effect.Effect<
+    { readonly allowed: true } | { readonly allowed: false; readonly reason: string }
+  >
   /** whoever may judge an open round of a claim may read how it got here */
   readonly mayReviewEntry: (
     as: Principal,
@@ -2416,6 +2428,25 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           // by voiding and recording again
           if (administrative) {
             return yield* refuse('return', 'entry-not-returnable')
+          }
+          // An approved claim handed back stops counting at once, and only
+          // its owner can make it count again - by revising and sending it.
+          // So it goes back only while its owner could do both right now:
+          // on the roster, on a live question, with the phase opening edit
+          // and submit to them. Otherwise it would sit handed back with
+          // nobody able to act, and the way to correct it is reopening or
+          // redetermining. A claim still under review keeps the rescue it
+          // has always had, whatever the phase.
+          if (entry.status === 'approved') {
+            const ctx = { itemId: entry.itemId, participantId: participant.id }
+            const refile =
+              participant.status === 'active' &&
+              loaded.item.status === 'active' &&
+              (yield* deps.subjectGate(tenantId, entry.batchId, 'assessment.entry.edit', ctx))
+                .allowed &&
+              (yield* deps.subjectGate(tenantId, entry.batchId, 'assessment.entry.submit', ctx))
+                .allowed
+            if (!refile) return yield* refuse('return', 'owner-cannot-refile')
           }
           if (entry.currentReviewInstanceId !== null) {
             const ended = yield* cancelReviewInstance({

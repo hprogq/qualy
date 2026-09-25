@@ -2684,11 +2684,23 @@ export const make = Effect.fn('Assessment.make')(function* () {
       return decide(view, code, undefined).allowed
     })
 
+  // the phase gate alone, for a participant's act asked about on their
+  // behalf: whether the person a claim belongs to could take it now
+  const subjectGate = (tenantId: string, batchId: string, code: string, ctx: GateContext) =>
+    Effect.gen(function* () {
+      const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+      if (!batch) return { allowed: false, reason: 'no-active-phase' } as const
+      const now = yield* Clock.currentTimeMillis
+      const view = yield* dieQuery(withDb(gateView(tenantId, batch, now)))
+      return decide(view, code, ctx)
+    })
+
   const entryMethods = makeEntryMethods({
     withDb,
     authorize: authorizeAction,
     participantGates,
     phaseOpens,
+    subjectGate,
     mayReviewEntry: (as, tenantId, entryId) =>
       dieQuery(withDb(mayReviewEntry({ tenantId, userId: as.userId, entryId }))),
     requireRosterReach,
