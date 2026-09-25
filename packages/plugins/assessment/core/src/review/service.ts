@@ -1838,8 +1838,9 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                * kind of step concluded it. A first round is standing at
                * `in_review`; a round reconsidering a settled decision left the
                * claim where it was, so the states it may move from are all
-               * three. What it lands on is the same either way - 更正 and 维持
-               * both leave an approval approved, 撤销 makes it a rejection.
+               * three. What it lands on is the same either way: a correction and
+               * an upheld decision both leave an approval approved, a revocation
+               * makes it a rejection.
                *
                * A claim in none of those states is not standing on this round
                * any more, and the whole transaction is refused rather than

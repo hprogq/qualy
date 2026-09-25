@@ -546,9 +546,9 @@ export const runTerm = (input: {
             continue
           }
           if (!accept && last && why === 'wrong') {
-            // Not upholding an appeal against an approval is 维持: the
+            // Not granting an appeal against an approval upholds it: the
             // approval stands on what it determined. A refusal here would
-            // be 撤销 - it takes the approval away.
+            // revoke it instead, taking the approval away.
             yield* approve(entry, judge, 0, '经复核，原认定无误，予以维持')
             return
           }
