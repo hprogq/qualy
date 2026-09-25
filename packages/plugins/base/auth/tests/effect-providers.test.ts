@@ -34,7 +34,7 @@ import { AuthConfig } from '../src/server/auth-config.ts'
 import { Iam, serviceLayer as authLayer } from '../src/server/index.ts'
 import { SignIn } from '../src/server/sign-in.ts'
 import { entranceSecretHealth } from '../src/server/secret-health.ts'
-import { db as authDb, lockTenant } from '../src/server/db.ts'
+import { db as authDb } from '../src/server/db.ts'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
 import { authClosure } from './support/closure.ts'
 
@@ -571,13 +571,12 @@ describe.runIf(postgresAvailable)('an entrance a tenant adds', () => {
     }
   })
 
-  // Sign-in events are not indexed by door: asking whether a door let
-  // anybody in can walk a tenant's whole history, and the tenant's row is
-  // every structural write's queue. So it is asked before the save queues
-  // for the row - where it is no less true, since a sign-in never takes the
-  // row - and a save that waited has its answer already.
-  it('asks whether a door let anybody in before it waits for the tenant’s row', async () => {
-    const db = await createTestContext('providers-namespace-unlocked')
+  // A sign-in writes its session and its record behind the tenant's row,
+  // and a save to what the door trusts asks whether anybody came in once it
+  // holds that row: a sign-in still being written when the save arrives is
+  // waited for, and counts.
+  it('counts a sign-in written while the save waited for the tenant’s row', async () => {
+    const db = await createTestContext('providers-namespace-locked')
     try {
       const f = await seed(db.url)
       const answer = ok(
@@ -596,17 +595,24 @@ describe.runIf(postgresAvailable)('an entrance a tenant adds', () => {
               { expectedVersion: 1, values: { server: 'https://cas.example.edu/' } },
               f.as,
             )
-            // somebody else's structural write holds the row, and lets
-            // somebody in through the door just before it lets go
+            // somebody's sign-in through the door, as the core writes one:
+            // sharing the tenant's row, recorded and not yet committed
             const withDb = yield* withDatabase
             const held = yield* Deferred.make<void>()
             const release = yield* Deferred.make<void>()
-            const holder = yield* withDb(
+            const signingIn = yield* withDb(
               transaction(
                 Effect.gen(function* () {
-                  yield* lockTenant(f.tenant)
-                  yield* Deferred.succeed(held, undefined)
-                  yield* Deferred.await(release)
+                  yield* authDb
+                    .query((k) =>
+                      k
+                        .selectFrom('Tenant')
+                        .select('id')
+                        .where('id', '=', f.tenant)
+                        .forKeyShare()
+                        .execute(),
+                    )
+                    .pipe(Effect.orDie)
                   yield* authDb
                     .query((k) =>
                       k
@@ -622,6 +628,8 @@ describe.runIf(postgresAvailable)('an entrance a tenant adds', () => {
                         .execute(),
                     )
                     .pipe(Effect.orDie)
+                  yield* Deferred.succeed(held, undefined)
+                  yield* Deferred.await(release)
                 }),
               ),
             ).pipe(Effect.forkChild)
@@ -634,19 +642,17 @@ describe.runIf(postgresAvailable)('an entrance a tenant adds', () => {
                 f.as,
               )
               .pipe(Effect.forkChild)
-            // long enough for the save to ask and queue for the row
+            // long enough for the save to queue for the row
             yield* Effect.sleep('1500 millis')
             yield* Deferred.succeed(release, undefined)
-            yield* Fiber.join(holder)
-            // it asked before it queued: the answer it waited with stands,
-            // as a sign-in never waits for the row either
+            yield* Fiber.join(signingIn)
             return yield* Effect.result(Fiber.join(moving)).pipe(
               Effect.map((result) => (result._tag === 'Success' ? result.success : tagOf(result))),
             )
           }),
         ),
       )
-      expect(answer).toBe(3)
+      expect(answer).toBe('AUTH_PROVIDER_IDENTITY_NAMESPACE_IN_USE')
     } finally {
       await db.dispose()
     }

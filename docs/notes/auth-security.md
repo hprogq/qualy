@@ -222,10 +222,11 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
   只要该入口说过话——有过任何绑定(含已撤销),或有过一次成功登录——这些键不可再改(`AUTH_PROVIDER_IDENTITY_NAMESPACE_IN_USE`):
   已存的 subject 会开始指向别家的账号;按用户自己的字段找人的入口(CAS 按业务编号)根本不存绑定,只等绑定就永远不锁,
   换一台服务器就能替已经登录过的人作答。锁住后要换服务器只能新建入口(2026-09-25 裁决)。
-  「有过成功登录」在**租户锁之外**先问(只在本次保存触及身份键时):`sign_in_events` 只有以 `(tenant_id, …)` 开头的索引,
-  对一个从未有人登录过的入口,这一问要扫完该租户的全部登录历史,放在锁内会让租户的所有结构性写入排在它后面;
-  登录本身从不取租户锁,锁内读也挡不住并发的第一次登录,而答案只会从「否」变「是」。「有过绑定」仍在锁内问(绑定取租户锁)。
-  代价仍是一次扫描:要根治需要 `(tenant_id, provider_id) where outcome = 'success'` 的部分索引,属新迁移,待作者定。
+  两问都在**租户锁内**、只在本次保存确实改动身份键时问:「有过绑定」照旧(绑定取租户锁);「有过成功登录」走部分索引
+  `idx_sign_in_events_provider_success (tenant_id, provider_id) where outcome = 'success'`(迁移
+  `20260925110930_sign-in-success-by-provider`),从未有人登录过的入口是一次空查找,不再扫该租户的全部登录历史。
+  登录写会话的事务先对租户行取 `FOR KEY SHARE`,所以保存等锁期间写完的登录会被这一问看见;保存先拿到锁的,登录排在它后面。
+  (此前为避免锁内全表扫描曾把这一问挪到锁外,等锁的那段时间里第一次登录看不见,该取舍随索引一并撤销。)
 - **密钥永不回显**:`GET /auth/providers/{id}` 只说某个密钥「已存/未存」,成功响应与审计 details 里不得出现
   `clientSecret|refreshToken|accessToken|password` 这类字段名,由 `tools/tests/secret-disclosure.test.ts` 守。
 - **「无法解密」不等于「未填写」(2026-09-25 裁决 #29)**:密钥存在但 AEAD 打不开(主密钥换了,或行被改过)时,readiness 给出

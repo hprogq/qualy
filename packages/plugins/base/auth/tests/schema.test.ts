@@ -98,4 +98,26 @@ describe.runIf(postgresAvailable)('auth schema tenant boundary', () => {
       ),
     ).toBe('23514')
   })
+
+  // Whether anybody ever came in through a door is asked under the tenant's
+  // lock before what the door trusts may change; for a door with a long
+  // history of refusals and no success it must not read that history.
+  it('answers whether a door let anybody in from its successes alone', async () => {
+    await db.query(
+      `insert into sign_in_events (tenant_id, provider_id, provider_type, provider_code, outcome, occurred_at)
+       select $1, $2, 'local', 'local', 'failure', now() - make_interval(secs => g)
+         from generate_series(1, 5000) g`,
+      [ids.tenant, ids.provider],
+    )
+    await db.query('analyze sign_in_events')
+    const explained = await db.query(
+      `explain (format json)
+       select id from sign_in_events
+        where tenant_id = $1 and provider_id = $2 and outcome = $3 limit 1`,
+      [ids.tenant, ids.provider, 'success'],
+    )
+    const plan = JSON.stringify(explained.rows[0]!['QUERY PLAN'])
+    expect(plan).toContain('idx_sign_in_events_provider_success')
+    expect(plan).not.toContain('Seq Scan')
+  })
 })

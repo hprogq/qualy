@@ -635,6 +635,14 @@ export const SignInEvent = defineEntity({
       expression:
         'create index idx_sign_in_events_tenant_ip_time on sign_in_events (tenant_id, client_ip, occurred_at)',
     },
+    // whether anybody ever came in through a door, asked under the tenant's
+    // lock before its identity settings may move: without this it walks the
+    // tenant's whole history for a door nobody has used yet
+    {
+      name: 'idx_sign_in_events_provider_success',
+      expression:
+        "create index idx_sign_in_events_provider_success on sign_in_events (tenant_id, provider_id) where outcome = 'success'",
+    },
   ],
 })
 
