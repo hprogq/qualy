@@ -176,14 +176,14 @@ describe.runIf(postgresAvailable)('applying a lineage', () => {
     const reached: string[] = []
     // a pool connects with a callback and a lone client with a promise; both
     // go through untouched
-    const original = Client.prototype.connect as (this: Client, ...args: unknown[]) => unknown
+    const original: (this: Client, ...args: unknown[]) => unknown = Client.prototype.connect
     const connect = vi.spyOn(Client.prototype, 'connect').mockImplementation(function (
       this: Client,
       ...args: unknown[]
     ) {
       reached.push(String((this as unknown as { database: unknown }).database))
       return original.apply(this, args)
-    } as never)
+    })
     try {
       await pendingMigrations(target.db.url, { folder, entities: [] })
       await runMigrations(target.db.url, { folder, entities: [] })

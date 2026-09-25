@@ -115,7 +115,7 @@ const openStaging = async (staging: string) => {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
     await rm(staging, { force: true })
-    return await open(staging, EXCLUSIVE_WRITE)
+    return open(staging, EXCLUSIVE_WRITE)
   }
 }
 
