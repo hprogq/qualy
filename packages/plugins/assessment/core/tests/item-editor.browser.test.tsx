@@ -362,6 +362,8 @@ const open = (
     groups?: readonly unknown[]
     /** every tree a section save was asked to store */
     regrouped?: unknown[]
+    /** held until it settles: a save's answer does not arrive before it */
+    answerAfter?: Promise<void>
   } = {},
 ) => {
   // what the server holds, so a save is read back as it was stored
@@ -423,7 +425,9 @@ const open = (
             ...call.payload,
           })
           if (at !== -1) holding[at] = stored
-          return Effect.succeed({ item: stored })
+          return had.answerAfter === undefined
+            ? Effect.succeed({ item: stored })
+            : Effect.promise(() => had.answerAfter!).pipe(Effect.as({ item: stored }))
         },
         checkItem: (call: { payload: { config: unknown } }) =>
           Effect.succeed({ issues: had.check?.(call.payload) ?? [], standing: had.standing ?? [] }),
@@ -714,6 +718,43 @@ describe('feeding the arithmetic', () => {
     // and the next save names the determination the first one minted
     await tab(/基本信息/).click()
     await page.getByLabelText('项目名称').fill('竞赛获奖（校级以上）')
+    await page.getByTestId('item-save').click()
+    await vi.waitFor(() => expect(saved).toHaveLength(2))
+    const second = saved[1]!.config as { scoringConfig: unknown }
+    expect(JSON.stringify(second.scoringConfig)).toContain(MINTED_ID)
+  })
+
+  it('keeps the minted determination when the question moved while its save was out', async () => {
+    const saved: { config?: unknown }[] = []
+    let answer = () => {}
+    const answered = new Promise<void>((settle) => {
+      answer = settle
+    })
+    await open({
+      items: [formulaItem({ defaultFromFieldId: null })],
+      question: ITEM_ID,
+      panel: 'scoring',
+      surfaces: BOTH_CALCULATORS,
+      saved,
+      answerAfter: answered,
+    })
+    await chooseSource('level', '固定值')
+    await chooseSource('level', '认定值')
+    await expect.element(page.getByTestId('recognition-row')).toBeVisible()
+    await page.getByTestId('item-save').click()
+    await vi.waitFor(() => expect(saved).toHaveLength(1))
+
+    // written while the save is out, so the answer meets a composition that
+    // is no longer the one it was asked about
+    await tab(/基本信息/).click()
+    await page.getByLabelText('项目名称').fill('竞赛获奖（校级以上）')
+    await expect.element(page.getByTestId('item-save')).toBeDisabled()
+    answer()
+    await expect.element(page.getByTestId('item-save')).toBeEnabled()
+
+    // what was typed stays, and the next save names the determination the
+    // first one minted instead of creating another
+    await expect.element(page.getByLabelText('项目名称')).toHaveValue('竞赛获奖（校级以上）')
     await page.getByTestId('item-save').click()
     await vi.waitFor(() => expect(saved).toHaveLength(2))
     const second = saved[1]!.config as { scoringConfig: unknown }

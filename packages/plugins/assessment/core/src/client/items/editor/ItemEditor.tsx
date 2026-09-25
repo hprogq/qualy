@@ -72,6 +72,7 @@ import {
   type ScoringDraft,
   type ServerIssue,
   type Standing,
+  withMintedIds,
 } from './model.ts'
 import { boundsWords, type LinkVerdict } from './words.ts'
 
@@ -1004,12 +1005,16 @@ export function ItemEditor({
         // determinations it minted ids for, values it normalised. Left as
         // written, the next save would mint those determinations afresh and
         // the pane would go on calling a saved question unsaved. What was
-        // typed while the save was out stays as typed.
+        // typed while the save was out stays as typed - but the ids it
+        // minted are taken on even then, or the next save would replace
+        // the determinations it just created with new ones.
         const saved = result.item
         setAnswered(saved)
         setOrigin(plainOf(saved))
         setDraft((current) =>
-          current === mutated.sent ? draftOf(saved, groups, options) : current,
+          current === mutated.sent
+            ? draftOf(saved, groups, options)
+            : withMintedIds(current, mutated.sent, saved.currentRevision?.scoringConfig),
         )
         setSheet(null)
       }

@@ -455,6 +455,60 @@ export const draftOf = (
   }
 }
 
+/**
+ * The identities a save minted, carried into a composition that went on
+ * being edited while the save was out.
+ *
+ * A determination the sent composition addressed by a handle has an id
+ * now, found through the parameter that reads it in what was stored. The
+ * composition keeps everything written since; only those handles become
+ * the ids, so the next save names the determinations this one created
+ * rather than creating them again.
+ */
+export const withMintedIds = (current: Draft, sent: Draft, stored: unknown): Draft => {
+  if (current.scoring.language !== 'v2' || sent.scoring.language !== 'v2') return current
+  if (stored === null || typeof stored !== 'object' || Array.isArray(stored)) return current
+  if (!Object.hasOwn(stored, 'version') || (stored as { version?: unknown }).version !== 2) {
+    return current
+  }
+  const storedBindings = (stored as { bindings?: Record<string, unknown> }).bindings
+  const minted = new Map<string, string>()
+  for (const [parameter, binding] of Object.entries(sent.scoring.bindings)) {
+    if (binding.kind !== 'recognition') continue
+    if (own(sent.scoring.recognitions, binding.handle)?.id !== null) continue
+    const now = own(storedBindings, parameter) as
+      | { kind?: unknown; recognitionId?: unknown }
+      | undefined
+    if (now?.kind === 'recognition' && typeof now.recognitionId === 'string') {
+      minted.set(binding.handle, now.recognitionId)
+    }
+  }
+  const { recognitions, bindings } = current.scoring
+  // only a determination still waiting for its id takes one
+  const renamed = (handle: string): string | undefined =>
+    own(recognitions, handle)?.id === null ? minted.get(handle) : undefined
+  if (![...minted.keys()].some((handle) => renamed(handle) !== undefined)) return current
+  return {
+    ...current,
+    scoring: {
+      ...current.scoring,
+      recognitions: Object.fromEntries(
+        Object.entries(recognitions).map(([handle, one]) => {
+          const id = renamed(handle)
+          return id === undefined ? [handle, one] : [id, { ...one, id }]
+        }),
+      ),
+      bindings: Object.fromEntries(
+        Object.entries(bindings).map(([parameter, binding]) => {
+          if (binding.kind !== 'recognition') return [parameter, binding]
+          const id = renamed(binding.handle)
+          return [parameter, id === undefined ? binding : { kind: 'recognition', handle: id }]
+        }),
+      ),
+    },
+  }
+}
+
 // ---- schemas of fields and determinations -------------------------------
 
 /**
