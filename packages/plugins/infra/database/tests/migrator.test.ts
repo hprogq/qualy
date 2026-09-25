@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Client } from 'pg'
 import {
   MIGRATION_LOCK_KEY,
@@ -142,6 +142,60 @@ describe.runIf(postgresAvailable)('applying a lineage', () => {
       fs.rmSync(folder, { recursive: true, force: true })
     }
   }, 120_000)
+
+  it('refuses a database that is not there, by its name, without creating it', async () => {
+    const folder = lineage({ '00000000000001_probe.sql': 'create table missing_probe (id int);\n' })
+    const target = await emptyDatabase('migrator-missing-target')
+    const missing = new URL(target.db.url)
+    missing.pathname = `/qualy_absent_${Date.now().toString(36)}`
+    const name = missing.pathname.slice(1)
+    try {
+      await expect(pendingMigrations(missing.href, { folder, entities: [] })).rejects.toThrow(
+        new RegExp(`there is no database named ${name}`),
+      )
+      await expect(runMigrations(missing.href, { folder, entities: [] })).rejects.toThrow(
+        new RegExp(`there is no database named ${name}`),
+      )
+      const created = await target.db.query('select 1 from pg_database where datname = $1', [name])
+      expect(created.rows).toHaveLength(0)
+    } finally {
+      await target.dispose()
+      fs.rmSync(folder, { recursive: true, force: true })
+    }
+  })
+
+  // A pooler configured for the application's database alone, or a role
+  // without CONNECT on `postgres`, refused every start - the validate-only
+  // production one included - with an error about a database the
+  // deployment never named.
+  it('connects to nothing but the database it was given', async () => {
+    const target = await emptyDatabase('migrator-no-maintenance')
+    const folder = lineage({ '00000000000001_probe.sql': 'create table reached_probe (id int);\n' })
+    // every session anything opens, pools included: pg's Client is where
+    // each of them connects
+    const reached: string[] = []
+    // a pool connects with a callback and a lone client with a promise; both
+    // go through untouched
+    const original = Client.prototype.connect as (this: Client, ...args: unknown[]) => unknown
+    const connect = vi.spyOn(Client.prototype, 'connect').mockImplementation(function (
+      this: Client,
+      ...args: unknown[]
+    ) {
+      reached.push(String((this as unknown as { database: unknown }).database))
+      return original.apply(this, args)
+    } as never)
+    try {
+      await pendingMigrations(target.db.url, { folder, entities: [] })
+      await runMigrations(target.db.url, { folder, entities: [] })
+      const name = new URL(target.db.url).pathname.slice(1)
+      expect(reached.length).toBeGreaterThan(0)
+      expect(new Set(reached)).toEqual(new Set([name]))
+    } finally {
+      connect.mockRestore()
+      await target.dispose()
+      fs.rmSync(folder, { recursive: true, force: true })
+    }
+  })
 
   it('records nothing for a migration that failed, and applies it once it is fixed', async () => {
     const target = await emptyDatabase('migrator-failure')

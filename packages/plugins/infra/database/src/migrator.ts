@@ -146,22 +146,30 @@ export function migrationsIn(folder: string): MigrationObject[] {
  * cleanly to it, the application comes up green and empty, and nothing ever
  * says the name was wrong. Every scratch database in this repository is
  * created explicitly by the code that owns it, so nothing needs the implicit
- * creation and refusing costs one query.
+ * creation and refusing costs one connection.
+ *
+ * The connection is to the target itself: a missing database is the server
+ * refusing it by name (3D000). Asking the `postgres` database instead made
+ * every start - the validate-only production one included - depend on a
+ * database the deployment never named, which a pooler configured for the
+ * application's database alone, or a role without CONNECT on `postgres`,
+ * refused with an error about the wrong database.
  */
 async function assertDatabaseExists(url: string): Promise<void> {
-  const target = new URL(url)
-  const name = decodeURIComponent(target.pathname.replace(/^\//, ''))
-  const management = new URL(url)
-  management.pathname = '/postgres'
-  const client = new Client({ connectionString: management.href })
+  const client = new Client({ connectionString: url })
   try {
     await client.connect()
-    const found = await client.query('select 1 from pg_database where datname = $1', [name])
-    if (found.rowCount === 0) {
+  } catch (error) {
+    // 3D000 invalid_catalog_name
+    if ((error as { code?: string }).code === '3D000') {
+      const target = new URL(url)
+      const name = decodeURIComponent(target.pathname.replace(/^\//, ''))
       throw new Error(
         `there is no database named ${name} on ${target.host}. Check DATABASE_URL; create it deliberately if it really is new.`,
+        { cause: error },
       )
     }
+    throw error
   } finally {
     await client.end().catch(() => {})
   }
