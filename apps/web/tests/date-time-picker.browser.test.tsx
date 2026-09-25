@@ -21,11 +21,13 @@ import '../src/app.css'
 
 function Harness({ initial, timeZone }: { initial: string | null; timeZone?: string }) {
   const [value, setValue] = useState(initial)
+  const [movedTo, setMovedTo] = useState<string | null>(null)
   return (
     <UiProvider scheme="light">
       <DateTimePicker
         value={value}
         onChange={setValue}
+        onSkippedTime={setMovedTo}
         placeholder="pick a start"
         hourLabel="hour"
         minuteLabel="minute"
@@ -37,6 +39,7 @@ function Harness({ initial, timeZone }: { initial: string | null; timeZone?: str
       {/* the value itself, where an assertion can read it without going
           through anything this component chose to display */}
       <output data-testid="value">{value ?? ''}</output>
+      <output data-testid="moved-to">{movedTo ?? ''}</output>
     </UiProvider>
   )
 }
@@ -150,5 +153,29 @@ describe('choosing an instant', () => {
     await userEvent.keyboard('140000')
 
     expect(page.getByTestId('value').element().textContent).toBe('2026-08-25T08:15:00.000Z')
+  })
+
+  // New York's clocks jump from 02:00 to 03:00 on 14 March 2027, so 02:30
+  // that morning is on no wall there. It is kept as the first time that
+  // exists rather than an hour before it, the boxes keep what was typed so
+  // the hour does not change under the fingers, and the caller is told.
+  it('keeps a time the clocks skip as the first one after it, and says so', async () => {
+    // 00:00 on the morning of the change, New York time
+    await render(<Harness initial="2027-03-14T05:00:00.000Z" timeZone="America/New_York" />)
+    await open()
+
+    await userEvent.click(hourBox())
+    await userEvent.keyboard('023000')
+
+    expect(page.getByTestId('value').element().textContent).toBe('2027-03-14T07:00:00.000Z')
+    expect(page.getByTestId('moved-to').element().textContent).toBe('2027-03-14T07:00:00.000Z')
+    await expect.element(hourBox()).toHaveValue('02')
+    await expect.element(minuteBox()).toHaveValue('30')
+
+    // an hour that exists takes the word back
+    await userEvent.click(hourBox())
+    await userEvent.keyboard('04')
+    expect(page.getByTestId('value').element().textContent).toBe('2027-03-14T08:30:00.000Z')
+    expect(page.getByTestId('moved-to').element().textContent).toBe('')
   })
 })

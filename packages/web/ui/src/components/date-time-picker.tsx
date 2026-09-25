@@ -1,11 +1,12 @@
 'use client'
 
+import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { DateTimePicker as MDateTimePicker } from '@mantine/dates'
 
 import { calendarLook } from '../lib/calendar.ts'
 import { dateWordsIn } from '../lib/date-format.ts'
-import { instantToLocal, localToInstant } from '../lib/instant.ts'
+import { instantToLocal, localToInstant, wallClockExists } from '../lib/instant.ts'
 import { seatOf } from '../lib/xstyle.ts'
 
 // One instant, asked for once: a calendar with a time under it.
@@ -41,6 +42,7 @@ export function DateTimePicker({
   timeZone,
   monthLabel,
   yearLabel,
+  onSkippedTime,
   disabled,
   className,
   xstyle,
@@ -67,20 +69,37 @@ export function DateTimePicker({
   /** names for the caption pickers, read out but never shown */
   monthLabel?: string
   yearLabel?: string
+  /**
+   * Told the instant a typed time was moved on to when the zone's clocks skip
+   * it (the hour a daylight-saving change jumps over), and `null` once the
+   * time typed is one the wall shows. What to say about it is the caller's.
+   */
+  onSkippedTime?: (movedTo: string | null) => void
   disabled?: boolean
   /** the formal StyleX extension seat */
   xstyle?: stylex.StyleXStyles
   /** legacy interop hatch */
   className?: string
 }) {
+  // A time the clocks skip is saved as the first time after it that exists,
+  // but the boxes keep what was typed while that is still the value: showing
+  // 03 the moment somebody types 02 would move the hour under their fingers
+  // halfway through typing 023000.
+  const [typed, setTyped] = useState<{ local: string; instant: string } | null>(null)
+  const held = typed !== null && typed.instant === value ? typed.local : null
   return (
     <MDateTimePicker
       id={id}
       data-slot="date-time-picker"
-      value={instantToLocal(value, timeZone)}
-      onChange={(next) =>
-        onChange(localToInstant(typeof next === 'string' ? next : null, timeZone))
-      }
+      value={held ?? instantToLocal(value, timeZone)}
+      onChange={(next) => {
+        const local = typeof next === 'string' ? next : null
+        const instant = localToInstant(local, timeZone)
+        const skipped = local !== null && instant !== null && !wallClockExists(local, timeZone)
+        setTyped(skipped ? { local, instant } : null)
+        onSkippedTime?.(skipped ? instant : null)
+        onChange(instant)
+      }}
       placeholder={placeholder}
       disabled={disabled}
       {...calendarLook}

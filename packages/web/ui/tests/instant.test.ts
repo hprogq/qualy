@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { instantToLocal, localToInstant, offsetMinutesAt, wallClockOf } from '../src/lib/instant.ts'
+import {
+  instantToLocal,
+  localToInstant,
+  offsetMinutesAt,
+  wallClockExists,
+  wallClockOf,
+} from '../src/lib/instant.ts'
 
 // The crossing between an instant and a wall clock, asserted without
 // assuming which zone this machine keeps: every expectation is either
@@ -100,6 +106,67 @@ describe('a wall clock in a named zone', () => {
     expect(localToInstant('2026-11-01 05:30:00', 'America/New_York')).toBe(
       '2026-11-01T10:30:00.000Z',
     )
+  })
+
+  // The hour a spring change skips has no instant. Whatever is typed into it
+  // goes forward to the first time the wall shows, in every zone the same
+  // way: a deadline typed there is never quietly an hour early, which is
+  // what New York gave before while London went an hour late.
+  it('moves a time the clocks skip on to the first time that exists', () => {
+    // New York jumps from 02:00 to 03:00 on 8 March 2026
+    expect(localToInstant('2026-03-08 02:30:00', 'America/New_York')).toBe(
+      '2026-03-08T07:00:00.000Z',
+    )
+    expect(localToInstant('2026-03-08 02:00:00', 'America/New_York')).toBe(
+      '2026-03-08T07:00:00.000Z',
+    )
+    // either edge of the gap is an ordinary time
+    expect(localToInstant('2026-03-08 01:59:59', 'America/New_York')).toBe(
+      '2026-03-08T06:59:59.000Z',
+    )
+    expect(localToInstant('2026-03-08 03:00:00', 'America/New_York')).toBe(
+      '2026-03-08T07:00:00.000Z',
+    )
+    // London jumps from 01:00 to 02:00 on 29 March 2026
+    expect(localToInstant('2026-03-29 01:30:00', 'Europe/London')).toBe('2026-03-29T01:00:00.000Z')
+    expect(instantToLocal('2026-03-29T01:00:00.000Z', 'Europe/London')).toBe('2026-03-29 02:00:00')
+    // a whole day skipped is the same rule: Samoa went from the 29th to the 31st
+    expect(localToInstant('2011-12-30 12:00:00', 'Pacific/Apia')).toBe('2011-12-30T10:00:00.000Z')
+  })
+
+  it('reads a time the clocks show twice as the first of the two', () => {
+    // New York repeats 01:00 to 02:00 on 1 November 2026, first in summer time
+    expect(localToInstant('2026-11-01 01:30:00', 'America/New_York')).toBe(
+      '2026-11-01T05:30:00.000Z',
+    )
+    // London repeats 01:00 to 02:00 on 25 October 2026, first in summer time
+    expect(localToInstant('2026-10-25 01:30:00', 'Europe/London')).toBe('2026-10-25T00:30:00.000Z')
+  })
+
+  it('says which typed times no wall shows', () => {
+    expect(wallClockExists('2026-03-08 02:30:00', 'America/New_York')).toBe(false)
+    expect(wallClockExists('2026-03-29 01:30', 'Europe/London')).toBe(false)
+    expect(wallClockExists('2026-03-08 03:00:00', 'America/New_York')).toBe(true)
+    // shown twice is shown
+    expect(wallClockExists('2026-11-01 01:30:00', 'America/New_York')).toBe(true)
+    expect(wallClockExists('2026-09-05 00:00:00', 'Asia/Shanghai')).toBe(true)
+  })
+
+  it("keeps the same rule on the device's own wall", () => {
+    // node picks a new TZ up as soon as it is assigned; this package's types
+    // are the browser's, so the process is reached without them
+    const env = (globalThis as unknown as { process: { env: Record<string, string | undefined> } })
+      .process.env
+    const kept = env['TZ']
+    env['TZ'] = 'America/New_York'
+    try {
+      expect(localToInstant('2026-03-08 02:30:00')).toBe('2026-03-08T07:00:00.000Z')
+      expect(wallClockExists('2026-03-08 02:30:00')).toBe(false)
+      expect(localToInstant('2026-11-01 01:30:00')).toBe('2026-11-01T05:30:00.000Z')
+    } finally {
+      if (kept === undefined) delete env['TZ']
+      else env['TZ'] = kept
+    }
   })
 
   it('comes back to where it started in any zone', () => {
