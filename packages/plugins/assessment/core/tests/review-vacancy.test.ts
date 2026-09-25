@@ -221,4 +221,78 @@ describe.runIf(postgresAvailable)('a vacant step', () => {
       current_node_id: null,
     })
   })
+  // Appointing somebody is what ends a vacancy: the patrol asks the vacant
+  // step again along the same frozen lineage, places the round at the unit
+  // it finds and releases it, without the question being edited to force a
+  // reroute.
+  it('wakes a round at a vacant step once somebody is appointed to it', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-vacant-heal')
+          const assessment = yield* Assessment
+          const counsellor = yield* vacantRole(f)
+          const g = yield* runningBatch(f, {
+            profile: REVIEW_OPEN,
+            stages: [counsellorStep('counsellor', counsellor)],
+          })
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const round = (yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1))
+            .currentReviewInstanceId!
+          const idle = yield* assessment.patrolReviewRounds
+          const stillVacant = yield* standing(round)
+          // a counsellor appointed at the student's class, whose review
+          // authority the round accepts
+          yield* runSql(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            select ${f.t}, ${counsellor}, p.id from permissions p
+            where p.code = 'assessment.review.process'`)
+          const who = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.t}, 'Counsellor', ${f.studentType}, ${f.classA}) returning id`),
+          ).id
+          const grant = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+              values (${f.t}, ${who}, ${counsellor}, ${f.classA}, 'self') returning id`),
+          ).id
+          const source = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into batch_access_sources
+                (tenant_id, batch_id, role_assignment_id, subject_id, origin)
+              values (${f.t}, ${g.batch.id}, ${grant}, ${who}, 'explicit') returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into batch_access_source_permissions (tenant_id, source_id, permission_code)
+            values (${f.t}, ${source}, 'assessment.review.process')`)
+          const woke = yield* assessment.patrolReviewRounds
+          const placed = yield* standing(round)
+          const decided = yield* assessment.decideReview(
+            f.t,
+            round,
+            { decision: 'approve' },
+            f.principal(who),
+          )
+          return { idle, stillVacant, woke, placed, decided: decided.outcome, classA: f.classA }
+        }),
+      ),
+    )
+    expect(result.idle.released).toBe(0)
+    expect(result.stillVacant).toMatchObject({ state: 'blocked', current_node_id: null })
+    expect(result.woke.released).toBe(1)
+    expect(result.placed).toMatchObject({
+      state: 'active',
+      blocked_reason: null,
+      current_stage_id: 'counsellor',
+      current_node_id: result.classA,
+    })
+    expect(result.decided).toBe('approved')
+  })
 })

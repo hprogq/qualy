@@ -76,8 +76,10 @@ import {
   reconsideredCountsByBatchOf,
   participatingBatchIdsOf,
   entrySummaryRowsOf,
+  advanceReviewInstance,
   insertReviewEvent,
   listAdministrativeEntriesPage,
+  nodePathOf,
   participantOf,
   staffReachesParticipant,
   userActivityPage,
@@ -89,6 +91,7 @@ import {
   endPanelAssignment,
   livePanelSeats,
   mayReviewEntry,
+  nearestRoleNode,
   openInstances,
   openPanelOf,
   openRoundCountOfBatch,
@@ -5239,14 +5242,54 @@ export const make = Effect.fn('Assessment.make')(function* () {
         // different answers, and this loop sees every batch of the tenant.
         const staffing = new Map<string, number>()
         for (const round of rounds) {
-          // A round stopped at a step that resolved to no unit has nothing
-          // here to ask about: membership is a question about a unit, and
-          // this one has none. It is already blocked for want of an
-          // assignee, and the way out is an administrator rerouting it onto
-          // the current policy once somebody holds the role - which resolves
-          // the step again rather than rewriting what it froze (§32.62).
-          if (round.currentNodeId === null) continue
-          const nodeId = round.currentNodeId
+          // A round stopped at a vacant step - a `nearestRole` nobody held
+          // anywhere on the participant's lineage - has no unit to ask about.
+          // It is asked again here, along the same frozen lineage: once
+          // somebody is appointed, the step finds its unit and the round is
+          // placed there, still blocked, and released below by the same
+          // staffing question as every other round. The frozen route is not
+          // re-resolved; only the step the round stands at is placed.
+          let nodeId = round.currentNodeId
+          if (nodeId === null) {
+            const vacant = stageById(
+              round.effectivePolicy,
+              round.currentRoute,
+              round.currentStageId,
+            )
+            if (round.state !== 'blocked' || vacant?.selector.kind !== 'nearestRole') continue
+            const found = yield* dieQuery(
+              withDb(
+                nearestRoleNode({
+                  tenantId,
+                  batchId: round.batchId,
+                  roleId: vacant.selector.roleId,
+                  lineage: round.lineage,
+                }),
+              ),
+            )
+            const path =
+              found === null ? null : yield* dieQuery(withDb(nodePathOf(tenantId, found)))
+            if (found === null || path === null) continue
+            const placed = yield* dieQuery(
+              withDb(
+                advanceReviewInstance({
+                  tenantId,
+                  instanceId: round.id,
+                  fromRoute: round.currentRoute,
+                  fromStageId: round.currentStageId,
+                  toRoute: round.currentRoute,
+                  toStageId: round.currentStageId,
+                  roleIds: vacant.roleIds,
+                  nodeId: found,
+                  nodePath: path,
+                  state: 'blocked',
+                  blockedReason: 'no-assignee',
+                }),
+              ),
+            )
+            if (!placed) continue
+            nodeId = found
+          }
           const key = `${round.batchId}:${nodeId}:${[...round.currentRoleIds].sort().join(',')}`
           let members = staffing.get(key)
           if (members === undefined) {

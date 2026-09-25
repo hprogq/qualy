@@ -1051,6 +1051,8 @@ export interface PatrolRow {
   currentRoleIds: readonly string[]
   subjectUserId: string
   actorId: string
+  /** the participant's frozen lineage, for asking a vacant step again */
+  lineage: readonly { nodeId: string; nodeTypeId: string }[]
 }
 
 /** every open round in a tenant, with what deciding its stage needs */
@@ -1078,6 +1080,7 @@ export const openInstances = (tenantId: string) =>
           'ri.currentRoleIds',
           'e.batchId',
           'bp.userId as subjectUserId',
+          'bp.anchorLineage',
           'er.actorId',
         ])
         .where('ri.tenantId', '=', tenantId)
@@ -1097,6 +1100,7 @@ export const openInstances = (tenantId: string) =>
           currentRoleIds: row.currentRoleIds,
           subjectUserId: row.subjectUserId,
           actorId: row.actorId,
+          lineage: (row.anchorLineage ?? []) as PatrolRow['lineage'],
         })),
       ),
     )
