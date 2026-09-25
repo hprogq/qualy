@@ -1189,11 +1189,14 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             row.state === 'awaiting_supplement' &&
             row.batchStatus === 'active' &&
             gate.allowed,
-          // deliberately no phase gate: the open ask is the whole capability
+          // deliberately no phase gate: the open ask is the whole capability,
+          // for somebody still on the roster - the answer itself asks that too
           answerable:
             row.subjectUserId === as.userId &&
             row.state === 'awaiting_supplement' &&
-            row.batchStatus === 'active',
+            row.batchStatus === 'active' &&
+            (yield* dieQuery(withDb(activeParticipantByUser(tenantId, row.batchId, as.userId)))) !==
+              null,
         }),
       ),
     )

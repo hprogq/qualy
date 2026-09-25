@@ -230,7 +230,13 @@ describe.runIf(postgresAvailable)('what leaving the roster does to open work', (
           )
           const card = (yield* assessment.listMyEntries(f.t, g.batch.id, {}, s1)).entries[0]!
           const desk = yield* assessment.getMyOverview(f.t, g.batch.id, s1)
-          return { answered, card, actions: desk.participant!.actions }
+          const round = yield* assessment.getReviewInstance(f.t, sent.currentReviewInstanceId!, s1)
+          return {
+            answered,
+            card,
+            actions: desk.participant!.actions,
+            offered: round.capabilities.canAnswerSupplement,
+          }
         }),
       ),
     )
@@ -238,5 +244,6 @@ describe.runIf(postgresAvailable)('what leaving the roster does to open work', (
     expect(refusalOf(result.answered)?.reason).toBe('participant-not-active')
     expect(result.card.supplement).toBeNull()
     expect(result.actions).toEqual([])
+    expect(result.offered).toBe(false)
   })
 })
