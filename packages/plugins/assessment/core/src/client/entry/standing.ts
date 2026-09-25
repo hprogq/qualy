@@ -273,9 +273,16 @@ const itemRow = (
   const asked = live.filter((entry) => entry.supplement !== null).length
   const sentBack = live.filter((entry) => entry.status === 'needs_revision').length
   const drafts = live.filter((entry) => entry.status === 'draft').length
-  const pending = live.filter((entry) => entry.status === 'in_review').length
-  const rejected = live.filter((entry) => entry.status === 'rejected').length
-  const approved = live.filter((entry) => entry.status === 'approved').length
+  // a settled claim under appeal is out with somebody else until its round
+  // ends, not a refusal to act on or a result to count on
+  const reconsidered = (entry: EntryDto) => entry.openRound !== null
+  const pending = live.filter((entry) => entry.status === 'in_review' || reconsidered(entry)).length
+  const rejected = live.filter(
+    (entry) => entry.status === 'rejected' && !reconsidered(entry),
+  ).length
+  const approved = live.filter(
+    (entry) => entry.status === 'approved' && !reconsidered(entry),
+  ).length
   return {
     id: item.id,
     kind: 'item',

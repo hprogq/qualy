@@ -415,6 +415,41 @@ export const openAskCountsByBatchOf = (input: {
       )
 
 /**
+ * How many of this user's settled filings per round are being reconsidered
+ * right now: an appeal or a reopened round running on a claim that keeps
+ * its approval or refusal meanwhile (§32.21). Their outcome is out of the
+ * author's hands until the round ends, so they are neither a refusal to act
+ * on nor a settled result. A round waiting on its author is counted by the
+ * asks instead, and left out here.
+ */
+export const reconsideredCountsByBatchOf = (input: {
+  tenantId: string
+  userId: string
+  batchIds: readonly string[]
+}) =>
+  input.batchIds.length === 0
+    ? Effect.succeed([] as { batchId: string; status: string; total: string }[])
+    : db.query((k) =>
+        k
+          .selectFrom('ReviewInstance as ri')
+          .innerJoin('Entry as e', (join) =>
+            join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
+          )
+          .innerJoin('BatchParticipant as bp', (join) =>
+            join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
+          )
+          .select(['e.batchId', 'e.status'])
+          .select(({ fn }) => fn.count<string>('e.id').distinct().as('total'))
+          .where('ri.tenantId', '=', input.tenantId)
+          .where('e.batchId', 'in', [...input.batchIds])
+          .where('bp.userId', '=', input.userId)
+          .where('e.status', 'in', ['approved', 'rejected'])
+          .where('ri.state', 'in', ['active', 'blocked'])
+          .groupBy(['e.batchId', 'e.status'])
+          .execute(),
+      )
+
+/**
  * Which of these rounds this user takes part in at all.
  *
  * Asked apart from the counts above because nought filings and no place on

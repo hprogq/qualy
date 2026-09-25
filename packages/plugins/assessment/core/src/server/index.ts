@@ -72,6 +72,7 @@ import { makeRedetermineMethods, type RedetermineMethods } from '../entry/redete
 import {
   entryCountsByBatchOf,
   openAskCountsByBatchOf,
+  reconsideredCountsByBatchOf,
   participatingBatchIdsOf,
   entrySummaryRowsOf,
   insertReviewEvent,
@@ -3082,6 +3083,12 @@ export const make = Effect.fn('Assessment.make')(function* () {
           withDb(openAskCountsByBatchOf({ tenantId, userId: as.userId, batchIds })),
         )).map((row) => [`${row.batchId}:${row.status}`, Number(row.total)]),
       )
+      // settled filings an appeal or a reopening is reconsidering, the same way
+      const reconsidered = new Map(
+        (yield* dieQuery(
+          withDb(reconsideredCountsByBatchOf({ tenantId, userId: as.userId, batchIds })),
+        )).map((row) => [`${row.batchId}:${row.status}`, Number(row.total)]),
+      )
       type Counts = Omit<MyFilings, 'filing'>
       const none: Counts = {
         toAnswer: 0,
@@ -3099,15 +3106,20 @@ export const make = Effect.fn('Assessment.make')(function* () {
         // keeps its approval or refusal while its round runs (§32.21), and
         // its ask is as much the author's to answer as a first round's.
         const asked = asks.get(`${row.batchId}:${row.status}`) ?? 0
-        const total = Number(row.total) - asked
+        // A settled filing under appeal is neither a refusal to act on nor a
+        // result: its round is running and its outcome is out of the
+        // author's hands, so it is counted with what is under review.
+        const reconsidering = reconsidered.get(`${row.batchId}:${row.status}`) ?? 0
+        const total = Number(row.total) - asked - reconsidering
         counts.toAnswer += asked
+        counts.submitted += reconsidering
         // A refusal is its own count, not folded into 'to fix' (§32.65): it
         // has its own next steps.
         if (row.status === 'needs_revision') counts.toFix = total
         if (row.status === 'draft') counts.draft = total
         if (row.status === 'rejected') counts.rejected = total
         if (row.status === 'approved') counts.approved = total
-        if (row.status === 'in_review') counts.submitted = total
+        if (row.status === 'in_review') counts.submitted += total
         mine.set(row.batchId, counts)
       }
       // Whether the line is drawn at all is the batch's own authority to

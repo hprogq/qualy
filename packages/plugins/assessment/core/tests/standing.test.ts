@@ -325,6 +325,53 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
     })
   }, 120_000)
 
+  // A refused claim under appeal is not a refusal waiting on its author: the
+  // round is running and its outcome is out of their hands. With no ask on
+  // it the card counts it with what is under review, not as a to-do.
+  it('counts a refused claim under appeal as under review, not as a to-do', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('standing-appeal-refused')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, {
+            profile: [...PROFILE, 'assessment.entry.appeal'],
+            escalation: [
+              {
+                id: 'esc',
+                selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+                quorum: { type: 'any' },
+              },
+            ],
+          })
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          yield* assessment.decideReview(
+            f.t,
+            sent.currentReviewInstanceId!,
+            { decision: 'reject', comment: '材料不足' },
+            f.principal(f.reviewer),
+          )
+          const refused = yield* assessment.listMyStanding(f.t, s1)
+          yield* assessment.appealEntry(f.t, entry.id, { reason: '请复核' }, s1)
+          const appealing = yield* assessment.listMyStanding(f.t, s1)
+          const mine = (card: typeof refused) =>
+            card.items.find((item) => item.batchId === g.batch.id)!.myEntries
+          return { refused: mine(refused), appealing: mine(appealing) }
+        }),
+      ),
+    )
+    const none = { toAnswer: 0, toFix: 0, draft: 0, rejected: 0, submitted: 0, approved: 0 }
+    expect(result.refused).toEqual({ ...none, rejected: 1, filing: 'open' })
+    expect(result.appealing).toEqual({ ...none, submitted: 1, filing: 'open' })
+  }, 120_000)
+
   // Whether filing is open, still to come or over is read off the stages
   // themselves, and it has to agree with what a create would meet: a stage
   // whose gate shuts this participant out opens nothing for them, a stage
