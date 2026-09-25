@@ -25,6 +25,7 @@ import {
   voidAdministrativeEntryTx,
 } from '../entry/administrative-write.ts'
 import type { EntryStatus } from '../entry/db.ts'
+import { entryLimitOf } from '../entry/limit.ts'
 import { itemOf, revisionOf as itemRevisionOf, revisionsByIdOf } from '../item/db.ts'
 import { opensTo } from '../item/channels.ts'
 import { boundEvidenceKeys, fillBoundEvidence } from '../scoring/bound-evidence.ts'
@@ -1161,14 +1162,11 @@ export const makeAdministrativeImportMethods = (
               }
               const admitted = gate(person.participantId)
               if (!admitted.allowed) return yield* refuse('businessNo', admitted.reason)
-              if (ready.item.maxEntries !== null) {
-                const already = held.get(person.participantId) ?? 0
-                const here = takenHere.get(person.participantId) ?? 0
-                if (already + here >= ready.item.maxEntries) {
-                  return yield* refuse(null, 'max-entries-reached')
-                }
-                takenHere.set(person.participantId, here + 1)
-              }
+              const already = held.get(person.participantId) ?? 0
+              const here = takenHere.get(person.participantId) ?? 0
+              const ceiling = entryLimitOf(ready.item.maxEntries)
+              if (already + here >= ceiling.limit) return yield* refuse(null, ceiling.reason)
+              takenHere.set(person.participantId, here + 1)
               if (row.basis.trim() === '') return yield* refuse('basis', 'basis-required')
               // The round's material window, as it stands under the lock. A
               // narrowing is refused while a live fact falls outside the new

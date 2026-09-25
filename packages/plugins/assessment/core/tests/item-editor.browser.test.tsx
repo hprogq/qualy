@@ -1,4 +1,5 @@
 import ItemSettingsPage from '../src/client/items/ItemSettingsPage.tsx'
+import { MAX_ENTRIES_PER_ITEM } from '../src/api.ts'
 import { lazy } from 'react'
 import { useNavigate } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
@@ -987,6 +988,16 @@ describe('records and review', () => {
     await expect.element(ceiling).toHaveAttribute('data-ceiling', 'unlimited')
     await page.getByRole('radio', { name: '限定条数' }).click()
     await expect.element(page.getByRole('textbox', { name: '每人可申报条数' })).toHaveValue('1')
+  })
+
+  it('holds a limit of its own to the platform ceiling, where the number is typed', async () => {
+    await composeQuestion()
+    await tab(/记录与审核/).click()
+    const limit = page.getByRole('textbox', { name: '每人可申报条数' })
+    await limit.fill(String(MAX_ENTRIES_PER_ITEM + 1))
+    await expect.element(limit).toHaveAttribute('aria-invalid', 'true')
+    await limit.fill(String(MAX_ENTRIES_PER_ITEM))
+    await expect.element(limit).not.toHaveAttribute('aria-invalid')
   })
 
   it('composes a step in its panel, and lets it into the chain only once it is whole', async () => {

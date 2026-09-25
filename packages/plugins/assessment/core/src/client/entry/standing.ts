@@ -1,4 +1,5 @@
 import type { MessageDescriptor } from '@qualy/i18n-contract'
+import { MAX_ENTRIES_PER_ITEM } from '../../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import type { EvidencePayload } from './EvidenceForm.tsx'
 import {
@@ -121,16 +122,24 @@ export const entryScore = (standing: Standing | null, entryId: string): string |
   return line === undefined ? null : trimAmount(line.value)
 }
 
-/** how many more claims this question will still take from one person */
+const liveCount = (entries: readonly EntryDto[]) =>
+  entries.filter((entry) => entry.status !== 'voided').length
+
+/** how many more claims this question will still take from one person, when it sets a limit */
 export const roomLeft = (item: ItemDto, entries: readonly EntryDto[]): number | null => {
   if (item.maxEntries === null) return null
-  const live = entries.filter((entry) => entry.status !== 'voided').length
-  return Math.max(0, item.maxEntries - live)
+  return Math.max(0, Math.min(item.maxEntries, MAX_ENTRIES_PER_ITEM) - liveCount(entries))
 }
 
-/** whether this person may still put something into this question */
+/**
+ * Whether this person may still put something into this question: a
+ * question without a limit of its own still stops at the platform ceiling,
+ * the same one the server refuses past.
+ */
 export const mayFile = (item: ItemDto, entries: readonly EntryDto[]): boolean =>
-  item.status === 'active' && opensTo(item, 'participant') && (roomLeft(item, entries) ?? 1) > 0
+  item.status === 'active' &&
+  opensTo(item, 'participant') &&
+  (roomLeft(item, entries) ?? MAX_ENTRIES_PER_ITEM - liveCount(entries)) > 0
 
 /** what one approved claim is worth, when the question pays a flat amount */
 export const eachWorth = (item: ItemDto): string | undefined =>

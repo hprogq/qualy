@@ -2,6 +2,7 @@ import type { AtomicSchema } from '@qualy/value-schema'
 import { kindOf } from '@qualy/value-schema'
 import { hashCanonicalJson } from '@qualy/value-schema/hash'
 import type { ParsedWorkbook, RawRow, TemplateColumn } from './workbook.ts'
+import { entryLimitOf } from '../entry/limit.ts'
 
 // What a workbook would do, worked out without writing anything.
 //
@@ -226,11 +227,12 @@ export const judgeRows = (input: PreviewInput): readonly PreviewRow[] => {
       issues.push(issue('error', 'basis', 'too-long'))
     }
 
-    if (matched !== undefined && input.maxEntries !== null) {
+    if (matched !== undefined) {
       const already = input.held.get(matched.id) ?? 0
       const takenHere = takenInFile.get(matched.id) ?? 0
-      if (already + takenHere >= input.maxEntries) {
-        issues.push(issue('error', null, 'max-entries-reached'))
+      const ceiling = entryLimitOf(input.maxEntries)
+      if (already + takenHere >= ceiling.limit) {
+        issues.push(issue('error', null, ceiling.reason))
       }
       takenInFile.set(matched.id, takenHere + 1)
     }

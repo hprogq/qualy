@@ -127,7 +127,7 @@ interface PreviewResult {
 const blockerMessage = (reason: string) =>
   reason === 'self-record-refused'
     ? m.recordBlockerSelf
-    : reason === 'max-entries-reached'
+    : reason === 'max-entries-reached' || reason === 'entry-ceiling-reached'
       ? m.recordBlockerQuota
       : m.recordBlockerOther
 

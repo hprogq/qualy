@@ -42,6 +42,7 @@ import {
 import { bindCitedAttachments, type CitedAttachmentStorage } from '../entry/bind-attachments.ts'
 import { announce } from '../live/events.ts'
 import { effectiveEntryCounts } from '../administrative-import/db.ts'
+import { entryLimitOf } from '../entry/limit.ts'
 import { lockBatch, oneBatch, resolveRecordTargets } from '../server/db.ts'
 import {
   eventsOfOperation,
@@ -494,8 +495,9 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
         why(admitted.reason)
         continue
       }
-      if (shape.item.maxEntries !== null && (held.get(person.id) ?? 0) >= shape.item.maxEntries) {
-        why('max-entries-reached')
+      const ceiling = entryLimitOf(shape.item.maxEntries)
+      if ((held.get(person.id) ?? 0) >= ceiling.limit) {
+        why(ceiling.reason)
         continue
       }
       eligible.push(person.id)
@@ -664,8 +666,9 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
               refused.push({ participantId: person.id, reason: admitted.reason })
               continue
             }
-            if (current.maxEntries !== null && (held.get(person.id) ?? 0) >= current.maxEntries) {
-              refused.push({ participantId: person.id, reason: 'max-entries-reached' })
+            const ceiling = entryLimitOf(current.maxEntries)
+            if ((held.get(person.id) ?? 0) >= ceiling.limit) {
+              refused.push({ participantId: person.id, reason: ceiling.reason })
             }
           }
           // one refusal and the transaction carries nothing: the act was

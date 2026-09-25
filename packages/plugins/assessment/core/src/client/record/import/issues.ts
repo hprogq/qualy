@@ -23,6 +23,7 @@ const WORDS = {
   'recognition-required': m.importReasonRecognitionRequired,
   missing: m.importReasonRecognitionRequired,
   'max-entries-reached': m.importReasonMaxEntries,
+  'entry-ceiling-reached': m.importReasonMaxEntries,
   'duplicate-in-file': m.importReasonDuplicate,
   'decimal-syntax': m.importReasonDecimal,
   'integer-syntax': m.importReasonInteger,

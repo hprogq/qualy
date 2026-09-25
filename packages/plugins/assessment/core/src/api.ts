@@ -69,6 +69,7 @@ import {
   AttachmentUnavailable,
   ReviewConflict,
   ScoringUnavailable,
+  ScoringAccountTooLarge,
   ReviewNotFound,
   BatchReadOnly,
   BatchReferenceInvalid,
@@ -323,6 +324,25 @@ const idListUpTo = (most: number) => Schema.Union([idsUpTo(most), uuidInput])
  * that showed the round pay for the whole timeline again.
  */
 export const MAX_PLAN_PHASES = 50
+
+/**
+ * The most live claims one participant may hold on one question, whatever
+ * the question allows (ruling of 2026-09-25: "no limit" means no business
+ * rule, not no ceiling). Voided claims do not count, the same as for a
+ * question's own limit. Every write that adds a claim - filing, recording,
+ * importing - refuses past it rather than taking one more; a question may
+ * not set a limit of its own above it.
+ */
+export const MAX_ENTRIES_PER_ITEM = 100
+
+/**
+ * The most distinct evaluations one reading of an account may ask for: the
+ * questions that grant an amount on their own, plus every approved claim
+ * whose determination differs from the others on its question (claims
+ * determined alike are evaluated once). An account past it is refused as a
+ * whole rather than scored in part.
+ */
+export const MAX_ACCOUNT_EVALUATIONS = 500
 
 /**
  * The actions one phase opens. Each is one of the gate's own codes, so there
@@ -683,11 +703,11 @@ const itemConfigPayload = Schema.Struct({
   displayConfig: Schema.optional(configJson),
 })
 
-// bounded to the int4 columns they land in, for the same reason as amounts
-const positiveCount = Schema.Number.check(
+// a question's own limit may narrow the platform ceiling, never raise it
+const entryLimit = Schema.Number.check(
   Schema.isInt(),
   Schema.isGreaterThanOrEqualTo(1),
-  Schema.isLessThanOrEqualTo(2_147_483_647),
+  Schema.isLessThanOrEqualTo(MAX_ENTRIES_PER_ITEM),
 )
 const sortOrder = Schema.Number.check(
   Schema.isInt(),
@@ -1536,7 +1556,13 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     HttpApiEndpoint.get('getMyResult', '/assessment/batches/:batchId/me/result', {
       params: Schema.Struct({ batchId: uuidInput }),
       success: myResultView,
-      error: [BatchNotFound, ParticipantNotFound, ScoringUnavailable, AccessDenied],
+      error: [
+        BatchNotFound,
+        ParticipantNotFound,
+        ScoringUnavailable,
+        ScoringAccountTooLarge,
+        AccessDenied,
+      ],
     }).middleware(Authenticated),
   )
   .add(
@@ -2302,7 +2328,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         itemType: itemTypeCode,
         title: trimmedName(255),
         scoreGroupId: uuidInput,
-        maxEntries: Schema.optional(Schema.NullOr(positiveCount)),
+        maxEntries: Schema.optional(Schema.NullOr(entryLimit)),
         sortOrder: Schema.optional(sortOrder),
         config: itemConfigPayload,
       }),
@@ -2364,7 +2390,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
           /** what kind of question this is; only a draft nothing was filed into may change it */
           itemType: Schema.optional(itemTypeCode),
           scoreGroupId: Schema.optional(uuidInput),
-          maxEntries: Schema.optional(Schema.NullOr(positiveCount)),
+          maxEntries: Schema.optional(Schema.NullOr(entryLimit)),
           sortOrder: Schema.optional(sortOrder),
           config: Schema.optional(itemConfigPayload),
           reason: Schema.optional(boundedText(500)),
@@ -3594,7 +3620,13 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       {
         params: Schema.Struct({ batchId: uuidInput, participantId: uuidInput }),
         success: myResultView,
-        error: [BatchNotFound, ParticipantNotFound, ScoringUnavailable, AccessDenied],
+        error: [
+          BatchNotFound,
+          ParticipantNotFound,
+          ScoringUnavailable,
+          ScoringAccountTooLarge,
+          AccessDenied,
+        ],
       },
     ).middleware(Authenticated),
   )

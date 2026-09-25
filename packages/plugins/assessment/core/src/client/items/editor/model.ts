@@ -23,6 +23,7 @@ import {
   materializeField,
   type FieldDraft as ValueDraft,
 } from '@qualy/web-value-form/model'
+import { MAX_ENTRIES_PER_ITEM } from '../../../api.ts'
 import { SUMMARY_FIELDS_MOST, summaryFieldIdsOf } from '../../../entry/summary.ts'
 import type { ItemDto } from '../../entry/model.ts'
 import type { StageDraft } from '../StageSheet.tsx'
@@ -1673,9 +1674,16 @@ export const problemsOf = (input: {
   if (
     draft.mode !== 'automatic' &&
     draft.maxEntries.trim() !== '' &&
-    !/^[1-9]\d*$/.test(draft.maxEntries.trim())
+    (!/^[1-9]\d*$/.test(draft.maxEntries.trim()) ||
+      Number(draft.maxEntries.trim()) > MAX_ENTRIES_PER_ITEM)
   ) {
-    found.push({ area: 'rules', block: 'counts', code: 'max-entries-invalid', tone: 'error' })
+    found.push({
+      area: 'rules',
+      block: 'counts',
+      code: 'max-entries-invalid',
+      tone: 'error',
+      values: { max: MAX_ENTRIES_PER_ITEM },
+    })
   }
   if (
     draft.mode !== 'automatic' &&

@@ -7,6 +7,7 @@ import {
   WRITTEN_TEXT_WIDTHS,
   type PreviewInput,
 } from '../src/administrative-import/preview.ts'
+import { MAX_ENTRIES_PER_ITEM } from '../src/api.ts'
 import type { ParsedWorkbook, TemplateColumn } from '../src/administrative-import/workbook.ts'
 import { AdministrativeEntryImportRow, EntryRevision } from '../src/db/entities.ts'
 
@@ -302,6 +303,28 @@ describe('judging a whole workbook', () => {
     expect(rows[0]!.issues.map((one) => one.reason)).not.toContain('max-entries-reached')
     expect(rows[1]!.issues.map((one) => one.reason)).toContain('max-entries-reached')
     expect(rows[2]!.issues.map((one) => one.reason)).toContain('max-entries-reached')
+  })
+
+  it('stops a question with no limit of its own at the platform ceiling', () => {
+    const rows = judgeRows(
+      base({
+        parsed: parsed(
+          [],
+          [
+            { rowNo: 2, businessNo: '0001', displayName: '张三', cells: {}, basis: '甲' },
+            { rowNo: 3, businessNo: '0001', displayName: '张三', cells: {}, basis: '乙' },
+          ],
+        ),
+        reachable: reachable('0001', 'p1', '张三'),
+        participantUserIds: new Map([['p1', 'u1']]),
+        maxEntries: null,
+        held: new Map([['p1', MAX_ENTRIES_PER_ITEM - 1]]),
+      }),
+    )
+    // "no limit" is no business rule, not no ceiling: the last place is
+    // taken by the first row, and the second is past it
+    expect(rows[0]!.issues.map((one) => one.reason)).not.toContain('entry-ceiling-reached')
+    expect(rows[1]!.issues.map((one) => one.reason)).toContain('entry-ceiling-reached')
   })
 
   it('warns about the same fact twice, and is not fooled by a different basis', () => {

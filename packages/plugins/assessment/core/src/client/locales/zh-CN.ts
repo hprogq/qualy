@@ -1793,6 +1793,8 @@ export default {
   'assessment/error/score-group-version-conflict': '分组已被其他人员修改，请刷新后重新操作。',
   'assessment/error/determination-refused': '该认定不符合当前计分规则：{reason}',
   'assessment/error/scoring-unavailable': '暂时无法计分，请稍后重试。',
+  'assessment/error/scoring-account-too-large':
+    '该成绩单的已通过条目超出单次计分上限，请联系批次管理员。',
   'assessment/error/administrative-import-not-found': '该导入记录已不存在。',
   'assessment/error/administrative-import-invalid': '该文件当前无法导入。',
   'assessment/error/administrative-import-busy': '其他文件正在读取中，请稍后重试。',
@@ -2001,7 +2003,7 @@ export default {
   'assessment/items/problem-escalation-required':
     '添加复核步骤，参评人员才能对统一认定的记录提出申诉',
   'assessment/items/problem-stage-unset': '审核步骤尚未设置处理人',
-  'assessment/items/problem-max-entries': '每人可申报条数至少为 1',
+  'assessment/items/problem-max-entries': '每人可申报条数须为 1 到 {max} 之间的整数',
   'assessment/items/problem-top-n': '计入条数至少为 1',
   'assessment/items/problem-strands-value': '已有 {count} 条记录认定为{names}，不能移出认定范围',
   'assessment/items/problem-strands': '已有 {count} 条记录的认定值不在该范围内',

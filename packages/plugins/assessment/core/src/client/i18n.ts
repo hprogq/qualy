@@ -6392,7 +6392,7 @@ const i18n = definePluginMessages({
     },
     itemsProblemMaxEntries: {
       id: 'assessment/items/problem-max-entries',
-      defaultMessage: 'Entries per person must be at least 1',
+      defaultMessage: 'Entries per person must be a whole number from 1 to {max}',
     },
     itemsProblemTopN: {
       id: 'assessment/items/problem-top-n',
@@ -7009,6 +7009,11 @@ const i18n = definePluginMessages({
     ASSESSMENT_SCORING_UNAVAILABLE: {
       id: 'assessment/error/scoring-unavailable',
       defaultMessage: 'Scoring is temporarily unavailable. Try again in a moment.',
+    },
+    ASSESSMENT_SCORING_ACCOUNT_TOO_LARGE: {
+      id: 'assessment/error/scoring-account-too-large',
+      defaultMessage:
+        'This result holds more approved entries than one calculation allows. Contact the batch administrator.',
     },
     ASSESSMENT_ADMINISTRATIVE_IMPORT_NOT_FOUND: {
       id: 'assessment/error/administrative-import-not-found',

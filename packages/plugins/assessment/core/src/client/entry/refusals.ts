@@ -27,6 +27,7 @@ const SENTENCES: Record<string, MessageDescriptor> = {
   'decision-superseded': m.refuseDecisionSuperseded,
   'review-already-open': m.refuseReviewOpen,
   'max-entries-reached': m.refuseMaxEntries,
+  'entry-ceiling-reached': m.refuseMaxEntries,
   'item-not-active': m.refuseItemVoided,
   'item-not-configured': m.refuseItemUnconfigured,
   'item-type-not-installed': m.refuseItemUnconfigured,

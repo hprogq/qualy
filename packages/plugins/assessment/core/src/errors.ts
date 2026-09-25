@@ -531,6 +531,20 @@ export class ScoringUnavailable extends Schema.TaggedError<ScoringUnavailable>()
   { httpApiStatus: 503, identifier: 'AssessmentScoringUnavailable' },
 ) {}
 
+/**
+ * One account asks for more evaluations than one reading may run.
+ *
+ * Refused as a whole rather than scored in part: a total that silently left
+ * claims out would be a wrong number, not a smaller one. Asking again
+ * changes nothing until claims on the account go; `limit` is the platform
+ * ceiling it passed.
+ */
+export class ScoringAccountTooLarge extends Schema.TaggedError<ScoringAccountTooLarge>()(
+  'ASSESSMENT_SCORING_ACCOUNT_TOO_LARGE',
+  { evaluations: Schema.Number, limit: Schema.Number },
+  { httpApiStatus: 422, identifier: 'AssessmentScoringAccountTooLarge' },
+) {}
+
 /** the bulk act named does not exist, or is not this reader's to see */
 export class AdministrativeImportNotFound extends Schema.TaggedError<AdministrativeImportNotFound>()(
   'ASSESSMENT_ADMINISTRATIVE_IMPORT_NOT_FOUND',

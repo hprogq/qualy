@@ -3,7 +3,14 @@ import { transaction, type Orm } from '@qualy/plugin-database/server'
 import { ScoringRuntimeCatalog, type PreparedCalculator } from '../plugin.ts'
 import type { Principal } from '@qualy/rbac-contract'
 import type { AccessDenied } from '@qualy/rbac-contract/effect'
-import { BatchNotFound, ParticipantNotFound, ScoringUnavailable } from '../errors.ts'
+import { hashCanonicalJson } from '@qualy/value-schema/hash'
+import { MAX_ACCOUNT_EVALUATIONS } from '../api.ts'
+import {
+  BatchNotFound,
+  ParticipantNotFound,
+  ScoringAccountTooLarge,
+  ScoringUnavailable,
+} from '../errors.ts'
 import { oneBatch, oneParticipant } from '../server/db.ts'
 import { groupsOf, itemsOf, revisionsByIdOf } from '../item/db.ts'
 import {
@@ -46,7 +53,11 @@ export interface ScoringMethods {
     as: Principal,
   ) => Effect.Effect<
     MyResultView,
-    BatchNotFound | ParticipantNotFound | ScoringUnavailable | AccessDenied,
+    | BatchNotFound
+    | ParticipantNotFound
+    | ScoringUnavailable
+    | ScoringAccountTooLarge
+    | AccessDenied,
     ScoringRuntimeCatalog
   >
   /**
@@ -65,7 +76,11 @@ export interface ScoringMethods {
     as: Principal,
   ) => Effect.Effect<
     MyResultView,
-    BatchNotFound | ParticipantNotFound | ScoringUnavailable | AccessDenied,
+    | BatchNotFound
+    | ParticipantNotFound
+    | ScoringUnavailable
+    | ScoringAccountTooLarge
+    | AccessDenied,
     ScoringRuntimeCatalog
   >
 }
@@ -223,6 +238,30 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
   ) =>
     Effect.gen(function* () {
       const plans = new Map(collected.items.map((item) => [item.id, item]))
+      // One evaluation per distinct determination on a question: a
+      // calculator sees nothing of a claim but what it was determined as,
+      // so claims determined alike are one piece of arithmetic (the key the
+      // settlement proof uses too). Counted before anything runs, so an
+      // account past the ceiling is refused whole rather than scored in part.
+      const keyOf = (itemId: string, recognition: Record<string, unknown>) =>
+        `${itemId}:${hashCanonicalJson(recognition)}`
+      const needed = new Set<string>()
+      for (const item of collected.items) {
+        if (item.status === 'active' && item.derived) needed.add(`derived:${item.id}`)
+      }
+      for (const entry of collected.entries) {
+        const item = plans.get(entry.itemId)
+        if (entry.status === 'approved' && item !== undefined && item.status === 'active') {
+          needed.add(keyOf(entry.itemId, entry.recognition))
+        }
+      }
+      if (needed.size > MAX_ACCOUNT_EVALUATIONS) {
+        return yield* new ScoringAccountTooLarge({
+          evaluations: needed.size,
+          limit: MAX_ACCOUNT_EVALUATIONS,
+        })
+      }
+      const evaluatedAmounts = new Map<string, bigint>()
       const items: ScoreInputItem[] = []
       for (const item of collected.items) {
         const common = {
@@ -312,17 +351,23 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
           // calculator ever sees of this claim
           recognition: entry.recognition,
         }
-        const evaluated = yield* evaluateEntry(yield* preparedFor(item), fact).pipe(
-          countEvaluation('result'),
-          Effect.catch((error) =>
-            mapResultFailure({ tenantId, batchId, itemId: item.id, plan: item.plan }, error),
-          ),
-        )
+        const key = keyOf(entry.itemId, entry.recognition)
+        let amount = evaluatedAmounts.get(key)
+        if (amount === undefined) {
+          const evaluated = yield* evaluateEntry(yield* preparedFor(item), fact).pipe(
+            countEvaluation('result'),
+            Effect.catch((error) =>
+              mapResultFailure({ tenantId, batchId, itemId: item.id, plan: item.plan }, error),
+            ),
+          )
+          amount = evaluated.amount
+          evaluatedAmounts.set(key, amount)
+        }
         entries.push({
           ...common,
           standing: 'counted',
           recognitionId: entry.recognitionId,
-          amount: evaluated.amount,
+          amount,
         })
       }
       return { groups: collected.groups, items, entries } satisfies ScoreInput
