@@ -1511,6 +1511,140 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     expect(result).toEqual({ narrowed: 'Success', outside: 'Failure', inside: 'Success' })
   })
 
+  // The narrowing that matters most in practice leaves the arithmetic alone
+  // and tightens only what the question admits (§32.84 ③⑤): an option
+  // switched off, a bound pulled in. The calculator would still read the
+  // value, so it is today's admission itself that has to stop it where the
+  // round would settle - and the preview says the same before the press.
+  it('stops a value the question stopped admitting, though the arithmetic still reads it', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-refined-open')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const authored = (refined: boolean, ids?: { level: string; ordinal: string }) => ({
+            version: 2,
+            calculator: { ref: 'two-fact-test@1', config: {} },
+            aggregator: { ref: 'sum@1', config: {} },
+            recognitions: [
+              {
+                handle: 'lvl',
+                ...(ids === undefined ? {} : { id: ids.level }),
+                label: '级别',
+                refinement: refined ? { type: 'string', enum: ['national'] } : null,
+                defaultFromFieldId: null,
+              },
+              {
+                handle: 'ord',
+                ...(ids === undefined ? {} : { id: ids.ordinal }),
+                label: '序位',
+                refinement: { type: 'integer', minimum: 1, maximum: refined ? 5 : 10 },
+                defaultFromFieldId: null,
+              },
+            ],
+            bindings: {
+              level: { kind: 'recognition', handle: 'lvl' },
+              ordinal: { kind: 'recognition', handle: 'ord' },
+            },
+          })
+          const g = yield* twoFacted(f, authored(false))
+          const { instanceId } = yield* claimed(f, g, g.p1)
+          const stored = one<{ recognitions: Record<string, { label: string }> }>(
+            yield* runSql(sql`
+              select r.scoring_config -> 'recognitions' as recognitions
+              from assessment_item_revisions r
+              join assessment_items i on i.current_revision_id = r.id
+              where i.id = ${g.item.id}`),
+          ).recognitions
+          const idOf = (label: string) =>
+            Object.entries(stored).find(([, one]) => one.label === label)![0]
+          const ids = { level: idOf('级别'), ordinal: idOf('序位') }
+          const narrowed = yield* Effect.exit(
+            assessment.updateItem(
+              f.t,
+              g.item.id,
+              {
+                config: {
+                  entryChannels: ['participant'] as const,
+                  formConfig: { files: {} },
+                  scoringConfig: authored(true, ids),
+                  reviewPolicy: policyOf(f),
+                },
+                reason: '停用省级并收紧序位',
+              },
+              admin,
+            ),
+          )
+          const values = (level: string, ordinal: number) => ({
+            [ids.level]: level,
+            [ids.ordinal]: ordinal,
+          })
+          const decide = (level: string, ordinal: number) =>
+            Effect.exit(
+              assessment.decideReview(
+                f.t,
+                instanceId,
+                {
+                  decision: 'approve',
+                  comment: 'checked',
+                  recognition: { values: values(level, ordinal) },
+                },
+                f.principal(f.reviewer),
+              ),
+            )
+          const preview = (level: string, ordinal: number) =>
+            assessment.previewDetermination(
+              f.t,
+              instanceId,
+              values(level, ordinal),
+              f.principal(f.reviewer),
+            )
+          const previewedOption = yield* preview('provincial', 3)
+          const previewedBound = yield* preview('national', 8)
+          const option = yield* decide('provincial', 3)
+          const bound = yield* decide('national', 8)
+          const settled = yield* decide('national', 3)
+          const recognitions = one<{ n: number }>(
+            yield* runSql(sql`
+              select count(*)::int as n from entry_recognitions r
+              join review_instances ri on ri.id = r.review_instance_id
+              where ri.id = ${instanceId}`),
+          ).n
+          return {
+            ids,
+            narrowed: narrowed._tag,
+            previewedOption,
+            previewedBound,
+            option: errorOf<{ issues: readonly { field: string }[] }>(option),
+            bound: errorOf<{ issues: readonly { field: string }[] }>(bound),
+            settled: settled._tag,
+            recognitions,
+          }
+        }),
+      ),
+    )
+    expect(result.narrowed).toBe('Success')
+    // what today's question no longer admits is said before and at the press
+    expect(result.previewedOption.issues.map((issue) => issue.recognitionId)).toEqual([
+      result.ids.level,
+    ])
+    expect(result.previewedOption.amount).toBeNull()
+    expect(result.previewedBound.issues.map((issue) => issue.recognitionId)).toEqual([
+      result.ids.ordinal,
+    ])
+    expect(result.option?.issues.map((issue) => issue.field)).toEqual([
+      `recognition.${result.ids.level}`,
+    ])
+    expect(result.bound?.issues.map((issue) => issue.field)).toEqual([
+      `recognition.${result.ids.ordinal}`,
+    ])
+    // and what it still admits settles; nothing was written for the others
+    expect(result.settled).toBe('Success')
+    expect(result.recognitions).toBe(1)
+  })
+
   it('holds an open round to the window it opened with', async () => {
     const result = ok(
       await run(

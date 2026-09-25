@@ -1380,12 +1380,16 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         }),
       ),
     )
-    const issues = judgeRecognition(
-      site.plan.recognitionSchemas,
-      values,
-      deps.parseRange(site.row.batchMaterialRange),
-    )
+    const range = deps.parseRange(site.row.batchMaterialRange)
+    const issues = judgeRecognition(site.plan.recognitionSchemas, values, range)
     if (issues.length > 0) return { issues, amount: null, refusal: null }
+    // and held to what the question admits today, as the decision is: an
+    // option switched off since the round opened would be refused there
+    const narrowed =
+      site.livePlan === site.plan
+        ? []
+        : judgeRecognition(site.livePlan.recognitionSchemas, values, range)
+    if (narrowed.length > 0) return { issues: narrowed, amount: null, refusal: null }
     const candidate = canonicalRecognition(
       site.plan.recognitionSchemas,
       values as RecognitionValues,
@@ -1586,6 +1590,30 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                     current.id === contract.id
                       ? plan
                       : yield* Effect.orDie(readScoringPlan(current))
+                  // The contract says what this round may be asked; today's
+                  // question says what it still admits (§32.84 ⑤). A value
+                  // narrowed away since the round opened - an option switched
+                  // off, a bound pulled in - is refused here, where it would
+                  // become a fact: the arithmetic may well still read it,
+                  // because a narrowing leaves the calculator alone.
+                  if (current.id !== contract.id) {
+                    const narrowed = judgeRecognition(
+                      livePlan.recognitionSchemas,
+                      values,
+                      deps.parseRange(row.batchMaterialRange),
+                    )
+                    if (narrowed.length > 0) {
+                      return yield* new EntryPayloadInvalid({
+                        issues: narrowed.map((issue) => ({
+                          field:
+                            issue.recognitionId === ''
+                              ? 'recognition'
+                              : `recognition.${issue.recognitionId}`,
+                          reason: issue.reason,
+                        })),
+                      })
+                    }
+                  }
                   const standing = yield* currentRecognitionOf(tenantId, row.entryId)
                   const identity = probeIdentity({
                     point,
