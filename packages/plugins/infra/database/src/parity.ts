@@ -1,6 +1,7 @@
 import { MikroORM } from '@mikro-orm/postgresql'
 import type { EntitySchema } from '@mikro-orm/core'
 import { closeAll, withCleanup } from './cleanup.ts'
+import { driverConnection } from './connection.ts'
 import { QualyNamingStrategy } from './naming.ts'
 
 // Is a database built from entities the database the product runs on?
@@ -103,7 +104,7 @@ export async function schemaParity(
     await generated.query(`drop table if exists ${options.tables.join(', ')} cascade`)
     const orm = await MikroORM.init({
       entities: [...options.entities, ...(options.dependencies?.entities ?? [])] as EntitySchema[],
-      clientUrl: generated.url,
+      ...driverConnection(generated.url),
       namingStrategy: QualyNamingStrategy,
       schemaGenerator: { skipTables: [...(options.dependencies?.tables ?? [])] },
       discovery: { warnWhenNoEntities: false },

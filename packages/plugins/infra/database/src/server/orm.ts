@@ -14,6 +14,7 @@ import {
   Redacted,
   References,
 } from 'effect'
+import { driverConnection } from '../connection.ts'
 import { QualyNamingStrategy } from '../naming.ts'
 import { DatabaseConfig } from './config.ts'
 import { unwrapPgError } from '../pg-errors.ts'
@@ -570,15 +571,14 @@ export const layer: Layer.Layer<Orm, DatabaseStartupFailed, DatabaseConfig | Ent
           try: () =>
             MikroORM.init({
               entities: entities as EntitySchema[],
-              clientUrl: Redacted.value(config.url),
-              namingStrategy: QualyNamingStrategy,
-              ...(config.poolSize === undefined ? {} : { pool: { min: 0, max: config.poolSize } }),
-              driverOptions: {
+              ...driverConnection(Redacted.value(config.url), {
                 onPoolCreated: (created: Pool) => {
                   pool = created
                   ledger.attach(created)
                 },
-              },
+              }),
+              namingStrategy: QualyNamingStrategy,
+              ...(config.poolSize === undefined ? {} : { pool: { min: 0, max: config.poolSize } }),
               // an assembly part way through the migration has entities for
               // some of its tables and none for the rest, which is not a
               // mistake

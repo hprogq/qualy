@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { DatabaseSchema, MikroORM, SchemaComparator } from '@mikro-orm/postgresql'
 import type { EntitySchema } from '@mikro-orm/core'
 import { Pool } from 'pg'
+import { driverConnection } from '../connection.ts'
 import { QualyNamingStrategy } from '../naming.ts'
 import { closeAll, withCleanup } from '../cleanup.ts'
 import { GENERATION_URL_VARIABLE } from '../defaults.ts'
@@ -100,7 +101,7 @@ const withScratch = <T>(scratch: Scratch, body: () => Promise<T>): Promise<T> =>
 const open = async (url: string, entities: readonly EntitySchema[]) =>
   MikroORM.init({
     entities: [...entities] as EntitySchema[],
-    clientUrl: url,
+    ...driverConnection(url),
     namingStrategy: QualyNamingStrategy,
     discovery: { warnWhenNoEntities: false },
     // introspection leaves the ledger out by name; it is the migrator's

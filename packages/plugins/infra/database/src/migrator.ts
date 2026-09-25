@@ -5,6 +5,7 @@ import { Migration, Migrator } from '@mikro-orm/migrations'
 import type { EntitySchema, MigrationObject } from '@mikro-orm/core'
 import { MikroORM } from '@mikro-orm/postgresql'
 import { Client } from 'pg'
+import { driverConnection } from './connection.ts'
 import { QualyNamingStrategy } from './naming.ts'
 
 // Applying the committed lineage, and nothing else.
@@ -182,7 +183,7 @@ export async function withMigrator<A>(
   await assertDatabaseExists(url)
   const orm = await MikroORM.init({
     entities: [...options.entities] as EntitySchema[],
-    clientUrl: url,
+    ...driverConnection(url),
     namingStrategy: QualyNamingStrategy,
     discovery: { warnWhenNoEntities: false },
     pool: { min: 1, max: 1 },
