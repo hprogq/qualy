@@ -384,6 +384,8 @@ export default {
   'assessment/result/out-of': '/ {full} 分',
   'assessment/result/head-note':
     '{pending, plural, =0 {{drafts, plural, =0 {目前没有审核中的申报} other {# 条草稿尚未提交，提交并通过后计入}}} other {# 条申报审核中，通过后计入成绩}}{trimmed, select, none {} other {；超出分组上限的 {trimmed} 分不计入}}',
+  'assessment/result/closed-note':
+    '{kind, select, archived {批次已归档，成绩不再变化} other {{reader, select, staff {已移出本批次参评名单} other {你已不在本批次参评名单中}}}}{trimmed, select, none {} other {；超出分组上限的 {trimmed} 分不计入}}',
   'assessment/result/outline-heading': '分组 {count}',
   'assessment/result/group-pending': '{count} 条审核中',
   'assessment/result/group-left': '还可得 {value}',

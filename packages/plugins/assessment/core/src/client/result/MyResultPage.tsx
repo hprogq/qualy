@@ -11,7 +11,7 @@ import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
-import type { EntryDto } from '../entry/model.ts'
+import type { EntryDto, FilingGateDto } from '../entry/model.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { useBatchLive } from '../live.ts'
 import { ResultLedger, ResultUnavailable } from './ResultLedger.tsx'
@@ -30,7 +30,7 @@ export default function MyResultPage() {
   return (
     // no band: the ledger carries its own head, with the total in it
     <BatchScreen title={format(m.resultTab)} size="full" chrome="none">
-      {(batch) => <Standing batchId={batch.id} />}
+      {(batch) => <Standing batchId={batch.id} archived={batch.status === 'archived'} />}
     </BatchScreen>
   )
 }
@@ -94,7 +94,7 @@ const styles = stylex.create({
   staleWhy: { flexBasis: '100%', color: tokens.mutedForeground },
 })
 
-function Standing({ batchId }: { batchId: string }) {
+function Standing({ batchId, archived }: { batchId: string; archived: boolean }) {
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
   const navigate = usePageNavigate()
@@ -143,6 +143,12 @@ function Standing({ batchId }: { batchId: string }) {
   // the filings, for what is still moving and for which claim a line was
   const mine = useQuery({ ...useMyEntriesQuery(batchId), refetchInterval: cadence })
   const entries = (mine.data?.entries ?? []) as readonly EntryDto[]
+  // Taken off the roster, a participant may still read their account but
+  // file into nothing: the server then hides the filing gate of every
+  // question, which it never does for anybody still on the roster.
+  const gates = (mine.data?.filing ?? []) as readonly FilingGateDto[]
+  const offRoster = gates.length > 0 && gates.every((gate) => gate.create.state === 'hidden')
+  const closed = archived ? 'archived' : offRoster ? 'excluded' : null
 
   const toEntries = (search?: Record<string, string>) =>
     navigate('assessment/batch-my-entries', {
@@ -263,6 +269,7 @@ function Standing({ batchId }: { batchId: string }) {
             entries={entries}
             heading={format(m.resultTab)}
             reader="owner"
+            closed={closed}
             emptyAction={goEntries}
             // a line leads to its claim on the filing page, opened there
             onEntryOpen={(entryId) => {

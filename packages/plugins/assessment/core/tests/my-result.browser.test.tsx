@@ -740,6 +740,67 @@ describe('rounds of other shapes', () => {
   })
 })
 
+describe('an account that has stopped moving', () => {
+  const tagOf = (itemId: string) =>
+    itemRow(itemId).querySelector('[data-tag]')?.getAttribute('data-tag') ?? null
+
+  it('promises nothing of an archived batch', async () => {
+    await page.viewport(1440, 900)
+    await screen(normal(), {
+      getBatch: () => Effect.succeed({ batch: { ...batch, status: 'archived' } }),
+    })
+    const moving = page.getByTestId('result-moving')
+    await expect.element(moving).toHaveAttribute('data-closed', 'archived')
+    // the claims still count where they stopped
+    await expect.element(moving).toHaveAttribute('data-pending', '10')
+    // but nothing is marked as waiting to be handled or decided
+    expect(tagOf('q3')).toBeNull()
+    expect(tagOf('q4')).toBeNull()
+    expect(itemRow('q4').querySelector('[data-made]')?.getAttribute('data-made')).toBe('claims')
+    await userEvent.click(itemRow('q3').querySelector('button[aria-expanded]') as HTMLElement)
+    expect(itemRow('q3').querySelector('[data-follow="todo"]')).toBeNull()
+  })
+
+  it('says so when the reader was taken off the roster', async () => {
+    await page.viewport(1440, 900)
+    const paper = normal()
+    const hidden = { state: 'hidden' as const, reason: null }
+    await screen(paper, {
+      listMyEntries: () =>
+        Effect.succeed({
+          participantId: PARTICIPANT_ID,
+          entries: paper.entries,
+          nextCursor: null,
+          attention: { unreadItemIds: [] },
+          filing: paper.items.map((one) => ({ itemId: one.id, create: hidden, submit: hidden })),
+        }),
+    })
+    await expect
+      .element(page.getByTestId('result-moving'))
+      .toHaveAttribute('data-closed', 'excluded')
+    expect(tagOf('q3')).toBeNull()
+  })
+
+  it('keeps an open batch open for somebody still on the roster', async () => {
+    await page.viewport(1440, 900)
+    const paper = normal()
+    const open = { state: 'available' as const, reason: null }
+    await screen(paper, {
+      listMyEntries: () =>
+        Effect.succeed({
+          participantId: PARTICIPANT_ID,
+          entries: paper.entries,
+          nextCursor: null,
+          attention: { unreadItemIds: [] },
+          filing: paper.items.map((one) => ({ itemId: one.id, create: open, submit: open })),
+        }),
+    })
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
+    expect(page.getByTestId('result-moving').element().hasAttribute('data-closed')).toBe(false)
+    expect(tagOf('q3')).toBe('todo')
+  })
+})
+
 describe('an account that cannot be computed', () => {
   it('says why an account over the ceiling will not compute, and offers no recalculation', async () => {
     const result = vi.fn(() =>

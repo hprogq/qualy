@@ -728,6 +728,11 @@ function useViewportHeight(seat: RefObject<HTMLElement | null>): number | null {
  * more than the ledger lists; a reader with nowhere to be taken passes
  * neither and the lines stay plain text. `heading` names the page when the
  * ledger is the page; without it the head says only "total score".
+ *
+ * `closed` says the account will not move on its own any more - the batch
+ * is archived, or the participant was taken off its roster - so nothing on
+ * it promises what a decision still to come would do, and nothing is marked
+ * as waiting on somebody who can no longer act.
  */
 export function ResultLedger({
   result,
@@ -740,6 +745,7 @@ export function ResultLedger({
   reader = 'owner',
   stickyTop = 0,
   align = 'center',
+  closed = null,
 }: {
   result: LedgerResult
   items: readonly LedgerItem[]
@@ -757,6 +763,8 @@ export function ResultLedger({
   stickyTop?: number
   /** centred when the ledger is the page; at the start inside a page that lines up there */
   align?: 'center' | 'start'
+  /** why the account has stopped moving, if it has */
+  closed?: 'archived' | 'excluded' | null
 }) {
   const model = useMemo(() => buildLedger({ result, items, entries }), [result, items, entries])
   const seat = useRef<HTMLDivElement>(null)
@@ -867,7 +875,7 @@ export function ResultLedger({
           align === 'start' && styles.measureStart,
         )}
       >
-        <Head model={model} mode={result.mode} heading={heading} />
+        <Head model={model} mode={result.mode} heading={heading} reader={reader} closed={closed} />
       </div>
       {/* a direct child of the whole ledger, so it holds for all of it */}
       {strip && (
@@ -909,6 +917,7 @@ export function ResultLedger({
                 titled={model.tops.length > 0}
                 bandTop={bandTop}
                 reader={reader}
+                closed={closed !== null}
                 open={open}
                 onToggle={toggle}
                 onEntryOpen={onEntryOpen}
@@ -956,10 +965,14 @@ function Head({
   model,
   mode,
   heading,
+  reader,
+  closed,
 }: {
   model: LedgerModel
   mode: string
   heading: ReactNode | undefined
+  reader: 'owner' | 'staff'
+  closed: 'archived' | 'excluded' | null
 }) {
   const { format } = useI18n()
   return (
@@ -998,13 +1011,21 @@ function Head({
           data-pending={model.pending}
           data-drafts={model.drafts}
           data-trimmed={two(model.trimmedCents)}
+          data-closed={closed ?? undefined}
           {...stylex.props(styles.note)}
         >
-          {format(m.resultHeadNote, {
-            pending: model.pending,
-            drafts: model.drafts,
-            trimmed: model.trimmedCents > 0 ? two(model.trimmedCents) : 'none',
-          })}
+          {/* a closed account says why it stopped, not what a decision would do */}
+          {closed === null
+            ? format(m.resultHeadNote, {
+                pending: model.pending,
+                drafts: model.drafts,
+                trimmed: model.trimmedCents > 0 ? two(model.trimmedCents) : 'none',
+              })
+            : format(m.resultClosedNote, {
+                kind: closed,
+                reader,
+                trimmed: model.trimmedCents > 0 ? two(model.trimmedCents) : 'none',
+              })}
         </p>
       </div>
       {model.shares !== null && model.shares.length > 0 && (
@@ -1194,6 +1215,7 @@ function Section({
   titled,
   bandTop,
   reader,
+  closed,
   open,
   onToggle,
   onEntryOpen,
@@ -1207,6 +1229,7 @@ function Section({
   titled: boolean
   bandTop: number
   reader: 'owner' | 'staff'
+  closed: boolean
   open: ReadonlySet<string>
   onToggle: (id: string) => void
   onEntryOpen: ((entryId: string) => void) | undefined
@@ -1248,13 +1271,17 @@ function Section({
           {group?.full === true && (
             <span {...stylex.props(styles.fullMark)}>{format(m.resultGroupFull)}</span>
           )}
-          {group !== null && !group.full && (group.pending > 0 || group.leftCents !== null) && (
-            <span {...stylex.props(styles.bandNote)}>
-              {group.pending > 0
-                ? format(m.resultGroupPending, { count: group.pending })
-                : format(m.resultGroupLeft, { value: two(group.leftCents ?? 0) })}
-            </span>
-          )}
+          {/* room left and claims still to be decided are promises a closed account cannot keep */}
+          {group !== null &&
+            !closed &&
+            !group.full &&
+            (group.pending > 0 || group.leftCents !== null) && (
+              <span {...stylex.props(styles.bandNote)}>
+                {group.pending > 0
+                  ? format(m.resultGroupPending, { count: group.pending })
+                  : format(m.resultGroupLeft, { value: two(group.leftCents ?? 0) })}
+              </span>
+            )}
           <span {...stylex.props(styles.spacer)} />
           <Figure
             cents={group?.cents ?? looseCents}
@@ -1274,6 +1301,7 @@ function Section({
             item={row}
             first={!banded && first && index === 0}
             reader={reader}
+            closed={closed}
             open={open.has(row.id)}
             onToggle={onToggle}
             onEntryOpen={onEntryOpen}
@@ -1456,6 +1484,7 @@ function ItemRow({
   item,
   first,
   reader,
+  closed,
   open,
   onToggle,
   onEntryOpen,
@@ -1464,6 +1493,8 @@ function ItemRow({
   item: LedgerItemView
   first: boolean
   reader: 'owner' | 'staff'
+  /** the account has stopped moving: nothing waits on anybody */
+  closed: boolean
   open: boolean
   onToggle: (id: string) => void
   onEntryOpen: ((entryId: string) => void) | undefined
@@ -1478,7 +1509,7 @@ function ItemRow({
   // the claims waiting on the participant: the one claim itself, or the
   // question on the filing page when there are several
   const toWaiting =
-    item.facts.asked + item.facts.returned === 0
+    closed || item.facts.asked + item.facts.returned === 0
       ? null
       : waitingOn !== null && onEntryOpen !== undefined
         ? () => onEntryOpen(waitingOn)
@@ -1492,7 +1523,9 @@ function ItemRow({
       : null
   // nothing on the account yet, and claims to go to
   const lead = item.lines.length === 0 ? toAside : null
-  const tag = tagOf(item)
+  // on a closed account the counts still say where each claim stopped, but
+  // no mark says one is waiting to be handled or decided
+  const tag = closed ? null : tagOf(item)
   const rule = ruleOf(item)
   const made = madeOf(item, tag, reader, format, list, (at) => dayOf(at, locale, zone))
   const nothing = item.lines.length === 0 && item.cents === 0
