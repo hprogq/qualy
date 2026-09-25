@@ -34,11 +34,19 @@ const group = HttpApiGroup.make('probe')
       error: [Refused],
     }),
   )
+  .add(
+    HttpApiEndpoint.get('drift', '/probe/drift', {
+      success: Schema.Struct({ status: Schema.Literals(['open', 'closed']) }),
+    }),
+  )
 const api = HttpApi.make('probe').add(group).prefix(QUALY_API_PREFIX)
 const handlers = HttpApiBuilder.group(api, 'probe', (h) =>
   h
     .handle('take', () => Effect.succeed({ ok: true }))
-    .handle('refuse', () => Effect.fail(new Refused({ why: 'as asked' }))),
+    .handle('refuse', () => Effect.fail(new Refused({ why: 'as asked' })))
+    // a stored value the output schema no longer admits: the server's own
+    // answer will not encode, whatever the request was
+    .handle('drift', () => Effect.succeed({ status: 'archived' } as unknown as { status: 'open' })),
 )
 
 const serving = <A>(use: () => Promise<A>) =>
@@ -89,5 +97,18 @@ describe('a request its own schema will not read', () => {
     expect(seen.refused.body).toEqual({ _tag: 'PROBE_REFUSED', why: 'as asked' })
 
     expect(seen.good.status).toBe(200)
+  }, 30_000)
+
+  it('answers a response that will not encode as the server fault it is', async () => {
+    // The same schema error is raised for the response the server failed to
+    // encode, and it was answered as the caller's malformed request: a 400
+    // telling the browser its input was invalid on a plain GET, logged at
+    // Debug where production never looks.
+    const drift = await serving(async () => {
+      const response = await fetch(`${base}/probe/drift`)
+      return { status: response.status, body: await response.text() }
+    })
+    expect(drift.status).toBe(500)
+    expect(drift.body).not.toContain('BAD_REQUEST')
   }, 30_000)
 })

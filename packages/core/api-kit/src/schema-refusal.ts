@@ -22,15 +22,25 @@ import { BadRequest } from './schema.ts'
 // headers, payload - and nothing else. The detail belongs in the log: which
 // field and what was expected is the caller's own input coming back at them,
 // and a decoder's message is not a translated string.
+//
+// Upstream raises the same error, answered the same empty 400, for the two
+// halves of the RESPONSE it encodes after the handler has succeeded: `Body`
+// and `ResponseHeaders` (HttpApiBuilder.ts, where the success is encoded).
+// Those are this server failing its own schema - a stored value the output
+// schema no longer admits - and a 400 blamed the caller for it, logged at
+// Debug where production never looks. They are faults, answered 500.
 
-const PART: Record<HttpApiError.HttpApiSchemaError['kind'], string> = {
+type RequestPart = 'Params' | 'Headers' | 'Query' | 'Payload'
+
+const PART: Record<RequestPart, string> = {
   Params: 'the address',
   Headers: 'the request headers',
   Query: 'the query',
-  Body: 'the request body',
   Payload: 'the request payload',
-  ResponseHeaders: 'the response headers',
 }
+
+const isRequestPart = (kind: HttpApiError.HttpApiSchemaError['kind']): kind is RequestPart =>
+  Object.hasOwn(PART, kind)
 
 /**
  * The refusal as this product spells refusals, built without an api context.
@@ -41,8 +51,8 @@ const PART: Record<HttpApiError.HttpApiSchemaError['kind'], string> = {
  * spreading the instance silently drops it and leaves a body with a tag and
  * nothing in it.
  */
-const refusal = (kind: HttpApiError.HttpApiSchemaError['kind']) => {
-  const message = `${PART[kind] ?? 'the request'} is not in the shape this endpoint accepts`
+const refusal = (kind: RequestPart) => {
+  const message = `${PART[kind]} is not in the shape this endpoint accepts`
   return HttpServerResponse.text(
     JSON.stringify({ _tag: new BadRequest({ message })._tag, message }),
     { status: 400, contentType: 'application/json' },
@@ -65,6 +75,16 @@ export const schemaRefusals = HttpRouter.middleware(
         return Effect.failCause(cause)
       }
       const refused = found.success
+      if (!isRequestPart(refused.kind)) {
+        // Re-raised as a defect upstream does not know how to answer, so the
+        // platform's own 500 goes out and the access log writes the cause at
+        // Error. Passing the original through would be upstream's empty 400.
+        return Effect.die(
+          new Error(`the response did not encode against its own schema (${refused.kind})`, {
+            cause: refused.cause,
+          }),
+        )
+      }
       return Effect.as(
         Effect.logDebug('request refused by its own schema', {
           kind: refused.kind,
