@@ -1,7 +1,8 @@
 // A look at what the seeded demo database scores, through the product's own
 // scorer: per batch, the spread of totals and of each section over a sample
 // of participants, so a run can be judged against the real cohort's (whose
-// medians sat around 71 to 75).
+// medians sat around 71 to 75). Then what each demonstration account opens
+// onto (situations.ts): the run fails when any of it came out empty.
 //
 //   QUALY_DEMO_DATABASE_URL=… node tools/demo/check.ts [sample=80]
 
@@ -12,6 +13,7 @@ import { runSql } from '@qualy/plugin-database/testkit'
 import { demoUrl } from './target.ts'
 import { runOverDemo, runSeedingHooks } from './runtime.ts'
 import { principalOf } from './seed/context.ts'
+import { personaSituations } from './situations.ts'
 
 const url = demoUrl()
 const sample = Number(process.argv[2] ?? 80)
@@ -106,5 +108,16 @@ await runOverDemo(
       `claims off their verdict ${broken.verdicts} · behind their determination ${broken.determinations} · open rounds nobody stands on ${broken.orphans}`,
     )
     if (broken.verdicts + broken.determinations + broken.orphans > 0) process.exitCode = 1
+
+    // what each demonstration account opens onto
+    const { situations, missing } = yield* personaSituations
+    console.log('\nwhat the demonstration accounts open onto:')
+    for (const one of situations) {
+      console.log(`  ${one.account.padEnd(10)} ${String(one.count).padStart(4)}  ${one.label}`)
+    }
+    if (missing.length > 0) {
+      console.log(`\nmissing:\n  ${missing.join('\n  ')}`)
+      process.exitCode = 1
+    }
   }) as Effect.Effect<void, unknown, never>,
 )
