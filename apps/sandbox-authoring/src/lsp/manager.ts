@@ -16,7 +16,6 @@
  */
 
 import { spawn, type ChildProcess } from 'node:child_process'
-import prettier from 'prettier'
 import { randomBytes } from 'node:crypto'
 import { Cause, Effect, Queue, type Scope } from 'effect'
 import {
@@ -41,6 +40,7 @@ import {
   type LspWorkspace,
 } from '@qualy/formula-compiler'
 import { encodeFrame, FrameParser } from './frames.ts'
+import { Formatter } from './formatter.ts'
 import { FORMULA_URI, makeUriBoundary, rewriteStrings, type UriBoundary } from './uris.ts'
 
 const INBOUND_METHODS: ReadonlySet<string> = new Set([
@@ -83,6 +83,8 @@ interface Session {
   /** the client's own document version, echoed on policy pushes (LSP 3.15) */
   documentVersion: number
   closing: boolean
+  /** whether a formatting answer is still owed; one at a time per session */
+  formatting: boolean
 }
 
 /** json syntax is not shape: a frame must be a non-null, non-array object */
@@ -155,6 +157,14 @@ const limitOf = (name: string, fallback: number): number => {
 }
 const IDLE_MS = limitOf('QUALY_LSP_IDLE_MS', LSP_SESSION_LIMITS.idleMs)
 const ABSOLUTE_MS = limitOf('QUALY_LSP_ABSOLUTE_MS', LSP_SESSION_LIMITS.absoluteMs)
+/**
+ * How long one document may take to format. A whole formula at the source
+ * ceiling formats in well under a second; a document that nests deeply
+ * enough to take longer is answered as unformattable.
+ */
+const FORMAT_MS = limitOf('QUALY_LSP_FORMAT_MS', 3_000)
+/** the formatting thread's heap: a formula at the source ceiling needs a fraction of it */
+const FORMAT_HEAP_MB = 128
 
 export const makeLspManager = (): LspManager => {
   const sessions = new Map<string, Session>()
@@ -166,6 +176,8 @@ export const makeLspManager = (): LspManager => {
   const releasePermit = (): void => {
     permits += 1
   }
+  // one thread formats for every session, one document at a time
+  const formatter = new Formatter({ deadlineMs: FORMAT_MS, heapMb: FORMAT_HEAP_MB })
 
   const pushEvent = (session: Session, jsonRpc: string): void => {
     session.outSequence += 1
@@ -193,19 +205,29 @@ export const makeLspManager = (): LspManager => {
     )
   }
 
-  // the formatter is deliberately the REPOSITORY's own style, frozen: a
-  // formula reads like every example in the docs, and running format twice
-  // changes nothing
-  const FORMAT_STYLE = {
-    parser: 'typescript',
-    semi: false,
-    singleQuote: true,
-    printWidth: 100,
-  } as const
+  const unformattable = (session: Session, requestId: number | string): void => {
+    if (session.closing) return
+    pushEvent(
+      session,
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: requestId,
+        error: { code: -32603, message: 'the document cannot be formatted' },
+      }),
+    )
+  }
 
   const formatSession = (session: Session, requestId: number | string, text: string): void => {
-    void prettier
-      .format(text, FORMAT_STYLE)
+    // a session waits for its own answer before asking again: a second
+    // request meanwhile is refused at once rather than queued behind the
+    // first, so no one session can stack up the formatting thread
+    if (session.formatting) {
+      unformattable(session, requestId)
+      return
+    }
+    session.formatting = true
+    void formatter
+      .format(text)
       .then((formatted) => {
         if (session.closing) return
         const edits =
@@ -225,17 +247,13 @@ export const makeLspManager = (): LspManager => {
         pushEvent(session, frame)
       })
       .catch(() => {
-        // a syntactically broken document cannot be formatted; the person
-        // already sees the diagnostics, the request just answers empty-handed
-        if (session.closing) return
-        pushEvent(
-          session,
-          JSON.stringify({
-            jsonrpc: '2.0',
-            id: requestId,
-            error: { code: -32603, message: 'the document cannot be formatted' },
-          }),
-        )
+        // a syntactically broken document, or one that could not be
+        // formatted in time; the person already sees the diagnostics, the
+        // request just answers empty-handed
+        unformattable(session, requestId)
+      })
+      .finally(() => {
+        session.formatting = false
       })
   }
 
@@ -383,6 +401,7 @@ export const makeLspManager = (): LspManager => {
         text: initialSource,
         documentVersion: 0,
         closing: false,
+        formatting: false,
       }
       sessions.set(id, session)
       const parser = new FrameParser()
@@ -498,10 +517,11 @@ export const makeLspManager = (): LspManager => {
       session.lastClientSequence = request.sequence
       session.lastActivity = Date.now()
 
-      // formatting is answered HERE, by prettier over the synced document -
-      // the language server's formatter only fixes whitespace it already
-      // agrees with, and the product wants a normal form. The edits are the
-      // person's own source rearranged: pushed opaque, never path-scanned.
+      // formatting is answered HERE, by prettier over the synced document on
+      // the formatting thread - the language server's formatter only fixes
+      // whitespace it already agrees with, and the product wants a normal
+      // form. The edits are the person's own source rearranged: pushed
+      // opaque, never path-scanned.
       if (method === 'textDocument/formatting') {
         const requestId = message['id']
         if (typeof requestId !== 'number' && typeof requestId !== 'string')
@@ -545,8 +565,10 @@ export const makeLspManager = (): LspManager => {
     return Promise.all(doomed.map((session) => closeSession(session)))
   }
 
+  // the manager's end: every session, and the formatting thread with them
   const closeAll = async (): Promise<void> => {
     await Promise.all([...sessions.values()].map((session) => closeSession(session)))
+    await formatter.shutdown()
   }
 
   return {

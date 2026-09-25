@@ -703,6 +703,78 @@ describe('the hostile author', { concurrent: false }, () => {
     await Effect.runPromise(client.CloseLsp({ sessionId: reopened.sessionId }))
   }, 120_000)
 
+  it('formats off the thread that answers everybody else, and gives up in time', async () => {
+    // nested callbacks: a few kilobytes that keep prettier printing for
+    // most of a minute, and never yield while it does
+    const nest = (depth: number) => {
+      let inner = '1'
+      for (let level = 0; level < depth; level += 1) inner = `f(a, () => ${inner})`
+      return inner
+    }
+    const heavy = Array.from({ length: 5 }, (_, index) => `const x${index} = ${nest(250)}\n`).join(
+      '',
+    )
+    const session = await openSession(FIXTURE)
+    try {
+      await initialize(session, FIXTURE)
+      await session.send({
+        method: 'textDocument/didChange',
+        params: {
+          textDocument: { uri: 'qualy-formula:///formula.ts', version: 2 },
+          contentChanges: [{ text: heavy }],
+        },
+      })
+      const started = Date.now()
+      await session.send({
+        id: 9001,
+        method: 'textDocument/formatting',
+        params: {
+          textDocument: { uri: 'qualy-formula:///formula.ts' },
+          options: { tabSize: 2, insertSpaces: true },
+        },
+      })
+      // a second ask while the first is owed is answered at once, not queued
+      await session.send({
+        id: 9002,
+        method: 'textDocument/formatting',
+        params: {
+          textDocument: { uri: 'qualy-formula:///formula.ts' },
+          options: { tabSize: 2, insertSpaces: true },
+        },
+      })
+      const second = (await session.awaitEvent(
+        (message) => (message as { id?: number }).id === 9002,
+      )) as { error?: { code: number } }
+      expect(second.error?.code).toBe(-32603)
+      // the service keeps answering while the document is being printed
+      const asked = Date.now()
+      await activeSessions()
+      expect(Date.now() - asked).toBeLessThan(1_000)
+      const first = (await session.awaitEvent(
+        (message) => (message as { id?: number }).id === 9001,
+        20_000,
+      )) as { error?: { code: number } }
+      expect(first.error?.code).toBe(-32603)
+      expect(Date.now() - started).toBeLessThan(10_000)
+
+      // and the next document is formatted as usual
+      await session.send({
+        method: 'textDocument/didChange',
+        params: {
+          textDocument: { uri: 'qualy-formula:///formula.ts', version: 3 },
+          contentChanges: [{ text: 'const  a =1\n' }],
+        },
+      })
+      const edits = (await session.request('textDocument/formatting', {
+        textDocument: { uri: 'qualy-formula:///formula.ts' },
+        options: { tabSize: 2, insertSpaces: true },
+      })) as readonly { newText: string }[]
+      expect(edits.map((edit) => edit.newText)).toEqual(['const a = 1\n'])
+    } finally {
+      await session.close()
+    }
+  }, 120_000)
+
   it('returns from close only once the process is dead and the workspace gone', async () => {
     if (external) return // pids and tmp directories are the container's own
     const workspacesBefore = lspWorkspaceCount()
