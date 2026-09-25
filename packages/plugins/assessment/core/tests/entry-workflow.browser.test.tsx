@@ -2273,7 +2273,7 @@ describe('judging a submission', () => {
     const reopen = async (id: string) => {
       await vi.waitFor(() => expect(addressNow()).toContain(id))
       await page.getByRole('button', { name: /退回/ }).click()
-      await expect.element(page.getByLabelText('审核意见', { exact: false })).toHaveValue(said[id]!)
+      await expect.element(page.getByLabelText('审核意见', { exact: false })).toHaveValue(said[id])
       await page
         .getByRole('dialog')
         .getByRole('button', { name: /取消/ })
