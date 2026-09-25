@@ -9,7 +9,12 @@ import {
   ShellPolicyHeader,
   ShellPolicyRefused,
 } from '../src/server/shell-policy.ts'
-import { MAX_TRACKED_KEYS, makeReportDeduper, parseReports } from '../src/server/csp-reports.ts'
+import {
+  MAX_LOGGED_PER_WINDOW,
+  MAX_TRACKED_KEYS,
+  makeReportDeduper,
+  parseReports,
+} from '../src/server/csp-reports.ts'
 
 // The policy as a string, and the two things that decide it: what the
 // shell writes on its own, and what a plugin may add. Then the freeze - one
@@ -268,25 +273,54 @@ describe('reading a report', () => {
 
   it('logs a key once a minute and carries the suppressed count forward', () => {
     const deduplicate = makeReportDeduper(60_000)
-    expect(deduplicate('k', 0)).toEqual({ log: true, suppressed: 0 })
-    expect(deduplicate('k', 1_000)).toEqual({ log: false, suppressed: 1 })
-    expect(deduplicate('k', 59_999)).toEqual({ log: false, suppressed: 2 })
-    expect(deduplicate('other', 2_000)).toEqual({ log: true, suppressed: 0 })
-    expect(deduplicate('k', 60_000)).toEqual({ log: true, suppressed: 2 })
-    expect(deduplicate('k', 60_001)).toEqual({ log: false, suppressed: 1 })
+    expect(deduplicate('k', 0)).toEqual({ log: true, suppressed: 0, dropped: 0 })
+    expect(deduplicate('k', 1_000)).toEqual({ log: false, suppressed: 1, dropped: 0 })
+    expect(deduplicate('k', 59_999)).toEqual({ log: false, suppressed: 2, dropped: 0 })
+    expect(deduplicate('other', 2_000)).toEqual({ log: true, suppressed: 0, dropped: 0 })
+    expect(deduplicate('k', 60_000)).toEqual({ log: true, suppressed: 2, dropped: 0 })
+    expect(deduplicate('k', 60_001)).toEqual({ log: false, suppressed: 1, dropped: 0 })
+  })
+
+  it('writes a bounded number of lines per window however many new keys arrive', () => {
+    // The key is whatever the sender wrote, so a fresh blocked url per report
+    // used to be a fresh Warn line per report - 32 a request, from anybody.
+    const deduplicate = makeReportDeduper(60_000)
+    const logged = Array.from(
+      { length: MAX_LOGGED_PER_WINDOW + 100 },
+      (_, i) => deduplicate(`flood-${i}`, 1_000).log,
+    ).filter(Boolean).length
+    expect(logged).toBe(MAX_LOGGED_PER_WINDOW)
+    // a key logged before the budget ran out is still deduplicated as before
+    expect(deduplicate('flood-0', 1_500)).toEqual({ log: false, suppressed: 1, dropped: 0 })
+
+    // the next window's first line says how many went unlogged, once
+    expect(deduplicate('real-problem', 61_000)).toEqual({ log: true, suppressed: 0, dropped: 100 })
+    expect(deduplicate('another', 61_001)).toEqual({ log: true, suppressed: 0, dropped: 0 })
+  })
+
+  it('keeps counting a known key while the budget is spent', () => {
+    const deduplicate = makeReportDeduper(60_000, 1)
+    expect(deduplicate('known', 0).log).toBe(true)
+    // the window of the key passes inside a spent budget window of its own
+    expect(deduplicate('other', 60_000).log).toBe(true)
+    expect(deduplicate('known', 60_500)).toEqual({ log: false, suppressed: 1, dropped: 0 })
+    // and its next line carries that repeat rather than losing it
+    expect(deduplicate('known', 120_000)).toEqual({ log: true, suppressed: 1, dropped: 0 })
   })
 
   it('holds a bounded number of keys however many distinct ones arrive', () => {
     // The key is three fields off an unauthenticated body, so the window
     // bounds nothing on its own: inside one window there is never anything
     // old enough to expire, and the table grew with whatever was posted.
-    const deduplicate = makeReportDeduper(60_000)
+    // (the logging budget would stop a flood long before this; lifted here
+    // so the table's own bound is what is under test)
+    const deduplicate = makeReportDeduper(60_000, Number.POSITIVE_INFINITY)
     for (let i = 0; i < MAX_TRACKED_KEYS * 3; i++) deduplicate(`key-${i}`, 1_000)
     // the oldest keys went, so the first one is logged as new again
-    expect(deduplicate('key-0', 1_000)).toEqual({ log: true, suppressed: 0 })
+    expect(deduplicate('key-0', 1_000)).toEqual({ log: true, suppressed: 0, dropped: 0 })
     // while one still inside the table is remembered
     const recent = `key-${MAX_TRACKED_KEYS * 3 - 1}`
-    expect(deduplicate(recent, 1_000)).toEqual({ log: false, suppressed: 1 })
+    expect(deduplicate(recent, 1_000)).toEqual({ log: false, suppressed: 1, dropped: 0 })
   })
 
   it('reads a bounded number of reports out of one body', () => {

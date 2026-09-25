@@ -11,6 +11,7 @@ import { assembledBarrier, assembledLayer, AssemblyInfo } from '@qualy/api-kit/a
 import { NodeServer } from '@qualy/api-kit/node'
 import { requestOriginGuard } from '@qualy/api-kit/origin'
 import { shellPolicyLayer } from '@qualy/api-kit/shell-policy'
+import { MAX_LOGGED_PER_WINDOW } from '../src/server/csp-reports.ts'
 import { WebConfig, layer as policyLayer, routes } from '../src/server/index.ts'
 import { composeShellPolicy, type CspMode } from '../src/server/shell-policy.ts'
 import { TEST_CONTRACT, installTestRelease } from './support/store.ts'
@@ -236,5 +237,27 @@ describe('the report endpoint', () => {
       body: legacy({}),
     })
     expect(response.status).toBe(403)
+  })
+
+  it('writes a bounded number of lines however many different reports are posted', async () => {
+    // a fresh blocked url in every report is a fresh key, and every fresh key
+    // used to be a Warn line: anybody could rotate the retained log away
+    const before = violations().length
+    const flood = (round: number) =>
+      JSON.stringify(
+        Array.from({ length: 32 }, (_, index) => ({
+          type: 'csp-violation',
+          body: {
+            effectiveDirective: 'img-src',
+            blockedURL: `https://noise.example/${String(round)}/${String(index)}`,
+          },
+        })),
+      )
+    for (let round = 0; round < 5; round += 1) {
+      expect((await post(flood(round), 'application/reports+json')).status).toBe(204)
+    }
+    const written = violations().length - before
+    expect(written).toBeGreaterThan(0)
+    expect(written).toBeLessThanOrEqual(MAX_LOGGED_PER_WINDOW)
   })
 })

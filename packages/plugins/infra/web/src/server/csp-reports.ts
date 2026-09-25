@@ -17,6 +17,14 @@ import { REPORT_PATH } from './shell-policy.ts'
 // the minute are counted, and the next report after the minute is logged
 // with that count. Nothing here is scheduled; the count rides the next
 // line rather than a timer.
+//
+// The key is written by whoever posts, so deduplication alone bounds
+// nothing: a script sending a fresh blocked url every time got one Warn
+// line per report, 32 per request, and could rotate a deployment's whole
+// retained log away in minutes. So the endpoint also has a budget of lines
+// per window, whoever is sending. Past it a new key is counted and not
+// remembered - remembering it would let a flood push real keys out of the
+// table - and the next line written says how many went unlogged.
 
 /** the most a report body may be; a browser's report is a few hundred bytes */
 export const MAX_REPORT_BYTES = 64 * 1024
@@ -134,6 +142,24 @@ export const reportKey = (report: CspReport): string =>
 export const MAX_TRACKED_KEYS = 4096
 
 /**
+ * How many report lines the endpoint writes per window, all senders together.
+ *
+ * A real policy problem is a handful of keys, each logged once a minute; this
+ * is room for a bad release breaking many pages at once, and a ceiling of
+ * about three thousand lines an hour for somebody posting noise on purpose.
+ */
+export const MAX_LOGGED_PER_WINDOW = 50
+
+export interface ReportVerdict {
+  /** whether this report is written to the log */
+  readonly log: boolean
+  /** repeats of the same key swallowed since it was last written */
+  readonly suppressed: number
+  /** reports of new keys left unlogged over the budget since the last line; carried by a logged verdict only */
+  readonly dropped: number
+}
+
+/**
  * Once per key per window.
  *
  * `suppressed` on a logged report is how many repeats of the same key were
@@ -147,14 +173,36 @@ export const MAX_TRACKED_KEYS = 4096
  * longest ago when it is full. An entry past its window is harmless where
  * it sits: the read above already treats it as expired.
  */
-export const makeReportDeduper = (windowMs: number = REPORT_WINDOW_MS) => {
+export const makeReportDeduper = (
+  windowMs: number = REPORT_WINDOW_MS,
+  budget: number = MAX_LOGGED_PER_WINDOW,
+) => {
   const seen = new Map<string, { since: number; repeats: number }>()
-  return (key: string, now: number): { readonly log: boolean; readonly suppressed: number } => {
+  // the budget's own window: a fixed one, opened by the first line that
+  // wants writing after the previous one closed
+  let opened = Number.NEGATIVE_INFINITY
+  let spent = 0
+  let dropped = 0
+  return (key: string, now: number): ReportVerdict => {
     const entry = seen.get(key)
     if (entry !== undefined && now - entry.since < windowMs) {
       entry.repeats += 1
-      return { log: false, suppressed: entry.repeats }
+      return { log: false, suppressed: entry.repeats, dropped: 0 }
     }
+    if (now - opened >= windowMs) {
+      opened = now
+      spent = 0
+    }
+    if (spent >= budget) {
+      // a known key keeps counting, so its next line still says how often
+      // it came; a new one is only counted
+      if (entry === undefined) dropped += 1
+      else entry.repeats += 1
+      return { log: false, suppressed: entry?.repeats ?? 0, dropped: 0 }
+    }
+    spent += 1
+    const unlogged = dropped
+    dropped = 0
     const suppressed = entry?.repeats ?? 0
     seen.delete(key)
     seen.set(key, { since: now, repeats: 0 })
@@ -165,7 +213,7 @@ export const makeReportDeduper = (windowMs: number = REPORT_WINDOW_MS) => {
       if (oldest.done === true) break
       seen.delete(oldest.value)
     }
-    return { log: true, suppressed }
+    return { log: true, suppressed, dropped: unlogged }
   }
 }
 
@@ -220,6 +268,11 @@ export const addReportRoute = (
       for (const report of reports) {
         const verdict = deduplicate(reportKey(report), now)
         if (!verdict.log) continue
+        if (verdict.dropped > 0) {
+          yield* Effect.logWarning(
+            'content security policy reports went unlogged over the per-minute budget',
+          ).pipe(Effect.annotateLogs({ source: options.source, dropped: verdict.dropped }))
+        }
         yield* Effect.logWarning('content security policy violation reported').pipe(
           Effect.annotateLogs({
             source: options.source,
