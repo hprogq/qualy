@@ -550,6 +550,75 @@ describe('the round moving on mid-thought', () => {
   })
 })
 
+// The rail's badge reads the desk's own count, not the queue, so every
+// wake-up the workbench hears about the queue has to reach that count too;
+// otherwise the badge sits on a stale number until its own half-minute poll.
+describe('the rail badge beside the workbench', () => {
+  it.each(['sync', 'phase-changed', 'review-instance-changed', 'review-inbox-changed'] as const)(
+    'counts again when the queue is woken by %s',
+    async (kind) => {
+      await page.viewport(1440, 900)
+      let waiting = 3
+      const desk = () =>
+        Effect.succeed({
+          participant: null,
+          reviewer: {
+            pendingCount: waiting,
+            answeredAskCount: 0,
+            queueGroups: [{ name: '学业', count: waiting }],
+            answeredAsks: [],
+          },
+        })
+      let release = () => {}
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const wake = () =>
+        Effect.succeed(
+          Stream.concat(
+            Stream.fromEffect(Effect.promise(() => gate).pipe(Effect.as({ kind }))),
+            Stream.never,
+          ),
+        )
+      await renderScreen({
+        client: fakeClient({
+          app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+          assessment: {
+            getBatch: () => Effect.succeed({ batch: batch() }),
+            listReviewInbox: () =>
+              Effect.succeed({ items: [inboxRow()], nextCursor: null, handledToday: 0 }),
+            getReviewInstance: () => Effect.succeed({ review }),
+            getEntryHistory: () => Effect.succeed({ revisions: [], events: [], rounds: [] }),
+            getMyOverview: desk,
+            watchBatch: wake,
+          },
+        }),
+        routes: [
+          {
+            path: '/assessment/batches/:batchId/reviews/:instanceId',
+            // the rail the shell draws beside the page, holding the badge
+            element: (
+              <>
+                <QueueBadge navigationId="assessment/batch-reviews/rail" />
+                <div style={{ display: 'flex', height: '90dvh', flexDirection: 'column' }}>
+                  <ReviewInstancePage />
+                </div>
+              </>
+            ),
+          },
+        ] as never,
+        route: `/assessment/batches/${BATCH_ID}/reviews/${INSTANCE_ID}`,
+      })
+      await expect.element(page.getByTestId('queue-badge')).toHaveAttribute('data-count', '3')
+
+      // somebody else takes one off the queue, and the wake-up says so
+      waiting = 2
+      release()
+      await expect.element(page.getByTestId('queue-badge')).toHaveAttribute('data-count', '2')
+    },
+  )
+})
+
 describe('the escalation environment', () => {
   it('wears the caution band, names the steps, and hands the judge every earlier opinion', async () => {
     await page.viewport(1440, 900)

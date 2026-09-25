@@ -23,7 +23,7 @@ import { useBatchLive } from '../live.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { AwaitingSection } from './AwaitingSection.tsx'
-import { useAwaitingQuery, useReviewQueueQuery } from './queue.ts'
+import { useAwaitingQuery, useQueueRefresh, useReviewQueueQuery } from './queue.ts'
 import { useDraftSweep } from './use-draft.ts'
 import {
   groupByDay,
@@ -607,6 +607,7 @@ function Queue({
   const [seeking, setSeeking] = useState(search !== '')
   const queryClient = useQueryClient()
   // queue changes arrive as wake-ups; the poll below is the fallback pace
+  const refreshQueue = useQueueRefresh(batchId)
   const { live } = useBatchLive(batchId, (kind) => {
     if (
       kind !== 'sync' &&
@@ -616,15 +617,10 @@ function Queue({
     ) {
       return
     }
-    void queryClient.invalidateQueries({
-      queryKey: query.assessment.listReviewInbox.key({ query: { batchId } }),
-    })
+    // the list and the rail's count, which is the desk's rather than this list's
+    refreshQueue()
     void queryClient.invalidateQueries({
       queryKey: query.assessment.listAwaitingSupplements.key({ query: { batchId } }),
-    })
-    // and the rail's count, which is the desk's rather than this list's
-    void queryClient.invalidateQueries({
-      queryKey: query.assessment.getMyOverview.key({ params: { batchId } }),
     })
   })
   const inbox = useQuery({

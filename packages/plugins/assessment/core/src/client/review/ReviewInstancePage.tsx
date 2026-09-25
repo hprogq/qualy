@@ -29,7 +29,7 @@ import { entryStatusMessage, type EntryDto } from '../entry/model.ts'
 import { sayEntryFailure } from '../entry/refusals.ts'
 import { reviewOutcomeMessage } from './events.ts'
 import { readRunScope, runRows, type InboxItemDto } from './model.ts'
-import { useReviewQueueQuery } from './queue.ts'
+import { useQueueRefresh, useReviewQueueQuery } from './queue.ts'
 import type { BatchDto } from '../phase/model.ts'
 import type { ReviewDto } from './model.ts'
 import {
@@ -691,6 +691,8 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // The live channel carries wake-ups, never data: on each one the screen
   // re-reads whichever authorized query the wake-up names. While the channel
   // is down the same queries poll instead - later, but not blind.
+  // the list and the rail's count move together, whichever wake-up says so
+  const refreshQueue = useQueueRefresh(batch.id)
   const { live } = useBatchLive(batch.id, (kind) => {
     switch (kind) {
       case 'sync':
@@ -699,18 +701,10 @@ function Workbench({ batch }: { batch: BatchDto }) {
         void queryClient.invalidateQueries({
           queryKey: query.assessment.getReviewInstance.key({ params: { instanceId } }),
         })
-        void queryClient.invalidateQueries({
-          queryKey: query.assessment.listReviewInbox.key({ query: { batchId: batch.id } }),
-        })
+        refreshQueue()
         return
       case 'review-inbox-changed':
-        void queryClient.invalidateQueries({
-          queryKey: query.assessment.listReviewInbox.key({ query: { batchId: batch.id } }),
-        })
-        // the rail's count is the desk's, not this list's
-        void queryClient.invalidateQueries({
-          queryKey: query.assessment.getMyOverview.key({ params: { batchId: batch.id } }),
-        })
+        refreshQueue()
         return
       default:
         return
