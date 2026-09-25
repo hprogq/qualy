@@ -188,7 +188,7 @@ export const short = (value: string): string => {
 
 /**
  * When something happened to a claim, on the batch's clock: the day as the
- * language names it and the time to the minute - "4月20日 17:00".
+ * language names it and the time to the minute, never a bare "04/20".
  */
 export const momentOf = (iso: string, locale: string, zone: string | undefined): string =>
   new Intl.DateTimeFormat(locale, {

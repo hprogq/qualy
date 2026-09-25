@@ -302,6 +302,19 @@ describe('finding a question', () => {
     await expect.poll(shape).toBe('structure')
   })
 
+  it('keeps the way to file at the foot of a phone, however little the question holds', async () => {
+    await page.viewport(390, 844)
+    await workspace({ route: `${base}?open=${itemId(7)}` })
+    const foot = page.getByTestId('phone-foot')
+    await expect.element(foot).toBeVisible()
+    // one key, at the bottom edge where the thumb is - not a second one in
+    // the empty list above it
+    expect(page.getByTestId('file-claim').elements()).toHaveLength(1)
+    await expect
+      .poll(() => Math.round(window.innerHeight - foot.element().getBoundingClientRect().bottom))
+      .toBeLessThan(2)
+  })
+
   it('steps to the neighbouring question from the foot of the pane', async () => {
     await page.viewport(1440, 900)
     await workspace({ route: `${base}?open=${itemId(8)}` })

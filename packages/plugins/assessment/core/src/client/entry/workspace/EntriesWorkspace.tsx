@@ -50,6 +50,10 @@ const styles = stylex.create({
   // on a phone the workspace is part of the page: as tall as its content,
   // so the bars pinned inside it stay pinned the whole way down
   flow: { flexShrink: 0 },
+  // one question on a phone: at least the screen tall, so the bar at its
+  // foot sits at the foot however little the question holds
+  phoneScreen: { minHeight: '100%' },
+  phoneBody: { display: 'flex', flexGrow: 1, flexDirection: 'column' },
   columns: {
     display: 'grid',
     minHeight: 0,
@@ -262,17 +266,6 @@ const styles = stylex.create({
   footWords: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 2 },
   footLabel: { fontSize: 12, color: tokens.mutedForeground },
   footValue: { fontSize: 14, fontWeight: 600, fontVariantNumeric: 'tabular-nums' },
-  footHeld: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    height: 44,
-    borderRadius: 11,
-    backgroundColor: tokens.surfaceMuted,
-    paddingInline: 22,
-    fontSize: 14.5,
-    fontWeight: 500,
-    color: tokens.mutedForeground,
-  },
 })
 
 export interface WorkspaceProps {
@@ -521,7 +514,7 @@ function Workspace({
         data-testid="entries-workspace"
         data-mode={mode}
         data-screen={onPane ? 'item' : 'structure'}
-        {...stylex.props(styles.root, styles.flow)}
+        {...stylex.props(styles.root, styles.flow, onPane && styles.phoneScreen)}
       >
         {notice}
         <div {...stylex.props(onPane && styles.gone)}>{rail('screen')}</div>
@@ -557,7 +550,7 @@ function Workspace({
                 <ChevronDownIcon aria-hidden {...stylex.props(styles.arrowIcon)} />
               </button>
             </div>
-            {pane}
+            <div {...stylex.props(styles.phoneBody)}>{pane}</div>
             {footed && filing !== null && item !== null && (
               <div {...stylex.props(styles.phoneFoot)} data-testid="phone-foot">
                 <span {...stylex.props(styles.footWords)}>
@@ -568,16 +561,13 @@ function Workspace({
                       : `${String(used)} / ${String(item.maxEntries)}`}
                   </span>
                 </span>
-                {filing.shut ? (
-                  <span
-                    {...stylex.props(styles.footHeld)}
-                    title={filing.why === null ? undefined : format(filing.why)}
-                  >
-                    {format(m.entriesFootHeld)}
-                  </span>
-                ) : (
-                  <FileKey filing={filing} busy={busy} size="lg" onPress={() => onFile?.(item)} />
-                )}
+                <FileKey
+                  filing={filing}
+                  busy={busy}
+                  size="lg"
+                  heldWord={format(m.entriesFootHeld)}
+                  onPress={() => onFile?.(item)}
+                />
               </div>
             )}
           </>

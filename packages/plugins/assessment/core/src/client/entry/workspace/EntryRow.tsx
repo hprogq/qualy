@@ -108,6 +108,16 @@ const styles = stylex.create({
   noteWaits: {
     color: tokens.warningForeground,
   },
+  // two lines at most, whole words, under the status line
+  noteOwnLine: {
+    display: '-webkit-box',
+    fontSize: 12,
+    lineHeight: 1.5,
+    whiteSpace: 'normal',
+    WebkitBoxOrient: 'vertical',
+    WebkitLineClamp: 2,
+    color: tokens.mutedForeground,
+  },
   mine: {
     display: 'inline-flex',
     flexShrink: 0,
@@ -183,6 +193,23 @@ export function EntryRow({
       size={compact ? 'default' : 'roomy'}
     />
   )
+  const said =
+    line.note === null ? null : (
+      <span
+        data-note={line.note.kind}
+        {...stylex.props(
+          styles.note,
+          compact && styles.noteOwnLine,
+          line.note.kind !== 'refusal' && styles.noteWaits,
+        )}
+      >
+        {line.note.kind === 'return'
+          ? format(m.entriesNoteReturned, { text: line.note.text })
+          : line.note.kind === 'ask'
+            ? format(m.entriesNoteAsked, { text: line.note.text })
+            : line.note.text}
+      </span>
+    )
   return (
     <button
       type="button"
@@ -218,22 +245,16 @@ export function EntryRow({
               </span>
             </>
           )}
-          {line.note !== null && (
+          {line.note !== null && !compact && (
             <>
               <span aria-hidden {...stylex.props(styles.rule)} />
-              <span
-                data-note={line.note.kind}
-                {...stylex.props(styles.note, line.note.kind !== 'refusal' && styles.noteWaits)}
-              >
-                {line.note.kind === 'return'
-                  ? format(m.entriesNoteReturned, { text: line.note.text })
-                  : line.note.kind === 'ask'
-                    ? format(m.entriesNoteAsked, { text: line.note.text })
-                    : line.note.text}
-              </span>
+              {said}
             </>
           )}
         </span>
+        {/* narrow, the reviewer's words get a line of their own: squeezed in
+            after the status and the time there is no room left to read them */}
+        {line.note !== null && compact && said}
       </span>
       {!compact && <span {...stylex.props(styles.tagCell)}>{standing}</span>}
       <span {...stylex.props(styles.amount)} data-amount={line.amount ?? ''}>

@@ -25,7 +25,7 @@ const PHONE = '@media (max-width: 767.98px)'
 const BELOW_DESK = '@media (max-width: 1279.98px)'
 
 const styles = stylex.create({
-  root: { display: 'flex', minHeight: '100%', flexDirection: 'column' },
+  root: { display: 'flex', minHeight: '100%', flexGrow: 1, flexDirection: 'column' },
   head: {
     display: 'flex',
     flexDirection: 'column',

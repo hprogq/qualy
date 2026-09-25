@@ -3874,8 +3874,7 @@ const i18n = definePluginMessages({
     },
     paperEmptyHint: {
       id: 'assessment/paper/empty-hint',
-      defaultMessage:
-        'Select an item on the left to create an entry. Drafts can be saved at any time.',
+      defaultMessage: 'File a claim; drafts can be saved at any time',
     },
     paperEmptyRecorded: {
       id: 'assessment/paper/empty-recorded',

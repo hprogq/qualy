@@ -50,7 +50,7 @@ const PHONE = '@media (max-width: 767.98px)'
 const BELOW_DESK = '@media (max-width: 1279.98px)'
 
 const styles = stylex.create({
-  root: { display: 'flex', minHeight: '100%', flexDirection: 'column' },
+  root: { display: 'flex', minHeight: '100%', flexGrow: 1, flexDirection: 'column' },
   head: {
     display: 'flex',
     minWidth: 0,
@@ -440,11 +440,14 @@ export function FileKey({
   filing,
   busy,
   size = 'default',
+  heldWord,
   onPress,
 }: {
   filing: Filing
   busy: boolean
   size?: 'default' | 'lg'
+  /** what a shut key says instead of its act, where there is room for only the key */
+  heldWord?: string
   onPress: () => void
 }) {
   const { format } = useI18n()
@@ -457,8 +460,14 @@ export function FileKey({
       {...stylex.props(filing.shut && styles.noPointer)}
       onClick={onPress}
     >
-      <PlusIcon aria-hidden />
-      {format(filing.declared ? m.entryDeclare : m.entryNew)}
+      {filing.shut && heldWord !== undefined ? (
+        heldWord
+      ) : (
+        <>
+          <PlusIcon aria-hidden />
+          {format(filing.declared ? m.entryDeclare : m.entryNew)}
+        </>
+      )}
     </Button>
   )
   return <Held why={filing.why === null ? null : format(filing.why)}>{key}</Held>
@@ -852,6 +861,7 @@ export function ItemPane({
         {filtered.length === 0 && !narrowed && (
           <Tray
             viewer={viewer}
+            keyed={mode !== 'phone'}
             item={item}
             filing={filing}
             busy={busy}
@@ -867,6 +877,7 @@ export function ItemPane({
 /** why a question's list stands empty, and the way in where there is one */
 function Tray({
   viewer,
+  keyed,
   item,
   filing,
   busy,
@@ -874,6 +885,8 @@ function Tray({
   onFile,
 }: {
   viewer: Viewer
+  /** whether the way in is offered here; on a phone the bar at the foot has it */
+  keyed: boolean
   item: ItemDto
   filing: Filing | null
   busy: boolean
@@ -921,7 +934,7 @@ function Tray({
       </span>
       <p {...stylex.props(styles.trayTitle)}>{format(title)}</p>
       <p {...stylex.props(styles.trayHint)}>{format(hint)}</p>
-      {filing !== null && filing.mayAdd && (
+      {keyed && filing !== null && filing.mayAdd && (
         <Held why={filing.why === null ? null : format(filing.why)}>
           <Button
             data-testid="file-claim"
