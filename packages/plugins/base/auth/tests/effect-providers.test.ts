@@ -390,7 +390,7 @@ describe.runIf(postgresAvailable)('an entrance a tenant adds', () => {
       ])
       expect(answer.shell.config).toEqual({})
       expect(answer.shell.secrets).toEqual([{ key: 'clientSecret', stored: false }])
-      expect(answer.shell.usage).toEqual({ bindings: 0, sessions: 0 })
+      expect(answer.shell.usage).toEqual({ bindings: 0, sessions: 0, sessionsByUserType: [] })
       expect(tagOf(answer.tooEarly)).toBe('AUTH_PROVIDER_CONFIG_INCOMPLETE')
       expect(failureOf(answer.tooEarly)?.['missing']).toEqual([
         { kind: 'field', key: 'server' },
@@ -705,7 +705,8 @@ describe.runIf(postgresAvailable)('an entrance a tenant adds', () => {
           }),
         ),
       )
-      expect(answer.busy.usage).toEqual({ bindings: 1, sessions: 1 })
+      expect(answer.busy.usage).toMatchObject({ bindings: 1, sessions: 1 })
+      expect(answer.busy.usage.sessionsByUserType.map((row) => row.sessions)).toEqual([1])
       expect(tagOf(answer.platform)).toBe('AUTH_PROVIDER_IS_SYSTEM')
       expect(tagOf(answer.stale)).toBe('AUTH_PROVIDER_VERSION_CONFLICT')
       expect(answer.listed.map((row) => row.code)).toEqual(['local'])
@@ -722,6 +723,158 @@ describe.runIf(postgresAvailable)('an entrance a tenant adds', () => {
         revokedBindings: 1,
         endedSessions: 1,
       })
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('signs out whoever it stops admitting, and ends what it opened when taken out of service, keeping what it is', async () => {
+    const db = await createTestContext('providers-out-of-service')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const iam = yield* Iam
+            const id = yield* iam.providers.create(
+              f.tenant,
+              { type: 'campus', code: 'campus', name: 'Campus' },
+              f.as,
+            )
+            const set = yield* iam.providers.update(
+              f.tenant,
+              id,
+              {
+                expectedVersion: 1,
+                values: { server: 'https://cas.example.edu/', clientSecret: 's3cret' },
+              },
+              f.as,
+            )
+            const served = yield* iam.providers.setStatus(f.tenant, id, 'active', set, f.as)
+            const student = one<{ id: string }>(
+              yield* runSql(sql`
+                insert into user_types (tenant_id, code, name, placement_mode)
+                values (${f.tenant}, 'student', 'Student', 'unrestricted') returning id`),
+            ).id
+            const bo = one<{ id: string }>(
+              yield* runSql(sql`
+                insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+                select tenant_id, 'Bo', ${student}, primary_org_node_id
+                  from users where id = ${f.person} returning id`),
+            ).id
+            const staff = one<{ id: string }>(
+              yield* runSql(sql`select user_type_id as id from users where id = ${f.person}`),
+            ).id
+            for (const [userId, subject] of [
+              [f.person, 'ada@campus'],
+              [bo, 'bo@campus'],
+            ] as const) {
+              yield* runSql(sql`
+                insert into user_auth_bindings (tenant_id, user_id, auth_provider_id, subject)
+                values (${f.tenant}, ${userId}, ${id}, ${subject})`)
+            }
+            const open = (userId: string, providerId: string) =>
+              runSql(sql`
+                insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at)
+                values (${f.tenant}, ${userId}, ${providerId}, md5(random()::text) || md5(random()::text),
+                        now() + interval '1 day')`)
+            yield* open(f.person, id)
+            yield* open(bo, id)
+            // the same person through another door is none of this door's business
+            yield* open(f.person, f.local.id)
+            // somebody set out through it and has not come back
+            yield* runSql(sql`
+              insert into auth_flows (tenant_id, auth_provider_id, state_hash, purpose, expires_at)
+              values (${f.tenant}, ${id}, repeat('f', 64), 'login', now() + interval '10 minutes')`)
+            const before = yield* iam.providers.detail(f.tenant, id)
+            const sessionsOf = (providerId: string) =>
+              Effect.map(
+                runSql<{ user_id: string }>(sql`
+                  select user_id from sessions where auth_provider_id = ${providerId}
+                   order by user_id`),
+                (result) => result.rows.map((row) => row.user_id),
+              )
+
+            // staff only: Bo is signed out of what it opened for him
+            const narrowed = yield* iam.providers.setAudience(
+              f.tenant,
+              id,
+              { mode: 'allow-list', userTypeIds: [staff] },
+              served,
+              f.as,
+            )
+            const afterNarrowing = yield* sessionsOf(id)
+            // out of service: what it opened ends, what it is stays
+            const rested = yield* iam.providers.setStatus(f.tenant, id, 'disabled', narrowed, f.as)
+            const afterRest = yield* sessionsOf(id)
+            const elsewhere = yield* sessionsOf(f.local.id)
+            const left = yield* runSql<{
+              bindings: number
+              secrets: number
+              flows: number
+              server: string
+            }>(sql`
+              select
+                (select count(*)::int from user_auth_bindings
+                   where auth_provider_id = ${id} and revoked_at is null) as bindings,
+                (select count(*)::int from secrets where owner_id = ${id}) as secrets,
+                (select count(*)::int from auth_flows
+                   where auth_provider_id = ${id} and consumed_at is null) as flows,
+                (select config->>'server' from auth_providers where id = ${id}) as server`)
+            // and back into service with nothing to set up again
+            const back = yield* Effect.result(
+              iam.providers.setStatus(f.tenant, id, 'active', rested, f.as),
+            )
+            const recorded = yield* runSql<{
+              action_code: string
+              details: Record<string, unknown>
+            }>(
+              sql`
+                select action_code, details from audit_events
+                 where tenant_id = ${f.tenant}
+                   and action_code in ('auth.provider.audience.update', 'auth.provider.status')
+                 order by occurred_at, id`,
+            )
+            return {
+              before: before.usage,
+              staff,
+              student,
+              ada: f.person,
+              afterNarrowing,
+              afterRest,
+              elsewhere,
+              left: left.rows[0]!,
+              back: back._tag,
+              recorded: recorded.rows,
+            }
+          }),
+        ),
+      )
+      expect(answer.before.sessions).toBe(2)
+      expect(
+        Object.fromEntries(
+          answer.before.sessionsByUserType.map((row) => [row.userTypeId, row.sessions]),
+        ),
+      ).toEqual({ [answer.staff]: 1, [answer.student]: 1 })
+      expect(answer.afterNarrowing).toEqual([answer.ada])
+      expect(answer.afterRest).toEqual([])
+      expect(answer.elsewhere).toEqual([answer.ada])
+      expect(answer.left).toEqual({
+        bindings: 2,
+        secrets: 1,
+        flows: 0,
+        server: 'https://cas.example.edu/',
+      })
+      expect(answer.back).toBe('Success')
+      expect(answer.recorded.map((row) => [row.action_code, row.details['endedSessions']])).toEqual(
+        [
+          ['auth.provider.status', 0],
+          ['auth.provider.audience.update', 1],
+          ['auth.provider.status', 1],
+          ['auth.provider.status', 0],
+        ],
+      )
     } finally {
       await db.dispose()
     }

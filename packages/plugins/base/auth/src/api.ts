@@ -421,8 +421,15 @@ export const identityApiGroup = HttpApiGroup.make('identity')
         callbackUrl: Schema.NullOr(Schema.String),
         config: Schema.Record(Schema.String, Schema.String),
         secrets: Schema.Array(Schema.Struct({ key: Schema.String, stored: Schema.Boolean })),
-        // what deleting it would end
-        usage: Schema.Struct({ bindings: Schema.Number, sessions: Schema.Number }),
+        // what deleting it, taking it out of service or narrowing who it
+        // admits would end
+        usage: Schema.Struct({
+          bindings: Schema.Number,
+          sessions: Schema.Number,
+          sessionsByUserType: Schema.Array(
+            Schema.Struct({ userTypeId: Schema.String, sessions: Schema.Number }),
+          ),
+        }),
       }),
       error: [ProviderNotFound, AccessDenied],
     }).middleware(Authenticated),

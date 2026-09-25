@@ -210,6 +210,58 @@ const usageOf = (tenantId: string, providerId: string) =>
       })),
     )
 
+/**
+ * The live sessions the door opened, by the type of whoever holds them: what
+ * narrowing its audience would end, for the screen to say before it does.
+ */
+const sessionsByUserType = (tenantId: string, providerId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('Session as s')
+        .innerJoin('User as u', (join) =>
+          join.onRef('u.tenantId', '=', 's.tenantId').onRef('u.id', '=', 's.userId'),
+        )
+        .select(['u.userTypeId', sql<number>`count(*)::int`.as('sessions')])
+        .where('s.tenantId', '=', tenantId)
+        .where('s.authProviderId', '=', providerId)
+        .where('s.expiresAt', '>', sql<Date>`now()`)
+        .groupBy('u.userTypeId')
+        .orderBy('u.userTypeId')
+        .execute(),
+    )
+    .pipe(
+      Effect.map((rows) =>
+        rows.flatMap((row) =>
+          row.userTypeId === null
+            ? []
+            : [{ userTypeId: row.userTypeId, sessions: Number(row.sessions) }],
+        ),
+      ),
+    )
+
+/**
+ * Ends the sessions the door opened: all of them, or only those of people
+ * whose type is not among the ones it still admits. How many ended.
+ */
+const endSessionsThrough = (tenantId: string, providerId: string, admitted?: readonly string[]) =>
+  db
+    .query((k) => {
+      let query = k
+        .deleteFrom('Session')
+        .where('tenantId', '=', tenantId)
+        .where('authProviderId', '=', providerId)
+      if (admitted !== undefined) {
+        query = query.where('userId', 'in', (eb) => {
+          let people = eb.selectFrom('User').select('id').where('tenantId', '=', tenantId)
+          if (admitted.length > 0) people = people.where('userTypeId', 'not in', [...admitted])
+          return people
+        })
+      }
+      return query.returning('id').execute()
+    })
+    .pipe(Effect.map((rows) => rows.length))
+
 const replaceAudience = (
   tenantId: string,
   providerId: string,
@@ -626,6 +678,12 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
      * may go in; closing the platform's door can strand the tenant's
      * recovery account exactly as narrowing it can, so that is re-read on
      * the state being committed.
+     *
+     * Taking a door out of service ends what it opened, in the same
+     * transaction: the sessions signed in through it, and the redirects
+     * somebody set out on and has not come back from. What it is stays -
+     * its settings, its secrets and the accounts bound through it - so
+     * putting it back in service is all it takes to use it again.
      */
     setStatus: Effect.fn('Iam.providers.setStatus')(function* (
       tenantId: string,
@@ -646,12 +704,17 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
               .where('id', '=', providerId)
               .execute(),
           )
+          let endedSessions = 0
+          if (status === 'disabled') {
+            endedSessions = yield* endSessionsThrough(tenantId, providerId)
+            yield* endFlowsOfProvider(tenantId, providerId)
+          }
           yield* recoveryRemains(tenantId)
           yield* audit.record(ProviderStatusChanged, {
             tenantId,
             actor: yield* actorOf(tenantId, as),
             target: { id: provider.id, label: provider.name },
-            details: { status },
+            details: { status, endedSessions },
           })
           return provider.version + 1
         }),
@@ -940,7 +1003,10 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
             secrets: fields
               .filter((field) => field.kind === 'secret')
               .map((field) => ({ key: field.key, stored: stored.includes(field.key) })),
-            usage: yield* usageOf(tenantId, providerId),
+            usage: {
+              ...(yield* usageOf(tenantId, providerId)),
+              sessionsByUserType: yield* sessionsByUserType(tenantId, providerId),
+            },
           }
         }),
       ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
@@ -951,7 +1017,9 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
      *
      * Checked after the write, on the state being committed: narrowing the
      * platform's door can shut out the recovery account, so its own way in
-     * is re-read inside the transaction.
+     * is re-read inside the transaction. Whoever it no longer admits is
+     * signed out of the sessions it opened for them, in the same
+     * transaction; their accounts bound through it stay.
      */
     setAudience: Effect.fn('Iam.providers.setAudience')(function* (
       tenantId: string,
@@ -969,12 +1037,16 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
             if (found !== userTypeIds.length) return yield* new UserTypeNotFound()
           }
           yield* replaceAudience(tenantId, providerId, policy.mode, userTypeIds)
+          const endedSessions =
+            policy.mode === 'allow-list'
+              ? yield* endSessionsThrough(tenantId, providerId, userTypeIds)
+              : 0
           yield* recoveryRemains(tenantId)
           yield* audit.record(ProviderAudienceUpdated, {
             tenantId,
             actor: yield* actorOf(tenantId, as),
             target: { id: provider.id, label: provider.name },
-            details: { mode: policy.mode, userTypeCount: userTypeIds.length },
+            details: { mode: policy.mode, userTypeCount: userTypeIds.length, endedSessions },
           })
           return provider.version + 1
         }),

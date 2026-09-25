@@ -139,7 +139,13 @@ export const ProviderAudienceUpdated = AuditAction.define({
   target: 'auth.provider',
   version: 1,
   name: message('auth/audit/provider-audience', 'Change who may sign in through an entrance'),
-  details: Schema.Struct({ mode: placementMode, userTypeCount: Schema.Number }),
+  // `endedSessions`: the sessions of people it no longer admits, signed out
+  // with the change; absent from rows written before it signed anybody out
+  details: Schema.Struct({
+    mode: placementMode,
+    userTypeCount: Schema.Number,
+    endedSessions: Schema.optional(Schema.Number),
+  }),
 })
 
 export const ProviderCreated = AuditAction.define({
@@ -180,7 +186,12 @@ export const ProviderStatusChanged = AuditAction.define({
   target: 'auth.provider',
   version: 1,
   name: message('auth/audit/provider-status', 'Enable or disable an entrance'),
-  details: Schema.Struct({ status: Schema.Literals(['active', 'disabled']) }),
+  // `endedSessions`: signed out because the entrance went out of service;
+  // absent from rows written before taking one out ended anything
+  details: Schema.Struct({
+    status: Schema.Literals(['active', 'disabled']),
+    endedSessions: Schema.optional(Schema.Number),
+  }),
 })
 
 export const ProvidersReordered = AuditAction.define({

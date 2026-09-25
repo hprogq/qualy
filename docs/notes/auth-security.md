@@ -169,7 +169,11 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
 - 公开 URL 用 code 不用数据库 ID:`/auth/<type>/<code>/<operation>`;GET /auth/login-methods 只返回「enabled 且驱动已装配」的入口,
   不泄 config/内部 ID。
 - `auth_providers.deleted_at` 是墓碑(`chk_auth_providers_deleted_is_disabled`),code 只在存活行中唯一,删除后可复用。
-- provider 禁用只拦新登录,已有 session 不受影响(撤销手段 = 禁用 user/type/tenant,或删除入口)。
+- **停用入口即结束它打开的一切(2026-09-25 裁决 #24,取代原先「停用只拦新登录」)**:`setStatus(disabled)` 在同一锁定事务里
+  删掉经该入口建立的全部会话、把它未完成的 auth flow 标记为已消费;**不撤绑定、不删 secret、不动配置**——停用不是删除,
+  重新启用即恢复原样。`setAudience` 收窄时,同事务结束被移出受众的用户类型经该入口建立的会话(绑定保留)。两者的审计
+  details 带 `endedSessions`。`GET /auth/providers/{id}` 的 `usage` 带总会话数与按用户类型的分组(`sessionsByUserType`),
+  确认框据此说出停用或收窄会结束多少会话;数字是打开时的读数,写入以事务里的实际结果为准。
 
 ## 绑定(2026-09-21 定,2026-09-22 改为 user_auth_bindings)
 

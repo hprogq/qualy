@@ -43,7 +43,7 @@ const detail = (row: ProviderDto, over: Partial<Omit<DetailDto, 'provider'>> = {
   callbackUrl: null,
   config: {},
   secrets: [],
-  usage: { bindings: 0, sessions: 0 },
+  usage: { bindings: 0, sessions: 0, sessionsByUserType: [] },
   ...over,
 })
 
@@ -201,6 +201,83 @@ describe('login methods screen', () => {
         version: 4,
         audience: { mode: 'allow-list', userTypeIds: [STUDENT_ID] },
       },
+    })
+  })
+
+  it('asks before saving an audience that signs people out, saying how many', async () => {
+    const save = vi.fn(() => Effect.succeed({ version: 5 }))
+    await renderScreen({
+      client: fakeClient(
+        stubs({
+          getAuthProvider: () =>
+            Effect.succeed(
+              detail(provider(), {
+                usage: {
+                  bindings: 0,
+                  sessions: 5,
+                  sessionsByUserType: [
+                    { userTypeId: STUDENT_ID, sessions: 2 },
+                    { userTypeId: FACULTY_ID, sessions: 3 },
+                  ],
+                },
+              }),
+            ),
+          setAuthProviderAudience: save,
+        }),
+      ),
+      route: `/admin/login-methods?provider=${PASSWORD_ID}`,
+      children: <LoginMethodsPage />,
+    })
+    const panel = page.getByTestId('audience-panel')
+    await expect.element(panel).toHaveAttribute('data-ending', '0')
+    // students only: the faculty signed in through it would be signed out
+    await page.getByRole('tab', { name: '仅指定类型', exact: false }).click()
+    await page.getByRole('checkbox', { name: '学生', exact: false }).click()
+    await expect.element(panel).toHaveAttribute('data-ending', '3')
+    await panel.getByRole('button', { name: '保存', exact: false }).click()
+    const asked = page.getByRole('alertdialog')
+    await expect.element(asked).toBeInTheDocument()
+    expect(asked.element().textContent ?? '').toContain('3')
+    expect(save).not.toHaveBeenCalled()
+    await asked.getByRole('button', { name: '保存' }).click()
+    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1))
+    expect(save).toHaveBeenCalledWith({
+      params: { providerId: PASSWORD_ID },
+      payload: { version: 4, audience: { mode: 'allow-list', userTypeIds: [STUDENT_ID] } },
+    })
+  })
+
+  it('takes a way in out of service only after saying how many sessions end', async () => {
+    const setStatus = vi.fn(() => Effect.succeed({ version: 5 }))
+    const row = cas()
+    await renderScreen({
+      client: fakeClient(
+        stubs({
+          listAuthProviders: () => Effect.succeed(doorsOf([provider(), row])),
+          listAuthProviderKinds: () => Effect.succeed({ kinds: [casKind] }),
+          getAuthProvider: () =>
+            Effect.succeed(
+              detail(row, { usage: { bindings: 4, sessions: 17, sessionsByUserType: [] } }),
+            ),
+          setAuthProviderStatus: setStatus,
+        }),
+      ),
+      route: `/admin/login-methods?provider=${CAS_ID}`,
+      children: <LoginMethodsPage />,
+    })
+    const details = page.getByTestId('method-details')
+    await expect.element(details).toHaveAttribute('data-sessions', '17')
+    await details.getByRole('tab', { name: '已停用' }).click()
+    const asked = page.getByRole('alertdialog')
+    await expect.element(asked).toBeInTheDocument()
+    // the count is the fixture's, not copy
+    expect(asked.element().textContent ?? '').toContain('17')
+    expect(setStatus).not.toHaveBeenCalled()
+    await asked.getByRole('button', { name: '停用' }).click()
+    await vi.waitFor(() => expect(setStatus).toHaveBeenCalledTimes(1))
+    expect(setStatus).toHaveBeenCalledWith({
+      params: { providerId: CAS_ID },
+      payload: { version: 4, status: 'disabled' },
     })
   })
 
@@ -563,7 +640,9 @@ describe('a way in, from added to gone', () => {
           listAuthProviders: () => Effect.succeed(doorsOf([provider(), row])),
           listAuthProviderKinds: () => Effect.succeed({ kinds: [casKind] }),
           getAuthProvider: () =>
-            Effect.succeed(detail(row, { usage: { bindings: 37, sessions: 12 } })),
+            Effect.succeed(
+              detail(row, { usage: { bindings: 37, sessions: 12, sessionsByUserType: [] } }),
+            ),
           deleteAuthProvider: remove,
         }),
       ),

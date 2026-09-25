@@ -325,7 +325,11 @@ export default {
   'auth/login-methods/order-hint': '拖动列表项可调整显示顺序',
   'auth/login-methods/disable-title': '停用{name}？',
   'auth/login-methods/enable-title': '启用{name}？',
-  'auth/login-methods/disable-body': '停用后将无法通过此方式登录，现有登录会话不受影响',
+  'auth/login-methods/disable-body':
+    '停用后将无法通过此方式登录，{sessions, plural, =0 {没有需要结束的登录会话} other {经它登录的 # 个会话将立即结束}}。设置与已绑定的账号会保留',
+  'auth/login-methods/audience-narrow-title': '保存适用范围？',
+  'auth/login-methods/audience-narrow-body':
+    '不再适用的用户类型经此方式登录的 {sessions} 个会话将在保存后立即结束',
   'auth/login-methods/enable-body': '启用后将立即显示在登录页，并向适用的用户类型开放',
   'auth/login-methods/move': '调整 {name} 的顺序，可拖动或使用上下方向键',
   'auth/login-methods/move-up': '将{name}上移一位',

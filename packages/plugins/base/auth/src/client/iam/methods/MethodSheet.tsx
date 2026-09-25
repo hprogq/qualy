@@ -133,6 +133,8 @@ export function MethodSheet({
   const [name, setName] = useState<string | null>(null)
   const [asking, setAsking] = useState<'active' | 'disabled' | null>(null)
   const [deleting, setDeleting] = useState(false)
+  // saving an audience that signs somebody out is asked about first
+  const [narrowing, setNarrowing] = useState(false)
   // only the boxes somebody typed in: an untouched box is not sent
   const [values, setValues] = useState<Record<string, string>>({})
   // the draft is kept only while it differs from what is stored, so a save
@@ -144,6 +146,14 @@ export function MethodSheet({
   const dirty =
     mode !== provider.audience.mode ||
     [...userTypeIds].sort().join(',') !== [...stored].sort().join(',')
+  // the sessions the audience as drafted would end: those of the types it
+  // would no longer admit
+  const ending =
+    mode === 'allow-list'
+      ? (detail.data?.usage.sessionsByUserType ?? [])
+          .filter((row) => !userTypeIds.includes(row.userTypeId))
+          .reduce((sum, row) => sum + row.sessions, 0)
+      : 0
 
   const config = detail.data?.config ?? {}
   const secrets = detail.data?.secrets ?? []
@@ -310,7 +320,12 @@ export function MethodSheet({
     >
       <Feedback message={feedback} />
 
-      <Card data-testid="audience-panel" data-mode={mode} data-count={userTypeIds.length}>
+      <Card
+        data-testid="audience-panel"
+        data-mode={mode}
+        data-count={userTypeIds.length}
+        data-ending={ending}
+      >
         <CardHead title={format(m.audienceLegend)}>
           {canManage ? (
             <Segmented
@@ -375,14 +390,23 @@ export function MethodSheet({
             >
               {format(m.discard)}
             </Button>
-            <Button size="sm" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
+            <Button
+              size="sm"
+              disabled={!dirty || save.isPending}
+              onClick={() => (ending > 0 ? setNarrowing(true) : save.mutate())}
+            >
               {format(m.save)}
             </Button>
           </CardFoot>
         )}
       </Card>
 
-      <Card data-testid="method-details" data-status={provider.status} data-setup={provider.setup}>
+      <Card
+        data-testid="method-details"
+        data-status={provider.status}
+        data-setup={provider.setup}
+        data-sessions={detail.data?.usage.sessions ?? 0}
+      >
         <CardHead title={format(m.methodDetails)}>
           {/* only a finished entrance can be put in service; an unfinished
               one that is out of service says so instead of offering it */}
@@ -506,7 +530,11 @@ export function MethodSheet({
         title={format(asking === 'disabled' ? m.methodDisableTitle : m.methodEnableTitle, {
           name: provider.name,
         })}
-        description={format(asking === 'disabled' ? m.methodDisableBody : m.methodEnableBody)}
+        description={
+          asking === 'disabled'
+            ? format(m.methodDisableBody, { sessions: detail.data?.usage.sessions ?? 0 })
+            : format(m.methodEnableBody)
+        }
         confirmLabel={format(asking === 'disabled' ? m.disable : m.enable)}
         cancelLabel={format(m.cancel)}
         pending={setStatus.isPending}
@@ -515,6 +543,20 @@ export function MethodSheet({
           const next = asking
           setAsking(null)
           if (next !== null) setStatus.mutate(next)
+        }}
+      />
+      <ConfirmDialog
+        open={narrowing}
+        tone="destructive"
+        title={format(m.audienceNarrowTitle)}
+        description={format(m.audienceNarrowBody, { sessions: ending })}
+        confirmLabel={format(m.save)}
+        cancelLabel={format(m.cancel)}
+        pending={save.isPending}
+        onCancel={() => setNarrowing(false)}
+        onConfirm={() => {
+          setNarrowing(false)
+          save.mutate()
         }}
       />
       <ConfirmDialog

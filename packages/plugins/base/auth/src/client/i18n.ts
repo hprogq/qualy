@@ -76,6 +76,16 @@ const methodDeleteBodyMessage = defineMessage<{ bindings: number; sessions: numb
   defaultMessage:
     '{bindings, plural, =0 {No bound account} one {# bound account} other {# bound accounts}} will be withdrawn and {sessions, plural, =0 {no session} one {# session} other {# sessions}} will end. This cannot be undone.',
 })
+const methodDisableBodyMessage = defineMessage<{ sessions: number }>()({
+  id: 'auth/login-methods/disable-body',
+  defaultMessage:
+    'Nobody can sign in through it from then on, and {sessions, plural, =0 {no session ends} one {# session signed in through it ends} other {# sessions signed in through it end}}. Its settings and bound accounts stay.',
+})
+const audienceNarrowBodyMessage = defineMessage<{ sessions: number }>()({
+  id: 'auth/login-methods/audience-narrow-body',
+  defaultMessage:
+    '{sessions, plural, one {# session of people it no longer admits ends} other {# sessions of people it no longer admits end}} as soon as this is saved.',
+})
 const methodMoveMessage = defineMessage<{ name: string }>()({
   id: 'auth/login-methods/move',
   defaultMessage: 'Move {name}. Drag, or use the up and down arrows',
@@ -1005,11 +1015,12 @@ const i18n = definePluginMessages({
       'Take {name} out of service?',
     ),
     methodEnableTitle: methodNamed('auth/login-methods/enable-title', 'Put {name} into service?'),
-    methodDisableBody: {
-      id: 'auth/login-methods/disable-body',
-      defaultMessage:
-        'Nobody can sign in through it from then on. People already signed in stay signed in.',
+    methodDisableBody: methodDisableBodyMessage,
+    audienceNarrowTitle: {
+      id: 'auth/login-methods/audience-narrow-title',
+      defaultMessage: 'Save who may sign in through it?',
     },
+    audienceNarrowBody: audienceNarrowBodyMessage,
     methodEnableBody: {
       id: 'auth/login-methods/enable-body',
       defaultMessage: 'It appears on the sign-in page at once, for the user types it admits.',
