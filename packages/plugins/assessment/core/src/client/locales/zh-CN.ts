@@ -95,6 +95,7 @@ export default {
   'assessment/entry/refuse-not-active': '你已不在本批次参评名单中。',
   'assessment/entry/refuse-out-of-reach': '该参评人员不在你的负责范围内。',
   'assessment/entry/refuse-not-editable': '该申报正在审核中，如需修改请先撤回。',
+  'assessment/entry/refuse-entry-changed': '申报在你打开后已在别处修改，请重新打开查看最新内容。',
   'assessment/entry/refuse-not-submittable': '仅草稿状态的申报可以提交。',
   'assessment/entry/refuse-needs-revision': '项目填报要求已更新，请按最新要求补充后重新提交。',
   'assessment/entry/refuse-not-withdrawable': '已有审核结果，无法撤回。',

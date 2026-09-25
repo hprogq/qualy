@@ -274,6 +274,62 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
     expect(result.submitted.status).toBe('in_review')
   })
 
+  // Two tabs on one draft: the one drawn from an older version is refused,
+  // on saving and on handing it on, rather than replacing or submitting a
+  // version its reader never saw.
+  it('refuses to write over, or hand on, a version of the claim the screen never saw', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ep-entry-moved')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const first = entry.currentRevision!.id
+          // the phone saves over the version both screens were drawn from
+          const phone = yield* assessment.appendEntryRevision(
+            f.t,
+            entry.id,
+            { payload: {}, note: 'from the phone', expectedEntryRevisionId: first },
+            s1,
+          )
+          // the desktop, still showing the first version
+          const staleSave = yield* Effect.exit(
+            assessment.appendEntryRevision(
+              f.t,
+              entry.id,
+              { payload: {}, note: 'from the desktop', expectedEntryRevisionId: first },
+              s1,
+            ),
+          )
+          const staleSubmit = yield* Effect.exit(
+            assessment.setEntryStatus(f.t, entry.id, 'in_review', s1, undefined, first),
+          )
+          const submitted = yield* assessment.setEntryStatus(
+            f.t,
+            entry.id,
+            'in_review',
+            s1,
+            undefined,
+            phone.currentRevision!.id,
+          )
+          return { phone, staleSave, staleSubmit, submitted }
+        }),
+      ),
+    )
+    expect(result.phone.currentRevision?.note).toBe('from the phone')
+    expect(refusalOf(result.staleSave)?.reason).toBe('entry-changed')
+    expect(refusalOf(result.staleSubmit)?.reason).toBe('entry-changed')
+    expect(result.submitted.status).toBe('in_review')
+    expect(result.submitted.currentRevision?.id).toBe(result.phone.currentRevision!.id)
+  })
+
   it('lets a claim be worked while it is the owner’s to work, and only then', async () => {
     const result = ok(
       await run(

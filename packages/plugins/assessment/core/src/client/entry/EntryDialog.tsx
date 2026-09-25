@@ -365,6 +365,12 @@ export function EntryDialog({
   // from here, and the next press created a SECOND one - or was refused for
   // using up the places, which is the first one talking.
   const [created, setCreated] = useState<string | null>(null)
+  // The version of the claim this screen last saw: the one it was opened
+  // on, or the one it wrote itself since. A save made meanwhile in another
+  // tab is refused rather than written over, and this screen's own earlier
+  // write never counts as somebody else's.
+  const [openedOn] = useState(() => entry?.currentRevision?.id)
+  const [lastWritten, setLastWritten] = useState<string | null>(null)
 
   const save = useMutation({
     mutationFn: async (andSubmit: boolean) => {
@@ -378,14 +384,28 @@ export function EntryDialog({
         ...(note.trim() === '' ? {} : { note: note.trim() }),
       }
       const writing = entry?.id ?? created
+      const drawn = lastWritten ?? openedOn
       const saved =
         writing === null || writing === undefined
           ? await run(
               api.assessment.createEntry({ payload: { itemId: asked.id, participantId, ...body } }),
             )
-          : await run(api.assessment.reviseEntry({ params: { entryId: writing }, payload: body }))
-      const entryId = (saved as { entry?: { id?: string } }).entry?.id ?? writing ?? null
+          : await run(
+              api.assessment.reviseEntry({
+                params: { entryId: writing },
+                payload: {
+                  ...body,
+                  ...(drawn === undefined ? {} : { expectedEntryRevisionId: drawn }),
+                },
+              }),
+            )
+      const written = (
+        saved as { entry?: { id?: string; currentRevision?: { id?: string } | null } }
+      ).entry
+      const entryId = written?.id ?? writing ?? null
       if (entryId !== null) setCreated(entryId)
+      const handed = written?.currentRevision?.id
+      if (handed !== undefined) setLastWritten(handed)
       if (!andSubmit) return saved
       if (entryId === null) return saved
       return run(
@@ -394,6 +414,8 @@ export function EntryDialog({
           payload: {
             status: 'in_review',
             ...(seen === undefined ? {} : { expectedItemRevisionId: seen }),
+            // exactly the version just written goes to the reviewers
+            ...(handed === undefined ? {} : { expectedEntryRevisionId: handed }),
           },
         }),
       )

@@ -1981,6 +1981,12 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       payload: Schema.Struct({
         /** the version of the question this revision answers; see createEntry */
         expectedItemRevisionId: Schema.optional(uuidInput),
+        /**
+         * The version of the claim the screen was drawn from. Another tab
+         * or device can have saved since, and writing on top of that
+         * without knowing would replace it unseen.
+         */
+        expectedEntryRevisionId: Schema.optional(uuidInput),
         payload: configJson,
         note: Schema.optional(boundedText(500)),
       }),
@@ -2009,6 +2015,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
          * rules the person deciding had in front of them.
          */
         expectedItemRevisionId: Schema.optional(uuidInput),
+        /** the version of the claim the screen showed, for handing on exactly that */
+        expectedEntryRevisionId: Schema.optional(uuidInput),
       }),
       success: Schema.Struct({ entry: entryView }),
       error: [

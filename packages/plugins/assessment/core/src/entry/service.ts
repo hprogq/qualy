@@ -430,7 +430,13 @@ export interface EntryMethods {
   readonly appendEntryRevision: (
     tenantId: string,
     entryId: string,
-    input: { payload: unknown; note?: string; expectedItemRevisionId?: string },
+    input: {
+      payload: unknown
+      note?: string
+      expectedItemRevisionId?: string
+      /** the version of the claim the writer's screen was drawn from */
+      expectedEntryRevisionId?: string
+    },
     as: Principal,
   ) => Effect.Effect<EntryView, ReviseEntryError>
   readonly setEntryStatus: (
@@ -440,6 +446,8 @@ export interface EntryMethods {
     as: Principal,
     /** the question the caller's screen showed when the press happened */
     expectedItemRevisionId?: string,
+    /** the version of the claim that screen showed, when handing it on */
+    expectedEntryRevisionId?: string,
   ) => Effect.Effect<EntryView, EntryStatusError, ScoringRuntimeCatalog>
   readonly markMyEntryRead: (
     tenantId: string,
@@ -1265,6 +1273,14 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           }
           if (item.status !== 'active') return yield* refuse('edit', 'item-not-active')
           yield* sameQuestion(item, input.expectedItemRevisionId)
+          // another tab or device can have saved since this screen was
+          // drawn: writing on top would replace that version unseen
+          if (
+            input.expectedEntryRevisionId !== undefined &&
+            input.expectedEntryRevisionId !== entry.currentRevisionId
+          ) {
+            return yield* refuse('edit', 'entry-changed')
+          }
           const revision =
             item.currentRevisionId === null
               ? null
@@ -1325,7 +1341,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
   })
 
   const setEntryStatus: EntryMethods['setEntryStatus'] = Effect.fn('Assessment.setEntryStatus')(
-    function* (tenantId, entryId, to, as, expectedItemRevisionId) {
+    function* (tenantId, entryId, to, as, expectedItemRevisionId, expectedEntryRevisionId) {
       const runtime = yield* ScoringRuntimeCatalog
       // a claim nobody reviews is approved by the rule at submission, so the
       // rule's arithmetic is asked first - between two runs of this
@@ -1346,6 +1362,15 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               // moved (§32.69)
               if (to === 'in_review') yield* sameQuestion(item, expectedItemRevisionId)
               if (participant.userId !== as.userId) return yield* refuse(action, 'not-your-entry')
+              // what goes to the reviewers is the version the person pressing
+              // saw, not one another tab saved over it in the meantime
+              if (
+                to === 'in_review' &&
+                expectedEntryRevisionId !== undefined &&
+                expectedEntryRevisionId !== entry.currentRevisionId
+              ) {
+                return yield* refuse(action, 'entry-changed')
+              }
               // the projection hides it; this is where it is refused. A fact
               // the office recorded or an import carried in is not the
               // subject's to withdraw, whatever the phase allows in general -

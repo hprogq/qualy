@@ -1264,6 +1264,7 @@ function Body({
       entryId: string
       status: 'in_review' | 'draft' | 'voided'
       expectedItemRevisionId?: string
+      expectedEntryRevisionId?: string
     }) =>
       run(
         api.assessment.setEntryStatus({
@@ -1273,6 +1274,9 @@ function Body({
             ...(input.expectedItemRevisionId === undefined
               ? {}
               : { expectedItemRevisionId: input.expectedItemRevisionId }),
+            ...(input.expectedEntryRevisionId === undefined
+              ? {}
+              : { expectedEntryRevisionId: input.expectedEntryRevisionId }),
           },
         }),
       ),
@@ -1922,13 +1926,18 @@ function Body({
           busy={setStatus.isPending || declare.isPending}
           onClose={() => setDetail('')}
           onEdit={() => openAndFile(lingeringDetail.item.id, lingeringDetail.entry.id)}
-          onStatus={(status, expectedItemRevisionId) =>
+          onStatus={(status, expectedItemRevisionId) => {
+            // the version the sheet is showing is the one handed on
+            const shown = (detailed?.entry ?? lingeringDetail.entry).currentRevision?.id
             setStatus.mutate({
               entryId: lingeringDetail.entry.id,
               status,
               ...(expectedItemRevisionId === undefined ? {} : { expectedItemRevisionId }),
+              ...(status !== 'in_review' || shown === undefined
+                ? {}
+                : { expectedEntryRevisionId: shown }),
             })
-          }
+          }}
           onAppeal={() => setAppealing(lingeringDetail.entry)}
           onSupplement={() => setAnswering(lingeringDetail.entry)}
         />

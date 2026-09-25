@@ -957,6 +957,11 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/refuse-not-editable',
       defaultMessage: 'The entry is under review. Withdraw it before making changes.',
     },
+    refuseEntryChanged: {
+      id: 'assessment/entry/refuse-entry-changed',
+      defaultMessage:
+        'The entry was changed elsewhere after you opened it. Reopen it to see the latest version.',
+    },
     refuseNeedsRevision: {
       id: 'assessment/entry/refuse-needs-revision',
       defaultMessage:
