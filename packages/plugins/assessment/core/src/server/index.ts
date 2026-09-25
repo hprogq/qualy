@@ -42,7 +42,13 @@ import {
   type AttachmentRef,
 } from '../plugin.ts'
 import { makeItemMethods, type ItemMethods, type ItemView } from '../item/service.ts'
-import { currentBatchConfigs, liveBatchPayloads, revisionsByIdOf } from '../item/db.ts'
+import {
+  currentBatchConfigs,
+  itemsOf as batchItemsOf,
+  liveBatchPayloads,
+  revisionsByIdOf,
+} from '../item/db.ts'
+import { opensTo } from '../item/channels.ts'
 import {
   administrativeRecordService,
   type AdministrativeRecordInput,
@@ -1939,32 +1945,63 @@ export const make = Effect.fn('Assessment.make')(function* () {
 
   /**
    * Whether this participant can start a filing in the round now, will be
-   * able to at a later stage, or has missed it. Asked of the same gate that
-   * `createEntry` passes, so "open" here is a create that would go through;
-   * a stage scoped to some questions is open when it admits any of them.
+   * able to at a later stage, or has missed it.
+   *
+   * "Open" is a create that would go through: the stage in hand admits this
+   * participant at some question they could file themselves - live, open to
+   * participants, filed rather than granted - which is what `createEntry`
+   * asks of one question. "Upcoming" is a stage not yet reached whose gate
+   * would admit this participant, not merely one that opens filing to
+   * somebody. Stages already behind the round count for nothing, including
+   * the ones before an archive a reopening has not yet reached past.
    */
   const filingOf = (tenantId: string, batch: BatchRow, participantId: string, now: EpochMillis) =>
     Effect.gen(function* () {
       const plan = toSnapshots(yield* listPhaseRows(tenantId, batch.id))
-      const here = yield* effectivePhaseIndex(tenantId, batch, plan, now)
-      if (here !== null) {
-        const phase = plan[here]!
-        const scopes = yield* phaseScopes(tenantId, phase.id)
-        const [anyItem] = scopes.items
-        const open = gateAllows({
+      const admitting = (
+        phase: PhaseSnapshot,
+        scopes: { items: ReadonlySet<string>; participants: ReadonlySet<string> },
+        itemId: string | undefined,
+      ) =>
+        gateAllows({
           code: 'assessment.entry.create',
           profile: phase.permissionProfile,
           itemScope: scopes.items,
           participantScope: scopes.participants,
-          ctx: { participantId, ...(anyItem === undefined ? {} : { itemId: anyItem }) },
+          ctx: { participantId, ...(itemId === undefined ? {} : { itemId }) },
+        }).allowed
+      const here = yield* effectivePhaseIndex(tenantId, batch, plan, now)
+      if (here !== null) {
+        const phase = plan[here]!
+        const scopes = yield* phaseScopes(tenantId, phase.id)
+        const items = (yield* batchItemsOf(tenantId, batch.id)).filter(
+          (item) =>
+            item.status === 'active' &&
+            item.currentRevisionId !== null &&
+            itemTypes.get(item.itemType)?.interaction !== 'derived',
+        )
+        const revisions = yield* revisionsByIdOf(
+          tenantId,
+          items.map((item) => item.currentRevisionId!),
+        )
+        const fileable = items.filter((item) => {
+          const revision = revisions.get(item.currentRevisionId!)
+          return revision !== undefined && opensTo(revision.entryChannels, 'participant')
         })
-        if (open.allowed) return 'open' as const
+        if (fileable.some((item) => admitting(phase, scopes, item.id))) return 'open' as const
       }
-      return plan
-        .slice(here === null ? 0 : here + 1)
-        .some((phase) => phase.permissionProfile.includes('assessment.entry.create'))
-        ? ('upcoming' as const)
-        : ('closed' as const)
+      // what the clock has reached, whether or not the round is in service:
+      // everything after it is still to come
+      const ahead = plan.slice(effectiveState(plan, now).index + 1)
+      for (const phase of ahead) {
+        if (!phase.permissionProfile.includes('assessment.entry.create')) continue
+        const scopes = yield* phaseScopes(tenantId, phase.id)
+        // a stage's questions may still be taking shape; who it admits is
+        // already decided
+        const [anyItem] = scopes.items
+        if (admitting(phase, scopes, anyItem)) return 'upcoming' as const
+      }
+      return 'closed' as const
     })
 
   const decide = (

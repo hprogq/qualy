@@ -3,7 +3,7 @@ import { sql } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Assessment, type MyStanding } from '../src/server/index.ts'
-import { GATED, ok, run, runningBatch, seed } from './support/round.ts'
+import { GATED, ok, phase, run, runningBatch, seed } from './support/round.ts'
 
 // What a reader has to do in the rounds under way, asked of every round at
 // once.
@@ -323,5 +323,103 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
       toAnswer: 1,
       filing: 'open',
     })
+  }, 120_000)
+
+  // Whether filing is open, still to come or over is read off the stages
+  // themselves, and it has to agree with what a create would meet: a stage
+  // whose gate shuts this participant out opens nothing for them, a stage
+  // with no question they could file opens nothing either, and stages the
+  // round has already left behind are not still to come.
+  it('says filing is open or still to come only where a create would go through', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('standing-filing')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const filingOf = (batchId: string, userId: string) =>
+            Effect.map(
+              assessment.listMyStanding(f.t, f.principal(userId)),
+              (standing) =>
+                standing.items.find((item) => item.batchId === batchId)?.myEntries?.filing,
+            )
+
+          // a supplementary stage for one student only, after the round
+          // has moved past its filing stage
+          const scoped = yield* runningBatch(f, { profile: PROFILE })
+          const plan = yield* assessment.getPlan(f.t, scoped.batch.id, admin)
+          yield* assessment.replacePlan(
+            f.t,
+            scoped.batch.id,
+            {
+              specs: [
+                ...plan.map((row) => ({
+                  id: row.id,
+                  phaseKey: row.phaseKey,
+                  displayName: row.displayName,
+                  permissionProfile: row.permissionProfile,
+                })),
+                phase({
+                  phaseKey: 'supplement',
+                  permissionProfile: ['assessment.entry.create'],
+                  participantScope: [scoped.p2],
+                }),
+              ],
+            },
+            admin,
+          )
+          yield* assessment.advancePhase(
+            f.t,
+            scoped.batch.id,
+            { to: plan[1]!.id, force: true, reason: 'test closes filing' },
+            admin,
+          )
+          const leftOut = yield* filingOf(scoped.batch.id, f.s1)
+          const namedIn = yield* filingOf(scoped.batch.id, f.s2)
+
+          // a filing stage whose only question has been withdrawn
+          const emptied = yield* runningBatch(f, { profile: PROFILE })
+          yield* assessment.setItemStatus(
+            f.t,
+            emptied.item.id,
+            { status: 'voided', reason: 'asked by mistake' },
+            admin,
+          )
+          const nothingToFile = yield* filingOf(emptied.batch.id, f.s1)
+
+          // archived after filing, then reopened for review work next week
+          const reopened = yield* runningBatch(f, { profile: PROFILE })
+          const stages = yield* assessment.getPlan(f.t, reopened.batch.id, admin)
+          yield* assessment.advancePhase(
+            f.t,
+            reopened.batch.id,
+            { to: stages[1]!.id, force: true, reason: 'test closes filing' },
+            admin,
+          )
+          yield* assessment.setBatchStatus(f.t, reopened.batch.id, { status: 'archived' }, admin)
+          yield* assessment.setBatchStatus(
+            f.t,
+            reopened.batch.id,
+            {
+              status: 'active',
+              reason: 'late appeals',
+              phase: { displayName: 'Review', permissionProfile: ['assessment.review.process'] },
+              plannedEntryAt: Date.now() + 24 * 3_600_000,
+            },
+            admin,
+          )
+          // the administrator is on the roster too, and sees a round waiting
+          // to resume, which its participants do not yet
+          const behind = yield* filingOf(reopened.batch.id, f.admin)
+
+          return { leftOut, namedIn, nothingToFile, behind }
+        }),
+      ),
+    )
+    expect(result.leftOut).toBe('closed')
+    expect(result.namedIn).toBe('upcoming')
+    expect(result.nothingToFile).toBe('closed')
+    expect(result.behind).toBe('closed')
   }, 120_000)
 })
