@@ -1188,7 +1188,7 @@ const i18n = definePluginMessages({
     },
     refuseRoundCeiling: {
       id: 'assessment/entry/refuse-round-ceiling',
-      defaultMessage: 'The limit on claims per person in this round has been reached.',
+      defaultMessage: 'You have reached the limit on claims for this round.',
     },
     refuseItemVoided: {
       id: 'assessment/entry/refuse-item-voided',
@@ -2142,7 +2142,7 @@ const i18n = definePluginMessages({
     },
     recordBlockerRoundQuota: {
       id: 'assessment/record/blocker-round-quota',
-      defaultMessage: 'Already at the limit for this round',
+      defaultMessage: 'This person has reached the limit on administrative records for this round',
     },
     recordBlockerOther: {
       id: 'assessment/record/blocker-other',
@@ -2354,7 +2354,7 @@ const i18n = definePluginMessages({
     },
     importReasonRoundCeiling: {
       id: 'assessment/record/import/reason/account-ceiling-reached',
-      defaultMessage: 'This person has reached the limit for this round',
+      defaultMessage: 'This person has reached the limit on administrative records for this round',
     },
     importReasonDuplicate: {
       id: 'assessment/record/import/reason/duplicate-in-file',
