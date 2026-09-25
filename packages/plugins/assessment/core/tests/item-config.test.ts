@@ -1118,6 +1118,8 @@ describe.runIf(postgresAvailable)('item configuration', () => {
           const f = yield* seed('item-compat-record')
           const assessment = yield* Assessment
           const { batch, groupId } = yield* draftBatch(f, 'Round')
+          // recorded facts are appealed along an escalation step
+          const { reviewPolicy } = recordedConfig()
           const item = yield* assessment.createItem(
             f.tenant,
             batch.id,
@@ -1129,6 +1131,7 @@ describe.runIf(postgresAvailable)('item configuration', () => {
               config: studentConfig({
                 entryChannels: ['participant', 'administrative'],
                 formConfig: { required: [] },
+                reviewPolicy,
               }),
             },
             f.principal,
@@ -1181,6 +1184,7 @@ describe.runIf(postgresAvailable)('item configuration', () => {
           const tighter = studentConfig({
             entryChannels: ['participant', 'administrative'],
             formConfig: { required: ['certificate'] },
+            reviewPolicy,
           })
           const asked = yield* Effect.exit(
             assessment.updateItem(f.tenant, item.id, { config: tighter }, f.principal),
