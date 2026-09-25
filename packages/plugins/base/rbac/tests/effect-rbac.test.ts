@@ -161,6 +161,37 @@ const seed = Effect.fn('seed')(function* () {
   return { tenant, root, child, user, role, plainRole, userType, principal, anchored }
 })
 
+/** a tenant role carrying these tenant codes, held by one person; returns its grant */
+const holdTenantWide = Effect.fn('holdTenantWide')(function* (
+  tenant: string,
+  userId: string,
+  code: string,
+  codes: readonly string[],
+) {
+  const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+  const role = one<{ id: string }>(
+    yield* runSql(sql`
+      insert into roles (tenant_id, code, name, kind, status, permission_mode)
+      values (${tenant}, ${code}, ${code}, 'tenant', 'active', 'explicit') returning id`),
+  ).id
+  for (const permission of codes) {
+    const id = one<{ id: string }>(
+      yield* runSql(sql`
+        insert into permissions (code, plugin, name, target_kind)
+        values (${permission}, 'rbac', ${permission}, 'tenant')
+        on conflict (code) do update set code = excluded.code returning id`),
+    ).id
+    yield* runSql(sql`
+      insert into role_permissions (tenant_id, role_id, permission_id)
+      values (${tenant}, ${role}, ${id})`)
+  }
+  return one<{ id: string }>(
+    yield* runSql(sql`
+      insert into role_grants (tenant_id, user_id, role_id)
+      values (${tenant}, ${userId}, ${role}) returning id`),
+  ).id
+})
+
 describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
   it('lets an administrator reach every node, and says so through the port', async () => {
     const db = await createTestContext('effect-rbac-admin')
@@ -857,6 +888,60 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
     }
   })
 
+  it('asks again under the lock whether the author may still edit roles', async () => {
+    const db = await createTestContext('effect-role-write-relocked')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const access = yield* Access
+          const rbac = yield* Rbac
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const roleId = yield* access.roles.create(
+            f.tenant,
+            { code: 'desk', name: 'Desk', kind: 'tenant' },
+            f.principal,
+          )
+          const author = yield* holdTenantWide(f.tenant, f.anchored.userId, 'role-author', [
+            'iam.role.manage',
+            'iam.role.appointment.manage',
+          ])
+          // what a handler asks before the write: the author may
+          const before = yield* Effect.result(rbac.require(f.anchored, 'iam.role.manage'))
+          // and the grant is withdrawn while the request waits for the lock
+          yield* runSql(sql`update role_grants set revoked_at = now() where id = ${author}`)
+          const renamed = yield* Effect.result(
+            access.roles.update(f.tenant, roleId, { name: 'Renamed' }, 1, f.anchored),
+          )
+          const drawn = yield* Effect.result(
+            access.roles.setGrantableRoles(f.tenant, roleId, [], 1, f.anchored),
+          )
+          const removed = yield* Effect.result(access.roles.remove(f.tenant, roleId, 1, f.anchored))
+          const name = one<{ name: string }>(
+            yield* runSql(sql`select name from roles where id = ${roleId}`),
+          ).name
+          return {
+            before: before._tag,
+            renamed: tagOf(renamed),
+            drawn: tagOf(drawn),
+            removed: tagOf(removed),
+            name,
+          }
+        }),
+      )
+      expect(ok(exit)).toEqual({
+        before: 'Success',
+        renamed: 'ACCESS_DENIED',
+        drawn: 'ACCESS_DENIED',
+        removed: 'ACCESS_DENIED',
+        name: 'Desk',
+      })
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('will not let an author activate a role beyond their own authority', async () => {
     const db = await createTestContext('effect-role-escalation')
     try {
@@ -888,8 +973,10 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
             insert into role_allowed_user_types (tenant_id, role_id, user_type_id)
             values (${f.tenant}, ${roleId}, ${userType})`)
 
-          // the anchored user holds org.tree.manage at one node and nothing
-          // tenant-wide, so this definition is beyond them
+          // the anchored user may manage roles, and otherwise holds
+          // org.tree.manage at one node and nothing tenant-wide, so this
+          // definition is beyond them
+          yield* holdTenantWide(f.tenant, f.anchored.userId, 'role-author', ['iam.role.manage'])
           const beyond = yield* Effect.result(
             access.roles.setStatus(f.tenant, roleId, 'active', 1, f.anchored),
           )
@@ -2088,6 +2175,11 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
           const personnel = yield* role('office-personnel', 'tenant', [manageTenant])
           const set = (granter: string, targets: readonly string[], by: Principal) =>
             Effect.result(access.roles.setGrantableRoles(f.tenant, granter, targets, 1, by))
+          // the anchored author may edit the graph and holds nothing else
+          // tenant-wide
+          yield* holdTenantWide(f.tenant, f.anchored.userId, 'graph-editor', [
+            'iam.role.appointment.manage',
+          ])
           return {
             // a role cannot appoint itself
             selfEdge: tagOf(yield* set(a, [a], f.principal)),

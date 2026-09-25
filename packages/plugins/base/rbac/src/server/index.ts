@@ -234,7 +234,9 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
   const keepsAdministrator = (tenantId: string) => shapeRef.assertTenantKeepsAdministrator(tenantId)
 
   const grants = yield* makeGrants(authorityFor)
-  const roles = yield* makeRoles(authorityFor, keepsAdministrator)
+  const roles = yield* makeRoles(authorityFor, keepsAdministrator, (actor, code) =>
+    shapeRef.require(actor, code),
+  )
   const diagnostics = yield* makeDiagnostics(() => catalog)
 
   /**

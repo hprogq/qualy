@@ -30,7 +30,7 @@ import {
   RoleUpdated,
 } from '../actions.ts'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
-import type { LastAdministrator } from '@qualy/rbac-contract/effect'
+import type { AccessDenied, LastAdministrator } from '@qualy/rbac-contract/effect'
 import type { Principal } from '@qualy/rbac-contract'
 import { RoleNotFound } from './grants.ts'
 import { assertMayDefineRole, type Authority } from './escalation.ts'
@@ -516,6 +516,8 @@ const orgTypeOptions = (tenantId: string) =>
 export const make = Effect.fn('Rbac.roles.make')(function* (
   authorityFor: (actor: Principal) => Authority,
   keepsAdministrator: (tenantId: string) => Effect.Effect<void, LastAdministrator>,
+  /** the tenant permission check, asked again on the locked connection */
+  requireHeld: (actor: Principal, code: string) => Effect.Effect<void, AccessDenied>,
 ) {
   // this layer's database, closed over: the transaction supplies it to its
   // body, and this supplies it to the transaction, so the service keeps
@@ -524,11 +526,20 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
   const audit = yield* Audit
   const actorOf = (as: Principal): AuditActor => ({ kind: 'user', userId: as.userId })
 
-  const write = <A, E, R>(tenantId: string, body: () => Effect.Effect<A, E, R>) =>
+  // The handler refuses a caller without the permission before any of this;
+  // it is asked again under the lock because a grant withdrawn while the
+  // request waited for it must not still let one last edit through.
+  const write = <A, E, R>(
+    tenantId: string,
+    actor: Principal,
+    code: 'iam.role.manage' | 'iam.role.appointment.manage',
+    body: () => Effect.Effect<A, E, R>,
+  ) =>
     withDb(
       transaction(
         Effect.gen(function* () {
           yield* lockTenant(tenantId)
+          yield* requireHeld(actor, code)
           return yield* body()
         }),
       ),
@@ -643,7 +654,7 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       input: { code: string; name: string; description?: string; kind: 'tenant' | 'org' },
       actor: Principal,
     ) {
-      return yield* write(tenantId, () =>
+      return yield* write(tenantId, actor, 'iam.role.manage', () =>
         Effect.gen(function* () {
           const created = yield* insertRole({
             tenantId,
@@ -670,7 +681,7 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       expectedVersion: number,
       actor: Principal,
     ) {
-      return yield* write(tenantId, () =>
+      return yield* write(tenantId, actor, 'iam.role.manage', () =>
         Effect.gen(function* () {
           const role = yield* lockRole(tenantId, roleId, expectedVersion)
           // the administrator role keeps its assignability: making it
@@ -710,7 +721,7 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       actor: Principal,
     ) {
       const authority = authorityFor(actor)
-      return yield* write(tenantId, () =>
+      return yield* write(tenantId, actor, 'iam.role.manage', () =>
         Effect.gen(function* () {
           const role = yield* lockRole(tenantId, roleId, expectedVersion)
           if (role.systemKey !== null && status === 'disabled') {
@@ -778,7 +789,7 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       actor: Principal,
     ) {
       const authority = authorityFor(actor)
-      return yield* write(tenantId, () =>
+      return yield* write(tenantId, actor, 'iam.role.manage', () =>
         Effect.gen(function* () {
           const role = yield* lockRole(tenantId, roleId, expectedVersion)
           if (role.permissionMode === 'all-active') return yield* new RoleIsSystem()
@@ -867,7 +878,7 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       expectedVersion: number,
       actor: Principal,
     ) {
-      return yield* write(tenantId, () =>
+      return yield* write(tenantId, actor, 'iam.role.manage', () =>
         Effect.gen(function* () {
           const role = yield* lockRole(tenantId, roleId, expectedVersion)
           // the canonical administrator is grantable to whoever the tenant
@@ -997,7 +1008,7 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       actor: Principal,
     ) {
       const authority = authorityFor(actor)
-      return yield* write(tenantId, () =>
+      return yield* write(tenantId, actor, 'iam.role.appointment.manage', () =>
         Effect.gen(function* () {
           const role = yield* lockRole(tenantId, roleId, expectedVersion)
           if (role.systemKey !== null) return yield* new RoleIsSystem()
@@ -1060,7 +1071,7 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       expectedVersion: number,
       actor: Principal,
     ) {
-      yield* write(tenantId, () =>
+      yield* write(tenantId, actor, 'iam.role.manage', () =>
         Effect.gen(function* () {
           const role = yield* lockRole(tenantId, roleId, expectedVersion)
           if (role.systemKey !== null) return yield* new RoleIsSystem()
