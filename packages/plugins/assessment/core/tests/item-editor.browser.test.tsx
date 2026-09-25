@@ -246,6 +246,70 @@ const bindingOptions = () => ({
   },
 })
 
+/** a minted determination id, the way the server hands one back */
+const MINTED_ID = '01920000-0000-7000-8000-0000000000f9'
+
+/**
+ * A save as the server answers it: the question as stored, with the pen's
+ * draft language for the arithmetic settled into its stored shape - handles
+ * dropped, a determination without an id given one.
+ */
+const storedAfter = (
+  base: Record<string, any>,
+  payload: {
+    title?: string
+    scoreGroupId?: string
+    maxEntries?: number | null
+    config?: Record<string, any>
+  },
+) => {
+  const scoring = payload.config?.['scoringConfig'] as Record<string, any> | undefined
+  const settled =
+    scoring !== undefined && Array.isArray(scoring['recognitions'])
+      ? (() => {
+          const drafted = scoring['recognitions'] as Record<string, any>[]
+          const idOf = new Map(drafted.map((one) => [one['handle'], one['id'] ?? MINTED_ID]))
+          return {
+            ...scoring,
+            recognitions: Object.fromEntries(
+              drafted.map((one) => [
+                idOf.get(one['handle']),
+                {
+                  label: one['label'],
+                  refinement: one['refinement'],
+                  defaultFromFieldId: one['defaultFromFieldId'],
+                },
+              ]),
+            ),
+            bindings: Object.fromEntries(
+              Object.entries(scoring['bindings'] as Record<string, Record<string, any>>).map(
+                ([parameter, binding]) => [
+                  parameter,
+                  binding['kind'] === 'recognition'
+                    ? { kind: 'recognition', recognitionId: idOf.get(binding['handle']) }
+                    : binding,
+                ],
+              ),
+            ),
+          }
+        })()
+      : scoring
+  return {
+    ...base,
+    ...(payload.title === undefined ? {} : { title: payload.title }),
+    ...(payload.scoreGroupId === undefined ? {} : { scoreGroupId: payload.scoreGroupId }),
+    ...(payload.maxEntries === undefined ? {} : { maxEntries: payload.maxEntries }),
+    currentRevision:
+      payload.config === undefined
+        ? base['currentRevision']
+        : {
+            ...base['currentRevision'],
+            ...payload.config,
+            ...(settled === undefined ? {} : { scoringConfig: settled }),
+          },
+  }
+}
+
 const open = (
   had: {
     items?: readonly unknown[]
@@ -269,8 +333,10 @@ const open = (
     /** what a save is answered with instead of being taken, one answer per press */
     refuse?: unknown[]
   } = {},
-) =>
-  renderScreen({
+) => {
+  // what the server holds, so a save is read back as it was stored
+  const holding = [...((had.items ?? []) as Record<string, any>[])]
+  return renderScreen({
     client: fakeClient({
       app: {
         getManifest: () =>
@@ -284,8 +350,7 @@ const open = (
         getBatch: () => Effect.succeed({ batch: batch() }),
         listScoreGroups: () =>
           Effect.succeed({ groups: [paper], version: 1, capabilities: { canManage: true } }),
-        listItems: () =>
-          Effect.succeed({ items: had.items ?? [], capabilities: { canManage: true } }),
+        listItems: () => Effect.succeed({ items: holding, capabilities: { canManage: true } }),
         itemOptions: () =>
           Effect.succeed({
             orgTypes: [{ id: ORG_TYPE_ID, code: 'class', name: '班级' }],
@@ -297,11 +362,19 @@ const open = (
           had.saved?.push(call.payload)
           return Effect.succeed({ item: { id: ITEM_ID } })
         },
-        updateItem: (call: { payload: { config?: unknown; itemType?: unknown } }) => {
+        updateItem: (call: {
+          params: { itemId: string }
+          payload: { config?: Record<string, any>; itemType?: unknown }
+        }) => {
           const refusal = had.refuse?.shift()
           if (refusal !== undefined) return Effect.fail(refusal)
           had.saved?.push(call.payload)
-          return Effect.succeed({ item: { id: ITEM_ID } })
+          const at = holding.findIndex((one) => one['id'] === call.params.itemId)
+          const stored = storedAfter(at === -1 ? { id: call.params.itemId } : holding[at]!, {
+            ...call.payload,
+          })
+          if (at !== -1) holding[at] = stored
+          return Effect.succeed({ item: stored })
         },
         checkItem: (call: { payload: { config: unknown } }) =>
           Effect.succeed({ issues: had.check?.(call.payload) ?? [], standing: had.standing ?? [] }),
@@ -333,6 +406,7 @@ const open = (
         ? `/assessment/batches/${BATCH_ID}/items`
         : `/assessment/batches/${BATCH_ID}/items?question=${had.question}${had.panel === undefined ? '' : `&panel=${had.panel}`}`,
   })
+}
 
 const editor = () => page.getByTestId('item-editor')
 
@@ -526,6 +600,35 @@ describe('feeding the arithmetic', () => {
     await sheet.getByRole('button', { name: '完成' }).click()
     await vi.waitFor(() => expect(linkedRows()).toHaveLength(0))
     expect(page.getByTestId('form-field-row').elements()).toHaveLength(2)
+  })
+
+  it('takes on what the save stored, so a second save keeps the minted determination', async () => {
+    const saved: { config?: unknown }[] = []
+    await open({
+      items: [formulaItem({ defaultFromFieldId: null })],
+      question: ITEM_ID,
+      panel: 'scoring',
+      surfaces: BOTH_CALCULATORS,
+      saved,
+    })
+    // a determination of its own, made here: the server mints its id
+    await chooseSource('level', '固定值')
+    await chooseSource('level', '认定值')
+    await expect.element(page.getByTestId('recognition-row')).toBeVisible()
+    await expect.element(page.getByTestId('item-unsaved')).toBeVisible()
+    await page.getByTestId('item-save').click()
+    await vi.waitFor(() => expect(saved).toHaveLength(1))
+
+    // saved is saved: nothing is left over for the pane to call unsaved
+    await vi.waitFor(() => expect(page.getByTestId('item-unsaved').elements()).toHaveLength(0))
+
+    // and the next save names the determination the first one minted
+    await tab(/基本信息/).click()
+    await page.getByLabelText('项目名称').fill('竞赛获奖（校级以上）')
+    await page.getByTestId('item-save').click()
+    await vi.waitFor(() => expect(saved).toHaveLength(2))
+    const second = saved[1]!.config as { scoringConfig: unknown }
+    expect(JSON.stringify(second.scoringConfig)).toContain(MINTED_ID)
   })
 
   it('asks before switching to take effect on submission while a determination has no field', async () => {

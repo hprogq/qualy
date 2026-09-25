@@ -221,7 +221,7 @@ export function ItemEditor({
   batchId,
   batchStatus,
   materialRange,
-  item,
+  item: given,
   groups,
   defaultGroupId,
   options,
@@ -268,6 +268,12 @@ export function ItemEditor({
   const run = useRunApi()
   const { format, formatError, locale } = useI18n()
   const listJoin = useList()
+  // What the last save here answered with, until the page's own read of the
+  // question catches up. Until then it IS the question: the next save names
+  // its revision, and the pane compares against it to say what is unsaved.
+  const [answered, setAnswered] = useState<ItemDto | null>(null)
+  useEffect(() => setAnswered(null), [given])
+  const item = answered ?? given
   const [draft, setDraft] = useState<Draft>(() => {
     if (held !== undefined) return held
     const seeded = draftOf(item, groups, options)
@@ -936,13 +942,27 @@ export function ItemEditor({
       setRefused(null)
       setDismissed(false)
       setDraftReason(reason)
+      return { sent: draft }
     },
-    onSuccess: (result: { item: { id: string } }) => {
+    onSuccess: (result: { item: ItemDto }, _input, mutated) => {
       toast.success(format(m.itemsSaved))
       setAskingReason(false)
       setImpact(null)
       setRefusal(null)
       setFailed(false)
+      if (item !== null) {
+        // The composition becomes what was saved, in the server's own words:
+        // determinations it minted ids for, values it normalised. Left as
+        // written, the next save would mint those determinations afresh and
+        // the pane would go on calling a saved question unsaved. What was
+        // typed while the save was out stays as typed.
+        const saved = result.item
+        setAnswered(saved)
+        setDraft((current) =>
+          current === mutated.sent ? draftOf(saved, groups, options) : current,
+        )
+        setSheet(null)
+      }
       onSaved(result.item.id)
     },
     onError: (error: unknown) => {
