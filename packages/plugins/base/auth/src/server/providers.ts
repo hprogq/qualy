@@ -159,7 +159,16 @@ const everBound = (tenantId: string, providerId: string) =>
     )
     .pipe(Effect.map((row) => row !== undefined))
 
-/** whether anybody has ever come in through the door */
+/**
+ * Whether anybody has ever come in through the door.
+ *
+ * Read before the tenant's row is locked, never under it: sign-in events
+ * are indexed by tenant and time, not by door, so for a door nobody has come
+ * in through yet this walks the tenant's whole sign-in history, and every
+ * structural write of the tenant would queue behind it. The lock would buy
+ * nothing here - a sign-in does not take it - and the answer only ever
+ * turns from no to yes.
+ */
 const everSignedIn = (tenantId: string, providerId: string) =>
   db
     .query((k) =>
@@ -173,18 +182,6 @@ const everSignedIn = (tenantId: string, providerId: string) =>
         .executeTakeFirst(),
     )
     .pipe(Effect.map((row) => row !== undefined))
-
-/**
- * Whether the door has already spoken for somebody: an account bound
- * through it, even one since withdrawn, or anybody let in through it. A
- * door that finds people by a field of their own binds nothing, so for it
- * the first sign-in is the first time its settings named anybody.
- */
-const everSpokenFor = (tenantId: string, providerId: string) =>
-  Effect.gen(function* () {
-    if (yield* everBound(tenantId, providerId)) return true
-    return yield* everSignedIn(tenantId, providerId)
-  })
 
 /** what deleting the door would take down with it */
 const usageOf = (tenantId: string, providerId: string) =>
@@ -535,6 +532,26 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
       },
       as: Principal,
     ) {
+      // Whether the door has spoken for anybody is asked only of a save that
+      // touches a setting saying whose accounts it speaks for; the sign-ins
+      // half of it before the lock (see `everSignedIn`), the bindings half
+      // under it, where a bind waits its turn.
+      const signedIn = yield* withDb(
+        Effect.gen(function* () {
+          if (input.values === undefined) return false
+          const found = yield* oneProvider(tenantId, providerId)
+          const provisioning =
+            found === undefined
+              ? undefined
+              : (yield* drivers.forType(found.type))?.driver.provisioning
+          const namespace =
+            provisioning?.mode === 'tenant-managed'
+              ? (provisioning.entrance.identityNamespaceKeys ?? [])
+              : []
+          if (!Object.keys(input.values).some((key) => namespace.includes(key))) return false
+          return yield* everSignedIn(tenantId, providerId)
+        }),
+      ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
       return yield* write(tenantId, as, [], () =>
         Effect.gen(function* () {
           const provider = yield* current(tenantId, providerId, input.expectedVersion)
@@ -598,13 +615,17 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
                 ...(derived === undefined ? {} : { [DERIVED_CONFIG_KEY]: derived }),
               }
               // who the door speaks for is fixed once it has spoken for
-              // anybody: another server behind the same door would start
-              // answering for the people it already let in
+              // anybody - an account bound through it, even one since
+              // withdrawn, or anybody let in through it: another server
+              // behind the same door would start answering for the people it
+              // already let in. A door that finds people by a field of their
+              // own binds nothing, so for it the first sign-in is the first
+              // time its settings named anybody.
               const before = effectiveValues(kind, previous)
               const moved = (kind.identityNamespaceKeys ?? []).find(
                 (key) => before[key] !== effective[key],
               )
-              if (moved !== undefined && (yield* everSpokenFor(tenantId, providerId))) {
+              if (moved !== undefined && (signedIn || (yield* everBound(tenantId, providerId)))) {
                 return yield* new ProviderIdentityNamespaceInUse({ field: moved })
               }
             }

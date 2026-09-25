@@ -3,7 +3,7 @@ import { compileCatalog } from '@qualy/rbac-contract/plugin'
 import { permissions as authPermissions } from '@qualy/plugin-auth/permissions'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
-import { Cause, Effect, Exit, Layer } from 'effect'
+import { Cause, Deferred, Effect, Exit, Fiber, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 import {
   createTestContext,
@@ -13,7 +13,7 @@ import {
 } from '@qualy/plugin-database/testkit'
 import { secretsLayer } from '@qualy/plugin-secrets/testkit'
 import { captchaLayer } from '@qualy/plugin-captcha/testkit'
-import { type Orm } from '@qualy/plugin-database/server'
+import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
 import { serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
 import { serviceLayer as auditLayer } from '@qualy/plugin-audit/server'
@@ -33,6 +33,7 @@ import { AuthConfig } from '../src/server/auth-config.ts'
 import { Iam, serviceLayer as authLayer } from '../src/server/index.ts'
 import { SignIn } from '../src/server/sign-in.ts'
 import { entranceSecretHealth } from '../src/server/secret-health.ts'
+import { db as authDb, lockTenant } from '../src/server/db.ts'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
 import { authClosure } from './support/closure.ts'
 
@@ -564,6 +565,87 @@ describe.runIf(postgresAvailable)('an entrance a tenant adds', () => {
       expect(tagOf(answer.pinned)).toBe('AUTH_PROVIDER_IDENTITY_NAMESPACE_IN_USE')
       expect(failureOf(answer.pinned)?.['field']).toBe('server')
       expect(answer.relabelled).toBe(4)
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  // Sign-in events are not indexed by door: asking whether a door let
+  // anybody in can walk a tenant's whole history, and the tenant's row is
+  // every structural write's queue. So it is asked before the save queues
+  // for the row - where it is no less true, since a sign-in never takes the
+  // row - and a save that waited has its answer already.
+  it('asks whether a door let anybody in before it waits for the tenant’s row', async () => {
+    const db = await createTestContext('providers-namespace-unlocked')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const iam = yield* Iam
+            const id = yield* iam.providers.create(
+              f.tenant,
+              { type: 'badge', code: 'badge', name: 'Badge' },
+              f.as,
+            )
+            const set = yield* iam.providers.update(
+              f.tenant,
+              id,
+              { expectedVersion: 1, values: { server: 'https://cas.example.edu/' } },
+              f.as,
+            )
+            // somebody else's structural write holds the row, and lets
+            // somebody in through the door just before it lets go
+            const withDb = yield* withDatabase
+            const held = yield* Deferred.make<void>()
+            const release = yield* Deferred.make<void>()
+            const holder = yield* withDb(
+              transaction(
+                Effect.gen(function* () {
+                  yield* lockTenant(f.tenant)
+                  yield* Deferred.succeed(held, undefined)
+                  yield* Deferred.await(release)
+                  yield* authDb
+                    .query((k) =>
+                      k
+                        .insertInto('SignInEvent')
+                        .values({
+                          tenantId: f.tenant,
+                          providerId: id,
+                          providerType: 'badge',
+                          providerCode: 'badge',
+                          userId: f.person,
+                          outcome: 'success',
+                        })
+                        .execute(),
+                    )
+                    .pipe(Effect.orDie)
+                }),
+              ),
+            ).pipe(Effect.forkChild)
+            yield* Deferred.await(held)
+            const moving = yield* iam.providers
+              .update(
+                f.tenant,
+                id,
+                { expectedVersion: set, values: { server: 'https://other.example.edu/' } },
+                f.as,
+              )
+              .pipe(Effect.forkChild)
+            // long enough for the save to ask and queue for the row
+            yield* Effect.sleep('1500 millis')
+            yield* Deferred.succeed(release, undefined)
+            yield* Fiber.join(holder)
+            // it asked before it queued: the answer it waited with stands,
+            // as a sign-in never waits for the row either
+            return yield* Effect.result(Fiber.join(moving)).pipe(
+              Effect.map((result) => (result._tag === 'Success' ? result.success : tagOf(result))),
+            )
+          }),
+        ),
+      )
+      expect(answer).toBe(3)
     } finally {
       await db.dispose()
     }
