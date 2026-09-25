@@ -16,7 +16,7 @@ import {
   RESEARCH_SUBJECTS,
   RESEARCH_TREATMENTS,
 } from '../catalog.ts'
-import { addMinutes, principalOf, type Random, type Story } from './context.ts'
+import { addMinutes, awake, principalOf, type Random, type Story } from './context.ts'
 import { stageProof, stageWorkbook } from './files.ts'
 import { scoringConfigOf, type Versions } from './items.ts'
 import { EventQueue } from './queue.ts'
@@ -670,7 +670,7 @@ export const runSelection = (input: {
             },
             judge.as,
           )
-          const settled = addMinutes(queue.now, random.int(6 * 60, 48 * 60))
+          const settled = awake(addMinutes(queue.now, random.int(6 * 60, 48 * 60)))
           if (random.chance(0.5) && settled.getTime() < now.getTime() - DAY)
             queue.at(settled, 'review', () => decide(entry))
           return
@@ -701,7 +701,7 @@ export const runSelection = (input: {
                   { payload: { f1: '已补充证书原件照片与公示名单截图，名单中第 12 行为本人。' } },
                   me,
                 )
-                const again = addMinutes(queue.now, random.int(3 * 60, 20 * 60))
+                const again = awake(addMinutes(queue.now, random.int(3 * 60, 20 * 60)))
                 if (again.getTime() < now.getTime() - DAY)
                   queue.at(again, 'review', () => decide(entry))
               }),
@@ -747,9 +747,9 @@ export const runSelection = (input: {
         if (!submit) return state
         const sent = yield* assessment.setEntryStatus(t, entry.id, 'in_review', me)
         state.instanceId = sent.currentReviewInstanceId ?? null
-        // reviewed within a few days - unless it came in during the last few,
-        // where the queue is still working through it now
-        const when = addMinutes(queue.now, random.int(8 * 60, 4 * 24 * 60))
+        // reviewed in the day, within a few days - unless it came in during
+        // the last few, where the queue is still working through it now
+        const when = awake(addMinutes(queue.now, random.int(8 * 60, 4 * 24 * 60)))
         if (!waiting && when.getTime() < now.getTime() - 2.5 * DAY)
           queue.at(when, 'review', () => decide(state))
         return state
@@ -1581,7 +1581,7 @@ export const runSelection = (input: {
             ).rows[0]
             if (round === undefined) continue
             entry.instanceId = round.id
-            queue.at(addMinutes(queue.now, random.int(6 * 60, 3 * 24 * 60)), 'review', () =>
+            queue.at(awake(addMinutes(queue.now, random.int(6 * 60, 3 * 24 * 60))), 'review', () =>
               Effect.gen(function* () {
                 // the major step, then the counsellor's
                 for (let step = 0; step < 2; step++) {

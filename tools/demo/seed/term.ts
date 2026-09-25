@@ -8,7 +8,7 @@ import library from '../library.json' with { type: 'json' }
 import { APPEAL_REASONS, CADRE_POSTS, REJECTIONS } from '../catalog.ts'
 import type { FieldSpec, ItemSpec, Term } from '../rules.ts'
 import { claimsOf, type Claim } from './claims.ts'
-import { addMinutes, cst, principalOf, type Random, type Story } from './context.ts'
+import { addMinutes, awake, cst, principalOf, type Random, type Story } from './context.ts'
 import { episodesOf, TRIAL_ITEM, type Episode } from './episodes.ts'
 import { stageProof, stageWorkbook } from './files.ts'
 import { buildTermItems, reviewPolicyOf, scoringConfigOf, type Versions } from './items.ts'
@@ -303,7 +303,9 @@ export const runTerm = (input: {
 
     const filed: Filed[] = []
 
-    const review = (entry: Filed, when: Date) => queue.at(when, 'review', () => decideNormal(entry))
+    // reviewers decide in the day, whenever the claim came in
+    const review = (entry: Filed, when: Date) =>
+      queue.at(awake(when), 'review', () => decideNormal(entry))
 
     /** sends a claim in; `review` false leaves its judging to whoever scheduled it */
     const submit = (entry: Filed, review_ = true) =>
@@ -439,7 +441,7 @@ export const runTerm = (input: {
             },
             judge.as,
           )
-          queue.at(addMinutes(queue.now, random.int(8 * 60, 40 * 60)), 'escalated', () =>
+          queue.at(awake(addMinutes(queue.now, random.int(8 * 60, 40 * 60))), 'escalated', () =>
             decideEscalated(entry, 'claim'),
           )
           return
@@ -462,11 +464,8 @@ export const runTerm = (input: {
         yield* approve(entry, judge, 0.04)
         // a route with more than one step: the next one looks at it later
         const after = yield* assessment.getReviewInstance(t, entry.instanceId, lead)
-        if (after.state === 'active') {
-          queue.at(addMinutes(queue.now, random.int(2 * 60, 20 * 60)), 'review', () =>
-            decideNormal(entry),
-          )
-        }
+        if (after.state === 'active')
+          review(entry, addMinutes(queue.now, random.int(2 * 60, 20 * 60)))
       })
 
     /** approves, now and then correcting what the student filed */
@@ -571,9 +570,7 @@ export const runTerm = (input: {
         if (ask === undefined) return
         yield* assessment.answerSupplement(t, ask.id, { payload: { f1: text } }, me)
         if (!review_) return
-        queue.at(addMinutes(queue.now, random.int(4 * 60, 30 * 60)), 'review', () =>
-          decideNormal(entry),
-        )
+        review(entry, addMinutes(queue.now, random.int(4 * 60, 30 * 60)))
       })
 
     const revise = (
@@ -1045,7 +1042,7 @@ export const runTerm = (input: {
         }
         const after = yield* assessment.getReviewInstance(t, entry.instanceId!, lead)
         if (after.state === 'active') {
-          queue.at(addMinutes(queue.now, gapMinutes), 'episode', () =>
+          queue.at(awake(addMinutes(queue.now, gapMinutes)), 'episode', () =>
             walk(entry, verdict, gapMinutes),
           )
           return
@@ -1536,8 +1533,10 @@ export const runTerm = (input: {
               entry.appealed = true
               entry.instanceId = round.success.id
               const accept = random.chance(kind === 'missing' ? 0.72 : 0.6)
-              queue.at(addMinutes(queue.now, random.int(6 * 60, 30 * 60)), 'appeal-review', () =>
-                decideEscalated(entry, kind, accept),
+              queue.at(
+                awake(addMinutes(queue.now, random.int(6 * 60, 30 * 60))),
+                'appeal-review',
+                () => decideEscalated(entry, kind, accept),
               )
             }),
           )

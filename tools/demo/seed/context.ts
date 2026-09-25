@@ -64,6 +64,22 @@ export const cst = (text: string) => new Date(`${text}+08:00`)
 export const addMinutes = (at: Date, minutes: number) => new Date(at.getTime() + minutes * 60_000)
 
 /**
+ * The moment itself, or the next morning's when it falls between 23:00 and
+ * 08:00 Beijing time: reviewers decide in the day, whatever the gap between
+ * two steps adds up to. The minutes past the hour are kept, so two steps
+ * pushed out of the same night stay in their order.
+ */
+export const awake = (at: Date) => {
+  const local = new Date(at.getTime() + 8 * 3_600_000)
+  const hour = local.getUTCHours()
+  if (hour >= 8 && hour < 23) return at
+  const morning = new Date(local.getTime() + (hour >= 23 ? 86_400_000 : 0))
+  const ymd = morning.toISOString().slice(0, 10)
+  const minutes = String(local.getUTCMinutes()).padStart(2, '0')
+  return cst(`${ymd}T09:${minutes}:00`)
+}
+
+/**
  * The story's clock. Each recorded step happens at `at` and moves it on a
  * little; the scenario sets it outright at every date that matters.
  */
