@@ -294,6 +294,21 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
 
   const [edited, setEdited] = useState<readonly PhaseDraft[] | null>(null)
   const drafts = edited ?? serverDrafts
+  /**
+   * The plan the draft was begun from. Saving names it, so a plan somebody
+   * else changed in the meantime is refused rather than overwritten by this
+   * copy of it.
+   */
+  const serverFingerprint = phases.data?.planFingerprint
+  const [baseline, setBaseline] = useState<string | null>(null)
+  const edit = (next: readonly PhaseDraft[]) => {
+    if (edited === null) setBaseline(serverFingerprint ?? null)
+    setEdited(next)
+  }
+  const dropDraft = () => {
+    setEdited(null)
+    setBaseline(null)
+  }
   const [editing, setEditing] = useState(false)
   /** the seam a pointer is currently over, if any */
   const [seamAt, setSeamAt] = useState<number | null>(null)
@@ -339,11 +354,18 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
   }
 
   const savePlan = useMutation({
-    mutationFn: (submitted: readonly PhaseDraft[]) =>
+    mutationFn: ({
+      submitted,
+      expected,
+    }: {
+      submitted: readonly PhaseDraft[]
+      expected: string | undefined
+    }) =>
       run(
         api.assessment.putPhases({
           params: { batchId: batch.id },
           payload: {
+            ...(expected !== undefined ? { expectedPlanFingerprint: expected } : {}),
             phases: submitted.map((row) => ({
               ...(row.id !== undefined ? { id: row.id } : {}),
               phaseKey: row.phaseKey,
@@ -359,7 +381,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
     onSuccess: async () => {
       toast.success(format(m.toastPlanSaved))
       await settle()
-      setEdited(null)
+      dropDraft()
       setEditing(false)
     },
     onError: failed,
@@ -377,7 +399,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
     onSuccess: async () => {
       toast.success(format(m.toastPlanSaved))
       await settle()
-      setEdited(null)
+      dropDraft()
       setTemplateOpen(false)
       setTemplateId('')
     },
@@ -443,14 +465,14 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
       setPlanRefusals(blockers)
       return
     }
-    savePlan.mutate(drafts)
+    savePlan.mutate({ submitted: drafts, expected: baseline ?? serverFingerprint })
   }
 
   const addPhase = () => insertAt(drafts.length)
 
   const insertAt = (index: number) => {
     clear()
-    setEdited([...drafts.slice(0, index), freshDraft(drafts), ...drafts.slice(index)])
+    edit([...drafts.slice(0, index), freshDraft(drafts), ...drafts.slice(index)])
     setEditing(true)
   }
 
@@ -461,11 +483,11 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
     const [row] = next.splice(index, 1)
     next.splice(to, 0, row!)
     clear()
-    setEdited(next)
+    edit(next)
   }
 
   const setDraftAt = (index: number, next: PhaseDraft) =>
-    setEdited(drafts.map((row, at) => (at === index ? next : row)))
+    edit(drafts.map((row, at) => (at === index ? next : row)))
 
   const refusalsFor = (row: PhaseDraft, index: number) =>
     planRefusals.filter(
@@ -511,7 +533,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
     onMove: (by) => move(index, by),
     onRemove: () => {
       clear()
-      setEdited(drafts.filter((_, at) => at !== index))
+      edit(drafts.filter((_, at) => at !== index))
     },
   })
 
@@ -755,7 +777,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
         tone="destructive"
         onConfirm={() => {
           clear()
-          setEdited(null)
+          dropDraft()
           setEditing(false)
           setDiscarding(false)
         }}

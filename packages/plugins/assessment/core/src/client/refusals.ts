@@ -27,6 +27,7 @@ type ServiceRefusalReason =
   | 'participant-not-in-batch'
   | 'item-not-in-batch'
   | 'plan-too-long'
+  | 'plan-changed'
 
 /**
  * Every refusal reason the api can return, mapped to its explanation. Typed
@@ -58,6 +59,7 @@ const SENTENCES: Record<EditRefusalReason | ServiceRefusalReason, MessageDescrip
   'participant-not-in-batch': m['refusal.participant-not-in-batch'],
   'item-not-in-batch': m['refusal.item-not-in-batch'],
   'plan-too-long': m['refusal.plan-too-long'],
+  'plan-changed': m['refusal.plan-changed'],
 }
 
 export interface PlanRefusalLike {

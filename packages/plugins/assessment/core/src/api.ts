@@ -2644,7 +2644,11 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   .add(
     HttpApiEndpoint.get('getPhases', '/assessment/batches/:batchId/phases', {
       params: Schema.Struct({ batchId: uuidInput }),
-      success: Schema.Struct({ phases: Schema.Array(phaseView) }),
+      success: Schema.Struct({
+        phases: Schema.Array(phaseView),
+        /** the plan's structure as read; a whole-plan write hands it back */
+        planFingerprint: Schema.String,
+      }),
       error: [BatchNotFound, AccessDenied],
     }).middleware(Authenticated),
   )
@@ -2658,6 +2662,12 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       payload: Schema.Struct({
         fromTemplateId: Schema.optional(uuidInput),
         phases: Schema.optional(phaseSpecs),
+        /**
+         * The fingerprint of the plan these phases were edited from. A plan
+         * that has changed since is refused rather than overwritten; absent,
+         * the write is taken as it stands.
+         */
+        expectedPlanFingerprint: Schema.optional(Schema.String.check(Schema.isMaxLength(128))),
       }).check(
         Schema.makeFilter(
           (value: { fromTemplateId?: string; phases?: readonly unknown[] }) =>

@@ -31,6 +31,7 @@ import { permissions as assessmentPermissions } from '../src/permissions.ts'
 import {
   Assessment,
   parseSpec,
+  planFingerprintOf,
   serviceLayer,
   type PhaseSpecInput,
   type PlanPhase,
@@ -496,6 +497,80 @@ describe.runIf(postgresAvailable).concurrent('plan writes', () => {
     expect(untouched).toEqual([])
     expect(refusalsIn(appended)).toEqual(['plan-too-long'])
     expect(after).toHaveLength(MAX_PLAN_PHASES - 1)
+  })
+
+  // A whole-plan write restates every phase. One composed over a plan that
+  // somebody else has since changed used to put the old plan back: their new
+  // phase deleted and a running stage's actions reverted, with nobody told.
+  it('refuses a plan written over one that changed since it was read', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('stale-plan')
+        const assessment = yield* Assessment
+        const batch = yield* newBatch(f.tenant, 'Stale', f.root, f.studentType, f.principal)
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          {
+            specs: [
+              phase({ phaseKey: 'entry', permissionProfile: ['assessment.entry.submit'] }),
+              phase({ phaseKey: 'review' }),
+            ],
+          },
+          f.principal,
+        )
+        const read = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        const opened = planFingerprintOf(read)
+        yield* assessment.advancePhase(f.tenant, batch.id, { to: read[0]!.id }, f.principal)
+
+        // somebody else closes submissions and adds a stage
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          {
+            specs: [
+              { ...toSpec(read[0]!), permissionProfile: [] },
+              toSpec(read[1]!),
+              phase({ phaseKey: 'supplement' }),
+            ],
+            expectedFingerprint: opened,
+          },
+          f.principal,
+        )
+        // and the first editor saves the copy they opened
+        const stale = yield* Effect.exit(
+          assessment.replacePlan(
+            f.tenant,
+            batch.id,
+            {
+              specs: [toSpec(read[0]!), { ...toSpec(read[1]!), displayName: 'Review' }],
+              expectedFingerprint: opened,
+            },
+            f.principal,
+          ),
+        )
+        const after = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        // read afresh, the same edit goes through
+        const fresh = yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          {
+            specs: [...after.map(toSpec)].map((spec, index) =>
+              index === 1 ? { ...spec, displayName: 'Review' } : spec,
+            ),
+            expectedFingerprint: planFingerprintOf(after),
+          },
+          f.principal,
+        )
+        return { stale, after, fresh }
+      }),
+    )
+    const { stale, after, fresh } = ok(exit)
+    expect(refusalsIn(stale)).toEqual(['plan-changed'])
+    expect(after.map((row) => row.phaseKey)).toEqual(['entry', 'review', 'supplement'])
+    expect(after[0]!.permissionProfile).toEqual([])
+    expect(fresh.phases.map((row) => row.displayName)).toEqual(['entry', 'Review', 'supplement'])
   })
 
   // What a field the caller never sent means, measured at the HTTP boundary.

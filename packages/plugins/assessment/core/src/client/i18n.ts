@@ -5562,6 +5562,11 @@ const i18n = definePluginMessages({
       id: 'assessment/refusal/plan-too-long',
       defaultMessage: 'A timeline holds at most 50 stages. Remove some stages first.',
     },
+    'refusal.plan-changed': {
+      id: 'assessment/refusal/plan-changed',
+      defaultMessage:
+        'Someone else changed the stage plan while you were editing. Discard your changes and edit again.',
+    },
     // ---- the question editor: shell, tabs and the list of what is left ----
     itemsMode: { id: 'assessment/items/mode', defaultMessage: 'Handling' },
     itemsModeReview: {

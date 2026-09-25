@@ -1,4 +1,5 @@
 import { Clock, Context, Effect, Layer, Option, Result, Stream } from 'effect'
+import { hashCanonicalJson } from '@qualy/value-schema/hash'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { TenantSettings } from '@qualy/settings-contract/effect'
 import { authTerms } from '@qualy/auth-contract/terms'
@@ -702,6 +703,25 @@ const groupBy = <T, K, V>(
   return groups
 }
 
+/**
+ * What a plan says about its structure, as one value an editor can hold on
+ * to while it edits. Times are left out: they are committed one phase at a
+ * time, and the scheduler settling a boundary is not somebody else's edit.
+ */
+export const planFingerprintOf = (plan: readonly PlanPhase[]): string =>
+  hashCanonicalJson(
+    plan.map((phase) => ({
+      id: phase.id,
+      phaseKey: phase.phaseKey,
+      displayName: phase.displayName,
+      description: phase.description,
+      entryNote: phase.entryNote,
+      permissionProfile: phase.permissionProfile,
+      itemScope: phase.itemScope,
+      participantScope: phase.participantScope,
+    })),
+  )
+
 /** a plan write whose result would hold more phases than a plan may */
 const planTooLong = () =>
   new PlanInvalid({ refusals: [{ reason: 'plan-too-long', phaseId: null }] })
@@ -1007,7 +1027,12 @@ export class Assessment extends Context.Service<
     readonly replacePlan: (
       tenantId: string,
       batchId: string,
-      body: { fromTemplateId?: string; specs?: readonly PhaseSpecInput[] },
+      body: {
+        fromTemplateId?: string
+        specs?: readonly PhaseSpecInput[]
+        /** the plan the specs were edited from; a changed plan is refused */
+        expectedFingerprint?: string
+      },
       as: Principal,
     ) => Effect.Effect<
       { phases: readonly PlanPhase[]; warnings: readonly EditWarning[] },
@@ -3910,6 +3935,18 @@ export const make = Effect.fn('Assessment.make')(function* () {
             // whichever way the plan is written, what it holds afterwards is
             // what was submitted
             if (specs.length > MAX_PLAN_PHASES) return yield* planTooLong()
+            // A whole-plan write restates every phase, so one composed over a
+            // plan somebody has since changed would put the old plan back:
+            // their new phase deleted, a stage's actions reverted, and nobody
+            // told. The editor names the plan it started from.
+            if (
+              body.expectedFingerprint !== undefined &&
+              body.expectedFingerprint !== planFingerprintOf(rows)
+            ) {
+              return yield* new PlanInvalid({
+                refusals: [{ reason: 'plan-changed', phaseId: null }],
+              })
+            }
             const unknown = specs.find(
               (spec) => spec.id !== undefined && !existingById.has(spec.id),
             )
@@ -5910,7 +5947,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
         const phases = yield* assessment.getPlan(principal.tenantId, params.batchId, principal)
-        return { phases: phases.map(toPhaseDto) }
+        return { phases: phases.map(toPhaseDto), planFingerprint: planFingerprintOf(phases) }
       }),
     )
     .handle(
@@ -5930,6 +5967,9 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
               ? { fromTemplateId: payload.fromTemplateId }
               : {}),
             ...(specs !== undefined ? { specs } : {}),
+            ...(payload.expectedPlanFingerprint !== undefined
+              ? { expectedFingerprint: payload.expectedPlanFingerprint }
+              : {}),
           },
           principal,
         )

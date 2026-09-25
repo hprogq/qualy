@@ -168,7 +168,7 @@ const assessmentStubs = (over: Stubs = {}): Stubs => ({
       capabilities: { create: true },
     }),
   getBatch: () => Effect.succeed({ batch: batch() }),
-  getPhases: () => Effect.succeed({ phases: [] }),
+  getPhases: () => Effect.succeed({ phases: [], planFingerprint: 'plan-empty' }),
   getTimeline: () => Effect.succeed({ timeline: [] }),
   // the participant's desk on the overview: this harness plays an
   // administrator, whose desk is empty by design
@@ -863,6 +863,7 @@ describe('the stage plan', () => {
       }),
       phase({ id: REVIEW_PHASE_ID, phaseKey: 'review', ordinal: 1, displayName: '审核整理' }),
     ],
+    planFingerprint: 'plan-two',
   })
 
   it('builds a stage from nothing, and sends structure without any time', async () => {
@@ -1034,6 +1035,34 @@ describe('the stage plan', () => {
       params: { batchId: BATCH_ID },
       payload: { fromTemplateId: TIMELINE_ID },
     })
+  })
+
+  // A save restates the whole plan. Naming the plan the edit began from is
+  // what lets the server refuse one written over somebody else's change,
+  // instead of quietly putting the old plan back.
+  it('names the plan an edit began from when it saves', async () => {
+    const putPhases = vi.fn((_request: Request) =>
+      Effect.fail(
+        Object.assign(new Error('ASSESSMENT_PLAN_INVALID'), {
+          _tag: 'ASSESSMENT_PLAN_INVALID',
+          refusals: [{ reason: 'plan-changed', phaseId: null }],
+        }),
+      ),
+    )
+    await screen({ putPhases, getPhases: () => Effect.succeed(twoPhases()) })
+
+    await page.getByRole('button', { name: '编辑详情' }).nth(1).click()
+    const panel = page.getByRole('dialog')
+    await panel.getByLabelText('阶段名称').fill('审核整理期')
+    await panel.getByRole('button', { name: '完成' }).click()
+    await page.getByRole('button', { name: '保存', exact: false }).click()
+
+    await vi.waitFor(() => expect(putPhases).toHaveBeenCalledTimes(1))
+    expect(putPhases.mock.calls[0]![0]).toMatchObject({
+      payload: { expectedPlanFingerprint: 'plan-two' },
+    })
+    // refused, the edit is still there to be discarded or kept
+    await expect.element(page.getByText('审核整理期').first()).toBeVisible()
   })
 
   it('says what was refused, next to the stage it names', async () => {
