@@ -6,7 +6,16 @@ import { CalculatorRuntimeError, ScoringRuntimeCatalog } from '../src/plugin.ts'
 import { Assessment } from '../src/server/index.ts'
 import { auditScoringState, exitCodeOf, type ScoringAuditReport } from '../src/scoring/audit.ts'
 import { catalogLayers, probeGrantTest, probeHold, probeScoring } from './support/catalogs.ts'
-import { GATED, ok, one, run, runningBatch, seed, type Seeded } from './support/round.ts'
+import {
+  breakGrant,
+  GATED,
+  ok,
+  one,
+  run,
+  runningBatch,
+  seed,
+  type Seeded,
+} from './support/round.ts'
 
 // What stands, evaluated under the rule it stands under, today.
 //
@@ -96,7 +105,13 @@ const anotherQuestion = (f: Seeded, batchId: string, title: string, scoring: unk
     return item
   })
 
-/** a granted question, on a rule told what to make of its own amount */
+/**
+ * A granted question, on a rule told what to make of its own amount.
+ *
+ * Put on the round paying, and broken only afterwards: a rule that cannot
+ * pay is refused on its way in, so a broken one in force is a state only a
+ * write beneath the service can leave.
+ */
 const granted = (f: Seeded, batchId: string, fails?: 'refusal' | 'execution' | 'integrity') =>
   Effect.gen(function* () {
     const assessment = yield* Assessment
@@ -114,10 +129,7 @@ const granted = (f: Seeded, batchId: string, fails?: 'refusal' | 'execution' | '
           entryChannels: [] as const,
           formConfig: {},
           scoringConfig: {
-            calculator: {
-              ref: probeGrantTest.ref,
-              config: { amount: '1.00', ...(fails === undefined ? {} : { fails }) },
-            },
+            calculator: { ref: probeGrantTest.ref, config: { amount: '1.00' } },
             aggregator: { ref: 'sum@1', config: {} },
           },
           reviewPolicy: { mode: 'none' },
@@ -126,6 +138,7 @@ const granted = (f: Seeded, batchId: string, fails?: 'refusal' | 'execution' | '
       admin,
     )
     yield* assessment.setItemStatus(f.t, item.id, { status: 'active' }, admin)
+    if (fails !== undefined) yield* breakGrant(item.id, fails)
     return item
   })
 

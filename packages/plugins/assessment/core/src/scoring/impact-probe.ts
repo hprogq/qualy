@@ -173,6 +173,22 @@ export const trialScoringImpact = (
     )
     const count = (verdict: Verdict) => verdicts.filter((one) => one === verdict).length
     const derived = trial.derived ? yield* tryOne({}) : null
+    // A granted question is scored on its own amount at every read. Where
+    // the rule it has cannot pay that amount either, there is nothing to
+    // compare - but a candidate that cannot pay it would leave the question
+    // exactly as broken, so it is asked on its own and held to its answer.
+    const derivedAlone =
+      derived === 'baseline'
+        ? yield* evaluateRecognition(candidate, {
+            itemId: trial.itemId,
+            plan: trial.candidate,
+            recognition: {},
+          }).pipe(
+            countEvaluation('impact'),
+            Effect.map((): Verdict => 'same'),
+            Effect.catch((error) => candidateVerdict(at(trial.candidate), error)),
+          )
+        : null
     return {
       changed: true,
       approved: {
@@ -189,11 +205,48 @@ export const trialScoringImpact = (
           : {
               comparable: derived === 'same' || derived === 'changed',
               amountChanged: derived === 'changed',
-              refused: derived === 'refused',
-              executionFailed: derived === 'execution',
+              refused: derived === 'refused' || derivedAlone === 'refused',
+              executionFailed: derived === 'execution' || derivedAlone === 'execution',
               baselineFailed: derived === 'baseline',
             },
     }
+  })
+
+/**
+ * Whether a granted question's rule pays its own amount, before the question
+ * is put on the round.
+ *
+ * A derived question is scored at every read of every participant's account,
+ * on the one determination it ever has - the empty one - and a failure there
+ * is a defect, because a rule in force was tried before it took effect. This
+ * is that trial for the moment a question takes effect without anything to
+ * compare against: publishing it, or restoring it. An outage stops it; a
+ * frozen promise broken is a defect here as everywhere.
+ */
+export const trialDerivedGrant = (
+  runtime: ScoringRuntimeCatalog['Service'],
+  site: FailureSite,
+): Effect.Effect<
+  { readonly refused: boolean; readonly executionFailed: boolean },
+  ScoringUnavailable
+> =>
+  Effect.gen(function* () {
+    const prepared = yield* runtime
+      .prepare(site.plan.calculator.ref, frozenCalculatorOf(site.plan), {
+        tenantId: site.tenantId,
+        batchId: site.batchId,
+      })
+      .pipe(Effect.catch((error) => mapRuntimeFailure('impact-candidate', site, error)))
+    const verdict = yield* evaluateRecognition(prepared, {
+      itemId: site.itemId,
+      plan: site.plan,
+      recognition: {},
+    }).pipe(
+      countEvaluation('impact'),
+      Effect.map((): Verdict => 'same'),
+      Effect.catch((error) => candidateVerdict(site, error)),
+    )
+    return { refused: verdict === 'refused', executionFailed: verdict === 'execution' }
   })
 
 /** what the trial leaves the caller unable to save: the candidate cannot take these */

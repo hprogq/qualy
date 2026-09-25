@@ -7,6 +7,7 @@ import { ScoringRuntimeCatalog } from '../src/plugin.ts'
 import { candidateImpactHashOf } from '../src/item/impact.ts'
 import { probeGrantTest, probeScoring, probeTest } from './support/catalogs.ts'
 import {
+  breakGrant,
   errorOf,
   GATED,
   ok,
@@ -565,6 +566,163 @@ describe.runIf(postgresAvailable)('what a scoring change makes of what stands', 
     expect(result.refused?._tag).toBe('ASSESSMENT_ITEM_SCORING_INCOMPATIBLE')
     expect(result.refused?.derived).toEqual({ refused: true, executionFailed: false })
     expect(result.untouched).toBe(1)
+  }, 120_000)
+
+  it('tries a granted question before it is put on the round, and again when it is brought back', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('si-derived-live')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const groups = yield* assessment.listScoreGroups(f.t, g.batch.id, admin)
+          const draft = (title: string, config: Record<string, unknown>) =>
+            assessment.createItem(
+              f.t,
+              g.batch.id,
+              {
+                itemType: 'constant',
+                title,
+                scoreGroupId: groups.groups[0]!.id,
+                maxEntries: null,
+                config: {
+                  entryChannels: [] as const,
+                  formConfig: {},
+                  scoringConfig: {
+                    calculator: { ref: probeGrantTest.ref, config },
+                    aggregator: { ref: 'sum@1', config: {} },
+                  },
+                  reviewPolicy: { mode: 'none' },
+                },
+              },
+              admin,
+            )
+          const statusOf = (itemId: string) =>
+            Effect.map(
+              runSql(sql`select status from assessment_items where id = ${itemId}`),
+              (rows) => one<{ status: string }>(rows).status,
+            )
+          const publish = (itemId: string) =>
+            Effect.exit(assessment.setItemStatus(f.t, itemId, { status: 'active' }, admin))
+
+          const refusing = yield* draft('拒绝', { amount: '1.00', fails: 'refusal' })
+          const refused = yield* publish(refusing.id)
+          const failing = yield* draft('算不出', { amount: '1.00', fails: 'execution' })
+          const failed = yield* publish(failing.id)
+          const unreachable = yield* draft('断线', { amount: '1.00', fails: 'unavailable' })
+          const outage = yield* publish(unreachable.id)
+          // what everybody's account reads is untouched by all three
+          const mine = yield* Effect.exit(
+            assessment.getMyResult(f.t, g.batch.id, f.principal(f.s1)),
+          )
+
+          // one that paid when it went live, withdrawn, and whose rule no
+          // longer pays by the time somebody brings it back
+          const healthy = yield* draft('固定', { amount: '1.00' })
+          const live = yield* publish(healthy.id)
+          yield* assessment.setItemStatus(
+            f.t,
+            healthy.id,
+            { status: 'voided', reason: '暂停' },
+            admin,
+          )
+          yield* breakGrant(healthy.id, 'refusal')
+          const restored = yield* publish(healthy.id)
+          return {
+            refused: errorOf<{ _tag: string; derived: unknown }>(refused),
+            refusingStatus: yield* statusOf(refusing.id),
+            failed: errorOf<{ _tag: string; derived: unknown }>(failed),
+            failingStatus: yield* statusOf(failing.id),
+            outage: tagOf(outage),
+            unreachableStatus: yield* statusOf(unreachable.id),
+            mineOk: Exit.isSuccess(mine),
+            live: Exit.isSuccess(live),
+            restored: errorOf<{ _tag: string; derived: unknown }>(restored),
+            restoredStatus: yield* statusOf(healthy.id),
+          }
+        }),
+      ),
+    )
+    expect(result.refused?._tag).toBe('ASSESSMENT_ITEM_SCORING_INCOMPATIBLE')
+    expect(result.refused?.derived).toEqual({ refused: true, executionFailed: false })
+    expect(result.refusingStatus).toBe('draft')
+    expect(result.failed?._tag).toBe('ASSESSMENT_ITEM_SCORING_INCOMPATIBLE')
+    expect(result.failed?.derived).toEqual({ refused: false, executionFailed: true })
+    expect(result.failingStatus).toBe('draft')
+    expect(result.outage).toBe('ASSESSMENT_SCORING_UNAVAILABLE')
+    expect(result.unreachableStatus).toBe('draft')
+    expect(result.mineOk).toBe(true)
+    expect(result.live).toBe(true)
+    expect(result.restored?._tag).toBe('ASSESSMENT_ITEM_SCORING_INCOMPATIBLE')
+    expect(result.restoredStatus).toBe('voided')
+  }, 120_000)
+
+  it('holds a replacement to the granted amount even where the rule it replaces could not pay it', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('si-derived-broken')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const groups = yield* assessment.listScoreGroups(f.t, g.batch.id, admin)
+          const grant = (amount: string, fails?: 'refusal' | 'execution') => ({
+            entryChannels: [] as const,
+            formConfig: {},
+            scoringConfig: {
+              calculator: {
+                ref: probeGrantTest.ref,
+                config: { amount, ...(fails === undefined ? {} : { fails }) },
+              },
+              aggregator: { ref: 'sum@1', config: {} },
+            },
+            reviewPolicy: { mode: 'none' },
+          })
+          const item = yield* assessment.createItem(
+            f.t,
+            g.batch.id,
+            {
+              itemType: 'constant',
+              title: '固定加分',
+              scoreGroupId: groups.groups[0]!.id,
+              maxEntries: null,
+              config: grant('1.00'),
+            },
+            admin,
+          )
+          yield* assessment.setItemStatus(f.t, item.id, { status: 'active' }, admin)
+          // a question whose rule stopped paying after it went live
+          yield* breakGrant(item.id, 'refusal')
+          const sameFault = yield* Effect.exit(
+            assessment.updateItem(
+              f.t,
+              item.id,
+              { config: grant('1.00', 'execution'), reason: '换一个' },
+              admin,
+            ),
+          )
+          const repair = yield* Effect.exit(
+            assessment.updateItem(f.t, item.id, { config: grant('2.00'), reason: '修好' }, admin),
+          )
+          return {
+            sameFault: errorOf<{ _tag: string; derived: unknown }>(sameFault),
+            repair: tagOf(repair),
+            report: errorOf<Report>(repair),
+          }
+        }),
+      ),
+    )
+    expect(result.sameFault?._tag).toBe('ASSESSMENT_ITEM_SCORING_INCOMPATIBLE')
+    expect(result.sameFault?.derived).toEqual({ refused: false, executionFailed: true })
+    // a rule that pays is the way out, laid at nobody's door
+    expect(result.repair).toBe('ASSESSMENT_ITEM_CHANGE_DECISION_REQUIRED')
+    expect(result.report?.scoring.derived).toMatchObject({
+      baselineFailed: true,
+      refused: false,
+    })
   }, 120_000)
 
   it('acknowledges the candidate as the administrator keeps sending it, minted names aside', async () => {

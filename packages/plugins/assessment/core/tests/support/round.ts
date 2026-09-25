@@ -25,6 +25,8 @@ import { Storage } from '@qualy/plugin-storage/server/service'
 import { memoryBackend } from '@qualy/plugin-storage/testkit'
 import { entities as storageEntities } from '@qualy/plugin-storage/db'
 import { entities } from '../../src/db/entities.ts'
+import { semanticPlanBody } from '../../src/scoring/plan.ts'
+import { hashCanonicalJson } from '@qualy/value-schema/hash'
 import { permissions as assessmentPermissions } from '../../src/permissions.ts'
 import { Assessment, serviceLayer, type PhaseSpecInput } from '../../src/server/index.ts'
 import {
@@ -143,6 +145,35 @@ export const refusalOf = (exit: Exit.Exit<unknown, unknown>) =>
   errorOf<{ _tag?: string; reason?: string }>(exit)
 
 export const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+
+/**
+ * A granted question's frozen rule told to fail from now on, in a plan that
+ * still reads: what a question looks like when its rule stopped paying after
+ * it went live, which no write through the service may produce.
+ */
+export const breakGrant = (itemId: string, fails: 'refusal' | 'execution' | 'integrity') =>
+  Effect.gen(function* () {
+    const stored = one<{
+      id: string
+      scoring_plan: { planHash: string } & Record<string, unknown>
+    }>(
+      yield* runSql(sql`
+        select r.id, r.scoring_plan from assessment_items i
+        join assessment_item_revisions r on r.id = i.current_revision_id
+        where i.id = ${itemId}`),
+    )
+    const { planHash: _stale, ...body } = stored.scoring_plan
+    const calculator = body['calculator'] as { config: Record<string, unknown> }
+    const broken = {
+      ...body,
+      calculator: { ...calculator, config: { ...calculator.config, fails } },
+    }
+    const planHash = hashCanonicalJson(semanticPlanBody(broken as never))
+    yield* runSql(sql`
+      update assessment_item_revisions
+         set scoring_plan = ${JSON.stringify({ ...broken, planHash })}::jsonb
+       where id = ${stored.id}`)
+  })
 
 export const phase = (over: Partial<PhaseSpecInput> & { phaseKey: string }): PhaseSpecInput => ({
   displayName: over.phaseKey,

@@ -11,6 +11,7 @@ import {
   ItemChangeDecisionRequired,
   ItemConfigInvalid,
   ItemNotFound,
+  ItemRevisionConflict,
   ItemScoringIncompatible,
   ScoreGroupInvalid,
   ScoreGroupVersionConflict,
@@ -31,11 +32,13 @@ import {
   type ScoringPlan,
 } from '../scoring/plan.ts'
 import {
+  trialDerivedGrant,
   trialRefuses,
   trialScoringImpact,
   type ScoringTrial,
   type StandingDetermination,
 } from '../scoring/impact-probe.ts'
+import { probeIdentity, type FailureSite } from '../scoring/failure-boundary.ts'
 import {
   judgeRecognition,
   recognitionFormFields,
@@ -220,7 +223,12 @@ export type ItemLifecycleError = ItemNotFound | BatchReadOnly | AccessDenied | I
  * trial a saved one faces, so it refuses in the same words rather than in a
  * second vocabulary for the same problem.
  */
-export type ItemStatusError = ItemLifecycleError | ItemConfigInvalid
+export type ItemStatusError =
+  | ItemLifecycleError
+  | ItemConfigInvalid
+  | ItemScoringIncompatible
+  | ScoringUnavailable
+  | ItemRevisionConflict
 export type UpdateItemError =
   | ItemNotFound
   | BatchNotFound
@@ -286,7 +294,7 @@ export interface ItemMethods {
     itemId: string,
     input: { status: 'voided'; reason: string } | { status: 'active' },
     as: Principal,
-  ) => Effect.Effect<ItemView, ItemStatusError>
+  ) => Effect.Effect<ItemView, ItemStatusError, ScoringRuntimeCatalog>
   readonly listScoreGroups: (
     tenantId: string,
     batchId: string,
@@ -2257,9 +2265,27 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
     },
   )
 
+  /**
+   * A granted question on its way to being scored, whose rule has not been
+   * tried against the amount it grants.
+   *
+   * Raised inside the transaction, so nothing written on the way survives:
+   * the rule is tried outside it and the write runs again carrying the
+   * identity it was tried for.
+   */
+  class GrantTrialNeeded extends Data.TaggedError('GrantTrialNeeded')<{
+    readonly site: FailureSite
+    readonly revisionId: string
+    readonly identity: string
+  }> {}
+
   const setItemStatus: ItemMethods['setItemStatus'] = Effect.fn('Assessment.setItemStatus')(
     function* (tenantId, itemId, input, as) {
-      return yield* withDb(
+      const runtime = yield* ScoringRuntimeCatalog
+      // what the granted question's rule was tried for, once it has been;
+      // the write below reads it each time it runs
+      let tried: string | null = null
+      const write = withDb(
         transaction(
           Effect.gen(function* () {
             const located = yield* itemOf(tenantId, itemId)
@@ -2405,6 +2431,22 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                 },
               })
               if (issues.length > 0) return yield* new ItemConfigInvalid({ issues })
+              // A granted question is scored at every read of every account
+              // in the round, on the amount its rule pays, and a failure
+              // there is taken for a state that cannot happen. So the rule
+              // pays it once before the question counts - whether it was
+              // never asked before or is being asked again.
+              if (deps.catalogs.itemTypes.get(item.itemType)?.interaction === 'derived') {
+                const plan = yield* readScoringPlan(current).pipe(Effect.orDie)
+                const identity = probeIdentity({ revisionId: current.id, planHash: plan.planHash })
+                if (tried !== identity) {
+                  return yield* new GrantTrialNeeded({
+                    site: { tenantId, batchId: item.batchId, itemId, plan },
+                    revisionId: current.id,
+                    identity,
+                  })
+                }
+              }
               const moved = yield* setItemLifecycle({ tenantId, itemId, to: 'active' })
               if (!moved) {
                 return yield* refuse(
@@ -2437,6 +2479,36 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
           }),
         ).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
       )
+
+      // As many passes as the trial needs and never more than two: the
+      // first stops to ask, the rule is tried outside any transaction, the
+      // second carries what it was tried for. A second pass that finds the
+      // question's configuration moved meanwhile is told so, not tried again.
+      const first = yield* Effect.result(write)
+      if (Result.isSuccess(first)) return first.success
+      if (!(first.failure instanceof GrantTrialNeeded)) return yield* first.failure
+      const grant = yield* trialDerivedGrant(runtime, first.failure.site)
+      if (grant.refused || grant.executionFailed) {
+        yield* Effect.logWarning('a granted question cannot pay its own amount', {
+          itemId,
+          derived: grant,
+        })
+        return yield* new ItemScoringIncompatible({
+          itemId,
+          approved: { total: 0, refused: 0, executionFailed: 0 },
+          derived: grant,
+        })
+      }
+      tried = first.failure.identity
+      const second = yield* Effect.result(write)
+      if (Result.isSuccess(second)) return second.success
+      if (second.failure instanceof GrantTrialNeeded) {
+        return yield* new ItemRevisionConflict({
+          itemId,
+          currentRevisionId: second.failure.revisionId,
+        })
+      }
+      return yield* second.failure
     },
   )
 
