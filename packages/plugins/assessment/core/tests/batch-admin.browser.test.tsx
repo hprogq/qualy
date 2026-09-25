@@ -1957,6 +1957,86 @@ describe('who may work on a batch', () => {
     })
   })
 
+  // Whom a role may be given to is the appointment rules' question, and the
+  // directory reaches people whose place is outside what this reader
+  // manages. So a reader the directory's picker is delivered to chooses from
+  // it, and the round's own candidates are not even asked for.
+  it('brings somebody in from the directory where the reader may browse it', async () => {
+    const candidates = vi.fn(() => Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }))
+    const probed = vi.fn((request: Request) =>
+      Effect.succeed({
+        nodes: [{ id: NODE_ID, name: '软件学院', parentId: null, orgTypeId: NODE_ID }],
+        roles:
+          request.query?.['userIds'] === undefined
+            ? []
+            : [{ id: 'role-reviewer', name: '学院审核员', refusal: null }],
+      }),
+    )
+    // the directory's picker as auth contributes it, reduced to one press
+    const Directory = ({
+      context,
+    }: {
+      context: { value: readonly string[]; onChange: (ids: readonly string[]) => void }
+    }) => (
+      <button
+        type="button"
+        data-chosen={context.value.length}
+        onClick={() => context.onChange([USER_ID])}
+      >
+        pick from the directory
+      </button>
+    )
+    await renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              pages: PAGES,
+              slots: {
+                'iam/people-picker': [{ id: 'test/directory', order: 0 }],
+                'iam/people-picker-view': [{ id: 'auth/people-picker-view', order: 0 }],
+                'iam/org-node-picker-view': [{ id: 'auth/org-node-picker-view', order: 0 }],
+              },
+            }),
+        },
+        assessment: assessmentStubs({
+          getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
+          staffOptions: probed,
+          listParticipantCandidates: candidates,
+        }),
+      }),
+      routes: [
+        { path: '/assessment/batches/:batchId/access', element: workspace(<BatchAccessPage />) },
+      ],
+      route: `/assessment/batches/${BATCH_ID}/access`,
+      registry: {
+        slots: {
+          'iam/people-picker': {
+            'test/directory': lazy(() => Promise.resolve({ default: Directory })),
+          },
+          'iam/people-picker-view': { 'auth/people-picker-view': PeoplePickerView },
+          'iam/org-node-picker-view': { 'auth/org-node-picker-view': OrgNodePickerView },
+        },
+      },
+    })
+
+    await page.getByRole('button', { name: '添加工作人员' }).click()
+    const directory = page.getByRole('button', { name: 'pick from the directory' })
+    await directory.click()
+    await expect.element(directory).toHaveAttribute('data-chosen', '1')
+    // the round's own list of people is neither drawn nor asked for
+    expect(page.getByRole('dialog').getByRole('searchbox').elements()).toHaveLength(0)
+    expect(candidates).not.toHaveBeenCalled()
+
+    await page.getByRole('button', { name: '下一步' }).click()
+    await page.getByRole('checkbox', { name: '软件学院' }).click()
+    await page.getByRole('button', { name: '下一步' }).click()
+    await expect.element(page.getByRole('radio', { name: '学院审核员' })).toBeVisible()
+    const asked = probed.mock.calls.at(-1)![0].query!
+    expect([asked['userIds']].flat()).toEqual([USER_ID])
+  })
+
   it('only offers to remove somebody this round brought in, and asks first', async () => {
     const removeStaff = vi.fn((_request: Request) => Effect.succeed({ staff: [] }))
     await accessScreen({

@@ -3,8 +3,13 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useQuery } from '@tanstack/react-query'
-import { UiSlot, useApiQuery } from '@qualy/web-runtime'
-import { orgNodePickerView, peoplePickerView } from '@qualy/ui-contract'
+import { UiSlot, useApiQuery, useManifest } from '@qualy/web-runtime'
+import {
+  orgNodePickerView,
+  peoplePicker,
+  peoplePickerView,
+  type PeoplePickerContext,
+} from '@qualy/ui-contract'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Button } from '@qualy/ui/button'
@@ -32,11 +37,14 @@ import { RolePicker } from './RolePicker.tsx'
 // settled. Going back is free; going forward is not offered until the step
 // has an answer.
 //
-// Who and where come from this domain, drawn by the pickers' permission-free
-// views: the people this round's administrator manages, and the units this
-// round covers. Administering a round does not take the directory's read
-// permission, and the directory's own pickers drew nothing for a reader
-// without it.
+// Who comes from the directory where the reader may browse it: whom a role
+// may be given to is the appointment rules' question, not the round's, and
+// the directory reaches people whose place is outside what this reader
+// manages. A reader who may not browse it chooses among the people this
+// round's administrator manages, drawn by the picker's permission-free view
+// - the directory's own picker drew nothing for them. Where comes from this
+// domain either way: the units this round covers. The role step then asks,
+// for every person and unit chosen, which roles hold.
 
 const STEPS = [m.addStaffStepWho, m.addStaffStepWhere, m.addStaffStepAs] as const
 
@@ -110,9 +118,12 @@ export function AddStaffDialog({
     ...query.assessment.staffOptions.queryOptions({ params: { batchId }, query: {} }),
     enabled: open,
   })
-  // who may be brought in: the people this reader manages, the population
-  // the roster's own add dialog offers
-  const candidates = useCandidates(batchId, open)
+  // who may be brought in: the directory's people when the reader may
+  // browse them - the directory's picker is delivered only then - and
+  // otherwise the people this reader manages, the population the roster's
+  // own add dialog offers
+  const directory = (useManifest().slots[peoplePicker.key]?.length ?? 0) > 0
+  const candidates = useCandidates(batchId, open && !directory)
   // Roles depend on who and where, and are asked for once both are settled.
   // Every chosen person is checked against every chosen unit and only what
   // holds everywhere is offered: an offer that is true of one pair and false
@@ -152,18 +163,27 @@ export function AddStaffDialog({
 
           {step === 0 && (
             <div {...stylex.props(styles.step)}>
-              <UiSlot
-                token={peoplePickerView}
-                context={candidates.context({
-                  value: chosen,
-                  onToggle: (userId: string) =>
-                    setChosen((now) =>
-                      now.includes(userId) ? now.filter((id) => id !== userId) : [...now, userId],
-                    ),
-                })}
-                fallback={<p {...stylex.props(styles.quiet)}>{format(m.pickerUnavailable)}</p>}
-                loading={<Skeleton className={stylex.props(styles.waitingFill).className} />}
-              />
+              {directory ? (
+                <UiSlot
+                  token={peoplePicker}
+                  context={{ value: chosen, onChange: setChosen } satisfies PeoplePickerContext}
+                  fallback={<p {...stylex.props(styles.quiet)}>{format(m.pickerUnavailable)}</p>}
+                  loading={<Skeleton className={stylex.props(styles.waitingFill).className} />}
+                />
+              ) : (
+                <UiSlot
+                  token={peoplePickerView}
+                  context={candidates.context({
+                    value: chosen,
+                    onToggle: (userId: string) =>
+                      setChosen((now) =>
+                        now.includes(userId) ? now.filter((id) => id !== userId) : [...now, userId],
+                      ),
+                  })}
+                  fallback={<p {...stylex.props(styles.quiet)}>{format(m.pickerUnavailable)}</p>}
+                  loading={<Skeleton className={stylex.props(styles.waitingFill).className} />}
+                />
+              )}
             </div>
           )}
 
