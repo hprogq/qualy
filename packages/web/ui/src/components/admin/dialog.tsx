@@ -56,6 +56,14 @@ const styles = stylex.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
   },
+  // a form that takes the whole handset: its own screen, not a panel over one
+  panelWhole: {
+    height: '100dvh',
+    maxHeight: '100dvh',
+    borderStartStartRadius: 0,
+    borderStartEndRadius: 0,
+    paddingTop: 'env(safe-area-inset-top)',
+  },
   // never taller than the window, and the middle row is what gives
   formShell: {
     maxHeight: 'calc(100dvh - 2rem)',
@@ -91,6 +99,7 @@ export function FormDialog({
   description,
   size = 'default',
   restfulFocus = false,
+  whole = false,
   onClose,
   children,
   footer,
@@ -118,6 +127,12 @@ export function FormDialog({
    * first option, which reads as "this one is chosen" when nothing is.
    */
   restfulFocus?: boolean
+  /**
+   * On a phone, take the whole screen rather than rising most of the way:
+   * for a long form that is the task itself, where the page behind it has
+   * nothing left to say while it is being filled in.
+   */
+  whole?: boolean
   onClose: () => void
   children: ReactNode
   footer?: ReactNode
@@ -133,7 +148,11 @@ export function FormDialog({
         {/* the same name whichever shape it takes: what addresses "the
             dialog's content" is asking about the task, not about which
             edge it came in from */}
-        <SheetContent side="bottom" data-slot="dialog-content" xstyle={styles.panelBelow}>
+        <SheetContent
+          side="bottom"
+          data-slot="dialog-content"
+          xstyle={[styles.panelBelow, whole && styles.panelWhole]}
+        >
           <SheetHeader>
             <SheetTitle>{title}</SheetTitle>
             {description && <SheetDescription>{description}</SheetDescription>}
