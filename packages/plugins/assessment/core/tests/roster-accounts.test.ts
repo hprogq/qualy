@@ -7,6 +7,7 @@ import { Assessment } from '../src/server/index.ts'
 import type { CandidateFilter, RosterAccountsFilter } from '../src/server/db.ts'
 import { ONE_SCORING, PAGE_SCORING } from '../src/scoring/service.ts'
 import { probeGrantTest, probeHangs } from './support/catalogs.ts'
+import { recordItem } from './support/administrative.ts'
 import { appointStaff, collegeOf } from './support/correction.ts'
 import {
   breakGrant,
@@ -537,6 +538,87 @@ describe.runIf(postgresAvailable)('the totals on a page of the roster', () => {
     expect(result.alone.found).toEqual([
       { participantId: result.g.p2, state: 'unavailable', reason: 'timed-out' },
     ])
+  })
+
+  it('hands back unscored whoever does not fit in the arithmetic one page may spend', async () => {
+    /**
+     * This many more approved findings like `first`, each determined
+     * differently, written around the service: one reading evaluates each
+     * of them once.
+     */
+    const findingsLike = (firstId: string, count: number) =>
+      Effect.gen(function* () {
+        const cloned = (yield* runSql(sql`
+          insert into entries (tenant_id, batch_id, item_id, participant_id, source, status)
+          select tenant_id, batch_id, item_id, participant_id, source, 'draft'
+          from entries, generate_series(1, ${count}::int)
+          where id = ${firstId}
+          returning id`)) as unknown as { rows: { id: string }[] }
+        const ids = cloned.rows.map((row) => row.id)
+        yield* runSql(sql`
+          insert into entry_revisions
+            (tenant_id, entry_id, item_id, item_revision_id, revision_no, payload,
+             actor_id, subject_id, source, note)
+          select er.tenant_id, e.id, er.item_id, er.item_revision_id, 1, er.payload,
+                 er.actor_id, er.subject_id, er.source, er.note
+          from entry_revisions er
+          join entries src on src.current_revision_id = er.id and src.id = ${firstId}
+          cross join entries e
+          where e.id = any(${ids}::uuid[])`)
+        yield* runSql(sql`
+          insert into entry_recognitions
+            (tenant_id, batch_id, entry_id, entry_revision_id, item_id, item_revision_id,
+             values, source, created_by)
+          select rec.tenant_id, rec.batch_id, e.id, er.id, rec.item_id, rec.item_revision_id,
+                 jsonb_build_object('n', row_number() over (order by e.id)), rec.source,
+                 rec.created_by
+          from entry_recognitions rec
+          join entries src on src.current_recognition_id = rec.id and src.id = ${firstId}
+          cross join entries e
+          join entry_revisions er on er.entry_id = e.id
+          where e.id = any(${ids}::uuid[])`)
+        yield* runSql(sql`
+          update entries e
+          set status = 'approved',
+              current_revision_id = (select id from entry_revisions where entry_id = e.id),
+              current_recognition_id = (select id from entry_recognitions where entry_id = e.id)
+          where e.id = any(${ids}::uuid[])`)
+      })
+
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rs-budget')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          const recorded = yield* recordItem(f, g.batch.id, { maxEntries: null })
+          const admin = f.principal(f.admin)
+          // two fifths of what a page may evaluate for each of the first
+          // two people, and a quarter for the third: the third does not fit
+          const share = [
+            (PAGE_SCORING.evaluations * 2) / 5,
+            (PAGE_SCORING.evaluations * 2) / 5,
+            PAGE_SCORING.evaluations / 4,
+          ]
+          const people = [g.p1, g.p2, g.p3]
+          for (const [index, participantId] of people.entries()) {
+            const first = yield* assessment.createEntry(
+              f.t,
+              { itemId: recorded.id, participantId, payload: {}, note: '一' },
+              admin,
+            )
+            yield* findingsLike(first.id, share[index]! - 1)
+          }
+          const page = yield* assessment.listParticipantScores(f.t, g.batch.id, people, admin)
+          const alone = yield* assessment.listParticipantScores(f.t, g.batch.id, [g.p3], admin)
+          return { page, alone, g }
+        }),
+      ),
+    )
+    expect(result.page.map((score) => score.state)).toEqual(['scored', 'scored', 'deferred'])
+    // asked about alone, the third has the whole of one reading to spend
+    expect(result.alone.map((score) => score.state)).toEqual(['scored'])
   })
 
   it('refuses a page with anybody on it the reader may not open', async () => {
