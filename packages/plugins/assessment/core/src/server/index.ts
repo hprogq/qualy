@@ -982,10 +982,15 @@ export class Assessment extends Context.Service<
       BatchDetail & { capabilities: BatchCapabilities },
       BatchNotFound | AccessDenied
     >
+    /**
+     * Who this reader is in the round. `manageable` is the batch row's own
+     * projection when the caller has read it; undefined, it is asked here,
+     * with the same predicate.
+     */
     readonly capabilitiesFor: (
       tenantId: string,
       batchId: string,
-      manageable: boolean,
+      manageable: boolean | undefined,
       as: Principal,
     ) => Effect.Effect<BatchCapabilities>
     /** refuses a batch this person neither administers nor takes part in */
@@ -3288,16 +3293,19 @@ export const make = Effect.fn('Assessment.make')(function* () {
     capabilitiesFor: Effect.fn('Assessment.capabilitiesFor')(function* (
       tenantId: string,
       batchId: string,
-      manageable: boolean,
+      manageable: boolean | undefined,
       as: Principal,
     ) {
       const membership = yield* dieQuery(withDb(participantRowByUser(tenantId, batchId, as.userId)))
       const authority = yield* batchAuthority(tenantId, batchId, as.userId)
+      const manage =
+        manageable ??
+        Result.isSuccess(yield* Effect.result(requireRosterReach(as, tenantId, batchId)))
       return {
         personal: membership !== null,
         review: authority.has('assessment.review.process'),
         record: authority.has('assessment.entry.record'),
-        manage: manageable,
+        manage,
         redetermine: authority.has(REDETERMINE),
       } satisfies BatchCapabilities
     }),
@@ -6343,32 +6351,42 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         // a connection is not re-judged per event; someone stripped of a
         // role mid-connection keeps hearing bare wake-ups until the stream's
         // lifetime ends it and the page dials again, and every read those
-        // wake-ups trigger is authorized on its own.
+        // wake-ups trigger is authorized on its own. Whether the reader
+        // administers the roster is asked here too: the results roster's
+        // live totals are theirs to watch.
         const standing = yield* assessment.capabilitiesFor(
           principal.tenantId,
           params.batchId,
-          false,
+          undefined,
           principal,
         )
+        // who reads everybody's totals on the results roster: its
+        // administrators, and whoever re-determines (ruling #33)
+        const readsAccounts = standing.manage || standing.redetermine
         const wanted = (event: AssessmentLiveEvent): boolean => {
           if (event.tenantId !== principal.tenantId || event.batchId !== params.batchId) {
             return false
           }
           switch (event.kind) {
             case 'review-inbox-changed':
-            case 'review-instance-changed':
               return standing.review
+            case 'review-instance-changed':
+              // a round moving is a claim waiting on something else, and on
+              // the results roster a total that may have moved
+              return standing.review || readsAccounts
             case 'entries-changed':
             case 'result-changed':
               // A participant hears about their own. The people who work the
-              // round hear about all of it: a recorder's list and a
-              // reviewer's queue are drawn from exactly the facts these
-              // announce, and gated on membership alone the staff screens
-              // never woke at all. Nothing is disclosed by hearing - what
-              // goes down the wire is the kind and nothing else.
+              // round hear about all of it: a recorder's list, a reviewer's
+              // queue and the results roster's totals are drawn from exactly
+              // the facts these announce, and gated on membership alone the
+              // staff screens never woke at all. Nothing is disclosed by
+              // hearing - what goes down the wire is the kind and nothing
+              // else.
               return (
                 standing.review ||
                 standing.record ||
+                readsAccounts ||
                 (standing.personal &&
                   (event.subjectUserId === null || event.subjectUserId === principal.userId))
               )
