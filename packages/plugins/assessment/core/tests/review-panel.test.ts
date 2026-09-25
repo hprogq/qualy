@@ -395,6 +395,10 @@ describe.runIf(postgresAvailable)('the sitting', () => {
           const entry = one<{ status: string }>(
             yield* runSql(sql`select status from entries where id = ${w.entryId}`),
           )
+          const determination = one<{ created_by: string | null }>(
+            yield* runSql(sql`
+              select created_by from entry_recognitions where review_instance_id = ${w.instanceId}`),
+          )
           const votes = yield* runSql(sql`
             select decision from review_votes v
             join review_panels p on p.id = v.panel_id
@@ -404,6 +408,7 @@ describe.runIf(postgresAvailable)('the sitting', () => {
           return {
             settled,
             entry,
+            determination,
             votes: (votes as { rows: { decision: string }[] }).rows.map((row) => row.decision),
             feed: feed.items,
           }
@@ -419,6 +424,9 @@ describe.runIf(postgresAvailable)('the sitting', () => {
     const conclusion = result.settled.events[result.settled.events.length - 1]!
     expect(conclusion.kind).toBe('approved')
     expect(conclusion.actorId).toBeNull()
+    // and so does the determination it wrote: the text was frozen by the
+    // first approving ballot and adopted by all, so no one voter made it
+    expect(result.determination.created_by).toBeNull()
     // the voter's feed tells the vote as a vote, never as the verdict, and
     // hands out no door into the finished round (§32.74)
     expect(result.feed.map((one) => one.kind)).toEqual(['review-vote-approved'])

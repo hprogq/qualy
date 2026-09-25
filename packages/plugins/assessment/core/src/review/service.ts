@@ -1747,7 +1747,17 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                * because an approved claim without a determination is a row the
                * table refuses.
                */
-              const settle = (values: RecognitionValues, eventId: string) =>
+              const settle = (
+                values: RecognitionValues,
+                eventId: string,
+                /**
+                 * who determined it: the judge whose word ended the round,
+                 * or nobody when a sitting did - its text was fixed by the
+                 * first approving ballot and adopted by every seat, so the
+                 * last voter is no more its author than the others
+                 */
+                determiner: string | null = as.userId,
+              ) =>
                 Effect.gen(function* () {
                   const standing = yield* currentRecognitionOf(tenantId, row.entryId)
                   return yield* insertRecognition({
@@ -1763,7 +1773,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                     // write a determination already record. Without it every
                     // reviewed claim came back with an unknown determiner,
                     // while a recorded one names the registrar.
-                    createdBy: as.userId,
+                    createdBy: determiner,
                     reviewInstanceId: instanceId,
                     reviewEventId: eventId,
                     ...(standing === null ? {} : { supersedesId: standing.id }),
@@ -2071,7 +2081,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                       recognitionHash: sitting.hash,
                       recognitionReason: sitting.reason,
                     })
-                    const recognitionId = yield* settle(sitting.values, eventId)
+                    const recognitionId = yield* settle(sitting.values, eventId, null)
                     yield* concludeClaim('approved', recognitionId)
                   } else if (ends) {
                     // The end of the ladder owns the final no, and a sitting
