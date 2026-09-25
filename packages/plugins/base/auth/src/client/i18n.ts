@@ -1369,7 +1369,7 @@ const i18n = definePluginMessages({
     AUTH_PROVIDER_IDENTITY_NAMESPACE_IN_USE: {
       id: 'auth/error/provider-identity-namespace-in-use',
       defaultMessage:
-        'Accounts have been bound through this way in, so that setting can no longer change.',
+        'This way in is already in use, so that setting can no longer change. Add a new way in to use another.',
     },
     AUTH_BINDING_UNSUPPORTED: {
       id: 'auth/error/binding-unsupported',

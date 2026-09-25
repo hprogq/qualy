@@ -490,7 +490,8 @@ export default {
   'auth/error/provider-config-invalid': '有一项设置无效，请检查后重试',
   'auth/error/provider-config-incomplete': '请补全必填设置后再启用该登录方式',
   'auth/error/provider-is-system': '内置的邮箱密码登录方式不能删除',
-  'auth/error/provider-identity-namespace-in-use': '已有账号通过该登录方式绑定，此项设置不能再修改',
+  'auth/error/provider-identity-namespace-in-use':
+    '该登录方式已有人使用，此项设置不能再修改；如需更换，请新建登录方式',
   'auth/error/binding-unsupported': '该登录方式不支持由管理员代为设置',
   'auth/error/binding-audience-excluded': '该登录方式未向当前用户类型开放，设置后仍无法使用',
   'auth/error/binding-credential-invalid': '密码不符合要求',

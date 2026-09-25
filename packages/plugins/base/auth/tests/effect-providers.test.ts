@@ -61,6 +61,25 @@ const campus: LoginDriver = {
   binding: { mode: 'self' },
 }
 
+// a door that binds nothing: it takes the number another server names as
+// the whole proof, which is what makes that server's address matter
+const badge: LoginDriver = {
+  type: 'badge',
+  presentation: { mode: 'redirect', href: ({ code }) => `/auth/badge/${code}/start` },
+  provisioning: {
+    mode: 'tenant-managed',
+    entrance: {
+      label: literal('Badge'),
+      fields: [
+        { key: 'server', label: literal('Server'), kind: 'url', required: true },
+        { key: 'label', label: literal('Label'), kind: 'text', required: false },
+      ],
+      identityNamespaceKeys: ['server'],
+    },
+  },
+  resolution: { mode: 'user-field', field: 'businessNo' },
+}
+
 // a kind whose boxes depend on each other: a choice that reveals a required
 // box, a number and a toggle folded under advanced, and settings the driver
 // works out from what was typed
@@ -151,6 +170,7 @@ const stack = (url: string) =>
           Layer.mergeAll(
             registerLoginDriver(localDriver),
             registerLoginDriver(campus),
+            registerLoginDriver(badge),
             registerLoginDriver(shaped),
           ).pipe(Layer.provideMerge(loginDriversLayer)),
           uiLayer,
@@ -472,6 +492,71 @@ describe.runIf(postgresAvailable)('an entrance a tenant adds', () => {
       expect(failureOf(answer.pinned)?.['field']).toBe('server')
       expect(answer.renamed).toBe(4)
       expect(answer.now.config).toEqual({ server: 'https://other.example.edu/', realm: 'staff' })
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  // A door that finds people by their own number binds nothing, so waiting
+  // for a binding left its server movable forever: whoever ran the new one
+  // could answer with any number the directory holds.
+  it('stops saying whose number it trusts once anybody has come in through it', async () => {
+    const db = await createTestContext('providers-namespace-signed-in')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const iam = yield* Iam
+            const id = yield* iam.providers.create(
+              f.tenant,
+              { type: 'badge', code: 'badge', name: 'Badge' },
+              f.as,
+            )
+            const set = yield* iam.providers.update(
+              f.tenant,
+              id,
+              { expectedVersion: 1, values: { server: 'https://cas.example.edu/' } },
+              f.as,
+            )
+            const signIn = (outcome: 'success' | 'failure') =>
+              runSql(sql`
+                insert into sign_in_events
+                  (tenant_id, provider_id, provider_type, provider_code, user_id, outcome)
+                values (${f.tenant}, ${id}, 'badge', 'badge',
+                  ${outcome === 'success' ? f.person : null}, ${outcome})`)
+            // somebody tried and was refused: the door let nobody in yet
+            yield* signIn('failure')
+            const moved = yield* iam.providers.update(
+              f.tenant,
+              id,
+              { expectedVersion: set, values: { server: 'https://other.example.edu/' } },
+              f.as,
+            )
+            yield* signIn('success')
+            const pinned = yield* Effect.result(
+              iam.providers.update(
+                f.tenant,
+                id,
+                { expectedVersion: moved, values: { server: 'https://third.example.edu/' } },
+                f.as,
+              ),
+            )
+            const relabelled = yield* iam.providers.update(
+              f.tenant,
+              id,
+              { expectedVersion: moved, values: { label: 'Staff card' } },
+              f.as,
+            )
+            return { moved, pinned, relabelled }
+          }),
+        ),
+      )
+      expect(answer.moved).toBe(3)
+      expect(tagOf(answer.pinned)).toBe('AUTH_PROVIDER_IDENTITY_NAMESPACE_IN_USE')
+      expect(failureOf(answer.pinned)?.['field']).toBe('server')
+      expect(answer.relabelled).toBe(4)
     } finally {
       await db.dispose()
     }

@@ -292,11 +292,13 @@ export interface EntranceKind {
   readonly label: UiText
   readonly fields: readonly EntranceField[]
   /**
-   * The config keys that say whose accounts the entrance speaks for: a CAS
-   * server's address, an OAuth issuer. Once anybody has bound an account
-   * through the entrance, even a binding since withdrawn, these no longer
-   * change: every subject stored would start naming an account at another
-   * provider.
+   * The config keys that say whose accounts the entrance speaks for, and how
+   * an answer names somebody: a CAS server's address and where its person
+   * identifier is read from, an OAuth issuer. Once anybody has bound an
+   * account through the entrance, even a binding since withdrawn, or signed
+   * in through it, these no longer change: every subject stored would start
+   * naming an account at another provider, and a door that finds people by
+   * their own field would let another server answer for them.
    */
   readonly identityNamespaceKeys?: readonly string[]
   /**

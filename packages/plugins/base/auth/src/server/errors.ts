@@ -416,12 +416,14 @@ export class ProviderIsSystem extends Schema.TaggedError<ProviderIsSystem>()(
 ) {}
 
 /**
- * The setting that says whose accounts the entrance speaks for, once accounts
- * have been bound through it.
+ * The setting that says whose accounts the entrance speaks for, once it has
+ * spoken for somebody: an account bound through it, or anybody let in.
  *
  * Changing it would leave every stored subject naming an account at another
- * provider. A binding since withdrawn counts: its subject is still in the
- * history, and a sign-in record points at it.
+ * provider, or let another server answer for the people a door that finds
+ * them by their own number already let in. A binding since withdrawn counts:
+ * its subject is still in the history, and a sign-in record points at it.
+ * Another server is another entrance.
  */
 export class ProviderIdentityNamespaceInUse extends Schema.TaggedError<ProviderIdentityNamespaceInUse>()(
   'AUTH_PROVIDER_IDENTITY_NAMESPACE_IN_USE',

@@ -203,7 +203,9 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
   非空替换;`DELETE /auth/providers/{id}/secrets/{key}` 是唯一的清除动作)→ 就绪后才能 `PUT .../status` 启用 →
   `DELETE /auth/providers/{id}?version=` 删除(系统入口 `AUTH_PROVIDER_IS_SYSTEM`;删除置墓碑、撤销存活绑定、删该入口的会话、销毁其密钥、审计 `auth.provider.delete`、复核恢复通道)。
 - **身份命名空间锁**:驱动用 `identityNamespaceKeys` 点名「说明这些账号属于谁」的配置键(CAS 的服务器地址、OIDC 的 issuer)。
-  只要该入口有过任何绑定(含已撤销),这些键不可再改(`AUTH_PROVIDER_IDENTITY_NAMESPACE_IN_USE`)——已存的 subject 会开始指向别家的账号。
+  只要该入口说过话——有过任何绑定(含已撤销),或有过一次成功登录——这些键不可再改(`AUTH_PROVIDER_IDENTITY_NAMESPACE_IN_USE`):
+  已存的 subject 会开始指向别家的账号;按用户自己的字段找人的入口(CAS 按业务编号)根本不存绑定,只等绑定就永远不锁,
+  换一台服务器就能替已经登录过的人作答。锁住后要换服务器只能新建入口(2026-09-25 裁决)。
 - **密钥永不回显**:`GET /auth/providers/{id}` 只说某个密钥「已存/未存」,成功响应与审计 details 里不得出现
   `clientSecret|refreshToken|accessToken|password` 这类字段名,由 `tools/tests/secret-disclosure.test.ts` 守。
 
