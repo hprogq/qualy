@@ -1,10 +1,12 @@
 import { sql } from 'kysely'
-import { Effect, Exit } from 'effect'
+import { Effect, Exit, Fiber, Schedule } from 'effect'
+import { TestClock } from 'effect/testing'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Assessment } from '../src/server/index.ts'
 import type { CandidateFilter, RosterAccountsFilter } from '../src/server/db.ts'
-import { probeGrantTest } from './support/catalogs.ts'
+import { ONE_SCORING, PAGE_SCORING } from '../src/scoring/service.ts'
+import { probeGrantTest, probeHangs } from './support/catalogs.ts'
 import { appointStaff, collegeOf } from './support/correction.ts'
 import {
   breakGrant,
@@ -392,6 +394,70 @@ describe.runIf(postgresAvailable)('the totals on a page of the roster', () => {
         state: 'unavailable',
         reason: 'scoring-unavailable',
       },
+    ])
+  })
+
+  // On a clock of the suite's own, so the time a page may spend is spent by
+  // moving the clock rather than by waiting: the question is forked, left
+  // until the first account's arithmetic is known to hang, and then the
+  // clock is moved past what the request may spend.
+  it('hands the rest of a page back once its time is spent, and says a lone reading ran out', async () => {
+    /** a reading of these people, with the clock moved past its time once it is stuck */
+    const outlasted = <A, E, R>(reading: Effect.Effect<A, E, R>, millis: number) =>
+      Effect.gen(function* () {
+        const before = probeHangs.entered
+        const fiber = yield* Effect.forkChild(reading)
+        yield* TestClock.withLive(
+          Effect.suspend(() =>
+            probeHangs.entered > before ? Effect.void : Effect.fail('not stuck yet' as const),
+          ).pipe(
+            Effect.retry({ times: 500, schedule: Schedule.spaced('10 millis') }),
+            Effect.orDie,
+          ),
+        )
+        // a moment short of the budget is not the budget; the reading is
+        // given real time to finish, should it wrongly think it may
+        yield* TestClock.adjust(millis - 1)
+        yield* TestClock.withLive(Effect.sleep('50 millis'))
+        const early = fiber.pollUnsafe() === undefined ? 'still reading' : 'finished'
+        yield* TestClock.adjust(1)
+        return { early, found: yield* Fiber.join(fiber) }
+      }).pipe(Effect.provide(TestClock.layer()))
+
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rs-clock')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: OPEN })
+          const item = yield* granted(f, g.batch.id)
+          yield* breakGrant(item.id, 'hang')
+          const admin = f.principal(f.admin)
+          const page = yield* outlasted(
+            assessment.listParticipantScores(f.t, g.batch.id, [g.p1, g.p2, g.p3], admin),
+            PAGE_SCORING.millis,
+          )
+          const alone = yield* outlasted(
+            assessment.listParticipantScores(f.t, g.batch.id, [g.p2], admin),
+            ONE_SCORING.millis,
+          )
+          return { page, alone, g }
+        }),
+      ),
+    )
+    expect(result.page.early).toBe('still reading')
+    // the account the time ran out in is not a failure on a page, and the
+    // people after it are not reached at all
+    expect(result.page.found).toEqual([
+      { participantId: result.g.p1, state: 'deferred' },
+      { participantId: result.g.p2, state: 'deferred' },
+      { participantId: result.g.p3, state: 'deferred' },
+    ])
+    expect(result.alone.early).toBe('still reading')
+    // asked about alone, the time was all this person's, and that is the answer
+    expect(result.alone.found).toEqual([
+      { participantId: result.g.p2, state: 'unavailable', reason: 'timed-out' },
     ])
   })
 

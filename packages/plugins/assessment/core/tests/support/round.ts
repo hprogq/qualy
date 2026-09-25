@@ -153,7 +153,7 @@ export const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
  */
 export const breakGrant = (
   itemId: string,
-  fails: 'refusal' | 'execution' | 'integrity' | 'unavailable',
+  fails: 'refusal' | 'execution' | 'integrity' | 'unavailable' | 'hang',
 ) =>
   Effect.gen(function* () {
     const stored = one<{

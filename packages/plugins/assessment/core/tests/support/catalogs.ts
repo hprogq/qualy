@@ -343,16 +343,24 @@ export const probeLevelTest: CalculatorRegistration = {
 }
 
 /**
+ * How often a granted question told to hang has been entered, so a suite
+ * running on a test clock knows the reading is stuck before it moves time.
+ */
+export const probeHangs = { entered: 0 }
+
+/**
  * The rule of a granted question: reads nothing, pays what it is configured
  * to, and fails whichever way it is told to - so a trial of a derived
- * question has something to find.
+ * question has something to find. Told to hang, it never answers.
  */
 export const probeGrantTest: CalculatorRegistration = {
   kind: 'calculator',
   ref: 'probe-grant-test@1',
   configSchema: Schema.Struct({
     amount: Schema.String,
-    fails: Schema.optional(Schema.Literals(['refusal', 'execution', 'unavailable', 'integrity'])),
+    fails: Schema.optional(
+      Schema.Literals(['refusal', 'execution', 'unavailable', 'integrity', 'hang']),
+    ),
   }),
   bind: Effect.succeed({
     ref: 'probe-grant-test@1',
@@ -374,7 +382,13 @@ export const probeGrantTest: CalculatorRegistration = {
         evaluate: () => {
           const config = frozen.config as {
             amount: string
-            fails?: 'refusal' | 'execution' | 'unavailable' | 'integrity'
+            fails?: 'refusal' | 'execution' | 'unavailable' | 'integrity' | 'hang'
+          }
+          if (config.fails === 'hang') {
+            return Effect.suspend(() => {
+              probeHangs.entered += 1
+              return Effect.never
+            })
           }
           return config.fails === undefined
             ? Effect.succeed(config.amount)
