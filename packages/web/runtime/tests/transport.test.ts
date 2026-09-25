@@ -7,6 +7,7 @@ import {
   QUALY_CLIENT_RELEASE_HEADER,
   QUALY_CLIENT_UNSUPPORTED_HEADER,
 } from '@qualy/release-contract'
+import { getApiErrorCode, isBackendUnavailable } from '@qualy/web-i18n'
 import { clientFor } from '../src/api.ts'
 
 // What a browser api request says about the page, and what the page hears
@@ -151,5 +152,43 @@ describe('the server refusing this page', () => {
       }).pipe(Effect.provideService(FetchHttpClient.Fetch, answering([], refused))),
     )
     expect(Exit.isFailure(exit)).toBe(true)
+  })
+})
+
+describe('the server unable to serve a request right now', () => {
+  /** what the api answers when a dependency of the server's is unavailable */
+  const unavailable = () =>
+    new Response(JSON.stringify({ _tag: 'SERVICE_UNAVAILABLE', message: 'try again' }), {
+      status: 503,
+      headers: { 'content-type': 'application/json' },
+    })
+
+  /** what the server answers while it is itself starting */
+  const starting = () =>
+    new Response('qualy is starting\n', {
+      status: 503,
+      headers: { 'content-type': 'text/plain; charset=utf-8', 'x-qualy-state': 'starting' },
+    })
+
+  const failureOf = async (answer: () => Response) => {
+    const exit = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const client = yield* clientFor(api, 'http://qualy.test')
+        return yield* client.ping.hello()
+      }).pipe(Effect.provideService(FetchHttpClient.Fetch, answering([], answer))),
+    )
+    if (Exit.isSuccess(exit)) throw new Error('the request succeeded')
+    const reason = exit.cause.reasons[0]
+    return reason?._tag === 'Fail' ? reason.error : undefined
+  }
+
+  it('is given back its own name, though the endpoint declares nothing for it', async () => {
+    expect(getApiErrorCode(await failureOf(unavailable))).toBe('SERVICE_UNAVAILABLE')
+  })
+
+  it('leaves a server between processes to be waited out', async () => {
+    const failure = await failureOf(starting)
+    expect(getApiErrorCode(failure)).toBeUndefined()
+    expect(isBackendUnavailable(failure)).toBe(true)
   })
 })

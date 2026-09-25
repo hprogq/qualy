@@ -194,6 +194,14 @@ export const commonErrorMessages = {
   QUALY_CLIENT_PROTOCOL_UNSUPPORTED: { message: clientUnsupported },
   QUALY_CLIENT_ASSEMBLY_UNSUPPORTED: { message: clientUnsupported },
   QUALY_CLIENT_RELEASE_UNSUPPORTED: { message: clientUnsupported },
+  // the database, or something else the server needs, is down or saturated;
+  // which one stays in the server log, and the reader's move is to wait
+  SERVICE_UNAVAILABLE: {
+    message: {
+      id: 'common/error/service-unavailable',
+      defaultMessage: 'Qualy cannot complete this right now. Try again in a moment.',
+    },
+  },
 } as const satisfies ErrorMessageMap
 
 export const networkErrorMessage = {

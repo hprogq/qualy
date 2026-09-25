@@ -19,6 +19,7 @@ import { loadAssembly } from '@qualy/assembly/runtime'
 import { ServerConfig, apiReferenceEnabled } from './config.ts'
 import { apiRouteFallback } from '@qualy/api-kit/route-fallback'
 import { schemaRefusals } from '@qualy/api-kit/schema-refusal'
+import { unavailableDependencies } from '@qualy/api-kit/unavailable'
 import { serveMiddleware } from './serve-middleware.ts'
 import { platformTracerOff } from '@qualy/api-kit/request'
 import type { LoggingSettings } from './logging.ts'
@@ -178,9 +179,10 @@ export async function makeApplication(
       // discharges request-time requirements only for layers inside its
       // argument, and requests find their services in the built context
       return HttpRouter.serve(
-        // every plugin's routes, the mount's own not-found under them, and
-        // the one answer a request its schema would not read gets
-        Layer.mergeAll(routes, apiRouteFallback, schemaRefusals).pipe(
+        // every plugin's routes, the mount's own not-found under them, the
+        // one answer a request its schema would not read gets, and the one a
+        // request gets when a dependency it needed is unavailable
+        Layer.mergeAll(routes, apiRouteFallback, schemaRefusals, unavailableDependencies).pipe(
           Layer.provide(runtimeGraph),
           Layer.provide(services),
           Layer.provide(prepared),

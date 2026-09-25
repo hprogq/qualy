@@ -20,7 +20,8 @@
     "./headless": "./src/headless.ts",
     "./route-fallback": "./src/route-fallback.ts",
     "./schema-refusal": "./src/schema-refusal.ts",
-    "./storable-text": "./src/storable-text.ts"
+    "./storable-text": "./src/storable-text.ts",
+    "./unavailable": "./src/unavailable.ts"
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",

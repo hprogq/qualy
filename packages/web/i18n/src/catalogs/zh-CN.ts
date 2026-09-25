@@ -16,6 +16,7 @@ const runtimeMessages = {
   requestOriginRefused: commonErrorMessages.REQUEST_ORIGIN_REFUSED.message,
   apiRouteNotFound: commonErrorMessages.API_ROUTE_NOT_FOUND.message,
   clientProtocolUnsupported: commonErrorMessages.QUALY_CLIENT_PROTOCOL_UNSUPPORTED.message,
+  serviceUnavailable: commonErrorMessages.SERVICE_UNAVAILABLE.message,
 } as const
 
 // common/* messages: shared shell copy and transport-level api errors.
@@ -36,6 +37,7 @@ export default {
   'common/error/request-origin-refused': '当前页面无法完成该操作，请刷新后重试。',
   'common/error/api-route-not-found': '页面需要刷新后才能继续使用。',
   'common/error/client-unsupported': '页面需要刷新后才能继续使用。',
+  'common/error/service-unavailable': 'Qualy 暂时无法完成该操作，请稍后重试。',
   'common/error/network': '暂时无法连接 Qualy，请检查网络后重试。',
   'common/error/unexpected': '操作失败，请重试。',
   'common/state/unanswered': '未填写',

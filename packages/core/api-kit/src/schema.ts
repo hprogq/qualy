@@ -151,6 +151,23 @@ export class ApiRouteNotFound extends Schema.TaggedError<ApiRouteNotFound>()(
 ) {}
 
 /**
+ * Something this server depends on is down or saturated, and the request
+ * may well succeed if it is sent again shortly.
+ *
+ * Raised by the host's boundary (`./unavailable`), never by a handler: a
+ * failure whose owner marked it as a dependency being unavailable - a
+ * database connection not handed out in time, a statement or lock wait past
+ * its timeout, a session that dropped - is answered with this rather than
+ * with an empty 500. Which dependency it was stays in the log: telling a
+ * caller what this deployment runs buys them nothing they can act on.
+ */
+export class ServiceUnavailable extends Schema.TaggedError<ServiceUnavailable>()(
+  'SERVICE_UNAVAILABLE',
+  { message: Schema.String },
+  { httpApiStatus: 503, identifier: 'ServiceUnavailable' },
+) {}
+
+/**
  * A web page whose protocol generation this api no longer speaks.
  *
  * Raised by the host's compatibility check in front of the router. The

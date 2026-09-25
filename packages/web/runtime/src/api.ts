@@ -129,7 +129,16 @@ const withIdentity = (options: TransportOptions) => {
 const PIPELINE_REFUSALS: Record<number, string> = {
   403: 'REQUEST_ORIGIN_REFUSED',
   404: 'API_ROUTE_NOT_FOUND',
+  // a dependency of the server's was down or saturated. Not when the answer
+  // says the server itself is between processes (`x-qualy-state`): the
+  // page waits that one out, and it can only tell by the response the
+  // failure still carries
+  503: 'SERVICE_UNAVAILABLE',
 }
+
+/** the server's own answer while it is starting or being replaced, which the page waits out */
+const betweenProcesses = (response: HttpClientResponse.HttpClientResponse): boolean =>
+  response.headers['x-qualy-state'] !== undefined
 
 type FellThrough = {
   readonly _tag: 'HttpClientError'
@@ -147,7 +156,7 @@ const pipelineRefusals = (
   effect: Effect.Effect<unknown, unknown, unknown>,
 ): Effect.Effect<unknown, unknown, unknown> =>
   Effect.catch(effect, (error) => {
-    if (!fellThrough(error)) return Effect.fail(error)
+    if (!fellThrough(error) || betweenProcesses(error.reason.response)) return Effect.fail(error)
     const code = PIPELINE_REFUSALS[error.reason.response.status]
     // the english a server sends for clients that do not localize is the
     // last thing between an untranslated code and "something went wrong",
