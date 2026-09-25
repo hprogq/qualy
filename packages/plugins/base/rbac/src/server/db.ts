@@ -203,6 +203,20 @@ const roleProjection = (k: Db, tenantId: string) =>
             validUntil: grant.ref('g.validUntil'),
           }),
         )}, 0)`.as('grantCount'),
+      // Any grant at all, withdrawn or lapsed included. A role anybody was
+      // ever granted is only disabled, never deleted, so the grants that
+      // record it keep its name; the delete guard reads this same column, so
+      // the press a screen offers and the write cannot disagree.
+      eb
+        .exists(
+          eb
+            .selectFrom('RoleGrant as history')
+            .select('history.id')
+            .whereRef('history.tenantId', '=', 'r.tenantId')
+            .whereRef('history.roleId', '=', 'r.id'),
+        )
+        .$castTo<boolean>()
+        .as('everGranted'),
       sql<string[]>`coalesce((select array_agg(p.code order by p.code)
         from role_permissions rp join permissions p on p.id = rp.permission_id
         where rp.tenant_id = ${eb.ref('r.tenantId')} and rp.role_id = ${eb.ref('r.id')}), '{}')`.as(

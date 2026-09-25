@@ -620,6 +620,7 @@ const toRoleShape = (
   assignable: role.assignable,
   version: role.version,
   grantCount: role.grantCount,
+  everGranted: role.everGranted,
   permissions: permissions.active,
   unavailablePermissions: permissions.unavailable,
   holderPolicy:

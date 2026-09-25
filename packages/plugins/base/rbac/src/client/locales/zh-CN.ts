@@ -107,7 +107,7 @@ export default {
   'rbac/roles/standing-meaning':
     '停用后不再生效，但保留配置与授权记录；不可被授予表示不能再新增授权，已有授权不受影响',
   'rbac/roles/delete': '删除角色',
-  'rbac/roles/still-held': '仍有 {count} 个授权在使用该角色',
+  'rbac/roles/granted-before': '已授予过，只能停用',
   'rbac/roles/holder-count': '{count} 人',
   'rbac/roles/column-grants': '授权',
   'rbac/roles/column-holders': '可担任的用户类型',
@@ -185,7 +185,7 @@ export default {
   'rbac/badge/draft': '草稿',
   'rbac/error/role-conflict': '同 code 或同名的角色已存在。',
   'rbac/error/role-is-system': '系统角色不支持该修改。',
-  'rbac/error/role-in-use': '仍有 {assignmentCount} 个授权在使用该角色。',
+  'rbac/error/role-has-grant-history': '该角色已授予过，只能停用，不能删除。',
   'rbac/error/role-needs-eligibility':
     '已启用的角色至少要指定一个可授予的用户类型；组织角色还需要一个节点类型。',
   'rbac/error/role-anchor-mismatch': '该角色的类别与提交的配置不一致，请刷新后重试。',

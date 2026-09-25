@@ -80,6 +80,7 @@ const role = (over: Partial<RoleDto> = {}): RoleDto => ({
   assignable: true,
   version: 5,
   grantCount: 0,
+  everGranted: false,
   permissions: [],
   unavailablePermissions: [],
   holderPolicy: { mode: 'allow-list', userTypeIds: [] },

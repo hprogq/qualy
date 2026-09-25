@@ -378,8 +378,10 @@ export const compositeForeignKeys = [
   // arriving without its own plan for the trail
   `alter table role_grants add constraint fk_role_grants_user
      foreign key (tenant_id, user_id) references users (tenant_id, id) on delete restrict`,
+  // restrict for the same reason: a role anybody was ever granted is only
+  // disabled, never deleted, so a withdrawn grant still names its role
   `alter table role_grants add constraint fk_role_grants_role
-     foreign key (tenant_id, role_id) references roles (tenant_id, id) on delete cascade`,
+     foreign key (tenant_id, role_id) references roles (tenant_id, id) on delete restrict`,
   `alter table role_grants add constraint fk_role_grants_node
      foreign key (tenant_id, org_node_id) references org_nodes (tenant_id, id) on delete restrict`,
 ]

@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 import {
   createTestContext,
   databaseFor,
+  pgCode,
   postgresAvailable,
   runSql,
 } from '@qualy/plugin-database/testkit'
@@ -2317,10 +2318,22 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
             holdingIds: holdings.map((row) => row.grantId),
             assignment,
             grantCount: projected.role.grantCount,
-            // the office has no holders left, so deleting it is not "in use"
-            removal: (yield* Effect.result(
-              access.roles.remove(f.tenant, office, projected.role.version, f.principal),
-            ))._tag,
+            everGranted: projected.role.everGranted,
+            // the office has no holders left, but it has been held: its
+            // withdrawn grant is the record of that, and deleting the role
+            // would take the record's name with it
+            removal: tagOf(
+              yield* Effect.result(
+                access.roles.remove(f.tenant, office, projected.role.version, f.principal),
+              ),
+            ),
+            // and the withdrawn grant still says which office it was
+            recorded: one<{ name: string | null }>(
+              yield* runSql(sql`
+                select r.name from role_grants g
+                left join roles r on r.tenant_id = g.tenant_id and r.id = g.role_id
+                where g.tenant_id = ${f.tenant} and g.id = ${assignment}`),
+            ).name,
           }
         }),
       )
@@ -2334,7 +2347,112 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
       // the screen and the user's own roles panel now say the same thing
       expect(answer.listedIds).toEqual(answer.holdingIds)
       expect(answer.grantCount).toBe(0)
-      expect(answer.removal).toBe('Success')
+      expect(answer.everGranted).toBe(true)
+      expect(answer.removal).toBe('ROLE_HAS_GRANT_HISTORY')
+      expect(answer.recorded).toBe('Batch reviewer')
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('deletes only a role nobody was ever granted, and keeps the name of one that was', async () => {
+    const db = await createTestContext('effect-role-history')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const access = yield* Access
+          const rbac = yield* Rbac
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          // an office created and never handed to anybody
+          const fresh = yield* access.roles.create(
+            f.tenant,
+            { code: 'fresh', name: 'Fresh', kind: 'org' },
+            f.principal,
+          )
+          // one handed out once and taken back through the IAM screens
+          const served = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+              values (${f.tenant}, 'served', 'Served', 'org', 'active', 'explicit', 'unrestricted')
+              returning id`),
+          ).id
+          const grant = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+              values (${f.tenant}, ${f.anchored.userId}, ${served}, ${f.child}, 'self')
+              returning id`),
+          ).id
+          yield* access.grants.revoke(f.tenant, grant, f.principal, (tenantId) =>
+            rbac.assertTenantKeepsAdministrator(tenantId),
+          )
+          // and one whose only grant ran out without anybody revoking it
+          const lapsed = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+              values (${f.tenant}, 'lapsed', 'Lapsed', 'org', 'active', 'explicit', 'unrestricted')
+              returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage, valid_until)
+            values (${f.tenant}, ${f.anchored.userId}, ${lapsed}, ${f.child}, 'self',
+                    now() - interval '1 day')`)
+
+          const projected = (roleId: string) =>
+            Effect.map(access.roles.get(f.tenant, roleId, f.principal), ({ role }) => ({
+              grantCount: role.grantCount,
+              everGranted: role.everGranted,
+              version: role.version,
+            }))
+          const remove = (roleId: string, version: number) =>
+            Effect.map(
+              Effect.result(access.roles.remove(f.tenant, roleId, version, f.principal)),
+              tagOf,
+            )
+          const before = {
+            fresh: yield* projected(fresh),
+            served: yield* projected(served),
+            lapsed: yield* projected(lapsed),
+          }
+          return {
+            before,
+            servedRemoval: yield* remove(served, before.served.version),
+            lapsedRemoval: yield* remove(lapsed, before.lapsed.version),
+            freshRemoval: yield* remove(fresh, before.fresh.version),
+            // the withdrawn grant still names its office
+            recorded: one<{ name: string | null }>(
+              yield* runSql(sql`
+                select r.name from role_grants g
+                left join roles r on r.tenant_id = g.tenant_id and r.id = g.role_id
+                where g.tenant_id = ${f.tenant} and g.id = ${grant}`),
+            ).name,
+            tenant: f.tenant,
+            served,
+          }
+        }),
+      )
+      const answer = ok(exit)
+      // nobody holds either of the used offices now, and both still count
+      // as granted: that, not the holder count, is what decides deletion
+      expect(answer.before.served).toMatchObject({ grantCount: 0, everGranted: true })
+      expect(answer.before.lapsed).toMatchObject({ grantCount: 0, everGranted: true })
+      expect(answer.before.fresh).toMatchObject({ grantCount: 0, everGranted: false })
+      expect(answer.servedRemoval).toBe('ROLE_HAS_GRANT_HISTORY')
+      expect(answer.lapsedRemoval).toBe('ROLE_HAS_GRANT_HISTORY')
+      expect(answer.freshRemoval).toBeUndefined()
+      expect(answer.recorded).toBe('Served')
+      // and the schema holds the line for whatever does not come through
+      // the service: a direct delete is refused (restrict_violation), not
+      // cascaded into history
+      expect(
+        await pgCode(
+          db.query('delete from roles where tenant_id = $1 and id = $2', [
+            answer.tenant,
+            answer.served,
+          ]),
+        ),
+      ).toBe('23001')
     } finally {
       await db.dispose()
     }

@@ -523,16 +523,20 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
           </span>
           <span {...stylex.props(styles.meaning)}>{format(m.standingMeaning)}</span>
           {editable && (
-            <span {...stylex.props(styles.removal)}>
-              {role.grantCount > 0 && (
-                <span {...stylex.props(styles.removalWhy)}>
-                  {format(m.roleStillHeld, { count: role.grantCount })}
-                </span>
+            <span
+              data-testid="role-removal"
+              data-deletable={!role.everGranted}
+              {...stylex.props(styles.removal)}
+            >
+              {/* a role anybody was ever granted, withdrawn or not, only
+                  goes by being switched off */}
+              {role.everGranted && (
+                <span {...stylex.props(styles.removalWhy)}>{format(m.roleGrantedBefore)}</span>
               )}
               <Button
                 size="xs"
                 variant="outline"
-                disabled={role.grantCount > 0}
+                disabled={role.everGranted}
                 onClick={() => setConfirmingDelete(true)}
               >
                 {format(m.deleteRole)}

@@ -40,7 +40,7 @@ import {
   GrantStranded,
   PermissionNotFound,
   RoleConflict,
-  RoleInUse,
+  RoleHasGrantHistory,
   RoleAnchorMismatch,
   RoleIncomplete,
   RoleIsSystem,
@@ -57,7 +57,7 @@ export {
   GrantStranded,
   PermissionNotFound,
   RoleConflict,
-  RoleInUse,
+  RoleHasGrantHistory,
   RoleIncomplete,
   RoleIsSystem,
   RoleNeedsEligibility,
@@ -151,27 +151,6 @@ const deleteRole = (tenantId: string, roleId: string) =>
   db.query((k) =>
     k.deleteFrom('Role').where('tenantId', '=', tenantId).where('id', '=', roleId).execute(),
   )
-
-const countGrantsOfRole = (tenantId: string, roleId: string) =>
-  db
-    .query((k) =>
-      k
-        .selectFrom('RoleGrant as g')
-        .select(sql<number>`count(*)::int`.as('count'))
-        .where('g.tenantId', '=', tenantId)
-        .where('g.roleId', '=', roleId)
-        // nobody holds a withdrawn grant, so it is not a holder standing in
-        // the way of deleting the role
-        .where((eb) =>
-          inForce({
-            revokedAt: eb.ref('g.revokedAt'),
-            validFrom: eb.ref('g.validFrom'),
-            validUntil: eb.ref('g.validUntil'),
-          }),
-        )
-        .executeTakeFirst(),
-    )
-    .pipe(Effect.map((row) => row?.count ?? 0))
 
 /** who may hold a role: everyone, or exactly these user types */
 export type HolderPolicy =
@@ -1075,8 +1054,14 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
         Effect.gen(function* () {
           const role = yield* lockRole(tenantId, roleId, expectedVersion)
           if (role.systemKey !== null) return yield* new RoleIsSystem()
-          const grants = yield* countGrantsOfRole(tenantId, role.id)
-          if (grants > 0) return yield* new RoleInUse({ grantCount: grants })
+          // Any grant ever made, withdrawn or lapsed ones too: those rows are
+          // the record of who held the office, and they would lose its name.
+          // Disabling is how such a role goes (ruled 2026-09-25); the foreign
+          // key refuses the delete as well, this names the refusal. Read
+          // through the projection a screen decides its press from.
+          const projected = yield* oneRoleProjected(tenantId, role.id)
+          if (!projected) return yield* new RoleNotFound()
+          if (projected.everGranted) return yield* new RoleHasGrantHistory()
           yield* deleteRole(tenantId, role.id)
           yield* audit.record(RoleDeleted, {
             tenantId,

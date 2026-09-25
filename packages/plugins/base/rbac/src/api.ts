@@ -13,7 +13,7 @@ import {
   PermissionNotFound,
   RoleConflict,
   RoleEscalationRefused,
-  RoleInUse,
+  RoleHasGrantHistory,
   RoleIncomplete,
   RoleIsSystem,
   RoleAnchorMismatch,
@@ -106,6 +106,9 @@ const roleShape = Schema.Struct({
   assignable: Schema.Boolean,
   version: Schema.Number,
   grantCount: Schema.Number,
+  // whether anybody was ever granted the role, withdrawn or not: such a
+  // role can only be disabled, never deleted
+  everGranted: Schema.Boolean,
   permissions: Schema.Array(Schema.String),
   unavailablePermissions: Schema.Array(Schema.String),
   holderPolicy: holderPolicyView,
@@ -418,7 +421,7 @@ export const accessApiGroup = HttpApiGroup.make('access')
         RoleNotFound,
         RoleVersionConflict,
         RoleIsSystem,
-        RoleInUse,
+        RoleHasGrantHistory,
         RoleConflict,
         AccessDenied,
       ],

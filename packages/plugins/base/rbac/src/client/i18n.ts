@@ -18,11 +18,6 @@ const assignmentCountMessage = defineMessage<{ count: number }>()({
   id: 'rbac/roles/assignment-count',
   defaultMessage: '{count, plural, one {# grant} other {# grants}}',
 })
-const roleInUseMessage = defineMessage<{ assignmentCount: number }>()({
-  id: 'rbac/error/role-in-use',
-  defaultMessage:
-    '{assignmentCount, plural, one {# grant still uses} other {# grants still use}} this role.',
-})
 const incompleteMessage = defineMessage<{ missing: string }>()({
   id: 'rbac/error/role-incomplete',
   defaultMessage: 'The role still needs: {missing}.',
@@ -286,10 +281,9 @@ const i18n = definePluginMessages({
       id: 'rbac/roles/delete',
       defaultMessage: 'Delete role',
     },
-    roleStillHeld: {
-      id: 'rbac/roles/still-held',
-      defaultMessage:
-        '{count, plural, one {# grant still uses} other {# grants still use}} this role',
+    roleGrantedBefore: {
+      id: 'rbac/roles/granted-before',
+      defaultMessage: 'Already granted, so it can only be disabled',
     },
     holderCount: {
       id: 'rbac/roles/holder-count',
@@ -521,9 +515,9 @@ const i18n = definePluginMessages({
         id: 'rbac/error/role-is-system',
         defaultMessage: 'System roles cannot be changed this way.',
       },
-      ROLE_IN_USE: {
-        message: roleInUseMessage,
-        values: (data) => ({ assignmentCount: data.grantCount }),
+      ROLE_HAS_GRANT_HISTORY: {
+        id: 'rbac/error/role-has-grant-history',
+        defaultMessage: 'This role has been granted before, so it can only be disabled.',
       },
       ROLE_NEEDS_ELIGIBILITY: {
         id: 'rbac/error/role-needs-eligibility',

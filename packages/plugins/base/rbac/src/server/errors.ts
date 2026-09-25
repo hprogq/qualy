@@ -92,10 +92,17 @@ export class RoleIsSystem extends Schema.TaggedError<RoleIsSystem>()(
   { httpApiStatus: 409, identifier: 'RoleIsSystem' },
 ) {}
 
-export class RoleInUse extends Schema.TaggedError<RoleInUse>()(
-  'ROLE_IN_USE',
-  { grantCount: Schema.Number },
-  { httpApiStatus: 409, identifier: 'RoleInUse' },
+/**
+ * The role has been granted to somebody at some point, withdrawn or not.
+ *
+ * Such a role is only ever disabled: its grants are history, and a history
+ * that can lose the name of the office it records is not one (ruled
+ * 2026-09-25). Only a role nobody was ever granted may be deleted.
+ */
+export class RoleHasGrantHistory extends Schema.TaggedError<RoleHasGrantHistory>()(
+  'ROLE_HAS_GRANT_HISTORY',
+  {},
+  { httpApiStatus: 409, identifier: 'RoleHasGrantHistory' },
 ) {}
 
 export class RoleVersionConflict extends Schema.TaggedError<RoleVersionConflict>()(
