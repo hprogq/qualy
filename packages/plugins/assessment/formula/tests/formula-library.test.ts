@@ -534,6 +534,43 @@ export default { ...definition, input: undefined } as unknown as typeof definiti
     ])
   }, 120_000)
 
+  it('refuses a contract whose patterns weigh megabytes, before it compiles them all', async () => {
+    // a few bytes each, inside the dialect and its instruction ceiling: every
+    // repetition of a letter class copies the whole Unicode letter table
+    const parameters = Array.from(
+      { length: 8 },
+      (_, index) =>
+        `    p${String(index)}: Schema.text({ pattern: '^\\\\pL{200}${String(index)}', title: '参数${String(index)}' }),`,
+    ).join('\n')
+    const heavy = `import { Schema, defineFormula } from '@qualy/formula'
+
+export default defineFormula({
+  input: Schema.input({
+${parameters}
+  }),
+  output: Schema.scoreAmount({ maxScale: 2 }),
+  run: (_input, q) => q.decimal.fromInteger(0),
+})
+`
+    const outcome = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('fx-heavy-patterns')
+          const library = yield* FormulaLibrary
+          const as = f.principal(f.admin)
+          const created = yield* library.createFunction(f.t, { name: 'Heavy' }, as)
+          return yield* Effect.flip(library.previewDraft(f.t, created.id, heavy, as))
+        }),
+      ),
+    )
+    expect(outcome._tag).toBe('ASSESSMENT_FORMULA_CONTRACT_INVALID')
+    const issues = (outcome as { issues: readonly { path: string; reason: string }[] }).issues
+    expect(issues).toHaveLength(1)
+    expect(issues[0]!.reason).toBe('pattern-too-complex')
+    expect(issues[0]!.path).toMatch(/^input\.properties\.p\d\.pattern$/)
+  }, 120_000)
+
   it('judges what came back against the output contract, and types each failure', async () => {
     const outcome = ok(
       await run(

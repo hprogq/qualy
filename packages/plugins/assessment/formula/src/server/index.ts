@@ -42,7 +42,11 @@ import {
   type NormalizedInputSchema,
 } from '@qualy/value-schema'
 import { validateValue } from '@qualy/value-schema/validate'
-import { REGEX_PROFILE_VERSION, patternIssues } from '@qualy/value-schema/regex'
+import {
+  REGEX_PROFILE_VERSION,
+  patternIssues,
+  patternWeightIssues,
+} from '@qualy/value-schema/regex'
 import {
   FormulaFunctionArchived as FormulaFunctionArchivedAction,
   FormulaFunctionDeleted,
@@ -1262,7 +1266,14 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       // a contract forged past the type system (input: undefined)
       // must end as a 422, never as a host-side throw
       const inputShapeIssues = validateInputProfile(contract.input)
-      const inputPatternIssues = inputShapeIssues.length === 0 ? patternIssues(contract.input) : []
+      // what the patterns weigh together first: it stops at the line, where
+      // the dialect check compiles every one of them however heavy
+      const inputWeightIssues =
+        inputShapeIssues.length === 0 ? patternWeightIssues(contract.input) : []
+      const inputPatternIssues =
+        inputShapeIssues.length === 0 && inputWeightIssues.length === 0
+          ? patternIssues(contract.input)
+          : inputWeightIssues
       const issues = [
         ...[...inputShapeIssues, ...inputPatternIssues].map((issue) => ({
           path: issue.path === '' ? 'input' : `input.${issue.path}`,

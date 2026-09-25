@@ -31,9 +31,25 @@ export const MAX_PATTERN_BYTES = 1024
  */
 export const MAX_PATTERN_PROGRAM_SIZE = 2000
 
+/**
+ * What one schema's patterns may weigh together, where a new contract is
+ * written.
+ *
+ * Linear time bounds the exponent, not the size, and the instruction count
+ * above does not bound the size either: a character class is a table of
+ * rune ranges, every repetition of it is a copy of the table, and `\pL{900}`
+ * is a few bytes of source, nine hundred instructions and some fourteen
+ * megabytes of program. The weight counts those ranges. Measured: a name
+ * field like `^[\p{L}\s]{1,100}$` weighs about 140 thousand; a million is
+ * several of those in one contract, and a dozen megabytes held at most.
+ */
+export const MAX_SCHEMA_PATTERN_WEIGHT = 1_000_000
+
 export interface QualyPattern {
   readonly source: string
   readonly programSize: number
+  /** the rune ranges the compiled program holds, which is what it costs to keep */
+  readonly weight: number
   readonly test: (value: string) => boolean
 }
 
@@ -54,6 +70,24 @@ const utf8Length = (value: string): number => {
   return bytes
 }
 
+// Read from the engine's program, which is not part of its published
+// surface: the suite pins the reading against the engine version installed,
+// and a program this cannot read counts by its instructions instead.
+const runeWeight = (compiled: RE2JS): number => {
+  const program = (
+    compiled as unknown as {
+      readonly re2Input?: { readonly prog?: { readonly inst?: readonly unknown[] } }
+    }
+  ).re2Input?.prog?.inst
+  if (!Array.isArray(program)) return compiled.programSize()
+  let weight = 0
+  for (const instruction of program) {
+    const runes = (instruction as { readonly runes?: unknown }).runes
+    weight += Array.isArray(runes) ? Math.max(runes.length, 1) : 1
+  }
+  return weight
+}
+
 export const compilePattern = (source: string): CompiledPattern => {
   if (source === '') return { ok: false, reason: 'pattern-invalid' }
   if (utf8Length(source) > MAX_PATTERN_BYTES) return { ok: false, reason: 'pattern-too-large' }
@@ -71,6 +105,7 @@ export const compilePattern = (source: string): CompiledPattern => {
     pattern: {
       source,
       programSize,
+      weight: runeWeight(compiled),
       // re2js `test` is the unanchored search JSON Schema's keyword means
       test: (value: string) => compiled.test(value),
     },
@@ -101,4 +136,40 @@ export const patternIssues = (schema: unknown, path = ''): readonly ProfileIssue
   return compiled.ok
     ? []
     : [{ path: path === '' ? 'pattern' : `${path}.pattern`, reason: compiled.reason }]
+}
+
+/**
+ * Whether a schema's patterns together stay within what a new contract may
+ * weigh (MAX_SCHEMA_PATTERN_WEIGHT).
+ *
+ * Only where a contract is written: a published one keeps meaning what it
+ * meant, so the dialect check above - which frozen contracts are read
+ * against - does not carry this. Stops compiling at the pattern that crosses
+ * the line, and leaves a pattern outside the dialect to that check.
+ */
+export const patternWeightIssues = (schema: unknown): readonly ProfileIssue[] => {
+  const found: { readonly path: string; readonly pattern: string }[] = []
+  const collect = (node: unknown, path: string) => {
+    if (typeof node !== 'object' || node === null) return
+    if ('properties' in node) {
+      const properties = (node as { properties?: unknown }).properties
+      if (typeof properties !== 'object' || properties === null) return
+      for (const [name, property] of Object.entries(properties))
+        collect(property, `properties.${name}`)
+      return
+    }
+    const pattern = (node as { pattern?: unknown }).pattern
+    if (typeof pattern === 'string')
+      found.push({ path: path === '' ? 'pattern' : `${path}.pattern`, pattern })
+  }
+  collect(schema, '')
+  let weight = 0
+  for (const one of found) {
+    const compiled = compilePattern(one.pattern)
+    if (!compiled.ok) continue
+    weight += compiled.pattern.weight
+    if (weight > MAX_SCHEMA_PATTERN_WEIGHT)
+      return [{ path: one.path, reason: 'pattern-too-complex' }]
+  }
+  return []
 }

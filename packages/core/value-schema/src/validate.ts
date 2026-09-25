@@ -34,7 +34,7 @@ import {
   type NormalizedAtomicSchema,
   type NormalizedInputSchema,
 } from './profile.ts'
-import { compilePattern } from './regex.ts'
+import { PatternCache } from './pattern-cache.ts'
 
 export interface ValueIssue {
   /** instance path in JSON Pointer form; '' is the value itself */
@@ -48,16 +48,12 @@ const has = (value: object, key: string) => Object.prototype.hasOwnProperty.call
 // the pattern keyword runs on the frozen linear-time engine, never on the
 // native backtracking RegExp: what RE2 refuses, the profile already refused
 // at configuration time, so compiling here cannot fail on a legal schema.
-// Compiled once per pattern text and kept: patterns are few and short
-const patterns = new Map<string, { test(value: string): boolean }>()
-const patternFor = (pattern: string) => {
-  const known = patterns.get(pattern)
-  if (known !== undefined) return known
-  const compiled = compilePattern(pattern)
-  if (!compiled.ok) throw new Error(`pattern outside the regex profile: ${pattern}`)
-  patterns.set(pattern, compiled.pattern)
-  return compiled.pattern
-}
+// Compiled once per pattern text and kept, within a weight budget: the
+// patterns are whatever somebody wrote into a contract, and one of them can
+// weigh megabytes. A few dozen megabytes held at most.
+const PATTERN_CACHE_WEIGHT = 2_000_000
+const patterns = new PatternCache(PATTERN_CACHE_WEIGHT)
+const patternFor = (pattern: string) => patterns.get(pattern)
 
 // the layering the keywords keep: lexical validity is the format's verdict,
 // so a semantic keyword abstains on a value it cannot parse - otherwise every
