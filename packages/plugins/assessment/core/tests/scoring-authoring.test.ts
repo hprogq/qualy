@@ -278,6 +278,45 @@ describe('normalizing scoring authoring', () => {
     expect(issuesOf(everyday.outcome)).toEqual([])
   })
 
+  // only refinements being written are weighed: a heavy one stored before
+  // the rule keeps meaning what it meant when the form is saved again
+  it('weighs no refinement the stored configuration already carries', async () => {
+    const heavy = { type: 'string', minLength: 1, maxLength: 8, pattern: '^\\pL{900}x' }
+    const stored = {
+      version: 2,
+      calculator: { ref: 'stored@1', config: { program: 'p' } },
+      aggregator: { ref: 'sum@1', config: {} },
+      recognitions: { [U1]: { label: 'x', refinement: heavy, defaultFromFieldId: null } },
+      bindings: {},
+    }
+    const verbatim = await normalize({ current: stored, submitted: stored })
+    expect(issuesOf(verbatim.outcome)).toEqual([])
+    // the same draft, carried forward by its identity
+    const carried = await normalize({
+      current: stored,
+      submitted: draft([
+        { handle: 'x', id: U1, label: 'x2', refinement: heavy, defaultFromFieldId: null },
+      ]),
+    })
+    expect(issuesOf(carried.outcome)).toEqual([])
+    // a refinement that changes is written, and weighed
+    const changed = await normalize({
+      current: stored,
+      submitted: draft([
+        {
+          handle: 'x',
+          id: U1,
+          label: 'x',
+          refinement: { ...heavy, pattern: '^\\pL{901}x' },
+          defaultFromFieldId: null,
+        },
+      ]),
+    })
+    expect(issuesOf(changed.outcome).map((issue) => issue.reason)).toEqual([
+      'refinement-pattern-too-complex',
+    ])
+  })
+
   it('refuses an unknown envelope key instead of stripping it', async () => {
     const { outcome } = await normalize({
       current: null,

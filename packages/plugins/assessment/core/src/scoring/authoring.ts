@@ -21,6 +21,7 @@
 import { Effect, Schema } from 'effect'
 import { PROFILE_LIMITS, validateAtomicProfile, type AtomicSchema } from '@qualy/value-schema'
 import { patternIssues, patternWeightIssues } from '@qualy/value-schema/regex'
+import { hashCanonicalJson } from '@qualy/value-schema/hash'
 
 export interface AuthoringIssue {
   readonly path: string
@@ -155,15 +156,50 @@ const refinementIssues = (path: string, refinement: unknown): readonly Authoring
   return []
 }
 
+/** the refinements the item's CURRENT stored V2 configuration carries */
+const currentRefinements = (current: unknown): readonly unknown[] => {
+  if (current === null || typeof current !== 'object' || Array.isArray(current)) return []
+  const record = current as Record<string, unknown>
+  if (!Object.hasOwn(record, 'version') || record['version'] !== 2) return []
+  const recognitions = record['recognitions']
+  if (recognitions === null || typeof recognitions !== 'object' || Array.isArray(recognitions)) {
+    return []
+  }
+  return Object.values(recognitions as Record<string, { refinement?: unknown }>).map(
+    (one) => one?.refinement ?? null,
+  )
+}
+
+/** the same refinements, however ordered, as the stored configuration carries */
+const sameRefinements = (current: unknown, submitted: readonly unknown[]) => {
+  const stored = currentRefinements(current)
+  if (stored.length !== submitted.length) return false
+  const keyed = (list: readonly unknown[]) =>
+    list.map((one) => hashCanonicalJson(one ?? null)).sort()
+  const left = keyed(stored)
+  const right = keyed(submitted)
+  return left.every((key, index) => key === right[index])
+}
+
 /**
  * The refinements of one configuration, together, held to what a new
  * contract's patterns may weigh: every one of them is compiled wherever a
  * determination is judged, and a stored configuration keeps meaning what it
- * meant, so only a configuration being written is weighed.
+ * meant, so only refinements being written are weighed - a save that
+ * carries exactly the stored ones again weighs nothing.
  */
 const refinementWeightIssues = (
+  current: unknown,
   refinements: readonly { readonly path: string; readonly refinement: unknown }[],
 ): readonly AuthoringIssue[] => {
+  if (
+    sameRefinements(
+      current,
+      refinements.map((one) => one.refinement),
+    )
+  ) {
+    return []
+  }
   const heavy = patternWeightIssues({
     properties: Object.fromEntries(
       refinements.map((one, index) => [String(index), one.refinement ?? {}]),
@@ -263,6 +299,7 @@ const normalizeDraft = <E, R>(
     if (issues.length === 0) {
       issues.push(
         ...refinementWeightIssues(
+          current,
           draft.recognitions.map((one, index) => ({
             path: `scoringConfig.recognitions[${index}].refinement`,
             refinement: one.refinement,
@@ -345,6 +382,7 @@ const normalizeStored = (submitted: object, current: unknown) =>
     if (issues.length === 0) {
       issues.push(
         ...refinementWeightIssues(
+          current,
           ids.map((id) => ({
             path: `scoringConfig.recognitions.${id}.refinement`,
             refinement: own(stored.recognitions, id)!.refinement,

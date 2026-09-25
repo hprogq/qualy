@@ -631,8 +631,11 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
       // The patterns a new form carries, together, held to what a new
       // contract's patterns may weigh: every one of them is compiled when an
       // answer is read. Only a form being written is weighed - one already
-      // stored keeps meaning what it meant.
-      if (issues.length === 0 && driver?.bindableFields !== undefined) {
+      // stored keeps meaning what it meant, so publishing or restoring the
+      // question, or saving its form again unchanged, weighs nothing.
+      const formWritten =
+        input.current === null || !sameJson(input.current.formConfig, input.config.formConfig)
+      if (issues.length === 0 && formWritten && driver?.bindableFields !== undefined) {
         const fields = driver.bindableFields(input.config.formConfig, {
           materialRange: input.materialRange,
         })

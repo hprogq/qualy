@@ -990,6 +990,72 @@ describe.runIf(postgresAvailable)('item configuration', () => {
     expect(result.everyday._tag).toBe('Success')
   })
 
+  // Only a form being written is weighed: one stored before the rule keeps
+  // meaning what it meant, so saving it again unchanged or publishing the
+  // question weighs nothing, and only a new form is held to the weight.
+  it('weighs a form only when it is written', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('item-pattern-stored')
+          const assessment = yield* Assessment
+          const { batch, groupId } = yield* draftBatch(f, 'Round')
+          const created = yield* assessment.createItem(
+            f.tenant,
+            batch.id,
+            {
+              itemType: 'evidence',
+              title: 'coded',
+              scoreGroupId: groupId,
+              maxEntries: null,
+              config: studentConfig({ formConfig: { pattern: '^[A-Z][0-9]{6}$' } }),
+            },
+            f.principal,
+          )
+          // a heavy pattern stored before the weight was held to anything
+          yield* runSql(sql`
+            update assessment_item_revisions
+            set form_config = replace(form_config::text, '^[A-Z][0-9]{6}$', ${'^\\\\pL{900}x'})::jsonb
+            where item_id = ${created.id}`)
+          const stored = one<{ form_config: Record<string, unknown> }>(
+            yield* runSql(sql`
+              select form_config from assessment_item_revisions where item_id = ${created.id}`),
+          ).form_config
+          const again = yield* Effect.exit(
+            assessment.updateItem(
+              f.tenant,
+              created.id,
+              { config: studentConfig({ formConfig: stored }), reason: 'the same form again' },
+              f.principal,
+            ),
+          )
+          const published = yield* Effect.exit(
+            assessment.setItemStatus(f.tenant, created.id, { status: 'active' }, f.principal),
+          )
+          const rewritten = yield* Effect.exit(
+            assessment.updateItem(
+              f.tenant,
+              created.id,
+              {
+                config: studentConfig({ formConfig: { pattern: '^\\pL{901}x' } }),
+                reason: 'a new form',
+              },
+              f.principal,
+            ),
+          )
+          return { stored, again, published, rewritten }
+        }),
+      ),
+    )
+    expect(JSON.stringify(result.stored)).toContain('900')
+    expect(result.again._tag).toBe('Success')
+    expect(result.published._tag).toBe('Success')
+    expect(
+      errorOf<{ issues?: readonly { path: string; reason: string }[] }>(result.rewritten)?.issues,
+    ).toEqual([{ path: 'formConfig.fields.claimed-code-slot', reason: 'pattern-too-complex' }])
+  })
+
   it('takes the whole chain grammar, and refuses what is outside it', async () => {
     const result = ok(
       await run(
