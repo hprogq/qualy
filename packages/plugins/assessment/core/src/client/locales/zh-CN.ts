@@ -1793,7 +1793,7 @@ export default {
   'assessment/roster/waiting-blocked': '无人可审',
   'assessment/roster/waiting-in-review-count': '审核中 {count}',
   'assessment/roster/waiting-to-supplement-count': '待补充 {count}',
-  'assessment/roster/waiting-reconsidering-count': '申诉复查 {count}',
+  'assessment/roster/waiting-reconsidering-count': '申诉或复查 {count}',
   'assessment/roster/waiting-to-revise-count': '待修改 {count}',
   'assessment/roster/waiting-blocked-count': '无人可审 {count}',
   'assessment/roster/sort-label': '排序方式',

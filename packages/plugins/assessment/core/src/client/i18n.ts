@@ -5993,7 +5993,7 @@ const i18n = definePluginMessages({
     }),
     rosterWaitingReconsideringCount: defineMessage<{ count: number }>()({
       id: 'assessment/roster/waiting-reconsidering-count',
-      defaultMessage: '{count} under appeal',
+      defaultMessage: '{count} under appeal or re-examination',
     }),
     rosterWaitingToReviseCount: defineMessage<{ count: number }>()({
       id: 'assessment/roster/waiting-to-revise-count',
