@@ -13,6 +13,7 @@ import {
   uuidInput,
 } from '@qualy/api-kit/schema'
 import {
+  FormulaAuthoringBusy,
   FormulaBundleFailed,
   FormulaContractInvalid,
   FormulaExecutionLimitExceeded,
@@ -27,6 +28,7 @@ import {
   FormulaSourceTooLarge,
   FormulaTemplateNotFound,
   FormulaTestFailed,
+  FormulaTestsTooLarge,
   FormulaTypecheckFailed,
   FormulaCompileUnavailable,
   FormulaVersionInfoConflict,
@@ -305,7 +307,7 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
         draftSourceTs: Schema.optional(sourceText),
       }),
       success: Schema.Struct({ function: functionDetail }),
-      error: [BadRequest, AccessDenied, FormulaSourceTooLarge],
+      error: [BadRequest, AccessDenied, FormulaSourceTooLarge, FormulaAuthoringBusy],
     }).middleware(Authenticated),
   )
   .add(
@@ -421,6 +423,8 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
         FormulaDraftConflict,
         FormulaDetailsConflict,
         FormulaSourceTooLarge,
+        FormulaTestsTooLarge,
+        FormulaAuthoringBusy,
         AccessDenied,
       ],
     }).middleware(Authenticated),
@@ -482,6 +486,8 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
           FormulaVersionNotFound,
           FormulaDraftRevisionNotFound,
           FormulaSourceTooLarge,
+          FormulaTestsTooLarge,
+          FormulaAuthoringBusy,
           AccessDenied,
         ],
       },
@@ -680,7 +686,13 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
         description: Schema.optional(boundedText(2000)),
       }),
       success: Schema.Struct({ function: functionDetail }),
-      error: [FormulaTemplateNotFound, FormulaSourceTooLarge, AccessDenied, BadRequest],
+      error: [
+        FormulaTemplateNotFound,
+        FormulaSourceTooLarge,
+        FormulaAuthoringBusy,
+        AccessDenied,
+        BadRequest,
+      ],
     }).middleware(Authenticated),
   )
   .add(

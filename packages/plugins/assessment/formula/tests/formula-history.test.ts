@@ -1,5 +1,5 @@
 import { inspect } from 'node:util'
-import { Effect, Exit, Layer } from 'effect'
+import { Effect, Exit, Layer, Result } from 'effect'
 import { sql } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
@@ -7,7 +7,7 @@ import type { Orm } from '@qualy/plugin-database/server'
 import { sandboxLocalLayer } from '@qualy/plugin-sandbox/testkit'
 import { formulaAuthoringLocalLayer } from '@qualy/plugin-assessment-formula/testkit'
 import type { Rbac } from '@qualy/rbac-contract/effect'
-import { FormulaLibrary, layer as formulaLayer } from '../src/server/index.ts'
+import { FormulaLibrary, TESTS_LIMIT, layer as formulaLayer } from '../src/server/index.ts'
 import { seedFormulaFixture, servicesFor } from './support/stack.ts'
 
 // A formula's life as one model: one draft that is edited, a revision left
@@ -531,6 +531,141 @@ describe.runIf(postgresAvailable)('a formula over its lifetime', () => {
     expect(outcome.saved.draftRevision).toBe(outcome.created.draftRevision + 1)
     expect(outcome.saved.detailsRevision).toBe(3)
   }, 180_000)
+
+  it('holds the examples to a ceiling wherever a snapshot of them would be kept', async () => {
+    const outcome = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('fh-tests-ceiling')
+          const library = yield* FormulaLibrary
+          const as = f.principal(f.admin)
+          const created = yield* library.createFunction(f.t, { name: '示例上限' }, as)
+          const heavy = [{ name: 'heavy', input: { note: 'x'.repeat(TESTS_LIMIT) }, expected: '1' }]
+          const count = () =>
+            runSql(sql`
+              select count(*)::int as n from assessment_formula_draft_revisions
+               where function_id = ${created.id}`).pipe(
+              Effect.map((result) => rows<{ n: number }>(result)[0]!.n),
+            )
+          // sent as the examples of a save
+          const sent = yield* Effect.flip(
+            library.updateDraft(
+              f.t,
+              created.id,
+              { expectedDraftRevision: 1, draftSourceTs: IDENTITY, draftTests: heavy },
+              as,
+            ),
+          )
+          const afterSent = yield* count()
+          // already on a draft written before the ceiling: a source-only save
+          // would copy them into one more snapshot
+          yield* runSql(sql`
+            update assessment_formula_functions set draft_tests = ${JSON.stringify(heavy)}::jsonb
+             where id = ${created.id}`)
+          const carried = yield* Effect.flip(
+            library.updateDraft(
+              f.t,
+              created.id,
+              { expectedDraftRevision: 1, draftSourceTs: IDENTITY },
+              as,
+            ),
+          )
+          const afterCarried = yield* count()
+          // and in an earlier state a restore would put back
+          yield* runSql(sql`
+            update assessment_formula_functions set draft_tests = '[]'::jsonb
+             where id = ${created.id}`)
+          yield* runSql(sql`
+            update assessment_formula_draft_revisions set tests = ${JSON.stringify(heavy)}::jsonb
+             where function_id = ${created.id} and revision_no = 1`)
+          yield* library.updateDraft(
+            f.t,
+            created.id,
+            { expectedDraftRevision: 1, draftSourceTs: IDENTITY },
+            as,
+          )
+          const restored = yield* Effect.flip(
+            library.restoreDraft(
+              f.t,
+              created.id,
+              { expectedDraftRevision: 2, from: { kind: 'draft-revision', revisionNo: 1 } },
+              as,
+            ),
+          )
+          const afterRestore = yield* count()
+          return { sent, afterSent, carried, afterCarried, restored, afterRestore }
+        }),
+      ),
+    )
+    for (const refusal of [outcome.sent, outcome.carried, outcome.restored]) {
+      expect(refusal).toMatchObject({
+        _tag: 'ASSESSMENT_FORMULA_TESTS_TOO_LARGE',
+        limit: TESTS_LIMIT,
+      })
+    }
+    // nothing kept for any of them: the one revision after the first is
+    // the source-only save that went through once the draft was trimmed
+    expect(outcome.afterSent).toBe(1)
+    expect(outcome.afterCarried).toBe(1)
+    expect(outcome.afterRestore).toBe(2)
+  }, 120_000)
+
+  it("draws every draft write from the author's allowance, and keeps nothing it refuses", async () => {
+    const outcome = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('fh-allowance')
+          const library = yield* FormulaLibrary
+          const as = f.principal(f.admin)
+          const created = yield* library.createFunction(f.t, { name: '频率' }, as)
+          let revision = 1
+          let accepted = 0
+          const refused: string[] = []
+          for (let n = 0; n < 45; n += 1) {
+            const saved = yield* Effect.result(
+              library.updateDraft(
+                f.t,
+                created.id,
+                { expectedDraftRevision: revision, draftSourceTs: `// ${String(n)}\n` },
+                as,
+              ),
+            )
+            if (Result.isSuccess(saved)) {
+              revision = saved.success.draftRevision
+              accepted += 1
+            } else refused.push(saved.failure._tag)
+          }
+          // a restore is a write of its own, however small the request
+          const restore = yield* Effect.flip(
+            library.restoreDraft(
+              f.t,
+              created.id,
+              { expectedDraftRevision: revision, from: { kind: 'draft-revision', revisionNo: 1 } },
+              as,
+            ),
+          )
+          const kept = rows<{ n: number }>(
+            yield* runSql(sql`
+              select count(*)::int as n from assessment_formula_draft_revisions
+               where function_id = ${created.id}`),
+          )[0]!.n
+          // the allowance is one person's: somebody else still writes
+          const other = yield* library.createFunction(f.t, { name: '别人' }, f.principal(f.authorA))
+          return { accepted, refused, restore, kept, revision, other }
+        }),
+      ),
+    )
+    // the creation took one: the burst is spent within the loop
+    expect(outcome.accepted).toBeGreaterThanOrEqual(39)
+    expect(outcome.refused.length).toBeGreaterThan(0)
+    expect(new Set(outcome.refused)).toEqual(new Set(['ASSESSMENT_FORMULA_AUTHORING_BUSY']))
+    expect(outcome.restore).toMatchObject({ _tag: 'ASSESSMENT_FORMULA_AUTHORING_BUSY' })
+    expect(outcome.kept).toBe(1 + outcome.accepted)
+    expect(outcome.revision).toBe(1 + outcome.accepted)
+    expect(outcome.other.draftRevision).toBe(1)
+  }, 120_000)
 
   it('pages the revisions newest first without repeats or gaps', async () => {
     const outcome = ok(

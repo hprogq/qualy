@@ -469,6 +469,8 @@ export default {
   'assessment-formula/error/function-archived': '该公式已归档，恢复后才能编辑。',
   'assessment-formula/error/draft-conflict': '草稿已在其他位置修改，请刷新后再应用你的改动。',
   'assessment-formula/error/source-too-large': '代码过大，无法保存。',
+  'assessment-formula/error/tests-too-large': '示例内容过多，无法保存，请删减示例或缩短输入。',
+  'assessment-formula/error/authoring-busy': '公式操作过于频繁，请稍候再试。',
   'assessment-formula/error/source-refused': '公式只能导入 @qualy/formula。',
   'assessment-formula/error/typecheck-failed': '代码编译未通过，详情见编译结果。',
   'assessment-formula/error/contract-invalid': '输入或输出参数使用了不支持的类型或配置。',

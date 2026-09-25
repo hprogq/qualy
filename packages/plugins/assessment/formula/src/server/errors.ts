@@ -187,6 +187,31 @@ export class FormulaSourceTooLarge extends Schema.TaggedError<FormulaSourceTooLa
   { httpApiStatus: 422, identifier: 'AssessmentFormulaSourceTooLarge' },
 ) {}
 
+/**
+ * The examples are more than a draft may carry.
+ *
+ * Every saved state of a draft is kept whole, so what one save may hold is
+ * what every revision after it may hold too. The source has had its ceiling
+ * from the start; the examples are held to one of their own.
+ */
+export class FormulaTestsTooLarge extends Schema.TaggedError<FormulaTestsTooLarge>()(
+  'ASSESSMENT_FORMULA_TESTS_TOO_LARGE',
+  { limit: Schema.Number },
+  { httpApiStatus: 422, identifier: 'AssessmentFormulaTestsTooLarge' },
+) {}
+
+/**
+ * This person already has as much formula work under way as one person
+ * gets at a time, or has saved faster than a draft may be saved.
+ *
+ * Nothing was done; the same request can simply be sent again shortly.
+ */
+export class FormulaAuthoringBusy extends Schema.TaggedError<FormulaAuthoringBusy>()(
+  'ASSESSMENT_FORMULA_AUTHORING_BUSY',
+  {},
+  { httpApiStatus: 429, identifier: 'AssessmentFormulaAuthoringBusy' },
+) {}
+
 export class FormulaSourceRefused extends Schema.TaggedError<FormulaSourceRefused>()(
   'ASSESSMENT_FORMULA_SOURCE_REFUSED',
   {

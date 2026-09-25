@@ -1810,6 +1810,14 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/error/source-too-large',
       defaultMessage: 'The source is too large to save.',
     },
+    ASSESSMENT_FORMULA_TESTS_TOO_LARGE: {
+      id: 'assessment-formula/error/tests-too-large',
+      defaultMessage: 'The examples are too large to save. Remove some or shorten their inputs.',
+    },
+    ASSESSMENT_FORMULA_AUTHORING_BUSY: {
+      id: 'assessment-formula/error/authoring-busy',
+      defaultMessage: 'Too many formula requests at once. Wait a moment and try again.',
+    },
     ASSESSMENT_FORMULA_SOURCE_REFUSED: {
       id: 'assessment-formula/error/source-refused',
       defaultMessage: "A formula may only import '@qualy/formula'.",

@@ -1,6 +1,6 @@
 import { contractIdentityOf, sha256Hex } from './contract-identity.ts'
 import { decodeFormulaEnvelope } from './envelope.ts'
-import { Context, Effect, Layer, Option } from 'effect'
+import { Clock, Context, Effect, Layer, Option, Ref } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
 import { sql } from 'kysely'
@@ -62,6 +62,7 @@ import {
   type TemplateSummary,
 } from './template-library.ts'
 import {
+  FormulaAuthoringBusy,
   FormulaBundleFailed,
   FormulaCompileUnavailable,
   FormulaContractInvalid,
@@ -75,6 +76,7 @@ import {
   FormulaSourceRefused,
   FormulaSourceTooLarge,
   FormulaTestFailed,
+  FormulaTestsTooLarge,
   FormulaTypecheckFailed,
   FormulaVersionInfoConflict,
   FormulaVersionNotFound,
@@ -107,7 +109,26 @@ const AUTHOR = 'assessment.formula.author'
 const MAX_CONTRACT_TRANSPORT_BYTES = 131_072
 /** the canonical bytes of a legal contract; part of the v1 profile budget */
 const MAX_CANONICAL_CONTRACT_BYTES = 65_536
-/** compiles queue behind one permit; past this depth the service is busy */
+/**
+ * What the examples of one draft may weigh, as the JSON they are kept as.
+ *
+ * Every save keeps the whole draft, so this is also what one revision may
+ * add to its history. Examples illustrate a formula rather than feed it a
+ * data set, and half the source's own ceiling leaves room for long texts.
+ */
+export const TESTS_LIMIT = 128 * 1024
+
+/**
+ * Draft writes one person may make in a burst, and how long each one takes
+ * to come back. Saving is a deliberate act in the editor, so nobody writing
+ * a formula meets this; a script replaying saves to fill the disk does.
+ */
+const DRAFT_WRITE_BURST = 40
+const DRAFT_WRITE_REFILL_MS = 6_000
+
+/** the examples' own weight check, the same at every door a draft is written through */
+const testsTooLarge = (tests: readonly unknown[]): boolean =>
+  Buffer.byteLength(JSON.stringify(tests), 'utf8') > TESTS_LIMIT
 
 const LIST_FINGERPRINT = 'assessment-formula-functions'
 
@@ -465,6 +486,13 @@ interface FormulaLibraryShape {
    * has nothing to do there.
    */
   readonly requireAuthor: (as: Principal) => Effect.Effect<void, AccessDenied>
+  /**
+   * Counts one draft write against this person's allowance.
+   *
+   * On the library because a copied template is a draft written too, and
+   * the template surface must draw on the same allowance as every save.
+   */
+  readonly chargeDraftWrite: (as: Principal) => Effect.Effect<void, FormulaAuthoringBusy>
   readonly previewDraft: (
     tenantId: string,
     functionId: string,
@@ -501,7 +529,10 @@ interface FormulaLibraryShape {
     tenantId: string,
     input: { name: string; description?: string; draftSourceTs?: string },
     as: Principal,
-  ) => Effect.Effect<ReturnType<typeof functionDetailDto>, AccessDenied | FormulaSourceTooLarge>
+  ) => Effect.Effect<
+    ReturnType<typeof functionDetailDto>,
+    AccessDenied | FormulaSourceTooLarge | FormulaAuthoringBusy
+  >
   readonly getFunction: (
     tenantId: string,
     functionId: string,
@@ -540,6 +571,8 @@ interface FormulaLibraryShape {
     | FormulaDraftConflict
     | FormulaDetailsConflict
     | FormulaSourceTooLarge
+    | FormulaTestsTooLarge
+    | FormulaAuthoringBusy
   >
   readonly setStatus: (
     tenantId: string,
@@ -610,6 +643,8 @@ interface FormulaLibraryShape {
     | FormulaVersionNotFound
     | FormulaDraftRevisionNotFound
     | FormulaSourceTooLarge
+    | FormulaTestsTooLarge
+    | FormulaAuthoringBusy
   >
   readonly getVersion: (
     tenantId: string,
@@ -667,6 +702,32 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
   const runtimeStore = yield* FormulaRuntimeStore
 
   const actorOf = (as: Principal) => ({ kind: 'user', userId: as.userId }) as const
+
+  // Every draft write keeps a whole snapshot, and a write is cheap to send:
+  // a restore of a large earlier state is a hundred bytes asking for a
+  // quarter megabyte to be stored. So each person draws writes from an
+  // allowance that refills over time. Keyed by tenant and user, like the
+  // language seats: one person with several windows has one allowance.
+  const allowances = yield* Ref.make<
+    ReadonlyMap<string, { readonly tokens: number; readonly at: number }>
+  >(new Map())
+  const chargeDraftWrite = (as: Principal) =>
+    Effect.gen(function* () {
+      const now = yield* Clock.currentTimeMillis
+      const key = `${as.tenantId}:${as.userId}`
+      const granted = yield* Ref.modify(allowances, (held) => {
+        const was = held.get(key)
+        const refilled =
+          was === undefined
+            ? DRAFT_WRITE_BURST
+            : Math.min(DRAFT_WRITE_BURST, was.tokens + (now - was.at) / DRAFT_WRITE_REFILL_MS)
+        if (refilled < 1) return [false, held] as const
+        const next = new Map(held)
+        next.set(key, { tokens: refilled - 1, at: now })
+        return [true, next] as const
+      })
+      if (!granted) return yield* new FormulaAuthoringBusy()
+    })
 
   const latestNoSubquery = sql<number | null>`(
     select max(v.version_no) from assessment_formula_versions v
@@ -1277,6 +1338,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     const seed = input.draftSourceTs ?? ''
     if (Buffer.byteLength(seed, 'utf8') > SOURCE_LIMIT)
       return yield* new FormulaSourceTooLarge({ limit: SOURCE_LIMIT })
+    yield* chargeDraftWrite(as)
     const created = yield* withDb(
       transaction(
         Effect.gen(function* () {
@@ -1434,6 +1496,8 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       Buffer.byteLength(patch.draftSourceTs, 'utf8') > SOURCE_LIMIT
     )
       return yield* new FormulaSourceTooLarge({ limit: SOURCE_LIMIT })
+    if (patch.draftTests !== undefined && testsTooLarge(patch.draftTests))
+      return yield* new FormulaTestsTooLarge({ limit: TESTS_LIMIT })
     // a patch that names no field changes nothing: no revision, no audit
     // event to explain later
     if (
@@ -1443,6 +1507,8 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       patch.draftTests === undefined
     )
       return functionDetailDto(row)
+    if (patch.draftSourceTs !== undefined || patch.draftTests !== undefined)
+      yield* chargeDraftWrite(as)
     const changed = yield* withDb(
       transaction(
         Effect.gen(function* () {
@@ -1492,6 +1558,10 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
               ? patch.description
               : undefined
           const content = sourceTs !== undefined || tests !== undefined
+          // the snapshot a content save appends holds the examples too, and a
+          // draft written before they had a ceiling may still carry more
+          if (content && tests === undefined && testsTooLarge(locked.draftTests))
+            return yield* new FormulaTestsTooLarge({ limit: TESTS_LIMIT })
           if (!content && name === undefined && description === undefined) return false
           const revisionNo = patch.expectedDraftRevision + (content ? 1 : 0)
           // The words have their own token. A rename moves no draft revision,
@@ -2179,6 +2249,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     as: Principal,
   ) {
     yield* authoringRow(tenantId, functionId, as)
+    yield* chargeDraftWrite(as)
     yield* withDb(
       transaction(
         Effect.gen(function* () {
@@ -2252,6 +2323,8 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           // once allowed
           if (Buffer.byteLength(source.sourceTs, 'utf8') > SOURCE_LIMIT)
             return yield* new FormulaSourceTooLarge({ limit: SOURCE_LIMIT })
+          if (testsTooLarge(source.tests as readonly unknown[]))
+            return yield* new FormulaTestsTooLarge({ limit: TESTS_LIMIT })
           // putting back exactly what is already there is not a change
           if (
             source.sourceTs === locked.draftSourceTs &&
@@ -2296,6 +2369,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
   // above stay plain Orm-requiring effects, and nothing leaks the requirement
   const service: FormulaLibraryShape = {
     requireAuthor,
+    chargeDraftWrite,
     previewDraft: (tenantId, functionId, sourceTs, as) =>
       withDb(previewDraft(tenantId, functionId, sourceTs, as)),
     evaluateDraft: (tenantId, functionId, sourceTs, cases, as) =>
@@ -2645,6 +2719,7 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
         const principal = yield* CurrentUser
         const tenantId = principal.tenantId
         yield* library.requireAuthor(principal)
+        yield* library.chargeDraftWrite(principal)
         const stands = yield* placement.primaryNode(tenantId, principal.userId)
         const created = yield* templates.copyTemplate(
           tenantId,
