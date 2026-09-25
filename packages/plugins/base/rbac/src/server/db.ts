@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
 import { Db, type ScopedKysely } from '@qualy/plugin-database/plugin'
-import { sql, type Expression } from 'kysely'
+import { expressionBuilder, sql, type Expression, type Kysely } from 'kysely'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities } from '../db/entities.ts'
@@ -19,6 +19,9 @@ export const db = Db.scope(closure)
 
 /** the builder fragment helpers receive, inside a query's callback */
 export type Db = ScopedKysely<typeof closure>
+
+/** the tables the closure names, for a predicate that builds its own subquery */
+type Schema = Db extends Kysely<infer Tables> ? Tables : never
 
 /** the same row org and auth lock, so the three cannot interleave */
 export const lockTenant = (tenantId: string) =>
@@ -280,7 +283,9 @@ export const rolePermissionCodes = (tenantId: string, roleId: string) =>
  * node - a college administrator's edge to "counsellor" is an edge for their
  * own college's subtree, not a licence to appoint counsellors anywhere. A
  * tenant-wide holding (no anchor) stands everywhere; a tenant-wide grant (no
- * node) is stood over by nothing else.
+ * node) is stood over by nothing else. Asked row by row, a grant's own null
+ * node compares as unknown against every anchored holding, which the
+ * predicate reads the same way.
  *
  * `across: 'subtree'` asks the wider question: whether the holding stands
  * over every node below the anchor as well, which a self holding at the
@@ -290,9 +295,10 @@ export const rolePermissionCodes = (tenantId: string, roleId: string) =>
  * A predicate rather than a query, so it is asked the same way wherever it
  * is asked: of one prospective grant by the write, and row by row by the
  * grants screen, which offers a revoke press by whether the caller could
- * have made the grant. The node is cast because it may be a bound null, and
- * the inner aliases are spelled out because the row asked about is usually a
- * `role_grants` row aliased `g`, which a short alias here would shadow.
+ * have made the grant. It builds its own subquery, so a caller hands over
+ * expressions for its row rather than naming its tables; the inner aliases
+ * are spelled out because the row asked about is usually a `role_grants` row
+ * aliased `g`, which a short alias here would shadow.
  */
 export const appointmentHeld = (input: {
   tenantId: Expression<string> | string
@@ -303,46 +309,65 @@ export const appointmentHeld = (input: {
   /** how far past the anchor the holding has to stand; the anchor alone by default */
   across?: 'self' | 'subtree'
 }) => {
-  const node = sql<string | null>`${input.orgNodeId}::uuid`
-  return sql<boolean>`exists (
-    select 1
-    from role_grant_rules appointment_rule
-    join role_grants appointer_grant
-      on appointer_grant.tenant_id = appointment_rule.tenant_id
-      and appointer_grant.role_id = appointment_rule.granter_role_id
-    join roles appointer_role
-      on appointer_role.tenant_id = appointer_grant.tenant_id
-      and appointer_role.id = appointer_grant.role_id
-    left join org_nodes appointer_node
-      on appointer_node.tenant_id = appointer_grant.tenant_id
-      and appointer_node.id = appointer_grant.org_node_id
-    where appointment_rule.tenant_id = ${input.tenantId}
-      and appointment_rule.target_role_id = ${input.targetRoleId}
-      and appointer_grant.user_id = ${input.actorUserId}
-      and appointer_grant.resource_id is null
-      and appointer_role.status = 'active'
-      and ${inForce({
-        revokedAt: sql.ref<Date | null>('appointer_grant.revoked_at'),
-        validFrom: sql.ref<Date | null>('appointer_grant.valid_from'),
-        validUntil: sql.ref<Date | null>('appointer_grant.valid_until'),
-      })}
-      and (
-        appointer_grant.org_node_id is null
-        or (${node} is not null and (
-          ${
-            input.across === 'subtree'
-              ? sql<boolean>`false`
-              : sql<boolean>`(appointer_grant.coverage = 'self'
-                  and appointer_grant.org_node_id = ${node})`
-          }
-          or (appointer_grant.coverage = 'subtree' and (
-            select appointment_target.path from org_nodes appointment_target
-            where appointment_target.tenant_id = appointer_grant.tenant_id
-              and appointment_target.id = ${node}
-          ) <@ appointer_node.path)
-        ))
+  const eb = expressionBuilder<Schema>()
+  const node =
+    typeof input.orgNodeId === 'string' ? eb.val<string | null>(input.orgNodeId) : input.orgNodeId
+  return eb.exists(
+    eb
+      .selectFrom('RoleGrantRule as appointment_rule')
+      .innerJoin('RoleGrant as appointer_grant', (join) =>
+        join
+          .onRef('appointer_grant.tenantId', '=', 'appointment_rule.tenantId')
+          .onRef('appointer_grant.roleId', '=', 'appointment_rule.granterRoleId'),
       )
-  )`
+      .innerJoin('Role as appointer_role', (join) =>
+        join
+          .onRef('appointer_role.tenantId', '=', 'appointer_grant.tenantId')
+          .onRef('appointer_role.id', '=', 'appointer_grant.roleId')
+          .on('appointer_role.status', '=', 'active'),
+      )
+      .leftJoin('OrgNode as appointer_node', (join) =>
+        join
+          .onRef('appointer_node.tenantId', '=', 'appointer_grant.tenantId')
+          .onRef('appointer_node.id', '=', 'appointer_grant.orgNodeId'),
+      )
+      .select('appointer_grant.id')
+      .where('appointment_rule.tenantId', '=', input.tenantId)
+      .where('appointment_rule.targetRoleId', '=', input.targetRoleId)
+      .where('appointer_grant.userId', '=', input.actorUserId)
+      .where('appointer_grant.resourceId', 'is', null)
+      .where((held) =>
+        inForce({
+          revokedAt: held.ref('appointer_grant.revokedAt'),
+          validFrom: held.ref('appointer_grant.validFrom'),
+          validUntil: held.ref('appointer_grant.validUntil'),
+        }),
+      )
+      .where((held) => {
+        const everywhere = held('appointer_grant.orgNodeId', 'is', null)
+        if (node === null) return everywhere
+        const anchorPath = held
+          .selectFrom('OrgNode as appointment_target')
+          .select('appointment_target.path')
+          .whereRef('appointment_target.tenantId', '=', 'appointer_grant.tenantId')
+          .where((target) => target(node, '=', target.ref('appointment_target.id')))
+        return held.or([
+          everywhere,
+          ...(input.across === 'subtree'
+            ? []
+            : [
+                held.and([
+                  held('appointer_grant.coverage', '=', 'self'),
+                  held('appointer_grant.orgNodeId', '=', node),
+                ]),
+              ]),
+          held.and([
+            held('appointer_grant.coverage', '=', 'subtree'),
+            held(anchorPath, '<@', held.ref('appointer_node.path')),
+          ]),
+        ])
+      }),
+  )
 }
 
 /** the same question, asked of one prospective grant */
