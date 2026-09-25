@@ -55,6 +55,17 @@ const line = (over: Partial<Line> & Pick<Line, 'lineId' | 'kind'>): Line => ({
   ...over,
 })
 
+/** a question that can only take away: a flat amount below zero */
+const deduction = (id: string, scoreGroupId: string): LedgerItem =>
+  item({
+    id,
+    scoreGroupId,
+    currentRevision: {
+      entryChannels: ['administrative'],
+      scoringConfig: { calculator: { ref: 'fixed@1', config: { value: '-2' } } },
+    },
+  })
+
 const claim = (over: LedgerEntry): LedgerEntry => over
 
 const itemsOf = (model: LedgerModel): LedgerItemView[] =>
@@ -353,11 +364,75 @@ describe('the score ledger model', () => {
         ],
         lines: [],
       },
-      items: ['a', 'b', 'minus'].map((id) => item({ id: `q-${id}`, scoreGroupId: id })),
+      items: [
+        item({ id: 'q-a', scoreGroupId: 'a' }),
+        item({ id: 'q-b', scoreGroupId: 'b' }),
+        deduction('q-minus', 'minus'),
+      ],
       entries: [],
     })
     expect(deducting.fullCents).toBe(3000)
     expect(deducting.shares?.map((share) => share.id)).toEqual(['a', 'b'])
+  })
+
+  it('reads the round’s full marks off how it is set up, not off how far anyone has got', () => {
+    const full = (
+      extra: { final: string; items: LedgerItem[]; groups?: Group[] },
+      over: Partial<Group> = {},
+    ) =>
+      buildLedger({
+        result: {
+          mode: 'provisional',
+          total: '5.00',
+          groups: [
+            group({ groupId: 'a', final: '5.00', raw: '5.00', cap: '10.00' }),
+            group({ groupId: 'x', final: extra.final, raw: extra.final, ...over }),
+            ...(extra.groups ?? []),
+          ],
+          lines: [],
+        },
+        items: [item({ id: 'q-a', scoreGroupId: 'a' }), ...extra.items],
+        entries: [],
+      }).fullCents
+
+    // a group that adds and has no limit: no full mark before its first
+    // point, and none after it - not one that comes and goes
+    const adding = [item({ id: 'q-x', scoreGroupId: 'x' })]
+    expect(full({ final: '0.00', items: adding })).toBeNull()
+    expect(full({ final: '6.00', items: adding })).toBeNull()
+
+    // deductions add nothing to the most anyone can reach, taken or not
+    const taking = [
+      deduction('q-x', 'x'),
+      item({ id: 'q-gone', scoreGroupId: 'x', status: 'voided' }),
+    ]
+    expect(full({ final: '0.00', items: taking })).toBe(1000)
+    expect(full({ final: '-2.00', items: taking })).toBe(1000)
+    // a minimum is part of the most a group can come to
+    expect(full({ final: '1.00', items: taking }, { floor: '1.00' })).toBe(1100)
+
+    // a formula says nothing a reader can see about how much it may add
+    const formula = item({
+      id: 'q-x',
+      scoreGroupId: 'x',
+      currentRevision: {
+        entryChannels: ['participant'],
+        scoringConfig: { calculator: { ref: 'formula@1', config: { versionId: 'v' } } },
+      },
+    })
+    expect(full({ final: '0.00', items: [formula] })).toBeNull()
+
+    // no limit of its own, but every group inside it has one
+    expect(
+      full({
+        final: '0.00',
+        items: [item({ id: 'q-x1', scoreGroupId: 'x1' }), item({ id: 'q-x2', scoreGroupId: 'x2' })],
+        groups: [
+          group({ groupId: 'x1', parentGroupId: 'x', depth: 1, cap: '4.00' }),
+          group({ groupId: 'x2', parentGroupId: 'x', depth: 1, cap: '6.00' }),
+        ],
+      }),
+    ).toBe(2000)
   })
 
   it('keeps questions no group holds, and lines no question it was handed, on the account', () => {

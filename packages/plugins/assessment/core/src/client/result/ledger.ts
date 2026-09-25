@@ -335,6 +335,20 @@ const flatAmountOf = (item: LedgerItem): string | null => {
   return typeof value === 'string' || typeof value === 'number' ? String(value) : null
 }
 
+/**
+ * Whether a question can only ever take away, by its own rule rather than by
+ * what it has come to so far: a withdrawn question adds nothing, and a flat
+ * amount of zero or less can only deduct. Anything else - a positive amount,
+ * a formula - may add, and how much is not written anywhere a reader can see.
+ */
+const onlyTakesAway = (item: LedgerItem): boolean => {
+  if (item.status === 'voided') return true
+  const flat = flatAmountOf(item)
+  if (flat === null) return false
+  const amount = Number(flat)
+  return Number.isFinite(amount) && amount <= 0
+}
+
 const LINE_KINDS: ReadonlySet<string> = new Set([
   'entry',
   'entry-not-counted',
@@ -612,14 +626,30 @@ export const buildLedger = ({
     })
   }
 
-  // A group with no limit has no full mark to add - unless it can only take
-  // away, as a group of deductions does, and then it adds nothing to the most
-  // anyone can reach. A question outside every group has no limit at all.
+  // The most a group can come to, read off how the round is set up and never
+  // off how far anyone has got: a limit says it outright; with no limit, the
+  // groups inside it and a minimum say it, provided every question it holds
+  // directly can only take away, as a group of deductions does. Anything
+  // else has no full mark to add, and neither has a question outside every
+  // group, so the round prints none rather than one that comes and goes as
+  // points arrive.
+  const mostOf = (group: ResultGroup): number | null => {
+    if (group.cap !== null) return centsOf(group.cap)
+    if (!itemsIn(group.groupId).every(onlyTakesAway)) return null
+    let most = 0
+    for (const child of childrenOf.get(group.groupId) ?? []) {
+      if (!holds(child)) continue
+      const reach = mostOf(child)
+      if (reach === null) return null
+      most += reach
+    }
+    return group.floor === null ? most : Math.max(most, centsOf(group.floor))
+  }
+  const roots = (childrenOf.get(null) ?? []).filter(holds)
+  const reaches = roots.map(mostOf)
   const fullCents =
-    tops.length > 0 &&
-    loose.length === 0 &&
-    tops.every((top) => top.capCents !== null || top.cents <= 0)
-      ? tops.reduce((sum, top) => sum + (top.capCents ?? 0), 0)
+    roots.length > 0 && loose.length === 0 && reaches.every((reach) => reach !== null)
+      ? reaches.reduce<number>((sum, reach) => sum + (reach ?? 0), 0)
       : null
   const shares =
     fullCents !== null && fullCents > 0 && tops.length >= 2 && tops.length <= MOST_SHARES

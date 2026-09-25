@@ -216,8 +216,8 @@ const normal = () => {
     item('q13', 'g4', '学生干部任职（旧）', { status: 'voided' }),
     item('q10', 'g4', '创新创业训练', { each: '5' }),
     item('q14', 'g4', '体测加分', { channels: ['administrative'] }),
-    item('q15', 'g5', '违纪扣分', { channels: ['administrative'] }),
-    item('q16', 'g5', '宿舍卫生扣分', { channels: ['administrative'] }),
+    item('q15', 'g5', '违纪扣分', { channels: ['administrative'], each: '-2' }),
+    item('q16', 'g5', '宿舍卫生扣分', { channels: ['administrative'], each: '-1' }),
   ]
   const entries = [
     ...['a', 'b', 'c'].map((key) => entry(`q3-${key}`, 'q3', 'approved', { name: `竞赛${key}` })),
@@ -374,7 +374,9 @@ describe('the score page at a desk', () => {
     const outline = page.getByTestId('outline-group')
     await expect.poll(() => outline.elements().length).toBe(5)
     expect(page.getByTestId('result-strip').elements()).toHaveLength(0)
-    // the round's full marks divide into the groups that came to something
+    // the round's full marks - the deductions add nothing to them - divide
+    // into the groups that came to something
+    await expect.element(page.getByTestId('result-out-of')).toHaveAttribute('data-full', '100.00')
     await expect.element(page.getByTestId('result-shares')).toHaveAttribute('data-count', '3')
 
     await page
@@ -618,6 +620,29 @@ describe('rounds of other shapes', () => {
     await screen(many(1))
     await expect.element(page.getByTestId('result-total')).toHaveTextContent('1.00')
     await expect.element(page.getByTestId('result-ledger')).toHaveAttribute('data-layout', 'single')
+    expect(page.getByTestId('result-shares').elements()).toHaveLength(0)
+  })
+
+  it('prints no full mark beside a group that adds with no limit, even before it has scored', async () => {
+    await page.viewport(1440, 900)
+    await screen({
+      result: {
+        mode: 'provisional',
+        total: '5.00',
+        groups: [
+          group('capped', '学业', { final: '5.00', cap: '10.00' }),
+          group('open', '附加分', { final: '0.00' }),
+        ],
+        lines: [counted('capped-e', 'capped-q', '5.00')],
+      },
+      items: [
+        item('capped-q', 'capped', '课程成绩'),
+        item('open-q', 'open', '附加项目', { each: '3' }),
+      ],
+      entries: [entry('capped-e', 'capped-q', 'approved')],
+    })
+    await expect.element(page.getByTestId('result-total')).toHaveTextContent('5.00')
+    expect(page.getByTestId('result-out-of').elements()).toHaveLength(0)
     expect(page.getByTestId('result-shares').elements()).toHaveLength(0)
   })
 

@@ -984,7 +984,11 @@ function Head({
             {two(model.totalCents)}
           </span>
           {model.fullCents !== null && (
-            <span {...stylex.props(styles.outOf)}>
+            <span
+              data-testid="result-out-of"
+              data-full={two(model.fullCents)}
+              {...stylex.props(styles.outOf)}
+            >
               {format(m.resultOutOf, { full: plain(two(model.fullCents)) })}
             </span>
           )}
