@@ -3,6 +3,7 @@ import UserTypePage from '../src/client/iam/UserTypePage.tsx'
 import RolesPage from '@qualy/plugin-rbac/client/RolesPage'
 import RolePage from '@qualy/plugin-rbac/client/RolePage'
 import UsersPage from '../src/client/iam/UsersPage.tsx'
+import UserDetailHeader from '../src/client/iam/UserDetailHeader.tsx'
 import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
@@ -858,5 +859,40 @@ describe('users workspace', () => {
     await userEvent.keyboard('{ArrowDown}{Enter}')
     await expect.element(page.getByTestId('landed')).toBeInTheDocument()
     expect(addressNow()).toContain(`/people/${SECOND_USER_ID}`)
+  })
+})
+
+// A refusal is said where the reader is looking: in the form while the form
+// is up, since the band behind an open dialog is inert and hidden from
+// assistive tech.
+describe("a person's header", () => {
+  const person = () => ({
+    user: user({ email: 'zhang@example.edu' }),
+    orgPath: [{ id: ROOT_NODE_ID, name: '本部', orgTypeName: '学院' }],
+    placement: { mode: 'unrestricted' },
+    roles: [],
+    lastSignInAt: null,
+  })
+  const mount = (over: Stubs<'identity'>) =>
+    renderScreen({
+      client: fakeClient(stubs({ identity: { getUser: () => Effect.succeed(person()), ...over } })),
+      route: `/organization/users/${USER_ID}`,
+      path: '/organization/users/:userId',
+      children: <UserDetailHeader />,
+    })
+
+  it('says in the form what a save was refused, and keeps nothing once it is put away', async () => {
+    const update = vi.fn(() => Effect.fail(apiError('USER_EMAIL_CONFLICT')))
+    await mount({ updateUser: update })
+    await page.getByRole('button', { name: '编辑资料' }).click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('textbox', { name: '邮箱' }).fill('taken@example.edu')
+    await dialog.getByRole('button', { name: '保存' }).click()
+    await vi.waitFor(() => expect(update).toHaveBeenCalledTimes(1))
+    await expect.element(dialog.getByTestId('feedback')).toHaveAttribute('data-tone', 'error')
+
+    await dialog.getByRole('button', { name: '取消' }).click()
+    await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull()
+    expect(document.querySelector('[data-testid="feedback"]')).toBeNull()
   })
 })

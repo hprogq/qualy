@@ -279,6 +279,12 @@ export default function UserDetailHeader() {
   // are provisioned, so the form does not offer them
   const system = user.data?.placement.mode === 'tenant-root'
   const userTypes = options.data?.userTypes ?? []
+  // what the form was refused is said in the form, and goes with it: the
+  // band behind the dialog is under the overlay while it is up
+  const stopEditing = () => {
+    setEditing(false)
+    setFeedback(null)
+  }
 
   const facts: { label: string; value: string; warn?: boolean }[] =
     record === undefined
@@ -406,7 +412,7 @@ export default function UserDetailHeader() {
               </div>
             )}
           </div>
-          {(feedback !== null || saved) && (
+          {!editing && (feedback !== null || saved) && (
             <div {...stylex.props(styles.feedbackSeat)}>
               <Feedback message={feedback} />
               {saved && feedback === null && <Feedback message={format(m.saved)} tone="success" />}
@@ -416,10 +422,10 @@ export default function UserDetailHeader() {
           <FormDialog
             open={editing}
             title={format(m.editProfile)}
-            onClose={() => setEditing(false)}
+            onClose={stopEditing}
             footer={
               <>
-                <Button variant="outline" onClick={() => setEditing(false)}>
+                <Button variant="outline" onClick={stopEditing}>
                   {format(m.cancel)}
                 </Button>
                 <Button
@@ -440,6 +446,7 @@ export default function UserDetailHeader() {
                 saveProfile.mutate(undefined)
               }}
             >
+              <Feedback message={feedback} />
               <Field label={format(m.nameLabel)}>
                 {(id) => (
                   <Input
