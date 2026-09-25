@@ -439,6 +439,16 @@ describe('the participant results screen', () => {
     expect(page.getByRole('button', { name: '退回修改' }).elements()).toHaveLength(0)
   })
 
+  it('reads an archived round as closed on the score half too', async () => {
+    await screen(
+      { getBatch: () => Effect.succeed({ batch: { ...batch, status: 'archived' } }) },
+      `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}&view=score`,
+    )
+    await expect
+      .element(page.getByTestId('result-moving'))
+      .toHaveAttribute('data-closed', 'archived')
+  })
+
   it('sends back only a claim under review or approved', async () => {
     await screen(
       {

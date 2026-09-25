@@ -561,6 +561,10 @@ export function ParticipantResultDetail({
                   entries={claims.map((one) => one.entry)}
                   // somebody else's account, lined up with the tabs above it
                   reader="staff"
+                  // an archived round, or somebody taken off it, no longer moves
+                  closed={
+                    !writable ? 'archived' : participant?.status === 'excluded' ? 'excluded' : null
+                  }
                   align="start"
                   // a number leads back to the filing it came from, on the
                   // question it was filed under; this is the reason the two
