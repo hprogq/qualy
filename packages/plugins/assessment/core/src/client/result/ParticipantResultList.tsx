@@ -73,8 +73,11 @@ import { useBatchLive } from '../live.ts'
 /** the width the tree and the list stop competing for, tailwind's `lg` */
 const TWO_COLUMNS = 1024
 
-/** a select cannot hold the empty string as a value, so "any" needs a word */
-const ANY = 'any'
+/**
+ * A select cannot hold the empty string as a value, so "no narrowing" needs
+ * a word - one no choice in these selects is spelt as.
+ */
+const ALL = 'all'
 
 /** how long the page waits for a burst of live wake-ups to end before reading again */
 const LIVE_SETTLE = 1_000
@@ -513,9 +516,9 @@ export function ParticipantResultList({
               xstyle={styles.search}
             />
             <Select
-              value={view.status === '' ? ANY : view.status}
+              value={view.status === '' ? ALL : view.status}
               onValueChange={(next) =>
-                onView({ status: next === ANY ? '' : (next as 'active' | 'excluded') })
+                onView({ status: next === ALL ? '' : (next as 'active' | 'excluded') })
               }
             >
               <SelectTrigger
@@ -526,15 +529,15 @@ export function ParticipantResultList({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={ANY}>{format(m.rosterStatusAny)}</SelectItem>
+                <SelectItem value={ALL}>{format(m.rosterStatusAny)}</SelectItem>
                 <SelectItem value="active">{format(m.participantActive)}</SelectItem>
                 <SelectItem value="excluded">{format(m.excludedBadge)}</SelectItem>
               </SelectContent>
             </Select>
             <Select
-              value={view.waiting === '' ? ANY : view.waiting}
+              value={view.waiting === '' ? ALL : view.waiting}
               onValueChange={(next) =>
-                onView({ waiting: next === ANY ? '' : (next as RosterWaiting) })
+                onView({ waiting: next === ALL ? '' : (next as 'any' | RosterWaiting) })
               }
             >
               <SelectTrigger
@@ -545,7 +548,8 @@ export function ParticipantResultList({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={ANY}>{format(m.rosterWaitingAny)}</SelectItem>
+                <SelectItem value={ALL}>{format(m.rosterWaitingAny)}</SelectItem>
+                <SelectItem value="any">{format(m.rosterWaitingSomething)}</SelectItem>
                 {ROSTER_WAITING.map((kind) => (
                   <SelectItem key={kind} value={kind}>
                     {format(WAITING_WORDS[kind])}

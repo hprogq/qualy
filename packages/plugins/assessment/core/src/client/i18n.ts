@@ -5963,6 +5963,10 @@ const i18n = definePluginMessages({
     rosterStatusAny: { id: 'assessment/roster/status-any', defaultMessage: 'Everyone' },
     rosterWaitingLabel: { id: 'assessment/roster/waiting-label', defaultMessage: 'Waiting on' },
     rosterWaitingAny: { id: 'assessment/roster/waiting-any', defaultMessage: 'Anything' },
+    rosterWaitingSomething: {
+      id: 'assessment/roster/waiting-something',
+      defaultMessage: 'Something outstanding',
+    },
     rosterWaitingInReview: {
       id: 'assessment/roster/waiting-in-review',
       defaultMessage: 'In review',

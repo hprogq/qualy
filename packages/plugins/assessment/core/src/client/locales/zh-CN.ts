@@ -1786,6 +1786,7 @@ export default {
   'assessment/roster/status-any': '全部状态',
   'assessment/roster/waiting-label': '待处理事项',
   'assessment/roster/waiting-any': '不限事项',
+  'assessment/roster/waiting-something': '有待处理',
   'assessment/roster/waiting-in-review': '审核中',
   'assessment/roster/waiting-to-supplement': '待补充材料',
   'assessment/roster/waiting-reconsidering': '申诉或复查中',

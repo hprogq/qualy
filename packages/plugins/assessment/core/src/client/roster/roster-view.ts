@@ -32,7 +32,8 @@ export interface RosterView {
   readonly unit: string
   readonly scope: 'self' | 'subtree'
   readonly status: '' | 'active' | 'excluded'
-  readonly waiting: '' | RosterWaiting
+  /** one kind of waiting, or `any` for anybody with something waiting at all */
+  readonly waiting: '' | 'any' | RosterWaiting
   readonly sort: RosterSort
 }
 
@@ -65,7 +66,7 @@ export function useRosterView(): readonly [RosterView, (changes: Partial<RosterV
     unit,
     scope: scope === 'self' ? 'self' : 'subtree',
     status: oneOf(['', 'active', 'excluded'], status, ''),
-    waiting: oneOf(['', ...ROSTER_WAITING], waiting, ''),
+    waiting: oneOf(['', 'any', ...ROSTER_WAITING], waiting, ''),
     sort: oneOf(ROSTER_SORTS, sort, 'unit'),
   }
   // Every key in one write: two address writes from one press race, and the

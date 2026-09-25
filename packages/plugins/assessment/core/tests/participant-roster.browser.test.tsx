@@ -280,6 +280,11 @@ describe('the roster on the results page', () => {
     await page.getByRole('combobox', { name: '待处理事项' }).click()
     await page.getByRole('option', { name: '待补充材料' }).click()
     await expect.poll(() => asked.mock.calls.at(-1)![0].query?.['attention']).toBe('toSupplement')
+    // or anybody with something waiting at all, whatever it is
+    await page.getByRole('combobox', { name: '待处理事项' }).click()
+    await page.getByRole('option', { name: '有待处理' }).click()
+    await expect.poll(() => asked.mock.calls.at(-1)![0].query?.['attention']).toBe('any')
+    expect(addressNow()).toContain('list-waiting=any')
 
     await page.getByRole('combobox', { name: '排序方式' }).click()
     await page.getByRole('option', { name: '按姓名' }).click()

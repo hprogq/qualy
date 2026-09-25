@@ -3321,9 +3321,16 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
           orgNodeIds: Schema.optional(idList),
           /** that unit only, or everything under it; under it when absent */
           orgScope: Schema.optional(Schema.Literals(['self', 'subtree'])),
-          /** only the people with a claim waiting on this */
+          /** only the people with a claim waiting on this, or on anything at all */
           attention: Schema.optional(
-            Schema.Literals(['inReview', 'toSupplement', 'reconsidering', 'toRevise', 'blocked']),
+            Schema.Literals([
+              'any',
+              'inReview',
+              'toSupplement',
+              'reconsidering',
+              'toRevise',
+              'blocked',
+            ]),
           ),
           /** the placement path when absent */
           sort: Schema.optional(Schema.Literals(['unit', 'name', 'business-no'])),

@@ -2951,8 +2951,8 @@ export interface RosterAccountsFilter {
   /** admitted from these units: the anchor itself, or anywhere under it */
   readonly orgNodeIds?: readonly string[]
   readonly orgScope?: 'self' | 'subtree'
-  /** only the people with at least one claim waiting on this */
-  readonly attention?: RosterAttention
+  /** only the people with at least one claim waiting on this, or on anything */
+  readonly attention?: RosterAttention | 'any'
   readonly reach?: { userId: string; permissionCode: string | readonly string[] }
 }
 
@@ -3019,28 +3019,35 @@ const rosterAccountsQuery = (
     )
   }
   if (filter.attention !== undefined) {
-    const { statuses, rounds } = FILING_SHAPES[filter.attention]
-    query = query.where((eb) => {
-      let claims = eb
-        .selectFrom('Entry as e')
-        .select(eb.lit(1).as('one'))
-        .whereRef('e.tenantId', '=', 'BatchParticipant.tenantId')
-        .whereRef('e.participantId', '=', 'BatchParticipant.id')
-      if (statuses !== null) claims = claims.where('e.status', 'in', [...statuses])
-      if (rounds !== null) {
-        claims = claims.where((inner) =>
-          inner.exists(
-            inner
-              .selectFrom('ReviewInstance as ri')
-              .select(inner.lit(1).as('one'))
-              .whereRef('ri.tenantId', '=', 'e.tenantId')
-              .whereRef('ri.entryId', '=', 'e.id')
-              .where('ri.state', 'in', [...rounds]),
-          ),
-        )
-      }
-      return eb.exists(claims)
-    })
+    // anything at all is every shape a row counts, so the list holds exactly
+    // the people whose row shows a count
+    const shapes =
+      filter.attention === 'any' ? Object.values(FILING_SHAPES) : [FILING_SHAPES[filter.attention]]
+    query = query.where((eb) =>
+      eb.or(
+        shapes.map(({ statuses, rounds }) => {
+          let claims = eb
+            .selectFrom('Entry as e')
+            .select(eb.lit(1).as('one'))
+            .whereRef('e.tenantId', '=', 'BatchParticipant.tenantId')
+            .whereRef('e.participantId', '=', 'BatchParticipant.id')
+          if (statuses !== null) claims = claims.where('e.status', 'in', [...statuses])
+          if (rounds !== null) {
+            claims = claims.where((inner) =>
+              inner.exists(
+                inner
+                  .selectFrom('ReviewInstance as ri')
+                  .select(inner.lit(1).as('one'))
+                  .whereRef('ri.tenantId', '=', 'e.tenantId')
+                  .whereRef('ri.entryId', '=', 'e.id')
+                  .where('ri.state', 'in', [...rounds]),
+              ),
+            )
+          }
+          return eb.exists(claims)
+        }),
+      ),
+    )
   }
   return query
 }

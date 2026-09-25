@@ -197,7 +197,7 @@ describe.runIf(postgresAvailable)('the roster, as the results page reads it', ()
               where e.participant_id = ${g.p3}`),
           ).state
           const all = yield* page(f, g.batch.id)
-          const by = (attention: 'inReview' | 'toSupplement' | 'toRevise' | 'blocked') =>
+          const by = (attention: 'any' | 'inReview' | 'toSupplement' | 'toRevise' | 'blocked') =>
             Effect.map(page(f, g.batch.id, { filter: { attention } }), names)
           return {
             waiting,
@@ -206,6 +206,7 @@ describe.runIf(postgresAvailable)('the roster, as the results page reads it', ()
             toSupplement: yield* by('toSupplement'),
             toRevise: yield* by('toRevise'),
             blocked: yield* by('blocked'),
+            any: yield* by('any'),
             g,
           }
         }),
@@ -238,6 +239,8 @@ describe.runIf(postgresAvailable)('the roster, as the results page reads it', ()
     expect(result.toSupplement).toEqual(['Zhang San'])
     expect(result.toRevise).toEqual(['Li Si'])
     expect(result.blocked).toEqual(['Wang Wu'])
+    // anything at all is everybody whose row shows a count, and nobody else
+    expect(result.any).toEqual(['Li Si', 'Wang Wu', 'Zhang San'])
   })
 
   it('orders the people of one unit by name when the roster is ordered by unit', async () => {
