@@ -26,8 +26,28 @@ export interface JudgedRow {
   readonly issues: readonly ImportIssue[]
 }
 
+// what the columns they are written to hold: users.business_no,
+// users.display_name and org_nodes.name
 const BUSINESS_NO_MAX = 64
-const NAME_MAX = 255
+const DISPLAY_NAME_MAX = 100
+const ORG_NAME_MAX = 255
+
+/**
+ * Whether a cell holds a C0 control character or DEL.
+ *
+ * A workbook can carry any of them through its `_xHHHH_` escape. A NUL is
+ * refused by postgres, so the lookups the preview makes by number and by
+ * unit name would fail outright; the unit separator is what joins the names
+ * of a path, so it would make two different paths one unit. None of them
+ * belongs in an identifier, a name or a unit.
+ */
+const holdsControl = (text: string): boolean => {
+  for (let at = 0; at < text.length; at++) {
+    const code = text.charCodeAt(at)
+    if (code < 0x20 || code === 0x7f) return true
+  }
+  return false
+}
 
 export const judgeRows = (
   rows: readonly TableRow[],
@@ -51,6 +71,7 @@ export const judgeRows = (
         ...(detail === undefined ? {} : { detail }),
       })
     if (businessNo === '') say('businessNo', 'business-no-required')
+    else if (holdsControl(businessNo)) say('businessNo', 'control-character')
     else if (businessNo.length > BUSINESS_NO_MAX) say('businessNo', 'business-no-too-long')
     else {
       const first = seen.get(businessNo)
@@ -58,12 +79,14 @@ export const judgeRows = (
       else seen.set(businessNo, row.rowNo)
     }
     if (displayName === '') say('displayName', 'display-name-required')
-    else if (displayName.length > NAME_MAX) say('displayName', 'display-name-too-long')
+    else if (holdsControl(displayName)) say('displayName', 'control-character')
+    else if (displayName.length > DISPLAY_NAME_MAX) say('displayName', 'display-name-too-long')
     const orgNames = chain.columns.map((level) => row.cells[level.column!] ?? '')
     chain.columns.forEach((level, at) => {
       const name = orgNames[at]!
       if (name === '') say(`org.${level.orgTypeId}`, 'org-level-required')
-      else if (name.length > NAME_MAX) say(`org.${level.orgTypeId}`, 'org-name-too-long')
+      else if (holdsControl(name)) say(`org.${level.orgTypeId}`, 'control-character')
+      else if (name.length > ORG_NAME_MAX) say(`org.${level.orgTypeId}`, 'org-name-too-long')
     })
     return { rowNo: row.rowNo, businessNo, displayName, orgNames, issues }
   })

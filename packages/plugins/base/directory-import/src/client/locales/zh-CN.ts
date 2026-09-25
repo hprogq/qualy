@@ -80,6 +80,7 @@ export default {
   'directory-import/issue/display-name-too-long': '姓名过长',
   'directory-import/issue/org-level-required': '有一级组织为空',
   'directory-import/issue/org-name-too-long': '组织名称过长',
+  'directory-import/issue/control-character': '单元格中含有换行或不可见字符',
   'directory-import/issue/user-conflict': '该{businessNo}已存在，且{fields}与现有人员信息不一致',
   'directory-import/issue/business-no-taken': '该{businessNo}已被他人使用',
   'directory-import/issue/node-type-conflict': '{path} 已存在，但组织类型不一致',

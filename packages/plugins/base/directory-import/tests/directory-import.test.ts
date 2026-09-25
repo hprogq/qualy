@@ -610,6 +610,47 @@ describe.runIf(postgresAvailable)('importing people from a spreadsheet', () => {
     expect(result.count).toBe(3)
   }, 120_000)
 
+  it('names a row the columns cannot hold, instead of failing the preview or the commit', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('held')
+          const service = yield* DirectoryImport
+          const mapping = {
+            displayName: { column: 'B' },
+            businessNo: { column: 'A' },
+            organization: {
+              anchorNodeId: f.software,
+              levels: [{ orgTypeId: f.types.klass, column: 'C' }],
+            },
+          }
+          // `_x0000_` is how a workbook writes a NUL into a cell, and the
+          // reader hands it back decoded; a name the users table cannot hold
+          // is only too long for it, not for the spreadsheet
+          const attachmentId = yield* staged(f.tenant, f.admin.userId, [
+            ['学号', '姓名', '班级'],
+            ['230301', '张三', '1班'],
+            ['230302_x0000_', '李四', '1班'],
+            ['230303', '王'.repeat(101), '1班'],
+            ['230304', '赵六', '1_x001F_班'],
+          ])
+          return yield* service.preview(
+            f.tenant,
+            { attachmentId, sheet: '名单', headerRow: 1, userTypeId: f.student, mapping },
+            f.admin,
+          )
+        }),
+      ),
+    )
+    expect(result.issues.map((issue) => [issue.rowNo, issue.field, issue.reason])).toEqual([
+      [3, 'businessNo', 'control-character'],
+      [4, 'displayName', 'display-name-too-long'],
+      [5, expect.stringMatching(/^org\./), 'control-character'],
+    ])
+    expect(result.users.create).toBe(1)
+  }, 120_000)
+
   it('says only that a number is taken when the person holding it is out of reach', async () => {
     const result = ok(
       await run(

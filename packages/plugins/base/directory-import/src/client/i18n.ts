@@ -298,6 +298,10 @@ const i18n = definePluginMessages({
       id: 'directory-import/issue/org-name-too-long',
       defaultMessage: 'A unit name is too long',
     },
+    issueControlCharacter: {
+      id: 'directory-import/issue/control-character',
+      defaultMessage: 'A cell holds a line break or an invisible character',
+    },
     issueUserConflict,
     issueBusinessNoTaken,
     issueNodeConflict,

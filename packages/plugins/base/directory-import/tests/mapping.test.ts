@@ -206,6 +206,33 @@ describe('judging the rows of a file', () => {
     ])
   })
 
+  it('holds each field to the column it is written to, and refuses control characters', () => {
+    const rows = judgeRows(
+      [
+        { rowNo: 2, cells: { A: '001', B: '张'.repeat(100), C: '软件学院', D: '1班' } },
+        { rowNo: 3, cells: { A: '002', B: '李'.repeat(101), C: '软件学院', D: '1班' } },
+        { rowNo: 4, cells: { A: '0\u00003', B: '王五', C: '软件学院', D: '1班' } },
+        { rowNo: 5, cells: { A: '004', B: '赵\n六', C: '软件学院', D: '1班' } },
+        { rowNo: 6, cells: { A: '005', B: '孙七', C: '软件学院\u001f1班', D: '1班' } },
+      ],
+      mapping([]),
+      chain,
+    )
+    expect(rows.map((row) => row.issues.map((issue) => [issue.field, issue.reason]))).toEqual([
+      [],
+      [['displayName', 'display-name-too-long']],
+      [['businessNo', 'control-character']],
+      [['displayName', 'control-character']],
+      [[`org.${COLLEGE}`, 'control-character']],
+    ])
+    // the separator a path is keyed by cannot arrive from a cell, so no two
+    // paths fold into one unit
+    expect(desiredTree(rows, chain).map((node) => node.names.join('/'))).toEqual([
+      '软件学院',
+      '软件学院/1班',
+    ])
+  })
+
   it('folds complete rows into one tree, parents before children', () => {
     const rows = judgeRows(
       [
