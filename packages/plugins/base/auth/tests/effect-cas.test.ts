@@ -30,6 +30,7 @@ import { AuthConfig, layer as signInLayer } from '../src/server/sign-in.ts'
 import { layer as sessionLayer } from '../src/server/session.ts'
 import { singleTenantLayer } from '../src/server/tenancy.ts'
 import { singleOriginLayer } from '../src/server/public-origin.ts'
+import { flowCookieNameFor } from '../src/server/session-cookie.ts'
 import { HARD_LIMITS } from '../src/server/limiter.ts'
 import { authClosure } from './support/closure.ts'
 import { authAuditLayer } from './support/audit.ts'
@@ -256,7 +257,11 @@ beforeEach(async () => {
   )
 })
 
-const visit = (url: string) => fetch(url, { redirect: 'manual' })
+const visit = (url: string, cookie?: string) =>
+  fetch(url, { redirect: 'manual', ...(cookie === undefined ? {} : { headers: { cookie } }) })
+
+/** the flow cookie each departure's browser was handed, by the service it set out with */
+const browsers = new Map<string, string>()
 
 /** start at a door, and what the CAS server was told to come back to */
 const depart = async (code: string, returnTo?: string) => {
@@ -264,12 +269,24 @@ const depart = async (code: string, returnTo?: string) => {
   const response = await visit(`${base}/auth/cas/${code}/start${query}`)
   expect(response.status).toBe(302)
   const away = new URL(response.headers.get('location')!)
-  return { away, service: away.searchParams.get('service')! }
+  const service = away.searchParams.get('service')!
+  const flow = response.headers
+    .getSetCookie()
+    .find((cookie) => cookie.startsWith(`${flowCookieNameFor(false)}=`))
+    ?.split(';')[0]
+  if (flow !== undefined) browsers.set(service, flow)
+  return { away, service }
 }
 
-/** come back the way a CAS server sends the person back: the service, and a ticket on it */
-const comeBack = (service: string, ticket: string) =>
-  visit(`${service}${service.includes('?') ? '&' : '?'}ticket=${encodeURIComponent(ticket)}`)
+/**
+ * Come back the way a CAS server sends the person back: the service, and a
+ * ticket on it - in the browser that set out, unless another one is named.
+ */
+const comeBack = (service: string, ticket: string, browser = browsers.get(service)) =>
+  visit(
+    `${service}${service.includes('?') ? '&' : '?'}ticket=${encodeURIComponent(ticket)}`,
+    browser,
+  )
 
 const failureOf = (response: Response) => {
   const location = new URL(response.headers.get('location') ?? '', origin)
@@ -313,10 +330,26 @@ describe.runIf(postgresAvailable)('signing in through a CAS server', () => {
     const event = await latestEvent()
     expect(event).toMatchObject({ outcome: 'success', user_id: userId })
 
+    const signedIn = back.headers
+      .getSetCookie()
+      .find((cookie) => cookie.startsWith(`${sessionCookieName}=`))!
     const session = await fetch(`${base}/auth/session`, {
-      headers: { cookie: back.headers.get('set-cookie')!.split(';')[0]! },
+      headers: { cookie: signedIn.split(';')[0]! },
     })
     expect(await session.json()).toMatchObject({ user: { id: userId } })
+  })
+
+  it('signs nobody in when the way back arrives in a browser that did not set out', async () => {
+    // somebody signs in at the server and forwards the address it sent back
+    const { service } = await depart('campus', '/assessment/batches')
+    const ticket = cas.issue(service, '20990001')
+    const elsewhere = await comeBack(service, ticket, '')
+    expect(failureOf(elsewhere)).toEqual({ path: '/login', code: 'AUTH_FLOW_REJECTED' })
+    expect(elsewhere.headers.get('set-cookie') ?? '').not.toContain(`${sessionCookieName}=`)
+    // the server was never asked, and the way back is spent for everybody
+    expect(cas.validations).toEqual([])
+    const late = await comeBack(service, cas.issue(service, '20990001'))
+    expect(failureOf(late).code).toBe('AUTH_FLOW_REJECTED')
   })
 
   it('is a flow that comes back once', async () => {
@@ -359,7 +392,9 @@ describe.runIf(postgresAvailable)('signing in through a CAS server', () => {
     }
     // a return with no ticket at all: the person turned back at the server
     const { service } = await depart('campus')
-    expect(failureOf(await visit(service)).code).toBe('AUTH_CAS_TICKET_REJECTED')
+    expect(failureOf(await visit(service, browsers.get(service))).code).toBe(
+      'AUTH_CAS_TICKET_REJECTED',
+    )
     expect(cas.validations).toEqual([])
   })
 

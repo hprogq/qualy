@@ -1,4 +1,4 @@
-import { Context, Duration, Effect, Layer, Option } from 'effect'
+import { Context, Duration, Effect, Layer, Option, Redacted } from 'effect'
 import { HttpServerRequest } from 'effect/unstable/http'
 import { bindSessionId, currentRequestContext } from '@qualy/api-kit/request'
 import { boundedCounter } from '@qualy/telemetry/metrics'
@@ -6,6 +6,7 @@ import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/serv
 import { db, lockTenant } from './db.ts'
 import { sql } from 'kysely'
 import {
+  AuthFlowRejected,
   LoginDrivers,
   LoginSessions,
   type LoginContext,
@@ -24,10 +25,11 @@ import {
   type SignedInUser,
 } from '@qualy/auth-contract/login'
 import { createSessionToken, hashSessionToken } from '../session.ts'
+import { createHash, timingSafeEqual } from 'node:crypto'
 import { Secrets } from '@qualy/plugin-secrets/plugin'
 import { AuthConfig } from './auth-config.ts'
 import { configOf, entranceSecrets, makeReadiness } from './readiness.ts'
-import { makeFlows } from './flows.ts'
+import { FLOW_TTL_MINUTES, makeFlows } from './flows.ts'
 import { captchaPurpose } from '@qualy/plugin-captcha/contract'
 import { Captcha } from '@qualy/plugin-captcha/server'
 import { HARD_LIMITS, makeLimiter, RISK_RULES, type HardLimitRule } from './limiter.ts'
@@ -40,7 +42,7 @@ import { isDemoAccount } from './demo-accounts.ts'
 
 export { AuthConfig }
 import { sessionCookieName, TooManyAttempts } from '@qualy/auth-contract/session'
-import { clearSessionCookie, setSessionCookie } from './session-cookie.ts'
+import { clearSessionCookie, flowCookieNameFor, setSessionCookie } from './session-cookie.ts'
 import { sameOriginPath } from './same-origin.ts'
 import { iconOf } from './login-icons.ts'
 
@@ -49,6 +51,28 @@ import { iconOf } from './login-icons.ts'
 // The core owns the session; a driver owns the proof. Which drivers exist is a
 // fact about the assembly, handed in as a catalog, so the core never becomes
 // downstream of the plugins that depend on it.
+
+/** two secrets compared without saying, by how long it took, where they part */
+const sameSecret = (left: string, right: string) =>
+  timingSafeEqual(
+    createHash('sha256').update(left).digest(),
+    createHash('sha256').update(right).digest(),
+  )
+
+/** whether this session, still alive, is the one the presented token opens */
+const sessionHeldBy = (tenantId: string, sessionId: string, tokenHash: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('Session')
+        .select('id')
+        .where('tenantId', '=', tenantId)
+        .where('id', '=', sessionId)
+        .where('tokenHash', '=', tokenHash)
+        .where('expiresAt', '>', sql<Date>`now()`)
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row !== undefined))
 
 /**
  * The enabled providers of one tenant, in the order a screen shows them:
@@ -588,6 +612,7 @@ const toSignedInUser = (
 
 export const make = Effect.fn('Auth.signIn.make')(function* () {
   const config = yield* AuthConfig
+  const flowCookie = flowCookieNameFor(config.secureCookies)
   // the registry handle, not its contents: a driver registers while its own
   // layer is built, and this one is built before some of them
   const drivers = yield* LoginDrivers
@@ -793,12 +818,49 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         return new URL(path, base)
       }),
 
-    // a redirect costs a row, so where it is started from is counted first
+    // a redirect costs a row, so where it is started from is counted first;
+    // the browser that sets out keeps the state, to be shown on the way back
     startFlow: (input) =>
       withDb(fromHere(input.provider, HARD_LIMITS.flowStartByAddress)).pipe(
         Effect.andThen(flows.startFlow(input)),
+        Effect.tap((started) =>
+          setSessionCookie(flowCookie, Redacted.value(started.state), {
+            secure: config.secureCookies,
+            maxAge: Duration.minutes(FLOW_TTL_MINUTES),
+          }),
+        ),
       ),
-    consumeFlow: flows.consumeFlow,
+    /**
+     * The way back is taken up only in the browser that set out, and a bind
+     * only in the session that began it: a return address anybody else
+     * forwards - to sign somebody into the sender's account, or to bind the
+     * sender's account to somebody - carries no cookie of theirs. The flow
+     * is burned first either way, so a forwarded state is spent.
+     */
+    consumeFlow: (input) =>
+      Effect.gen(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest
+        const carried = request.cookies[flowCookie]
+        yield* setSessionCookie(flowCookie, '', {
+          secure: config.secureCookies,
+          maxAge: Duration.zero,
+        })
+        const flow = yield* flows.consumeFlow(input)
+        if (carried === undefined || !sameSecret(carried, input.state)) {
+          return yield* new AuthFlowRejected({ reason: 'browser-mismatch' })
+        }
+        if (flow.purpose === 'bind') {
+          const token = request.cookies[config.sessionCookieName]
+          const held =
+            token !== undefined &&
+            flow.sessionId !== undefined &&
+            (yield* withDb(
+              sessionHeldBy(input.provider.tenantId, flow.sessionId, hashSessionToken(token)),
+            ).pipe(Effect.orDie))
+          if (!held) return yield* new AuthFlowRejected({ reason: 'session-mismatch' })
+        }
+        return flow
+      }),
 
     admitAttempt: bound(
       Effect.fn('Auth.signIn.admitAttempt')(function* (input: {

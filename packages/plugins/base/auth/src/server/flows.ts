@@ -27,7 +27,8 @@ import { safeReturnPath } from '@qualy/ui-contract/return-path'
 // can present.
 
 const STATE_BYTES = 32
-const FLOW_TTL_MINUTES = 10
+/** how long somebody has to come back; the browser's cookie lives as long */
+export const FLOW_TTL_MINUTES = 10
 /** how long a flow nobody came back for is kept before the sweep takes it */
 const SWEEP_AFTER_HOURS = 24
 /** at most this many rows per sweep, so a first start after a long idle is not a scan */

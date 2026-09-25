@@ -61,3 +61,19 @@ export const clearSessionCookie = (
   secure: boolean,
 ): Effect.Effect<void, never, HttpServerRequest.HttpServerRequest> =>
   setSessionCookie(name, '', { secure, maxAge: Duration.zero })
+
+/**
+ * The cookie that ties a redirect through somebody else's server to the
+ * browser that set out on it.
+ *
+ * It carries the flow's state, which the other server hands back in the
+ * address, and the way back is taken up only where the two agree: a return
+ * address somebody else started and forwarded arrives in a browser that has
+ * no such cookie, or another one. Named and scoped like the session cookie,
+ * for the same reason - no sibling host can plant one - and alive only as
+ * long as the flow is.
+ */
+const FLOW_COOKIE = 'qualy_flow'
+
+export const flowCookieNameFor = (secure: boolean): string =>
+  secure ? `${HOST_PREFIX}${FLOW_COOKIE}` : FLOW_COOKIE

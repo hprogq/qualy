@@ -26,6 +26,7 @@ import {
   loginDriversLayer,
   registerLoginDriver,
   type LoginDriver,
+  type LoginSessionsShape,
   type ResolvedProvider,
 } from '@qualy/auth-contract/login'
 import { driver as localDriver } from '@qualy/plugin-auth-local'
@@ -44,6 +45,7 @@ import { safeReturnPath } from '../src/server/flows.ts'
 import { HARD_LIMITS } from '../src/server/limiter.ts'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
 import { authClosure } from './support/closure.ts'
+import { hashSessionToken } from '../src/session.ts'
 
 // A sign-in that leaves this application and comes back.
 //
@@ -194,13 +196,49 @@ const seed = (url: string) =>
       const session = one<{ id: string }>(
         yield* runSql(sql`
           insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at)
-          values (${tenant}, ${person}, ${local.id}, repeat('b', 64), now() + interval '1 day')
+          values (${tenant}, ${person}, ${local.id}, ${hashSessionToken(PERSON_TOKEN)},
+                  now() + interval '1 day')
           returning id`),
       ).id
       const as: Principal = { tenantId: tenant, userId: admin, sessionId: 's' }
       return { tenant, admin, person, local, door, other, session, as }
     }).pipe(Effect.provide(databaseFor(url, { migrations: 'off', entities: authClosure }))),
   )
+
+/** the seeded person's session token, as their browser carries it */
+const PERSON_TOKEN = 'person-session-token'
+
+/** the request a browser sends, carrying these cookies */
+const inBrowser = (cookies: Readonly<Record<string, string>>) =>
+  Effect.provideService(
+    HttpServerRequest.HttpServerRequest,
+    HttpServerRequest.fromWeb(
+      new Request('http://localhost/', {
+        headers: {
+          cookie: Object.entries(cookies)
+            .map(([name, value]) => `${name}=${value}`)
+            .join('; '),
+        },
+      }),
+    ),
+  )
+
+/** sets out on a redirect, as a driver's start route does */
+const setOut = (input: Parameters<LoginSessionsShape['startFlow']>[0]) =>
+  Effect.flatMap(LoginSessions, (sessions) => sessions.startFlow(input)).pipe(inBrowser({}))
+
+/**
+ * Comes back the way a callback does, in the browser that set out: it
+ * carries the state it was handed and the seeded person's session.
+ */
+const comeBack = (
+  input: { provider: ResolvedProvider; state: string },
+  cookies: Readonly<Record<string, string>> = {
+    qualy_flow: input.state,
+    qualy_session: PERSON_TOKEN,
+  },
+) =>
+  Effect.flatMap(LoginSessions, (sessions) => sessions.consumeFlow(input)).pipe(inBrowser(cookies))
 
 /** the entrance as a driver receives it, for a code the seed created */
 const resolve = (code: string) =>
@@ -373,10 +411,9 @@ describe.runIf(postgresAvailable)('one redirect through somebody else’s server
         await run(
           db.url,
           Effect.gen(function* () {
-            const sessions = yield* LoginSessions
             const door = yield* resolve('campus')
             const other = yield* resolve('campus-two')
-            const started = yield* sessions.startFlow({
+            const started = yield* setOut({
               provider: door,
               purpose: 'login',
               returnPath: '/assessment/batches',
@@ -387,32 +424,32 @@ describe.runIf(postgresAvailable)('one redirect through somebody else’s server
               sql`select state_hash, payload_sealed from auth_flows where id = ${started.flowId}`,
             )
             // the wrong entrance burns it without taking it up
-            const strayed = yield* Effect.result(sessions.consumeFlow({ provider: other, state }))
-            const afterStray = yield* Effect.result(sessions.consumeFlow({ provider: door, state }))
+            const strayed = yield* Effect.result(comeBack({ provider: other, state }))
+            const afterStray = yield* Effect.result(comeBack({ provider: door, state }))
 
-            const again = yield* sessions.startFlow({
+            const again = yield* setOut({
               provider: door,
               purpose: 'login',
               returnPath: 'https://elsewhere.example/',
               payload: Redacted.make('{"verifier":"w"}'),
             })
-            const taken = yield* sessions.consumeFlow({
+            const taken = yield* comeBack({
               provider: door,
               state: Redacted.value(again.state),
             })
             const replayed = yield* Effect.result(
-              sessions.consumeFlow({ provider: door, state: Redacted.value(again.state) }),
+              comeBack({ provider: door, state: Redacted.value(again.state) }),
             )
             const unknown = yield* Effect.result(
-              sessions.consumeFlow({ provider: door, state: 'nobody-issued-this' }),
+              comeBack({ provider: door, state: 'nobody-issued-this' }),
             )
 
-            const stale = yield* sessions.startFlow({ provider: door, purpose: 'login' })
+            const stale = yield* setOut({ provider: door, purpose: 'login' })
             yield* runSql(
               sql`update auth_flows set expires_at = now() - interval '1 minute' where id = ${stale.flowId}`,
             )
             const expired = yield* Effect.result(
-              sessions.consumeFlow({ provider: door, state: Redacted.value(stale.state) }),
+              comeBack({ provider: door, state: Redacted.value(stale.state) }),
             )
             return {
               started,
@@ -456,35 +493,34 @@ describe.runIf(postgresAvailable)('one redirect through somebody else’s server
         await run(
           db.url,
           Effect.gen(function* () {
-            const sessions = yield* LoginSessions
             const door = yield* resolve('campus')
             const nowhere = yield* Effect.result(
-              sessions.startFlow({
+              setOut({
                 provider: door,
                 purpose: 'bind',
                 // a session nobody has: a bind may only be pinned to a live one
                 binding: { userId: f.person, sessionId: '99999999-9999-4999-8999-999999999999' },
               }),
             )
-            const started = yield* sessions.startFlow({
+            const started = yield* setOut({
               provider: door,
               purpose: 'bind',
               binding: { userId: f.person, sessionId: f.session },
             })
-            const taken = yield* sessions.consumeFlow({
+            const taken = yield* comeBack({
               provider: door,
               state: Redacted.value(started.state),
             })
 
             // a bind whose session ended on the way is not a bind
-            const second = yield* sessions.startFlow({
+            const second = yield* setOut({
               provider: door,
               purpose: 'bind',
               binding: { userId: f.person, sessionId: f.session },
             })
             yield* runSql(sql`delete from sessions where id = ${f.session}`)
             const orphaned = yield* Effect.result(
-              sessions.consumeFlow({ provider: door, state: Redacted.value(second.state) }),
+              comeBack({ provider: door, state: Redacted.value(second.state) }),
             )
             const left = yield* runSql<{ count: number }>(
               sql`select count(*)::int as count from auth_flows where session_id = ${f.session}`,
@@ -503,6 +539,69 @@ describe.runIf(postgresAvailable)('one redirect through somebody else’s server
     }
   })
 
+  it('is taken up only in the browser that set out, and a bind only in its session', async () => {
+    const db = await createTestContext('flows-browser')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const door = yield* resolve('campus')
+            // somebody set out and forwarded the way back to another browser
+            const forwarded = yield* setOut({ provider: door, purpose: 'login' })
+            const elsewhere = yield* Effect.result(
+              comeBack({ provider: door, state: Redacted.value(forwarded.state) }, {}),
+            )
+            // and it was spent there, so the browser that set out has lost it
+            const afterwards = yield* Effect.result(
+              comeBack({ provider: door, state: Redacted.value(forwarded.state) }),
+            )
+            // a browser that set out on a way of its own is not the one either
+            const mine = yield* setOut({ provider: door, purpose: 'login' })
+            const theirs = yield* setOut({ provider: door, purpose: 'login' })
+            const crossed = yield* Effect.result(
+              comeBack(
+                { provider: door, state: Redacted.value(theirs.state) },
+                { qualy_flow: Redacted.value(mine.state) },
+              ),
+            )
+            // a bind back in the browser that set out, signed out by then, or
+            // signed in as somebody else
+            const bind = () =>
+              setOut({
+                provider: door,
+                purpose: 'bind',
+                binding: { userId: f.person, sessionId: f.session },
+              })
+            const signedOut = yield* bind()
+            const unsigned = yield* Effect.result(
+              comeBack(
+                { provider: door, state: Redacted.value(signedOut.state) },
+                { qualy_flow: Redacted.value(signedOut.state) },
+              ),
+            )
+            const switched = yield* bind()
+            const otherSession = yield* Effect.result(
+              comeBack(
+                { provider: door, state: Redacted.value(switched.state) },
+                { qualy_flow: Redacted.value(switched.state), qualy_session: 'somebody-else' },
+              ),
+            )
+            return { elsewhere, afterwards, crossed, unsigned, otherSession }
+          }),
+        ),
+      )
+      expect(reasonOf(answer.elsewhere)).toBe('browser-mismatch')
+      expect(reasonOf(answer.afterwards)).toBe('consumed')
+      expect(reasonOf(answer.crossed)).toBe('browser-mismatch')
+      expect(reasonOf(answer.unsigned)).toBe('session-mismatch')
+      expect(reasonOf(answer.otherSession)).toBe('session-mismatch')
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('ends when the entrance or the person it belongs to does', async () => {
     const db = await createTestContext('flows-ended')
     try {
@@ -512,22 +611,21 @@ describe.runIf(postgresAvailable)('one redirect through somebody else’s server
           db.url,
           Effect.gen(function* () {
             const iam = yield* Iam
-            const sessions = yield* LoginSessions
             const door = yield* resolve('campus')
             const other = yield* resolve('campus-two')
-            const ofDoor = yield* sessions.startFlow({ provider: door, purpose: 'login' })
-            const ofPerson = yield* sessions.startFlow({
+            const ofDoor = yield* setOut({ provider: door, purpose: 'login' })
+            const ofPerson = yield* setOut({
               provider: other,
               purpose: 'bind',
               binding: { userId: f.person, sessionId: f.session },
             })
             yield* iam.providers.remove(f.tenant, f.door.id, f.door.version, f.as)
             const doorGone = yield* Effect.result(
-              sessions.consumeFlow({ provider: door, state: Redacted.value(ofDoor.state) }),
+              comeBack({ provider: door, state: Redacted.value(ofDoor.state) }),
             )
             yield* iam.users.remove(f.tenant, f.person, 1, f.as)
             const personGone = yield* Effect.result(
-              sessions.consumeFlow({ provider: other, state: Redacted.value(ofPerson.state) }),
+              comeBack({ provider: other, state: Redacted.value(ofPerson.state) }),
             )
             const rows = yield* runSql<{ id: string; consumed: boolean }>(
               sql`select id, consumed_at is not null as consumed from auth_flows`,
@@ -554,19 +652,18 @@ describe.runIf(postgresAvailable)('one redirect through somebody else’s server
       const moved = await run(
         db.url,
         Effect.gen(function* () {
-          const sessions = yield* LoginSessions
           const door = yield* resolve('campus')
-          const first = yield* sessions.startFlow({
+          const first = yield* setOut({
             provider: door,
             purpose: 'login',
             payload: Redacted.make('{"verifier":"v"}'),
           })
-          const second = yield* sessions.startFlow({ provider: door, purpose: 'login' })
+          const second = yield* setOut({ provider: door, purpose: 'login' })
           yield* runSql(sql`
             update auth_flows set payload_sealed =
               (select payload_sealed from auth_flows where id = ${first.flowId})
              where id = ${second.flowId}`)
-          return yield* sessions.consumeFlow({
+          return yield* comeBack({
             provider: door,
             state: Redacted.value(second.state),
           })
@@ -593,10 +690,9 @@ describe.runIf(postgresAvailable)('what a driver keeps through a redirect', () =
         await run(
           db.url,
           Effect.gen(function* () {
-            const sessions = yield* LoginSessions
             const door = yield* resolve('campus')
             let seen: string | undefined
-            const started = yield* sessions.startFlow({
+            const started = yield* setOut({
               provider: door,
               purpose: 'login',
               // the address a CAS server is told to come back to carries the
@@ -609,7 +705,7 @@ describe.runIf(postgresAvailable)('what a driver keeps through a redirect', () =
             const stored = yield* runSql<{ payload_sealed: string }>(
               sql`select payload_sealed from auth_flows where id = ${started.flowId}`,
             )
-            const taken = yield* sessions.consumeFlow({
+            const taken = yield* comeBack({
               provider: door,
               state: Redacted.value(started.state),
             })
@@ -637,14 +733,11 @@ describe.runIf(postgresAvailable)('what a driver keeps through a redirect', () =
         await run(
           db.url,
           Effect.gen(function* () {
-            const sessions = yield* LoginSessions
             const door = yield* resolve('campus')
             const outcomes: (string | undefined)[] = []
             for (let started = 0; started <= limit; started += 1) {
               outcomes.push(
-                tagOf(
-                  yield* Effect.result(sessions.startFlow({ provider: door, purpose: 'login' })),
-                ),
+                tagOf(yield* Effect.result(setOut({ provider: door, purpose: 'login' }))),
               )
             }
             const rows = yield* runSql<{ count: number }>(
@@ -677,13 +770,12 @@ describe.runIf(postgresAvailable)('an account bound from the other side', () => 
   /** a bind flow for the seeded person, taken up the way a callback takes it */
   const bindFlow = (door: ResolvedProvider, userId: string, sessionId: string) =>
     Effect.gen(function* () {
-      const sessions = yield* LoginSessions
-      const started = yield* sessions.startFlow({
+      const started = yield* setOut({
         provider: door,
         purpose: 'bind',
         binding: { userId, sessionId },
       })
-      return yield* sessions.consumeFlow({ provider: door, state: Redacted.value(started.state) })
+      return yield* comeBack({ provider: door, state: Redacted.value(started.state) })
     })
 
   it('binds the person the flow began with, once, and never a subject somebody holds', async () => {
@@ -697,8 +789,8 @@ describe.runIf(postgresAvailable)('an account bound from the other side', () => 
           Effect.gen(function* () {
             const sessions = yield* LoginSessions
             const door = yield* resolve('campus')
-            const login = yield* sessions.startFlow({ provider: door, purpose: 'login' })
-            const loginTaken = yield* sessions.consumeFlow({
+            const login = yield* setOut({ provider: door, purpose: 'login' })
+            const loginTaken = yield* comeBack({
               provider: door,
               state: Redacted.value(login.state),
             })

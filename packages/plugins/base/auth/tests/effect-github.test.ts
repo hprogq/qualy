@@ -34,6 +34,7 @@ import { AuthConfig, layer as signInLayer } from '../src/server/sign-in.ts'
 import { layer as sessionLayer, viewerLayer } from '../src/server/session.ts'
 import { singleTenantLayer } from '../src/server/tenancy.ts'
 import { singleOriginLayer } from '../src/server/public-origin.ts'
+import { flowCookieNameFor } from '../src/server/session-cookie.ts'
 import { authClosure } from './support/closure.ts'
 import { authAuditLayer } from './support/audit.ts'
 import { unusedEmailFlows } from './support/email-flows.ts'
@@ -272,9 +273,22 @@ const signedIn = async (userId: string) => {
 const visit = (url: string, cookie?: string) =>
   fetch(url, { redirect: 'manual', ...(cookie === undefined ? {} : { headers: { cookie } }) })
 
+/** the flow cookie a start route set, as the browser sends it back */
+const flowCookieOf = (response: Response) =>
+  response.headers
+    .getSetCookie()
+    .find((cookie) => cookie.startsWith(`${flowCookieNameFor(false)}=`))
+    ?.split(';')[0]
+
 const depart = async (query = '', cookie?: string) => {
   const response = await visit(`${base}/auth/github/hub/start${query}`, cookie)
-  return { response, away: new URL(response.headers.get('location') ?? '', origin) }
+  const flow = flowCookieOf(response)
+  return {
+    response,
+    away: new URL(response.headers.get('location') ?? '', origin),
+    /** what the browser that set out carries on the way back */
+    browser: [cookie, flow].filter((part) => part !== undefined).join('; '),
+  }
 }
 
 const landing = (response: Response) => {
@@ -294,7 +308,7 @@ const bindingsOf = (userId: string) =>
 
 describe.runIf(postgresAvailable)('a GitHub account', () => {
   it('goes to GitHub with a challenge and no scope, and signs in nobody it does not know', async () => {
-    const { response, away } = await depart()
+    const { response, away, browser } = await depart()
     expect(response.status).toBe(302)
     expect(away.origin + away.pathname).toBe(`${github.url}/login/oauth/authorize`)
     expect(away.searchParams.get('client_id')).toBe('client-1')
@@ -303,7 +317,7 @@ describe.runIf(postgresAvailable)('a GitHub account', () => {
     expect(away.searchParams.get('redirect_uri')).toBe(`${base}/auth/github/hub/callback`)
     expect(away.searchParams.get('scope')).toBeNull()
 
-    const back = await visit(github.authorize(away, { id: 1024, login: 'ada-dev' }))
+    const back = await visit(github.authorize(away, { id: 1024, login: 'ada-dev' }), browser)
     expect(landing(back)).toEqual({ path: '/login', code: 'AUTH_EXTERNAL_ACCOUNT_UNBOUND' })
     expect(await bindingsOf(ada)).toEqual([])
   })
@@ -315,7 +329,10 @@ describe.runIf(postgresAvailable)('a GitHub account', () => {
       cookie,
     )
     expect(bind.response.status).toBe(302)
-    const bound = await visit(github.authorize(bind.away, { id: 1024, login: 'ada-dev' }))
+    const bound = await visit(
+      github.authorize(bind.away, { id: 1024, login: 'ada-dev' }),
+      bind.browser,
+    )
     expect(bound.status).toBe(303)
     expect(bound.headers.get('location')).toBe('/account/logins')
     expect(await bindingsOf(ada)).toEqual([
@@ -323,7 +340,10 @@ describe.runIf(postgresAvailable)('a GitHub account', () => {
     ])
 
     const login = await depart('?returnTo=%2Fassessment')
-    const back = await visit(github.authorize(login.away, { id: 1024, login: 'ada-renamed' }))
+    const back = await visit(
+      github.authorize(login.away, { id: 1024, login: 'ada-renamed' }),
+      login.browser,
+    )
     expect(back.status).toBe(303)
     expect(back.headers.get('location')).toBe('/assessment')
     expect(back.headers.get('set-cookie')).toContain(`${sessionCookieName}=`)
@@ -335,14 +355,45 @@ describe.runIf(postgresAvailable)('a GitHub account', () => {
       `?intent=bind&returnTo=${encodeURIComponent('/account/logins')}`,
       await signedIn(lin),
     )
-    const taken = await visit(github.authorize(lins.away, { id: 1024, login: 'ada-renamed' }))
+    const taken = await visit(
+      github.authorize(lins.away, { id: 1024, login: 'ada-renamed' }),
+      lins.browser,
+    )
     expect(landing(taken)).toEqual({ path: '/account/logins', code: 'AUTH_BINDING_SUBJECT_TAKEN' })
     const again = await depart(
       `?intent=bind&returnTo=${encodeURIComponent('/account/logins')}`,
       cookie,
     )
-    const second = await visit(github.authorize(again.away, { id: 2048, login: 'ada-alt' }))
+    const second = await visit(
+      github.authorize(again.away, { id: 2048, login: 'ada-alt' }),
+      again.browser,
+    )
     expect(landing(second)).toEqual({ path: '/account/logins', code: 'AUTH_BINDING_ALREADY_BOUND' })
+  })
+
+  it('binds nothing when the way back arrives in a browser that did not set out', async () => {
+    // Lin sets out to bind and sends the address GitHub returned to somebody
+    // else, who is signed in as themselves and whose GitHub account it names
+    const bind = await depart(
+      `?intent=bind&returnTo=${encodeURIComponent('/account/logins')}`,
+      await signedIn(lin),
+    )
+    const elsewhere = await visit(
+      github.authorize(bind.away, { id: 4096, login: 'ada-other' }),
+      await signedIn(ada),
+    )
+    const subjects = async (userId: string) =>
+      (await bindingsOf(userId)).map((binding) => binding.subject)
+    expect(landing(elsewhere).code).toBe('AUTH_FLOW_REJECTED')
+    expect(await subjects(ada)).not.toContain('4096')
+    expect(await subjects(lin)).not.toContain('4096')
+    // and the way back is spent, even for the browser that set out
+    const late = await visit(
+      github.authorize(bind.away, { id: 4096, login: 'ada-other' }),
+      bind.browser,
+    )
+    expect(landing(late).code).toBe('AUTH_FLOW_REJECTED')
+    expect(await subjects(lin)).not.toContain('4096')
   })
 
   it('binds nobody for a visitor who is not signed in', async () => {
@@ -357,7 +408,9 @@ describe.runIf(postgresAvailable)('a GitHub account', () => {
     // a code issued for the second departure's challenge, brought back on the first
     const crossed = new URL(github.authorize(second.away, { id: 1024, login: 'ada-dev' }))
     crossed.searchParams.set('state', first.away.searchParams.get('state')!)
-    expect(landing(await visit(crossed.toString())).code).toBe('AUTH_GITHUB_REJECTED')
+    expect(landing(await visit(crossed.toString(), first.browser)).code).toBe(
+      'AUTH_GITHUB_REJECTED',
+    )
 
     const forged = await visit(`${base}/auth/github/hub/callback?code=x&state=nobody`)
     expect(landing(forged).code).toBe('AUTH_FLOW_REJECTED')
@@ -371,6 +424,7 @@ describe.runIf(postgresAvailable)('a GitHub account', () => {
     const third = await depart()
     const declined = await visit(
       `${base}/auth/github/hub/callback?error=access_denied&state=${third.away.searchParams.get('state')}`,
+      third.browser,
     )
     expect(landing(declined).code).toBe('AUTH_GITHUB_REJECTED')
   })
@@ -378,19 +432,21 @@ describe.runIf(postgresAvailable)('a GitHub account', () => {
   it('says GitHub is away when it cannot trade the code or name the account', async () => {
     github.mode = 'token-down'
     const first = await depart()
-    expect(landing(await visit(github.authorize(first.away, { id: 1024, login: 'x' }))).code).toBe(
-      'AUTH_GITHUB_UNAVAILABLE',
-    )
+    expect(
+      landing(await visit(github.authorize(first.away, { id: 1024, login: 'x' }), first.browser))
+        .code,
+    ).toBe('AUTH_GITHUB_UNAVAILABLE')
     github.mode = 'user-down'
     const second = await depart()
-    expect(landing(await visit(github.authorize(second.away, { id: 1024, login: 'x' }))).code).toBe(
-      'AUTH_GITHUB_UNAVAILABLE',
-    )
+    expect(
+      landing(await visit(github.authorize(second.away, { id: 1024, login: 'x' }), second.browser))
+        .code,
+    ).toBe('AUTH_GITHUB_UNAVAILABLE')
   })
 
   it('keeps no token anywhere', async () => {
-    const { away } = await depart()
-    await visit(github.authorize(away, { id: 1024, login: 'ada-dev' }))
+    const { away, browser } = await depart()
+    await visit(github.authorize(away, { id: 1024, login: 'ada-dev' }), browser)
     const kept = await Effect.runPromise(
       runSql<{ found: number }>(sql`
         select (select count(*) from session_auth_grants)

@@ -500,6 +500,8 @@ export type FlowRejection =
   | 'consumed'
   | 'provider-mismatch'
   | 'session-mismatch'
+  /** it came back in a browser other than the one that set out */
+  | 'browser-mismatch'
 
 export class AuthFlowRejected extends Data.TaggedError('AuthFlowRejected')<{
   readonly reason: FlowRejection
@@ -660,10 +662,12 @@ export interface LoginSessionsShape {
    * Starts one redirect through somebody else's server.
    *
    * The state is a secret the other server carries and hands back; only its
-   * digest is stored. A payload - a verifier, a nonce - is sealed under the
-   * flow's own identity and cannot be opened as any other flow's. A bind
-   * pins the session it began in, so an account bound on the way back is
-   * bound for the person who asked, in the session they asked from.
+   * digest is stored, and the browser that asked keeps the state itself in
+   * a cookie set on the response to this request. A payload - a verifier, a
+   * nonce - is sealed under the flow's own identity and cannot be opened as
+   * any other flow's. A bind pins the session it began in, so an account
+   * bound on the way back is bound for the person who asked, in the session
+   * they asked from.
    */
   readonly startFlow: (input: {
     provider: ResolvedProvider
@@ -672,18 +676,20 @@ export interface LoginSessionsShape {
     binding?: { userId: string; sessionId: string }
     returnPath?: string
     payload?: FlowPayload
-  }) => Effect.Effect<StartedFlow, AuthFlowRejected | TooManyAttempts>
+  }) => Effect.Effect<StartedFlow, AuthFlowRejected | TooManyAttempts, HttpServerRequest>
   /**
    * Takes a flow up, once and only once.
    *
    * A flow that is unknown, expired, already taken up, or belongs to another
    * entrance is refused - and burned in the same breath, so a state that
    * reaches the wrong route is spent rather than left for a second attempt.
+   * So is one that comes back to a browser other than the one that set out,
+   * and a bind that comes back outside the session it began in.
    */
   readonly consumeFlow: (input: {
     provider: ResolvedProvider
     state: string
-  }) => Effect.Effect<ConsumedFlow, AuthFlowRejected>
+  }) => Effect.Effect<ConsumedFlow, AuthFlowRejected, HttpServerRequest>
   /**
    * Binds an external account to the person a bind flow belongs to.
    *

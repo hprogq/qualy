@@ -5318,13 +5318,13 @@ OAuth/CAS callback 都是顶层 GET，因此无需为了第三方 callback 特�
 真正的 callback CSRF 防护由：
 
 ```text
-AuthFlow state
+AuthFlow state(回调时与发起浏览器的 flow Cookie 比对)
 PKCE
 OIDC nonce
 CAS service-ticket binding
 ```
 
-承担。
+承担。只有 state 与发起浏览器绑定才挡得住登录 CSRF 与强制绑定:PKCE、nonce、service 都封在同一条 flow 里,由攻击者自己发起的整条链天然自洽。bind 回调另外要求当前会话就是发起 bind 的那个。
 
 不要添加：
 

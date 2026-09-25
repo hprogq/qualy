@@ -34,6 +34,7 @@ import { AuthConfig, layer as signInLayer } from '../src/server/sign-in.ts'
 import { layer as sessionLayer, viewerLayer } from '../src/server/session.ts'
 import { singleTenantLayer } from '../src/server/tenancy.ts'
 import { singleOriginLayer } from '../src/server/public-origin.ts'
+import { flowCookieNameFor } from '../src/server/session-cookie.ts'
 import { authClosure } from './support/closure.ts'
 import { authAuditLayer } from './support/audit.ts'
 import { unusedEmailFlows } from './support/email-flows.ts'
@@ -378,9 +379,22 @@ const signedIn = async (userId: string) => {
 const visit = (url: string, cookie?: string) =>
   fetch(url, { redirect: 'manual', ...(cookie === undefined ? {} : { headers: { cookie } }) })
 
+/** the flow cookie a start route set, as the browser sends it back */
+const flowCookieOf = (response: Response) =>
+  response.headers
+    .getSetCookie()
+    .find((cookie) => cookie.startsWith(`${flowCookieNameFor(false)}=`))
+    ?.split(';')[0]
+
 const depart = async (code = 'op', query = '', cookie?: string) => {
   const response = await visit(`${base}/auth/oidc/${code}/start${query}`, cookie)
-  return { response, away: new URL(response.headers.get('location') ?? '', origin) }
+  const flow = flowCookieOf(response)
+  return {
+    response,
+    away: new URL(response.headers.get('location') ?? '', origin),
+    /** what the browser that set out carries on the way back */
+    browser: [cookie, flow].filter((part) => part !== undefined).join('; '),
+  }
 }
 
 const landing = (response: Response) => {
@@ -402,14 +416,17 @@ const now = () => Math.floor(Date.now() / 1000)
 
 describe.runIf(postgresAvailable)('an OpenID Connect account', () => {
   it('goes to the provider with PKCE and a nonce, and signs in nobody it does not know', async () => {
-    const { response, away } = await depart()
+    const { response, away, browser } = await depart()
     expect(response.status).toBe(302)
     expect(away.origin + away.pathname).toBe(`${op.url}/authorize`)
     expect(away.searchParams.get('scope')).toBe('openid profile email')
     expect(away.searchParams.get('code_challenge_method')).toBe('S256')
     expect(away.searchParams.get('nonce')).not.toBeNull()
     expect(away.searchParams.get('redirect_uri')).toBe(`${base}/auth/oidc/op/callback`)
-    const back = await visit(op.authorize(away, { sub: 'sub-ada', preferred_username: 'ada.l' }))
+    const back = await visit(
+      op.authorize(away, { sub: 'sub-ada', preferred_username: 'ada.l' }),
+      browser,
+    )
     expect(landing(back)).toEqual({ path: '/login', code: 'AUTH_EXTERNAL_ACCOUNT_UNBOUND' })
     // discovery and keys went through the port like everything else
     expect(op.seen).toEqual(
@@ -426,6 +443,7 @@ describe.runIf(postgresAvailable)('an OpenID Connect account', () => {
     )
     const bound = await visit(
       op.authorize(bind.away, { sub: 'sub-ada', preferred_username: 'ada.l' }),
+      bind.browser,
     )
     expect(bound.status).toBe(303)
     expect(bound.headers.get('location')).toBe('/account/logins')
@@ -435,6 +453,7 @@ describe.runIf(postgresAvailable)('an OpenID Connect account', () => {
     // the same sub under a new username: the account is the sub
     const back = await visit(
       op.authorize(login.away, { sub: 'sub-ada', preferred_username: 'ada.renamed' }),
+      login.browser,
     )
     expect(back.status).toBe(303)
     expect(back.headers.get('location')).toBe('/assessment')
@@ -450,8 +469,8 @@ describe.runIf(postgresAvailable)('an OpenID Connect account', () => {
       { sub: 'sub-ada', nonce: 'not-the-nonce' },
       { sub: 'sub-ada', iat: now() - 3600, exp: now() - 600 },
     ]) {
-      const { away } = await depart()
-      const back = await visit(op.authorize(away, claims))
+      const { away, browser } = await depart()
+      const back = await visit(op.authorize(away, claims), browser)
       expect(landing(back).code, JSON.stringify(claims)).toBe('AUTH_OIDC_REJECTED')
     }
   })
@@ -461,6 +480,7 @@ describe.runIf(postgresAvailable)('an OpenID Connect account', () => {
     const late = await depart()
     const accepted = await visit(
       op.authorize(late.away, { sub: 'sub-ada', iat: now() - 400, exp: now() - 30 }),
+      late.browser,
     )
     expect(accepted.status).toBe(303)
     expect(accepted.headers.get('location')).toBe('/')
@@ -469,16 +489,16 @@ describe.runIf(postgresAvailable)('an OpenID Connect account', () => {
     // and UserInfo failing costs the name, not the sign-in
     op.userinfo = 'down'
     const quiet = await depart()
-    const still = await visit(op.authorize(quiet.away, { sub: 'sub-ada' }))
+    const still = await visit(op.authorize(quiet.away, { sub: 'sub-ada' }), quiet.browser)
     expect(still.status).toBe(303)
     expect(still.headers.get('location')).toBe('/')
     expect(await labelOf()).toBe('sub-ada.from-userinfo')
   })
 
   it('works from endpoints entered by hand, with the client authenticating by Basic', async () => {
-    const { away } = await depart('op-manual')
+    const { away, browser } = await depart('op-manual')
     expect(away.origin + away.pathname).toBe(`${op.url}/authorize`)
-    const back = await visit(op.authorize(away, { sub: 'sub-somebody' }))
+    const back = await visit(op.authorize(away, { sub: 'sub-somebody' }), browser)
     // the whole grant went through; nobody bound that account here
     expect(landing(back).code).toBe('AUTH_EXTERNAL_ACCOUNT_UNBOUND')
     expect(op.seen).not.toContain('GET /.well-known/openid-configuration')
@@ -490,8 +510,8 @@ describe.runIf(postgresAvailable)('an OpenID Connect account', () => {
     expect(op.seen).toEqual([])
 
     op.token = 'down'
-    const { away } = await depart()
-    expect(landing(await visit(op.authorize(away, { sub: 'sub-ada' }))).code).toBe(
+    const { away, browser } = await depart()
+    expect(landing(await visit(op.authorize(away, { sub: 'sub-ada' }), browser)).code).toBe(
       'AUTH_OIDC_UNAVAILABLE',
     )
     const forged = await visit(`${base}/auth/oidc/op/callback?code=x&state=nobody`)
@@ -500,7 +520,7 @@ describe.runIf(postgresAvailable)('an OpenID Connect account', () => {
 
   it('takes a code as long as the provider makes it, and sends anything it cannot use back to sign in', async () => {
     // Microsoft's codes run to thousands of characters, with a session marker beside them
-    const { away } = await depart()
+    const { away, browser } = await depart()
     const long = await visit(
       op.authorize(
         away,
@@ -510,6 +530,7 @@ describe.runIf(postgresAvailable)('an OpenID Connect account', () => {
           sessionState: '008cde9a-2e51-bdf4-ad65-bb981e0872cb',
         },
       ),
+      browser,
     )
     // through the whole exchange: nobody bound that account here
     expect(long.status).toBe(303)
