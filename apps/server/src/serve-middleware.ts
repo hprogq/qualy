@@ -3,6 +3,7 @@ import type { Effect } from 'effect'
 import { HttpServerRequest as Incoming } from 'effect/unstable/http'
 import type { HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
 import { requestOriginGuard } from '@qualy/api-kit/origin'
+import { storableTextGuard } from '@qualy/api-kit/storable-text'
 import {
   httpMetrics,
   requestContext,
@@ -34,7 +35,9 @@ import { responseHeaders } from './response-headers.ts'
 // protocol check, inside the origin guard so that a request from elsewhere
 // learns nothing about the window before it is refused, and outside the
 // router so that a page this api no longer speaks to never reaches a
-// handler. The api's own not-found is not here: the platform writes the
+// handler. Inside that, and inside the body ceiling because it reads the
+// body, the check that an address or JSON body carries no text PostgreSQL
+// could not store. The api's own not-found is not here: the platform writes the
 // router's empty 404 before any serve middleware runs, so that answer is a
 // catch-all route of the mount instead (api-kit's route fallback).
 
@@ -77,7 +80,11 @@ export const serveMiddleware = (options: {
           withMetrics(
             routeSpanNames(
               responseHeaders(
-                guard(compatible(Eff.provideService(httpApp, Incoming.MaxBodySize, MAX_BODY))),
+                guard(
+                  compatible(
+                    Eff.provideService(storableTextGuard(httpApp), Incoming.MaxBodySize, MAX_BODY),
+                  ),
+                ),
               ),
             ),
           ),

@@ -163,6 +163,30 @@ describe('how heavy a request body may be', () => {
   })
 })
 
+describe('text the database could not keep', () => {
+  it('is refused before a route reads it, in the address or a JSON body', async () => {
+    // a NUL, or half a surrogate pair, passed any schema not built from the
+    // kit's primitives and was refused by postgres instead: a 500 for anybody
+    const body = await fetch(`${base}${QUALY_API_PREFIX}/swallow`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: base },
+      body: '{"email":"a\\u0000@example.edu"}',
+    })
+    expect(body.status).toBe(400)
+    expect(await body.json()).toMatchObject({ _tag: 'BAD_REQUEST' })
+    const address = await fetch(`${base}${QUALY_API_PREFIX}/echo?search=%00`)
+    expect(address.status).toBe(400)
+    // and what can be kept goes through, read by the route as it was sent
+    const ordinary = await fetch(`${base}${QUALY_API_PREFIX}/swallow`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: base },
+      body: '{"email":"a@example.edu"}',
+    })
+    expect(ordinary.status).toBe(200)
+    expect(await ordinary.json()).toEqual({ read: 25 })
+  })
+})
+
 describe('what every api answer carries', () => {
   it('names the request it answered, on the api and the probes, never elsewhere', async () => {
     const api = await fetch(`${base}${QUALY_API_PREFIX}/echo`)

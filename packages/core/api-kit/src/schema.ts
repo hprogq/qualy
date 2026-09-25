@@ -268,14 +268,27 @@ export const likeContains = (text: string): string =>
   `%${text.replace(/[\\%_]/g, (match) => `\\${match}`)}%`
 
 /**
- * PostgreSQL stores no NUL byte in a text column, and refuses the row rather
- * than dropping it. Admitted here, the refusal arrives from the database as
- * a fault - a 500 for a request that a schema can see is malformed. It is
- * checked on the primitives rather than field by field, because every text
- * field in the product is built from one of them.
+ * Text PostgreSQL will not keep as it was sent.
+ *
+ * A NUL is refused outright by a text column (22021) and by jsonb (22P05),
+ * and half of a surrogate pair standing alone is refused by jsonb (22P02) and
+ * silently replaced on its way into a text column. Admitted, the refusal
+ * arrives from the database as a fault - a 500 for a request a schema can see
+ * is malformed. With the `u` flag a well-formed pair is one code point, so
+ * `\p{Cs}` matches only a surrogate that stands alone.
  */
-const noNulByte = Schema.makeFilter((value: string) =>
-  value.includes('\u0000') ? 'text may not carry a NUL byte' : undefined,
+export const unstorableText = (value: string): boolean =>
+  value.includes('\u0000') || /\p{Cs}/u.test(value)
+
+/**
+ * Checked on the primitives rather than field by field, because every text
+ * field in the product is built from one of them. Every JSON body and address
+ * under the api is also checked as a whole before it is decoded (the host's
+ * serve chain, `./storable-text`); this keeps a primitive honest wherever it
+ * is decoded.
+ */
+const storable = Schema.makeFilter((value: string) =>
+  unstorableText(value) ? 'text may not carry a NUL or a lone surrogate' : undefined,
 )
 
 /**
@@ -288,10 +301,10 @@ const noNulByte = Schema.makeFilter((value: string) =>
  * same request rather than agreeing.
  */
 export const trimmedName = (max: number) =>
-  Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(max), noNulByte)
+  Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(max), storable)
 
 /** free text with a ceiling, not trimmed: the contract does not trim it either */
-export const boundedText = (max: number) => Schema.String.check(Schema.isMaxLength(max), noNulByte)
+export const boundedText = (max: number) => Schema.String.check(Schema.isMaxLength(max), storable)
 
 /** an integer inside the range the column can actually hold */
 export const boundedInt = (min: number, max: number) =>

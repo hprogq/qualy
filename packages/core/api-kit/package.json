@@ -19,7 +19,8 @@
     "./plugin": "./src/plugin.ts",
     "./headless": "./src/headless.ts",
     "./route-fallback": "./src/route-fallback.ts",
-    "./schema-refusal": "./src/schema-refusal.ts"
+    "./schema-refusal": "./src/schema-refusal.ts",
+    "./storable-text": "./src/storable-text.ts"
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",

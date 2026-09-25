@@ -35,6 +35,13 @@ describe('what a text primitive admits', () => {
     expect(admits(trimmedName(255), `  ${NUL}  `)).toBe(false)
   })
 
+  it('refuses half of a surrogate pair, which a jsonb column refuses and a text one mangles', () => {
+    expect(admits(boundedText(500), 'a\ud800b')).toBe(false)
+    expect(admits(trimmedName(255), '\udc00')).toBe(false)
+    // a whole pair is one character, and welcome
+    expect(admits(boundedText(500), '\ud83d\ude00')).toBe(true)
+  })
+
   it('still holds its ceiling', () => {
     expect(admits(boundedText(4), 'abcd')).toBe(true)
     expect(admits(boundedText(4), 'abcde')).toBe(false)
