@@ -214,6 +214,7 @@ const normal = () => {
     item('q9', 'g4', '文体竞赛获奖', { each: '4' }),
     item('q11', 'g4', '校级荣誉称号', { itemType: 'constant', each: '2', channels: [] }),
     item('q13', 'g4', '学生干部任职（旧）', { status: 'voided' }),
+    item('q10', 'g4', '创新创业训练', { each: '5' }),
     item('q14', 'g4', '体测加分', { channels: ['administrative'] }),
     item('q15', 'g5', '违纪扣分', { channels: ['administrative'] }),
     item('q16', 'g5', '宿舍卫生扣分', { channels: ['administrative'] }),
@@ -234,6 +235,9 @@ const normal = () => {
       entry(`q8-${key}`, 'q8', 'approved', { name: `调研${key}` }),
     ),
     entry('q9-a', 'q9', 'draft'),
+    // one refused, one its owner gave up after submitting it
+    entry('q10-a', 'q10', 'rejected'),
+    entry('q10-b', 'q10', 'voided'),
     entry('q14-a', 'q14', 'approved', { source: 'record', name: '体质健康测试良好', level: '' }),
     entry('q15-a', 'q15', 'approved', { source: 'record', name: '校级通报批评', level: '' }),
     entry('q16-a', 'q16', 'voided', { source: 'record', name: '宿舍检查不合格', level: '' }),
@@ -269,6 +273,14 @@ const normal = () => {
       value: '0.00',
       itemId: 'q13',
     },
+    ...['q10-a', 'q10-b'].map((entryId) => ({
+      lineId: `entry:${entryId}`,
+      kind: 'excluded-evidence' as const,
+      label: '创新创业训练',
+      value: '0.00',
+      itemId: 'q10',
+      provenance: { entryId },
+    })),
     counted('q14-a', 'q14', '2.00'),
     counted('q15-a', 'q15', '-2.00'),
     {
@@ -534,6 +546,20 @@ describe('the rows of the account', () => {
     expect(silent.querySelector('[data-line-kind]')).toBeNull()
     // a withdrawn question stays, marked as withdrawn
     expect(itemRow('q13').getAttribute('data-voided')).toBe('true')
+  })
+
+  it('tells a claim its owner gave up from one that was refused', async () => {
+    await page.viewport(1440, 900)
+    await screen(normal())
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
+    const row = itemRow('q10')
+    expect(row.getAttribute('data-value')).toBe('0.00')
+    await userEvent.click(row.querySelector('button[aria-expanded]') as HTMLElement)
+    const lines = [...row.querySelectorAll<HTMLElement>('[data-testid="ledger-line"]')]
+    expect(lines.map((one) => [one.getAttribute('data-entry'), one.dataset['standing']])).toEqual([
+      ['q10-a', 'refused'],
+      ['q10-b', 'abandoned'],
+    ])
   })
 
   it('marks what waits on the reader, what is unsent, and what is only under review', async () => {

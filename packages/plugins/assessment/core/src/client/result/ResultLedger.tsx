@@ -1340,22 +1340,20 @@ const FACT_ORDER = [
   'asked',
   'returned',
   'refused',
+  'abandoned',
   'revoked',
+  'excluded',
   'drafts',
 ] as const
 
-const wordOf = (line: LedgerLineView): string =>
-  line.kind === 'entry'
-    ? line.recorded
-      ? 'recorded'
-      : 'approved'
-    : line.kind === 'entry-not-counted'
-      ? 'notCounted'
-      : line.kind === 'excluded-evidence'
-        ? line.revoked
-          ? 'revoked'
-          : 'refused'
-        : 'derived'
+/** a line that is on the account and not counted, which says so beside its name */
+const UNCOUNTED: ReadonlySet<LedgerLineView['standing']> = new Set([
+  'notCounted',
+  'refused',
+  'abandoned',
+  'revoked',
+  'excluded',
+])
 
 /**
  * Where a question's figure came from, in one line: which claim it was when
@@ -1377,7 +1375,7 @@ const madeOf = (
     // a record says when the office made it; a filing's own date is on the
     // filing page, one press away
     const day = only.recorded ? dayOf(only.at) : null
-    const said = format(m.resultWord, { kind: wordOf(only) })
+    const said = format(m.resultWord, { kind: only.standing })
     const word = day === null ? said : `${day} ${said}`
     const identity = [only.lead, only.sub].filter((part): part is string => part !== null).join(' ')
     return identity === '' ? word : `${word} · ${identity}`
@@ -1460,6 +1458,7 @@ function ItemRow({
       ? {}
       : {
           'data-line-kind': only.kind,
+          'data-standing': only.standing,
           'data-revoked': only.revoked ? 'true' : undefined,
           'data-entry': only.entryId ?? undefined,
         }
@@ -1628,17 +1627,11 @@ function LineRow({
 }) {
   const { format, locale } = useI18n()
   const zone = useBatchZone()
-  const tagKind =
-    line.kind === 'entry-not-counted'
-      ? 'notCounted'
-      : line.kind === 'excluded-evidence'
-        ? line.revoked
-          ? 'revoked'
-          : 'refused'
-        : null
+  const tagKind = UNCOUNTED.has(line.standing) ? line.standing : null
   const when = dayOf(line.at, locale, zone)
   const data = {
     'data-line-kind': line.kind,
+    'data-standing': line.standing,
     'data-revoked': line.revoked ? 'true' : undefined,
     'data-entry': line.entryId ?? undefined,
   }

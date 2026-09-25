@@ -95,10 +95,32 @@ export const centsOf = (value: string | number | null | undefined): number => {
 /** whole hundredths back into the two places a ledger speaks with */
 export const twoPlaces = (cents: number): string => (cents / 100).toFixed(2)
 
+/**
+ * What became of the claim behind one line, in the reader's words.
+ *
+ * The scorer writes one kind of line for every claim put to somebody and no
+ * longer counted. Which of those it was is the claim's own story: decided
+ * against (`refused`), given up by its owner after submitting it
+ * (`abandoned`), or recorded by the office and taken back (`revoked`). Where
+ * the claim is not in the reader's hands the line says only that it does not
+ * count (`excluded`), rather than guessing at a decision nobody may have made.
+ */
+export type LedgerLineStanding =
+  | 'approved'
+  | 'recorded'
+  | 'notCounted'
+  | 'refused'
+  | 'abandoned'
+  | 'revoked'
+  | 'excluded'
+  | 'derived'
+  | 'voided'
+
 /** one line of the account, joined to the claim it came from when that is readable */
 export interface LedgerLineView {
   readonly key: string
   readonly kind: LedgerLineKind
+  readonly standing: LedgerLineStanding
   readonly cents: number
   readonly revoked: boolean
   /** the claim behind it; absent where this reader may not open it */
@@ -128,7 +150,11 @@ export interface ItemFacts {
   /** sent back to the participant to revise */
   readonly returned: number
   readonly refused: number
+  /** submitted, then given up by the participant */
+  readonly abandoned: number
   readonly revoked: number
+  /** no longer counted, for a reason this reader cannot see */
+  readonly excluded: number
   readonly drafts: number
 }
 
@@ -266,6 +292,37 @@ export const isMoving = (entry: LedgerEntry): boolean =>
 export const isDraft = (entry: LedgerEntry): boolean =>
   entry.status === 'draft' && entry.openRound == null
 
+/**
+ * What a line says became of its claim. A line of a claim no longer counted
+ * is read against the claim itself: the scorer writes the same line for a
+ * refusal and for a claim its owner gave up after submitting it (§32.30).
+ */
+const standingOf = (
+  kind: LedgerLineKind,
+  revoked: boolean,
+  recorded: boolean,
+  entry: LedgerEntry | undefined,
+): LedgerLineStanding => {
+  switch (kind) {
+    case 'entry':
+      return recorded ? 'recorded' : 'approved'
+    case 'entry-not-counted':
+      return 'notCounted'
+    case 'excluded-evidence':
+      return revoked
+        ? 'revoked'
+        : entry?.status === 'voided'
+          ? 'abandoned'
+          : entry?.status === 'rejected'
+            ? 'refused'
+            : 'excluded'
+    case 'item-voided':
+      return 'voided'
+    default:
+      return 'derived'
+  }
+}
+
 const scoringOf = (item: LedgerItem) =>
   item.currentRevision?.scoringConfig as
     | { calculator?: { config?: { value?: unknown } } }
@@ -359,11 +416,15 @@ export const buildLedger = ({
         .slice(1)
         .map((part) => part.value)
         .join(' ')
+      const kind = line.kind as LedgerLineKind
+      const revoked = line.revoked === true
+      const recorded = entry?.source !== undefined && RECORDED_SOURCES.has(entry.source)
       return {
         key: line.lineId,
-        kind: line.kind as LedgerLineKind,
+        kind,
+        standing: standingOf(kind, revoked, recorded, entry),
         cents: centsOf(line.value),
-        revoked: line.revoked === true,
+        revoked,
         entryId,
         lead: parts[0]?.value ?? null,
         sub: sub === '' ? null : sub,
@@ -374,25 +435,26 @@ export const buildLedger = ({
               entry.currentRevision?.createdAt ??
               entry.createdAt ??
               null),
-        recorded: entry?.source !== undefined && RECORDED_SOURCES.has(entry.source),
+        recorded,
       }
     })
     let approved = 0
     let recorded = 0
     let notCounted = 0
     let refused = 0
+    let abandoned = 0
     let revoked = 0
+    let excluded = 0
     for (const line of lines) {
-      if (line.kind === 'entry') {
-        if (line.recorded) recorded += 1
-        else approved += 1
-      } else if (line.kind === 'entry-not-counted') {
+      if (line.standing === 'recorded') recorded += 1
+      else if (line.standing === 'approved') approved += 1
+      else if (line.standing === 'notCounted') {
         approved += 1
         notCounted += 1
-      } else if (line.kind === 'excluded-evidence') {
-        if (line.revoked) revoked += 1
-        else refused += 1
-      }
+      } else if (line.standing === 'refused') refused += 1
+      else if (line.standing === 'abandoned') abandoned += 1
+      else if (line.standing === 'revoked') revoked += 1
+      else if (line.standing === 'excluded') excluded += 1
     }
     let reconsidering = 0
     let pending = 0
@@ -432,7 +494,9 @@ export const buildLedger = ({
         asked: askedMore,
         returned,
         refused,
+        abandoned,
         revoked,
+        excluded,
         drafts,
       },
       lines,

@@ -163,17 +163,35 @@ describe('the score ledger model', () => {
             itemId: 'q',
             provenance: { entryId: 'a1' },
           }),
+          // given up by its owner after it was submitted: the scorer keeps it
+          // on the account at zero with the same kind of line as a refusal
+          line({
+            lineId: 'x4',
+            kind: 'excluded-evidence',
+            itemId: 'q',
+            provenance: { entryId: 'v1' },
+          }),
+          // a claim this reader was not handed: nothing to say why
+          line({
+            lineId: 'x5',
+            kind: 'excluded-evidence',
+            itemId: 'q',
+            provenance: { entryId: 'u1' },
+          }),
         ],
       },
       items: [item({ id: 'q', scoreGroupId: 'g' })],
       entries: [
+        claim({ id: 'r1', itemId: 'q', status: 'rejected' }),
+        claim({ id: 'r2', itemId: 'q', status: 'voided', source: 'record' }),
         claim({ id: 'p1', itemId: 'q', status: 'in_review' }),
         claim({ id: 'p2', itemId: 'q', status: 'in_review', supplement: { requestId: 's' } }),
         claim({ id: 'n1', itemId: 'q', status: 'needs_revision' }),
         claim({ id: 'd1', itemId: 'q', status: 'draft' }),
         claim({ id: 'a1', itemId: 'q', status: 'approved', openRound: { origin: 'appeal' } }),
-        // given up: nowhere on the paper
         claim({ id: 'v1', itemId: 'q', status: 'voided' }),
+        // given up before anybody saw it: the scorer writes no line for it
+        claim({ id: 'v2', itemId: 'q', status: 'voided' }),
       ],
     })
     expect(itemsOf(model)[0]!.facts).toEqual({
@@ -185,10 +203,18 @@ describe('the score ledger model', () => {
       asked: 1,
       returned: 1,
       refused: 1,
+      abandoned: 1,
       revoked: 1,
+      excluded: 1,
       drafts: 1,
     })
-    expect(itemsOf(model)[0]!.lines.map((one) => one.revoked)).toEqual([false, true, false])
+    expect(itemsOf(model)[0]!.lines.map((one) => [one.standing, one.revoked])).toEqual([
+      ['refused', false],
+      ['revoked', true],
+      ['notCounted', false],
+      ['abandoned', false],
+      ['excluded', false],
+    ])
     // the head's counts: under review or looked at again, and unsent drafts
     expect(model.pending).toBe(3)
     expect(model.drafts).toBe(1)

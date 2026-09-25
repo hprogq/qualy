@@ -432,7 +432,7 @@ const resultGroupLeft = defineMessage<{ value: string }>()({
 const resultFact = defineMessage<{ kind: string; count: number }>()({
   id: 'assessment/result/fact',
   defaultMessage:
-    '{kind, select, approved {{count} approved} recorded {{count} recorded by staff} notCounted {{count} not counted} reconsidering {{count} being re-examined} pending {{count} under review} asked {{count} awaiting more material} returned {{count} returned for revision} refused {{count} not approved} revoked {{count} revoked} other {{count, plural, one {# draft} other {# drafts}}}}',
+    '{kind, select, approved {{count} approved} recorded {{count} recorded by staff} notCounted {{count} not counted} reconsidering {{count} being re-examined} pending {{count} under review} asked {{count} awaiting more material} returned {{count} returned for revision} refused {{count} not approved} abandoned {{count} abandoned} revoked {{count} revoked} excluded {{count} excluded} other {{count, plural, one {# draft} other {# drafts}}}}',
 })
 
 const resultTag = defineMessage<{ kind: string; count: number; reader: string }>()({
@@ -444,7 +444,7 @@ const resultTag = defineMessage<{ kind: string; count: number; reader: string }>
 const resultWord = defineMessage<{ kind: string }>()({
   id: 'assessment/result/word',
   defaultMessage:
-    '{kind, select, approved {Approved} recorded {Recorded by staff} notCounted {Approved; another entry counts under the rule} refused {Not approved; not counted} revoked {Revoked; not counted} other {Counted automatically}}',
+    '{kind, select, approved {Approved} recorded {Recorded by staff} notCounted {Approved; another entry counts under the rule} refused {Not approved; not counted} abandoned {Abandoned; not counted} revoked {Revoked; not counted} excluded {Excluded; not counted} other {Counted automatically}}',
 })
 
 const resultMade = defineMessage<{ kind: string }>()({
@@ -461,7 +461,8 @@ const resultRule = defineMessage<{ kind: string; value: string }>()({
 
 const resultLineTag = defineMessage<{ kind: string }>()({
   id: 'assessment/result/line-tag',
-  defaultMessage: '{kind, select, notCounted {Not counted} refused {Not approved} other {Revoked}}',
+  defaultMessage:
+    '{kind, select, notCounted {Not counted} refused {Not approved} abandoned {Abandoned} excluded {Excluded} other {Revoked}}',
 })
 
 const resultMore = defineMessage<{ count: number; reader: string }>()({
