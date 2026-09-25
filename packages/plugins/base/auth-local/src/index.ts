@@ -18,6 +18,10 @@ import {
   verifyPassword,
 } from './password.ts'
 import { acceptable, assessPassword } from './strength.ts'
+import { TooManyAttempts } from '@qualy/auth-contract/session'
+
+/** how long a sign-in turned away for want of a seat is told to wait */
+const SEATS_BUSY_RETRY_SECONDS = 2
 
 // Email and password: find the person by their own email, prove them against
 // the credential bound to this door, then hand the proof to the core for
@@ -55,12 +59,12 @@ export const driver: LoginDriver = {
       if (!acceptable(checks)) return { ok: false as const, checks }
       return {
         ok: true as const,
-        credentialHash: yield* Effect.promise(() => hashPassword(secret)),
+        credentialHash: yield* Effect.promise((signal) => hashPassword(secret, { signal })),
       }
     }),
     assess: ({ secret, subject }) => Effect.sync(() => assessPassword(secret, subject)),
     verify: ({ secret, credentialHash }) =>
-      Effect.promise(() => verifyPassword(credentialHash, secret)),
+      Effect.promise((signal) => verifyPassword(credentialHash, secret, { signal })),
   },
 }
 
@@ -80,10 +84,19 @@ const handlers = HttpApiBuilder.group(local, 'authLocal', (handlers) =>
     'login',
     Effect.fn('authLocal.login.handler')(function* ({ params, payload }) {
       const sessions = yield* LoginSessions
+      // A check waits for one of the few seats hashing has, and is turned
+      // away when too many already wait - whether or not it is about anybody,
+      // so the refusal says nothing about the account. A caller that leaves
+      // gives its place up.
+      const check = (hash: string) =>
+        Effect.tryPromise({
+          try: (signal) => verifyPassword(hash, payload.password, { signal, bounded: true }),
+          catch: () => new TooManyAttempts({ retryAfterSeconds: SEATS_BUSY_RETRY_SECONDS }),
+        })
       // the equalizing hash is verified on every path that would otherwise
       // return early, so a miss costs what a hit costs
       const fail = Effect.fn('authLocal.login.fail')(function* () {
-        yield* Effect.promise(() => verifyPassword(timingEqualizerHash, payload.password))
+        yield* check(timingEqualizerHash)
         return yield* new InvalidCredentials()
       })
 
@@ -141,9 +154,7 @@ const handlers = HttpApiBuilder.group(local, 'authLocal', (handlers) =>
         })
         return yield* fail()
       }
-      const verified = yield* Effect.promise(() =>
-        verifyPassword(binding.credentialHash!, payload.password),
-      )
+      const verified = yield* check(binding.credentialHash)
       if (!verified) {
         yield* sessions.failAttempt(resolved, {
           reason: 'invalid-credentials',

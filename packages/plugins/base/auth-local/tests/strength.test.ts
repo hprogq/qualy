@@ -2,7 +2,7 @@ import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 import type { SecretSubject } from '@qualy/auth-contract/login'
 import { driver } from '../src/index.ts'
-import { hashPassword, verifyPassword } from '../src/password.ts'
+import { HashQueueFull, hashPassword, MAX_WAITING_CHECKS, verifyPassword } from '../src/password.ts'
 import { passwordLength } from '../src/rules.ts'
 import { acceptable, assessPassword, subjectWords } from '../src/strength.ts'
 
@@ -120,6 +120,28 @@ describe('a password as it is stored', () => {
     const digest = await hashPassword('ｌａｎ－ｈａｉ－ｙｕｎ－ｄｕｏ－７')
     expect(await verifyPassword(digest, 'lan-hai-yun-duo-7')).toBe(true)
     expect(await verifyPassword(digest, 'lan-hai-yun-duo-8')).toBe(false)
+  })
+
+  it('turns a sign-in check away once too many wait, and lets one that left give up its place', async () => {
+    const digest = await hashPassword('lan-hai-yun-duo-7')
+    const check = (password: string, signal?: AbortSignal) =>
+      verifyPassword(digest, password, { bounded: true, signal })
+    // both seats taken, and the line behind them full
+    const seated = [check('wrong one'), check('wrong two')]
+    const leaving = new AbortController()
+    const line = Array.from({ length: MAX_WAITING_CHECKS }, (_, place) =>
+      check('still wrong', place === 0 ? leaving.signal : undefined),
+    )
+    await expect(check('lan-hai-yun-duo-7')).rejects.toBeInstanceOf(HashQueueFull)
+    // one gives up while it waits: it is not hashed for, and its place is free
+    leaving.abort()
+    await expect(line[0]).rejects.toThrow()
+    const late = check('lan-hai-yun-duo-7')
+    // what an administrator or the person sets is never turned away
+    const setting = hashPassword('a password somebody set')
+    expect(await late).toBe(true)
+    expect(await setting).toMatch(/^\$argon2id\$/)
+    expect(await Promise.all([...seated, ...line.slice(1)])).not.toContain(true)
   })
 })
 
