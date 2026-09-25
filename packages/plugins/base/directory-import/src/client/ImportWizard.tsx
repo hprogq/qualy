@@ -32,6 +32,7 @@ import { toast } from '@qualy/ui/toast'
 import { directoryApi } from './api.ts'
 import { FlowFrame, type FlowAction } from './flow.tsx'
 import { directoryImportMessages as m } from './i18n.ts'
+import { csvOf } from './take-away.ts'
 import { issueText } from './words.ts'
 
 // People from a spreadsheet, in five short steps: the file, the sheet, the
@@ -1562,8 +1563,7 @@ function levelColumn(
  * UTF-8 csv as the machine's own code page and every name comes out wrong.
  */
 function takeAway(filename: string, rows: readonly (readonly string[])[], head: readonly string[]) {
-  const quote = (cell: string) => `"${cell.replaceAll('"', '""')}"`
-  const body = [head, ...rows].map((row) => row.map(quote).join(',')).join('\r\n')
+  const body = csvOf([head, ...rows])
   const blob = new Blob([`﻿${body}`], { type: 'text/csv;charset=utf-8' })
   const href = URL.createObjectURL(blob)
   const link = document.createElement('a')
