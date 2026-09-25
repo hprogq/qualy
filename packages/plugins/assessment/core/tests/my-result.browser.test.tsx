@@ -706,6 +706,54 @@ describe('the score page on a phone', () => {
   })
 })
 
+describe('the score page between a phone and a desk', () => {
+  it('uses the chips on a tablet, with the bands under them', async () => {
+    await page.viewport(834, 1112)
+    await screen(normal())
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
+    await expect.element(page.getByTestId('result-ledger')).toHaveAttribute('data-layout', 'strip')
+    expect(page.getByTestId('result-outline').elements()).toHaveLength(0)
+    const strip = page.getByTestId('result-strip').element()
+    const chip = page
+      .getByTestId('strip-group')
+      .elements()
+      .find((one) => one.getAttribute('data-group') === 'g2') as HTMLElement
+    await userEvent.click(chip)
+    await expect
+      .poll(() =>
+        Math.abs(bandOf('g2').getBoundingClientRect().top - strip.getBoundingClientRect().bottom),
+      )
+      .toBeLessThan(2)
+    expect(scroller().scrollWidth).toBeLessThanOrEqual(scroller().clientWidth + 1)
+  })
+
+  it('holds the statement to its width in the middle of a very wide screen', async () => {
+    await page.viewport(1920, 1080)
+    await screen(normal())
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
+    await expect
+      .element(page.getByTestId('result-ledger'))
+      .toHaveAttribute('data-layout', 'outline')
+    const seat = page.getByTestId('result-ledger').element().getBoundingClientRect()
+    const body = page.getByTestId('result-outline').element().parentElement!.getBoundingClientRect()
+    // the outline and the statement together, centred, never stretched
+    expect(body.width).toBeLessThanOrEqual(232 + 24 + 820 + 1)
+    expect(Math.abs(body.left - seat.left - (seat.right - body.right))).toBeLessThan(2)
+    const card = sectionOf('g1').parentElement!.getBoundingClientRect()
+    expect(card.width).toBeLessThanOrEqual(820 + 1)
+  })
+})
+
+describe('the score page while it loads', () => {
+  it('draws the shape of the ledger until the account arrives', async () => {
+    await page.viewport(1440, 900)
+    await screen(normal(), { getMyResult: () => Effect.never })
+    const loading = page.getByRole('status')
+    await expect.element(loading).toBeVisible()
+    expect(page.getByTestId('result-total').elements()).toHaveLength(0)
+  })
+})
+
 describe('rounds of other shapes', () => {
   it('draws one group with no outline, no chips and no bar', async () => {
     await page.viewport(1440, 900)
@@ -1068,6 +1116,45 @@ describe('the ledger inside another page', () => {
     const band = sectionOf('m0').getBoundingClientRect()
     expect(Math.abs(total.left - seat.left)).toBeLessThan(4)
     expect(Math.abs(band.left - seat.left)).toBeLessThan(2)
+  })
+
+  it('does not speak to a staff reader as the one who must act', async () => {
+    await page.viewport(1440, 900)
+    const paper = normal()
+    const ledger = (reader: 'owner' | 'staff') => (
+      <div data-testid={`as-${reader}`}>
+        <ResultLedger
+          result={paper.result}
+          items={paper.items}
+          entries={paper.entries}
+          reader={reader}
+          onItemOpen={() => {}}
+        />
+      </div>
+    )
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+      }),
+      children: (
+        <>
+          {ledger('owner')}
+          {ledger('staff')}
+        </>
+      ),
+    })
+    await expect.element(page.getByTestId('as-staff').getByTestId('result-total')).toBeVisible()
+    const said = (reader: 'owner' | 'staff', selector: string) =>
+      page.getByTestId(`as-${reader}`).element().querySelector(selector)?.textContent ?? null
+    // the same marks and the same ways on, in another voice
+    for (const selector of [
+      '[data-item="q3"] [data-tag="todo"]',
+      '[data-item="q3"] [data-follow="todo"]',
+      '[data-item="q7"] [data-follow="all"]',
+    ]) {
+      expect(said('staff', selector)).not.toBeNull()
+      expect(said('staff', selector)).not.toBe(said('owner', selector))
+    }
   })
 
   it('leads a staff reader to the claims off the account through the page’s own ways', async () => {
