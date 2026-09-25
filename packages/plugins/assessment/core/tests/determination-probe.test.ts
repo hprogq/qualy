@@ -514,7 +514,13 @@ describe.runIf(postgresAvailable)('proving a determination before it is a fact',
         }),
       ),
     )
-    expect(errorOf<{ reason: string }>(result.outside.sent)?.reason).toBe('entry-needs-revision')
+    // said on the field the day was filed in, as a day outside the round:
+    // not "the question's requirements changed", which sent the participant
+    // looking for a change nobody made
+    expect(errorOf<{ _tag: string; issues: unknown }>(result.outside.sent)).toMatchObject({
+      _tag: 'ASSESSMENT_ENTRY_PAYLOAD_INVALID',
+      issues: [{ field: 'claimed-when-slot', reason: 'out-of-material-range' }],
+    })
     expect(result.outside.entry.status).toBe('draft')
     expect(result.outside.rows).toEqual([])
     expect(Exit.isSuccess(result.inside.sent)).toBe(true)

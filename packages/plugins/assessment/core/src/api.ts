@@ -2111,6 +2111,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         ItemRevisionConflict,
         BatchReadOnly,
         EntryActionRefused,
+        EntryPayloadInvalid,
         DeterminationRefused,
         ScoringUnavailable,
         AccessDenied,

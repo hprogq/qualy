@@ -255,6 +255,7 @@ export type EntryStatusError =
   | ItemRevisionConflict
   | BatchReadOnly
   | EntryActionRefused
+  | EntryPayloadInvalid
   | DeterminationRefused
   | ScoringUnavailable
 
@@ -1564,19 +1565,39 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                     seedFromEvidence(livePlan, carried),
                     deps.parseRange(String(batch!.materialRange)),
                   ).pipe(
-                    // a date outside the round is the claim's own to fix;
-                    // anything else means nobody is misfiling anything: the
-                    // question was configured so that a claim nobody
-                    // reviews cannot be fully determined, which is a
-                    // refusal about this round
-                    Effect.catchTag('ASSESSMENT_ENTRY_PAYLOAD_INVALID', (invalid) =>
-                      refuse(
-                        action,
-                        invalid.issues.some((issue) => issue.reason === 'out-of-material-range')
-                          ? 'entry-needs-revision'
-                          : 'item-not-configured',
-                      ),
-                    ),
+                    // a date outside the round is the claim's own to fix,
+                    // and said on the field it was filed in - the one thing
+                    // the participant can change. Anything else means nobody
+                    // is misfiling anything: the question was configured so
+                    // that a claim nobody reviews cannot be fully
+                    // determined, which is a refusal about this round
+                    Effect.catchTag('ASSESSMENT_ENTRY_PAYLOAD_INVALID', (invalid) => {
+                      const outside = invalid.issues.filter(
+                        (issue) => issue.reason === 'out-of-material-range',
+                      )
+                      if (outside.length === 0) {
+                        return Effect.fail<EntryActionRefused | EntryPayloadInvalid>(
+                          refuse(action, 'item-not-configured'),
+                        )
+                      }
+                      return Effect.fail(
+                        new EntryPayloadInvalid({
+                          issues: outside.map((issue) => {
+                            const recognitionId = issue.field.slice('recognition.'.length)
+                            const binding = Object.hasOwn(livePlan.defaultBindings, recognitionId)
+                              ? livePlan.defaultBindings[recognitionId]
+                              : undefined
+                            return {
+                              field:
+                                binding === undefined
+                                  ? issue.field
+                                  : (binding.payloadKey ?? binding.fieldId),
+                              reason: 'out-of-material-range',
+                            }
+                          }),
+                        }),
+                      )
+                    }),
                   )
                   const identity = probeIdentity({
                     revisionId: live.id,

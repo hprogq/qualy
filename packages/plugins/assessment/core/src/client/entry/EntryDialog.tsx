@@ -246,6 +246,7 @@ const styles = stylex.create({
 const ISSUE_SENTENCES: Record<string, MessageDescriptor> = {
   required: m.entryIssueRequired,
   'out-of-range': m.entryIssueOutOfRange,
+  'out-of-material-range': m.entryIssueOutOfRange,
   'not-a-date': m.entryIssueNotADate,
   'not-an-integer': m.entryIssueNotAnInteger,
   'not-a-decimal': m.entryIssueNotADecimal,
