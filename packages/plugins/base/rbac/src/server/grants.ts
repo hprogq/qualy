@@ -450,6 +450,44 @@ const insertGrant = (input: {
       .executeTakeFirstOrThrow(),
   )
 
+/**
+ * Closes the lapsed grants that still hold the slot a new grant needs.
+ *
+ * The unique indexes exclude revoked rows but cannot exclude expired ones (an
+ * index predicate cannot read the clock), so a grant past its window kept its
+ * (user, role, anchor, resource) slot while every read already treated it as
+ * gone: appointing the same person again after it ran out collided with
+ * nothing anybody could see. Marking it revoked at the moment it lapsed
+ * records what already happened, and frees the slot.
+ */
+const closeLapsedGrants = (input: {
+  tenantId: string
+  userId: string
+  roleId: string
+  orgNodeId: string | null
+  coverage: 'self' | 'subtree' | null
+  resourceId: string | null
+}) =>
+  db.query((k) => {
+    let lapsed = k
+      .updateTable('RoleGrant')
+      .set({ revokedAt: sql`valid_until` } as never)
+      .where('tenantId', '=', input.tenantId)
+      .where('userId', '=', input.userId)
+      .where('roleId', '=', input.roleId)
+      .where('revokedAt', 'is', null)
+      .where('validUntil', '<=', sql<Date>`now()`)
+    lapsed =
+      input.orgNodeId === null
+        ? lapsed.where('orgNodeId', 'is', null)
+        : lapsed.where('orgNodeId', '=', input.orgNodeId).where('coverage', '=', input.coverage)
+    lapsed =
+      input.resourceId === null
+        ? lapsed.where('resourceId', 'is', null)
+        : lapsed.where('resourceId', '=', input.resourceId)
+    return lapsed.execute()
+  })
+
 const deleteGrant = (tenantId: string, grantId: string) =>
   db.query((k) =>
     k.deleteFrom('RoleGrant').where('tenantId', '=', tenantId).where('id', '=', grantId).execute(),
@@ -843,6 +881,14 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
           input.target.kind === 'org-node'
             ? { nodeId: input.target.orgNodeId, coverage: input.target.coverage }
             : { nodeId: null, coverage: null }
+        yield* closeLapsedGrants({
+          tenantId,
+          userId: input.userId,
+          roleId: input.roleId,
+          orgNodeId: anchor.nodeId,
+          coverage: anchor.coverage,
+          resourceId: input.resource?.id ?? null,
+        })
         const created = yield* insertGrant({
           tenantId,
           userId: input.userId,

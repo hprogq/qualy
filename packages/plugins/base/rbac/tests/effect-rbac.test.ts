@@ -2554,6 +2554,74 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
     }
   })
 
+  it('lets a grant that ran out be given again, and still refuses a live duplicate', async () => {
+    const db = await createTestContext('effect-grant-lapsed-slot')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const rbac = yield* Rbac
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const reviewer = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status, permission_mode,
+                                 eligibility_mode, anchor_mode)
+              values (${f.tenant}, 'reviewer', 'Reviewer', 'org', 'active', 'explicit',
+                      'unrestricted', 'unrestricted')
+              returning id`),
+          ).id
+          const batch = one<{ id: string }>(yield* runSql(sql`select uuidv7() as id`)).id
+          const staff = (validUntil: number) =>
+            Effect.result(
+              rbac.createScopedAssignment({
+                tenantId: f.tenant,
+                subjectId: f.anchored.userId,
+                roleId: reviewer,
+                orgNodeId: f.child,
+                includeDescendants: true,
+                resource: { namespace: 'assessment', type: 'batch', id: batch },
+                validUntil,
+                actor: f.principal,
+              }),
+            )
+          const first = yield* staff(Date.now() + 60_000)
+          const firstId = first._tag === 'Success' ? first.success : null
+          // the window closes: the grant is no authority any more, and no
+          // screen lists it
+          yield* runSql(sql`
+            update role_grants set valid_until = now() - interval '1 second'
+            where id = ${firstId}`)
+          const again = yield* staff(Date.now() + 60_000)
+          const lapsed = one<{ closed: boolean }>(
+            yield* runSql(sql`
+              select revoked_at = valid_until as closed from role_grants where id = ${firstId}`),
+          )
+          // the renewed grant is live, so the same one again is a duplicate
+          const twice = yield* staff(Date.now() + 60_000)
+          return {
+            first: first._tag,
+            again: again._tag,
+            renewed: again._tag === 'Success' && again.success !== firstId,
+            closed: lapsed.closed,
+            twice: tagOf(twice),
+            reason: (twice as { failure?: { reason?: string } }).failure?.reason,
+          }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.first).toBe('Success')
+      expect(answer.again).toBe('Success')
+      expect(answer.renewed).toBe(true)
+      // closed at the moment it lapsed, not rewritten as withdrawn now
+      expect(answer.closed).toBe(true)
+      expect(answer.twice).toBe('ACCESS_DENIED')
+      expect(answer.reason).toBe('scoped grant refused: GRANT_EXISTS')
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('explains a tenant capability the same way require does, node or no node', async () => {
     const db = await createTestContext('effect-explain-tenant')
     try {
