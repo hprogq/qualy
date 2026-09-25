@@ -71,6 +71,10 @@ const methodMissingMessage = defineMessage<{ fields: string }>()({
   id: 'auth/login-methods/missing',
   defaultMessage: 'Still needed: {fields}',
 })
+const methodUnreadableMessage = defineMessage<{ fields: string }>()({
+  id: 'auth/login-methods/unreadable',
+  defaultMessage: 'Cannot be decrypted, enter again: {fields}',
+})
 const methodDeleteBodyMessage = defineMessage<{ bindings: number; sessions: number }>()({
   id: 'auth/login-methods/delete-body',
   defaultMessage:
@@ -811,6 +815,10 @@ const i18n = definePluginMessages({
       id: 'auth/login-methods/secret-stored',
       defaultMessage: 'Saved. Type a new value to replace it',
     },
+    methodSecretUnreadable: {
+      id: 'auth/login-methods/secret-unreadable',
+      defaultMessage: 'Cannot be decrypted. Enter it again',
+    },
     methodSecretClear: { id: 'auth/login-methods/secret-clear', defaultMessage: 'Clear' },
     methodChoose: { id: 'auth/login-methods/choose', defaultMessage: 'Choose' },
     accountProfile: { id: 'auth/account/profile', defaultMessage: 'Profile' },
@@ -968,6 +976,7 @@ const i18n = definePluginMessages({
     methodAdvanced: { id: 'auth/login-methods/advanced', defaultMessage: 'Advanced settings' },
     methodSecretClearLabel: methodSecretClearLabelMessage,
     methodMissing: methodMissingMessage,
+    methodUnreadable: methodUnreadableMessage,
     methodDriverMissing: {
       id: 'auth/login-methods/driver-missing',
       defaultMessage: 'No installed plugin provides this kind',

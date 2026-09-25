@@ -217,6 +217,7 @@ export default {
   'auth/login-methods/code-hint-new':
     '仅支持小写字母、数字和连字符，将作为登录链接的一部分，创建后不可修改',
   'auth/login-methods/secret-stored': '已保存，输入新值可替换',
+  'auth/login-methods/secret-unreadable': '密钥无法解密，需要重新填写',
   'auth/login-methods/secret-clear': '清除',
   'auth/login-methods/choose': '请选择',
   'auth/navigation/account': '我的',
@@ -307,6 +308,7 @@ export default {
   'auth/login-methods/advanced': '高级设置',
   'auth/login-methods/secret-clear-label': '清除{field}',
   'auth/login-methods/missing': '尚未填写：{fields}',
+  'auth/login-methods/unreadable': '密钥无法解密，需要重新填写：{fields}',
   'auth/login-methods/driver-missing': '未安装支持该类型的插件',
   'auth/login-methods/enable-blocked': '补全必填设置后才能启用',
   'auth/login-methods/setup-short': '设置未完成',

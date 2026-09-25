@@ -420,7 +420,11 @@ export const identityApiGroup = HttpApiGroup.make('identity')
         /** where its kind expects to be called back, for whoever configures the other end */
         callbackUrl: Schema.NullOr(Schema.String),
         config: Schema.Record(Schema.String, Schema.String),
-        secrets: Schema.Array(Schema.Struct({ key: Schema.String, stored: Schema.Boolean })),
+        // `readable` false: stored, and it does not open under this
+        // deployment's key; kept until somebody types it again
+        secrets: Schema.Array(
+          Schema.Struct({ key: Schema.String, stored: Schema.Boolean, readable: Schema.Boolean }),
+        ),
         // what deleting it, taking it out of service or narrowing who it
         // admits would end
         usage: Schema.Struct({

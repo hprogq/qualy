@@ -20,16 +20,19 @@ import { serviceLayer as auditLayer } from '@qualy/plugin-audit/server'
 import { AuditActionCatalog } from '@qualy/audit-contract/effect'
 import { compileActionCatalog } from '@qualy/audit-contract/plugin'
 import {
+  type LoginDrivers,
   loginDriversLayer,
   registerLoginDriver,
   type LoginDriver,
 } from '@qualy/auth-contract/login'
+import type { Secrets } from '@qualy/plugin-secrets/plugin'
 import { driver as localDriver } from '@qualy/plugin-auth-local'
 import { driver as casDriver } from '@qualy/plugin-auth-cas'
 import { userActions } from '../src/actions.ts'
 import { AuthConfig } from '../src/server/auth-config.ts'
 import { Iam, serviceLayer as authLayer } from '../src/server/index.ts'
 import { SignIn } from '../src/server/sign-in.ts'
+import { entranceSecretHealth } from '../src/server/secret-health.ts'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
 import { authClosure } from './support/closure.ts'
 
@@ -191,8 +194,10 @@ const stack = (url: string) =>
     { catalog: compileCatalog([{ owner: 'auth', permissions: authPermissions }]) },
   )
 
-const run = <A, E>(url: string, effect: Effect.Effect<A, E, Iam | SignIn | Orm>) =>
-  Effect.runPromiseExit(Effect.provide(effect, stack(url)))
+const run = <A, E>(
+  url: string,
+  effect: Effect.Effect<A, E, Iam | SignIn | Orm | LoginDrivers | Secrets>,
+) => Effect.runPromiseExit(Effect.provide(effect, stack(url)))
 
 const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
   if (Exit.isSuccess(exit)) return exit.value
@@ -389,7 +394,7 @@ describe.runIf(postgresAvailable)('an entrance a tenant adds', () => {
         { kind: 'field', key: 'clientSecret' },
       ])
       expect(answer.shell.config).toEqual({})
-      expect(answer.shell.secrets).toEqual([{ key: 'clientSecret', stored: false }])
+      expect(answer.shell.secrets).toEqual([{ key: 'clientSecret', stored: false, readable: true }])
       expect(answer.shell.usage).toEqual({ bindings: 0, sessions: 0, sessionsByUserType: [] })
       expect(tagOf(answer.tooEarly)).toBe('AUTH_PROVIDER_CONFIG_INCOMPLETE')
       expect(failureOf(answer.tooEarly)?.['missing']).toEqual([
@@ -411,7 +416,7 @@ describe.runIf(postgresAvailable)('an entrance a tenant adds', () => {
       expect(answer.secreted).toBe(3)
       expect(answer.kept).toBe(3)
       expect(answer.ready.provider.setup).toBe('complete')
-      expect(answer.ready.secrets).toEqual([{ key: 'clientSecret', stored: true }])
+      expect(answer.ready.secrets).toEqual([{ key: 'clientSecret', stored: true, readable: true }])
       expect(answer.ready.config).toEqual({ server: 'https://cas.example.edu/' })
       const row = answer.stored.rows[0]!
       expect(String(row.config)).not.toContain('s3cret-value')
@@ -423,12 +428,12 @@ describe.runIf(postgresAvailable)('an entrance a tenant adds', () => {
       expect(tagOf(answer.emptied)).toBe('AUTH_PROVIDER_CONFIG_INCOMPLETE')
       expect(tagOf(answer.cleared)).toBe('AUTH_PROVIDER_CONFIG_INCOMPLETE')
       expect(answer.intact.config).toEqual({ server: 'https://cas.example.edu/' })
-      expect(answer.intact.secrets).toEqual([{ key: 'clientSecret', stored: true }])
+      expect(answer.intact.secrets).toEqual([{ key: 'clientSecret', stored: true, readable: true }])
 
       // out of service, the same secret may go
       expect(answer.gone).toBe(6)
       expect(answer.after.provider.setup).toBe('incomplete')
-      expect(answer.after.secrets).toEqual([{ key: 'clientSecret', stored: false }])
+      expect(answer.after.secrets).toEqual([{ key: 'clientSecret', stored: false, readable: true }])
     } finally {
       await db.dispose()
     }
@@ -875,6 +880,88 @@ describe.runIf(postgresAvailable)('an entrance a tenant adds', () => {
           ['auth.provider.status', 0],
         ],
       )
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('leaves the sign-in page while a secret does not decrypt, keeps it, and stands again once it is typed', async () => {
+    const db = await createTestContext('providers-unreadable-secret')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const iam = yield* Iam
+            const signIn = yield* SignIn
+            const offered = () =>
+              Effect.map(signIn.loginMethods(), (methods) => methods.map((method) => method.code))
+            const id = yield* iam.providers.create(
+              f.tenant,
+              { type: 'campus', code: 'campus', name: 'Campus' },
+              f.as,
+            )
+            const set = yield* iam.providers.update(
+              f.tenant,
+              id,
+              {
+                expectedVersion: 1,
+                values: { server: 'https://cas.example.edu/', clientSecret: 's3cret' },
+              },
+              f.as,
+            )
+            yield* iam.providers.setStatus(f.tenant, id, 'active', set, f.as)
+            const before = yield* offered()
+            // what a changed master key leaves behind: a row that no longer opens
+            yield* runSql(sql`
+              update secrets set auth_tag = decode(repeat('00', 16), 'hex') where owner_id = ${id}`)
+            const broken = yield* iam.providers.detail(f.tenant, id)
+            const listed = (yield* iam.providers.list(f.tenant)).find((row) => row.id === id)
+            const during = yield* offered()
+            const health = yield* entranceSecretHealth
+            const kept = yield* runSql<{ count: number }>(
+              sql`select count(*)::int as count from secrets where owner_id = ${id}`,
+            )
+            // typed again, the door stands
+            yield* iam.providers.update(
+              f.tenant,
+              id,
+              { expectedVersion: broken.provider.version, values: { clientSecret: 'n3w' } },
+              f.as,
+            )
+            const mended = yield* iam.providers.detail(f.tenant, id)
+            return {
+              before,
+              broken: { missing: broken.missing, secrets: broken.secrets },
+              listed: { status: listed?.status, setup: listed?.setup },
+              during,
+              health,
+              kept: kept.rows[0]!.count,
+              mended: { missing: mended.missing, secrets: mended.secrets },
+              after: yield* offered(),
+            }
+          }),
+        ),
+      )
+      expect(answer.before).toEqual(['local', 'campus'])
+      expect(answer.broken).toEqual({
+        missing: [{ kind: 'secret-unreadable', key: 'clientSecret' }],
+        secrets: [{ key: 'clientSecret', stored: true, readable: false }],
+      })
+      // still in service, and not a door anybody is offered
+      expect(answer.listed).toEqual({ status: 'active', setup: 'incomplete' })
+      expect(answer.during).toEqual(['local'])
+      expect(answer.health).toEqual({
+        stored: 1,
+        unreadable: [{ tenantSlug: 'default', providerCode: 'campus', key: 'clientSecret' }],
+      })
+      expect(answer.kept).toBe(1)
+      expect(answer.mended).toEqual({
+        missing: [],
+        secrets: [{ key: 'clientSecret', stored: true, readable: true }],
+      })
+      expect(answer.after).toEqual(['local', 'campus'])
     } finally {
       await db.dispose()
     }

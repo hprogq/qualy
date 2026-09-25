@@ -41,6 +41,7 @@ import { make as makeSelfSecurity } from './self-security.ts'
 import { layer as sessionLayer, viewerLayer } from './session.ts'
 import { recoveryBootCheck } from './recovery.ts'
 import { publicOriginBootCheck, PublicOriginResolver, singleOriginLayer } from './public-origin.ts'
+import { secretHealthBootCheck } from './secret-health.ts'
 import { AnonymousTenantResolver, singleTenantLayer } from './tenancy.ts'
 import { loginIconsLayer } from './icons.ts'
 import { makeOutbound } from './outbound.ts'
@@ -189,6 +190,7 @@ export const serviceLayer: Layer.Layer<
 export const pluginLayer = Layer.mergeAll(
   recoveryBootCheck,
   publicOriginBootCheck,
+  secretHealthBootCheck,
   // the flows that go through somebody's inbox, which is where the plugin
   // meets the mail capability; a stack composing auth's services for a test
   // does not have to stand up mail

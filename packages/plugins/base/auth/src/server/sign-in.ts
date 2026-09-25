@@ -798,9 +798,16 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
     config: configOf(provider.config),
     secret: (key) =>
       secrets.get({ ...entranceSecrets(tenant.id, provider.id), key }).pipe(
-        // a stored value that does not open is not something a sign-in can
-        // answer: the master key changed, or the row was edited
-        Effect.orDie,
+        // a stored value that does not open - the master key changed, or the
+        // row was edited - is one this sign-in does not have: readiness keeps
+        // such a door off the page, and one caught between the two answers
+        // as unavailable rather than failing the request
+        Effect.catchTag('SecretUnreadable', () =>
+          Effect.logWarning('an entrance secret does not decrypt under this master key').pipe(
+            Effect.annotateLogs({ provider: provider.code, key }),
+            Effect.as(Option.none<Redacted.Redacted<string>>()),
+          ),
+        ),
         Effect.flatMap((found) =>
           Option.isNone(found)
             ? Effect.fail(new ProviderSecretMissing({ key }))

@@ -393,6 +393,8 @@ export const readinessGapSchema = Schema.Union([
   Schema.Struct({ kind: Schema.Literal('driver') }),
   Schema.Struct({ kind: Schema.Literal('field'), key: Schema.String }),
   Schema.Struct({ kind: Schema.Literal('public-origin') }),
+  // stored, and does not open under this deployment's key: typed again, it stands
+  Schema.Struct({ kind: Schema.Literal('secret-unreadable'), key: Schema.String }),
 ])
 
 /**

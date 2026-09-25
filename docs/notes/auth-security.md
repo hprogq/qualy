@@ -217,6 +217,11 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
   换一台服务器就能替已经登录过的人作答。锁住后要换服务器只能新建入口(2026-09-25 裁决)。
 - **密钥永不回显**:`GET /auth/providers/{id}` 只说某个密钥「已存/未存」,成功响应与审计 details 里不得出现
   `clientSecret|refreshToken|accessToken|password` 这类字段名,由 `tools/tests/secret-disclosure.test.ts` 守。
+- **「无法解密」不等于「未填写」(2026-09-25 裁决 #29)**:密钥存在但 AEAD 打不开(主密钥换了,或行被改过)时,readiness 给出
+  `{kind:'secret-unreadable', key}` 缺口——入口不就绪、不出现在匿名登录页、`resolveProvider` 解析不到;详情的 `secrets[].readable`
+  为 false,管理端提示「密钥无法解密,需要重新填写」;**原密文保留,不自动清除**,重新填写即覆盖。服务不因此拒启(要给修复留入口);
+  启动时 `auth/entrance-secrets` 钩子逐个打开所有入口密钥,每个打不开的记一条 Warn,全部或至少 3 个同时打不开时再记一条 Error,
+  提示 `QUALY_SECRETS_MASTER_KEY` 可能与写入时不同。钩子只报告,自身失败也只告警。暂不做主密钥轮换工具。
 
 ## 租户寻址、公开地址与一次性 flow(2026-09-23 定案)
 

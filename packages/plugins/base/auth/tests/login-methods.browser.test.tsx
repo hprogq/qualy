@@ -429,7 +429,7 @@ describe('a way in, from added to gone', () => {
                   { kind: 'field', key: 'server' },
                   { kind: 'field', key: 'clientSecret' },
                 ],
-                secrets: [{ key: 'clientSecret', stored: false }],
+                secrets: [{ key: 'clientSecret', stored: false, readable: true }],
               }),
             ),
           updateAuthProvider: update,
@@ -517,8 +517,51 @@ describe('a way in, from added to gone', () => {
 
   const settled = {
     config: { server: 'https://cas.example.edu' },
-    secrets: [{ key: 'clientSecret', stored: true }],
+    secrets: [{ key: 'clientSecret', stored: true, readable: true }],
   }
+
+  it('asks for a secret that no longer decrypts to be typed again, apart from what is missing', async () => {
+    const update = vi.fn(() => Effect.succeed({ version: 5 }))
+    const serving = cas({ setup: 'incomplete' })
+    await renderScreen({
+      client: fakeClient(
+        stubs({
+          listAuthProviders: () => Effect.succeed(doorsOf([provider(), serving])),
+          listAuthProviderKinds: () => Effect.succeed({ kinds: [casKind] }),
+          getAuthProvider: () =>
+            Effect.succeed(
+              detail(serving, {
+                ...settled,
+                missing: [{ kind: 'secret-unreadable', key: 'clientSecret' }],
+                secrets: [{ key: 'clientSecret', stored: true, readable: false }],
+              }),
+            ),
+          updateAuthProvider: update,
+        }),
+      ),
+      route: `/admin/login-methods?provider=${CAS_ID}`,
+      children: <LoginMethodsPage />,
+    })
+    await expect
+      .element(page.getByTestId('method-unreadable'))
+      .toHaveAttribute('data-keys', 'clientSecret')
+    // nothing is missing: the box holds a value, one this deployment cannot open
+    expect(page.getByTestId('method-missing').query()).toBeNull()
+    await vi.waitFor(() =>
+      expect(
+        document
+          .querySelector('input[name="entrance-clientSecret"]')
+          ?.getAttribute('data-readable'),
+      ).toBe('false'),
+    )
+    await page.getByLabelText('客户端密钥', { exact: false }).first().fill('n3w')
+    await page.getByTestId('method-details').getByRole('button', { name: '保存' }).click()
+    await vi.waitFor(() => expect(update).toHaveBeenCalledTimes(1))
+    expect(update).toHaveBeenCalledWith({
+      params: { providerId: CAS_ID },
+      payload: { version: 4, values: { clientSecret: 'n3w' } },
+    })
+  })
 
   it('keeps what a way in service needs', async () => {
     const serving = cas()

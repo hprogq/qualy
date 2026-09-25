@@ -1,4 +1,4 @@
-import { Effect } from 'effect'
+import { Effect, type Context } from 'effect'
 import { LoginDrivers, type LoginDriver } from '@qualy/auth-contract/login'
 import { Secrets, type SecretOwner } from '@qualy/plugin-secrets/plugin'
 import { PublicOriginResolver } from './public-origin.ts'
@@ -26,6 +26,12 @@ export type ReadinessGap =
    * has no address to be sent back to (QUALY_PUBLIC_URL).
    */
   | { readonly kind: 'public-origin' }
+  /**
+   * A secret is stored and does not open under this deployment's master key:
+   * the key changed since it was written, or the row was edited. It stays
+   * where it is - nothing clears it - until somebody types it again.
+   */
+  | { readonly kind: 'secret-unreadable'; readonly key: string }
 
 export interface Readiness {
   readonly ready: boolean
@@ -51,6 +57,7 @@ export const readinessOf = (
   config: Readonly<Record<string, unknown>>,
   storedSecrets: readonly string[],
   publicOrigin: boolean,
+  unreadableSecrets: readonly string[] = [],
 ): Readiness => {
   if (driver === undefined) return { ready: false, missing: [{ kind: 'driver' }] }
   const missing: ReadinessGap[] =
@@ -60,19 +67,41 @@ export const readinessOf = (
     // judged on the values as they stand, defaults included; a field the
     // form does not show is not asked for
     const values = effectiveValues(entrance, config)
+    const shown = entrance.fields.filter((field) => visibleIn(field, values))
     missing.push(
-      ...entrance.fields
-        .filter((field) => field.required && visibleIn(field, values))
+      ...shown
+        .filter((field) => field.required)
         .filter((field) =>
           field.kind === 'secret'
             ? !storedSecrets.includes(field.key)
             : values[field.key] === undefined,
         )
         .map((field): ReadinessGap => ({ kind: 'field', key: field.key })),
+      // stored but not openable: the door would fail the first person who
+      // came through it, so it is not a door until the secret is typed again
+      ...shown
+        .filter((field) => field.kind === 'secret' && unreadableSecrets.includes(field.key))
+        .map((field): ReadinessGap => ({ kind: 'secret-unreadable', key: field.key })),
     )
   }
   return { ready: missing.length === 0, missing }
 }
+
+/**
+ * Which of an entrance's stored secrets do not open under this deployment's
+ * master key. Asked by opening each one; nothing is kept of what opens.
+ */
+export const unreadableSecretsOf = (
+  secrets: Context.Service.Shape<typeof Secrets>,
+  owner: SecretOwner,
+  keys: readonly string[],
+) =>
+  Effect.filter(keys, (key) =>
+    secrets.get({ ...owner, key }).pipe(
+      Effect.as(false),
+      Effect.catchTag('SecretUnreadable', () => Effect.succeed(true)),
+    ),
+  )
 
 export interface ReadinessSubject {
   readonly tenantId: string
@@ -96,9 +125,9 @@ export const makeReadiness = Effect.gen(function* () {
     const asksSecrets =
       driver?.provisioning.mode === 'tenant-managed' &&
       driver.provisioning.entrance.fields.some((field) => field.kind === 'secret')
-    const stored = asksSecrets
-      ? yield* secrets.keysOf(entranceSecrets(provider.tenantId, provider.id))
-      : []
-    return readinessOf(driver, configOf(provider.config), stored, origin.configured)
+    const owner = entranceSecrets(provider.tenantId, provider.id)
+    const stored = asksSecrets ? yield* secrets.keysOf(owner) : []
+    const unreadable = yield* unreadableSecretsOf(secrets, owner, stored)
+    return readinessOf(driver, configOf(provider.config), stored, origin.configured, unreadable)
   })
 })

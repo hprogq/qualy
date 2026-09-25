@@ -185,12 +185,19 @@ export function MethodSheet({
             (values[field.key] ?? '').trim() === ''
           : willHold[field.key] === ''),
     )
-  const missingWords = (detail.data?.missing ?? []).map((gap) => {
-    if (gap.kind === 'driver') return format(m.methodDriverMissing)
-    if (gap.kind === 'public-origin') return format(m.methodOriginMissing)
-    const field = fields.find((one) => one.key === gap.key)
-    return field === undefined ? gap.key : formatText(field.label)
+  const gaps = detail.data?.missing ?? []
+  const labelOf = (key: string) => {
+    const field = fields.find((one) => one.key === key)
+    return field === undefined ? key : formatText(field.label)
+  }
+  const missingWords = gaps.flatMap((gap) => {
+    if (gap.kind === 'driver') return [format(m.methodDriverMissing)]
+    if (gap.kind === 'public-origin') return [format(m.methodOriginMissing)]
+    if (gap.kind === 'secret-unreadable') return []
+    return [labelOf(gap.key)]
   })
+  // stored, and no longer decrypting: said apart, because the box is not empty
+  const unreadableKeys = gaps.flatMap((gap) => (gap.kind === 'secret-unreadable' ? [gap.key] : []))
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: query.identity.key() })
   const save = useMutation({
@@ -436,13 +443,27 @@ export function MethodSheet({
               <TriangleAlertIcon aria-hidden />
               <AlertTitle
                 data-testid="method-missing"
-                data-missing={(detail.data?.missing ?? [])
-                  .map((gap) => (gap.kind === 'field' ? gap.key : gap.kind))
+                data-missing={gaps
+                  .flatMap((gap) =>
+                    gap.kind === 'secret-unreadable'
+                      ? []
+                      : [gap.kind === 'field' ? gap.key : gap.kind],
+                  )
                   .join(',')}
               >
                 {format(m.methodMissing, { fields: listJoin(missingWords) })}
               </AlertTitle>
               {!inService && <AlertDescription>{format(m.methodEnableBlocked)}</AlertDescription>}
+            </Alert>
+          </div>
+        )}
+        {unreadableKeys.length > 0 && (
+          <div {...stylex.props(styles.missingSeat)}>
+            <Alert xstyle={styles.missing}>
+              <TriangleAlertIcon aria-hidden />
+              <AlertTitle data-testid="method-unreadable" data-keys={unreadableKeys.join(',')}>
+                {format(m.methodUnreadable, { fields: listJoin(unreadableKeys.map(labelOf)) })}
+              </AlertTitle>
             </Alert>
           </div>
         )}

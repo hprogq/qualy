@@ -79,8 +79,8 @@ export function MethodFields({
   kind: EntranceKind
   /** what each non-secret box holds now, defaults included, as the box carries it */
   config: Readonly<Record<string, string>>
-  /** which secrets are stored */
-  secrets: readonly { readonly key: string; readonly stored: boolean }[]
+  /** which secrets are stored, and whether each still decrypts */
+  secrets: readonly { readonly key: string; readonly stored: boolean; readonly readable: boolean }[]
   /** only the boxes somebody has typed in */
   draft: Readonly<Record<string, string>>
   onChange: (next: Record<string, string>) => void
@@ -98,10 +98,13 @@ export function MethodFields({
   const set = (key: string, value: string) => onChange({ ...draft, [key]: value })
 
   const box = (field: EntranceField) => {
-    const stored = secrets.find((one) => one.key === field.key)?.stored ?? false
+    const kept = secrets.find((one) => one.key === field.key)
+    const stored = kept?.stored ?? false
+    // stored, and it no longer decrypts: it has to be typed again
+    const unreadable = stored && kept?.readable === false
     const hint =
       field.kind === 'secret' && stored
-        ? format(m.methodSecretStored)
+        ? format(unreadable ? m.methodSecretUnreadable : m.methodSecretStored)
         : field.hint === null
           ? undefined
           : formatText(field.hint)
@@ -175,6 +178,7 @@ export function MethodFields({
                 : {})}
               autoComplete={field.kind === 'secret' ? 'new-password' : 'off'}
               data-stored={field.kind === 'secret' ? String(stored) : undefined}
+              data-readable={field.kind === 'secret' && stored ? String(!unreadable) : undefined}
               // a stored secret is never sent back, so its box is empty; a
               // row of marks says something is there rather than nothing
               {...(field.kind === 'secret' && stored ? { placeholder: STORED_MARKS } : {})}

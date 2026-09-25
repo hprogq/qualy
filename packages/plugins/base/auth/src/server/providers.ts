@@ -26,7 +26,13 @@ import { iconOf } from './login-icons.ts'
 import { db, lockTenant } from './db.ts'
 import { endFlowsOfProvider } from './flows.ts'
 import { PublicOriginResolver } from './public-origin.ts'
-import { configOf, entranceSecrets, makeReadiness, type ReadinessGap } from './readiness.ts'
+import {
+  configOf,
+  entranceSecrets,
+  makeReadiness,
+  unreadableSecretsOf,
+  type ReadinessGap,
+} from './readiness.ts'
 import {
   effectiveValues,
   explicitValues,
@@ -946,9 +952,11 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
           const answer = yield* readiness(provider)
           const kind = (yield* drivers.forType(provider.type))?.driver.provisioning
           const fields = kind?.mode === 'tenant-managed' ? kind.entrance.fields : []
+          const owner = entranceSecrets(tenantId, providerId)
           const stored = fields.some((field) => field.kind === 'secret')
-            ? yield* secrets.keysOf(entranceSecrets(tenantId, providerId))
+            ? yield* secrets.keysOf(owner)
             : []
+          const unreadable = yield* unreadableSecretsOf(secrets, owner, stored)
           const config = configOf(provider.config)
           // where its kind expects to be called back, when it has one and
           // this deployment has an address to be called back at
@@ -1002,7 +1010,12 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
                 : {},
             secrets: fields
               .filter((field) => field.kind === 'secret')
-              .map((field) => ({ key: field.key, stored: stored.includes(field.key) })),
+              .map((field) => ({
+                key: field.key,
+                stored: stored.includes(field.key),
+                // stored and not openable here: it has to be typed again
+                readable: !unreadable.includes(field.key),
+              })),
             usage: {
               ...(yield* usageOf(tenantId, providerId)),
               sessionsByUserType: yield* sessionsByUserType(tenantId, providerId),
