@@ -658,6 +658,55 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
     }
   })
 
+  it('names what stands on a unit only to somebody who may take it away', async () => {
+    const db = await createTestContext('effect-org-usage-authority')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const org = yield* Org
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          // somebody who reads the whole tree and manages none of it
+          const role = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+              values (${f.tenant}, 'reader', 'Reader', 'org', 'active', 'explicit', 'unrestricted')
+              returning id`),
+          ).id
+          const permission = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into permissions (code, plugin, name, target_kind)
+              values ('org.tree.read', 'org', 'read', 'org-node')
+              on conflict (code) do update set code = excluded.code returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            values (${f.tenant}, ${role}, ${permission})`)
+          const reader = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.tenant}, 'Reader', ${f.adminType}, ${f.root}) returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            values (${f.tenant}, ${reader}, ${role}, ${f.root}, 'subtree')`)
+          const asReader = { tenantId: f.tenant, userId: reader, sessionId: 's' }
+          const reporter = yield* peopleAtNode.bind
+          const denied = yield* Effect.result(org.nodeUsage(f.tenant, f.node, asReader, reporter))
+          const managed = yield* org.nodeUsage(f.tenant, f.node, f.principal, reporter)
+          return {
+            denied: tagOf(denied),
+            managed: managed.usage.map((usage) => [usage.kind, usage.count]),
+          }
+        }),
+      )
+      expect(ok(exit)).toEqual({ denied: 'ACCESS_DENIED', managed: [['people', 1]] })
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('asks what stands on a unit after the writes queued ahead of the delete', async () => {
     const db = await createTestContext('effect-org-usage-under-lock')
     try {

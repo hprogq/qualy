@@ -1,4 +1,4 @@
-import { NodeUsageCatalog } from '@qualy/org-contract/plugin'
+import { NodeUsageCatalog, type NodeUsage, type NodeUsageReport } from '@qualy/org-contract/plugin'
 import { Context, Effect, Layer } from 'effect'
 import { OrgNodeRefused, OrgProvisioning } from '@qualy/org-contract/effect'
 import type { OrgNodeRef } from '@qualy/org-contract'
@@ -239,6 +239,16 @@ export class Org extends Context.Service<
       nodeId: string,
       as: Principal,
     ) => Effect.Effect<NodeView, NodeNotFound | AccessDenied>
+    /** what stands on a unit, for whoever may take it out of the structure */
+    readonly nodeUsage: (
+      tenantId: string,
+      nodeId: string,
+      as: Principal,
+      usageOf: NodeUsageReport,
+    ) => Effect.Effect<
+      { isRoot: boolean; children: number; usage: readonly NodeUsage[] },
+      NodeNotFound | AccessDenied
+    >
     readonly readForest: (
       tenantId: string,
       nodeId: string | undefined,
@@ -952,6 +962,24 @@ export const make = Effect.fn('Org.make')(function* () {
       ),
   }
 
+  const readNode = Effect.fn('Org.readNode')(function* (
+    tenantId: string,
+    nodeId: string,
+    as: Principal,
+  ) {
+    return yield* readInSnapshot(() =>
+      Effect.gen(function* () {
+        const readScope = yield* resolveScope(tenantId, as, 'org.tree.read')
+        const node = yield* oneNode(tenantId, nodeId).pipe(Effect.orDie)
+        // not-found and not-covered answer the same on purpose: a caller
+        // must not learn that a node they cannot see exists
+        if (!node || !coveredBy(readScope, node)) return yield* new NodeNotFound()
+        const manageScope = yield* resolveScope(tenantId, as, 'org.tree.manage')
+        return withFlags(node, manageScope, readScope)
+      }),
+    )
+  })
+
   return {
     provisioning,
     changeNodeType,
@@ -967,22 +995,28 @@ export const make = Effect.fn('Org.make')(function* () {
       return yield* readInSnapshot(() => countChildren(tenantId, nodeId).pipe(Effect.orDie))
     }),
 
-    readNode: Effect.fn('Org.readNode')(function* (
+    readNode,
+
+    nodeUsage: Effect.fn('Org.nodeUsage')(function* (
       tenantId: string,
       nodeId: string,
       as: Principal,
+      usageOf: NodeUsageReport,
     ) {
-      return yield* readInSnapshot(() =>
-        Effect.gen(function* () {
-          const readScope = yield* resolveScope(tenantId, as, 'org.tree.read')
-          const node = yield* oneNode(tenantId, nodeId).pipe(Effect.orDie)
-          // not-found and not-covered answer the same on purpose: a caller
-          // must not learn that a node they cannot see exists
-          if (!node || !coveredBy(readScope, node)) return yield* new NodeNotFound()
-          const manageScope = yield* resolveScope(tenantId, as, 'org.tree.manage')
-          return withFlags(node, manageScope, readScope)
-        }),
-      )
+      // the unit is read as any other, so one the caller cannot see answers
+      // as a missing one
+      const node = yield* readNode(tenantId, nodeId, as)
+      // What stands on a unit names people and who holds which duty there:
+      // it is the delete's checklist, so it is the delete's authority that
+      // opens it. Reading the tree does not reach those names anywhere else.
+      if (!node.manageable) {
+        return yield* new AccessDenied({ reason: 'not allowed to manage this unit' })
+      }
+      return {
+        isRoot: node.parentId === null,
+        children: yield* readInSnapshot(() => countChildren(tenantId, node.id).pipe(Effect.orDie)),
+        usage: yield* usageOf(tenantId, node.id),
+      }
     }),
 
     readForest: Effect.fn('Org.readForest')(function* (
@@ -1277,13 +1311,14 @@ export const orgApiHandlers = HttpApiBuilder.group(local, 'org', (handlers) =>
         const org = yield* Org
         const catalog = yield* NodeUsageCatalog
         const principal = yield* CurrentUser
-        // the same read authority as the unit itself, and the same answer
-        // for a unit the caller cannot see as for one that is not there
-        const node = yield* org.readNode(principal.tenantId, params.nodeId, principal)
-        const children = yield* org.childCount(principal.tenantId, node.id)
-        const usage = yield* catalog.usageOf(principal.tenantId, node.id)
+        const { isRoot, children, usage } = yield* org.nodeUsage(
+          principal.tenantId,
+          params.nodeId,
+          principal,
+          catalog.usageOf,
+        )
         return {
-          isRoot: node.parentId === null,
+          isRoot,
           children,
           usage: usage.map((one) => ({
             kind: one.kind,
