@@ -15,6 +15,8 @@ import {
   RESEARCH_ROLES,
   RESEARCH_SUBJECTS,
   RESEARCH_TREATMENTS,
+  SCRIPTED_APPEALS,
+  type ScriptedAppeal,
 } from '../catalog.ts'
 import { SCRIPTED_ASKS, answerAsk, askFor, requestAsk, type Ask } from './asks.ts'
 import { addMinutes, awake, principalOf, type Random, type Story } from './context.ts'
@@ -1041,9 +1043,14 @@ export const runSelection = (input: {
         })
         if (!sent) return yield* Effect.die(new Error('scene: no ask to answer'))
       })
-    const appealAs = (entry: Filed, reason: string) =>
+    const appealAs = (entry: Filed, reason: ScriptedAppeal) =>
       Effect.asVoid(
-        assessment.appealEntry(t, entry.entryId, { reason }, principalOf(t, entry.student.id)),
+        assessment.appealEntry(
+          t,
+          entry.entryId,
+          { reason: SCRIPTED_APPEALS[reason] },
+          principalOf(t, entry.student.id),
+        ),
       )
     /**
      * Files the claim again, as the note says: with what it says changed,
@@ -1312,18 +1319,11 @@ export const runSelection = (input: {
       if (reviewing) {
         // the working group asks, inside the appeal, for the notice the
         // student's reason rests on
-        scene(ago(4, '20:30'), () =>
-          appealAs(
-            one('award-b'),
-            '赛区选拔赛是省赛的初赛，赛区获奖名单由省组委会统一公布，应按省级认定，请复核',
-          ),
-        )
+        scene(ago(4, '20:30'), () => appealAs(one('award-b'), 'zoneAward'))
         scene(ago(3, '10:00'), () => askAs(one('award-b'), lead, SCRIPTED_ASKS.zoneNotice.ask))
         scene(ago(2, '19:30'), () => answerAs(one('award-b')))
         // the class's two leads sit on the student's appeal; one has voted
-        scene(ago(5, '12:10'), () =>
-          appealAs(one('conduct'), '学院通知允许沿用往年模板，只要求内容完整，请班级综测小组复核'),
-        )
+        scene(ago(5, '12:10'), () => appealAs(one('conduct'), 'template'))
         scene(ago(3, '21:30'), () => decideAs(one('conduct'), partner, { decision: 'approve' }))
       }
 
@@ -1344,9 +1344,7 @@ export const runSelection = (input: {
         )
         if (reviewing) {
           // the page comes in answer to the panel's ask, and the panel sits again
-          scene(ago(5, '19:40'), () =>
-            appealAs(papersOf(z, 'conduct'), '班主任已在考核表上签字，请复核'),
-          )
+          scene(ago(5, '19:40'), () => appealAs(papersOf(z, 'conduct'), 'pageLeftOut'))
           scene(ago(4, '21:00'), () => askAs(papersOf(z, 'conduct'), partner))
           scene(ago(3, '12:30'), () => answerAs(papersOf(z, 'conduct')))
         }
@@ -1362,9 +1360,7 @@ export const runSelection = (input: {
         if (reviewing) {
           // the two leads disagree; the counsellor gives an opinion and the
           // working group concludes
-          scene(ago(5, '10:00'), () =>
-            appealAs(papersOf(w, 'conduct'), '志愿服务情况以志愿服务平台的记录为准，请复核'),
-          )
+          scene(ago(5, '10:00'), () => appealAs(papersOf(w, 'conduct'), 'platformRecord'))
           scene(ago(4, '20:00'), () =>
             decideAs(papersOf(w, 'conduct'), seat, { decision: 'approve' }),
           )

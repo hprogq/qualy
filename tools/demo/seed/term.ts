@@ -5,7 +5,13 @@ import type { Principal } from '@qualy/rbac-contract'
 import { Assessment } from '@qualy/plugin-assessment/testkit'
 import { runSql } from '@qualy/plugin-database/testkit'
 import library from '../library.json' with { type: 'json' }
-import { APPEAL_REASONS, CADRE_POSTS, REJECTIONS } from '../catalog.ts'
+import {
+  APPEAL_REASONS,
+  CADRE_POSTS,
+  REJECTIONS,
+  SCRIPTED_APPEALS,
+  type ScriptedAppeal,
+} from '../catalog.ts'
 import type { FieldSpec, ItemSpec, Term } from '../rules.ts'
 import { claimsOf, type Claim } from './claims.ts'
 import { SCRIPTED_ASKS, answerAsk, askFor, requestAsk, type Ask } from './asks.ts'
@@ -1176,12 +1182,12 @@ export const runTerm = (input: {
               }),
           ),
         )
-      const appeal = (reason: string) => (entry: Filed) =>
+      const appeal = (reason: ScriptedAppeal) => (entry: Filed) =>
         Effect.gen(function* () {
           const round = yield* assessment.appealEntry(
             t,
             entry.entryId,
-            { reason },
+            { reason: SCRIPTED_APPEALS[reason] },
             asStudent(entry.student),
           )
           entry.appealed = true
@@ -1297,7 +1303,7 @@ export const runTerm = (input: {
             '20:20',
             rejectNow('申报内容与证明材料不一致', '所附证书为市级程序设计竞赛，与申报的竞赛不符'),
           )
-          on(9, '10:40', appeal('上传时选错了证书，该竞赛的获奖证书可以补交，请复核'))
+          on(9, '10:40', appeal('wrongCertificate'))
           on(9, '15:00', (entry) => judged(entry, (judge) => askOn(entry, ask, judge.as)))
           on(9, '20:10', (entry) => answer(entry, false))
           on(10, '10:00', (entry) =>
@@ -1315,7 +1321,7 @@ export const runTerm = (input: {
               '证书写明活动在 2024 年 5 月举办，不在本学期材料范围内',
             ),
           )
-          on(9, '11:10', appeal('证书在本学期颁发，获奖应计入本学期，请复核'))
+          on(9, '11:10', appeal('issuedThisTerm'))
           on(9, '18:00', (entry) =>
             walk(
               entry,

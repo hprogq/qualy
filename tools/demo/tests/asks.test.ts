@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { APPEAL_REASONS } from '../catalog.ts'
+import { APPEAL_REASONS, SCRIPTED_APPEALS } from '../catalog.ts'
 import { EVERY_ASK, SCRIPTED_ASKS, askFor, requirementsOf, type Filing } from '../seed/asks.ts'
 import { claimsOf } from '../seed/claims.ts'
 import { makeRandom } from '../seed/context.ts'
@@ -147,10 +147,14 @@ describe('asks for more material', () => {
 })
 
 describe('appeal reasons', () => {
-  it('never say something is attached', () => {
-    const claiming = Object.values(APPEAL_REASONS)
-      .flat()
-      .filter((reason) => /附|已补充|现已|补交了/.test(reason))
+  // the chance flows' and the scripted ones alike; the seeders take a
+  // scripted appeal by its name here, never as text of their own
+  const reasons = [...Object.values(APPEAL_REASONS).flat(), ...Object.values(SCRIPTED_APPEALS)]
+
+  it('never say something is attached or supplied', () => {
+    const claiming = reasons.filter((reason) =>
+      /附|已补充|现已|补交|已上传|已提交|随后提供/.test(reason),
+    )
     expect(claiming).toEqual([])
   })
 })

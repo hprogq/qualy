@@ -303,3 +303,24 @@ export const APPEAL_REASONS = {
     '参与分按 0.2 计算，但该活动公布的参与分是 0.5',
   ],
 } as const
+
+/**
+ * What the persona's episodes and the selection's scenes argue, held to the
+ * same rule. When an appeal needs something new, the step judging it asks
+ * for it inside the appeal, and the student answers that ask.
+ */
+export const SCRIPTED_APPEALS = {
+  // 23-24-2: filed with another contest's certificate
+  wrongCertificate: '上传时选错了证书，申报的竞赛另有获奖证书，请复核',
+  // 24-25-1: a certificate issued this term for a contest held the term before
+  issuedThisTerm: '证书在本学期颁发，获奖应计入本学期，请复核',
+  // the selection: a zone's award, argued as the province's
+  zoneAward: '赛区选拔赛是省赛的初赛，赛区获奖名单由省组委会统一公布，应按省级认定，请复核',
+  // the selection: a conduct form refused for last year's template
+  template: '学院通知允许沿用往年模板，只要求内容完整，请班级综测小组复核',
+  // the selection: a conduct form refused for the missing page
+  pageLeftOut: '班主任已签过考核意见，扫描时漏了那一页，请复核',
+  // the selection: a conduct form refused as not matching the class's record
+  platformRecord: '志愿服务情况以志愿服务平台的记录为准，请复核',
+} as const
+export type ScriptedAppeal = keyof typeof SCRIPTED_APPEALS
