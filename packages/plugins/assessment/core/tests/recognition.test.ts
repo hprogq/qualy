@@ -1601,6 +1601,13 @@ describe.runIf(postgresAvailable)('recognitions', () => {
               values(level, ordinal),
               f.principal(f.reviewer),
             )
+          // the form offers only what both admit, before anything is typed
+          const form = (yield* assessment.getReviewInstance(
+            f.t,
+            instanceId,
+            f.principal(f.reviewer),
+          )).recognitionForm!
+          const offered = (id: string) => form.fields.find((field) => field.id === id)!.schema
           const previewedOption = yield* preview('provincial', 3)
           const previewedBound = yield* preview('national', 8)
           const option = yield* decide('provincial', 3)
@@ -1615,6 +1622,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           return {
             ids,
             narrowed: narrowed._tag,
+            offeredLevel: offered(ids.level),
+            offeredOrdinal: offered(ids.ordinal),
             previewedOption,
             previewedBound,
             option: errorOf<{ issues: readonly { field: string }[] }>(option),
@@ -1626,6 +1635,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
       ),
     )
     expect(result.narrowed).toBe('Success')
+    expect(result.offeredLevel).toMatchObject({ enum: ['national'] })
+    expect(result.offeredOrdinal).toMatchObject({ minimum: 1, maximum: 5 })
     // what today's question no longer admits is said before and at the press
     expect(result.previewedOption.issues.map((issue) => issue.recognitionId)).toEqual([
       result.ids.level,

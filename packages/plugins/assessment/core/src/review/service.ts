@@ -18,7 +18,7 @@ import {
   type RecognitionIssue,
   type RecognitionValues,
 } from '../scoring/recognition.ts'
-import { kindOf, type ChoiceSchema } from '@qualy/value-schema'
+import { admittedToday } from './form-bounds.ts'
 import { frozenCalculatorOf, readScoringPlan } from '../scoring/plan.ts'
 import { evaluateRecognition } from '../scoring/evaluate.ts'
 import { formatAmount } from '../scoring/builtins.ts'
@@ -1199,10 +1199,11 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       if (frozenFields === null) return null
       const seed = yield* recognitionSeed(tenantId, row.id, plan, row)
       const locked = yield* lockedProposalOf(tenantId, row.id)
-      // The question may have narrowed a choice since this round opened. The
-      // decision would refuse a value today's plan no longer reads, so the
-      // form stops offering it rather than letting the reviewer find out by
-      // being refused. A sitting's locked text is shown as it was cast.
+      // The question may have narrowed a field since this round opened - an
+      // option switched off, a bound pulled in. The decision would refuse a
+      // value today's question no longer admits, so the form offers only
+      // what both admit rather than letting the reviewer find out by being
+      // refused. A sitting's locked text is shown as it was cast.
       const question = yield* itemOf(tenantId, row.itemId)
       const live =
         locked !== null || question === null || question.currentRevisionId === null
@@ -1218,23 +1219,11 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               const today = Object.hasOwn(livePlan.value.recognitionSchemas, field.id)
                 ? livePlan.value.recognitionSchemas[field.id]
                 : undefined
-              if (
-                today === undefined ||
-                kindOf(field.schema) !== 'choice' ||
-                kindOf(today) !== 'choice'
-              ) {
-                return field
-              }
-              const admitted = new Set((today as ChoiceSchema).enum)
-              const offered = (field.schema as ChoiceSchema).enum.filter((value) =>
-                admitted.has(value),
-              )
-              // nothing in common is a reshaping the save already refuses
-              return offered.length === 0
+              return today === undefined
                 ? field
                 : {
                     id: field.id,
-                    schema: { ...field.schema, enum: offered } as typeof field.schema,
+                    schema: admittedToday(field.schema, today) as typeof field.schema,
                   }
             })
       // which filed field each determination takes its value from, and what
