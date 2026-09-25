@@ -299,10 +299,11 @@ export const unstorableText = (value: string): boolean =>
 
 /**
  * Checked on the primitives rather than field by field, because every text
- * field in the product is built from one of them. Every JSON body and address
- * under the api is also checked as a whole before it is decoded (the host's
- * serve chain, `./storable-text`); this keeps a primitive honest wherever it
- * is decoded.
+ * field in the product is built from one of them. Every address under the
+ * api, and every JSON payload an endpoint decodes, is also checked as a whole
+ * before it is decoded (`./storable-text`: the host's serve chain for the
+ * address, the api's own routes for the payload); this keeps a primitive
+ * honest wherever it is decoded.
  */
 const storable = Schema.makeFilter((value: string) =>
   unstorableText(value) ? 'text may not carry a NUL or a lone surrogate' : undefined,
