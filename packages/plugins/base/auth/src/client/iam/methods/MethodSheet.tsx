@@ -147,13 +147,16 @@ export function MethodSheet({
     mode !== provider.audience.mode ||
     [...userTypeIds].sort().join(',') !== [...stored].sort().join(',')
   // the sessions the audience as drafted would end: those of the types it
-  // would no longer admit
+  // would no longer admit; not known until the door's details are in, and
+  // an unknown count is never taken for none
   const ending =
-    mode === 'allow-list'
-      ? (detail.data?.usage.sessionsByUserType ?? [])
-          .filter((row) => !userTypeIds.includes(row.userTypeId))
-          .reduce((sum, row) => sum + row.sessions, 0)
-      : 0
+    mode !== 'allow-list'
+      ? 0
+      : detail.data === undefined
+        ? undefined
+        : detail.data.usage.sessionsByUserType
+            .filter((row) => !userTypeIds.includes(row.userTypeId))
+            .reduce((sum, row) => sum + row.sessions, 0)
 
   const config = detail.data?.config ?? {}
   const secrets = detail.data?.secrets ?? []
@@ -331,7 +334,7 @@ export function MethodSheet({
         data-testid="audience-panel"
         data-mode={mode}
         data-count={userTypeIds.length}
-        data-ending={ending}
+        data-ending={ending ?? 'unknown'}
       >
         <CardHead title={format(m.audienceLegend)}>
           {canManage ? (
@@ -399,8 +402,12 @@ export function MethodSheet({
             </Button>
             <Button
               size="sm"
-              disabled={!dirty || save.isPending}
-              onClick={() => (ending > 0 ? setNarrowing(true) : save.mutate())}
+              disabled={!dirty || save.isPending || ending === undefined}
+              onClick={() => {
+                if (ending === undefined) return
+                if (ending > 0) setNarrowing(true)
+                else save.mutate()
+              }}
             >
               {format(m.save)}
             </Button>
@@ -416,8 +423,10 @@ export function MethodSheet({
       >
         <CardHead title={format(m.methodDetails)}>
           {/* only a finished entrance can be put in service; an unfinished
-              one that is out of service says so instead of offering it */}
-          {canManage && (inService || complete) ? (
+              one that is out of service says so instead of offering it. One
+              in service is offered for taking out only once its details say
+              how many sessions that ends */}
+          {canManage && (inService ? detail.data !== undefined : complete) ? (
             <Segmented
               label={format(m.columnStatus)}
               value={provider.status}
@@ -570,7 +579,7 @@ export function MethodSheet({
         open={narrowing}
         tone="destructive"
         title={format(m.audienceNarrowTitle)}
-        description={format(m.audienceNarrowBody, { sessions: ending })}
+        description={format(m.audienceNarrowBody, { sessions: ending ?? 0 })}
         confirmLabel={format(m.save)}
         cancelLabel={format(m.cancel)}
         pending={save.isPending}

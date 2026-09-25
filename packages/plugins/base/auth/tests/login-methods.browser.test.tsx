@@ -281,6 +281,54 @@ describe('login methods screen', () => {
     })
   })
 
+  it('waits for a door’s details before narrowing it or taking it out of service', async () => {
+    const save = vi.fn(() => Effect.succeed({ version: 5 }))
+    let arrive: () => void = () => undefined
+    const arrived = new Promise<void>((resolve) => {
+      arrive = resolve
+    })
+    await renderScreen({
+      client: fakeClient(
+        stubs({
+          // the details are on their way and have not come yet
+          getAuthProvider: () =>
+            Effect.promise(() => arrived).pipe(
+              Effect.as(
+                detail(provider(), {
+                  usage: {
+                    bindings: 0,
+                    sessions: 3,
+                    sessionsByUserType: [{ userTypeId: FACULTY_ID, sessions: 3 }],
+                  },
+                }),
+              ),
+            ),
+          setAuthProviderAudience: save,
+        }),
+      ),
+      route: `/admin/login-methods?provider=${PASSWORD_ID}`,
+      children: <LoginMethodsPage />,
+    })
+    const panel = page.getByTestId('audience-panel')
+    const details = page.getByTestId('method-details')
+    await expect.element(panel).toBeInTheDocument()
+    await page.getByRole('tab', { name: '仅指定类型', exact: false }).click()
+    await page.getByRole('checkbox', { name: '学生', exact: false }).click()
+    // how many it would sign out is not known, and not taken for none
+    await expect.element(panel).toHaveAttribute('data-ending', 'unknown')
+    const saving = panel.getByRole('button', { name: '保存', exact: false })
+    await expect.element(saving).toBeDisabled()
+    await expect.element(details.getByRole('tab', { name: '已停用' })).not.toBeInTheDocument()
+
+    arrive()
+    await expect.element(panel).toHaveAttribute('data-ending', '3')
+    await expect.element(saving).toBeEnabled()
+    await expect.element(details.getByRole('tab', { name: '已停用' })).toBeInTheDocument()
+    await saving.click()
+    await expect.element(page.getByRole('alertdialog')).toBeInTheDocument()
+    expect(save).not.toHaveBeenCalled()
+  })
+
   it('says out loud when a door would open for nobody', async () => {
     await renderScreen({
       client: fakeClient(
