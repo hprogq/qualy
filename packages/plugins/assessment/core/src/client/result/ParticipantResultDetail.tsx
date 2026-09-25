@@ -104,7 +104,12 @@ const styles = stylex.create({
   // ...or on a phone, a row of their own above the tabs: wrapped under them
   // inside the row, they would stand between the active tab's ink and the
   // rule it is meant to sit on
-  asideAbove: { display: 'flex', justifyContent: 'flex-end', marginBottom: -8 },
+  asideAbove: {
+    // nobody either side (opened from a link): no row at all
+    display: { default: 'flex', ':empty': 'none' },
+    justifyContent: 'flex-end',
+    marginBottom: -8,
+  },
   tab: {
     position: 'relative',
     display: 'inline-flex',
@@ -447,7 +452,11 @@ export function ParticipantResultDetail({
         />
       </BatchBanner>
 
-      {aside !== undefined && phone && <div {...stylex.props(styles.asideAbove)}>{aside}</div>}
+      {aside !== undefined && phone && (
+        <div data-testid="neighbors-row" {...stylex.props(styles.asideAbove)}>
+          {aside}
+        </div>
+      )}
       <div {...stylex.props(styles.tabBar)}>
         {/* the claims first: what was filed and decided is what somebody
             checking an account opens it for, and the total follows from it */}

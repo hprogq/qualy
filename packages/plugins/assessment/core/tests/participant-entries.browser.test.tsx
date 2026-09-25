@@ -455,6 +455,9 @@ describe('reading somebody’s entries', () => {
     await page.getByRole('button', { name: /科研成果/ }).click()
     await expect.poll(() => addressNow()).toContain(`open=${OWN_ITEM}`)
     await expect.poll(() => rows().length).toBe(2)
+    // opened with nobody either side on the list, no row is kept for them
+    await expect.element(page.getByTestId('neighbors-row')).toBeInTheDocument()
+    expect(getComputedStyle(page.getByTestId('neighbors-row').element()).display).toBe('none')
   })
 
   // Opened from the list, somebody's claims are what the page is for; the
