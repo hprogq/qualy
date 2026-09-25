@@ -32,6 +32,7 @@ import { Input } from '@qualy/ui/input'
 import { toast } from '@qualy/ui/toast'
 import { iamMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
+import { needsReauthentication, useReauthentication } from '../account/Reauthentication.tsx'
 import { PasswordChecklist } from '../password/PasswordChecklist.tsx'
 import { usePasswordChecks } from '../password/checks.ts'
 import { EntranceAccount } from './person-facts.tsx'
@@ -287,6 +288,7 @@ function PasswordDialog({
       ).then((answer) => answer.checks),
   })
 
+  const reauthentication = useReauthentication(undefined)
   const save = useMutation({
     mutationFn: () =>
       run(
@@ -304,6 +306,8 @@ function PasswordDialog({
     onError: (error: unknown) => {
       // a refused secret is said by the list under it
       if ((error as { _tag?: unknown })._tag === 'AUTH_BINDING_CREDENTIAL_INVALID') setRefused(true)
+      // a way into one's own account is set once the session shows it is its owner's
+      else if (needsReauthentication(error)) reauthentication.ask(() => save.mutate())
       else setFeedback(formatError(error))
     },
   })
@@ -312,58 +316,65 @@ function PasswordDialog({
   const replacing = entrance.bound?.hasCredential === true
 
   return (
-    <FormDialog
-      open
-      title={format(m.passwordDialogTitle, { name: entrance.name })}
-      {...(replacing ? { description: format(m.identityResetBody) } : {})}
-      onClose={onClose}
-      footer={
-        <>
-          <Button variant="outline" onClick={onClose}>
-            {format(m.cancel)}
-          </Button>
-          <Button type="submit" form="user-auth-binding" disabled={secret === '' || save.isPending}>
-            {format(m.save)}
-          </Button>
-        </>
-      }
-    >
-      <form
-        id="user-auth-binding"
-        {...stylex.props(styles.form)}
-        onSubmit={(event) => {
-          event.preventDefault()
-          if (!checks.passable) {
-            setRefused(true)
-            return
-          }
-          save.mutate()
-        }}
+    <>
+      <FormDialog
+        open
+        title={format(m.passwordDialogTitle, { name: entrance.name })}
+        {...(replacing ? { description: format(m.identityResetBody) } : {})}
+        onClose={onClose}
+        footer={
+          <>
+            <Button variant="outline" onClick={onClose}>
+              {format(m.cancel)}
+            </Button>
+            <Button
+              type="submit"
+              form="user-auth-binding"
+              disabled={secret === '' || save.isPending}
+            >
+              {format(m.save)}
+            </Button>
+          </>
+        }
       >
-        <Feedback message={feedback} />
-        <Field
-          label={formatText(binding.secret.label)}
-          {...(binding.secret.hint === null ? {} : { hint: formatText(binding.secret.hint) })}
+        <form
+          id="user-auth-binding"
+          {...stylex.props(styles.form)}
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (!checks.passable) {
+              setRefused(true)
+              return
+            }
+            save.mutate()
+          }}
         >
-          {(id) => (
-            <Input
-              id={id}
-              name="binding-secret"
-              type="password"
-              // never the browser's saved one: this is somebody else's account
-              autoComplete="new-password"
-              value={secret}
-              onChange={(event) => setSecret(event.target.value)}
-            />
-          )}
-        </Field>
-        <PasswordChecklist
-          checks={checks}
-          password={secret}
-          min={binding.secret.minLength}
-          refused={refused}
-        />
-      </form>
-    </FormDialog>
+          <Feedback message={feedback} />
+          <Field
+            label={formatText(binding.secret.label)}
+            {...(binding.secret.hint === null ? {} : { hint: formatText(binding.secret.hint) })}
+          >
+            {(id) => (
+              <Input
+                id={id}
+                name="binding-secret"
+                type="password"
+                // never the browser's saved one: this is somebody else's account
+                autoComplete="new-password"
+                value={secret}
+                onChange={(event) => setSecret(event.target.value)}
+              />
+            )}
+          </Field>
+          <PasswordChecklist
+            checks={checks}
+            password={secret}
+            min={binding.secret.minLength}
+            refused={refused}
+          />
+        </form>
+      </FormDialog>
+      {reauthentication.dialog}
+    </>
   )
 }

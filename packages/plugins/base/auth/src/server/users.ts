@@ -7,6 +7,7 @@ import { db, type Db, lockTenant, userTypeGuard } from './db.ts'
 import { sql } from 'kysely'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import { scopeCoverage, type AuthorizationScope, type Principal } from '@qualy/rbac-contract'
+import { requireReauthenticated } from './reauthentication.ts'
 import { placementAllowed, placementLegal } from './placement.ts'
 import { Audit } from '@qualy/audit-contract/effect'
 import type { AuditActor } from '@qualy/audit-contract'
@@ -1297,6 +1298,13 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       if (before.isSystem) return yield* new SystemAccountProtected()
       yield* requireAccount(tenantId, userId, as)
       yield* guardDemo(tenantId, userId)
+      // a way in set for oneself is a new way into one's own account, from
+      // whichever screen: the session in hand shows it is its owner's first
+      if (userId === as.userId) {
+        yield* withDb(requireReauthenticated(tenantId, as.sessionId)).pipe(
+          Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+        )
+      }
       const provider = yield* withDb(providerGuard(tenantId, providerId)).pipe(Effect.orDie)
       if (!provider) return yield* new ProviderNotFound()
       const driver = (yield* drivers.forType(provider.type))?.driver
@@ -1567,6 +1575,15 @@ export const make = Effect.fn('Iam.users.make')(function* () {
           // record: a name is not.
           if (fields.email !== undefined || fields.businessNo !== undefined || changingType) {
             yield* requireAccount(tenantId, user.id, as)
+          }
+          // Moving one's own address or number from the administration
+          // screens is the same step as moving it from one's own page: the
+          // session in hand shows it is its owner's first.
+          if (
+            user.id === as.userId &&
+            (fields.email !== undefined || fields.businessNo !== undefined)
+          ) {
+            yield* requireReauthenticated(tenantId, as.sessionId)
           }
           if (changingType) {
             if (user.isSystem) return yield* new SystemAccountProtected()

@@ -793,6 +793,7 @@ export const identityApiGroup = HttpApiGroup.make('identity')
         LastAdministrator,
         AccessDenied,
         DemoAccountLocked,
+        ReauthenticationRequired,
       ],
     }).middleware(Authenticated),
   )
@@ -866,6 +867,7 @@ export const identityApiGroup = HttpApiGroup.make('identity')
         AuthBindingCredentialInvalid,
         AccessDenied,
         DemoAccountLocked,
+        ReauthenticationRequired,
       ],
     }).middleware(Authenticated),
   )

@@ -33,6 +33,7 @@ import { Status, Tag } from '@qualy/ui/screen'
 import { iamMessages as m } from '../i18n.ts'
 import { rosterSearch } from './users/roster-address.ts'
 import { authApi } from '../api.ts'
+import { needsReauthentication, useReauthentication } from '../account/Reauthentication.tsx'
 
 // Who the open person is, above every section of their record.
 //
@@ -208,6 +209,10 @@ export default function UserDetailHeader() {
     setSaved(false)
   }, [record])
 
+  // one's own address and number move only after the session shows it is
+  // its owner's, from this screen as from one's own page
+  const reauthentication = useReauthentication(undefined)
+
   const refresh = () => queryClient.invalidateQueries({ queryKey: query.identity.key() })
   // the one crossing from an effect to a promise on this screen: TanStack
   // needs a promise, and doing so here keeps every call site an effect
@@ -240,6 +245,10 @@ export default function UserDetailHeader() {
         },
       }),
     ),
+    onError: (error: unknown) => {
+      if (needsReauthentication(error)) reauthentication.ask(() => saveProfile.mutate(undefined))
+      else setFeedback(formatError(error))
+    },
     onSuccess: async () => {
       setEditing(false)
       setSaved(true)
@@ -550,6 +559,7 @@ export default function UserDetailHeader() {
           />
         </>
       )}
+      {reauthentication.dialog}
     </div>
   )
 }

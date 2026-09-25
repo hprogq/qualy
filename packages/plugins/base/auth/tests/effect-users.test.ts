@@ -30,6 +30,7 @@ import { secretsLayer } from '@qualy/plugin-secrets/testkit'
 import { captchaLayer } from '@qualy/plugin-captcha/testkit'
 import { acceptable, standInChecks } from './support/secret-checks.ts'
 import { HARD_LIMITS } from '../src/server/limiter.ts'
+import { reauthenticated } from './support/reauthenticated.ts'
 
 // People, and who may administer them.
 //
@@ -829,6 +830,95 @@ describe.runIf(postgresAvailable).concurrent('the way in written for a person', 
       // a changed secret that left the old session alive would have locked nobody out
       expect(answer.sessions).toBe(0)
       expect(answer.events).toEqual(['auth.identity.bind@2', 'auth.identity.bind@2'])
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  // Administering oneself from the IAM screens moves the same things one's
+  // own page does, so it is held to the same step: the session in hand
+  // shows it is its owner's before one's own address or way in changes.
+  it('asks an administrator to show it is them before moving their own address or way in', async () => {
+    const db = await createTestContext('effect-users-self-reauth')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const iam = yield* Iam
+          const provider = yield* providerOf(f.tenant)
+          // the manager stands where they manage, so these screens reach them too
+          yield* runSql(
+            sql`update users set primary_org_node_id = ${f.left} where id = ${f.manager}`,
+          )
+          const session = one_<{ id: string }>(
+            yield* runSql(sql`
+              insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at)
+              values (${f.tenant}, ${f.manager}, ${provider}, 'manager-session', now() + interval '1 day')
+              returning id`),
+          ).id
+          const as: Principal = { ...f.as, sessionId: session }
+          const versionOf = (userId: string) =>
+            Effect.map(
+              runSql(sql`select version from users where id = ${userId}`),
+              (found) => one_<{ version: number }>(found).version,
+            )
+          const ownAddress = yield* Effect.result(
+            iam.users.update(
+              f.tenant,
+              f.manager,
+              { email: 'me@school.edu' },
+              yield* versionOf(f.manager),
+              as,
+            ),
+          )
+          const ownWayIn = yield* Effect.result(
+            iam.users.putBinding(f.tenant, f.manager, provider, { secret: 'my-secret' }, as),
+          )
+          const ownName = yield* Effect.result(
+            iam.users.update(
+              f.tenant,
+              f.manager,
+              { displayName: 'Manager Two' },
+              yield* versionOf(f.manager),
+              as,
+            ),
+          )
+          const theirs = yield* Effect.result(
+            iam.users.update(
+              f.tenant,
+              f.onLeft,
+              { email: 'ada@school.edu' },
+              yield* versionOf(f.onLeft),
+              as,
+            ),
+          )
+          yield* reauthenticated(session)
+          const afterwards = yield* Effect.result(
+            iam.users.update(
+              f.tenant,
+              f.manager,
+              { email: 'me@school.edu' },
+              yield* versionOf(f.manager),
+              as,
+            ),
+          )
+          return {
+            ownAddress: tagOf(ownAddress),
+            ownWayIn: tagOf(ownWayIn),
+            ownName: ownName._tag,
+            theirs: theirs._tag,
+            afterwards: afterwards._tag,
+          }
+        }),
+      )
+      expect(ok(exit)).toEqual({
+        ownAddress: 'AUTH_REAUTHENTICATION_REQUIRED',
+        ownWayIn: 'AUTH_REAUTHENTICATION_REQUIRED',
+        ownName: 'Success',
+        theirs: 'Success',
+        afterwards: 'Success',
+      })
     } finally {
       await db.dispose()
     }
