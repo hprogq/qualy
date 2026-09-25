@@ -1,5 +1,5 @@
 import { NodeHttpServer } from '@effect/platform-node'
-import { Effect, Exit, Layer, Schema, Scope } from 'effect'
+import { Effect, Exit, Layer, Schema, Scope, Stream } from 'effect'
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
 import { createServer } from 'node:http'
@@ -38,11 +38,32 @@ const group = HttpApiGroup.make('probe')
       success: echo,
     }),
   )
+  .add(HttpApiEndpoint.post('touch', '/probe/touch', { success: echo }))
+  // a raw door streaming its body, the way the local upload door does
+  .add(HttpApiEndpoint.put('stream', '/probe/stream'))
 const api = HttpApi.make('probe').add(group).prefix(QUALY_API_PREFIX)
+
+/** how many bytes each request to the streaming door found, in order */
+const streamed: number[] = []
+
 const handlers = HttpApiBuilder.group(api, 'probe', (h) =>
   h
     .handle('keep', ({ payload }) => Effect.succeed({ seen: payload }))
-    .handle('find', ({ params, query }) => Effect.succeed({ seen: { ...params, ...query } })),
+    .handle('find', ({ params, query }) => Effect.succeed({ seen: { ...params, ...query } }))
+    .handle('touch', () => Effect.succeed({ seen: 'touched' }))
+    .handleRaw(
+      'stream',
+      Effect.fn(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest
+        const length = yield* Stream.runFold(
+          request.stream,
+          () => 0,
+          (total, chunk) => total + chunk.byteLength,
+        ).pipe(Effect.orElseSucceed(() => -1))
+        streamed.push(length)
+        return HttpServerResponse.jsonUnsafe({ length })
+      }),
+    ),
 )
 
 /** a raw route taking bytes, the way a file upload arrives */
@@ -102,19 +123,36 @@ describe('text postgres cannot keep', () => {
   })
 
   it('is refused in a body sent with no content type, which the endpoint reads as JSON', async () => {
-    // a Blob with no type, so fetch adds no content type of its own
-    const bare = await fetch(`${base}/probe/keep`, {
-      method: 'POST',
-      body: new Blob(['{"text":"a\\u0000b"}']),
+    // a Blob with no type, so fetch adds no content type of its own; the
+    // endpoint would decode it as JSON, so it is refused before anything
+    // reads it, clean or not
+    for (const json of ['{"text":"a\\u0000b"}', '{"text":"ab"}']) {
+      const bare = await fetch(`${base}/probe/keep`, { method: 'POST', body: new Blob([json]) })
+      expect(await refusedAsBadRequest(bare), json).toEqual({ status: 415, tag: 'BAD_REQUEST' })
+    }
+    // a request with nothing to send names no type and needs none
+    const empty = await fetch(`${base}/probe/touch`, { method: 'POST' })
+    expect(empty.status).toBe(200)
+    expect(await empty.json()).toEqual({ seen: 'touched' })
+  })
+
+  it('leaves a streaming door its body, and refuses an untyped one before reading it', async () => {
+    streamed.length = 0
+    const bytes = new Uint8Array(64 * 1024).fill(7)
+    const typed = await fetch(`${base}/probe/stream`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/octet-stream' },
+      body: bytes,
     })
-    expect(await refusedAsBadRequest(bare)).toEqual({ status: 400, tag: 'BAD_REQUEST' })
-    // and the same body, clean, still arrives: the endpoint does read it
-    const clean = await fetch(`${base}/probe/keep`, {
-      method: 'POST',
-      body: new Blob(['{"text":"ab"}']),
+    expect(await typed.json()).toEqual({ length: bytes.byteLength })
+    // read as JSON first, the same bytes reached the door as an exhausted
+    // stream: an upload stored as nothing
+    const untyped = await fetch(`${base}/probe/stream`, {
+      method: 'PUT',
+      body: new Blob([bytes]),
     })
-    expect(clean.status).toBe(200)
-    expect(await clean.json()).toEqual({ seen: { text: 'ab' } })
+    expect(await refusedAsBadRequest(untyped)).toEqual({ status: 415, tag: 'BAD_REQUEST' })
+    expect(streamed).toEqual([bytes.byteLength])
   })
 
   it('is refused in an address, path and query alike', async () => {

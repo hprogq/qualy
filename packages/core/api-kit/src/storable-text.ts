@@ -27,20 +27,20 @@ const refused = HttpServerResponse.schemaJson(BadRequest)(
   { status: 400 },
 ).pipe(Effect.orDie)
 
+const untyped = HttpServerResponse.schemaJson(BadRequest)(
+  new BadRequest({ message: 'a request body has to name its content type' }),
+  { status: 415 },
+).pipe(Effect.orDie)
+
+const mediaType = (header: string): string => header.split(';')[0]!.trim().toLowerCase()
+
 /**
- * The media type the endpoint will decode the body as.
- *
- * A body sent with no content type at all is decoded as JSON - the platform
- * falls back to `application/json` when the header is missing
- * (repos/effect/packages/effect/src/unstable/httpapi/HttpApiBuilder.ts,
- * `decodePayload`) - so it is read as JSON here as well. Reading an absent
- * header as "not JSON" let any request past this check by leaving the header
- * off, and the endpoint parsed its body anyway. A route that streams its body
- * is sent one: the local upload door's client always says
- * `application/octet-stream`.
+ * Whether a request carries a body at all: a length above zero, or one sent
+ * in chunks with no length given. A POST or PUT with nothing to send says
+ * `content-length: 0`, which fetch writes for it.
  */
-const mediaType = (header: string | undefined): string =>
-  (header ?? 'application/json').split(';')[0]!.trim().toLowerCase()
+const carriesBody = (headers: Readonly<Record<string, string | undefined>>): boolean =>
+  headers['transfer-encoding'] !== undefined || Number(headers['content-length'] ?? 0) > 0
 
 /**
  * Whether a JSON body carries a string, or a key, PostgreSQL could not keep.
@@ -88,6 +88,20 @@ const carriesUnstorableText = (body: string): boolean => {
  * the endpoint reads the same cached bytes afterwards. A body that cannot be
  * read - over the ceiling, cut off - is left to the endpoint, which meets the
  * same failure and answers it as it always has.
+ *
+ * A body that names no content type is refused with a 415 before anything
+ * reads it. Running in front of the router, this cannot tell which route a
+ * request is for, and the two readings of such a body disagree: an endpoint
+ * decodes it as JSON (the platform falls back to `application/json` when the
+ * header is missing - repos/effect/packages/effect/src/unstable/httpapi/
+ * HttpApiBuilder.ts, `decodePayload`), while a raw route streams it. Letting
+ * it through unread let text past this check by leaving the header off;
+ * reading it as JSON handed the local upload door an exhausted stream, so a
+ * file sent with no type was stored as nothing, or cut off halfway. Every
+ * client of this api names the type of what it sends - the typed client
+ * JSON, the upload door's `application/octet-stream` - so nothing
+ * legitimate is refused. An empty header is not JSON either: an endpoint
+ * that decodes refuses it itself, and a raw route streams it.
  */
 export const storableTextGuard = <A, E, R>(
   httpApp: Effect.Effect<A, E, R>,
@@ -102,12 +116,10 @@ export const storableTextGuard = <A, E, R>(
     // the only spelling of a NUL in an address: the request line itself
     // cannot carry the byte, and a broken escape decodes to nothing at all
     if (request.url.includes('%00')) return refuse('address')
-    if (
-      !HttpMethod.hasBody(request.method) ||
-      mediaType(request.headers['content-type']) !== 'application/json'
-    ) {
-      return httpApp
-    }
+    if (!HttpMethod.hasBody(request.method)) return httpApp
+    const type = request.headers['content-type']
+    if (type === undefined) return carriesBody(request.headers) ? refuseUntyped : httpApp
+    if (mediaType(type) !== 'application/json') return httpApp
     return Effect.flatMap(
       Effect.result(request.text),
       (read): Effect.Effect<A | HttpServerResponse.HttpServerResponse, E, R> =>
@@ -120,3 +132,7 @@ const refuse = (part: 'address' | 'body') =>
     Effect.annotateLogs({ part }),
     Effect.andThen(refused),
   )
+
+const refuseUntyped = Effect.logDebug('request refused: its body names no content type').pipe(
+  Effect.andThen(untyped),
+)

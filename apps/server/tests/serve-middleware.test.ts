@@ -186,15 +186,15 @@ describe('text the database could not keep', () => {
     expect(await ordinary.json()).toEqual({ read: 25 })
   })
 
-  it('is refused in a body sent with no content type, which an endpoint decodes as JSON', async () => {
+  it('is refused in a body sent with no content type, before a route reads it', async () => {
     // an anonymous script need send neither an origin nor a content type, and
-    // the platform reads a typeless body as JSON; a Blob with no type keeps
-    // fetch from adding one
+    // the platform reads a typeless body as JSON while a raw route streams
+    // it; a Blob with no type keeps fetch from adding one
     const bare = await fetch(`${base}${QUALY_API_PREFIX}/swallow`, {
       method: 'POST',
       body: new Blob(['{"email":"a\\u0000@example.edu"}']),
     })
-    expect(bare.status).toBe(400)
+    expect(bare.status).toBe(415)
     expect(await bare.json()).toMatchObject({ _tag: 'BAD_REQUEST' })
   })
 })
