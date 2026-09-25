@@ -770,7 +770,11 @@ export const makeAdministrativeImportMethods = (
     // `{}`, because the table refuses an approved fact without one.
     const settled = decoded.map((row) => {
       if (row.issues.some((one) => one.severity === 'error')) return row
-      const wrong = judgeRecognition(ready.plan.recognitionSchemas, row.recognition)
+      const wrong = judgeRecognition(
+        ready.plan.recognitionSchemas,
+        row.recognition,
+        ready.context.materialRange,
+      )
       if (wrong.length > 0) {
         return {
           ...row,
@@ -1121,6 +1125,38 @@ export const makeAdministrativeImportMethods = (
                 takenHere.set(person.participantId, here + 1)
               }
               if (row.basis.trim() === '') return yield* refuse('basis', 'basis-required')
+              // The round's material window, as it stands under the lock. A
+              // narrowing is refused while a live fact falls outside the new
+              // window, and it cannot see rows that are not written yet: a
+              // file judged against the old window has to be judged against
+              // the one the narrowing left. Pure reading, no calculator.
+              const readable = yield* Effect.result(
+                ready.driver.decodePayload(
+                  ready.revision.formConfig,
+                  row.payloadPreview,
+                  ready.context,
+                ),
+              )
+              if (Result.isFailure(readable)) {
+                const issue = readable.failure.issues[0]
+                return yield* refuse(
+                  issue === undefined ? null : `evidence.${issue.field}`,
+                  issue?.reason ?? 'invalid',
+                )
+              }
+              const outside = judgeRecognition(
+                ready.plan.recognitionSchemas,
+                row.recognitionPreview,
+                ready.context.materialRange,
+              )[0]
+              if (outside !== undefined) {
+                return yield* refuse(
+                  outside.recognitionId === ''
+                    ? 'recognition'
+                    : `recognition.${outside.recognitionId}`,
+                  outside.reason,
+                )
+              }
 
               const { entryId } = yield* recordAdministrativeEntryTx({
                 tenantId,

@@ -33,6 +33,8 @@ const WORDS = {
   'boolean-syntax': m.importReasonBoolean,
   required: m.importReasonRequired,
   'out-of-range': m.importReasonOutOfRange,
+  // the same window, reached through what the office determined
+  'out-of-material-range': m.importReasonOutOfRange,
   'too-long': m.importReasonTooLong,
   'participant-out-of-scope': m.importReasonOutOfScope,
   'phase-closed': m.importReasonPhaseClosed,

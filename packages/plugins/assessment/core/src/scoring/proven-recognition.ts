@@ -16,12 +16,17 @@ import type { ScoringPlan } from './plan.ts'
  *
  * On its own because three doors write determinations and one of them, the
  * bulk administrative record, did not have this.
+ *
+ * The round's material window is required, not optional: a date the
+ * question holds to the window is only held there by a caller that passes
+ * it, and every door that writes an approved claim has a round in hand.
  */
 export const provenRecognition = (
   plan: ScoringPlan,
   candidate: unknown,
+  materialRange: { readonly start: string; readonly end: string },
 ): Effect.Effect<Record<string, unknown>, EntryPayloadInvalid> => {
-  const wrong = judgeRecognition(plan.recognitionSchemas, candidate)
+  const wrong = judgeRecognition(plan.recognitionSchemas, candidate, materialRange)
   return wrong.length === 0
     ? Effect.succeed(
         // a value written "3.0" and read back "3.00" would make every later

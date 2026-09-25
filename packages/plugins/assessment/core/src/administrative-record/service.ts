@@ -290,9 +290,40 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
     const determination = yield* provenRecognition(
       plan,
       input.recognition === undefined ? {} : input.recognition.values,
+      context.materialRange,
     )
 
-    return { batch, item, revision, plan, decoded, files, determination }
+    return { batch, item, revision, plan, driver, payload, decoded, files, determination }
+  })
+
+  /**
+   * The two judgements that depend on the round's material window, made
+   * again against the window read under the lock.
+   *
+   * Narrowing the window is refused while a live fact falls outside it, and
+   * that check can only see facts already written: an act judged against
+   * the old window and written after the narrowing committed would put
+   * outside it exactly what the check exists to keep out. Pure reading, no
+   * calculator, so it costs nothing to do while holding the lock.
+   */
+  const judgedUnder = Effect.fn('Assessment.administrativeRecord.judgedUnder')(function* (
+    shape: Effect.Success<ReturnType<typeof shapeOf>>,
+    input: AdministrativeRecordInput,
+    context: BatchContext,
+  ) {
+    const decoded = yield* shape.driver
+      .decodePayload(shape.revision.formConfig, shape.payload, context)
+      .pipe(
+        Effect.catchTag('ASSESSMENT_ITEM_PAYLOAD_INVALID', (error) =>
+          Effect.fail(new EntryPayloadInvalid({ issues: error.issues })),
+        ),
+      )
+    const determination = yield* provenRecognition(
+      shape.plan,
+      input.recognition === undefined ? {} : input.recognition.values,
+      context.materialRange,
+    )
+    return { decoded, determination }
   })
 
   /**
@@ -539,6 +570,28 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
             if (already !== null) return { ...already, replayed: true as const }
           }
 
+          // The question, again, on the locked connection: a new version or
+          // a withdrawal committed between the shape and the lock leaves what
+          // was judged outside answering a form nobody files against any
+          // more, and the scorer would read those facts with a plan that
+          // does not know them. A version is immutable, so the same one
+          // still means the same plan and the same proof.
+          const current = yield* itemOf(tenantId, shape.item.id)
+          if (current === null || current.batchId !== batchId || current.status !== 'active') {
+            return yield* new ItemNotFound()
+          }
+          if (current.currentRevisionId !== shape.revision.id) {
+            return yield* new ItemRevisionConflict({
+              itemId: current.id,
+              currentRevisionId: current.currentRevisionId,
+            })
+          }
+          const window = yield* oneBatch(tenantId, batchId)
+          if (window === null) return yield* new BatchNotFound()
+          const judged = yield* judgedUnder(shape, input, {
+            materialRange: deps.parseRange(String(window.materialRange)),
+          })
+
           // Who may be recorded on, and whether the phase still admits the
           // act: both on the locked connection, the way the import path
           // does it. Resolved before the lock they were a judgement about a
@@ -596,10 +649,7 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
               refused.push({ participantId: person.id, reason: admitted.reason })
               continue
             }
-            if (
-              shape.item.maxEntries !== null &&
-              (held.get(person.id) ?? 0) >= shape.item.maxEntries
-            ) {
+            if (current.maxEntries !== null && (held.get(person.id) ?? 0) >= current.maxEntries) {
               refused.push({ participantId: person.id, reason: 'max-entries-reached' })
             }
           }
@@ -628,8 +678,8 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
               participantId: person.id,
               subjectUserId: person.userId,
               actorUserId: as.userId,
-              payload: shape.decoded,
-              recognition: shape.determination,
+              payload: judged.decoded,
+              recognition: judged.determination,
               basis: input.basis.trim(),
               // settled in the product, not brought in on a file: the
               // number of people it reached does not change that (§32.78)

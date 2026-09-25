@@ -977,6 +977,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 ? yield* provenRecognition(
                     plan,
                     input.recognition === undefined ? {} : input.recognition.values,
+                    materialRange,
                   )
                 : undefined
               if (determined !== undefined) {
@@ -1474,12 +1475,20 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                   const determined = yield* provenRecognition(
                     livePlan,
                     seedFromEvidence(livePlan, carried),
+                    deps.parseRange(String(batch!.materialRange)),
                   ).pipe(
-                    // nobody is misfiling anything: the question was
-                    // configured so that a claim nobody reviews cannot be
-                    // fully determined, which is a refusal about this round
-                    Effect.catchTag('ASSESSMENT_ENTRY_PAYLOAD_INVALID', () =>
-                      refuse(action, 'item-not-configured'),
+                    // a date outside the round is the claim's own to fix;
+                    // anything else means nobody is misfiling anything: the
+                    // question was configured so that a claim nobody
+                    // reviews cannot be fully determined, which is a
+                    // refusal about this round
+                    Effect.catchTag('ASSESSMENT_ENTRY_PAYLOAD_INVALID', (invalid) =>
+                      refuse(
+                        action,
+                        invalid.issues.some((issue) => issue.reason === 'out-of-material-range')
+                          ? 'entry-needs-revision'
+                          : 'item-not-configured',
+                      ),
                     ),
                   )
                   const identity = probeIdentity({

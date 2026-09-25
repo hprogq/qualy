@@ -40,6 +40,9 @@ import { declarationDriver } from '../../src/item/declaration.ts'
 // change that would strand live entries.
 
 const LEVEL: AtomicSchema = { type: 'string', enum: ['national', 'provincial'] }
+const DATE: AtomicSchema = { type: 'string', format: 'date' }
+/** where the dated stand-in keeps its day in a payload */
+export const DATED_SLOT = 'claimed-when-slot'
 
 export const testItemType: ItemTypeDriver = {
   id: 'evidence',
@@ -60,6 +63,11 @@ export const testItemType: ItemTypeDriver = {
         accept: Schema.optional(Schema.Array(Schema.String)),
       }),
     ),
+    // a stand-in for a date field: the form offers a day a determination
+    // can be seeded from, and with `withinRound` holds it to the material
+    // window the way evidence's own date fields are held
+    dated: Schema.optional(Schema.Boolean),
+    withinRound: Schema.optional(Schema.Boolean),
   }),
   configIssues: (config, batch) => {
     const from = (config as { validFrom?: string }).validFrom
@@ -78,7 +86,7 @@ export const testItemType: ItemTypeDriver = {
       ? [{ path: 'formConfig.kind', reason: 'kind-change-requires-new-field' }]
       : []
   },
-  decodePayload: (config, payload) =>
+  decodePayload: (config, payload, batch) =>
     Effect.suspend(() => {
       const required = ((config as { required?: readonly string[] }).required ?? []).filter(
         (key) =>
@@ -86,11 +94,20 @@ export const testItemType: ItemTypeDriver = {
           payload === null ||
           !(key in (payload as Record<string, unknown>)),
       )
-      return required.length === 0
-        ? Effect.succeed(payload)
-        : Effect.fail(
-            new ItemPayloadInvalid(required.map((field) => ({ field, reason: 'required' }))),
-          )
+      if (required.length > 0) {
+        return Effect.fail(
+          new ItemPayloadInvalid(required.map((field) => ({ field, reason: 'required' }))),
+        )
+      }
+      const day = (payload as Record<string, unknown> | null)?.[DATED_SLOT]
+      if (
+        (config as { withinRound?: boolean }).withinRound === true &&
+        typeof day === 'string' &&
+        (day < batch.materialRange.start || day >= batch.materialRange.end)
+      ) {
+        return Effect.fail(new ItemPayloadInvalid([{ field: DATED_SLOT, reason: 'out-of-range' }]))
+      }
+      return Effect.succeed(payload)
     }),
   attachmentRefs: (config, payload) => {
     const rules = (config as { files?: { maxFileBytes?: number; accept?: readonly string[] } })
@@ -109,8 +126,11 @@ export const testItemType: ItemTypeDriver = {
   // identity and address deliberately differ: the suites must prove the
   // seed reads the ADDRESS, because production forms rename keys while ids
   // stay put
-  bindableFields: () => [
+  bindableFields: (config) => [
     { fieldId: 'claimed-level', payloadKey: 'claimed-level-slot', schema: LEVEL, always: true },
+    ...((config as { dated?: boolean } | null | undefined)?.dated === true
+      ? [{ fieldId: 'claimed-when', payloadKey: DATED_SLOT, schema: DATE, always: true }]
+      : []),
   ],
   interaction: 'entry',
   scoring: { calculator: 'fixed@1', aggregator: 'sum@1' },
@@ -354,6 +374,14 @@ export const gradedTest: CalculatorRegistration = testCalculator({
   required: ['level'],
 })
 
+/** a calculator that reads a day, for determinations the round's window holds */
+export const datedTest: CalculatorRegistration = testCalculator({
+  ref: 'dated-test@1',
+  contractHash: 'test:dated',
+  properties: { when: DATE },
+  required: ['when'],
+})
+
 /**
  * A calculator with two facts: one the filing seeds, one only a reviewer can
  * make. That is the shape that tells "filling in" apart from "changing".
@@ -515,6 +543,27 @@ export const probeLevelScoring = (config: { refuseLevel?: string; outageLevel?: 
   bindings: { level: { kind: 'recognition' as const, recognitionId: 'rec-level' } },
 })
 
+/**
+ * A determined day the round's material window holds, seeded from the dated
+ * stand-in's field when the form offers one. Written the way the editor
+ * saves it: the recognition's identity is minted by the server.
+ */
+export const datedScoring = (seededFrom: string | null = null) => ({
+  // the language that lets a determination narrow the parameter it feeds
+  version: 2 as const,
+  calculator: { ref: datedTest.ref, config: {} },
+  aggregator: { ref: 'sum@1', config: {} },
+  recognitions: [
+    {
+      handle: 'when',
+      label: '认定日期',
+      defaultFromFieldId: seededFrom,
+      refinement: { type: 'string', format: 'date', 'x-qualy-inMaterialRange': true },
+    },
+  ],
+  bindings: { when: { kind: 'recognition' as const, handle: 'when' } },
+})
+
 /** the scoring configuration that puts a determination in front of a score */
 export const gradedScoring = {
   calculator: { ref: gradedTest.ref, config: {} },
@@ -579,6 +628,7 @@ export const shapeOf = (config: unknown): string =>
 export const scoringRegistrations: readonly CalculatorRegistration[] = [
   ...builtinCalculators,
   gradedTest,
+  datedTest,
   twoFactTest,
   narrowFactTest,
   storedTest,

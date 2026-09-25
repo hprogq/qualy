@@ -1,10 +1,11 @@
 import { sql } from 'kysely'
-import { Effect } from 'effect'
+import { Effect, Exit, Fiber } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
+import type { Orm } from '@qualy/plugin-database/server'
 import { Assessment } from '../src/server/index.ts'
 import { recordItem } from './support/administrative.ts'
-import { probeScoring } from './support/catalogs.ts'
+import { datedScoring, probeHold, probeScoring } from './support/catalogs.ts'
 import { errorOf, ok, one, run, runningBatch, seed, staged } from './support/round.ts'
 
 // One administrative finding, settled on several people at once.
@@ -326,6 +327,158 @@ describe.runIf(postgresAvailable).concurrent('recording one finding on a group',
     // append-only table.
     expect(found.nonsense).toBe('ASSESSMENT_ENTRY_PAYLOAD_INVALID')
     expect(found.extra).toBe('ASSESSMENT_ENTRY_PAYLOAD_INVALID')
+  })
+
+  it('holds a determined day to the round', async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const { f, g, item, revision } = yield* ready('ar-dated', {
+            scoringConfig: datedScoring(),
+          })
+          const assessment = yield* Assessment
+          const minted = one<{ id: string }>(
+            yield* runSql(sql`
+              select jsonb_object_keys(scoring_config -> 'recognitions') as id
+                from assessment_item_revisions where id = ${revision}`),
+          ).id
+          const act = {
+            itemId: item.id,
+            expectedItemRevisionId: revision,
+            target: { kind: 'people' as const, participantIds: [g.p1] },
+            payload: {},
+            // the round runs from 2026-03-01 up to, not including, 2026-09-01
+            recognition: { values: { [minted]: '2019-05-01' } },
+            basis: '校发〔2026〕6 号',
+          }
+          const refused = yield* Effect.exit(
+            assessment.previewAdministrativeRecord(f.t, g.batch.id, act, f.principal(f.recorder)),
+          )
+          return { minted, refused }
+        }),
+      ),
+    )
+    expect(errorOf<{ issues: unknown[] }>(found.refused)?.issues).toEqual([
+      { field: `recognition.${found.minted}`, reason: 'out-of-material-range' },
+    ])
+  })
+
+  // Between the proof, which runs before the lock, and the write under it,
+  // the question and the round can both move. What was judged outside is a
+  // judgement about a moment that has passed: the question is read again
+  // under the lock, and whatever depends on the round's window is judged
+  // against the window the lock found.
+  describe('what changed while the finding was being proven', () => {
+    /** the act, held inside its proof until the change has committed */
+    const heldAcross = (
+      slug: string,
+      over: { formConfig?: Record<string, unknown> },
+      payload: Record<string, unknown>,
+      change: (item: {
+        id: string
+        revision: string
+        batchId: string
+      }) => Effect.Effect<unknown, never, Orm>,
+    ) =>
+      Effect.gen(function* () {
+        const { f, g, item, revision } = yield* ready(slug, {
+          ...over,
+          scoringConfig: probeScoring(),
+        })
+        const assessment = yield* Assessment
+        const input = {
+          itemId: item.id,
+          expectedItemRevisionId: revision,
+          target: { kind: 'people' as const, participantIds: [g.p1] },
+          payload,
+          // an ordinal of 6 holds the proof until the suite lets go
+          recognition: { values: { 'rec-level': 'national', 'rec-ordinal': 6 } },
+          basis: '校发〔2026〕6 号',
+        }
+        const seen = yield* assessment.previewAdministrativeRecord(
+          f.t,
+          g.batch.id,
+          { ...input, recognition: { values: { 'rec-level': 'national', 'rec-ordinal': 1 } } },
+          f.principal(f.recorder),
+        )
+        let release: () => void = () => undefined
+        probeHold.until = new Promise<void>((resolve) => {
+          release = resolve
+        })
+        const act = yield* Effect.forkChild(
+          assessment.recordAdministrativeBatch(
+            f.t,
+            g.batch.id,
+            {
+              ...input,
+              excludedParticipantIds: [],
+              expectedTargetFingerprint: seen.targetFingerprint,
+            },
+            f.principal(f.recorder),
+          ),
+        )
+        yield* Effect.sleep('300 millis')
+        yield* change({ id: item.id, revision, batchId: g.batch.id })
+        release()
+        probeHold.until = Promise.resolve()
+        const outcome = yield* Fiber.await(act)
+        const written = one<{ n: number }>(
+          yield* runSql(sql`select count(*)::int as n from entries
+                             where tenant_id = ${f.t} and item_id = ${item.id}`),
+        ).n
+        return { outcome, written }
+      })
+
+    // one case, the two changes in turn: the proof is held on a switch the
+    // whole file shares, and the cases around it run concurrently
+    it('refuses when the question moved on, and a day the round no longer covers', async () => {
+      const revised = ok(
+        await run(
+          db.url,
+          heldAcross('ar-held-revision', {}, {}, (item) =>
+            runSql(sql`
+              with moved as (
+                insert into assessment_item_revisions
+                  (tenant_id, item_id, revision_no, entry_channels, form_config, scoring_config,
+                   scoring_plan, review_policy, display_config, created_by, reason)
+                select tenant_id, item_id, revision_no + 1, entry_channels, form_config,
+                       scoring_config, scoring_plan, review_policy, display_config, created_by,
+                       'edited while a finding was being proven'
+                  from assessment_item_revisions where id = ${item.revision}
+                returning id, item_id
+              )
+              update assessment_items i set current_revision_id = moved.id
+                from moved where i.id = moved.item_id`),
+          ),
+        ),
+      )
+      expect(Exit.isFailure(revised.outcome)).toBe(true)
+      expect(errorOf<{ _tag: string }>(revised.outcome)?._tag).toBe(
+        'ASSESSMENT_ITEM_REVISION_CONFLICT',
+      )
+      expect(revised.written).toBe(0)
+
+      const narrowed = ok(
+        await run(
+          db.url,
+          heldAcross(
+            'ar-held-window',
+            { formConfig: { dated: true, withinRound: true } },
+            { 'claimed-when-slot': '2026-07-15' },
+            (item) =>
+              runSql(sql`
+                update assessment_batches
+                   set material_range = daterange('2026-03-01', '2026-07-01')
+                 where id = ${item.batchId}`),
+          ),
+        ),
+      )
+      expect(errorOf<{ issues: unknown[] }>(narrowed.outcome)?.issues).toEqual([
+        { field: 'claimed-when-slot', reason: 'out-of-range' },
+      ])
+      expect(narrowed.written).toBe(0)
+    })
   })
 
   it('answers a repeated press with the act it already became', async () => {

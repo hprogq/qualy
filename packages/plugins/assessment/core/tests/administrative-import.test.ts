@@ -7,7 +7,7 @@ import { Assessment } from '../src/server/index.ts'
 import { ASSESSMENT_LIVE_CHANNEL } from '../src/live/events.ts'
 import { counts, numbered, recordItem, workbook } from './support/administrative.ts'
 import { errorOf, ok, one, run, runningBatch, seed } from './support/round.ts'
-import { gradedScoring } from './support/catalogs.ts'
+import { datedScoring, gradedScoring } from './support/catalogs.ts'
 import ExcelJS from 'exceljs'
 import { DATA_SHEET, META_SHEET } from '../src/administrative-import/workbook.ts'
 
@@ -676,6 +676,57 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
     expect(found.payload).toEqual({ 'claimed-level-slot': 'national' })
   })
 
+  // A determined day the question holds to the round's material window is
+  // held there by every door that approves: a review, the single record,
+  // and this one. A file answering with a day the round does not cover is a
+  // row to fix, not a fact to write.
+  it('holds a determined day to the round', async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ai-dated')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          yield* numbered(f)
+          const item = yield* recordItem(f, g.batch.id, { scoringConfig: datedScoring() })
+          const revision = one<{ id: string }>(
+            yield* runSql(
+              sql`select current_revision_id as id from assessment_items where id = ${item.id}`,
+            ),
+          ).id
+          // the round runs from 2026-03-01 up to, not including, 2026-09-01
+          const attachmentId = yield* workbook(f, item.id, f.recorder, [
+            ['2023001', 'Zhang San', '校发〔2026〕12 号', '', '2019-05-01'],
+            ['2023002', 'Li Si', '校发〔2026〕12 号', '', '2026-05-01'],
+          ])
+          const input = { attachmentId, itemId: item.id, expectedItemRevisionId: revision }
+          const preview = yield* assessment.previewAdministrativeImport(
+            f.t,
+            g.batch.id,
+            input,
+            f.principal(f.recorder),
+          )
+          const refused = yield* Effect.exit(
+            assessment.commitAdministrativeImport(f.t, g.batch.id, input, f.principal(f.recorder)),
+          )
+          return { preview, refused, after: yield* counts(f) }
+        }),
+      ),
+    )
+    // the determination's column, by the identity the server minted for it
+    expect(
+      found.preview.rows.map((row) =>
+        row.issues.map((one) => [one.severity, one.field?.split('.')[0], one.reason]),
+      ),
+    ).toEqual([[['error', 'recognition', 'out-of-material-range']], []])
+    expect(found.preview.canCommit).toBe(false)
+    expect(
+      errorOf<{ issues: { reason: string }[] }>(found.refused)?.issues.map((one) => one.reason),
+    ).toEqual(['out-of-material-range'])
+    expect(found.after).toEqual({ imports: 0, entries: 0 })
+  })
+
   it('leaves the bound field out of the template, and writes it from the determination', async () => {
     const found = ok(
       await run(
@@ -847,15 +898,17 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
 
   describe('what changed while the file was being read', () => {
     /** a round, an administrative question, and a one-row file ready to commit */
-    const prepared = (slug: string, over?: { maxEntries?: number }) =>
+    const prepared = (
+      slug: string,
+      over?: { maxEntries?: number; formConfig?: Record<string, unknown> },
+      row: readonly string[] = ['2023001', 'Zhang San', '甲'],
+    ) =>
       Effect.gen(function* () {
         const f = yield* seed(slug)
         const g = yield* runningBatch(f)
         yield* numbered(f)
         const item = yield* recordItem(f, g.batch.id, over)
-        const attachmentId = yield* workbook(f, item.id, f.recorder, [
-          ['2023001', 'Zhang San', '甲'],
-        ])
+        const attachmentId = yield* workbook(f, item.id, f.recorder, [row])
         const revision = one<{ id: string }>(
           yield* runSql(
             sql`select current_revision_id as id from assessment_items where id = ${item.id}`,
@@ -923,6 +976,42 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
       expect(
         errorOf<{ issues: { reason: string }[] }>(found.outcome)?.issues.map((one) => one.reason),
       ).toEqual(['participant-not-found'])
+      expect(found.after).toEqual({ imports: 0, entries: 0 })
+    })
+
+    // A narrowing of the material window is refused while a live fact falls
+    // outside the new one, and the check sees only facts already written.
+    // A file judged against the old window has to be judged again against
+    // the window the narrowing left, or it writes exactly what that check
+    // exists to keep out.
+    it('refuses a day the round no longer covers', async () => {
+      const found = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const { f, g, commit } = yield* prepared(
+              'ai-race-window',
+              { formConfig: { dated: true, withinRound: true } },
+              ['2023001', 'Zhang San', '甲', '', '2026-07-15'],
+            )
+            const race = yield* raced(
+              g.batch.id,
+              runSql(sql`
+                update assessment_batches
+                   set material_range = daterange('2026-03-01', '2026-07-01')
+                 where id = ${g.batch.id}`),
+              commit,
+            )
+            return { ...race, after: yield* counts(f) }
+          }),
+        ),
+      )
+      expect(found.queued).toBe(true)
+      expect(
+        errorOf<{ issues: { field: string; reason: string }[] }>(found.outcome)?.issues.map(
+          (one) => [one.field, one.reason],
+        ),
+      ).toEqual([['evidence.claimed-when-slot', 'out-of-range']])
       expect(found.after).toEqual({ imports: 0, entries: 0 })
     })
 

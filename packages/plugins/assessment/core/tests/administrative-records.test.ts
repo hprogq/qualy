@@ -2,7 +2,7 @@ import { Effect, Exit } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
 import { Assessment } from '../src/server/index.ts'
-import { gradedScoring } from './support/catalogs.ts'
+import { datedScoring, gradedScoring } from './support/catalogs.ts'
 import { GATED, errorOf, ok, run, runningBatch, seed, type Seeded } from './support/round.ts'
 
 // The book of what the institution has recorded in a round.
@@ -311,6 +311,46 @@ describe.runIf(postgresAvailable)('the administrative record book', () => {
     expect((read.currentRevision!.payload as Record<string, unknown>)['claimed-level-slot']).toBe(
       'provincial',
     )
+  })
+
+  it('holds a determined day to the round', async () => {
+    const refused = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ar-dated')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          const admin = f.principal(f.admin)
+          const dated = yield* recordItem(f, g.batch.id, {
+            scoring: datedScoring(),
+            title: '处分日期',
+          })
+          const stored = dated.currentRevision!.scoringConfig as {
+            recognitions: Record<string, unknown>
+          }
+          const minted = Object.keys(stored.recognitions)[0]!
+          // the round runs from 2026-03-01 up to, not including, 2026-09-01
+          const exit = yield* Effect.exit(
+            assessment.createEntry(
+              f.t,
+              {
+                itemId: dated.id,
+                participantId: g.p1,
+                payload: {},
+                note: '校发〔2026〕7 号',
+                recognition: { values: { [minted]: '2019-05-01' } },
+              },
+              admin,
+            ),
+          )
+          return { exit, minted }
+        }),
+      ),
+    )
+    expect(errorOf<{ issues: unknown[] }>(refused.exit)?.issues).toEqual([
+      { field: `recognition.${refused.minted}`, reason: 'out-of-material-range' },
+    ])
   })
 
   it('finds a person by name or by business number, in sql', async () => {

@@ -3,7 +3,7 @@ import { Effect, Exit, Fiber } from 'effect'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Assessment } from '../src/server/index.ts'
-import { probeHold, probeLevelScoring, probeScoring } from './support/catalogs.ts'
+import { datedScoring, probeHold, probeLevelScoring, probeScoring } from './support/catalogs.ts'
 import {
   errorOf,
   GATED,
@@ -456,6 +456,69 @@ describe.runIf(postgresAvailable)('proving a determination before it is a fact',
     expect(Exit.isSuccess(result.accepted.sent)).toBe(true)
     expect(result.accepted.entry.status).toBe('approved')
     expect(result.accepted.rows).toHaveLength(1)
+  }, 120_000)
+
+  // The rule's own determination is held to the round the way a reviewer's
+  // is: a day the question holds to the material window, seeded from a
+  // claim whose own field is not held there, is the claim's to fix - not a
+  // question configured so nobody can be approved.
+  it('approves by rule only a day the round covers, and sends any other back to be fixed', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('dp-by-rule-dated')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const groups = yield* assessment.listScoreGroups(f.t, g.batch.id, admin)
+          const item = yield* assessment.createItem(
+            f.t,
+            g.batch.id,
+            {
+              itemType: 'evidence',
+              title: '获奖日期',
+              scoreGroupId: groups.groups[0]!.id,
+              maxEntries: null,
+              config: {
+                entryChannels: ['participant'],
+                formConfig: { dated: true },
+                scoringConfig: datedScoring('claimed-when'),
+                reviewPolicy: { mode: 'none' },
+              },
+            },
+            admin,
+          )
+          yield* assessment.setItemStatus(f.t, item.id, { status: 'active' }, admin)
+          const as = f.principal(f.s1)
+          // the round runs from 2026-03-01 up to, not including, 2026-09-01
+          const file = (day: string) =>
+            Effect.gen(function* () {
+              const entry = yield* assessment.createEntry(
+                f.t,
+                { itemId: item.id, participantId: g.p1, payload: { 'claimed-when-slot': day } },
+                as,
+              )
+              const sent = yield* Effect.exit(
+                assessment.setEntryStatus(f.t, entry.id, 'in_review', as),
+              )
+              return {
+                sent,
+                entry: yield* entryOf(entry.id),
+                rows: yield* recognitionsOf(entry.id),
+              }
+            })
+          const outside = yield* file('2019-05-01')
+          const inside = yield* file('2026-05-01')
+          return { outside, inside }
+        }),
+      ),
+    )
+    expect(errorOf<{ reason: string }>(result.outside.sent)?.reason).toBe('entry-needs-revision')
+    expect(result.outside.entry.status).toBe('draft')
+    expect(result.outside.rows).toEqual([])
+    expect(Exit.isSuccess(result.inside.sent)).toBe(true)
+    expect(result.inside.entry.status).toBe('approved')
   }, 120_000)
 
   it('holds the settlement to the question and the round the proof was made under', async () => {
