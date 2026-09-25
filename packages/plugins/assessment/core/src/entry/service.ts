@@ -8,6 +8,7 @@ import {
 import { recordAdministrativeEntryTx, voidAdministrativeEntryTx } from './administrative-write.ts'
 import { bindCitedAttachments } from './bind-attachments.ts'
 import { questionFactsOf, type QuestionFacts } from './question-facts.ts'
+import { boundIssues } from '../issues.ts'
 import { provenRecognition } from '../scoring/proven-recognition.ts'
 import { recognitionHash, seedFromEvidence } from '../scoring/recognition.ts'
 import { ProbeNeeded, probeIdentity, settleWithProbe } from '../scoring/failure-boundary.ts'
@@ -636,9 +637,12 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
         Result.isFailure(decoded)
           ? Effect.fail(
               new EntryPayloadInvalid({
-                issues: (
-                  decoded.failure as { issues?: readonly { field: string; reason: string }[] }
-                ).issues ?? [{ field: '', reason: 'unreadable' }],
+                // bounded here too: a driver need not refuse through the
+                // class that bounds its list
+                issues: boundIssues(
+                  (decoded.failure as { issues?: readonly { field: string; reason: string }[] })
+                    .issues ?? [{ field: '', reason: 'unreadable' }],
+                ),
               }),
             )
           : Effect.succeed(decoded.success),

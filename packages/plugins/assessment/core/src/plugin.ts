@@ -9,6 +9,9 @@ import type {
   NormalizedInputSchema,
 } from '@qualy/value-schema'
 import { ExtensionPoint, Plugin, type PluginFeature } from '@qualy/plugin-kit'
+import { boundIssues } from './issues.ts'
+
+export { MAX_ISSUES } from './issues.ts'
 
 // This domain's two faces in the descriptor model: what a plugin writes to
 // say "I am a kind of question" and "I am a way of scoring one".
@@ -20,15 +23,19 @@ import { ExtensionPoint, Plugin, type PluginFeature } from '@qualy/plugin-kit'
 // configuration cites; the reference is declared here and its arithmetic
 // arrives with the scoring engine.
 
-/** how a driver refuses a payload; reasons stay structural, never free text */
+/**
+ * How a driver refuses a payload; reasons stay structural, never free text.
+ * The list is bounded here, whichever driver raises it (`MAX_ISSUES`).
+ */
 export class ItemPayloadInvalid extends Error {
   readonly _tag = 'ASSESSMENT_ITEM_PAYLOAD_INVALID'
   // plain fields, not parameter properties: bare node loads this source in
   // strip-only mode when resolution imports descriptors
   readonly issues: readonly { readonly field: string; readonly reason: string }[]
   constructor(issues: readonly { readonly field: string; readonly reason: string }[]) {
-    super(`item payload invalid: ${issues.map((issue) => issue.field).join(', ')}`)
-    this.issues = issues
+    const bounded = boundIssues(issues)
+    super(`item payload invalid: ${bounded.map((issue) => issue.field).join(', ')}`)
+    this.issues = bounded
   }
 }
 

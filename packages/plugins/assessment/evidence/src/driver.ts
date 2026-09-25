@@ -13,6 +13,7 @@ import { MAX_PATTERN_BYTES, patternIssues } from '@qualy/value-schema/regex'
 import { validateValue } from '@qualy/value-schema/validate'
 import {
   ItemPayloadInvalid,
+  MAX_ISSUES,
   type AttachmentRef,
   type BatchContext,
   type BindableField,
@@ -492,7 +493,11 @@ const decode = (
     const issues: Issue[] = []
     const known = new Set(form.fields.map((entry) => entry.key))
     for (const key of Object.keys(record)) {
-      if (!known.has(key)) issues.push({ field: key, reason: 'unknown-field' })
+      if (known.has(key)) continue
+      issues.push({ field: key, reason: 'unknown-field' })
+      // the refusal names at most MAX_ISSUES, and this runs under the
+      // round's lock: walking the rest of a huge object only costs time
+      if (issues.length > MAX_ISSUES) break
     }
 
     const decoded: Record<string, unknown> = {}

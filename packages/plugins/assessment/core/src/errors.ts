@@ -95,7 +95,13 @@ export class EntryActionRefused extends Schema.TaggedError<EntryActionRefused>()
   { httpApiStatus: 403, identifier: 'AssessmentEntryActionRefused' },
 ) {}
 
-/** the filing itself cannot be read: field problems, named one by one */
+/**
+ * The filing itself cannot be read: field problems, named one by one.
+ *
+ * The lists that grow with the caller's payload are bounded where they are
+ * built (`MAX_ISSUES`: a driver's refusal, a determination's judgement), so
+ * a refusal is never the size of the payload that earned it.
+ */
 export class EntryPayloadInvalid extends Schema.TaggedError<EntryPayloadInvalid>()(
   'ASSESSMENT_ENTRY_PAYLOAD_INVALID',
   {

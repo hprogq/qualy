@@ -21,6 +21,7 @@ import { IN_MATERIAL_RANGE } from '@qualy/value-schema'
 import { hashCanonicalJson, canonicalJson } from '@qualy/value-schema/hash'
 import type { NormalizedAtomicSchema } from '@qualy/value-schema'
 import type { ScoringPlan } from './plan.ts'
+import { MAX_ISSUES, TRUNCATED } from '../issues.ts'
 
 export type RecognitionValues = Readonly<Record<string, unknown>>
 
@@ -75,11 +76,15 @@ export const judgeRecognition = (
     }
   }
   for (const recognitionId of Object.keys(values)) {
-    if (!Object.hasOwn(schemas, recognitionId)) {
-      issues.push({ recognitionId, reason: 'unknown' })
-    }
+    if (Object.hasOwn(schemas, recognitionId)) continue
+    issues.push({ recognitionId, reason: 'unknown' })
+    // a determination is whatever its caller sent: past the bound, naming
+    // more keys only makes the answer bigger
+    if (issues.length > MAX_ISSUES) break
   }
-  return issues
+  return issues.length <= MAX_ISSUES
+    ? issues
+    : [...issues.slice(0, MAX_ISSUES), { recognitionId: '', reason: TRUNCATED }]
 }
 
 /**

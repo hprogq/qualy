@@ -3,7 +3,7 @@ import { Effect, Exit, Result, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { evidenceDriver, evidenceConfig, optionLabelOf } from '../src/driver.ts'
 import { assignmentPlan, normalizeAtomicSchema } from '@qualy/value-schema'
-import type { ItemPayloadInvalid } from '@qualy/plugin-assessment/plugin'
+import { MAX_ISSUES, type ItemPayloadInvalid } from '@qualy/plugin-assessment/plugin'
 
 // The evidence driver on its own: what an administrator may configure, what
 // a student's payload must satisfy, and which attachments a payload cites.
@@ -88,6 +88,17 @@ describe('what a payload must satisfy', () => {
         proof: [attachment],
       })
     }
+  })
+
+  // a payload is whatever its caller sent, and this runs under the round's
+  // lock: an object of thousands of stray keys is refused in a bounded list
+  it('names a bounded number of stray keys, and says there were more', () => {
+    const stray = Object.fromEntries(
+      Array.from({ length: 5000 }, (_, index) => [`stray-${index}`, index]),
+    )
+    const issues = issuesOf(decode({ fields: [] }, stray))
+    expect(issues).toHaveLength(MAX_ISSUES + 1)
+    expect(issues[MAX_ISSUES]).toEqual({ field: '', reason: 'truncated' })
   })
 
   it('names every missing or malformed field at once', () => {

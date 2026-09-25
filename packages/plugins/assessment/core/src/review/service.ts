@@ -19,6 +19,7 @@ import {
   type RecognitionValues,
 } from '../scoring/recognition.ts'
 import { admittedToday } from './form-bounds.ts'
+import { boundIssues } from '../issues.ts'
 import { frozenCalculatorOf, readScoringPlan } from '../scoring/plan.ts'
 import { evaluateRecognition } from '../scoring/evaluate.ts'
 import { formatAmount } from '../scoring/builtins.ts'
@@ -2355,7 +2356,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         const issues = (
           decoded.failure as { issues?: readonly { field: string; reason: string }[] }
         ).issues ?? [{ field: 'suggestedPayload', reason: 'unreadable' }]
-        return yield* new EntryPayloadInvalid({ issues })
+        return yield* new EntryPayloadInvalid({ issues: boundIssues(issues) })
       }
       const cited = new Set(
         (yield* revisionAttachmentsOf(tenantId, row.revisionId)).map((a) => a.attachmentId),
