@@ -12,6 +12,7 @@ import {
 } from '@qualy/value-schema'
 import { formulaMessages as m } from './i18n.ts'
 import { kindWords } from './kind-words.ts'
+import { CASE_NOT_RUN, FAILED_UNDER_SCORING_BUDGET, OVER_SCORING_BUDGET } from '../report-codes.ts'
 
 // What a run, a publication's report or a refused contract says, in the
 // author's language rather than the validator's. The draft's examples and a
@@ -132,6 +133,20 @@ export const contractReasonWords = (format: Format, reason: string): string => {
   }
 }
 
+/** a row's defect: the host's own verdicts in words, anything else as the engine said it */
+export const defectWords = (format: Format, defect: string): string => {
+  switch (defect) {
+    case CASE_NOT_RUN:
+      return format(m.caseNotRun)
+    case OVER_SCORING_BUDGET:
+      return format(m.overScoringBudget)
+    case FAILED_UNDER_SCORING_BUDGET:
+      return format(m.failedUnderScoringBudget)
+    default:
+      return format(m.defectPrefix, { message: defect })
+  }
+}
+
 /** what a finished run says beyond its verdict, or nothing */
 export const outcomeWords = (format: Format, outcome: OutcomeLike): string | null => {
   const problems = Array.isArray(outcome.problems) ? (outcome.problems as ReportProblem[]) : []
@@ -149,7 +164,7 @@ export const outcomeWords = (format: Format, outcome: OutcomeLike): string | nul
       )
       .join('; ')
   if (outcome.refusal !== undefined) return format(m.refusalPrefix, { message: outcome.refusal })
-  if (outcome.defect !== undefined) return format(m.defectPrefix, { message: outcome.defect })
+  if (outcome.defect !== undefined) return defectWords(format, outcome.defect)
   if (outcome.passed === false)
     return format(m.resultFailed, { actual: outcome.actual ?? format(m.actualNone) })
   return null

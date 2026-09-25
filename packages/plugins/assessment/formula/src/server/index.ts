@@ -97,6 +97,7 @@ import { BindableFormulaCatalog } from './binding-catalog.ts'
 import { contractWordsIssues } from '../contract-words.ts'
 import { invokeForScore } from '../scoring/invoke.ts'
 import { REFERENCE_INPUT, REFERENCE_SOURCE } from '../scoring/reference.ts'
+import { CASE_NOT_RUN, FAILED_UNDER_SCORING_BUDGET, OVER_SCORING_BUDGET } from '../report-codes.ts'
 
 /**
  * The capability to write scoring formulas at all - tenant-wide, because
@@ -138,12 +139,6 @@ const DRAFT_WRITE_REFILL_MS = 6_000
  * publication can be tried side by side; one more is refused, not queued.
  */
 const RUNS_PER_PERSON = 2
-
-/** what a case left unrun after an earlier one was interrupted says on its row */
-const NOT_RUN = 'not run: an earlier case was interrupted'
-
-/** what an example that passed but could not be scored in time says on its row */
-const OVER_SCORING_BUDGET = 'exceeds the scoring time budget'
 
 /** how often an example that crossed the scoring deadline is asked again, host permitting */
 const SCORING_BUDGET_ROUNDS = 3
@@ -1045,7 +1040,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         if (interrupted) {
           report.push({
             ...(expected === undefined ? {} : { passed: false, expected }),
-            defect: NOT_RUN,
+            defect: CASE_NOT_RUN,
           })
           continue
         }
@@ -1416,7 +1411,9 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           // nothing else differs between the two budgets; whatever else the
           // scoring one refuses is this example failing, named on its row
           Effect.catch((refused) =>
-            Effect.succeed(`failed under the scoring budget: ${refused._tag}`),
+            Effect.logWarning(`an example failed under the scoring budget: ${refused._tag}`).pipe(
+              Effect.as(FAILED_UNDER_SCORING_BUDGET),
+            ),
           ),
         )
       const reference = Effect.gen(function* () {

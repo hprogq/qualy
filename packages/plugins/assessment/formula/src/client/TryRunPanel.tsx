@@ -10,7 +10,7 @@ import { InputValueForm } from '@qualy/web-value-form/InputValueForm'
 import { usePickerWords } from '@qualy/web-i18n/picker-words'
 import type { FieldDraft } from '@qualy/web-value-form/model'
 import { formulaMessages as m } from './i18n.ts'
-import { fieldIssueWords } from './report-words.ts'
+import { defectWords, fieldIssueWords } from './report-words.ts'
 import { constraintNote } from './constraint-words.ts'
 import { shortTime } from './library-styles.ts'
 import { ColumnHead } from './WorkbenchLayout.tsx'
@@ -350,7 +350,7 @@ export function TryRunPanel({
     outcome.refusal !== undefined
       ? format(m.refusalPrefix, { message: outcome.refusal })
       : outcome.defect !== undefined
-        ? format(m.defectPrefix, { message: outcome.defect })
+        ? defectWords(format, outcome.defect)
         : outcome.actual === undefined
           ? format(m.testInputInvalid, { label: title })
           : null

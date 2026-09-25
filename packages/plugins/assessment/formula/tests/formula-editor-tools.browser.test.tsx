@@ -314,6 +314,47 @@ describe('the formula authoring tools', () => {
     }
   }, 60_000)
 
+  // A case the server held back behind one that ran out of time has not
+  // failed: it was never asked.
+  it('marks a case held back behind an interrupted one as not run, not failed', async () => {
+    const { screen } = screenFor(
+      [
+        { name: 'slow', input: { level: 'national', ordinal: 2, base: '4' }, expected: '8' },
+        { name: 'after', input: { level: 'provincial', ordinal: 1, base: '1' }, expected: '1' },
+      ],
+      (cases) => [
+        {
+          clientId: cases[0]!.clientId,
+          passed: false,
+          expected: '8',
+          defect: 'execution interrupted',
+        },
+        { clientId: cases[1]!.clientId, passed: false, expected: '1', defect: 'not-run' },
+      ],
+    )
+    const view = await screen
+    try {
+      await waitForForm(view)
+      const runAll = [...view.container.querySelectorAll('button')].find(
+        (button) => button.textContent === '全部运行',
+      )!
+      runAll.click()
+      await vi.waitFor(
+        () => {
+          if (view.container.querySelectorAll('[data-testid="formula-case-result"]').length < 2)
+            throw new Error('no case results yet')
+        },
+        { timeout: 10_000 },
+      )
+      const verdicts = [
+        ...view.container.querySelectorAll('[data-testid="formula-case-result"]'),
+      ].map((one) => one.getAttribute('data-verdict'))
+      expect(verdicts).toEqual(['failed', 'not-run'])
+    } finally {
+      await view.unmount()
+    }
+  }, 60_000)
+
   it('keeps results honest: edits stale them, and a stale actual cannot be adopted', async () => {
     const { screen } = screenFor(
       [{ name: 'seed', input: { level: 'national', ordinal: 2, base: '4' }, expected: '8' }],

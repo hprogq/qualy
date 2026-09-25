@@ -275,8 +275,8 @@ describe.runIf(postgresAvailable)('the runtime sandbox, shared by scoring and au
     expect(outcome.evaluated.results.map((row) => row.actual ?? row.defect)).toEqual([
       '1',
       'execution interrupted',
-      'not run: an earlier case was interrupted',
-      'not run: an earlier case was interrupted',
+      'not-run',
+      'not-run',
     ])
     // one deadline spent, not two
     expect(outcome.took).toBeLessThan(4_000)
@@ -323,7 +323,7 @@ describe.runIf(postgresAvailable)('the runtime sandbox, shared by scoring and au
     expect(slow.published._tag).toBe('Failure')
     expect(slow.published._tag === 'Failure' ? slow.published.failure : null).toMatchObject({
       _tag: 'ASSESSMENT_FORMULA_TEST_FAILED',
-      report: [{ name: 'fine', passed: false, defect: 'exceeds the scoring time budget' }],
+      report: [{ name: 'fine', passed: false, defect: 'over-scoring-budget' }],
     })
     // asked the way a score asks - once more past a soft deadline - in each
     // of the rounds the host was fit to judge
@@ -373,7 +373,7 @@ describe.runIf(postgresAvailable)('the runtime sandbox, shared by scoring and au
     expect(outcome.tried.results[0]!.actual).toBe('1')
     expect(outcome.refused).toMatchObject({
       _tag: 'ASSESSMENT_FORMULA_TEST_FAILED',
-      report: [{ name: 'fine', passed: false, defect: 'exceeds the scoring time budget' }],
+      report: [{ name: 'fine', passed: false, defect: 'over-scoring-budget' }],
     })
   }, 120_000)
 
@@ -419,7 +419,7 @@ describe.runIf(postgresAvailable)('the runtime sandbox, shared by scoring and au
     expect(outcome.tried.results[0]!.actual).toBe('1')
     expect(outcome.refused).toMatchObject({
       _tag: 'ASSESSMENT_FORMULA_TEST_FAILED',
-      report: [{ name: 'fine', passed: false, defect: 'exceeds the scoring time budget' }],
+      report: [{ name: 'fine', passed: false, defect: 'over-scoring-budget' }],
     })
     expect(outcome.versions).toBe(0)
   }, 120_000)

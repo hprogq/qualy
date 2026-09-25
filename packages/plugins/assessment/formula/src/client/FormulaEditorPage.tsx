@@ -64,6 +64,7 @@ import { formulaMessages as m } from './i18n.ts'
 import { isBlankSource, useDraftPreview, type DraftContract } from './use-draft-preview.ts'
 import { ContractTable } from './ContractTable.tsx'
 import { contractWordsIssues } from '../contract-words.ts'
+import { CASE_NOT_RUN } from '../report-codes.ts'
 import { ExampleRow, type Verdict } from './ExampleRow.tsx'
 import { exampleStyles } from './example-grid.ts'
 import { constraintNote } from './constraint-words.ts'
@@ -2014,9 +2015,14 @@ export default function FormulaEditorPage() {
     const verdict: Verdict = fresh
       ? outcome.passed === true
         ? 'passed'
-        : outcome.passed === false || outcome.refusal !== undefined || outcome.defect !== undefined
-          ? 'failed'
-          : 'unexpected'
+        : // held back behind an earlier case that ran out of time: not a failure of its own
+          outcome.defect === CASE_NOT_RUN
+          ? 'not-run'
+          : outcome.passed === false ||
+              outcome.refusal !== undefined ||
+              outcome.defect !== undefined
+            ? 'failed'
+            : 'unexpected'
       : legal
         ? 'not-run'
         : 'fix'

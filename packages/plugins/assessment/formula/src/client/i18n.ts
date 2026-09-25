@@ -436,6 +436,19 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/report/defect',
       defaultMessage: 'Crashed while running: {message}',
     },
+    caseNotRun: {
+      id: 'assessment-formula/report/not-run',
+      defaultMessage: 'Not run: an earlier example ran out of time',
+    },
+    overScoringBudget: {
+      id: 'assessment-formula/report/over-scoring-budget',
+      defaultMessage:
+        'Too slow to score: make the formula finish faster, including what it does as it loads',
+    },
+    failedUnderScoringBudget: {
+      id: 'assessment-formula/report/failed-under-scoring-budget',
+      defaultMessage: 'Fails within the limits a score runs under: make the formula lighter',
+    },
     reasonOverMax: {
       id: 'assessment-formula/reason/over-max',
       defaultMessage: 'above the limit of {constraint}',

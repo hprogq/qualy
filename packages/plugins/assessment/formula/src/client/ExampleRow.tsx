@@ -309,6 +309,7 @@ export function ExampleRow({
     <span
       data-testid={outcome === undefined ? undefined : 'formula-case-result'}
       data-passed={outcome !== undefined && fresh ? outcome.passed : undefined}
+      data-verdict={outcome === undefined ? undefined : verdict}
       data-stale={outcome !== undefined && !fresh ? true : undefined}
       title={outcome === undefined || fresh ? undefined : format(m.resultStale)}
       {...stylex.props(styles.verdict, verdictLook[0])}

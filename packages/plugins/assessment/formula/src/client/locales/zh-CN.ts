@@ -114,6 +114,10 @@ export default {
   'assessment-formula/report/problem-output': '运行结果不符合输出要求：{detail}',
   'assessment-formula/report/refusal': '公式拒绝执行：{message}',
   'assessment-formula/report/defect': '运行出错：{message}',
+  'assessment-formula/report/not-run': '未运行：前面的示例已超时',
+  'assessment-formula/report/over-scoring-budget':
+    '计分时耗时过长，请精简公式，包括加载时执行的代码',
+  'assessment-formula/report/failed-under-scoring-budget': '在计分限制下无法运行，请精简公式',
   'assessment-formula/reason/over-max': '超过上限 {constraint}',
   'assessment-formula/reason/under-min': '低于下限 {constraint}',
   'assessment-formula/reason/scale': '小数位超过 {constraint} 位',

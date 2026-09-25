@@ -32,7 +32,10 @@ const testRow = Schema.Struct({
   problems: Schema.optional(Schema.Array(testProblem)),
   /** the formula's own q.fail wording, verbatim - the author wrote it */
   refusal: Schema.optional(Schema.String),
-  /** an unexpected crash while running, as the engine reported it */
+  /**
+   * an unexpected crash while running, as the engine reported it; or one of
+   * the host's own verdicts, as a token from ../report-codes.ts
+   */
   defect: Schema.optional(Schema.String),
 })
 
