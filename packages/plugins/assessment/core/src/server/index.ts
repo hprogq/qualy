@@ -167,6 +167,7 @@ import {
   dropAcceptedPermissions,
   dropAccessSource,
   dropEmptyAccessSources,
+  explicitAssignments,
   namesOf,
   deleteBatchRow,
   insertPhaseEvent,
@@ -3516,7 +3517,18 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 yield* dropAcceptedPermissions(tenantId, change.id, change.permissions)
                 cleared += 1
               }
-              if (cleared > 0) yield* dropEmptyAccessSources(tenantId, batchId)
+              if (cleared > 0) {
+                // an appointment this batch made is its record's to end: once
+                // the record goes, nothing could ever revoke it again
+                for (const assignmentId of yield* explicitAssignments(
+                  tenantId,
+                  batchId,
+                  'emptied',
+                )) {
+                  yield* rbac.revokeAssignment({ tenantId, assignmentId, actorId: as.userId })
+                }
+                yield* dropEmptyAccessSources(tenantId, batchId)
+              }
               return { merged, cleared }
             }),
           ),
@@ -3784,6 +3796,14 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 to: 'deleted',
                 refusal: 'already-started',
               })
+            }
+            // The appointments this batch made go with it. Their records
+            // are removed with the batch, and a grant bound to a batch that
+            // no longer exists could not be revoked by anybody afterwards -
+            // while it kept its role from being deleted and its holder from
+            // changing type.
+            for (const assignmentId of yield* explicitAssignments(tenantId, batchId, 'all')) {
+              yield* rbac.revokeAssignment({ tenantId, assignmentId, actorId: as.userId })
             }
             yield* deleteBatchRow(tenantId, batchId)
             yield* audit.record(BatchDeleted, {

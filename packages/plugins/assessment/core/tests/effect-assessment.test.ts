@@ -2209,6 +2209,88 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(reasonOf(alongside)).toEqual(['already-staffed'])
   })
 
+  // A grant bound to a batch can only be revoked through the batch's own
+  // record of it; the general revocation refuses it. Deleting a draft and
+  // clearing a lapsed record both removed that record and left the grant in
+  // force, where it kept its role from being deleted and nobody could revoke
+  // it again.
+  it('revokes what a batch appointed when its record of the appointment goes', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('staff-orphans')
+        const assessment = yield* Assessment
+        const reviewer = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into roles (tenant_id, code, name, kind, status, permission_mode,
+                               assignable, eligibility_mode, anchor_mode)
+            values (${f.tenant}, 'reviewer', 'Reviewer', 'org', 'active', 'explicit', true,
+                    'unrestricted', 'unrestricted')
+            returning id`),
+        ).id
+        yield* runSql(sql`
+          insert into role_permissions (tenant_id, role_id, permission_id)
+          select ${f.tenant}, ${reviewer}, id from permissions
+          where code = 'assessment.review.process'`)
+        const draft = (name: string) =>
+          assessment.createBatch(
+            f.tenant,
+            {
+              name,
+              materialRange: { start: '2026-03-01', end: '2026-09-01' },
+              import: { orgNodeIds: [f.class1], userTypeIds: [f.studentType] },
+            },
+            f.principal,
+          )
+        const staff = (batchId: string) =>
+          assessment.addStaff(
+            f.tenant,
+            batchId,
+            { userIds: [f.t1], orgNodeIds: [f.class1], roleId: reviewer },
+            f.principal,
+          )
+        const grantsOn = (batchId: string) =>
+          Effect.map(
+            runSql(sql`
+              select revoked_at is not null as revoked from role_grants
+              where tenant_id = ${f.tenant} and resource_id = ${batchId}`),
+            (result) => rowsOf<{ revoked: boolean }>(result).map((row) => row.revoked),
+          )
+
+        // a draft deleted with somebody appointed on it
+        const dropped = yield* draft('Dropped')
+        yield* staff(dropped.id)
+        yield* assessment.deleteBatch(f.tenant, dropped.id, f.principal)
+        const afterDelete = yield* grantsOn(dropped.id)
+
+        // a temporary appointment that ran out, cleared from the batch
+        const kept = yield* draft('Kept')
+        yield* staff(kept.id)
+        yield* runSql(sql`
+          update role_grants set valid_until = now() - interval '1 day'
+          where tenant_id = ${f.tenant} and resource_id = ${kept.id}`)
+        const cleared = yield* assessment.applyAccessSync(
+          f.tenant,
+          kept.id,
+          { accept: [] },
+          f.principal,
+        )
+        const afterSync = yield* grantsOn(kept.id)
+        const sources = rowsOf<{ id: string }>(
+          yield* runSql(sql`
+            select id from batch_access_sources
+            where batch_id = ${kept.id} and origin = 'explicit'`),
+        )
+        return { afterDelete, cleared, afterSync, sources }
+      }),
+    )
+    const { afterDelete, cleared, afterSync, sources } = ok(exit)
+    expect(afterDelete).toEqual([true])
+    expect(cleared.cleared).toBe(1)
+    expect(afterSync).toEqual([true])
+    expect(sources).toEqual([])
+  })
+
   // Every person-by-unit pair is an assignment, and all of them go in one
   // transaction so half a request never stands. The two lists are bounded
   // separately at the contract, which says nothing about their product: a

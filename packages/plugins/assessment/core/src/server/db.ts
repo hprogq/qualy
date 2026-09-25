@@ -1286,6 +1286,41 @@ export const dropAcceptedPermissions = (
         )
         .pipe(Effect.asVoid)
 
+/**
+ * The assignments this batch made itself.
+ *
+ * They exist only for this batch, and the batch's record of them is their
+ * one way out: the general revocation refuses a grant bound to a resource.
+ * So whatever lets go of such a record - removing the batch, or clearing a
+ * ceiling that emptied - revokes the assignment in the same transaction.
+ * `emptied` narrows to the records nothing is left accepted on.
+ */
+export const explicitAssignments = (tenantId: string, batchId: string, which: 'all' | 'emptied') =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('BatchAccessSource as s')
+        .select('s.roleAssignmentId')
+        .where('s.tenantId', '=', tenantId)
+        .where('s.batchId', '=', batchId)
+        .where('s.origin', '=', 'explicit')
+        .$if(which === 'emptied', (query) =>
+          query.where((eb) =>
+            eb.not(
+              eb.exists(
+                eb
+                  .selectFrom('BatchAccessSourcePermission as p')
+                  .select('p.sourceId')
+                  .whereRef('p.tenantId', '=', 's.tenantId')
+                  .whereRef('p.sourceId', '=', 's.id'),
+              ),
+            ),
+          ),
+        )
+        .execute(),
+    )
+    .pipe(Effect.map((rows) => rows.map((row) => row.roleAssignmentId as string)))
+
 /** a source that carries nothing is not a record of anything */
 export const dropEmptyAccessSources = (tenantId: string, batchId: string) =>
   db
