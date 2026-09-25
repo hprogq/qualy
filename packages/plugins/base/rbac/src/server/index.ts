@@ -608,17 +608,6 @@ const toRoleShape = (
         : { mode: 'allow-list' as const, orgTypeIds: role.allowedOrgTypes },
 })
 
-/**
- * What a reader may see of their own grants: all of them, and nothing to
- * change. Their own authority does not decide it - somebody with no read
- * permission at all still holds roles, and is owed the sight of them.
- */
-const SELF_GRANT_SCOPE: GrantScope = {
-  read: { tenantWide: true, anchors: [] },
-  manage: { tenantWide: false, anchors: [] },
-  tenantGrants: { read: true, manage: false },
-}
-
 const toGrantShape = (row: GrantRow) => ({
   id: row.id,
   userId: row.userId,
@@ -627,6 +616,7 @@ const toGrantShape = (row: GrantRow) => ({
   roleCode: row.roleCode,
   roleName: row.roleName,
   roleKind: row.roleKind,
+  roleStatus: row.roleStatus,
   target:
     row.orgNodeId === null
       ? ({ kind: 'tenant' } as const)
@@ -826,11 +816,7 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
         const access = yield* Access
         const rbac = yield* Rbac
         const principal = yield* CurrentUser
-        const found = yield* access.grants.list(
-          principal.tenantId,
-          { userId: principal.userId },
-          SELF_GRANT_SCOPE,
-        )
+        const found = yield* access.grants.held(principal.tenantId, principal.userId)
         const catalog = yield* rbac.listPermissions()
         const names = new Map(catalog.map((definition) => [definition.code, definition.name]))
         const now = Date.now()

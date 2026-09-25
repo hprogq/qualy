@@ -28,6 +28,7 @@ const grant = (over: Partial<GrantDto> = {}): GrantDto => ({
   roleCode: 'counsellor',
   roleName: '辅导员',
   roleKind: 'org',
+  roleStatus: 'active',
   target: {
     kind: 'org-node',
     orgNodeId: BRANCH_NODE_ID,
@@ -85,6 +86,22 @@ const open = (
 const rows = () => [...document.querySelectorAll('[data-testid="grant-row"]')]
 
 describe('the grants of one person', () => {
+  it('marks a grant whose role has been disabled', async () => {
+    await open({
+      getUserRoleGrants: () =>
+        Effect.succeed({
+          grants: [grant(), grant({ id: 'g-off', roleName: '班主任', roleStatus: 'disabled' })],
+        }),
+    })
+    await vi.waitFor(() => expect(rows().length).toBe(2))
+    expect(rows().map((row) => row.getAttribute('data-role-status'))).toEqual([
+      'active',
+      'disabled',
+    ])
+    // still revocable: a disabled role is still held until somebody takes it back
+    expect(rows()[1]!.querySelector('button')).not.toBeNull()
+  })
+
   it('keeps organizational and confined grants apart, and offers revoke only to the first', async () => {
     await open()
     await vi.waitFor(() => expect(rows().length).toBe(2))

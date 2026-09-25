@@ -131,6 +131,8 @@ const grantShape = Schema.Struct({
   roleCode: Schema.String,
   roleName: Schema.String,
   roleKind,
+  /** a grant of a role that is not active confers nothing until it is again */
+  roleStatus: Schema.Literals(['draft', 'active', 'disabled']),
   target: grantTargetShape,
   // whether this caller may revoke this particular grant
   manageable: Schema.Boolean,

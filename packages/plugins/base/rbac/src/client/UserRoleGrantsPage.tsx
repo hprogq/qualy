@@ -7,7 +7,17 @@ import * as stylex from '@stylexjs/stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection, ConfirmDialog, Feedback, FormDialog } from '@qualy/ui/admin'
 import { PlusIcon } from 'lucide-react'
-import { Card, CardEmpty, Cell, SectionHead, Table, TableHead, TableRow } from '@qualy/ui/screen'
+import {
+  Card,
+  CardEmpty,
+  Cell,
+  LeadWord,
+  SectionHead,
+  Table,
+  TableHead,
+  TableRow,
+  Tag,
+} from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
 import { rbacMessages as m } from './i18n.ts'
 import { GrantOrigin } from './GrantOrigin.tsx'
@@ -49,6 +59,7 @@ const styles = stylex.create({
 type Grant = {
   id: string
   roleName: string
+  roleStatus: 'draft' | 'active' | 'disabled'
   target:
     | { kind: 'tenant' }
     | { kind: 'org-node'; orgNodeId: string; orgNodeName: string; coverage: 'self' | 'subtree' }
@@ -142,8 +153,18 @@ export default function UserRoleGrantsPage() {
                   <span />
                 </TableHead>
                 {organizational.map((grant) => (
-                  <TableRow key={grant.id} data-testid="grant-row" data-grant-kind="organizational">
-                    <Cell lead>{grant.roleName}</Cell>
+                  <TableRow
+                    key={grant.id}
+                    data-testid="grant-row"
+                    data-grant-kind="organizational"
+                    data-role-status={grant.roleStatus}
+                  >
+                    <Cell lead>
+                      <LeadWord>{grant.roleName}</LeadWord>
+                      {grant.roleStatus === 'disabled' && (
+                        <Tag outline>{format(m.disabledBadge)}</Tag>
+                      )}
+                    </Cell>
                     <Cell title={where(grant)} unlabelled>
                       {where(grant)}
                     </Cell>
@@ -203,8 +224,14 @@ export default function UserRoleGrantsPage() {
                     height="regular"
                     data-testid="grant-row"
                     data-grant-kind="confined"
+                    data-role-status={grant.roleStatus}
                   >
-                    <Cell lead>{grant.roleName}</Cell>
+                    <Cell lead>
+                      <LeadWord>{grant.roleName}</LeadWord>
+                      {grant.roleStatus === 'disabled' && (
+                        <Tag outline>{format(m.disabledBadge)}</Tag>
+                      )}
+                    </Cell>
                     <Cell title={where(grant)} unlabelled>
                       {where(grant)}
                     </Cell>

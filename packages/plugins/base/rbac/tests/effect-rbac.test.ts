@@ -2556,6 +2556,41 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
     }
   })
 
+  it('leaves a disabled role off what its holder holds, and marks it where it is administered', async () => {
+    const db = await createTestContext('effect-grant-disabled-role')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const access = yield* Access
+          const before = yield* access.grants.held(f.tenant, f.anchored.userId)
+          yield* runSql(sql`update roles set status = 'disabled' where id = ${f.plainRole}`)
+          const after = yield* access.grants.held(f.tenant, f.anchored.userId)
+          const listed = yield* access.grants.list(
+            f.tenant,
+            { userId: f.anchored.userId },
+            yield* access.grantScopeFor(f.principal),
+          )
+          return {
+            before: before.map((row) => row.roleId),
+            after: after.map((row) => row.roleId),
+            listed: listed.map((row) => [row.roleId, row.roleStatus]),
+            role: f.plainRole,
+          }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.before).toEqual([answer.role])
+      // every decision reads a disabled role as holding nothing
+      expect(answer.after).toEqual([])
+      // the administrator still sees the grant, and that its role is off
+      expect(answer.listed).toEqual([[answer.role, 'disabled']])
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('lets a grant that ran out be given again, and still refuses a live duplicate', async () => {
     const db = await createTestContext('effect-grant-lapsed-slot')
     try {

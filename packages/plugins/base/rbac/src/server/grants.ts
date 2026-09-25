@@ -127,7 +127,13 @@ const withinScope = (
  */
 const grantRows = (
   tenantId: string,
-  filter: { userId?: string; orgNodeId?: string; roleId?: string },
+  filter: {
+    userId?: string
+    orgNodeId?: string
+    roleId?: string
+    /** only grants of roles that confer anything now: a disabled role holds nothing */
+    activeRoles?: true
+  },
   scope: GrantScope | undefined,
   page: { after?: string; offset?: number; limit: number; count?: boolean } | undefined,
 ) =>
@@ -177,6 +183,9 @@ const grantRows = (
         // the check constraint is what makes these two closed sets; the column
         // is a string as far as the schema's type is concerned
         sql<'tenant' | 'org'>`r.kind`.as('roleKind'),
+        // a grant of a disabled role confers nothing; a screen that lists it
+        // beside live authority has to be able to say so
+        sql<'draft' | 'active' | 'disabled'>`r.status`.as('roleStatus'),
         'g.orgNodeId',
         'n.name as orgNodeName',
         sql<'self' | 'subtree' | null>`g.coverage`.as('coverage'),
@@ -215,6 +224,7 @@ const grantRows = (
     if (filter.userId !== undefined) found = found.where('g.userId', '=', filter.userId)
     if (filter.orgNodeId !== undefined) found = found.where('g.orgNodeId', '=', filter.orgNodeId)
     if (filter.roleId !== undefined) found = found.where('g.roleId', '=', filter.roleId)
+    if (filter.activeRoles === true) found = found.where('r.status', '=', 'active')
     // how many match, for a list walked by page number: counted over exactly
     // the filter and the reach the rows themselves are read through
     const total =
@@ -927,6 +937,23 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     ) =>
       withDb(
         grantRows(tenantId, filter, scope, page).pipe(
+          Effect.map((found) => found.rows),
+          Effect.orDie,
+        ),
+      ),
+
+    /**
+     * What one person holds right now, for their own account page.
+     *
+     * Their own authority does not decide what they may see here - somebody
+     * with no read permission at all still holds roles, and is owed the
+     * sight of them. Only roles that confer something: every decision reads a disabled
+     * role as holding nothing, so listing it with its permissions told its
+     * holder they could do what every check would then refuse.
+     */
+    held: (tenantId: string, userId: string) =>
+      withDb(
+        grantRows(tenantId, { userId, activeRoles: true }, undefined, undefined).pipe(
           Effect.map((found) => found.rows),
           Effect.orDie,
         ),
