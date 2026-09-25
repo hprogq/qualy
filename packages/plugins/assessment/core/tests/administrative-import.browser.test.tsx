@@ -292,6 +292,16 @@ describe('the words an import problem gets', () => {
     }
   })
 
+  it("tells a value past a field's bounds from a date outside the round", () => {
+    const said = ((descriptor: { id: string }) => descriptor.id) as never
+    expect(reasonText(said, { reason: 'out-of-range' }, '编号')).toBe(
+      'assessment/record/import/reason/out-of-range',
+    )
+    expect(reasonText(said, { reason: 'out-of-material-range' }, '编号')).toBe(
+      'assessment/record/import/reason/out-of-material-range',
+    )
+  })
+
   it('has one for each part of a file the reading refuses', () => {
     const said = ((descriptor: { id: string }) => descriptor.id) as never
     for (const reason of ['extra-sheet', 'extra-column', 'percent-not-allowed']) {

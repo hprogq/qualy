@@ -930,7 +930,19 @@ const i18n = definePluginMessages({
     },
     entryIssueOutOfRange: {
       id: 'assessment/entry/issue-out-of-range',
+      defaultMessage: 'is outside the allowed range',
+    },
+    entryIssueOutOfMaterialRange: {
+      id: 'assessment/entry/issue-out-of-material-range',
       defaultMessage: 'is outside the material date range',
+    },
+    entryIssueTooShort: {
+      id: 'assessment/entry/issue-too-short',
+      defaultMessage: 'is shorter than required',
+    },
+    entryIssuePatternMismatch: {
+      id: 'assessment/entry/issue-pattern-mismatch',
+      defaultMessage: 'is not in the required format',
     },
     entryIssueNotADate: {
       id: 'assessment/entry/issue-not-a-date',
@@ -2298,6 +2310,10 @@ const i18n = definePluginMessages({
     },
     importReasonOutOfRange: {
       id: 'assessment/record/import/reason/out-of-range',
+      defaultMessage: 'Outside what this field allows',
+    },
+    importReasonOutOfMaterialRange: {
+      id: 'assessment/record/import/reason/out-of-material-range',
       defaultMessage: 'Outside the dates this round covers',
     },
     importReasonTooLong: {

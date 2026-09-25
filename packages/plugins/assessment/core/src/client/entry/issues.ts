@@ -10,8 +10,12 @@ import { assessmentMessages as m } from '../i18n.ts'
 /** the payload refusals the driver can raise, as sentences about one field */
 const ISSUE_SENTENCES: Record<string, MessageDescriptor> = {
   required: m.entryIssueRequired,
+  // a value past the field's own bounds, a number or a date alike
   'out-of-range': m.entryIssueOutOfRange,
-  'out-of-material-range': m.entryIssueOutOfRange,
+  // a date the scoring rule reads, outside the round's material window
+  'out-of-material-range': m.entryIssueOutOfMaterialRange,
+  'too-short': m.entryIssueTooShort,
+  'pattern-mismatch': m.entryIssuePatternMismatch,
   'not-a-date': m.entryIssueNotADate,
   'not-an-integer': m.entryIssueNotAnInteger,
   'not-a-decimal': m.entryIssueNotADecimal,

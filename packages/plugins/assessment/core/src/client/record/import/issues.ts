@@ -34,9 +34,10 @@ const WORDS = {
   'choice-unknown': m.importReasonChoice,
   'boolean-syntax': m.importReasonBoolean,
   required: m.importReasonRequired,
+  // past a field's own bounds, a number or a date alike
   'out-of-range': m.importReasonOutOfRange,
-  // the same window, reached through what the office determined
-  'out-of-material-range': m.importReasonOutOfRange,
+  // the round's material window, reached through what the office determined
+  'out-of-material-range': m.importReasonOutOfMaterialRange,
   'too-long': m.importReasonTooLong,
   'participant-out-of-scope': m.importReasonOutOfScope,
   'phase-closed': m.importReasonPhaseClosed,

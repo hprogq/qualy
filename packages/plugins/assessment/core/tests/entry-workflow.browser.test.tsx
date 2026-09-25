@@ -400,46 +400,60 @@ describe('filing a claim', () => {
   // its date against the round, and no form is open there to list the
   // problem beside its field. The toast names the field and what is wrong
   // with it, rather than reporting a save that nobody made.
-  it('names the field a hand-on was refused over, where no form is open', async () => {
-    const submitted = vi.fn(() =>
-      Effect.fail(
-        Object.assign(new Error('ASSESSMENT_ENTRY_PAYLOAD_INVALID'), {
-          _tag: 'ASSESSMENT_ENTRY_PAYLOAD_INVALID',
-          issues: [{ field: 'summary', reason: 'out-of-material-range' }],
-        }),
-      ),
-    )
-    await screen(
-      {
-        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
-        listMyEntries: () =>
-          Effect.succeed({
-            participantId: PARTICIPANT_ID,
-            entries: [entry()],
-            nextCursor: null,
-            attention: { unreadItemIds: [] },
+  //
+  // The two range refusals are different news: a date outside the round's
+  // material window, and a value past the field's own bounds - a number
+  // whose limits changed after the draft was kept, say. Each gets its own
+  // sentence, and neither the other's.
+  const WINDOW = 'assessment/entry/issue-out-of-material-range'
+  const BOUNDS = 'assessment/entry/issue-out-of-range'
+  it.each([
+    ['out-of-material-range', WINDOW, BOUNDS],
+    ['out-of-range', BOUNDS, WINDOW],
+  ] as const)(
+    'names the field a hand-on was refused over (%s), where no form is open',
+    async (reason, sentence, other) => {
+      const submitted = vi.fn(() =>
+        Effect.fail(
+          Object.assign(new Error('ASSESSMENT_ENTRY_PAYLOAD_INVALID'), {
+            _tag: 'ASSESSMENT_ENTRY_PAYLOAD_INVALID',
+            issues: [{ field: 'summary', reason }],
           }),
-        setEntryStatus: submitted,
-      },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
-      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
-    )
+        ),
+      )
+      await screen(
+        {
+          listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+          listMyEntries: () =>
+            Effect.succeed({
+              participantId: PARTICIPANT_ID,
+              entries: [entry()],
+              nextCursor: null,
+              attention: { unreadItemIds: [] },
+            }),
+          setEntryStatus: submitted,
+        },
+        `/assessment/batches/${BATCH_ID}/my-entries`,
+        [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+      )
 
-    await page.getByRole('button', { name: /2024 年入伍/ }).click()
-    const drawer = page.getByRole('dialog')
-    await drawer.getByRole('button', { name: '提交审核' }).click()
-    await page.getByTestId('confirm-accept').click()
-    await vi.waitFor(() => expect(submitted).toHaveBeenCalledOnce())
+      await page.getByRole('button', { name: /2024 年入伍/ }).click()
+      const drawer = page.getByRole('dialog')
+      await drawer.getByRole('button', { name: '提交审核' }).click()
+      await page.getByTestId('confirm-accept').click()
+      await vi.waitFor(() => expect(submitted).toHaveBeenCalledOnce())
 
-    // the field by its own name and the problem by its catalog entry; the
-    // general "could not be saved" sentence is not what happened
-    await expect
-      .poll(() => document.querySelector('[data-sonner-toast]')?.textContent ?? '')
-      .toContain('事项说明')
-    const said = document.querySelector('[data-sonner-toast]')?.textContent ?? ''
-    expect(said).toContain(zhCN['assessment/entry/issue-out-of-range'])
-    expect(said).not.toContain(zhCN['assessment/error/entry-payload-invalid'])
-  })
+      // the field by its own name and the problem by its catalog entry; the
+      // general "could not be saved" sentence is not what happened
+      await expect
+        .poll(() => document.querySelector('[data-sonner-toast]')?.textContent ?? '')
+        .toContain('事项说明')
+      const said = document.querySelector('[data-sonner-toast]')?.textContent ?? ''
+      expect(said).toContain(zhCN[sentence])
+      expect(said).not.toContain(zhCN[other])
+      expect(said).not.toContain(zhCN['assessment/error/entry-payload-invalid'])
+    },
+  )
 
   it('offers keeping the claim from inside the question that hands it on', async () => {
     const created = vi.fn(() => Effect.succeed({ entry: entry() }))
