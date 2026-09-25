@@ -76,6 +76,7 @@ export function ManagedEntrySheet({
   recognition,
   trail,
   busy,
+  may,
   onClose,
   onIntervene,
   provenance,
@@ -88,6 +89,12 @@ export function ManagedEntrySheet({
   /** the groups above the question, outermost first */
   trail: readonly string[]
   busy: boolean
+  /**
+   * The corrections open to this reader in this round at all: none in an
+   * archived round, and withdrawing a record takes the power that makes one.
+   * What the claim itself allows is read off the claim here.
+   */
+  may: { readonly returnForRevision: boolean; readonly withdraw: boolean }
   onClose: () => void
   /** both acts take a reason, and the api refuses an empty one */
   onIntervene: (kind: 'return-for-revision' | 'void', reason: string) => void
@@ -102,7 +109,13 @@ export function ManagedEntrySheet({
   // withdraw it. Offering both on everything would be offering one wrong
   // answer every time.
   const administrative = entry.source === 'record' || entry.source === 'import'
-  const settled = entry.status !== 'voided'
+  // only what the api would take: a withdrawn record stays withdrawn, and
+  // only a filing under review or approved goes back to its owner
+  const withdrawable = may.withdraw && administrative && entry.status !== 'voided'
+  const returnable =
+    may.returnForRevision &&
+    !administrative &&
+    (entry.status === 'in_review' || entry.status === 'approved')
 
   return (
     <>
@@ -117,7 +130,7 @@ export function ManagedEntrySheet({
           <>
             {provenance}
             <span {...stylex.props(styles.spacer)} />
-            {settled && administrative && (
+            {withdrawable && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -128,7 +141,7 @@ export function ManagedEntrySheet({
                 {format(m.staffVoidEntry)}
               </Button>
             )}
-            {settled && !administrative && entry.status !== 'draft' && (
+            {returnable && (
               <Button size="sm" disabled={busy} onClick={() => setAsking('return-for-revision')}>
                 {format(m.staffReturnEntry)}
               </Button>

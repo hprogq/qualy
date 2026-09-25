@@ -494,6 +494,7 @@ function RecordsBody({
           key={openEntry}
           open={entryId !== ''}
           batchId={batch.id}
+          writable={batch.status !== 'archived'}
           entryId={openEntry}
           onClose={() => address({ entry: '' })}
           onOpenImport={(id) =>

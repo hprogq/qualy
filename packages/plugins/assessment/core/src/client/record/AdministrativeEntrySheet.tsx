@@ -25,6 +25,7 @@ import type { ItemDto } from '../entry/model.ts'
 export function AdministrativeEntrySheet({
   open,
   batchId,
+  writable,
   entryId,
   onClose,
   onOpenImport,
@@ -34,6 +35,8 @@ export function AdministrativeEntrySheet({
   /** false while the sheet is shutting; the caller keeps it mounted for that */
   open: boolean
   batchId: string
+  /** false once the round is archived: its records are kept as they closed */
+  writable: boolean
   entryId: string
   onClose: () => void
   /** to the import this fact arrived in, when it arrived in one */
@@ -147,6 +150,7 @@ export function AdministrativeEntrySheet({
       recognition={determined}
       trail={trailOf(lingering.item, new Map((groups.data?.groups ?? []).map((g) => [g.id, g])))}
       busy={withdraw.isPending}
+      may={{ returnForRevision: false, withdraw: writable }}
       onClose={onClose}
       onIntervene={(kind, reason) => {
         if (kind !== 'void') return

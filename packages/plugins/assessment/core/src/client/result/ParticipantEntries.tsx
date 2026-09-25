@@ -115,11 +115,14 @@ export function ParticipantEntries({
   batchId,
   participantId,
   entryId,
+  may,
   onEntry,
 }: {
   batchId: string
   participantId: string
   entryId: string
+  /** the corrections this reader can make in this round at all */
+  may: { readonly returnForRevision: boolean; readonly withdraw: boolean }
   onEntry: (entryId: string) => void
 }) {
   const api = useApi(assessmentApi)
@@ -337,6 +340,7 @@ export function ParticipantEntries({
           recognition={lingering.recognition}
           trail={trailOf(itemsById.get(lingering.entry.itemId)!, groupsById)}
           busy={intervene.isPending}
+          may={may}
           onClose={() => onEntry('')}
           onIntervene={(kind, reason) =>
             intervene.mutate({ entryId: lingering.entry.id, kind, reason })

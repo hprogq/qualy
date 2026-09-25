@@ -82,6 +82,8 @@ export default function ParticipantResultsPage() {
             <ParticipantResultDetail
               batchId={batch.id}
               manageable={batch.manageable}
+              writable={batch.status !== 'archived'}
+              mayRecord={batch.capabilities.record}
               participantId={participantId}
               view={view === 'entries' ? 'entries' : 'score'}
               entryId={entryId}

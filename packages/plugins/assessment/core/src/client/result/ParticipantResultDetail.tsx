@@ -115,6 +115,8 @@ export function ParticipantResultDetail({
   batchId,
   participantId,
   manageable,
+  writable,
+  mayRecord,
   view,
   entryId,
   onView,
@@ -126,6 +128,10 @@ export function ParticipantResultDetail({
   participantId: string
   /** whether this reader may take somebody off the round or put them back */
   manageable: boolean
+  /** false once the round is archived: it is kept as it closed */
+  writable: boolean
+  /** whether this reader holds the power that records, and so withdraws, a determination */
+  mayRecord: boolean
   view: 'score' | 'entries'
   /** which claim is open, if any; the drawer over either half */
   entryId: string
@@ -313,6 +319,10 @@ export function ParticipantResultDetail({
             batchId={batchId}
             participantId={participantId}
             entryId={entryId}
+            may={{
+              returnForRevision: writable && manageable,
+              withdraw: writable && mayRecord,
+            }}
             onEntry={onEntry}
           />
         ) : unavailable ? (

@@ -385,6 +385,64 @@ describe('the participant results screen', () => {
       .toContain(zhCN['assessment/entry/refuse-not-returnable'])
   })
 
+  it('offers no correction in an archived round', async () => {
+    await screen(
+      { getBatch: () => Effect.succeed({ batch: { ...batch, status: 'archived' } }) },
+      `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}&view=entries&entry=${ENTRY_ID}`,
+    )
+    await expect.element(page.getByTestId('entry-recognition')).toBeVisible()
+    expect(page.getByRole('button', { name: '退回修改' }).elements()).toHaveLength(0)
+  })
+
+  it('sends back only a claim under review or approved', async () => {
+    await screen(
+      {
+        listParticipantEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [{ entry: entry({ status: 'rejected' }), recognition: null }],
+            nextCursor: null,
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}&view=entries&entry=${ENTRY_ID}`,
+    )
+    await expect.element(page.getByTestId('entry-recognition')).toBeVisible()
+    expect(page.getByRole('button', { name: '退回修改' }).elements()).toHaveLength(0)
+  })
+
+  const recorded = {
+    listParticipantEntries: () =>
+      Effect.succeed({
+        participantId: PARTICIPANT_ID,
+        entries: [{ entry: entry({ status: 'approved', source: 'record' }), recognition: null }],
+        nextCursor: null,
+      }),
+  }
+
+  it('does not offer to withdraw a record to a reader who could not have made it', async () => {
+    await screen(
+      recorded,
+      `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}&view=entries&entry=${ENTRY_ID}`,
+    )
+    await expect.element(page.getByTestId('entry-recognition')).toBeVisible()
+    expect(page.getByRole('button', { name: '撤销认定' }).elements()).toHaveLength(0)
+    expect(page.getByRole('button', { name: '退回修改' }).elements()).toHaveLength(0)
+  })
+
+  it('offers to withdraw a record to a reader who holds the record power', async () => {
+    await screen(
+      {
+        ...recorded,
+        getBatch: () =>
+          Effect.succeed({
+            batch: { ...batch, capabilities: { ...batch.capabilities, record: true } },
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}&view=entries&entry=${ENTRY_ID}`,
+    )
+    await expect.element(page.getByRole('button', { name: '撤销认定' })).toBeVisible()
+  })
+
   it('never hands the band over to an empty heading', async () => {
     // the band becomes the person the moment one is chosen, so a banner that
     // waited for the name would leave the heading blank for the length of a
