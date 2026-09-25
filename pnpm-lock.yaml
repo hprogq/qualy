@@ -852,6 +852,9 @@ importers:
 
   packages/core/spreadsheet:
     dependencies:
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.115
       exceljs:
         specifier: 'catalog:'
         version: 4.4.0

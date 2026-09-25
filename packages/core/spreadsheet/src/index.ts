@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs'
 import { ArchiveRefused, inspectArchive, type ArchiveLimits } from './archive.ts'
+import { IGNORED_NODES, type ContentLimits } from './contents.ts'
 
 // Bytes in, cell text out - and nothing about what any of it means.
 //
@@ -18,10 +19,14 @@ import { ArchiveRefused, inspectArchive, type ArchiveLimits } from './archive.ts
 //     which is not a fact anybody signed.
 //   - the resource limits, so a hostile workbook cannot be answered with
 //     memory instead of an error. The file's own size is checked first, then
-//     what the archive inflates to (archive.ts), and only then is the reader
-//     handed the bytes; the sheet, row, column and cell ceilings follow.
+//     what the archive inflates to (archive.ts) and what its parts would
+//     become (contents.ts), and only then is the reader handed the bytes; the
+//     sheet, row, column and cell ceilings of what was read follow. How many
+//     workbooks are read at once is gate.ts.
 
 export { ArchiveRefused, ARCHIVE_LIMITS, inspectArchive, type ArchiveLimits } from './archive.ts'
+export { type ContentLimits } from './contents.ts'
+export { readWorkbook } from './gate.ts'
 
 /** what a single workbook may cost before it is refused outright */
 export interface SpreadsheetLimits {
@@ -38,6 +43,31 @@ export const SPREADSHEET_LIMITS: SpreadsheetLimits = {
   maxColumns: 128,
   maxCellChars: 4000,
   maxSheets: 8,
+}
+
+/** what the rest of the workbook may add besides its cells: styles, the workbook, drawings, comments */
+const FURNITURE = 65_536
+
+/**
+ * The ceilings on what a workbook's parts may hold, from the ceilings on what
+ * the parser accepts: every sheet together holds no more cells than the one
+ * widest table the parser would read, and no more rows than every sheet at
+ * its longest.
+ */
+export const contentLimitsOf = (limits: SpreadsheetLimits): ContentLimits => {
+  const cells = (limits.maxRows + 1) * limits.maxColumns
+  return {
+    maxSheets: limits.maxSheets,
+    maxRows: limits.maxSheets * (limits.maxRows + 1),
+    maxCells: cells,
+    maxMerges: 2 * (limits.maxRows + 1),
+    // a value for each cell, and the sheet's own furniture
+    maxSheetElements: cells + FURNITURE,
+    maxSharedStrings: cells,
+    // the text inside each entry
+    maxSharedElements: cells + FURNITURE,
+    maxOtherElements: FURNITURE,
+  }
 }
 
 /** why a file, a sheet or a cell was not read, in one stable word */
@@ -124,9 +154,19 @@ export const cellText = (cell: ExcelJS.Cell, rowNo: number): string => {
   return String(value)
 }
 
+const ARCHIVE_REFUSALS = {
+  malformed: 'not-xlsx',
+  'too-large': 'file-too-large',
+  'too-many-sheets': 'too-many-sheets',
+  'too-many-rows': 'too-many-rows',
+} as const satisfies Record<ArchiveRefused['reason'], SpreadsheetRefusal>
+
 /**
  * A workbook opened under the ceilings: the file's size, what the archive
- * inflates to, then the reader, then the sheet count.
+ * inflates to and what its parts hold, then the reader, then the sheet count.
+ *
+ * Callers on a server read it through `readWorkbook`, which holds the
+ * process's one permit while the reader works.
  */
 export const openWorkbook = async (
   bytes: Uint8Array,
@@ -135,14 +175,14 @@ export const openWorkbook = async (
 ): Promise<ExcelJS.Workbook> => {
   if (bytes.byteLength > limits.maxFileBytes) throw new SpreadsheetUnreadable('file-too-large')
   try {
-    inspectArchive(bytes, archive)
+    inspectArchive(bytes, archive, contentLimitsOf(limits))
   } catch (error) {
     if (!(error instanceof ArchiveRefused)) throw error
-    throw new SpreadsheetUnreadable(error.reason === 'too-large' ? 'file-too-large' : 'not-xlsx')
+    throw new SpreadsheetUnreadable(ARCHIVE_REFUSALS[error.reason])
   }
   const book = new ExcelJS.Workbook()
   try {
-    await book.xlsx.load(bytes as unknown as ArrayBuffer)
+    await book.xlsx.load(bytes as unknown as ArrayBuffer, { ignoreNodes: [...IGNORED_NODES] })
   } catch {
     throw new SpreadsheetUnreadable('not-xlsx')
   }

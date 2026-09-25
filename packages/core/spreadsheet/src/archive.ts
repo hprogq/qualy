@@ -1,4 +1,8 @@
 import zlib from 'node:zlib'
+import { contentTally, type ContentLimits } from './contents.ts'
+import { ArchiveRefused } from './refused.ts'
+
+export { ArchiveRefused, type ArchiveRefusal } from './refused.ts'
 
 // What a workbook costs once it is opened, found out before it is.
 //
@@ -28,11 +32,11 @@ export const ARCHIVE_LIMITS = {
   /**
    * Every part inflated, added up.
    *
-   * This is the only ceiling that acts before the reader builds its object
-   * model, and that model is far larger than the xml it comes from -
-   * measured, 73 MiB of sheet xml became 820 MiB of heap. So the number has
-   * to be read as "how much heap one upload may cost", not as "how big a
-   * spreadsheet may be".
+   * What the reader is handed as text, which it holds while it builds its
+   * object model. The model itself is bounded by what the parts contain
+   * (contents.ts): it is far larger than the xml it comes from - measured,
+   * 73 MiB of sheet xml became 820 MiB of heap - and a small part of numeric
+   * cells can hold many times the rows the parser accepts.
    *
    * Sized from the widest workbook the parser will actually accept: 2000
    * rows by 128 columns of ordinary text is 1.58 MiB on disk and 16.71 MiB
@@ -47,20 +51,12 @@ export const ARCHIVE_LIMITS = {
 
 export type ArchiveLimits = { readonly maxEntries: number; readonly maxInflatedBytes: number }
 
-/** an archive this will not hand to the reader, in one of two words */
-export class ArchiveRefused extends Error {
-  readonly reason: 'malformed' | 'too-large'
-  constructor(reason: 'malformed' | 'too-large') {
-    super(reason)
-    this.name = 'ArchiveRefused'
-    this.reason = reason
-  }
-}
-
 const END_OF_CENTRAL_DIRECTORY = 0x06054b50
 const CENTRAL_FILE_HEADER = 0x02014b50
 const LOCAL_FILE_HEADER = 0x04034b50
 const ZIP64_EXTRA = 0x0001
+/** the Info-ZIP unicode path, which the reader prefers to the name it is beside */
+const UNICODE_PATH_EXTRA = 0x7075
 const MAX16 = 0xffff
 const MAX32 = 0xffffffff
 /** the end record is 22 bytes and may carry a comment of up to 65535 after it */
@@ -109,6 +105,17 @@ const widened = (
   }
   // a saturated slot with nothing to widen it is a header that lies
   throw new ArchiveRefused('malformed')
+}
+
+/** whether a header's extra field carries a record of this kind */
+const hasExtra = (view: Buffer, from: number, length: number, kind: number) => {
+  let at = from
+  const stop = from + length
+  while (at + 4 <= stop) {
+    if (view.readUInt16LE(at) === kind) return true
+    at += 4 + view.readUInt16LE(at + 2)
+  }
+  return false
 }
 
 /** the central directory, read the way the workbook reader reads it, or a refusal */
@@ -169,6 +176,11 @@ const partsOf = (view: Buffer, limits: ArchiveLimits): readonly Part[] => {
     if (sizes.inflated === MAX32 || sizes.compressed === MAX32 || sizes.localHeader === MAX32) {
       sizes = widened(view, at + 46 + nameLength, extraLength, sizes)
     }
+    // a second name for the part, which the reader believes over the one
+    // the contents are routed by; no workbook needs one
+    if (hasExtra(view, at + 46 + nameLength, extraLength, UNICODE_PATH_EXTRA)) {
+      throw new ArchiveRefused('malformed')
+    }
     declared += sizes.inflated
     // said out loud by the directory itself: nothing needs inflating to know
     if (declared > limits.maxInflatedBytes) throw new ArchiveRefused('too-large')
@@ -183,24 +195,38 @@ const partsOf = (view: Buffer, limits: ArchiveLimits): readonly Part[] => {
  * The archive, walked and every part inflated against its own declaration,
  * or a refusal saying whether it was too large or not an archive at all.
  *
+ * Given the ceilings on what the parts hold, each part the reader would
+ * parse is also counted against them (contents.ts), so a workbook that
+ * would become too many objects is refused before any of them exist.
+ *
  * Nothing is kept: each part is inflated, measured and let go, so the most
  * this holds at once is the largest single part the directory admitted to.
  */
-export const inspectArchive = (bytes: Uint8Array, limits: ArchiveLimits = ARCHIVE_LIMITS): void => {
+export const inspectArchive = (
+  bytes: Uint8Array,
+  limits: ArchiveLimits = ARCHIVE_LIMITS,
+  contents?: ContentLimits,
+): void => {
   const view = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   if (view.length < 22) throw new ArchiveRefused('malformed')
+  const tally = contents === undefined ? null : contentTally(contents)
   for (const part of partsOf(view, limits)) {
     const header = part.localHeader
     if (header + 30 > view.length || view.readUInt32LE(header) !== LOCAL_FILE_HEADER) {
       throw new ArchiveRefused('malformed')
     }
     // the data starts after the LOCAL header's own name and extra, which
-    // need not match the central ones - that is where the reader looks too
-    const start = header + 30 + view.readUInt16LE(header + 26) + view.readUInt16LE(header + 28)
+    // need not match the central ones - that is where the reader looks too,
+    // and the local name is the one it routes the part by
+    const nameLength = view.readUInt16LE(header + 26)
+    if (header + 30 + nameLength > view.length) throw new ArchiveRefused('malformed')
+    const name = view.toString('latin1', header + 30, header + 30 + nameLength)
+    const start = header + 30 + nameLength + view.readUInt16LE(header + 28)
     const stop = start + part.compressed
     if (stop > view.length) throw new ArchiveRefused('malformed')
     if (part.method === 0) {
       if (part.compressed !== part.inflated) throw new ArchiveRefused('malformed')
+      tally?.add(name, view.subarray(start, stop))
       continue
     }
     let inflated: Buffer
@@ -217,5 +243,6 @@ export const inspectArchive = (bytes: Uint8Array, limits: ArchiveLimits = ARCHIV
       throw new ArchiveRefused('malformed')
     }
     if (inflated.byteLength !== part.inflated) throw new ArchiveRefused('malformed')
+    tally?.add(name, inflated)
   }
 }

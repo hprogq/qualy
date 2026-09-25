@@ -11,6 +11,7 @@
     "./package.json": "./package.json"
   },
   "dependencies": {
+    "effect": "catalog:",
     "exceljs": "catalog:"
   }
 }
