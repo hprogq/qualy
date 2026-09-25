@@ -1030,14 +1030,19 @@ export const makeAdministrativeImportMethods = (
       // facts that press wrote count against the question's limit, and every
       // row of the import would be refused as already recorded. The check
       // under the lock below still decides a race between two presses.
+      // Only for the batch and the question it went to: the same upload
+      // named against another is judged like any other file, and refused
+      // for what it is.
       const earlier = yield* dieQuery(
         withDb(importOfAttachment({ tenantId, attachmentId: input.attachmentId })),
       )
-      if (earlier !== null) {
+      if (earlier !== null && earlier.batchId === batchId && earlier.itemId === input.itemId) {
         const staged = yield* storage
           .metadata({ tenantId, attachmentId: input.attachmentId })
           .pipe(Effect.catch(() => Effect.fail(new AttachmentUnavailable())))
-        if (staged.ownerUserId === as.userId) return earlier
+        if (staged.ownerUserId === as.userId) {
+          return { importId: earlier.importId, importedCount: earlier.importedCount }
+        }
       }
       // All outside any transaction: reading the file, judging it and
       // proving the arithmetic are the expensive parts, and none of them
@@ -1094,7 +1099,13 @@ export const makeAdministrativeImportMethods = (
               tenantId,
               attachmentId: input.attachmentId,
             })
-            if (already !== null) return already
+            if (already !== null) {
+              // an upload another import already holds is not this one's
+              if (already.batchId !== batchId || already.itemId !== input.itemId) {
+                return yield* new AttachmentUnavailable()
+              }
+              return { importId: already.importId, importedCount: already.importedCount }
+            }
             // the question, again: a revision that moved while the reader
             // was filling in the file makes every determination in it
             // answer a question that no longer exists

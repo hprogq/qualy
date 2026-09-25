@@ -1359,6 +1359,49 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
     expect(found.after).toEqual({ imports: 1, entries: 1 })
   })
 
+  // The answer to a second press is for the batch and the question the
+  // upload went to. Named against another question, the same upload was
+  // answered as a success carrying the other import's id and count.
+  it('answers a second press only for the question the upload was imported to', async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ai-once-elsewhere')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          yield* numbered(f)
+          const item = yield* recordItem(f, g.batch.id)
+          const other = yield* recordItem(f, g.batch.id)
+          const attachmentId = yield* workbook(f, item.id, f.recorder, [
+            ['2023001', 'Zhang San', '校发〔2026〕12 号'],
+          ])
+          const revisionOf = (itemId: string) =>
+            Effect.map(
+              runSql(
+                sql`select current_revision_id as id from assessment_items where id = ${itemId}`,
+              ),
+              (result) => one<{ id: string }>(result).id,
+            )
+          const commit = (itemId: string) =>
+            Effect.gen(function* () {
+              return yield* assessment.commitAdministrativeImport(
+                f.t,
+                g.batch.id,
+                { attachmentId, itemId, expectedItemRevisionId: yield* revisionOf(itemId) },
+                f.principal(f.recorder),
+              )
+            })
+          yield* commit(item.id)
+          const elsewhere = yield* Effect.exit(commit(other.id))
+          return { elsewhere, after: yield* counts(f) }
+        }),
+      ),
+    )
+    expect(found.elsewhere._tag).toBe('Failure')
+    expect(found.after).toEqual({ imports: 1, entries: 1 })
+  })
+
   // Deletion frees a number for somebody new, and the roster keeps the
   // deleted person until an administrator takes them off it. A number is
   // answered by the living person who holds it, or by nobody.

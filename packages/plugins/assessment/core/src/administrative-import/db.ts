@@ -150,7 +150,7 @@ export const importOfAttachment = (input: { tenantId: string; attachmentId: stri
     .query((k) =>
       k
         .selectFrom('AdministrativeEntryImport')
-        .select(['id', 'importedCount'])
+        .select(['id', 'importedCount', 'batchId', 'itemId'])
         .where('tenantId', '=', input.tenantId)
         .where('sourceAttachmentId', '=', input.attachmentId)
         .executeTakeFirst(),
@@ -160,8 +160,11 @@ export const importOfAttachment = (input: { tenantId: string; attachmentId: stri
         row === undefined
           ? null
           : {
-              importId: String((row as Record<string, unknown>)['id']),
-              importedCount: Number((row as Record<string, unknown>)['importedCount'] ?? 0),
+              importId: String(row.id),
+              importedCount: Number(row.importedCount ?? 0),
+              /** where the upload went: an answer for this batch and question only */
+              batchId: String(row.batchId),
+              itemId: String(row.itemId),
             },
       ),
     )
