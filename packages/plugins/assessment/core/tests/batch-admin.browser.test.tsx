@@ -1384,6 +1384,82 @@ describe('who may work on a batch', () => {
     })
   })
 
+  // A closed round takes on nobody new and no more of anybody - the server
+  // refuses appointing, accepting and lifting a withholding there - so none
+  // of them is offered. What takes authority away stays: clearing what the
+  // organization withdrew, and withholding more.
+  it('offers an archived batch only what takes authority away', async () => {
+    const applyAccessSync = vi.fn((_request: Request) => Effect.succeed({ merged: 0, cleared: 1 }))
+    await accessScreen({
+      getBatch: () => Effect.succeed({ batch: batch({ status: 'archived' }) }),
+      listAccess: () =>
+        Effect.succeed({
+          staff: [
+            subject({
+              sources: [
+                source({
+                  accepted: ['assessment.review.process', 'assessment.ranking.view'],
+                  current: ['assessment.review.process', 'assessment.ranking.view'],
+                }),
+              ],
+              denied: ['assessment.ranking.view'],
+              effective: ['assessment.review.process'],
+            }),
+          ],
+        }),
+      previewAccessSync: () =>
+        Effect.succeed({
+          items: [
+            {
+              id: ASSIGNMENT_ID,
+              kind: 'new' as const,
+              userId: PARTICIPANT_ID,
+              displayName: '新来的老师',
+              businessNo: 'T0002',
+              roleName: '学院审核员',
+              permissions: ['assessment.review.process'],
+            },
+            {
+              id: SOURCE_ID,
+              kind: 'lapsed' as const,
+              userId: USER_ID,
+              displayName: '离任的老师',
+              businessNo: null,
+              roleName: '学院审核员',
+              permissions: ['assessment.ranking.view'],
+            },
+          ],
+          nextCursor: null,
+          pendingTotal: 1,
+          lapsedTotal: 1,
+        }),
+      applyAccessSync,
+    })
+
+    await expect.element(page.getByText('王审核')).toBeVisible()
+    expect(page.getByRole('button', { name: '添加工作人员' }).elements()).toHaveLength(0)
+    // what the organization offers is no decision the round still owes
+    await expect
+      .element(page.getByTestId('access-sync-notice'))
+      .toHaveAttribute('data-kind', 'lapsed')
+    await page.getByRole('button', { name: '查看变更' }).click()
+    const changes = page.getByTestId('access-sync')
+    await expect.element(changes.getByText('新来的老师')).toBeVisible()
+    expect(changes.getByRole('checkbox').elements()).toHaveLength(0)
+    await page.getByRole('button', { name: '清除失效记录' }).click()
+    await vi.waitFor(() => expect(applyAccessSync).toHaveBeenCalledTimes(1))
+    expect(applyAccessSync.mock.calls[0]![0]).toMatchObject({ payload: { accept: [] } })
+
+    // a capability can still be withheld, but a withheld one stays withheld
+    await page.getByRole('button', { name: '调整' }).click()
+    await expect
+      .element(page.getByTestId('access-permission-assessment.ranking.view'))
+      .toBeDisabled()
+    await expect
+      .element(page.getByTestId('access-permission-assessment.review.process'))
+      .toBeEnabled()
+  })
+
   it('only offers to remove somebody this round brought in, and asks first', async () => {
     const removeStaff = vi.fn((_request: Request) => Effect.succeed({ staff: [] }))
     await accessScreen({

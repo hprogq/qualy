@@ -111,7 +111,18 @@ const styles = stylex.create({
   },
 })
 
-export function AccessPanel({ batchId }: { batchId: string }) {
+export function AccessPanel({
+  batchId,
+  archived,
+}: {
+  batchId: string
+  /**
+   * An archived round takes on nobody new and no more of anybody: the
+   * server refuses appointing, accepting and lifting a withholding there,
+   * so none of them is offered. Taking authority away stays open.
+   */
+  archived: boolean
+}) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
   const query = useApiQuery(assessmentApi)
@@ -248,7 +259,7 @@ export function AccessPanel({ batchId }: { batchId: string }) {
 
       {summary.data && (
         <AccessSyncNotice
-          pendingTotal={summary.data.pendingTotal}
+          pendingTotal={archived ? 0 : summary.data.pendingTotal}
           lapsedTotal={summary.data.lapsedTotal}
           onOpen={() => setMerging(true)}
         />
@@ -256,6 +267,7 @@ export function AccessPanel({ batchId }: { batchId: string }) {
 
       <AccessSyncDialog
         batchId={batchId}
+        archived={archived}
         open={merging}
         pending={sync.isPending}
         onMerge={(selection) => sync.mutate(selection)}
@@ -269,9 +281,11 @@ export function AccessPanel({ batchId }: { batchId: string }) {
             <span {...stylex.props(styles.aside)}>
               {format(m.accessSourceCount, { count: staff.length })}
             </span>
-            <Button size="sm" variant="outline" onClick={() => setAddingStaff(true)}>
-              {format(m.addStaff)}
-            </Button>
+            {!archived && (
+              <Button size="sm" variant="outline" onClick={() => setAddingStaff(true)}>
+                {format(m.addStaff)}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -292,7 +306,7 @@ export function AccessPanel({ batchId }: { batchId: string }) {
             <Empty className={stylex.props(styles.frame, styles.frameEmpty).className}>
               <EmptyHeader>
                 <EmptyTitle>{format(m.accessEmpty)}</EmptyTitle>
-                <EmptyDescription>{format(m.accessEmptyHint)}</EmptyDescription>
+                {!archived && <EmptyDescription>{format(m.accessEmptyHint)}</EmptyDescription>}
               </EmptyHeader>
             </Empty>
           ) : (
@@ -346,6 +360,7 @@ export function AccessPanel({ batchId }: { batchId: string }) {
           answer arrives cuts its closing animation off at the knees */}
       <AccessAdjustDialog
         subject={subject ?? null}
+        archived={archived}
         open={subject !== undefined}
         pending={setDeny.isPending}
         onSave={(denied) =>
@@ -356,7 +371,7 @@ export function AccessPanel({ batchId }: { batchId: string }) {
 
       <AddStaffDialog
         batchId={batchId}
-        open={addingStaff}
+        open={addingStaff && !archived}
         pending={addStaff.isPending}
         onAdd={(input) => addStaff.mutate(input)}
         onClose={() => setAddingStaff(false)}

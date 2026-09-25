@@ -85,12 +85,15 @@ const styles = stylex.create({
 
 export function AccessSyncDialog({
   batchId,
+  archived,
   open,
   pending,
   onMerge,
   onClose,
 }: {
   batchId: string
+  /** an archived round only clears what lapsed: nothing new is taken into it */
+  archived: boolean
   open: boolean
   pending: boolean
   onMerge: (selection: AccessSelection) => void
@@ -130,13 +133,13 @@ export function AccessSyncDialog({
   }, [nextCursor, pageIndex, cursors])
 
   const items = changes.data?.items ?? []
-  const decidable = items.filter((change) => change.kind !== 'lapsed')
+  const decidable = archived ? [] : items.filter((change) => change.kind !== 'lapsed')
   const selectedCount = [...chosen.values()].filter((codes) => codes.length > 0).length
   // Nothing here needs deciding, so the button is not an approval: it puts the
   // withdrawal down. Sending it with nothing ticked is what clears the record
   // the organization has already made obsolete.
   const onlyWithdrawals =
-    (changes.data?.pendingTotal ?? 0) === 0 && (changes.data?.lapsedTotal ?? 0) > 0
+    (archived || (changes.data?.pendingTotal ?? 0) === 0) && (changes.data?.lapsedTotal ?? 0) > 0
 
   const toggle = (change: AccessChange, code: string) => {
     setChosen((current) => {
@@ -171,7 +174,9 @@ export function AccessSyncDialog({
       <DialogContent data-testid="access-sync" size="48rem">
         <DialogHeader>
           <DialogTitle>{format(m.accessSyncTitle)}</DialogTitle>
-          <DialogDescription>{format(m.accessSyncHint)}</DialogDescription>
+          <DialogDescription>
+            {format(archived ? m.accessSyncArchivedHint : m.accessSyncHint)}
+          </DialogDescription>
         </DialogHeader>
         <DialogBody xstyle={styles.body}>
           <AsyncSection
@@ -195,6 +200,7 @@ export function AccessSyncDialog({
                   <ChangeRow
                     key={keyOf(change)}
                     change={change}
+                    offered={!archived}
                     chosen={chosen.get(keyOf(change)) ?? []}
                     disabled={pending}
                     onToggle={(code) => toggle(change, code)}
@@ -255,11 +261,14 @@ const KIND_LABELS = {
 
 function ChangeRow({
   change,
+  offered,
   chosen,
   disabled,
   onToggle,
 }: {
   change: AccessChange
+  /** false where nothing may be taken: the change is read, not chosen */
+  offered: boolean
   chosen: readonly string[]
   disabled: boolean
   onToggle: (code: string) => void
@@ -269,7 +278,7 @@ function ChangeRow({
   const settled = change.kind === 'lapsed'
 
   return (
-    <li {...stylex.props(styles.row)}>
+    <li {...stylex.props(styles.row)} data-testid="access-change" data-kind={change.kind}>
       <div {...stylex.props(styles.who)}>
         <span {...stylex.props(styles.name)}>{change.displayName}</span>
         {change.businessNo !== null && (
@@ -287,8 +296,10 @@ function ChangeRow({
       </div>
       <div {...stylex.props(styles.permissions)}>
         {inCatalogOrder(change.permissions).map((code) =>
-          settled ? (
-            <span key={code} {...stylex.props(styles.struck)}>
+          settled || !offered ? (
+            // a withdrawal already happened, and a closed round takes
+            // nothing: either way there is nothing here to tick
+            <span key={code} {...stylex.props(settled ? styles.struck : styles.aside)}>
               {format(permissionLabel(code))}
             </span>
           ) : (

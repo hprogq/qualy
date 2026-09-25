@@ -8,7 +8,7 @@ export default function BatchAccessPage() {
   const { format } = useI18n()
   return (
     <BatchScreen title={format(m.tabAccess)} description={format(m.accessHint)}>
-      {(batch) => <AccessPanel batchId={batch.id} />}
+      {(batch) => <AccessPanel batchId={batch.id} archived={batch.status === 'archived'} />}
     </BatchScreen>
   )
 }

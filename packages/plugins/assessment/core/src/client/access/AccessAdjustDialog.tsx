@@ -73,6 +73,7 @@ const styles = stylex.create({
 
 export function AccessAdjustDialog({
   subject,
+  archived,
   open,
   pending,
   onSave,
@@ -80,6 +81,8 @@ export function AccessAdjustDialog({
 }: {
   /** null while closed, which is most of the time it is mounted */
   subject: AccessSubject | null
+  /** an archived round may withhold more, never hand anything back */
+  archived: boolean
   open: boolean
   pending: boolean
   /** the capabilities to withhold from now on, as a whole */
@@ -124,7 +127,9 @@ export function AccessAdjustDialog({
           <DialogTitle>
             {format(m.accessAdjustTitle, { name: person?.displayName ?? '' })}
           </DialogTitle>
-          <DialogDescription>{format(m.accessAdjustHint)}</DialogDescription>
+          <DialogDescription>
+            {format(archived ? m.accessAdjustArchivedHint : m.accessAdjustHint)}
+          </DialogDescription>
         </DialogHeader>
         <DialogBody>
           {offered.length === 0 ? (
@@ -147,7 +152,11 @@ export function AccessAdjustDialog({
                             key={code}
                             code={code}
                             granted={!denied.includes(code)}
-                            disabled={pending}
+                            // withheld already, on a closed round: handing
+                            // it back is the one move it no longer takes
+                            disabled={
+                              pending || (archived && (person?.denied ?? []).includes(code))
+                            }
                             onToggle={() => toggle(code)}
                           />
                         ))}

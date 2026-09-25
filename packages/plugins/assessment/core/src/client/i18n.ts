@@ -5467,6 +5467,10 @@ const i18n = definePluginMessages({
       defaultMessage:
         'Changes apply only to this batch and do not modify the user\u2019s organization roles.',
     },
+    accessAdjustArchivedHint: {
+      id: 'assessment/access/adjust-archived-hint',
+      defaultMessage: 'The batch has ended. Permissions can be turned off but not back on',
+    },
     accessRemove: { id: 'assessment/access/remove', defaultMessage: 'Remove from batch' },
     accessRemoveTitle: {
       id: 'assessment/access/remove-title',
@@ -5500,6 +5504,10 @@ const i18n = definePluginMessages({
     accessSyncHint: {
       id: 'assessment/access/sync-hint',
       defaultMessage: 'Select the organization permission changes to apply to this batch.',
+    },
+    accessSyncArchivedHint: {
+      id: 'assessment/access/sync-archived-hint',
+      defaultMessage: 'The batch has ended. Only expired records can be cleared',
     },
     accessSyncNew: { id: 'assessment/access/sync-new', defaultMessage: 'New authorization' },
     accessSyncWidened: {
