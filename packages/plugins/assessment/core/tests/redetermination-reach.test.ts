@@ -91,6 +91,13 @@ describe.runIf(postgresAvailable)('what re-determining reads', () => {
           const status = one<{ status: string }>(
             yield* runSql(sql`select status from entries where id = ${entry.id}`),
           ).status
+          // the participant is told the result was re-made
+          const told = (yield* assessment.listMyActivity(
+            f.t,
+            g.batch.id,
+            { perspective: 'participant' },
+            owner,
+          )).items.map((row) => row.kind)
           return {
             capabilities: batch.capabilities,
             roster: roster.map((row) => row.id),
@@ -107,6 +114,7 @@ describe.runIf(postgresAvailable)('what re-determining reads', () => {
             nobody,
             redetermined,
             status,
+            told,
             entryId: entry.id,
             p1: g.p1,
           }
@@ -135,6 +143,7 @@ describe.runIf(postgresAvailable)('what re-determining reads', () => {
       expect(errorOf<{ _tag: string }>(refused)?._tag).toBe('ACCESS_DENIED')
     }
     expect(result.status).toBe('rejected')
+    expect(result.told).toContain('approval-revoked')
   })
 
   it('reads no accounts for somebody holding neither door', async () => {

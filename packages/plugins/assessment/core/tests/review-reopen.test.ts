@@ -179,7 +179,15 @@ describe.runIf(postgresAvailable)('reopening a concluded claim', () => {
           const appealed = yield* Effect.exit(
             assessment.appealEntry(f.t, claim.entryId, { reason: '证书属实' }, s1),
           )
-          return { offered, opened, round, during, concluded, after, appeal, appealed, claim }
+          // and the participant is told their claim was reopened, not only
+          // shown a dot
+          const told = (yield* assessment.listMyActivity(
+            f.t,
+            w.g.batch.id,
+            { perspective: 'participant' },
+            s1,
+          )).items.map((row) => row.kind)
+          return { offered, opened, round, during, concluded, after, appeal, appealed, claim, told }
         }),
       ),
     )
@@ -197,6 +205,7 @@ describe.runIf(postgresAvailable)('reopening a concluded claim', () => {
     expect(result.after.status).toBe('rejected')
     expect(result.appeal).toEqual({ state: 'available', reason: null })
     expect(Exit.isSuccess(result.appealed)).toBe(true)
+    expect(result.told).toContain('review-reopened')
   })
 
   it('may reopen a conclusion whose one appeal is spent', async () => {

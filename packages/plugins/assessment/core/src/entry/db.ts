@@ -1585,6 +1585,7 @@ export const userActivityPage = (input: {
                  case re.kind
                    when 'submitted' then 'entry-submitted'
                    when 'appealed' then 'appeal-filed'
+                   when 'reopened' then 'review-reopened'
                    when 'escalated' then 'review-escalated'
                    when 'cancelled-item-voided' then 'entry-voided-with-item'
                  end,
@@ -1598,7 +1599,8 @@ export const userActivityPage = (input: {
           join mine m on m.id = ri.entry_id
           left join users u on u.tenant_id = re.tenant_id and u.id = re.actor_id
           where re.tenant_id = ${input.tenantId}
-            and re.kind in ('submitted', 'appealed', 'escalated', 'cancelled-item-voided')
+            and re.kind in ('submitted', 'appealed', 'reopened', 'escalated',
+                            'cancelled-item-voided')
 
           union all
           select ee.id, 'entry-event', 'participant',
@@ -1609,6 +1611,9 @@ export const userActivityPage = (input: {
                    when 'revision-required' then 'revision-required'
                    when 'auto-approved' then 'review-approved'
                    when 'voided-with-item' then 'entry-voided-with-item'
+                   when 'recognition-corrected' then 'recognition-corrected'
+                   when 'approval-revoked' then 'approval-revoked'
+                   when 'rejection-overturned' then 'rejection-overturned'
                  end,
                  m.id, m.item_id, m.title,
                  null, null,
@@ -1620,7 +1625,8 @@ export const userActivityPage = (input: {
           where ee.tenant_id = ${input.tenantId}
             and ee.kind in ('withdrawn-by-submitter', 'abandoned-by-submitter',
                             'voided-by-staff', 'revision-required', 'auto-approved',
-                            'voided-with-item')
+                            'voided-with-item', 'recognition-corrected', 'approval-revoked',
+                            'rejection-overturned')
 
           union all
           select ri.id, 'verdict', 'participant',

@@ -4958,6 +4958,22 @@ const i18n = definePluginMessages({
       id: 'assessment/activity/appeal-filed',
       defaultMessage: 'You filed an appeal',
     },
+    'activity.review-reopened': {
+      id: 'assessment/activity/review-reopened',
+      defaultMessage: '{who} sent the entry back through review',
+    },
+    'activity.recognition-corrected': {
+      id: 'assessment/activity/recognition-corrected',
+      defaultMessage: '{who} corrected what the entry was recognised as',
+    },
+    'activity.approval-revoked': {
+      id: 'assessment/activity/approval-revoked',
+      defaultMessage: '{who} revoked the approval of the entry',
+    },
+    'activity.rejection-overturned': {
+      id: 'assessment/activity/rejection-overturned',
+      defaultMessage: '{who} approved the entry that had been returned',
+    },
     'activity.supplement-requested': {
       id: 'assessment/activity/supplement-requested',
       defaultMessage: '{who} asked you for more material',
