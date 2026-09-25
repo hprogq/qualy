@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import {
   ChevronDownIcon,
@@ -441,6 +441,7 @@ export function StructureTable({
   onAddGroup,
   onAddItem,
   onMove,
+  accepts = () => true,
   onPublish,
   onVoid,
   onRestore,
@@ -453,6 +454,12 @@ export function StructureTable({
   onAddItem: (groupId: string | null) => void
   /** the dragged row now belongs where the dropped row is */
   onMove: (dragged: StructureRow, target: StructureRow, edge: 'before' | 'after' | 'into') => void
+  /** whether a drop there is one the page can carry out; no mark is drawn where it is not */
+  accepts?: (
+    dragged: StructureRow,
+    target: StructureRow,
+    edge: 'before' | 'after' | 'into',
+  ) => boolean
   onPublish: (itemId: string) => void
   onVoid: (itemId: string) => void
   onRestore: (itemId: string) => void
@@ -462,6 +469,9 @@ export function StructureTable({
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<'all' | 'draft' | 'active' | 'voided'>('all')
   const [drop, setDrop] = useState<{ key: string; edge: 'before' | 'after' | 'into' } | null>(null)
+  // the row on the move, read while it is dragged over others: the drag's
+  // own data cannot be read until the drop
+  const carried = useRef<StructureRow | null>(null)
 
   const matches = (row: StructureRow) => {
     const term = search.trim()
@@ -482,19 +492,34 @@ export function StructureTable({
   /** everything every row needs to answer a drag; written once */
   const dragging = (row: StructureRow) => ({
     draggable: row.kind !== 'draft',
-    onDragStart: (event: React.DragEvent) => event.dataTransfer.setData('qualy/row', row.key),
+    onDragStart: (event: React.DragEvent) => {
+      carried.current = row
+      event.dataTransfer.setData('qualy/row', row.key)
+    },
+    onDragEnd: () => {
+      carried.current = null
+    },
     onDragOver: (event: React.DragEvent) => {
       if (!event.dataTransfer.types.includes('qualy/row')) return
+      const edge = edgeOf(event, row)
+      if (carried.current !== null && !accepts(carried.current, row, edge)) {
+        setDrop((mark) => (mark?.key === row.key ? null : mark))
+        return
+      }
       event.preventDefault()
-      setDrop({ key: row.key, edge: edgeOf(event, row) })
+      setDrop({ key: row.key, edge })
     },
     onDragLeave: () => setDrop((mark) => (mark?.key === row.key ? null : mark)),
     onDrop: (event: React.DragEvent) => {
       event.preventDefault()
       setDrop(null)
+      carried.current = null
       const key = event.dataTransfer.getData('qualy/row')
       const dragged = rows.find((one) => one.key === key)
-      if (dragged !== undefined && dragged.key !== row.key) onMove(dragged, row, edgeOf(event, row))
+      const edge = edgeOf(event, row)
+      if (dragged !== undefined && dragged.key !== row.key && accepts(dragged, row, edge)) {
+        onMove(dragged, row, edge)
+      }
     },
     onClick: () => onOpen(row),
   })
@@ -624,6 +649,7 @@ export function StructureTable({
 interface RowHandlers {
   draggable: boolean
   onDragStart: (event: React.DragEvent) => void
+  onDragEnd: () => void
   onDragOver: (event: React.DragEvent) => void
   onDragLeave: () => void
   onDrop: (event: React.DragEvent) => void

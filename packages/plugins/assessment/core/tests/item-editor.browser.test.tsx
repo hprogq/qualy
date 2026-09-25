@@ -332,6 +332,12 @@ const open = (
     standing?: readonly unknown[]
     /** what a save is answered with instead of being taken, one answer per press */
     refuse?: unknown[]
+    /** every question a write was asked of, in the order asked */
+    touched?: string[]
+    /** the sections of the paper, when a case needs more than the root */
+    groups?: readonly unknown[]
+    /** every tree a section save was asked to store */
+    regrouped?: unknown[]
   } = {},
 ) => {
   // what the server holds, so a save is read back as it was stored
@@ -349,7 +355,15 @@ const open = (
       assessment: {
         getBatch: () => Effect.succeed({ batch: batch() }),
         listScoreGroups: () =>
-          Effect.succeed({ groups: [paper], version: 1, capabilities: { canManage: true } }),
+          Effect.succeed({
+            groups: had.groups ?? [paper],
+            version: 1,
+            capabilities: { canManage: true },
+          }),
+        replaceScoreGroups: (call: { payload: unknown }) => {
+          had.regrouped?.push(call.payload)
+          return Effect.succeed({ groups: had.groups ?? [paper], version: 2 })
+        },
         listItems: () => Effect.succeed({ items: holding, capabilities: { canManage: true } }),
         itemOptions: () =>
           Effect.succeed({
@@ -366,10 +380,19 @@ const open = (
           params: { itemId: string }
           payload: { config?: Record<string, any>; itemType?: unknown }
         }) => {
+          had.touched?.push(call.params.itemId)
           const refusal = had.refuse?.shift()
           if (refusal !== undefined) return Effect.fail(refusal)
-          had.saved?.push(call.payload)
           const at = holding.findIndex((one) => one['id'] === call.params.itemId)
+          // as the server has it: nothing about a voided question is written
+          if (holding[at]?.['status'] === 'voided') {
+            return Effect.fail(
+              apiError('ASSESSMENT_ITEM_CONFIG_INVALID', {
+                issues: [{ path: 'item', reason: 'item-voided' }],
+              }),
+            )
+          }
+          had.saved?.push(call.payload)
           const stored = storedAfter(at === -1 ? { id: call.params.itemId } : holding[at]!, {
             ...call.payload,
           })
@@ -1292,6 +1315,94 @@ describe('what already stands under a question', () => {
     await expect.element(said).toHaveAttribute('data-code', 'recognition-strands')
     expect(document.querySelector('[data-testid="method-problem"]')).toBeNull()
     expect(document.querySelector('[data-testid="save-refused"]')).toBeNull()
+  })
+})
+
+describe('rearranging the structure', () => {
+  /** one row dragged onto another, the way a pointer does it: its top edge, or its middle */
+  const dragOnto = (from: string, onto: string, where: 'top' | 'middle' = 'top') => {
+    const rowOf = (title: string) =>
+      [...document.querySelectorAll<HTMLElement>('[draggable="true"]')].find(
+        (one) => (one.textContent ?? '').includes(title) && one.checkVisibility(),
+      )!
+    const source = rowOf(from)
+    const target = rowOf(onto)
+    const carried = new DataTransfer()
+    const box = target.getBoundingClientRect()
+    const at = { clientY: where === 'top' ? box.top + 1 : box.top + box.height / 2 }
+    source.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: carried }))
+    target.dispatchEvent(
+      new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: carried, ...at }),
+    )
+    target.dispatchEvent(
+      new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: carried, ...at }),
+    )
+  }
+
+  it('leaves a voided question where it stands when its neighbours are reordered', async () => {
+    const FIRST = '66666666-6666-4666-8666-6666666666a1'
+    const VOIDED = '66666666-6666-4666-8666-6666666666a2'
+    const LAST = '66666666-6666-4666-8666-6666666666a3'
+    const touched: string[] = []
+    const question = (id: string, title: string, sortOrder: number, voided = false) => ({
+      ...officerItem(),
+      id,
+      title,
+      scoreGroupId: PAPER_ID,
+      sortOrder,
+      ...(voided ? { status: 'voided', voidReason: '重复设置' } : {}),
+    })
+    await open({
+      items: [
+        question(FIRST, '志愿服务', 5),
+        question(VOIDED, '社会实践', 6, true),
+        question(LAST, '文艺演出', 7),
+      ],
+      touched,
+    })
+    await vi.waitFor(() =>
+      expect(document.querySelectorAll('[draggable="true"]').length).toBeGreaterThanOrEqual(3),
+    )
+
+    dragOnto('文艺演出', '志愿服务')
+
+    // the two live questions are renumbered; the voided one is never asked to move
+    await vi.waitFor(() => expect(touched).toEqual([LAST, FIRST]))
+    await new Promise((settle) => setTimeout(settle, 300))
+    expect(touched).not.toContain(VOIDED)
+  })
+
+  it('reorders a section among its siblings, and offers no way to drop one inside another', async () => {
+    const section = (id: string, name: string, sortOrder: number) => ({
+      id,
+      parentGroupId: PAPER_ID,
+      name,
+      cap: null,
+      floor: null,
+      sortOrder,
+      itemCount: 0,
+    })
+    const regrouped: unknown[] = []
+    await open({
+      groups: [
+        paper,
+        section('88888888-8888-4888-8888-8888888888b1', '德育素质', 0),
+        section('88888888-8888-4888-8888-8888888888b2', '文体素质', 1),
+      ],
+      regrouped,
+    })
+    await vi.waitFor(() =>
+      expect(document.querySelectorAll('[draggable="true"]').length).toBeGreaterThanOrEqual(2),
+    )
+
+    // into another section: the drop is not taken, so nothing is saved
+    dragOnto('文体素质', '德育素质', 'middle')
+    await new Promise((settle) => setTimeout(settle, 300))
+    expect(regrouped).toHaveLength(0)
+
+    // beside it, among its siblings: that is a reorder, and it is saved
+    dragOnto('文体素质', '德育素质', 'top')
+    await vi.waitFor(() => expect(regrouped).toHaveLength(1))
   })
 })
 

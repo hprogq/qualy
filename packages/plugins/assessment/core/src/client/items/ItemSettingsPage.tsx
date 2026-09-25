@@ -480,7 +480,9 @@ function Editor({
     }) => {
       for (const [index, id] of input.orderedItemIds.entries()) {
         const current = allItems.find((item) => item.id === id)
-        if (current === undefined) continue
+        // a voided question keeps the place it had: nothing about it may be
+        // written any more, its place in the order included
+        if (current === undefined || current.status === 'voided') continue
         const movedGroup = id === input.itemId && current.scoreGroupId !== input.groupId
         if (current.sortOrder !== index || movedGroup) {
           await run(
@@ -563,6 +565,19 @@ function Editor({
     else onComposing(row.id, drafts.find((one) => one.localId === row.id)?.groupId)
   }
 
+  const parentOf = (row: StructureRow): string | null =>
+    row.kind === 'group'
+      ? ((allGroups.find((one) => one.id === row.id)?.parentGroupId as string | null) ?? null)
+      : ((allItems.find((one) => one.id === row.id)?.scoreGroupId as string | null) ?? null)
+  // A section is reordered among its siblings by dragging, and nothing more:
+  // moving one under another parent changes what its cap covers, and that
+  // is a change the section's own editor asks a reason for.
+  const acceptsDrop = (
+    dragged: StructureRow,
+    target: StructureRow,
+    edge: 'before' | 'after' | 'into',
+  ) => dragged.kind !== 'group' || (edge !== 'into' && parentOf(target) === parentOf(dragged))
+
   // a dropped row lands where the line was drawn: inside a group, or beside
   // the row it was dropped on, in that row's own group
   const moveRow = (
@@ -570,11 +585,7 @@ function Editor({
     target: StructureRow,
     edge: 'before' | 'after' | 'into',
   ) => {
-    if (dragged.kind === 'draft') return
-    const parentOf = (row: StructureRow): string | null =>
-      row.kind === 'group'
-        ? ((allGroups.find((one) => one.id === row.id)?.parentGroupId as string | null) ?? null)
-        : ((allItems.find((one) => one.id === row.id)?.scoreGroupId as string | null) ?? null)
+    if (dragged.kind === 'draft' || !acceptsDrop(dragged, target, edge)) return
     const landing = edge === 'into' ? target.id : parentOf(target)
     if (landing === null) return
 
@@ -698,6 +709,7 @@ function Editor({
           onAddGroup={(parentId) => setGroup({ kind: 'new', parentId: parentId ?? paper.id })}
           onAddItem={(groupId) => compose(groupId ?? paper.id)}
           onMove={moveRow}
+          accepts={acceptsDrop}
           onPublish={(itemId) => publish.mutate(itemId)}
           onVoid={(itemId) => {
             const item = allItems.find((one) => one.id === itemId)
