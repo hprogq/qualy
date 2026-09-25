@@ -505,7 +505,13 @@ export interface ReviewMethods {
     page: { cursor?: string; limit?: string; batchId?: string },
     as: Principal,
   ) => Effect.Effect<
-    { items: readonly ReviewInboxItem[]; nextCursor: string | null; handledToday: number },
+    {
+      items: readonly ReviewInboxItem[]
+      nextCursor: string | null
+      handledToday: number
+      /** whether the phase opens judging in the batch asked about */
+      judging: boolean
+    },
     BadRequest
   >
   readonly listAwaitingSupplements: (
@@ -1034,6 +1040,10 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       )
       const pageRows: readonly InboxRow[] = rows.slice(0, limit)
       const last = pageRows[pageRows.length - 1]
+      // an empty queue in a phase that keeps judging shut is not a quiet
+      // day, and the screen says which it is
+      const judging =
+        page.batchId === undefined || (yield* deps.reviewGate(tenantId, page.batchId)).allowed
       // the day's count belongs to a batch: a day is a timezone's, and only
       // a batch has one, so the cross-batch queue simply does not count
       let handledToday = 0
@@ -1076,6 +1086,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             ? encodeQueryCursor(fingerprint, [last.submittedAtIso, last.instanceId])
             : null,
         handledToday,
+        judging,
       }
     },
   )

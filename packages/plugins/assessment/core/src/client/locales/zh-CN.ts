@@ -834,6 +834,8 @@ export default {
   'assessment/review/all-done-title': '当前审核任务已全部完成',
   'assessment/review/all-done-body': '今日已处理 {count} 条。',
   'assessment/review/nothing-title': '暂无待审核任务',
+  'assessment/review/closed-title': '当前阶段不开放审核',
+  'assessment/review/closed-body': '审核开放后，待你审核的申报会显示在这里',
   'assessment/review/nothing-body': '暂无新的审核任务，有新任务时页面会自动更新。',
   'assessment/review/no-role-title': '你没有本批次的审核权限',
   'assessment/review/first-one': '已到第一条',

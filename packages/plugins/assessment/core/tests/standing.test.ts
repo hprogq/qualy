@@ -242,6 +242,7 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
               desk: desk.reviewer!.pendingCount,
               groups: desk.reviewer!.queueGroups.length,
               queue: queue.items.length,
+              judging: queue.judging,
             }
           })
           const open = yield* reading
@@ -257,8 +258,9 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
         }),
       ),
     )
-    expect(result.open).toEqual({ card: 1, desk: 1, groups: 1, queue: 1 })
-    expect(result.closed).toEqual({ card: 0, desk: 0, groups: 0, queue: 0 })
+    expect(result.open).toEqual({ card: 1, desk: 1, groups: 1, queue: 1, judging: true })
+    // the queue says why it is empty: the phase keeps judging shut
+    expect(result.closed).toEqual({ card: 0, desk: 0, groups: 0, queue: 0, judging: false })
   }, 120_000)
 
   // An appeal leaves the claim approved while its round runs, and an ask on

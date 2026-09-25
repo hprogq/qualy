@@ -575,6 +575,7 @@ export default function ReviewInboxPage() {
           // pretending otherwise makes permission problems look like quiet
           // days
           <EmptyScreen
+            state="no-standing"
             icon={<ShieldIcon aria-hidden className={stylex.props(styles.emptyIcon).className} />}
             title={format(m.reviewNoRoleTitle)}
             body={format(m.reviewNoStandingHint)}
@@ -822,16 +823,30 @@ function Queue({
         {view === 'asked' ? (
           <AwaitingSection batchId={batchId} />
         ) : all.length === 0 ? (
-          // two different quiet days: everything handled, or nothing has
+          // a phase that keeps judging shut empties the queue however much
+          // is waiting, and nothing will arrive until it opens: that is not
+          // a quiet day, and promising new work would be wrong
+          inbox.data?.judging === false ? (
+            <EmptyScreen
+              state="closed"
+              icon={
+                <FileTextIcon aria-hidden className={stylex.props(styles.emptyIcon).className} />
+              }
+              title={format(m.reviewClosedTitle)}
+              body={format(m.reviewClosedBody)}
+            />
+          ) : // two different quiet days: everything handled, or nothing has
           // arrived yet. The counter is what tells them apart
           (inbox.data?.handledToday ?? 0) > 0 ? (
             <EmptyScreen
+              state="done"
               mark={<DoneMark />}
               title={format(m.reviewAllDoneTitle)}
               body={format(m.reviewAllDoneBody, { count: inbox.data?.handledToday ?? 0 })}
             />
           ) : (
             <EmptyScreen
+              state="nothing"
               icon={
                 <FileTextIcon aria-hidden className={stylex.props(styles.emptyIcon).className} />
               }
@@ -1141,11 +1156,14 @@ function ByPerson({ batchId, rows }: { batchId: string; rows: readonly InboxItem
  * nothing to do is the screen they see most often, so it gets the room.
  */
 function EmptyScreen({
+  state,
   icon,
   mark,
   title,
   body,
 }: {
+  /** which kind of empty this is: no standing, judging closed, all handled, nothing yet */
+  state: 'no-standing' | 'closed' | 'done' | 'nothing'
   icon?: ReactNode
   /** a drawn mark instead of a still icon, where the emptiness was earned */
   mark?: ReactNode
@@ -1153,7 +1171,7 @@ function EmptyScreen({
   body: string
 }) {
   return (
-    <div {...stylex.props(styles.emptyScreen)}>
+    <div {...stylex.props(styles.emptyScreen)} data-testid="review-inbox-empty" data-empty={state}>
       <Stagger className={stylex.props(styles.emptyStack).className} step={0.08}>
         {mark ?? <span {...stylex.props(styles.emptyBadge)}>{icon}</span>}
         <div {...stylex.props(styles.emptyWords)}>

@@ -153,18 +153,21 @@ const inboxRow = (over: Record<string, unknown> = {}) => ({
   ...over,
 })
 
-const queue = () =>
+const queue = (inbox?: Record<string, unknown>) =>
   renderScreen({
     client: fakeClient({
       app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
       assessment: {
         getBatch: () => Effect.succeed({ batch: batch() }),
         listReviewInbox: () =>
-          Effect.succeed({
-            items: [inboxRow(), inboxRow({ instanceId: '99999999-9999-4999-8999-999999999999' })],
-            nextCursor: null,
-            handledToday: 0,
-          }),
+          Effect.succeed(
+            inbox ?? {
+              items: [inboxRow(), inboxRow({ instanceId: '99999999-9999-4999-8999-999999999999' })],
+              nextCursor: null,
+              handledToday: 0,
+              judging: true,
+            },
+          ),
         listAwaitingSupplements: () => Effect.succeed({ items: [], nextCursor: null }),
       },
     }),
@@ -339,6 +342,23 @@ describe('one workbench, three widths', () => {
     await expect.poll(stoodOn).not.toBe(before)
     await userEvent.keyboard('q')
     await expect.poll(() => document.querySelector('[data-testid="queue-sheet"]')).toBeNull()
+  })
+
+  // A phase that keeps judging shut empties the queue however much is
+  // waiting, and nothing arrives until it opens: the empty queue says so
+  // rather than promising new work.
+  it('says judging is closed rather than that nothing has arrived', async () => {
+    await queue({ items: [], nextCursor: null, handledToday: 0, judging: false })
+    await expect
+      .element(page.getByTestId('review-inbox-empty'))
+      .toHaveAttribute('data-empty', 'closed')
+  })
+
+  it('says nothing has arrived while judging is open', async () => {
+    await queue({ items: [], nextCursor: null, handledToday: 0, judging: true })
+    await expect
+      .element(page.getByTestId('review-inbox-empty'))
+      .toHaveAttribute('data-empty', 'nothing')
   })
 
   it('keeps the queue inside the width it is given', async () => {

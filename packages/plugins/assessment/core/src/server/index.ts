@@ -7361,6 +7361,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           })),
           nextCursor: page.nextCursor,
           handledToday: page.handledToday,
+          judging: page.judging,
         }
       }),
     )

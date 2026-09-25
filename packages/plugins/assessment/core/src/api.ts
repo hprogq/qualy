@@ -1556,6 +1556,13 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
          * to a timezone, and only a batch has one.
          */
         handledToday: Schema.Number,
+        /**
+         * Whether the phase of the moment opens judging in the batch asked
+         * about. While it does not, the queue is empty however much is
+         * waiting, and says so instead of promising work. Always true when
+         * the queue was asked for across batches.
+         */
+        judging: Schema.Boolean,
       }),
       error: [BadRequest],
     }).middleware(Authenticated),

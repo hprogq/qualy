@@ -3346,6 +3346,14 @@ const i18n = definePluginMessages({
       id: 'assessment/review/nothing-body',
       defaultMessage: 'New review tasks will appear automatically when they become available.',
     },
+    reviewClosedTitle: {
+      id: 'assessment/review/closed-title',
+      defaultMessage: 'Reviewing is closed in this phase',
+    },
+    reviewClosedBody: {
+      id: 'assessment/review/closed-body',
+      defaultMessage: 'Entries waiting for your review will show here once reviewing opens',
+    },
     reviewNoRoleTitle: {
       id: 'assessment/review/no-role-title',
       defaultMessage: 'You do not have review permission for this batch',
