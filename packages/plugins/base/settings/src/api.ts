@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
-import { BadRequest, uiText } from '@qualy/api-kit/schema'
+import { BadRequest, INT4_MAX, boundedInt, uiText } from '@qualy/api-kit/schema'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
 import { Authenticated } from '@qualy/auth-contract/session'
 import { SettingNotFound, SettingValueInvalid, SettingVersionConflict } from './server/errors.ts'
@@ -53,8 +53,12 @@ export const settingsApiGroup = HttpApiGroup.make('settings')
     HttpApiEndpoint.put('putTerm', '/tenant/terminology/:namespace/:name', {
       params: Schema.Struct({ namespace: segment, name: segment }),
       payload: Schema.Struct({
-        /** the version read; 0 for a setting the tenant never wrote */
-        version: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
+        /**
+         * the version read; 0 for a setting the tenant never wrote. The write
+         * stores it plus one in an int4 column, so the largest it may be is one
+         * short of what that column holds
+         */
+        version: boundedInt(0, INT4_MAX - 1),
         override: localizedWords,
       }),
       success: Schema.Struct({
