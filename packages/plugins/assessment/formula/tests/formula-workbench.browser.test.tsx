@@ -5,6 +5,7 @@ import {
   forgetLocalDraft,
   keepLocalDraft,
   readLocalDraft,
+  readLocalDrafts,
 } from '../src/client/local-draft.ts'
 import { monaco } from '@qualy/plugin-assessment-formula/client/monaco-setup'
 import { Effect } from 'effect'
@@ -420,6 +421,84 @@ describe('the formula workbench', () => {
       // past the moment this page would have kept or cleared anything
       await new Promise((resolve) => setTimeout(resolve, 1_500))
       expect((await readLocalDraft(FN_ID))?.source).toBe('const typed_elsewhere = 2\n')
+    } finally {
+      await view.unmount()
+      await forgetLocalDraft(FN_ID)
+    }
+  }, 60_000)
+
+  // One row per formula went to whichever tab wrote last: a tab still typing
+  // wrote over the edits another tab had kept, and then took them with it
+  // when its own work was saved.
+  it("keeps another tab's edits while this page goes on typing, and after it saves", async () => {
+    const wrote = { status: [] as unknown[], saves: [] as unknown[] }
+    const view = await open(wrote)
+    try {
+      const model = await draftModel()
+      model.setValue('const typed_here = 1\n')
+      await vi.waitFor(
+        async () => expect((await readLocalDraft(FN_ID))?.source).toBe('const typed_here = 1\n'),
+        { timeout: 5_000 },
+      )
+      await keepLocalDraft({
+        functionId: FN_ID,
+        name: '认定分值',
+        source: 'const typed_elsewhere = 2\n',
+        tests: [],
+        baseRevision: 3,
+        keptBy: 'another-tab',
+        keptAt: Date.now(),
+      })
+      // this page goes on, and keeps again
+      model.setValue('const typed_here = 3\n')
+      await vi.waitFor(
+        async () =>
+          expect((await readLocalDrafts(FN_ID)).map((one) => one.source)).toContain(
+            'const typed_here = 3\n',
+          ),
+        { timeout: 5_000 },
+      )
+      await page.getByTestId('formula-save').click()
+      await vi.waitFor(() => expect(wrote.saves).toHaveLength(1), { timeout: 5_000 })
+      await new Promise((resolve) => setTimeout(resolve, 1_500))
+      expect((await readLocalDraft(FN_ID))?.source).toBe('const typed_elsewhere = 2\n')
+    } finally {
+      await view.unmount()
+      await forgetLocalDraft(FN_ID)
+    }
+  }, 60_000)
+
+  it('offers every kept version of the edits in turn, newest first', async () => {
+    await keepLocalDraft({
+      functionId: FN_ID,
+      name: '认定分值',
+      source: 'const kept_earlier = 1\n',
+      tests: [],
+      baseRevision: 3,
+      keptBy: 'a-tab-closed-earlier',
+      keptAt: Date.now() - 120_000,
+    })
+    await keepLocalDraft({
+      functionId: FN_ID,
+      name: '认定分值',
+      source: 'const kept_later = 2\n',
+      tests: [],
+      baseRevision: 3,
+      keptBy: 'a-tab-closed-later',
+      keptAt: Date.now() - 60_000,
+    })
+    const view = await open()
+    try {
+      const offer = page.getByTestId('formula-local-draft')
+      await expect.element(offer).toHaveAttribute('data-offered', '2')
+      // letting the newest go offers the one before it, not nothing
+      await page.getByRole('button', { name: '丢弃' }).click()
+      await expect.element(offer).toHaveAttribute('data-offered', '1')
+      await page.getByTestId('formula-local-draft-take').click()
+      const model = await draftModel()
+      await vi.waitFor(() => expect(model.getValue()).toBe('const kept_earlier = 1\n'), {
+        timeout: 5_000,
+      })
     } finally {
       await view.unmount()
       await forgetLocalDraft(FN_ID)

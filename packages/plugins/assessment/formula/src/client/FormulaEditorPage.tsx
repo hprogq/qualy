@@ -100,10 +100,10 @@ import {
   draftFingerprint,
   forgetLocalDraft,
   keepLocalDraft,
-  readLocalDraft,
+  readLocalDrafts,
   type LocalDraft,
 } from './local-draft.ts'
-import { forgetFormulaLocally } from './local-store.ts'
+import { EARLIER_KEEPER, forgetFormulaLocally } from './local-store.ts'
 import { shortWhen } from './library-styles.ts'
 import { workbenchStyles as w } from './workbench-styles.ts'
 import { parseView, viewValue, type WorkbenchView } from './workbench-view.ts'
@@ -847,8 +847,10 @@ export default function FormulaEditorPage() {
   const [started, setStarted] = useState(false)
   const [baseRevision, setBaseRevision] = useState<number | null>(null)
   const [remoteMoved, setRemoteMoved] = useState(false)
-  // edits this browser kept from an earlier visit, offered before anything else is kept
-  const [localDraft, setLocalDraft] = useState<LocalDraft | null>(null)
+  // edits this browser kept from earlier visits and other tabs, newest first,
+  // offered one at a time before anything else is kept
+  const [offered, setOffered] = useState<readonly LocalDraft[]>([])
+  const localDraft = offered[0] ?? null
   // what the draft held at baseRevision, when this page knows it
   const baseFingerprint = useRef<string | null>(null)
   // this page among the tabs that may keep edits for the same formula
@@ -1235,10 +1237,13 @@ export default function FormulaEditorPage() {
       adopt(fn)
       // edits this browser kept, from a visit that ended before they were saved
       const loaded = fn
-      void readLocalDraft(loaded.id).then((kept) => {
-        if (kept === null) return
-        if (differsFromServer(loaded, { ...kept, tests: kept.tests })) setLocalDraft(kept)
-        else void forgetLocalDraft(loaded.id)
+      void readLocalDrafts(loaded.id).then((kept) => {
+        const worth = kept.filter((one) => differsFromServer(loaded, one))
+        // what the server already holds is nothing to offer
+        for (const one of kept) {
+          if (!worth.includes(one)) void forgetLocalDraft(loaded.id, one.keptBy ?? EARLIER_KEEPER)
+        }
+        setOffered(worth)
       })
       return
     }
@@ -1289,14 +1294,19 @@ export default function FormulaEditorPage() {
     setBaseRevision(localDraft.baseRevision)
     setRemoteMoved(!sameBase)
     setEditorSeed((seed) => seed + 1)
-    setLocalDraft(null)
-    // the kept row is this page's from here on
+    // the others that were on offer stay kept for another visit to choose
+    setOffered([])
+    // the taken row is this page's from here on
+    void forgetLocalDraft(fn.id, localDraft.keptBy ?? EARLIER_KEEPER)
     void keepLocalDraft({ ...localDraft, keptBy: keeper, keptAt: Date.now() })
   }
 
+  /** lets go of the edits on offer, and offers the next kept ones, if any */
   const dropLocalDraft = () => {
-    if (fn !== undefined) void forgetLocalDraft(fn.id)
-    setLocalDraft(null)
+    if (fn !== undefined && localDraft !== null) {
+      void forgetLocalDraft(fn.id, localDraft.keptBy ?? EARLIER_KEEPER)
+    }
+    setOffered((current) => current.slice(1))
   }
 
   type ParsedTests =
@@ -2485,7 +2495,12 @@ export default function FormulaEditorPage() {
   // the edits this browser kept, offered over the source rather than above it
   const keptDraft =
     localDraft === null ? null : (
-      <div data-testid="formula-local-draft" {...stylex.props(styles.floating)}>
+      <div
+        data-testid="formula-local-draft"
+        data-kept-at={localDraft.keptAt}
+        data-offered={offered.length}
+        {...stylex.props(styles.floating)}
+      >
         <span {...stylex.props(styles.floatingWords)}>
           <span {...stylex.props(styles.noticeTitle)}>{format(m.localDraftTitle)}</span>
           <span {...stylex.props(styles.chipQuiet)}>

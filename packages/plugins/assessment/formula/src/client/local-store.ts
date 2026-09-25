@@ -17,10 +17,22 @@
 // answers synchronously.
 
 const DATABASE = 'qualy-formula-local'
-const VERSION = 1
+const VERSION = 2
 
-/** unsaved edits to a formula's draft, one row per formula */
-export const DRAFTS = 'drafts'
+/**
+ * Unsaved edits to a formula's draft, one row per formula and page.
+ *
+ * Keyed by the formula and the page that kept them: two tabs on one formula
+ * each keep their own, where one row per formula went to whichever wrote
+ * last and a tab that saved took the other's edits with it.
+ */
+export const DRAFTS = 'pageDrafts'
+/** a formula's kept edits, whichever pages kept them */
+export const DRAFTS_BY_FUNCTION = 'draftsByFunctionId'
+/** the store the first version kept one row per formula in, carried over and dropped */
+const FORMULA_DRAFTS = 'drafts'
+/** who kept a row the first version wrote without saying */
+export const EARLIER_KEEPER = 'an-earlier-visit'
 /** one row per try somebody ran, against the draft or a frozen source */
 export const TRY_RECORDS = 'tryRecords'
 /** the tries of one source in the order they were run */
@@ -40,8 +52,25 @@ const database = (): Promise<IDBDatabase | null> => {
       const request = indexedDB.open(DATABASE, VERSION)
       request.onupgradeneeded = () => {
         const db = request.result
-        if (!db.objectStoreNames.contains(DRAFTS))
-          db.createObjectStore(DRAFTS, { keyPath: 'functionId' })
+        if (!db.objectStoreNames.contains(DRAFTS)) {
+          const drafts = db.createObjectStore(DRAFTS, { keyPath: ['functionId', 'keptBy'] })
+          drafts.createIndex(DRAFTS_BY_FUNCTION, 'functionId')
+          // what the first version kept, one row per formula, is carried
+          // into the page-keyed store before its own store goes
+          const upgrade = request.transaction
+          if (db.objectStoreNames.contains(FORMULA_DRAFTS) && upgrade !== null) {
+            const earlier = upgrade.objectStore(FORMULA_DRAFTS).getAll()
+            earlier.onsuccess = () => {
+              for (const row of earlier.result as { keptBy?: unknown }[]) {
+                drafts.put({
+                  ...row,
+                  keptBy: typeof row.keptBy === 'string' ? row.keptBy : EARLIER_KEEPER,
+                })
+              }
+              db.deleteObjectStore(FORMULA_DRAFTS)
+            }
+          }
+        }
         if (!db.objectStoreNames.contains(TRY_RECORDS)) {
           const store = db.createObjectStore(TRY_RECORDS, { keyPath: 'id' })
           store.createIndex(BY_SCOPE_AND_TIME, ['scopeKey', 'at'])
@@ -146,13 +175,17 @@ export const forgetFormulaLocally = (functionId: string): Promise<void> =>
     [DRAFTS, TRY_RECORDS],
     'readwrite',
     (open) => {
-      open(DRAFTS).delete(functionId)
-      const cursor = open(TRY_RECORDS).index(BY_FUNCTION).openCursor(IDBKeyRange.only(functionId))
-      cursor.onsuccess = () => {
-        const at = cursor.result
-        if (at === null) return
-        at.delete()
-        at.continue()
+      for (const [store, index] of [
+        [DRAFTS, DRAFTS_BY_FUNCTION],
+        [TRY_RECORDS, BY_FUNCTION],
+      ] as const) {
+        const cursor = open(store).index(index).openCursor(IDBKeyRange.only(functionId))
+        cursor.onsuccess = () => {
+          const at = cursor.result
+          if (at === null) return
+          at.delete()
+          at.continue()
+        }
       }
     },
     undefined,

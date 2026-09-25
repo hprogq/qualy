@@ -1,13 +1,14 @@
-import { DRAFTS, inStores } from './local-store.ts'
+import { DRAFTS, DRAFTS_BY_FUNCTION, EARLIER_KEEPER, inStores } from './local-store.ts'
 
 // Unsaved edits to a formula, kept in this browser.
 //
 // Not a save: nothing here reaches the server, and the server's draft stays
 // the only one anyone else sees. It is what stands between a person and the
 // half hour of edits a closed tab, a crashed browser or an in-app link would
-// otherwise take with it. One row per formula, replaced whole - a draft has
-// no history worth keeping locally, only its latest state. Two tabs on one
-// formula share the row, so a page lets go only of a row it kept itself.
+// otherwise take with it. One row per formula and page, replaced whole - a
+// draft has no history worth keeping locally, only its latest state. Two
+// tabs on one formula each keep their own row, and a page lets go only of
+// the row it kept itself.
 
 export interface LocalDraftTest {
   readonly name: string
@@ -28,7 +29,7 @@ export interface LocalDraft {
    * draft somebody else saved since; absent on rows kept before it was.
    */
   readonly baseFingerprint?: string
-  /** the page that kept it */
+  /** the page that kept it; a row kept before pages were told apart has none */
   readonly keptBy?: string
   /** when the edits were last kept, epoch milliseconds */
   readonly keptAt: number
@@ -69,34 +70,39 @@ const isLocalDraft = (value: unknown): value is LocalDraft => {
   )
 }
 
-export const readLocalDraft = (functionId: string): Promise<LocalDraft | null> =>
+/** every page's kept edits to one formula, the newest first */
+export const readLocalDrafts = (functionId: string): Promise<readonly LocalDraft[]> =>
   inStores(
     [DRAFTS],
     'readonly',
     (open) => {
-      const request = open(DRAFTS).get(functionId)
-      return () => {
-        const value: unknown = request.result
-        return isLocalDraft(value) ? value : null
-      }
+      const request = open(DRAFTS).index(DRAFTS_BY_FUNCTION).getAll(IDBKeyRange.only(functionId))
+      return () =>
+        ((request.result ?? []) as unknown[])
+          .filter(isLocalDraft)
+          .sort((one, other) => other.keptAt - one.keptAt)
     },
-    null,
+    [] as readonly LocalDraft[],
   )
+
+/** the newest edits any page kept of one formula */
+export const readLocalDraft = (functionId: string): Promise<LocalDraft | null> =>
+  readLocalDrafts(functionId).then((kept) => kept[0] ?? null)
 
 export const keepLocalDraft = (draft: LocalDraft): Promise<void> =>
   inStores(
     [DRAFTS],
     'readwrite',
     (open) => {
-      open(DRAFTS).put(draft)
+      open(DRAFTS).put({ ...draft, keptBy: draft.keptBy ?? EARLIER_KEEPER })
     },
     undefined,
   )
 
 /**
- * Lets go of a formula's kept edits: whatever is kept, or - given the page
- * that asks - only a row that page kept itself, so a tab whose work is saved
- * does not take away another tab's unsaved work.
+ * Lets go of a formula's kept edits: every page's, or - given the page that
+ * asks - only the row that page kept, so a tab whose work is saved does not
+ * take away another tab's unsaved work.
  */
 export const forgetLocalDraft = (functionId: string, keptBy?: string): Promise<void> =>
   inStores(
@@ -104,14 +110,16 @@ export const forgetLocalDraft = (functionId: string, keptBy?: string): Promise<v
     'readwrite',
     (open) => {
       const drafts = open(DRAFTS)
-      if (keptBy === undefined) {
-        drafts.delete(functionId)
+      if (keptBy !== undefined) {
+        drafts.delete([functionId, keptBy])
         return
       }
-      const request = drafts.get(functionId)
-      request.onsuccess = () => {
-        const kept: unknown = request.result
-        if (isLocalDraft(kept) && kept.keptBy === keptBy) drafts.delete(functionId)
+      const cursor = drafts.index(DRAFTS_BY_FUNCTION).openCursor(IDBKeyRange.only(functionId))
+      cursor.onsuccess = () => {
+        const at = cursor.result
+        if (at === null) return
+        at.delete()
+        at.continue()
       }
     },
     undefined,
