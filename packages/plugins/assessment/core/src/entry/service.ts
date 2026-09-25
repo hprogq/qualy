@@ -217,6 +217,8 @@ export interface EntryRecognitionView {
   readonly createdAt: number
   /** null where this reader is not told who determined it */
   readonly actorName: string | null
+  /** a sitting of several reviewers determined it, not one person */
+  readonly byPanel: boolean
 }
 
 export interface CreateEntryInput {
@@ -377,6 +379,8 @@ export interface ParticipantEntryView {
     readonly values: Record<string, unknown>
     readonly createdAt: number
     readonly createdByName: string | null
+    /** a sitting of several reviewers determined it, not one person */
+    readonly byPanel: boolean
   } | null
 }
 
@@ -598,6 +602,14 @@ export interface EntryDeps {
 }
 
 const refuse = (action: string, reason: string) => new EntryActionRefused({ action, reason })
+
+/**
+ * Whether a sitting determined it rather than one person: a round's
+ * determination names its judge, except when several reviewers resolved it
+ * together, and then it names nobody (a single voter is not its author).
+ */
+const byPanel = (standing: { source: string; createdBy: string | null }) =>
+  standing.source === 'review' && standing.createdBy === null
 
 /** filings handed on for review, and the refusals, with nothing else in the labels */
 const entrySubmitCount = boundedCounter('qualy.assessment.entry.submit', {
@@ -1258,6 +1270,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
         values: standing.values,
         createdAt: standing.createdAt,
         actorName: veiled ? null : standing.createdByName,
+        byPanel: byPanel(standing),
       }
     })
 
@@ -2170,6 +2183,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                     values: standing.values,
                     createdAt: standing.createdAt,
                     createdByName: veiled ? null : standing.createdByName,
+                    byPanel: byPanel(standing),
                   },
           })
         }

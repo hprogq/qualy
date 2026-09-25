@@ -803,18 +803,25 @@ function RecognizedValues({ entry }: { entry: EntryDto }) {
   const stale =
     entry.currentRevision !== null && entry.currentRevision.id !== standing.entryRevisionId
   return (
-    <section {...stylex.props(styles.standing)} data-testid="entry-recognized" data-stale={stale}>
+    <section
+      {...stylex.props(styles.standing)}
+      data-testid="entry-recognized"
+      data-stale={stale}
+      data-by-panel={standing.byPanel}
+    >
       <div {...stylex.props(styles.standingHead)}>
         <p {...stylex.props(styles.standingTitle)}>{format(m.recognitionTitle)}</p>
         <Badge variant="outline">{format(sourceLabelOf(standing.source))}</Badge>
         <span {...stylex.props(styles.spacer)} />
         <p {...stylex.props(styles.standingWhen)}>
-          {standing.actorName === null
-            ? timeOf(standing.createdAt, locale)
-            : format(m.recognitionBy, {
-                who: standing.actorName,
-                when: timeOf(standing.createdAt, locale),
-              })}
+          {standing.byPanel
+            ? format(m.recognitionByPanel, { when: timeOf(standing.createdAt, locale) })
+            : standing.actorName === null
+              ? timeOf(standing.createdAt, locale)
+              : format(m.recognitionBy, {
+                  who: standing.actorName,
+                  when: timeOf(standing.createdAt, locale),
+                })}
         </p>
       </div>
       <dl {...stylex.props(styles.standingList)}>

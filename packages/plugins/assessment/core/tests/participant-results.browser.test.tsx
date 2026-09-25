@@ -187,6 +187,7 @@ const screen = (
                   values: { 'dddddddd-dddd-4ddd-8ddd-dddddddddddd': '省级' },
                   createdAt: Date.parse('2026-03-02T00:00:00.000Z'),
                   createdByName: '王老师',
+                  byPanel: false,
                 },
               },
             ],
@@ -584,6 +585,36 @@ describe('the participant results screen', () => {
     // the section's own heading is gone and something stands in its place,
     // with the way back already usable
     await expect.element(page.getByRole('button', { name: '返回参评人员' })).toBeVisible()
+  })
+
+  it('says a determination a review panel made is the panel’s', async () => {
+    await screen(
+      {
+        listParticipantEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [
+              {
+                entry: entry(),
+                recognition: {
+                  id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+                  source: 'review' as const,
+                  entryRevisionId: REVISION_ID,
+                  values: { 'dddddddd-dddd-4ddd-8ddd-dddddddddddd': '省级' },
+                  createdAt: Date.parse('2026-03-02T00:00:00.000Z'),
+                  createdByName: null,
+                  byPanel: true,
+                },
+              },
+            ],
+            nextCursor: null,
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}&view=entries&entry=${ENTRY_ID}`,
+    )
+    await expect
+      .element(page.getByTestId('entry-recognition'))
+      .toHaveAttribute('data-by-panel', 'true')
   })
 
   it('names a determination by the words the question uses, never by its id', async () => {

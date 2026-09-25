@@ -1041,6 +1041,8 @@ const entryView = Schema.Struct({
       createdAt: Schema.String,
       /** null where this reader is not told who determined it */
       actorName: Schema.NullOr(Schema.String),
+      /** a sitting of several reviewers determined it, not one person */
+      byPanel: Schema.Boolean,
     }),
   ),
   /**
@@ -1321,6 +1323,8 @@ const recognitionView = Schema.Struct({
   values: configJson,
   createdAt: Schema.Number,
   createdByName: Schema.NullOr(Schema.String),
+  /** a sitting of several reviewers determined it, not one person */
+  byPanel: Schema.Boolean,
 })
 
 /** one claim as a staff account reads it: the claim, and where it stands */

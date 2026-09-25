@@ -72,6 +72,8 @@ export interface EntryDto {
     createdAt: string
     /** null where this reader is not told who determined it */
     actorName: string | null
+    /** a sitting of several reviewers determined it, not one person */
+    byPanel: boolean
   } | null
   capabilities: {
     edit: ActionAvailability

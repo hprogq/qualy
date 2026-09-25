@@ -5450,6 +5450,7 @@ const entryDto = (entry: EntryView) => ({
           values: entry.recognition.values,
           createdAt: new Date(entry.recognition.createdAt).toISOString(),
           actorName: entry.recognition.actorName,
+          byPanel: entry.recognition.byPanel,
         },
   supplement:
     entry.supplement === null

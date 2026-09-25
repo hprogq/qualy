@@ -81,6 +81,8 @@ export function AdministrativeEntrySheet({
       values: row.recognition.values,
       createdAt: Date.parse(row.recognition.createdAt),
       createdByName: row.recognition.actorName,
+      // a record is determined as the office writes it, never by a sitting
+      byPanel: false,
     }
   })()
 

@@ -1603,6 +1603,10 @@ const i18n = definePluginMessages({
       id: 'assessment/recognition/by',
       defaultMessage: 'Determined by {who}, {when}',
     },
+    recognitionByPanel: {
+      id: 'assessment/recognition/by-panel',
+      defaultMessage: 'Determined by a review panel, {when}',
+    },
     recognitionYes: { id: 'assessment/recognition/yes', defaultMessage: 'Yes' },
     recognitionNo: { id: 'assessment/recognition/no', defaultMessage: 'No' },
     recognitionOpaque: {

@@ -347,6 +347,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     expect(result.approved.events[1]!.comment).toBe('checked against the certificate')
     expect(errorOf<{ _tag: string }>(result.again)?._tag).toBe('ASSESSMENT_REVIEW_CONFLICT')
     expect(result.entry.status).toBe('approved')
+    // one judge determined it, and is not taken for a sitting
+    expect(result.entry.recognition?.byPanel).toBe(false)
     expect(refusalOf(result.withdraw)?.reason).toBe('entry-not-withdrawable')
   })
 

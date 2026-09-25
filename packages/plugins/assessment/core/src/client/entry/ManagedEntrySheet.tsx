@@ -70,6 +70,8 @@ export interface RecognitionDto {
   readonly values: unknown
   readonly createdAt: number
   readonly createdByName: string | null
+  /** a sitting of several reviewers determined it, not one person */
+  readonly byPanel: boolean
 }
 
 export function ManagedEntrySheet({
@@ -361,30 +363,34 @@ function Determination({
   // revised since, the reader is looking at a decision about older material
   const stale =
     entry.currentRevision !== null && entry.currentRevision.id !== recognition.entryRevisionId
+  // the reader's own calendar and clock, to the minute: seconds and a
+  // machine's default ordering were never read here
+  const when = new Intl.DateTimeFormat(locale, {
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(recognition.createdAt))
 
   return (
     <div
       {...stylex.props(styles.card)}
       data-testid="entry-recognition"
       data-source={recognition.source}
+      data-by-panel={recognition.byPanel}
     >
       <div {...stylex.props(styles.cardHead)}>
         <p {...stylex.props(styles.cardTitle)}>{format(m.recognitionTitle)}</p>
         <Badge variant="outline">{format(sourceLabelOf(recognition.source))}</Badge>
         <span {...stylex.props(styles.spacer)} />
         <span {...stylex.props(styles.cardWhen)}>
-          {format(m.recognitionBy, {
-            who: recognition.createdByName ?? format(m.eventSomebody),
-            // the reader's own calendar and clock, to the minute: seconds
-            // and a machine's default ordering were never read here
-            when: new Intl.DateTimeFormat(locale, {
-              month: 'long',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-              hour12: false,
-            }).format(new Date(recognition.createdAt)),
-          })}
+          {recognition.byPanel
+            ? format(m.recognitionByPanel, { when })
+            : format(m.recognitionBy, {
+                who: recognition.createdByName ?? format(m.eventSomebody),
+                when,
+              })}
         </span>
       </div>
       {shown.length > 0 ? (

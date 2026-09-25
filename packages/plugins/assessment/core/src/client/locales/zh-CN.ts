@@ -319,6 +319,7 @@ export default {
   'assessment/recognition/no-values': '该项目没有需要认定的具体数值。',
   'assessment/recognition/none': '该申报尚未作出认定。',
   'assessment/recognition/by': '{when} 由 {who} 认定',
+  'assessment/recognition/by-panel': '{when} 合议认定',
   'assessment/recognition/yes': '是',
   'assessment/recognition/no': '否',
   'assessment/recognition/opaque': '该认定针对的是此题目已不再保留的版本。',

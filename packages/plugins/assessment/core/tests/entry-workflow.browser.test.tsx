@@ -1218,6 +1218,7 @@ describe('filing a claim', () => {
           values: { 'rec-level': 'province', 'rec-hours': 12 },
           createdAt: '2026-04-02T02:30:00.000Z',
           actorName,
+          byPanel: false,
         },
       })
     const show = (actorName: string | null) =>
