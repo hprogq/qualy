@@ -221,6 +221,24 @@ export interface RbacShape {
   ) => Effect.Effect<number>
 
   /**
+   * Whether the actor could give this person, now, every authority they
+   * hold: each live grant asked the way granting it would be asked - reach
+   * over grants there, the administrator role's reservation, the office
+   * being theirs to appoint. Somebody holding nothing is within anybody's.
+   *
+   * What administering a person's account is measured by: their ways in,
+   * the names a door finds them by, whether they are in service, where they
+   * stand, their deletion. Managing a unit must not be a route to taking
+   * over, or taking away, authority the manager could never have granted.
+   * Answered on the caller's transaction, so ask it under the lock.
+   */
+  readonly mayConferHoldings: (input: {
+    tenantId: string
+    actor: Principal
+    userId: string
+  }) => Effect.Effect<boolean>
+
+  /**
    * After the caller's own writes, the tenant must still have an administrator
    * in good standing: an enabled holder of the administrator role, of an
    * enabled user type.

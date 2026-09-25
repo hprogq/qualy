@@ -433,6 +433,12 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
       },
     ),
 
+    mayConferHoldings: Effect.fn('Rbac.mayConferHoldings')(function* (input) {
+      return yield* bound(() =>
+        grants.mayConferHoldings(input.actor, input.tenantId, input.userId),
+      )().pipe(Effect.orDie)
+    }),
+
     require: Effect.fn('Rbac.require')(function* (principal, code) {
       const definition = definitionOf(code)
       if (!definition) return yield* new AccessDenied({ reason: 'unknown permission' })

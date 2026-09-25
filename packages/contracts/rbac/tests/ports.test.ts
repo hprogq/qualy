@@ -47,6 +47,7 @@ const rbacStub = (allowed: boolean) =>
     createScopedAssignment: () => Effect.succeed('assignment'),
     revokeAssignment: () => Effect.succeed(true),
     revokeAllGrantsOfUser: () => Effect.succeed(0),
+    mayConferHoldings: () => Effect.succeed(allowed),
     assertTenantKeepsAdministrator: () => Effect.void,
     grantsBlockingOrgType: () => Effect.succeed([]),
     rolesStrandedByUserType: () => Effect.succeed(0),

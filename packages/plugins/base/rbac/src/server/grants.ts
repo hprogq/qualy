@@ -441,6 +441,40 @@ const oneGrant = (tenantId: string, grantId: string) =>
       .executeTakeFirst(),
   )
 
+/**
+ * Every grant that confers something on one person now: in force, of an
+ * active role, general or confined to one resource.
+ *
+ * A disabled role's grant is left out because it confers nothing, and a
+ * confined one is kept because it is authority inside its resource.
+ */
+const conferredOn = (tenantId: string, userId: string) =>
+  db.query((k) =>
+    k
+      .selectFrom('RoleGrant as g')
+      .innerJoin('Role as r', (join) =>
+        join
+          .onRef('r.tenantId', '=', 'g.tenantId')
+          .onRef('r.id', '=', 'g.roleId')
+          .on('r.status', '=', 'active'),
+      )
+      .select((eb) => [
+        'g.roleId',
+        'g.orgNodeId',
+        eb.ref('g.coverage').$castTo<'self' | 'subtree' | null>().as('coverage'),
+      ])
+      .where('g.tenantId', '=', tenantId)
+      .where('g.userId', '=', userId)
+      .where((eb) =>
+        inForce({
+          revokedAt: eb.ref('g.revokedAt'),
+          validFrom: eb.ref('g.validFrom'),
+          validUntil: eb.ref('g.validUntil'),
+        }),
+      )
+      .execute(),
+  )
+
 const insertGrant = (input: {
   tenantId: string
   userId: string
@@ -617,6 +651,58 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     if (!(yield* holdsCanonicalAdmin(tenantId, actor.userId, CANONICAL_ADMIN_ROLE))) {
       return yield* new TenantAdminRequired()
     }
+  })
+
+  /**
+   * The half of a grant that is about whoever gives it: they administer
+   * grants of that reach there, the administrator role's reservation lets
+   * them, and the office is theirs to appoint. Who may hold the role is the
+   * other half, and is a fact about the holder.
+   */
+  const mayConfer = Effect.fn('Rbac.grants.mayConfer')(function* (
+    actor: Principal,
+    tenantId: string,
+    roleId: string,
+    target: GrantTarget,
+  ) {
+    yield* mayAdministerGrantsAt(actor, target)
+    // first among the role questions: its refusal is the more specific
+    // sentence, and a rule row must not shadow it
+    yield* mayAdministerRole(actor, tenantId, roleId)
+    yield* mayAppointRole(actor, tenantId, roleId, target)
+  })
+
+  /**
+   * Whether the actor could give this person, now, every authority they
+   * hold, each grant asked as though it did not exist yet.
+   *
+   * What administering somebody's account is measured by (ruled
+   * 2026-09-25): whoever may reset a person's password, change the names a
+   * door finds them by, disable, move or delete them can otherwise take
+   * over, or take away, authority they could never have granted. The
+   * questions are the grant path's own, through `mayConfer`, so this answer
+   * and a grant's cannot drift apart.
+   */
+  const mayConferHoldings = Effect.fn('Rbac.grants.mayConferHoldings')(function* (
+    actor: Principal,
+    tenantId: string,
+    userId: string,
+  ) {
+    for (const held of yield* conferredOn(tenantId, userId)) {
+      const target: GrantTarget =
+        held.orgNodeId === null
+          ? { kind: 'tenant' }
+          : { kind: 'org-node', orgNodeId: held.orgNodeId, coverage: held.coverage! }
+      const conferrable = yield* mayConfer(actor, tenantId, held.roleId, target).pipe(
+        Effect.as(true),
+        Effect.catchTag(
+          ['ACCESS_DENIED', 'TENANT_ADMIN_REQUIRED', 'GRANT_RULE_REFUSED', 'ROLE_NOT_FOUND'],
+          () => Effect.succeed(false),
+        ),
+      )
+      if (!conferrable) return false
+    }
+    return true
   })
 
   /** whether this role can be held by this person, here */
@@ -878,9 +964,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     // failure handler and cannot see a defect.
     return yield* write(tenantId, () =>
       Effect.gen(function* () {
-        yield* mayAdministerGrantsAt(actor, input.target)
-        yield* mayAdministerRole(actor, tenantId, input.roleId)
-        yield* mayAppointRole(actor, tenantId, input.roleId, input.target)
+        yield* mayConfer(actor, tenantId, input.roleId, input.target)
         yield* eligible(tenantId, input)
         // Taking a role oneself is allowed exactly while it adds nothing:
         // identity may change, authority may not (re-ruled 2026-08-20).
@@ -939,6 +1023,8 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
   })
 
   return {
+    mayConferHoldings,
+
     /** the grants the caller may see, with whether they may change each one */
     list: (
       tenantId: string,

@@ -2954,3 +2954,132 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
     }
   })
 })
+
+describe
+  .runIf(postgresAvailable)
+  .concurrent('administering a person, measured by what they hold', () => {
+    it('answers whether an actor could give somebody everything they hold now', async () => {
+      const db = await createTestContext('effect-rbac-confer-holdings')
+      try {
+        const exit = await run(
+          db.url,
+          Effect.gen(function* () {
+            const f = yield* seed()
+            const rbac = yield* Rbac
+            const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+            const manage = one<{ id: string }>(
+              yield* runSql(sql`
+              insert into permissions (code, plugin, name, target_kind)
+              values ('iam.grant.manage', 'rbac', 'manage grants', 'org-node')
+              on conflict (code) do update set code = excluded.code returning id`),
+            ).id
+            const orgRole = (code: string, status: 'active' | 'disabled' = 'active') =>
+              Effect.map(
+                runSql(sql`
+                insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+                values (${f.tenant}, ${code}, ${code}, 'org', ${status}, 'explicit', 'unrestricted')
+                returning id`),
+                (result) => one<{ id: string }>(result).id,
+              )
+            const person = (name: string) =>
+              Effect.map(
+                runSql(sql`
+                insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+                values (${f.tenant}, ${name}, ${f.userType}, ${f.child}) returning id`),
+                (result) => one<{ id: string }>(result).id,
+              )
+            const hold = (
+              userId: string,
+              roleId: string,
+              orgNodeId: string,
+              coverage: 'self' | 'subtree',
+              resourceId: string | null = null,
+            ) =>
+              runSql(sql`
+              insert into role_grants
+                (tenant_id, user_id, role_id, org_node_id, coverage,
+                 resource_namespace, resource_type, resource_id)
+              values (${f.tenant}, ${userId}, ${roleId}, ${orgNodeId}, ${coverage},
+                ${resourceId === null ? null : 'probe'}, ${resourceId === null ? null : 'thing'},
+                ${resourceId})`)
+
+            // the personnel office: grant administration and one appointment
+            // edge, to the seed's ordinary role
+            const personnel = yield* orgRole('personnel')
+            yield* runSql(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            values (${f.tenant}, ${personnel}, ${manage})`)
+            yield* runSql(sql`
+            insert into role_grant_rules (tenant_id, granter_role_id, target_role_id)
+            values (${f.tenant}, ${personnel}, ${f.plainRole})`)
+            const unappointed = yield* orgRole('unappointed')
+            const retired = yield* orgRole('retired', 'disabled')
+
+            const wide = yield* person('Pat')
+            yield* hold(wide, personnel, f.root, 'subtree')
+            const narrow = yield* person('Sam')
+            yield* hold(narrow, personnel, f.root, 'self')
+
+            const nobody = yield* person('Nobody')
+            const across = yield* person('Kim')
+            yield* hold(across, f.plainRole, f.root, 'subtree')
+            const elsewhere = yield* person('Lee')
+            yield* hold(elsewhere, unappointed, f.root, 'self')
+            const lapsedOffice = yield* person('Ann')
+            yield* hold(lapsedOffice, retired, f.child, 'subtree')
+            const confined = yield* person('Bo')
+            yield* hold(
+              confined,
+              f.plainRole,
+              f.child,
+              'self',
+              '00000000-0000-0000-0000-00000000000b',
+            )
+
+            const as = (userId: string): Principal => ({
+              tenantId: f.tenant,
+              userId,
+              sessionId: 's',
+            })
+            const asks = (actor: string, userId: string) =>
+              rbac.mayConferHoldings({ tenantId: f.tenant, actor: as(actor), userId })
+            return {
+              // only an administrator could hand out the administrator role
+              adminByAnchored: yield* asks(f.anchored.userId, f.user),
+              adminByPersonnel: yield* asks(wide, f.user),
+              adminByAdmin: yield* asks(f.user, f.user),
+              plainByAdmin: yield* asks(f.user, f.anchored.userId),
+              // the edge and the reach, both at once
+              plainByWide: yield* asks(wide, f.anchored.userId),
+              subtreeByWide: yield* asks(wide, across),
+              subtreeByNarrow: yield* asks(narrow, across),
+              // an office the actor has no edge to
+              unappointedByWide: yield* asks(wide, elsewhere),
+              // holding nothing, or only a role that confers nothing
+              nobodyByNarrow: yield* asks(narrow, nobody),
+              disabledByNarrow: yield* asks(narrow, lapsedOffice),
+              // authority confined to one resource is authority there
+              confinedByNarrow: yield* asks(narrow, confined),
+              confinedByWide: yield* asks(wide, confined),
+            }
+          }),
+        )
+        expect(ok(exit)).toEqual({
+          adminByAnchored: false,
+          adminByPersonnel: false,
+          adminByAdmin: true,
+          plainByAdmin: true,
+          plainByWide: true,
+          subtreeByWide: true,
+          subtreeByNarrow: false,
+          unappointedByWide: false,
+          nobodyByNarrow: true,
+          disabledByNarrow: true,
+          confinedByNarrow: false,
+          confinedByWide: true,
+        })
+      } finally {
+        await db.dispose()
+      }
+    })
+  })
