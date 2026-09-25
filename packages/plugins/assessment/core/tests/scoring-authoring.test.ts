@@ -240,6 +240,44 @@ describe('normalizing scoring authoring', () => {
     ])
   })
 
+  // A pattern inside the dialect can still weigh more than a new formula
+  // contract may carry, and it is compiled wherever a determination is
+  // judged: a refinement being written is held to the same weight.
+  it('refuses refinements whose patterns weigh too much together', async () => {
+    const heavy = await normalize({
+      current: null,
+      submitted: draft([
+        {
+          handle: 'x',
+          label: 'x',
+          refinement: { type: 'string', minLength: 1, maxLength: 8, pattern: '^\\pL{900}x' },
+          defaultFromFieldId: null,
+        },
+      ]),
+    })
+    expect(issuesOf(heavy.outcome)).toEqual([
+      {
+        path: 'scoringConfig.recognitions[0].refinement',
+        reason: 'refinement-pattern-too-complex',
+      },
+    ])
+    // nothing was minted for a draft that is refused
+    expect(heavy.calls).toEqual([])
+    const everyday = await normalize({
+      current: null,
+      submitted: draft([
+        {
+          handle: 'x',
+          label: 'x',
+          refinement: { type: 'string', minLength: 1, maxLength: 8, pattern: '^[A-Z][0-9]{6}$' },
+          defaultFromFieldId: null,
+        },
+      ]),
+      ids: [U1],
+    })
+    expect(issuesOf(everyday.outcome)).toEqual([])
+  })
+
   it('refuses an unknown envelope key instead of stripping it', async () => {
     const { outcome } = await normalize({
       current: null,

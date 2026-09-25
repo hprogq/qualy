@@ -20,7 +20,7 @@
 
 import { Effect, Schema } from 'effect'
 import { PROFILE_LIMITS, validateAtomicProfile, type AtomicSchema } from '@qualy/value-schema'
-import { patternIssues } from '@qualy/value-schema/regex'
+import { patternIssues, patternWeightIssues } from '@qualy/value-schema/regex'
 
 export interface AuthoringIssue {
   readonly path: string
@@ -155,6 +155,26 @@ const refinementIssues = (path: string, refinement: unknown): readonly Authoring
   return []
 }
 
+/**
+ * The refinements of one configuration, together, held to what a new
+ * contract's patterns may weigh: every one of them is compiled wherever a
+ * determination is judged, and a stored configuration keeps meaning what it
+ * meant, so only a configuration being written is weighed.
+ */
+const refinementWeightIssues = (
+  refinements: readonly { readonly path: string; readonly refinement: unknown }[],
+): readonly AuthoringIssue[] => {
+  const heavy = patternWeightIssues({
+    properties: Object.fromEntries(
+      refinements.map((one, index) => [String(index), one.refinement ?? {}]),
+    ),
+  })[0]
+  const at = heavy === undefined ? null : /^properties\.(\d+)\./.exec(heavy.path)
+  return at === null
+    ? []
+    : [{ path: refinements[Number(at[1])]!.path, reason: 'refinement-pattern-too-complex' }]
+}
+
 const sortedRecord = <T>(entries: readonly (readonly [string, T])[]): Record<string, T> =>
   Object.fromEntries([...entries].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
 
@@ -240,6 +260,16 @@ const normalizeDraft = <E, R>(
       }
       issues.push(...refinementIssues(`${at}.refinement`, one.refinement))
     })
+    if (issues.length === 0) {
+      issues.push(
+        ...refinementWeightIssues(
+          draft.recognitions.map((one, index) => ({
+            path: `scoringConfig.recognitions[${index}].refinement`,
+            refinement: one.refinement,
+          })),
+        ),
+      )
+    }
     for (const [parameter, binding] of Object.entries(draft.bindings)) {
       if (binding.kind === 'recognition' && !handles.has(binding.handle)) {
         issues.push({ path: `scoringConfig.bindings.${parameter}`, reason: 'recognition-unknown' })
@@ -311,6 +341,16 @@ const normalizeStored = (submitted: object, current: unknown) =>
         issues.push({ path: at, reason: 'recognition-id-unknown' })
       }
       issues.push(...refinementIssues(`${at}.refinement`, own(stored.recognitions, id)!.refinement))
+    }
+    if (issues.length === 0) {
+      issues.push(
+        ...refinementWeightIssues(
+          ids.map((id) => ({
+            path: `scoringConfig.recognitions.${id}.refinement`,
+            refinement: own(stored.recognitions, id)!.refinement,
+          })),
+        ),
+      )
     }
     for (const [parameter, binding] of Object.entries(stored.bindings)) {
       if (

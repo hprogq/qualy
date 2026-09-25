@@ -954,6 +954,42 @@ describe.runIf(postgresAvailable)('item configuration', () => {
     expect(result.count).toBe(ITEMS_PER_BATCH_MOST)
   })
 
+  // A pattern inside the dialect can still weigh more than a new formula
+  // contract may carry, and every pattern a form holds is compiled when an
+  // answer is read: a form being written is held to the same weight.
+  it('refuses a form whose patterns weigh too much together', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('item-pattern-weight')
+          const assessment = yield* Assessment
+          const { batch, groupId } = yield* draftBatch(f, 'Round')
+          const create = (pattern: string) =>
+            Effect.exit(
+              assessment.createItem(
+                f.tenant,
+                batch.id,
+                {
+                  itemType: 'evidence',
+                  title: 'coded',
+                  scoreGroupId: groupId,
+                  maxEntries: null,
+                  config: studentConfig({ formConfig: { pattern } }),
+                },
+                f.principal,
+              ),
+            )
+          return { heavy: yield* create('^\\pL{900}x'), everyday: yield* create('^[A-Z][0-9]{6}$') }
+        }),
+      ),
+    )
+    expect(
+      errorOf<{ issues?: readonly { path: string; reason: string }[] }>(result.heavy)?.issues,
+    ).toEqual([{ path: 'formConfig.fields.claimed-code-slot', reason: 'pattern-too-complex' }])
+    expect(result.everyday._tag).toBe('Success')
+  })
+
   it('takes the whole chain grammar, and refuses what is outside it', async () => {
     const result = ok(
       await run(

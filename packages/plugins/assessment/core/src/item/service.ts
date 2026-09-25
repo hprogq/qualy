@@ -45,6 +45,7 @@ import {
   type RecognitionValues,
 } from '../scoring/recognition.ts'
 import { kindOf, type NormalizedAtomicSchema } from '@qualy/value-schema'
+import { patternWeightIssues } from '@qualy/value-schema/regex'
 import { normalizeScoringAuthoring } from '../scoring/authoring.ts'
 import { policyModeOf } from '../review/chain.ts'
 import type { EntryChannel } from './channels.ts'
@@ -626,6 +627,25 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             .configIssues(input.config.formConfig, { materialRange: input.materialRange })
             .map((issue) => ({ path: issue.path, reason: issue.reason })),
         )
+      }
+      // The patterns a new form carries, together, held to what a new
+      // contract's patterns may weigh: every one of them is compiled when an
+      // answer is read. Only a form being written is weighed - one already
+      // stored keeps meaning what it meant.
+      if (issues.length === 0 && driver?.bindableFields !== undefined) {
+        const fields = driver.bindableFields(input.config.formConfig, {
+          materialRange: input.materialRange,
+        })
+        const heavy = patternWeightIssues({
+          properties: Object.fromEntries(fields.map((one) => [one.payloadKey, one.schema])),
+        })[0]
+        if (heavy !== undefined) {
+          const key = /^properties\.(.+)\.pattern$/.exec(heavy.path)?.[1]
+          issues.push({
+            path: key === undefined ? 'formConfig' : `formConfig.fields.${key}`,
+            reason: 'pattern-too-complex',
+          })
+        }
       }
       // the browser mints a fresh identity on retype; this is the server
       // holding the same rule against whoever speaks the api directly

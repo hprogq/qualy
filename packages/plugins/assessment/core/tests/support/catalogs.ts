@@ -68,6 +68,8 @@ export const testItemType: ItemTypeDriver = {
     // window the way evidence's own date fields are held
     dated: Schema.optional(Schema.Boolean),
     withinRound: Schema.optional(Schema.Boolean),
+    // a stand-in for a text field held to a pattern, offered for binding
+    pattern: Schema.optional(Schema.String),
   }),
   configIssues: (config, batch) => {
     const from = (config as { validFrom?: string }).validFrom
@@ -130,6 +132,21 @@ export const testItemType: ItemTypeDriver = {
     { fieldId: 'claimed-level', payloadKey: 'claimed-level-slot', schema: LEVEL, always: true },
     ...((config as { dated?: boolean } | null | undefined)?.dated === true
       ? [{ fieldId: 'claimed-when', payloadKey: DATED_SLOT, schema: DATE, always: true }]
+      : []),
+    ...(typeof (config as { pattern?: unknown } | null | undefined)?.pattern === 'string'
+      ? [
+          {
+            fieldId: 'claimed-code',
+            payloadKey: 'claimed-code-slot',
+            schema: {
+              type: 'string',
+              minLength: 1,
+              maxLength: 32,
+              pattern: (config as { pattern: string }).pattern,
+            } as AtomicSchema,
+            always: false,
+          },
+        ]
       : []),
   ],
   interaction: 'entry',
