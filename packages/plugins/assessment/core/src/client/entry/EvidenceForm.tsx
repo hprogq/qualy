@@ -193,6 +193,7 @@ export function EvidenceForm({
   knownFiles = {},
   disabled = false,
   onValidityChange,
+  onBusyChange,
 }: {
   /**
    * Whose sheet this is. The form holds local state the payload does not -
@@ -214,6 +215,11 @@ export function EvidenceForm({
   disabled?: boolean
   /** false while any draft cannot materialize; submit gates listen here */
   onValidityChange?: (valid: boolean) => void
+  /**
+   * True while a file is on its way up. The file joins the payload only
+   * once it lands, so a save pressed before then files without it.
+   */
+  onBusyChange?: (busy: boolean) => void
 }) {
   const { format, formatError, locale } = useI18n()
   const words = usePickerWords()
@@ -282,6 +288,23 @@ export function EvidenceForm({
     reportedValid.current = valid
     onValidityChange?.(valid)
   }, [valid, onValidityChange])
+
+  const sending = uploading !== null
+  const reportedBusy = useRef(false)
+  useEffect(() => {
+    if (reportedBusy.current === sending) return
+    reportedBusy.current = sending
+    onBusyChange?.(sending)
+  }, [sending, onBusyChange])
+  // a form taken away mid-upload must not leave its owner waiting forever
+  const busyListener = useRef(onBusyChange)
+  busyListener.current = onBusyChange
+  useEffect(
+    () => () => {
+      if (reportedBusy.current) busyListener.current?.(false)
+    },
+    [],
+  )
 
   const numberField = (field: EvidenceFieldSpec) => {
     const stored = own(value, field.key)

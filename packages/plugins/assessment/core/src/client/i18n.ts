@@ -1596,6 +1596,10 @@ const i18n = definePluginMessages({
       id: 'assessment/record/needs-material',
       defaultMessage: 'The supporting material is not filled in',
     },
+    recordNeedsUpload: {
+      id: 'assessment/record/needs-upload',
+      defaultMessage: 'A file is still uploading',
+    },
     recordNeedsResult: {
       id: 'assessment/record/needs-result',
       defaultMessage: 'The determination is not filled in',
@@ -4541,6 +4545,10 @@ const i18n = definePluginMessages({
     entryDraftKept: {
       id: 'assessment/entry/draft-kept',
       defaultMessage: 'Saved drafts can be continued at any time.',
+    },
+    entrySaveAfterUpload: {
+      id: 'assessment/entry/save-after-upload',
+      defaultMessage: 'You can save once the files finish uploading',
     },
     entrySaveDraft: { id: 'assessment/entry/save-draft', defaultMessage: 'Save as draft' },
     // filing writes the claim down and may hand it on in the same press, so

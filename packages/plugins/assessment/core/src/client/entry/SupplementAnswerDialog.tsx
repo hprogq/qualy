@@ -101,6 +101,8 @@ export function SupplementAnswerDialog({
   })
 
   const [evidenceValid, setEvidenceValid] = useState(true)
+  // a file still on its way up is not part of the answer yet
+  const [uploading, setUploading] = useState(false)
   const ready = supplement.requirements.every((asked) => {
     if (!asked.required) return true
     const value = payload[asked.key]
@@ -120,7 +122,7 @@ export function SupplementAnswerDialog({
             {format(commonMessages.cancel)}
           </Button>
           <Button
-            disabled={send.isPending || !ready || !evidenceValid}
+            disabled={send.isPending || !ready || !evidenceValid || uploading}
             onClick={() => send.mutate()}
           >
             {format(m.entrySubmit)}
@@ -133,6 +135,7 @@ export function SupplementAnswerDialog({
         <EvidenceForm
           session={supplement.requestId}
           onValidityChange={setEvidenceValid}
+          onBusyChange={setUploading}
           fields={fields}
           value={payload}
           onChange={setPayload}

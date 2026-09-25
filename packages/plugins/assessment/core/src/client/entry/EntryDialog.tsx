@@ -312,6 +312,8 @@ export function EntryDialog({
   )
   // a half-typed number must hold the doors shut, not submit as omitted
   const [evidenceValid, setEvidenceValid] = useState(true)
+  // a file still on its way up is not in the payload yet: both ways out wait
+  const [uploading, setUploading] = useState(false)
   const [note, setNote] = useState(entry?.currentRevision?.note ?? '')
   const [problem, setProblem] = useState<string | null>(null)
   // handing it on waits on an answer; keeping a draft does not
@@ -510,13 +512,15 @@ export function EntryDialog({
       onClose={onClose}
       footer={
         <div {...stylex.props(styles.footer)}>
-          <p {...stylex.props(styles.quietNote)}>{format(m.entryDraftKept)}</p>
+          <p {...stylex.props(styles.quietNote)} data-uploading={uploading || undefined}>
+            {format(uploading ? m.entrySaveAfterUpload : m.entryDraftKept)}
+          </p>
           <span {...stylex.props(styles.spacer)} />
           {/* while the question is out of date both ways out are shut: either
               would file an answer under rules its author has not seen */}
           <Button
             variant="outline"
-            disabled={save.isPending || stale || !evidenceValid}
+            disabled={save.isPending || stale || !evidenceValid || uploading}
             onClick={() => save.mutate(false)}
           >
             {format(m.entrySaveDraft)}
@@ -544,7 +548,7 @@ export function EntryDialog({
           ) : (
             <Button
               data-testid="save-and-submit"
-              disabled={save.isPending || stale || !evidenceValid}
+              disabled={save.isPending || stale || !evidenceValid || uploading}
               onClick={() => setAsking(true)}
             >
               {format(m.entrySaveAndSubmit)}
@@ -590,6 +594,7 @@ export function EntryDialog({
           <EvidenceForm
             session={asked.currentRevision?.id ?? asked.id}
             onValidityChange={setEvidenceValid}
+            onBusyChange={setUploading}
             fields={fields}
             value={payload}
             onChange={setPayload}
@@ -678,7 +683,7 @@ export function EntryDialog({
         confirmLabel={format(m.entrySaveThenSubmit)}
         otherLabel={format(m.entrySaveOnly)}
         cancelLabel={format(commonMessages.cancel)}
-        pending={save.isPending}
+        pending={save.isPending || uploading}
         onCancel={() => setAsking(false)}
         onOther={() => {
           setAsking(false)

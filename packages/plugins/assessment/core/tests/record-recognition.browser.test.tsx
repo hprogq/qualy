@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { lazy } from 'react'
 import { Effect } from 'effect'
-import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 const PeoplePickerView = lazy(() => import('@qualy/plugin-auth/client/iam/PeoplePickerView'))
 
@@ -450,6 +450,65 @@ describe('recording with a determination', () => {
       if (recognition.said().includes('省部级'))
         throw new Error('determination survived the filing')
     })
+  })
+
+  it('waits for a file still uploading before checking who it reaches', async () => {
+    let release: (() => void) | undefined
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const base = item(ITEM_A, REVISION_A, '竞赛获奖登记')
+    const withProof = {
+      ...base,
+      currentRevision: {
+        ...base.currentRevision,
+        formConfig: {
+          fields: [
+            ...base.currentRevision.formConfig.fields,
+            {
+              id: 'proof',
+              key: 'proof',
+              type: 'attachment',
+              label: '证明材料',
+              maxCount: 2,
+              accept: ['application/pdf'],
+            },
+          ],
+        },
+      },
+    }
+    const checked = vi.fn(() => Effect.succeed({}))
+    await open({
+      listItems: () => Effect.succeed({ items: [withProof], capabilities: { canManage: false } }),
+      // the ticket is held until the test lets go; then the round says no
+      prepareAttachmentUpload: () =>
+        Effect.flatMap(
+          Effect.promise(() => held),
+          () => Effect.fail(apiError('ASSESSMENT_ENTRY_ACTION_REFUSED', { reason: 'other' })),
+        ),
+      previewAdministrativeRecord: checked,
+    })
+    await waitForItems()
+    await chooseItem('竞赛获奖登记')
+    const { userEvent } = await import('vitest/browser')
+    await choosePerson('周予安')
+    await vi.waitFor(() => {
+      if (document.querySelector('[data-testid="record-recognition"]') === null)
+        throw new Error('no recognition section yet')
+    })
+    await recognitionChoice('rec-level').pick('国家级')
+    await userEvent.fill(page.getByLabelText('认定理由').element(), '校运会秩序册第 3 页')
+    const next = page.getByTestId('record-step-next')
+    await expect.element(next).toBeEnabled()
+
+    await userEvent.upload(
+      document.querySelector<HTMLInputElement>('input[type="file"]')!,
+      new File(['%PDF'], 'certificate.pdf', { type: 'application/pdf' }),
+    )
+    await expect.element(next).toBeDisabled()
+    release!()
+    await expect.element(next).toBeEnabled()
+    expect(checked).not.toHaveBeenCalled()
   })
 
   it('starts a clean sheet on another question', async () => {

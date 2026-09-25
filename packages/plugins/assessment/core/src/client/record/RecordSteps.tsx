@@ -174,6 +174,8 @@ export function RecordSteps({
   const [basis, setBasis] = useState('')
   const [problem, setProblem] = useState<string | null>(null)
   const [evidenceValid, setEvidenceValid] = useState(true)
+  // a file still on its way up would join the payload after the check read it
+  const [uploading, setUploading] = useState(false)
   const [seen, setSeen] = useState<PreviewResult | null>(null)
   /**
    * The press this act will come of.
@@ -295,15 +297,17 @@ export function RecordSteps({
   const missing =
     target === null
       ? m.recordNeedsTargets
-      : !evidenceValid
-        ? m.recordNeedsMaterial
-        : !recognitionReady
-          ? m.recordNeedsResult
-          : basis.trim() === ''
-            ? m.recordNeedsBasis
-            : refused !== null
-              ? m.recordNeedsFormula
-              : null
+      : uploading
+        ? m.recordNeedsUpload
+        : !evidenceValid
+          ? m.recordNeedsMaterial
+          : !recognitionReady
+            ? m.recordNeedsResult
+            : basis.trim() === ''
+              ? m.recordNeedsBasis
+              : refused !== null
+                ? m.recordNeedsFormula
+                : null
 
   const check = useMutation({
     mutationFn: (excluded: readonly string[]) =>
@@ -483,6 +487,7 @@ export function RecordSteps({
           <EvidenceForm
             session={session}
             onValidityChange={setEvidenceValid}
+            onBusyChange={setUploading}
             fields={filed}
             value={payload}
             onChange={setPayload}

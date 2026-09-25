@@ -8,7 +8,7 @@ import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
 import type { assessmentApi } from '@qualy/plugin-assessment/client/api'
-import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The entry workflow as a person drives it: filing a claim on a question,
 // following what a reviewer did to it, judging one from the queue, and
@@ -545,6 +545,134 @@ describe('filing a claim', () => {
       )
       .toEqual(['too-large'])
     expect(prepared).not.toHaveBeenCalled()
+  })
+
+  it('holds both ways out while a file is still on its way up', async () => {
+    let release: (() => void) | undefined
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const created = vi.fn(() => Effect.succeed({ entry: entry() }))
+    // an optional file field: nothing on the server would notice it missing
+    const withFiles = item({
+      currentRevision: {
+        ...item().currentRevision!,
+        formConfig: {
+          fields: [
+            { id: 'summary', key: 'summary', type: 'text', label: '事项说明', required: true },
+            {
+              id: 'proof',
+              key: 'proof',
+              type: 'attachment',
+              label: '证明材料',
+              maxCount: 2,
+              accept: ['application/pdf'],
+            },
+          ],
+        },
+      },
+    })
+    await screen(
+      {
+        listItems: () => Effect.succeed({ items: [withFiles], capabilities: { canManage: false } }),
+        // the ticket is held until the test lets go; then the round says no,
+        // which is enough to end the upload without a storage driver
+        prepareAttachmentUpload: () =>
+          Effect.flatMap(
+            Effect.promise(() => held),
+            () => Effect.fail(apiError('ASSESSMENT_ENTRY_ACTION_REFUSED', { reason: 'other' })),
+          ),
+        createEntry: created,
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
+    await clickVisible('file-claim')
+    await page.getByLabelText('事项说明', { exact: false }).fill('2024 年入伍，2026 年退役复学')
+    const inside = '[data-slot="dialog-content"] '
+    await expect.poll(() => document.querySelectorAll(`${inside}input[type="file"]`).length).toBe(1)
+    await userEvent.upload(
+      document.querySelector<HTMLInputElement>(`${inside}input[type="file"]`)!,
+      new File(['%PDF'], 'certificate.pdf', { type: 'application/pdf' }),
+    )
+
+    const keep = page.getByRole('button', { name: '存为草稿', exact: false })
+    const handOn = page.getByTestId('save-and-submit')
+    await expect.element(keep).toBeDisabled()
+    await expect.element(handOn).toBeDisabled()
+
+    release!()
+    await expect.element(keep).toBeEnabled()
+    await expect.element(handOn).toBeEnabled()
+    expect(created).not.toHaveBeenCalled()
+  })
+
+  it('holds the answer to a request while its file is still on its way up', async () => {
+    let release: (() => void) | undefined
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const answered = vi.fn(() => Effect.succeed({}))
+    const hidden = { state: 'hidden' as const, reason: null }
+    await screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [
+              entry({
+                status: 'in_review',
+                currentReviewInstanceId: INSTANCE_ID,
+                supplement: {
+                  requestId: REQUEST_ID,
+                  instanceId: INSTANCE_ID,
+                  requestNo: 1,
+                  instructions: '请补充盖章页',
+                  requirements: [
+                    { key: 'f1', label: '盖章页', kind: 'file' as const, required: false },
+                  ],
+                  requestedByName: '王敏',
+                  requestedAt: '2026-03-05T00:00:00.000Z',
+                },
+                capabilities: {
+                  edit: hidden,
+                  submit: hidden,
+                  withdraw: hidden,
+                  appeal: hidden,
+                  abandon: hidden,
+                },
+              }),
+            ],
+            nextCursor: null,
+            attention: { unreadItemIds: [] },
+          }),
+        prepareAttachmentUpload: () =>
+          Effect.flatMap(
+            Effect.promise(() => held),
+            () => Effect.fail(apiError('ASSESSMENT_ENTRY_ACTION_REFUSED', { reason: 'other' })),
+          ),
+        answerSupplement: answered,
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}&detail=${ENTRY_ID}`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    await page.getByRole('button', { name: '补充材料' }).click()
+    const inside = '[data-slot="dialog-content"] '
+    await expect.poll(() => document.querySelectorAll(`${inside}input[type="file"]`).length).toBe(1)
+    await userEvent.upload(
+      document.querySelector<HTMLInputElement>(`${inside}input[type="file"]`)!,
+      new File(['%PDF'], 'stamp.pdf', { type: 'application/pdf' }),
+    )
+
+    const send = page.getByRole('dialog').getByRole('button', { name: '提交审核' })
+    await expect.element(send).toBeDisabled()
+    release!()
+    await expect.element(send).toBeEnabled()
+    expect(answered).not.toHaveBeenCalled()
   })
 
   it('says the question moved without taking away what was written', async () => {
