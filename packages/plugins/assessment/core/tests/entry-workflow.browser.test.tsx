@@ -2640,6 +2640,54 @@ describe('the phase gate on the paper', () => {
   })
 })
 
+// Giving a claim up while something runs on it names what runs (ruling of
+// 2026-09-25 #16): an appeal the owner made, or a re-examination staff
+// opened, which the owner never asked for and must not be told was theirs.
+describe('what giving up a contested claim says', () => {
+  it.each([
+    ['appeal', 'assessment/entry/abandon-confirm-contested-counted'],
+    ['reopen', 'assessment/entry/abandon-confirm-reopened-counted'],
+  ] as const)('names a running %s as what ends with it', async (origin, sentence) => {
+    const running = entry({
+      status: 'approved',
+      currentReviewInstanceId: 'ri-2',
+      openRound: { origin },
+      capabilities: {
+        edit: { state: 'hidden' as const, reason: null },
+        submit: { state: 'hidden' as const, reason: null },
+        withdraw: { state: 'hidden' as const, reason: null },
+        appeal: { state: 'hidden' as const, reason: null },
+        abandon: { state: 'available' as const, reason: null },
+      },
+    })
+    await screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [running],
+            nextCursor: null,
+            attention: { unreadItemIds: [] },
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+    await page.getByTestId('claim-row').first().click()
+    const drawer = page.getByRole('dialog')
+    await expect.element(drawer).toBeVisible()
+    await drawer.getByRole('button', { name: '放弃申报' }).click()
+    const asked = page.getByRole('alertdialog')
+    await expect.element(asked).toBeVisible()
+    // the sentence the catalog holds for this case, whatever its wording
+    await expect.poll(() => asked.element().textContent).toContain(zhCN[sentence])
+    await expect
+      .element(page.getByTestId('confirm-accept'))
+      .toHaveAttribute('data-tone', 'destructive')
+  })
+})
+
 describe('the paper while the score is out of reach', () => {
   const INNER_ID = '77777777-7777-4777-8777-7777777777aa'
   // a paper with a section under its root, so a band carries a ledger

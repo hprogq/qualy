@@ -1228,6 +1228,16 @@ const i18n = definePluginMessages({
       defaultMessage:
         'You give up the whole entry, not only the appeal: the appeal ends, and the record of it is kept.',
     },
+    entryAbandonConfirmReopenedCounted: {
+      id: 'assessment/entry/abandon-confirm-reopened-counted',
+      defaultMessage:
+        'You give up the whole entry: the re-examination under way ends, its result leaves your score, and the record of it is kept.',
+    },
+    entryAbandonConfirmReopened: {
+      id: 'assessment/entry/abandon-confirm-reopened',
+      defaultMessage:
+        'You give up the whole entry: the re-examination under way ends, and the record of it is kept.',
+    },
     entrySubmitConfirm: {
       id: 'assessment/entry/submit-confirm',
       defaultMessage: 'Hand this claim on for review?',

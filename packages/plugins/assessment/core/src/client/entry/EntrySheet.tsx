@@ -14,8 +14,10 @@ import { abandonConsequence } from './standing.ts'
 
 /** what the owner is told giving a claim up takes with it */
 const ABANDON_SAYS = {
-  'contest-and-result': m.entryAbandonConfirmContestedCounted,
-  contest: m.entryAbandonConfirmContested,
+  'appeal-and-result': m.entryAbandonConfirmContestedCounted,
+  appeal: m.entryAbandonConfirmContested,
+  'reopen-and-result': m.entryAbandonConfirmReopenedCounted,
+  reopen: m.entryAbandonConfirmReopened,
   result: m.entryAbandonConfirmDecided,
   claim: m.entryAbandonConfirm,
 } as const

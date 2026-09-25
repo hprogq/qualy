@@ -42,9 +42,11 @@ describe('what giving a claim up takes with it', () => {
         status,
         openRound: origin === null ? null : { origin },
       } as never)
-    expect(at('approved', 'appeal')).toBe('contest-and-result')
-    expect(at('approved', 'reopen')).toBe('contest-and-result')
-    expect(at('rejected', 'appeal')).toBe('contest')
+    expect(at('approved', 'appeal')).toBe('appeal-and-result')
+    expect(at('rejected', 'appeal')).toBe('appeal')
+    // a re-examination staff opened is not the owner's appeal
+    expect(at('approved', 'reopen')).toBe('reopen-and-result')
+    expect(at('rejected', 'reopen')).toBe('reopen')
     expect(at('approved', null)).toBe('result')
     expect(at('rejected', null)).toBe('claim')
     expect(at('draft', null)).toBe('claim')

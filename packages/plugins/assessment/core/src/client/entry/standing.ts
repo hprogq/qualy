@@ -141,21 +141,30 @@ export const mayFile = (item: ItemDto, entries: readonly EntryDto[]): boolean =>
   opensTo(item, 'participant') &&
   (roomLeft(item, entries) ?? MAX_ENTRIES_PER_ITEM - liveCount(entries)) > 0
 
+export type AbandonConsequence =
+  | 'appeal-and-result'
+  | 'appeal'
+  | 'reopen-and-result'
+  | 'reopen'
+  | 'result'
+  | 'claim'
+
 /**
  * What giving a claim up takes with it, as its owner has to be told before
  * they confirm (ruling of 2026-09-25 #16): giving up is the whole claim,
- * never only an appeal on it - a running appeal or reopening ends with it,
- * and a decided claim's result leaves the score.
+ * never only what is running on it - an appeal the owner made or a
+ * re-examination staff opened ends with it, each named as what it is, and
+ * a decided claim's result leaves the score.
  */
 export const abandonConsequence = (
   entry: Pick<EntryDto, 'status' | 'openRound'>,
-): 'contest-and-result' | 'contest' | 'result' | 'claim' => {
-  const contested =
-    entry.openRound !== null &&
-    (entry.openRound.origin === 'appeal' || entry.openRound.origin === 'reopen')
+): AbandonConsequence => {
+  const running = entry.openRound?.origin
   // only an approval counts toward the score; a refusal stays on it at zero
   const counted = entry.status === 'approved'
-  return contested ? (counted ? 'contest-and-result' : 'contest') : counted ? 'result' : 'claim'
+  if (running === 'appeal') return counted ? 'appeal-and-result' : 'appeal'
+  if (running === 'reopen') return counted ? 'reopen-and-result' : 'reopen'
+  return counted ? 'result' : 'claim'
 }
 
 /** what one approved claim is worth, when the question pays a flat amount */

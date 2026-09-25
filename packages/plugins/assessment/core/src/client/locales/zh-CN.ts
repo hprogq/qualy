@@ -169,6 +169,10 @@ export default {
     '放弃的是整条申报而不只是申诉：申诉随之结束，结果将从成绩中退出，历史记录仍会保留。',
   'assessment/entry/abandon-confirm-contested':
     '放弃的是整条申报而不只是申诉：申诉随之结束，历史记录仍会保留。',
+  'assessment/entry/abandon-confirm-reopened-counted':
+    '放弃的是整条申报：正在进行的复查随之结束，结果将从成绩中退出，历史记录仍会保留。',
+  'assessment/entry/abandon-confirm-reopened':
+    '放弃的是整条申报：正在进行的复查随之结束，历史记录仍会保留。',
   'assessment/entry/submit-confirm': '确认提交审核？',
   'assessment/entry/submit-confirm-hint': '提交后进入审核流程，审核期间可撤回。',
   'assessment/entry/withdraw-confirm': '确认撤回提交？',
