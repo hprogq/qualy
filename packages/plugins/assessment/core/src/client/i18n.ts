@@ -883,8 +883,7 @@ const i18n = definePluginMessages({
     myEntriesTab: { id: 'assessment/entry/tab', defaultMessage: 'My entries' },
     myEntriesEmpty: {
       id: 'assessment/entry/empty',
-      defaultMessage:
-        'No items are currently open for submission. Available items will appear when the stage opens.',
+      defaultMessage: 'Nothing is open for filing yet. Items appear here once they open',
     },
     itemVoided: {
       id: 'assessment/entry/item-voided',
@@ -1303,7 +1302,7 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/row-unread',
       defaultMessage: 'New change you have not seen',
     },
-    entryStatusRejected: { id: 'assessment/entry/status-rejected', defaultMessage: 'Returned' },
+    entryStatusRejected: { id: 'assessment/entry/status-rejected', defaultMessage: 'Not approved' },
     entryStatusVoided: { id: 'assessment/entry/status-voided', defaultMessage: 'Voided' },
     entryFileUploading: { id: 'assessment/entry/file-uploading', defaultMessage: 'Uploading…' },
     entryFileRemove: { id: 'assessment/entry/file-remove', defaultMessage: 'Remove' },
@@ -1356,10 +1355,6 @@ const i18n = definePluginMessages({
     reviewRound: { id: 'assessment/review/round', defaultMessage: 'Review round' },
     reviewSubmittedAt: { id: 'assessment/review/submitted-at', defaultMessage: 'Submitted at' },
     reviewTrail: { id: 'assessment/review/trail', defaultMessage: 'Review history' },
-    entryCountsFor: {
-      id: 'assessment/entry/counts-for',
-      defaultMessage: 'Counts for {value} when approved',
-    },
     reviewOpen: { id: 'assessment/review/open', defaultMessage: 'Review' },
     reviewDetailTab: { id: 'assessment/review/detail-tab', defaultMessage: 'Review' },
     reviewApprove: { id: 'assessment/review/approve', defaultMessage: 'Approve' },
@@ -1600,9 +1595,6 @@ const i18n = definePluginMessages({
       defaultMessage: 'Participants',
     },
     columnItem: { id: 'assessment/column/item', defaultMessage: 'Question' },
-    columnEntrySource: { id: 'assessment/column/entry-source', defaultMessage: 'How it arrived' },
-    columnEntryStanding: { id: 'assessment/column/entry-standing', defaultMessage: 'Standing' },
-    columnEntryAmount: { id: 'assessment/column/entry-amount', defaultMessage: 'Counted' },
     participantResultsOpen: {
       id: 'assessment/participant-results/open',
       defaultMessage: 'Open the account',
@@ -1618,31 +1610,15 @@ const i18n = definePluginMessages({
     },
     participantResultsScoreTab: {
       id: 'assessment/participant-results/score-tab',
-      defaultMessage: 'Score breakdown',
+      defaultMessage: 'Score',
     },
     participantResultsEntriesTab: {
       id: 'assessment/participant-results/entries-tab',
-      defaultMessage: 'Entries and determinations',
+      defaultMessage: 'Entries',
     },
     participantResultsBack: {
       id: 'assessment/participant-results/back',
       defaultMessage: 'Back to participants',
-    },
-    participantResultsEntriesEmpty: {
-      id: 'assessment/participant-results/entries-empty',
-      defaultMessage: 'This participant has not filed anything yet.',
-    },
-    participantResultsUngrouped: {
-      id: 'assessment/participant-results/ungrouped',
-      defaultMessage: 'Other',
-    },
-    participantResultsClaimCount: {
-      id: 'assessment/participant-results/claim-count',
-      defaultMessage: '{count, plural, other {# entries}}',
-    },
-    participantResultsMore: {
-      id: 'assessment/participant-results/more',
-      defaultMessage: 'Show more',
     },
     // where a claim came from, in the product's words rather than the wire's
     entrySourceSelf: { id: 'assessment/entry/source-self', defaultMessage: 'Filed by participant' },
@@ -3821,7 +3797,7 @@ const i18n = definePluginMessages({
     },
     entryRefusedTitle: {
       id: 'assessment/entry/refused-title',
-      defaultMessage: 'The reviewer returned the submission',
+      defaultMessage: 'Not approved in review',
     },
     entryReturnedTitle: {
       id: 'assessment/entry/returned-title',
@@ -3872,10 +3848,6 @@ const i18n = definePluginMessages({
       id: 'assessment/paper/structure',
       defaultMessage: 'Scoring structure',
     },
-    paperStructureShort: {
-      id: 'assessment/paper/structure-short',
-      defaultMessage: 'Structure',
-    },
     paperViewAll: {
       id: 'assessment/paper/view-all',
       defaultMessage: 'All items',
@@ -3887,34 +3859,6 @@ const i18n = definePluginMessages({
     paperBandShare: {
       id: 'assessment/paper/band-share',
       defaultMessage: '{pct}% of total score',
-    },
-    paperCap: {
-      id: 'assessment/paper/cap',
-      defaultMessage: 'Limit {value}',
-    },
-    paperColContent: {
-      id: 'assessment/paper/col-content',
-      defaultMessage: 'Content',
-    },
-    paperColContentVersion: {
-      id: 'assessment/paper/col-content-version',
-      defaultMessage: 'Content and version',
-    },
-    paperColVersion: {
-      id: 'assessment/paper/col-version',
-      defaultMessage: 'Version and time',
-    },
-    paperColStatus: {
-      id: 'assessment/paper/col-status',
-      defaultMessage: 'Status',
-    },
-    paperColScore: {
-      id: 'assessment/paper/col-score',
-      defaultMessage: 'Score',
-    },
-    paperUnsubmitted: {
-      id: 'assessment/paper/unsubmitted',
-      defaultMessage: 'Not submitted',
     },
     paperFoldMore: {
       id: 'assessment/paper/fold-more',
@@ -3941,14 +3885,9 @@ const i18n = definePluginMessages({
       id: 'assessment/paper/empty-recorded-hint',
       defaultMessage: 'No staff entry has been recorded yet',
     },
-    paperEmptyFile: { id: 'assessment/paper/empty-file', defaultMessage: 'New entry' },
     paperGrantedEach: {
       id: 'assessment/paper/granted-each',
       defaultMessage: '{value} per participant',
-    },
-    paperVoidedWhy: {
-      id: 'assessment/paper/voided-why',
-      defaultMessage: 'Disabled because: {reason}',
     },
     paperEmptyGranted: {
       id: 'assessment/paper/empty-granted',
@@ -3966,10 +3905,6 @@ const i18n = definePluginMessages({
       id: 'assessment/my-entries/files-none',
       defaultMessage: 'No files uploaded',
     },
-    myEntriesPaperCap: {
-      id: 'assessment/my-entries/paper-cap',
-      defaultMessage: 'Total {value}',
-    },
     myEntriesPaperMeta: {
       id: 'assessment/my-entries/paper-meta',
       defaultMessage: '{groups, plural, other {# groups}}, {items, plural, other {# items}}',
@@ -3977,6 +3912,368 @@ const i18n = definePluginMessages({
     myEntriesPaperUnit: {
       id: 'assessment/my-entries/paper-unit',
       defaultMessage: 'pts',
+    },
+    entriesAwaitingRecord: {
+      id: 'assessment/entries/awaiting-record',
+      defaultMessage: 'Awaiting record',
+    },
+    entriesAmountNotCounted: {
+      id: 'assessment/entries/amount-not-counted',
+      defaultMessage: 'Not counted',
+    },
+    entriesAmountDeducted: {
+      id: 'assessment/entries/amount-deducted',
+      defaultMessage: 'Deducted',
+    },
+    entriesActAsked: {
+      id: 'assessment/entries/act-asked',
+      defaultMessage: 'material requested',
+    },
+    entriesActReturned: {
+      id: 'assessment/entries/act-returned',
+      defaultMessage: 'returned',
+    },
+    entriesActRejected: {
+      id: 'assessment/entries/act-rejected',
+      defaultMessage: 'not approved',
+    },
+    entriesActRecorded: {
+      id: 'assessment/entries/act-recorded',
+      defaultMessage: 'recorded',
+    },
+    entriesActApproved: {
+      id: 'assessment/entries/act-approved',
+      defaultMessage: 'approved',
+    },
+    entriesActSubmitted: {
+      id: 'assessment/entries/act-submitted',
+      defaultMessage: 'submitted',
+    },
+    entriesActVoided: {
+      id: 'assessment/entries/act-voided',
+      defaultMessage: 'voided',
+    },
+    entriesActSaved: {
+      id: 'assessment/entries/act-saved',
+      defaultMessage: 'saved',
+    },
+    entriesActRevoked: {
+      id: 'assessment/entries/act-revoked',
+      defaultMessage: 'revoked',
+    },
+    entriesChipWaiting: {
+      id: 'assessment/entries/chip-waiting',
+      defaultMessage: 'With the participant',
+    },
+    entriesStatContested: {
+      id: 'assessment/entries/stat-contested',
+      defaultMessage: 'Under reconsideration',
+    },
+    entriesWhen: {
+      id: 'assessment/entries/when',
+      defaultMessage: '{action} {when}',
+    },
+    entriesFiles: {
+      id: 'assessment/entries/files',
+      defaultMessage: '{count, plural, one {# file} other {# files}}',
+    },
+    entriesNoteReturned: {
+      id: 'assessment/entries/note-returned',
+      defaultMessage: 'Returned: {text}',
+    },
+    entriesNoteAsked: {
+      id: 'assessment/entries/note-asked',
+      defaultMessage: 'Needed: {text}',
+    },
+    entriesPoints: {
+      id: 'assessment/entries/points',
+      defaultMessage: '{value} pts',
+    },
+    entriesFold: {
+      id: 'assessment/entries/fold',
+      defaultMessage: 'Collapse {name}',
+    },
+    entriesUnfold: {
+      id: 'assessment/entries/unfold',
+      defaultMessage: 'Expand {name}',
+    },
+    entriesFoldedCount: {
+      id: 'assessment/entries/folded-count',
+      defaultMessage: '{count, plural, one {# item} other {# items}}',
+    },
+    entriesCalcRecorded: {
+      id: 'assessment/entries/calc-recorded',
+      defaultMessage: 'Recorded by staff',
+    },
+    entriesCalcByRule: {
+      id: 'assessment/entries/calc-by-rule',
+      defaultMessage: 'Scored by its rule',
+    },
+    entriesPointsCounted: {
+      id: 'assessment/entries/points-counted',
+      defaultMessage: 'points counted',
+    },
+    entriesPointsDeducted: {
+      id: 'assessment/entries/points-deducted',
+      defaultMessage: 'points deducted',
+    },
+    entriesNoFilingNeeded: {
+      id: 'assessment/entries/no-filing-needed',
+      defaultMessage: '{calc}. Nothing to file',
+    },
+    entriesInSections: {
+      id: 'assessment/entries/in-sections',
+      defaultMessage: 'Sections',
+    },
+    entriesSectionFull: {
+      id: 'assessment/entries/section-full',
+      defaultMessage: 'Limit reached',
+    },
+    entriesDescription: {
+      id: 'assessment/entries/description',
+      defaultMessage: 'How to file',
+    },
+    entriesVoidReason: {
+      id: 'assessment/entries/void-reason',
+      defaultMessage: 'Why it was disabled',
+    },
+    entriesRecordedByStaff: {
+      id: 'assessment/entries/recorded-by-staff',
+      defaultMessage: 'Recorded by staff',
+    },
+    entriesNoLimit: {
+      id: 'assessment/entries/no-limit',
+      defaultMessage: 'No limit',
+    },
+    entriesNothingToFill: {
+      id: 'assessment/entries/nothing-to-fill',
+      defaultMessage: 'Nothing to fill in',
+    },
+    entriesFilterLabel: {
+      id: 'assessment/entries/filter-label',
+      defaultMessage: 'Filter entries',
+    },
+    entriesSearch: {
+      id: 'assessment/entries/search',
+      defaultMessage: 'Search',
+    },
+    entriesSearchClose: {
+      id: 'assessment/entries/search-close',
+      defaultMessage: 'Close search',
+    },
+    entriesSortNewest: {
+      id: 'assessment/entries/sort-newest',
+      defaultMessage: 'Latest first',
+    },
+    entriesSortOldest: {
+      id: 'assessment/entries/sort-oldest',
+      defaultMessage: 'Oldest first',
+    },
+    entriesAddHeld: {
+      id: 'assessment/entries/add-held',
+      defaultMessage: 'New entries are not open now',
+    },
+    entriesRoomLeft: {
+      id: 'assessment/entries/room-left',
+      defaultMessage: '{count, plural, one {# more allowed} other {# more allowed}}',
+    },
+    entriesWhereLabel: {
+      id: 'assessment/entries/where-label',
+      defaultMessage: 'Location',
+    },
+    entriesCountedFact: {
+      id: 'assessment/entries/counted-fact',
+      defaultMessage: '{value} counted',
+    },
+    entriesDeductedFact: {
+      id: 'assessment/entries/deducted-fact',
+      defaultMessage: '{value} deducted',
+    },
+    entriesRequirements: {
+      id: 'assessment/entries/requirements',
+      defaultMessage: 'Requirements',
+    },
+    entriesListJoin: {
+      id: 'assessment/entries/list-join',
+      defaultMessage: ', ',
+    },
+    entriesNoMatch: {
+      id: 'assessment/entries/no-match',
+      defaultMessage: 'No entries match',
+    },
+    entriesClearFilter: {
+      id: 'assessment/entries/clear-filter',
+      defaultMessage: 'Clear filters',
+    },
+    entriesShownOf: {
+      id: 'assessment/entries/shown-of',
+      defaultMessage: 'Showing {shown} of {total}',
+    },
+    entriesShowMore: {
+      id: 'assessment/entries/show-more',
+      defaultMessage: 'Show {count} more',
+    },
+    entriesRecordedHint: {
+      id: 'assessment/entries/recorded-hint',
+      defaultMessage: 'Staff record this item; the result appears here',
+    },
+    entriesStaffEmptyHint: {
+      id: 'assessment/entries/staff-empty-hint',
+      defaultMessage: 'No entries under this item yet',
+    },
+    entriesHeldHint: {
+      id: 'assessment/entries/held-hint',
+      defaultMessage: 'New entries are not open now',
+    },
+    entriesNotOpen: {
+      id: 'assessment/entries/not-open',
+      defaultMessage: 'This item is not open for filing',
+    },
+    entriesDeclareHint: {
+      id: 'assessment/entries/declare-hint',
+      defaultMessage: 'Confirming submits it for review',
+    },
+    entriesSectionCap: {
+      id: 'assessment/entries/section-cap',
+      defaultMessage: 'Section limit {value}',
+    },
+    entriesSectionUncapped: {
+      id: 'assessment/entries/section-uncapped',
+      defaultMessage: 'No limit',
+    },
+    entriesFiledCount: {
+      id: 'assessment/entries/filed-count',
+      defaultMessage: '{count, plural, one {# entry filed} other {# entries filed}}',
+    },
+    entriesTodoCount: {
+      id: 'assessment/entries/todo-count',
+      defaultMessage: '{count, plural, one {# item needs you} other {# items need you}}',
+    },
+    entriesMovingCount: {
+      id: 'assessment/entries/moving-count',
+      defaultMessage: '{count, plural, one {# item in progress} other {# items in progress}}',
+    },
+    entriesUsedOf: {
+      id: 'assessment/entries/used-of',
+      defaultMessage: '{used} of {most}',
+    },
+    entriesViewMoving: {
+      id: 'assessment/entries/view-moving',
+      defaultMessage: 'In progress only',
+    },
+    entriesNoneMoving: {
+      id: 'assessment/entries/none-moving',
+      defaultMessage: 'Nothing in progress',
+    },
+    entriesPrevious: {
+      id: 'assessment/entries/previous',
+      defaultMessage: 'Previous',
+    },
+    entriesNext: {
+      id: 'assessment/entries/next',
+      defaultMessage: 'Next',
+    },
+    entriesStepLabel: {
+      id: 'assessment/entries/step-label',
+      defaultMessage: 'Neighbouring items',
+    },
+    entriesFootHeld: {
+      id: 'assessment/entries/foot-held',
+      defaultMessage: 'Not open now',
+    },
+    entriesCountedTotal: {
+      id: 'assessment/entries/counted-total',
+      defaultMessage: 'Counted so far',
+    },
+    entriesStaffHeading: {
+      id: 'assessment/entries/staff-heading',
+      defaultMessage: 'Entries',
+    },
+    entriesStaffTotal: {
+      id: 'assessment/entries/staff-total',
+      defaultMessage: 'Current total, provisional',
+    },
+    entriesRecordFor: {
+      id: 'assessment/entries/record-for',
+      defaultMessage: 'Record',
+    },
+    participantIncludedOn: {
+      id: 'assessment/participant/included-on',
+      defaultMessage: 'Joined {date}',
+    },
+    participantExcludedOn: {
+      id: 'assessment/participant/excluded-on',
+      defaultMessage: 'Removed {date}',
+    },
+    participantPlacementChanged: {
+      id: 'assessment/participant/placement-changed',
+      defaultMessage: 'Placement changed',
+    },
+    participantPlacementGone: {
+      id: 'assessment/participant/placement-gone',
+      defaultMessage: 'Not placed in the organization',
+    },
+    participantPrevious: {
+      id: 'assessment/participant/previous',
+      defaultMessage: 'Previous person',
+    },
+    participantPreviousNamed: {
+      id: 'assessment/participant/previous-named',
+      defaultMessage: 'Previous: {name}',
+    },
+    participantNext: {
+      id: 'assessment/participant/next',
+      defaultMessage: 'Next person',
+    },
+    participantNextNamed: {
+      id: 'assessment/participant/next-named',
+      defaultMessage: 'Next: {name}',
+    },
+    entriesNoItems: {
+      id: 'assessment/entries/no-items',
+      defaultMessage: 'This round has no items yet',
+    },
+    entriesNewTitle: {
+      id: 'assessment/entries/new-title',
+      defaultMessage: 'New entry',
+    },
+    entriesEditTitle: {
+      id: 'assessment/entries/edit-title',
+      defaultMessage: 'Edit entry',
+    },
+    entriesVersionNote: {
+      id: 'assessment/entries/version-note',
+      defaultMessage:
+        'This is version {now}. Saving creates version {next}; earlier versions stay in the review history',
+    },
+    entriesScoring: {
+      id: 'assessment/entries/scoring',
+      defaultMessage: 'Scoring',
+    },
+    entriesFiledShort: {
+      id: 'assessment/entries/filed-short',
+      defaultMessage: '{count}',
+    },
+    entriesNoneFiled: {
+      id: 'assessment/entries/none-filed',
+      defaultMessage: 'Nothing filed yet',
+    },
+    entriesAfterSubmit: {
+      id: 'assessment/entries/after-submit',
+      defaultMessage: 'After you submit',
+    },
+    entriesCountsAfterAll: {
+      id: 'assessment/entries/counts-after-all',
+      defaultMessage: 'Counts once every step approves',
+    },
+    entriesRoomAfter: {
+      id: 'assessment/entries/room-after',
+      defaultMessage:
+        '{count, plural, =0 {This one takes the last place} one {# more allowed after this one} other {# more allowed after this one}}',
+    },
+    entriesAdvice: {
+      id: 'assessment/entries/advice',
+      defaultMessage: 'The reviewer suggests: {value} (for reference only)',
     },
     entrySheetTitle: {
       id: 'assessment/entry-sheet/title',
@@ -4872,21 +5169,17 @@ const i18n = definePluginMessages({
     rowGranted: { id: 'assessment/entry/auto-granted', defaultMessage: 'Granted automatically' },
     myEntriesOpen: { id: 'assessment/entry/open', defaultMessage: 'Open for submission' },
     myEntriesResume: { id: 'assessment/entry/resume', defaultMessage: 'Continue editing' },
-    entryLastRoom: {
-      id: 'assessment/entry/last-room',
-      defaultMessage: 'One submission slot remains for this item.',
-    },
     entryAlreadyFiled: {
       id: 'assessment/entry/already-filed',
       defaultMessage: 'Already submitted',
     },
     entryNoDuplicates: {
       id: 'assessment/entry/no-duplicates',
-      defaultMessage: 'Do not submit the same achievement more than once.',
+      defaultMessage: 'Do not file the same thing twice',
     },
     entryDraftKept: {
       id: 'assessment/entry/draft-kept',
-      defaultMessage: 'Saved drafts can be continued at any time.',
+      defaultMessage: 'A saved draft can be continued at any time',
     },
     entrySaveAfterUpload: {
       id: 'assessment/entry/save-after-upload',
@@ -5100,21 +5393,15 @@ const i18n = definePluginMessages({
     },
     myEntriesFilterNone: {
       id: 'assessment/entry/filter-none',
-      defaultMessage: 'No items currently require your action.',
+      defaultMessage: 'Nothing needs your action',
     },
     myEntriesBasis: { id: 'assessment/entry/basis', defaultMessage: 'Scoring basis' },
     myEntriesBasisSoon: {
       id: 'assessment/entry/basis-soon',
       defaultMessage: 'No scoring rule has been linked yet.',
     },
-    entryNth: { id: 'assessment/entry/nth', defaultMessage: 'Entry {n}' },
     entryFlow: { id: 'assessment/entry/flow', defaultMessage: 'Review workflow' },
     entryFlowStep: { id: 'assessment/entry/flow-step', defaultMessage: 'Review step {n}' },
-    entryFlowNote: {
-      id: 'assessment/entry/flow-note',
-      defaultMessage:
-        'The entry can be withdrawn and edited until the first reviewer takes action.',
-    },
     entryFileDrop: {
       id: 'assessment/entry/file-drop',
       defaultMessage: 'Drop files here or click to select',

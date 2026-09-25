@@ -17,6 +17,7 @@ import { sourceLabelOf } from './source.ts'
 import { entryRefusalReason } from './refusals.ts'
 import { RedetermineDialog, type RedetermineInput } from './RedetermineDialog.tsx'
 import type { EntryDto, ItemDto } from './model.ts'
+import type { EntryLine } from './workspace/model.ts'
 
 // The staff drawer: somebody else's claim, read in full, with the two acts
 // that correct it.
@@ -90,6 +91,7 @@ export function ManagedEntrySheet({
   onClose,
   onIntervene,
   provenance,
+  summary,
 }: {
   open: boolean
   entry: EntryDto
@@ -122,6 +124,8 @@ export function ManagedEntrySheet({
   onIntervene: (kind: 'return-for-revision' | 'void', reason: string) => void
   /** where the claim came from, as a way to go there: the import it arrived in */
   provenance?: ReactNode
+  /** how the claim reads in its list, heading the drawer */
+  summary?: EntryLine
 }) {
   const { format } = useI18n()
   const [asking, setAsking] = useState<'return-for-revision' | 'void' | null>(null)
@@ -166,6 +170,7 @@ export function ManagedEntrySheet({
         item={item}
         trail={trail}
         onClose={onClose}
+        {...(summary === undefined ? {} : { summary })}
         aside={<Determination recognition={recognition} entry={entry} itemId={item.id} />}
         footer={
           <>

@@ -170,8 +170,10 @@ const UNANSWERED = '\u0000unanswered'
  * that whatever the field's own rule has to say - a date's window, say.
  * The two are one line each; a field with neither has no hint at all.
  */
-const hintOf = (field: EvidenceFieldSpec, rule?: string): string | undefined => {
-  const said = [field.description?.trim() ?? '', rule ?? ''].filter((one) => one !== '')
+const hintOf = (field: EvidenceFieldSpec, rule?: string, advice?: string): string | undefined => {
+  const said = [field.description?.trim() ?? '', rule ?? '', advice ?? ''].filter(
+    (one) => one !== '',
+  )
   return said.length === 0 ? undefined : said.join(' ')
 }
 
@@ -187,6 +189,7 @@ export function EvidenceForm({
   disabled = false,
   onValidityChange,
   onBusyChange,
+  advice = {},
 }: {
   /**
    * Whose sheet this is. The form holds local state the payload does not -
@@ -213,6 +216,11 @@ export function EvidenceForm({
    * once it lands, so a save pressed before then files without it.
    */
   onBusyChange?: (busy: boolean) => void
+  /**
+   * What a reviewer suggested writing instead, by field key, already in
+   * words: said under the field it is about, never written into it.
+   */
+  advice?: Readonly<Record<string, string>>
 }) {
   const { format, formatError, locale } = useI18n()
   const words = usePickerWords()
@@ -308,7 +316,11 @@ export function EvidenceForm({
         key={field.key}
         label={field.label}
         required={field.required === true}
-        hint={invalid ? format(m.entryNumberUnreadable) : hintOf(field)}
+        hint={
+          invalid
+            ? format(m.entryNumberUnreadable)
+            : hintOf(field, undefined, answerOf(advice, field.key))
+        }
       >
         {(id) => (
           <Input
@@ -348,7 +360,7 @@ export function EvidenceForm({
               key={field.key}
               label={field.label}
               required={field.required === true}
-              hint={hintOf(field)}
+              hint={hintOf(field, undefined, answerOf(advice, field.key))}
             >
               {(id) => (
                 <Input
@@ -373,7 +385,7 @@ export function EvidenceForm({
               key={field.key}
               label={field.label}
               required={field.required === true}
-              hint={hintOf(field)}
+              hint={hintOf(field, undefined, answerOf(advice, field.key))}
             >
               {(id) => (
                 <Choice
@@ -421,7 +433,7 @@ export function EvidenceForm({
               key={field.key}
               label={field.label}
               required={field.required === true}
-              hint={hintOf(field, window)}
+              hint={hintOf(field, window, answerOf(advice, field.key))}
             >
               {(id) => (
                 <DatePicker
@@ -465,7 +477,7 @@ export function EvidenceForm({
               key={field.key}
               label={field.label}
               required={field.required === true}
-              hint={hintOf(field)}
+              hint={hintOf(field, undefined, answerOf(advice, field.key))}
             >
               {(id) => (
                 <Choice
@@ -571,7 +583,7 @@ export function EvidenceForm({
             key={field.key}
             label={field.label}
             required={field.required === true}
-            hint={hintOf(field)}
+            hint={hintOf(field, undefined, answerOf(advice, field.key))}
           >
             {() => (
               <PhotoProvider maskOpacity={0.85}>

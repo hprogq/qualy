@@ -5,55 +5,49 @@ import { assessmentMessages as m } from '../i18n.ts'
 import { entryStatusMessage, type EntryDto } from './model.ts'
 
 /**
- * Where a claim stands, as a dot and a word.
+ * Where a claim stands, as one word on a tinted chip.
  *
- * The dot carries the weight: filled and dark for what counts, hollow for a
- * draft nobody has been handed yet, red for whatever is waiting on the
- * reader. The pill's own edge follows, so a card can be read across the pane
- * without reading the word. One component for the card and the drawer, so
- * the two can never call the same claim two different things.
+ * The tint carries the weight, the same four tones everywhere a claim is
+ * listed: amber for what waits on its owner, green for what counts, grey for
+ * what is moving or kept, and a bare outline for what ended without counting.
+ * Red is kept for news nobody has seen and for deductions, so a refusal reads
+ * as an outcome rather than an alarm. One component for the list and the
+ * drawer, so the two can never call the same claim two different things.
  */
 
 const styles = stylex.create({
-  pill: {
+  chip: {
     display: 'inline-flex',
     flexShrink: 0,
     alignItems: 'center',
-    gap: 6,
-    borderRadius: '9999px',
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
-    paddingInline: 10,
-    paddingBlock: 2,
+    height: 20,
+    borderRadius: 6,
+    paddingInline: 7,
     fontSize: 12,
+    fontWeight: 500,
+    lineHeight: 1,
     whiteSpace: 'nowrap',
   },
-  pillAlert: {
-    borderColor: `color-mix(in oklab, ${tokens.danger} 35%, transparent)`,
-    color: tokens.danger,
+  roomy: {
+    height: 24,
+    paddingInline: 9,
+    fontSize: 12.5,
   },
-  pillHollow: {
+  waits: {
+    backgroundColor: `color-mix(in oklab, ${tokens.warning} 16%, transparent)`,
+    color: tokens.warningForeground,
+  },
+  counts: {
+    backgroundColor: `color-mix(in oklab, ${tokens.success} 15%, transparent)`,
+    color: tokens.successForeground,
+  },
+  moving: {
+    backgroundColor: tokens.surfaceMuted,
+    color: tokens.surfaceMutedForeground,
+  },
+  ended: {
+    boxShadow: `inset 0 0 0 1px ${tokens.border}`,
     color: tokens.mutedForeground,
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: '9999px',
-  },
-  dotHollow: {
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: `color-mix(in oklab, ${tokens.mutedForeground} 50%, transparent)`,
-  },
-  dotAlert: {
-    backgroundColor: tokens.danger,
-  },
-  dotApproved: {
-    backgroundColor: tokens.foreground,
-  },
-  dotDefault: {
-    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
   },
 })
 
@@ -73,6 +67,7 @@ export function EntryStanding({
   asked,
   source,
   openRound,
+  size = 'default',
 }: {
   status: EntryDto['status']
   revised?: boolean
@@ -96,6 +91,8 @@ export function EntryStanding({
    * by the item's type, because one question may accept both.
    */
   source?: EntryDto['source']
+  /** `roomy` where the chip stands in a column of its own */
+  size?: 'default' | 'roomy'
 }) {
   const { format } = useI18n()
   const administrative = source === 'record' || source === 'import'
@@ -116,9 +113,17 @@ export function EntryStanding({
               // exists because something was asked of it
               m.entryStatusRevising
             : entryStatusMessage[status]
-  const alert = asked === true || status === 'rejected' || status === 'needs_revision'
   const standing = asked === true ? 'awaiting_supplement' : contested ? 'contested' : status
-  const hollow = status === 'draft' && asked !== true
+  const tone =
+    asked === true || (status === 'needs_revision' && !administrative)
+      ? styles.waits
+      : contested
+        ? styles.moving
+        : status === 'approved' || (administrative && status === 'draft')
+          ? styles.counts
+          : status === 'rejected' || status === 'voided'
+            ? styles.ended
+            : styles.moving
   return (
     <span
       // the standing itself, beside the word for it: a test about what a
@@ -128,21 +133,8 @@ export function EntryStanding({
       {...(openRound === null || openRound === undefined
         ? {}
         : { 'data-open-round': openRound.origin })}
-      {...stylex.props(styles.pill, alert && styles.pillAlert, hollow && styles.pillHollow)}
+      {...stylex.props(styles.chip, size === 'roomy' && styles.roomy, tone)}
     >
-      <span
-        aria-hidden
-        {...stylex.props(
-          styles.dot,
-          hollow
-            ? styles.dotHollow
-            : alert
-              ? styles.dotAlert
-              : status === 'approved'
-                ? styles.dotApproved
-                : styles.dotDefault,
-        )}
-      />
       {format(word)}
     </span>
   )

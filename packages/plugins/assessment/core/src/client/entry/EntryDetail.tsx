@@ -16,13 +16,15 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Count } from '@qualy/ui/count'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
-import { inZone, useBatchZone } from '../batch/zone.ts'
+import { useBatchZone } from '../batch/zone.ts'
 import { AttachmentLink } from './AttachmentLink.tsx'
 import { sourceLabelOf } from './source.ts'
 import { EntryTrail } from './EntryHistory.tsx'
 import { EntryStanding } from './EntryStanding.tsx'
 import { choiceLabel, displayTitle, kindOf, type AtomicSchema } from '@qualy/value-schema'
 import { answerOf, displayValueOf, fieldsOf, type EntryDto, type ItemDto } from './model.ts'
+import { useWorkspaceMode } from './workspace/layout.ts'
+import { momentOf, type EntryLine } from './workspace/model.ts'
 
 // One claim, in full, in a drawer over the list it came from.
 //
@@ -75,7 +77,48 @@ const styles = stylex.create({
     padding: 0,
     maxWidth: { default: null, [breakpoints.tablet]: '48rem', [breakpoints.desktop]: '48rem' },
   },
-  sheetTitle: { flexShrink: 0, fontSize: 16, lineHeight: '1.5rem', fontWeight: 600 },
+  // on a phone it rises from the foot over the question, most of the way up
+  panelBelow: {
+    height: '93dvh',
+    maxHeight: '93dvh',
+    overflow: 'hidden',
+    borderStartStartRadius: 20,
+    borderStartEndRadius: 20,
+  },
+  grab: {
+    alignSelf: 'center',
+    width: 36,
+    height: 4,
+    flexShrink: 0,
+    marginTop: 10,
+    borderRadius: 9999,
+    backgroundColor: `color-mix(in oklab, ${tokens.foreground} 15%, transparent)`,
+  },
+  sheetTitle: {
+    margin: 0,
+    fontSize: 18,
+    lineHeight: 1.35,
+    fontWeight: 600,
+    letterSpacing: '-0.015em',
+    overflowWrap: 'anywhere',
+  },
+  headSub: {
+    margin: 0,
+    fontSize: 13.5,
+    color: tokens.surfaceMutedForeground,
+    overflowWrap: 'anywhere',
+  },
+  headRule: { width: 1, height: 10, flexShrink: 0, backgroundColor: tokens.border },
+  headAmount: {
+    display: 'flex',
+    flexShrink: 0,
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 2,
+    paddingTop: 20,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  headAmountValue: { fontSize: 22, lineHeight: 1.15, fontWeight: 600, letterSpacing: '-0.02em' },
   crumbHere: {
     color: tokens.foreground,
   },
@@ -176,12 +219,16 @@ const styles = stylex.create({
     alignItems: 'baseline',
     gap: 8,
   },
+  // sent back: waiting on its owner, in the amber the workspace uses for it
+  noticeReturned: {
+    backgroundColor: `color-mix(in oklab, ${tokens.warning} 12%, ${tokens.background})`,
+  },
   noticeTitle: {
     flexShrink: 0,
     fontSize: 14,
     fontWeight: 600,
-    color: tokens.danger,
   },
+  noticeTitleReturned: { color: tokens.warningForeground },
   reasonBadge: {
     backgroundColor: tokens.background,
     fontWeight: 400,
@@ -237,7 +284,7 @@ const styles = stylex.create({
     width: 16,
     height: 16,
     flexShrink: 0,
-    color: tokens.danger,
+    color: tokens.warningForeground,
   },
   askTitle: {
     minWidth: 0,
@@ -245,7 +292,8 @@ const styles = stylex.create({
     flexShrink: 1,
     flexBasis: '0%',
     fontSize: 14,
-    fontWeight: 500,
+    fontWeight: 600,
+    color: tokens.warningForeground,
   },
   askNeeds: {
     display: 'flex',
@@ -426,10 +474,13 @@ export function EntryDetail({
   onSupplement,
   aside,
   footer,
+  summary,
 }: {
   open: boolean
   entry: EntryDto
   item: ItemDto
+  /** how the claim reads in its list, so the drawer is headed by the claim itself */
+  summary?: EntryLine
   /** the groups above the question, outermost first */
   trail: readonly string[]
   onClose: () => void
@@ -443,6 +494,7 @@ export function EntryDetail({
   const query = useApiQuery(assessmentApi)
   const { format, locale } = useI18n()
   const zone = useBatchZone()
+  const phone = useWorkspaceMode() === 'phone'
   const yesNo = { yes: format(m.recognitionYes), no: format(m.recognitionNo) }
   const [tab, setTab] = useState<'content' | 'trail'>('content')
   const payload = (entry.currentRevision?.payload ?? {}) as Record<string, unknown>
@@ -480,7 +532,12 @@ export function EntryDetail({
 
   return (
     <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
-      <SheetContent xstyle={styles.panel} showCloseButton={false}>
+      <SheetContent
+        side={phone ? 'bottom' : 'right'}
+        xstyle={[styles.panel, phone && styles.panelBelow]}
+        showCloseButton={false}
+      >
+        {phone && <span aria-hidden data-sheet-grab="" {...stylex.props(styles.grab)} />}
         <div {...stylex.props(styles.head)}>
           <div {...stylex.props(styles.headWords)}>
             <Breadcrumb>
@@ -491,10 +548,13 @@ export function EntryDetail({
                 {item.title}
               </span>
             </Breadcrumb>
+            <SheetTitle className={stylex.props(styles.sheetTitle).className}>
+              {summary === undefined ? format(m.entrySheetTitle) : summary.lead}
+            </SheetTitle>
+            {summary !== undefined && summary.sub !== '' && (
+              <p {...stylex.props(styles.headSub)}>{summary.sub}</p>
+            )}
             <div {...stylex.props(styles.titleRow)}>
-              <SheetTitle className={stylex.props(styles.sheetTitle).className}>
-                {format(m.entrySheetTitle)}
-              </SheetTitle>
               <EntryStanding
                 status={entry.status}
                 source={entry.source}
@@ -502,14 +562,39 @@ export function EntryDetail({
                 asked={entry.supplement !== null}
                 openRound={entry.openRound}
               />
+              <span {...stylex.props(styles.versionNote)}>
+                {format(sourceLabelOf(entry.source))}
+              </span>
               {revisionNo !== undefined && entry.status !== 'draft' && (
-                <span {...stylex.props(styles.versionNote)}>
-                  {format(m.entryVersionNo, { no: revisionNo })}
-                </span>
+                <>
+                  <span aria-hidden {...stylex.props(styles.headRule)} />
+                  <span {...stylex.props(styles.versionNote)}>
+                    {format(m.entryVersionNo, { no: revisionNo })}
+                  </span>
+                </>
+              )}
+              {summary !== undefined && (
+                <>
+                  <span aria-hidden {...stylex.props(styles.headRule)} />
+                  <span {...stylex.props(styles.versionNote)}>
+                    {format(m.entriesWhen, {
+                      when: timeOf(summary.at, locale, zone),
+                      action: format(summary.action),
+                    })}
+                  </span>
+                </>
               )}
             </div>
           </div>
           <span {...stylex.props(styles.spacer)} />
+          {summary !== undefined && (
+            <div {...stylex.props(styles.headAmount)} data-amount={summary.amount ?? ''}>
+              {summary.amount !== null && (
+                <span {...stylex.props(styles.headAmountValue)}>{summary.amount}</span>
+              )}
+              <span {...stylex.props(styles.versionNote)}>{format(summary.amountWord)}</span>
+            </div>
+          )}
           <Button
             variant="ghost"
             size="icon-sm"
@@ -553,9 +638,21 @@ export function EntryDetail({
               <>
                 {aside}
                 {entry.refusal !== null && (
-                  <div {...stylex.props(styles.notice)}>
+                  <div
+                    data-testid="entry-refusal"
+                    data-kind={entry.refusal.kind}
+                    {...stylex.props(
+                      styles.notice,
+                      entry.refusal.kind !== 'rejected' && styles.noticeReturned,
+                    )}
+                  >
                     <div {...stylex.props(styles.noticeHead)}>
-                      <p {...stylex.props(styles.noticeTitle)}>
+                      <p
+                        {...stylex.props(
+                          styles.noticeTitle,
+                          entry.refusal.kind !== 'rejected' && styles.noticeTitleReturned,
+                        )}
+                      >
                         {format(
                           entry.refusal.kind === 'rejected'
                             ? m.entryRefusedTitle
@@ -593,7 +690,7 @@ export function EntryDetail({
                 {entry.supplement !== null && (
                   <div
                     data-testid="supplement-ask"
-                    {...stylex.props(styles.notice, styles.noticeAsk)}
+                    {...stylex.props(styles.notice, styles.noticeAsk, styles.noticeReturned)}
                   >
                     <div {...stylex.props(styles.askHead)}>
                       <AlertCircleIcon
@@ -843,11 +940,4 @@ function RecognizedValues({ entry }: { entry: EntryDto }) {
   )
 }
 
-const timeOf = (iso: string, locale: string, zone: string | undefined): string =>
-  new Date(iso).toLocaleString(locale, {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    ...inZone(zone),
-  })
+const timeOf = momentOf

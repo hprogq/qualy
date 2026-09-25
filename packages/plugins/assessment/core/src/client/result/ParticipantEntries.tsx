@@ -1,59 +1,53 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
+import { PenLineIcon } from 'lucide-react'
+import {
+  PageLink,
+  useApi,
+  useApiQuery,
+  usePageQueryState,
+  usePageQueryUpdate,
+  useRunApi,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
+import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
-import { Card, CardHead, Cell, Table, TableHead, TableRow } from '@qualy/ui/screen'
 import { toast } from '@qualy/ui/toast'
+import { useLingering } from '@qualy/ui/use-lingering'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
-import { EntryStanding } from '../entry/EntryStanding.tsx'
 import { ManagedEntrySheet } from '../entry/ManagedEntrySheet.tsx'
 import type { RedetermineInput } from '../entry/RedetermineDialog.tsx'
 import { sayEntryFailure } from '../entry/refusals.ts'
-import { sourceLabelOf } from '../entry/source.ts'
-import { useLingering } from '@qualy/ui/use-lingering'
-import type { ItemDto } from '../entry/model.ts'
+import { standingRows, type Standing } from '../entry/standing.ts'
+import { opensTo, type EntryDto, type ItemDto } from '../entry/model.ts'
+import { EntriesWorkspace } from '../entry/workspace/EntriesWorkspace.tsx'
+import { useWorkspaceMode } from '../entry/workspace/layout.ts'
+import { useParticipantEntries } from './participant-entries.ts'
+import { entryLineOf } from '../entry/workspace/model.ts'
 
-// What this person filed, and what the round decided about each of it.
+// One person's filings, read the way they read them: the same workspace as
+// their own page, with the staff reader's acts in place of the owner's.
 //
-// A ruled list rather than a wall of cards: the reader is checking an
-// account, which means reading down a column of standings, and a card per
-// claim turns that into scrolling. Grouped by question the way the paper is
-// grouped, because a claim without the question it answers is a sentence
-// without its subject.
-//
-// Opening one is a drawer over this list, not a page: the sibling claims are
-// the context it is being read against, and a page would take them away.
+// Nothing here files or submits - that is the owner's alone. What a staff
+// reader may do is the server's to say, claim by claim: send one back, take
+// an administrative determination off it, re-examine it or re-determine it,
+// and record a finding into a question the office records.
 
-// One sheet, the way the rest of the product draws a list now: white is what
-// says "this is the record", the score groups are 0.985 folds in that sheet
-// rather than headings floating above it, and the claims rule against each
-// other instead of each carrying a box. A column of amounts is worth
-// aligning, so it gets a column.
 const styles = stylex.create({
-  // A column of cards, not a card holding cards: one card inside another
-  // showed the outer one's ground through the inner corners - a little
-  // triangle at each side of every join - and left no air between groups.
-  card: {
-    display: 'flex',
-    minWidth: 0,
-    flexDirection: 'column',
-    gap: 14,
+  skeleton: {
+    display: 'grid',
+    gap: 16,
+    gridTemplateColumns: { default: '300px minmax(0, 1fr)', '@media (max-width: 767.98px)': '1fr' },
+    paddingBlock: 12,
   },
-  group: { display: 'flex', minWidth: 0, flexDirection: 'column' },
-  // the fold: which part of the paper the claims under it answer
-  stripWord: { fontSize: 12, fontWeight: 500, color: tokens.mutedForeground },
-  rows: { display: 'flex', minWidth: 0, flexDirection: 'column' },
-  words: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 4 },
-  under: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 },
-  // its own column, so the numbers line up against each other rather than
-  // against whatever length the titles happen to be
-  source: { color: tokens.mutedForeground },
+  skColumn: { display: 'flex', flexDirection: 'column', gap: 12 },
+  skBone: { height: 14, borderRadius: 4 },
+  skBlock: { height: 56, borderRadius: tokens.radiusMd },
   empty: {
     borderRadius: tokens.radiusLg,
     backgroundColor: tokens.surface,
@@ -61,54 +55,6 @@ const styles = stylex.create({
     paddingBlock: 48,
     textAlign: 'center',
     fontSize: 13,
-    color: tokens.mutedForeground,
-  },
-  // the grouped tables it becomes: a card head, a column head, and rows
-  skStack: { display: 'flex', flexDirection: 'column', gap: 14 },
-  skCard: {
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'hidden',
-    borderRadius: tokens.radiusLg,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
-  },
-  skCardHead: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: tokens.border,
-    paddingInline: 16,
-    paddingBlock: 12,
-  },
-  skRow: {
-    display: 'grid',
-    alignItems: 'center',
-    gap: 12,
-    gridTemplateColumns: 'minmax(0, 1fr) 6rem 7.5rem 5rem',
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: tokens.divider,
-    paddingInline: 16,
-    paddingBlock: 11,
-    ':last-child': { borderBottomWidth: 0 },
-  },
-  skBone: { height: 13, borderRadius: 4 },
-  skChip: { height: 20, width: '4.5rem', borderRadius: 9999 },
-  // the way on, as the card's last row rather than a control adrift under it
-  moreRow: {
-    display: 'flex',
-    height: 44,
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderTopWidth: 1,
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.divider,
-    fontSize: 12,
     color: tokens.mutedForeground,
   },
 })
@@ -123,8 +69,13 @@ export function ParticipantEntries({
   batchId: string
   participantId: string
   entryId: string
-  /** the corrections this reader can make in this round at all */
-  may: { readonly returnForRevision: boolean; readonly withdraw: boolean }
+  /** the corrections and records this reader can make in this round at all */
+  may: {
+    readonly returnForRevision: boolean
+    readonly withdraw: boolean
+    /** recording a finding into a question the office records */
+    readonly record: boolean
+  }
   onEntry: (entryId: string) => void
 }) {
   const api = useApi(assessmentApi)
@@ -132,37 +83,63 @@ export function ParticipantEntries({
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
+  const mode = useWorkspaceMode()
+  // which question is open: the same address key the owner's page keeps
+  const [open, setOpen] = usePageQueryState('open', '', {
+    history: mode === 'phone' ? 'push' : 'replace',
+  })
 
-  const entries = useQuery(
-    query.assessment.listParticipantEntries.queryOptions({
-      params: { batchId, participantId },
-      query: {},
-    }),
-  )
+  const entries = useQuery(useParticipantEntries(batchId, participantId))
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
-  // read, not fetched twice: the detail above has it open already, so this
-  // is the cache it filled
+  const groups = useQuery(query.assessment.listScoreGroups.queryOptions({ params: { batchId } }))
+  // read, not fetched twice: the detail above has it open already
   const result = useQuery(
     query.assessment.getParticipantResult.queryOptions({ params: { batchId, participantId } }),
   )
-  const groups = useQuery(query.assessment.listScoreGroups.queryOptions({ params: { batchId } }))
 
-  const rows = entries.data?.entries ?? []
-  // the amount each claim contributed, taken from the ledger rather than
-  // computed here: an amount worked out twice is an amount that can disagree
-  const countedBy = new Map(
-    (result.data?.lines ?? []).flatMap((line) =>
-      line.provenance?.entryId === undefined || line.kind !== 'entry'
-        ? []
-        : [[line.provenance.entryId, line.value] as const],
-    ),
+  const claims = useMemo(() => entries.data?.entries ?? [], [entries.data])
+  const flat = useMemo(() => claims.map((one) => one.entry as EntryDto), [claims])
+  const entriesByItem = useMemo(() => {
+    const grouped = new Map<string, EntryDto[]>()
+    for (const entry of flat) {
+      const bucket = grouped.get(entry.itemId)
+      if (bucket === undefined) grouped.set(entry.itemId, [entry])
+      else bucket.push(entry)
+    }
+    return grouped
+  }, [flat])
+  const visible = useMemo(
+    () =>
+      ((items.data?.items ?? []) as readonly ItemDto[]).filter((item) => item.status !== 'draft'),
+    [items.data],
   )
-  const itemsById = new Map((items.data?.items ?? []).map((item) => [item.id, item as ItemDto]))
-  const groupsById = new Map((groups.data?.groups ?? []).map((group) => [group.id, group]))
+  const standing = (result.data ?? null) as Standing | null
+  const rows = useMemo(
+    () =>
+      standingRows({
+        groups: groups.data?.groups ?? [],
+        items: visible,
+        entriesByItem,
+        standing,
+      }),
+    [groups.data, visible, entriesByItem, standing],
+  )
 
-  // Both corrections are the same api act with a different word, and both
-  // change what the score is made of - so the account, the claims and the
-  // claim itself are all asked again rather than patched in place.
+  // Every correction changes what the score is made of - so the account,
+  // the claims and the claim itself are all asked again, not patched.
+  const refresh = () => {
+    void queryClient.invalidateQueries({
+      queryKey: query.assessment.listParticipantEntries.key({
+        params: { batchId, participantId },
+        query: {},
+      }),
+    })
+    void queryClient.invalidateQueries({
+      queryKey: query.assessment.getParticipantResult.key({
+        params: { batchId, participantId },
+      }),
+    })
+  }
   const intervene = useMutation({
     mutationFn: (input: {
       entryId: string
@@ -177,35 +154,10 @@ export function ParticipantEntries({
       ).then(() => input.kind),
     onSuccess: (kind) => {
       toast.success(format(kind === 'void' ? m.staffVoided : m.staffReturned))
-      void queryClient.invalidateQueries({
-        queryKey: query.assessment.listParticipantEntries.key({
-          params: { batchId, participantId },
-          query: {},
-        }),
-      })
-      void queryClient.invalidateQueries({
-        queryKey: query.assessment.getParticipantResult.key({
-          params: { batchId, participantId },
-        }),
-      })
+      refresh()
     },
     onError: (error) => toast.error(sayEntryFailure(error, { format, formatError })),
   })
-
-  // what the score and the list are made of changes with either correction
-  const refresh = () => {
-    void queryClient.invalidateQueries({
-      queryKey: query.assessment.listParticipantEntries.key({
-        params: { batchId, participantId },
-        query: {},
-      }),
-    })
-    void queryClient.invalidateQueries({
-      queryKey: query.assessment.getParticipantResult.key({
-        params: { batchId, participantId },
-      }),
-    })
-  }
   const reopen = useMutation({
     mutationFn: (input: { entryId: string; reason: string }) =>
       run(
@@ -243,151 +195,109 @@ export function ParticipantEntries({
     onError: (error) => setCorrectionProblem(sayEntryFailure(error, { format, formatError })),
   })
 
-  const open = rows.find((one) => one.entry.id === entryId) ?? null
+  const opened = claims.find((one) => one.entry.id === entryId) ?? null
   // kept mounted while the drawer shuts, or it would vanish rather than close
-  const lingering = useLingering(open)
+  const lingering = useLingering(opened)
+  const itemsById = new Map(visible.map((item) => [item.id, item] as const))
+  const rowsById = new Map(rows.map((row) => [row.id, row] as const))
 
-  // Grouped the way the paper is grouped, by score group: a claim without
-  // the part of the round it belongs to is a sentence without its subject.
-  // Grouping by question instead printed the question's title twice - once
-  // as the heading and again on the row under it.
-  const groupOf = (row: (typeof rows)[number]) =>
-    itemsById.get(row.entry.itemId)?.scoreGroupId ?? ''
-  type Claim = (typeof rows)[number]
-  const byGroup = new Map<string, Claim[]>()
-  for (const row of rows) {
-    const key = groupOf(row)
-    const bucket = byGroup.get(key)
-    if (bucket === undefined) byGroup.set(key, [row])
-    else bucket.push(row)
-  }
-  for (const bucket of byGroup.values()) {
-    bucket.sort(
-      (a, b) =>
-        (itemsById.get(a.entry.itemId)?.sortOrder ?? 0) -
-        (itemsById.get(b.entry.itemId)?.sortOrder ?? 0),
-    )
-  }
-  const buckets = [...byGroup.entries()].sort(
-    ([left], [right]) =>
-      (groupsById.get(left)?.sortOrder ?? 0) - (groupsById.get(right)?.sortOrder ?? 0),
-  )
+  // A claim the address names opens on its own question: following a number
+  // back from the account lands on the question it was filed under. Written
+  // into the address in place, so closing the drawer leaves the reader on
+  // that question rather than on whichever one the page would land on.
+  const address = usePageQueryUpdate()
+  const landedOn = opened !== null && open === '' ? opened.entry.itemId : null
+  useEffect(() => {
+    if (landedOn !== null) address({ open: landedOn }, { history: 'replace' })
+  }, [landedOn, address])
+  const openItem = landedOn ?? open
 
   return (
     <>
       <AsyncSection
-        pending={entries.isPending || items.isPending}
-        error={entries.isError ? formatError(entries.error) : null}
+        pending={entries.isPending || items.isPending || groups.isPending}
+        error={
+          entries.isError
+            ? formatError(entries.error)
+            : items.isError
+              ? formatError(items.error)
+              : null
+        }
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => {
           void entries.refetch()
           void items.refetch()
+          void groups.refetch()
         }}
         skeleton={
-          <div {...stylex.props(styles.skStack)}>
-            {[
-              ['34%', ['58%', '42%', '66%']],
-              ['26%', ['48%', '61%']],
-            ].map(([head, rows], group) => (
-              <div key={group} {...stylex.props(styles.skCard)}>
-                <div {...stylex.props(styles.skCardHead)}>
-                  <Skeleton
-                    className={stylex.props(styles.skBone).className}
-                    width={head as string}
-                  />
-                  <Skeleton className={stylex.props(styles.skBone).className} width={48} />
-                </div>
-                {(rows as string[]).map((width, index) => (
-                  <div key={index} {...stylex.props(styles.skRow)}>
-                    <Skeleton className={stylex.props(styles.skBone).className} width={width} />
-                    <Skeleton className={stylex.props(styles.skBone).className} width="70%" />
-                    <Skeleton className={stylex.props(styles.skChip).className} />
-                    <Skeleton className={stylex.props(styles.skBone).className} width={32} />
-                  </div>
-                ))}
-              </div>
-            ))}
+          <div {...stylex.props(styles.skeleton)}>
+            <div {...stylex.props(styles.skColumn)}>
+              {['60%', '80%', '45%', '70%', '55%'].map((width, index) => (
+                <Skeleton
+                  key={index}
+                  className={stylex.props(styles.skBone).className}
+                  width={width}
+                />
+              ))}
+            </div>
+            <div {...stylex.props(styles.skColumn)}>
+              {[0, 1, 2].map((one) => (
+                <Skeleton key={one} className={stylex.props(styles.skBlock).className} />
+              ))}
+            </div>
           </div>
         }
       >
         {rows.length === 0 ? (
-          <p {...stylex.props(styles.empty)}>{format(m.participantResultsEntriesEmpty)}</p>
+          <p {...stylex.props(styles.empty)}>{format(m.entriesNoItems)}</p>
         ) : (
-          <div {...stylex.props(styles.card)}>
-            {buckets.map(([groupId, claims]) => {
-              const group = groupsById.get(groupId)
-              return (
-                <Card key={groupId || 'ungrouped'} data-testid="claim-group">
-                  <CardHead
-                    title={group?.name ?? format(m.participantResultsUngrouped)}
-                    note={format(m.participantResultsClaimCount, { count: claims.length })}
-                  />
-                  {/* the round's own table: the question, how the fact got
-                      here, where it stands and what it came to - the same
-                      four columns the roster reads in, rather than a run of
-                      pressable cards */}
-                  <Table columns="minmax(0, 1fr) 6rem 7.5rem 5rem" openable>
-                    <TableHead>
-                      <span>{format(m.columnItem)}</span>
-                      <span>{format(m.columnEntrySource)}</span>
-                      <span>{format(m.columnEntryStanding)}</span>
-                      <span>{format(m.columnEntryAmount)}</span>
-                    </TableHead>
-                    {claims.map(({ entry }) => {
-                      const item = itemsById.get(entry.itemId)
-                      const counted = countedBy.get(entry.id)
-                      return (
-                        <TableRow
-                          key={entry.id}
-                          height="compact"
-                          nested
-                          selected={entry.id === entryId}
-                          onOpen={() => onEntry(entry.id)}
-                          data-testid="participant-entry"
-                          data-entry={entry.id}
-                        >
-                          <Cell lead strong={entry.id === entryId}>
-                            {item?.title ?? format(m.itemsUntitled)}
-                          </Cell>
-                          <Cell tone="muted">{format(sourceLabelOf(entry.source))}</Cell>
-                          <Cell>
-                            <EntryStanding
-                              status={entry.status}
-                              source={entry.source}
-                              revised={entry.currentReviewInstanceId !== null}
-                              asked={entry.supplement !== null}
-                              openRound={entry.openRound}
-                            />
-                          </Cell>
-                          {/* what it is worth is what this list is read
-                              for, so stacked it keeps the end of the row */}
-                          <Cell
-                            numeric
-                            narrow="end"
-                            unlabelled
-                            tone={counted === undefined ? 'quiet' : 'plain'}
-                          >
-                            {counted ?? '—'}
-                          </Cell>
-                        </TableRow>
-                      )
-                    })}
-                  </Table>
-                </Card>
-              )
-            })}
-            {entries.data?.nextCursor != null && (
-              <p {...stylex.props(styles.moreRow)}>{format(m.participantResultsMore)}</p>
-            )}
-          </div>
+          <EntriesWorkspace
+            viewer="staff"
+            heading={format(m.entriesStaffHeading)}
+            totalLabel={format(m.entriesStaffTotal)}
+            rows={rows}
+            entriesByItem={entriesByItem}
+            entries={flat}
+            standing={standing}
+            scored={result.data !== undefined}
+            open={openItem}
+            onOpen={(id) => setOpen(id)}
+            busy={intervene.isPending || reopen.isPending || redetermine.isPending}
+            refreshing={entries.isFetching || result.isFetching}
+            onRefresh={() => {
+              void entries.refetch()
+              void result.refetch()
+              void items.refetch()
+              void groups.refetch()
+            }}
+            openEntryId={entryId}
+            onEntry={(entry) => onEntry(entry.id)}
+            itemAction={(item) =>
+              // the office's own way to write a finding for a question it
+              // records, where this reader holds the power that does
+              may.record && item.status === 'active' && opensTo(item, 'administrative') ? (
+                <Button asChild size="sm" variant="outline" data-testid="staff-record">
+                  <PageLink
+                    page="assessment/batch-record"
+                    params={{ batchId }}
+                    search={{ mode: 'manual' }}
+                  >
+                    <PenLineIcon aria-hidden />
+                    {format(m.entriesRecordFor)}
+                  </PageLink>
+                </Button>
+              ) : null
+            }
+            fit="window"
+          />
         )}
       </AsyncSection>
 
       {lingering !== null && itemsById.get(lingering.entry.itemId) !== undefined && (
         <ManagedEntrySheet
           key={lingering.entry.id}
-          open={open !== null}
+          open={opened !== null}
           entry={lingering.entry}
           item={itemsById.get(lingering.entry.itemId)!}
           recognition={lingering.recognition}
@@ -400,31 +310,16 @@ export function ParticipantEntries({
               () => false,
             )
           }
-          trail={trailOf(itemsById.get(lingering.entry.itemId)!, groupsById)}
+          trail={rowsById.get(lingering.entry.itemId)?.trail ?? []}
           busy={intervene.isPending || reopen.isPending || redetermine.isPending}
           may={may}
           onClose={() => onEntry('')}
           onIntervene={(kind, reason) =>
             intervene.mutate({ entryId: lingering.entry.id, kind, reason })
           }
+          summary={entryLineOf(lingering.entry, itemsById.get(lingering.entry.itemId)!, standing)}
         />
       )}
     </>
   )
-}
-
-/** the groups above a question, outermost first */
-const trailOf = (
-  item: ItemDto,
-  groups: ReadonlyMap<string, { name: string; parentGroupId: string | null }>,
-): readonly string[] => {
-  const names: string[] = []
-  let at = groups.get(item.scoreGroupId)
-  // a cycle cannot happen in a saved tree, but a bound keeps a bad one from
-  // hanging the screen it is drawn on
-  for (let depth = 0; at !== undefined && depth < 16; depth += 1) {
-    names.unshift(at.name)
-    at = at.parentGroupId === null ? undefined : groups.get(at.parentGroupId)
-  }
-  return names
 }

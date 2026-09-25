@@ -6,7 +6,6 @@ import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { ConfirmDialog, Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { RefreshCwIcon } from 'lucide-react'
-import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Textarea } from '@qualy/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
@@ -17,13 +16,14 @@ import { issueSentence } from './issues.ts'
 import { toast } from '@qualy/ui/toast'
 import { assessmentMessages as m } from '../i18n.ts'
 import { Basis } from './Basis.tsx'
+import { EntryStanding } from './EntryStanding.tsx'
 import { EvidenceForm, type EvidencePayload } from './EvidenceForm.tsx'
-import { carryPayload, chainNamesOf, eachWorth, roomLeft } from './standing.ts'
+import { carryPayload, chainNamesOf } from './standing.ts'
+import { useCalcLine } from './workspace/calc.ts'
 import {
   answerOf,
   displayValueOf,
   fieldsOf,
-  trimAmount,
   type ActionAvailability,
   type EntryDto,
   type ItemDto,
@@ -43,15 +43,6 @@ const spin = stylex.keyframes({
 })
 
 const styles = stylex.create({
-  titleRow: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 10,
-  },
-  worthBadge: {
-    fontWeight: 400,
-  },
   footer: {
     display: 'flex',
     width: '100%',
@@ -62,6 +53,11 @@ const styles = stylex.create({
   quietNote: {
     fontSize: 12,
     color: tokens.mutedForeground,
+  },
+  // on a phone the two keys need the whole row: the standing reminder
+  // gives way, a file still uploading does not
+  quietIdle: {
+    display: { default: 'block', '@media (max-width: 767.98px)': 'none' },
   },
   spacer: {
     flexGrow: 1,
@@ -126,7 +122,7 @@ const styles = stylex.create({
     gap: 24,
     gridTemplateColumns: {
       default: null,
-      [lg]: 'minmax(0, 1fr) 18rem',
+      [lg]: 'minmax(0, 1fr) 16.5rem',
     },
   },
   form: {
@@ -144,88 +140,152 @@ const styles = stylex.create({
     fontSize: 14,
     color: tokens.danger,
   },
+  // what was said when it came back: above the work, in the reader's hand
+  returned: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    borderRadius: 12,
+    backgroundColor: `color-mix(in oklab, ${tokens.warning} 12%, ${tokens.background})`,
+    paddingInline: 14,
+    paddingBlock: 12,
+  },
+  returnedHead: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  returnedTitle: { margin: 0, fontSize: 13.5, fontWeight: 600, color: tokens.warningForeground },
+  returnedReason: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    height: 20,
+    borderRadius: 6,
+    backgroundColor: tokens.background,
+    boxShadow: `inset 0 0 0 1px ${tokens.border}`,
+    paddingInline: 7,
+    fontSize: 12,
+    color: tokens.surfaceMutedForeground,
+  },
+  returnedWords: {
+    margin: 0,
+    fontSize: 13.5,
+    lineHeight: 1.6,
+    overflowWrap: 'anywhere',
+    whiteSpace: 'pre-line',
+  },
+  versionNote: { margin: 0, fontSize: 12.5, lineHeight: 1.6, color: tokens.mutedForeground },
   aside: {
     display: 'flex',
     minWidth: 0,
     flexDirection: 'column',
-    gap: 16,
+    alignSelf: 'start',
+    overflow: 'hidden',
+    borderRadius: 12,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 45%, ${tokens.background})`,
   },
-  asideCard: {
+  asideBlock: {
     display: 'flex',
     flexDirection: 'column',
     gap: 8,
-    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
-    padding: 16,
+    paddingInline: 18,
+    paddingBlock: 16,
   },
-  asideCardRoomy: {
-    gap: 10,
+  asideRuled: {
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.divider,
   },
-  asideTitle: {
-    fontSize: 14,
-    fontWeight: 600,
-  },
-  siblingLine: {
+  asideLabel: {
     display: 'flex',
-    alignItems: 'center',
-    gap: 8,
+    alignItems: 'baseline',
+    gap: 6,
+    margin: 0,
     fontSize: 12,
+    fontWeight: 600,
     color: tokens.mutedForeground,
   },
-  siblingDot: {
-    width: 6,
-    height: 6,
-    flexShrink: 0,
-    borderRadius: '9999px',
-    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
+  asideCount: { fontWeight: 400, fontVariantNumeric: 'tabular-nums' },
+  asideStrong: { margin: 0, fontSize: 14, fontWeight: 500 },
+  quotaLine: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 8,
+    fontSize: 12.5,
+    fontVariantNumeric: 'tabular-nums',
   },
-  siblingWords: {
+  quotaWord: { flexGrow: 1, color: tokens.mutedForeground },
+  quotaValue: { fontWeight: 600 },
+  bar: {
+    display: 'flex',
+    height: 4,
+    overflow: 'hidden',
+    borderRadius: 2,
+    backgroundColor: tokens.surfaceMuted,
+  },
+  barFill: { borderRadius: 2, backgroundColor: tokens.foreground },
+  filed: {
+    display: 'flex',
+    maxHeight: 216,
+    flexDirection: 'column',
+    overflowY: 'auto',
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
+  },
+  filedLine: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 30,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+  },
+  filedWords: {
+    minWidth: 0,
+    flexGrow: 1,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
+    fontSize: 13,
+    color: tokens.surfaceMutedForeground,
   },
   asideFoot: {
-    borderTopWidth: 1,
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.border,
-    paddingTop: 8,
-    fontSize: 12,
-    lineHeight: 1.625,
+    margin: 0,
+    fontSize: 12.5,
+    lineHeight: 1.6,
     color: tokens.mutedForeground,
   },
-  stepLine: {
+  steps: {
     display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    fontSize: 12,
+    flexDirection: 'column',
+    gap: 10,
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
   },
+  stepLine: { display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 },
   stepNo: {
-    display: 'flex',
-    width: 16,
-    height: 16,
+    display: 'inline-flex',
+    width: 20,
+    height: 20,
     flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: '9999px',
-    backgroundColor: tokens.surfaceMuted,
-    fontSize: 10,
-    fontWeight: 500,
+    borderRadius: 9999,
+    backgroundColor: tokens.background,
+    boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${tokens.foreground} 14%, transparent)`,
+    fontSize: 11,
+    fontWeight: 600,
+    color: tokens.surfaceMutedForeground,
+    fontVariantNumeric: 'tabular-nums',
   },
-  stepName: {
-    minWidth: 0,
-  },
+  stepName: { minWidth: 0 },
   escalationLine: {
     display: 'flex',
     flexWrap: 'wrap',
     alignItems: 'baseline',
     columnGap: 8,
     rowGap: 2,
-    borderTopWidth: 1,
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.border,
-    paddingTop: 8,
+    margin: 0,
     fontSize: 12,
     color: tokens.mutedForeground,
   },
@@ -235,11 +295,6 @@ const styles = stylex.create({
   escalationSteps: {
     minWidth: 0,
     lineHeight: 1.625,
-  },
-  flowNote: {
-    fontSize: 12,
-    lineHeight: 1.625,
-    color: tokens.mutedForeground,
   },
 })
 
@@ -337,9 +392,34 @@ function EntryDialogBody({
 
   const fields = fieldsOf(asked.currentRevision?.formConfig)
   const labelOf = (key: string) => fields.find((field) => field.key === key)?.label ?? key
-  const each = eachWorth(asked)
+  const calc = useCalcLine()
   const chain = chainNamesOf(asked)
-  const room = roomLeft(asked, siblings)
+  // what else stands under this question, and how many of its places are
+  // taken - this claim's own included, where it already exists
+  const filed = siblings.filter((one) => one.status !== 'voided')
+  const used = filed.length + (entry === null ? 0 : 1)
+  // handing it in again after it came back, rather than for the first time
+  const resubmitting = entry !== null && entry.status !== 'draft'
+  // What the reviewer suggested writing instead, field by field, for the
+  // owner to apply by hand - the form never fills itself from it. Only the
+  // fields it would change; a suggestion equal to what is filed says nothing.
+  const suggested = entry?.refusal?.suggestedPayload
+  const filedPayload = (entry?.currentRevision?.payload ?? {}) as Record<string, unknown>
+  const advice: Record<string, string> = {}
+  if (suggested !== null && typeof suggested === 'object' && suggested !== undefined) {
+    const proposal = suggested as Record<string, unknown>
+    for (const field of fields) {
+      if (field.type === 'attachment' || !Object.hasOwn(proposal, field.key)) continue
+      const proposed = answerOf(proposal, field.key)
+      if (String(proposed ?? '') === String(answerOf(filedPayload, field.key) ?? '')) continue
+      const said = displayValueOf(field, proposed, {
+        yes: format(m.recognitionYes),
+        no: format(m.recognitionNo),
+      })
+      if (said !== '') advice[field.key] = format(m.entriesAdvice, { value: said })
+    }
+  }
+
   // an absent word from the server is not a shut gate; only a spoken refusal is
   const submitShut = submitGate !== undefined && submitGate.state !== 'available'
   const submitWhy = submitGate?.reason == null ? null : entryRefusalReason(submitGate.reason)
@@ -504,26 +584,17 @@ function EntryDialogBody({
   return (
     <FormDialog
       open={open}
+      whole
       size="wide"
-      title={
-        <span {...stylex.props(styles.titleRow)}>
-          {entry === null
-            ? format(m.entryNth, {
-                n: siblings.filter((one) => one.status !== 'voided').length + 1,
-              })
-            : format(m.entryEdit)}
-          {each !== undefined && (
-            <Badge variant="secondary" className={stylex.props(styles.worthBadge).className}>
-              {format(m.entryCountsFor, { value: trimAmount(each) })}
-            </Badge>
-          )}
-        </span>
-      }
+      title={format(entry === null ? m.entriesNewTitle : m.entriesEditTitle)}
       description={[...trail, asked.title].join(' › ')}
       onClose={onClose}
       footer={
         <div {...stylex.props(styles.footer)}>
-          <p {...stylex.props(styles.quietNote)} data-uploading={uploading || undefined}>
+          <p
+            {...stylex.props(styles.quietNote, !uploading && styles.quietIdle)}
+            data-uploading={uploading || undefined}
+          >
             {format(uploading ? m.entrySaveAfterUpload : m.entryDraftKept)}
           </p>
           <span {...stylex.props(styles.spacer)} />
@@ -549,7 +620,7 @@ function EntryDialogBody({
                       disabled
                       className={stylex.props(styles.noPointer).className}
                     >
-                      {format(m.entrySaveAndSubmit)}
+                      {format(resubmitting ? m.entryResubmit : m.entrySaveAndSubmit)}
                     </Button>
                   </span>
                 </TooltipTrigger>
@@ -562,7 +633,7 @@ function EntryDialogBody({
               disabled={save.isPending || stale || !evidenceValid || uploading}
               onClick={() => setAsking(true)}
             >
-              {format(m.entrySaveAndSubmit)}
+              {format(resubmitting ? m.entryResubmit : m.entrySaveAndSubmit)}
             </Button>
           )}
         </div>
@@ -602,7 +673,36 @@ function EntryDialogBody({
 
       <div {...stylex.props(styles.body)}>
         <div {...stylex.props(styles.form)}>
+          {entry?.refusal != null &&
+            (entry.status === 'needs_revision' || entry.status === 'rejected') && (
+              <div data-testid="form-returned" {...stylex.props(styles.returned)}>
+                <div {...stylex.props(styles.returnedHead)}>
+                  <p {...stylex.props(styles.returnedTitle)}>
+                    {format(
+                      entry.refusal.kind === 'rejected'
+                        ? m.entryRefusedTitle
+                        : m.entryReturnedTitle,
+                    )}
+                  </p>
+                  {entry.refusal.reason !== null && (
+                    <span {...stylex.props(styles.returnedReason)}>{entry.refusal.reason}</span>
+                  )}
+                </div>
+                {(entry.refusal.comment ?? '') !== '' && (
+                  <p {...stylex.props(styles.returnedWords)}>{entry.refusal.comment}</p>
+                )}
+              </div>
+            )}
+          {entry !== null && entry.status !== 'draft' && entry.currentRevision !== null && (
+            <p {...stylex.props(styles.versionNote)} data-testid="form-version">
+              {format(m.entriesVersionNote, {
+                now: entry.currentRevision.revisionNo,
+                next: entry.currentRevision.revisionNo + 1,
+              })}
+            </p>
+          )}
           <EvidenceForm
+            advice={advice}
             session={asked.currentRevision?.id ?? asked.id}
             onValidityChange={setEvidenceValid}
             onBusyChange={setUploading}
@@ -630,41 +730,85 @@ function EntryDialogBody({
           )}
         </div>
 
-        <aside {...stylex.props(styles.aside)}>
+        <aside {...stylex.props(styles.aside)} data-testid="form-aside">
           <Basis compact />
+          <div {...stylex.props(styles.asideBlock)}>
+            <p {...stylex.props(styles.asideLabel)}>{format(m.entriesScoring)}</p>
+            <p {...stylex.props(styles.asideStrong)}>{calc(asked)}</p>
+            {asked.maxEntries !== null && (
+              <>
+                <div {...stylex.props(styles.quotaLine)} data-testid="form-quota" data-used={used}>
+                  <span {...stylex.props(styles.quotaWord)}>{format(m.myEntriesQuota)}</span>
+                  <span {...stylex.props(styles.quotaValue)}>
+                    {used} / {asked.maxEntries}
+                  </span>
+                </div>
+                <span {...stylex.props(styles.bar)}>
+                  <span
+                    {...stylex.props(styles.barFill)}
+                    style={{
+                      width: `${Math.min(100, (used / Math.max(1, asked.maxEntries)) * 100)}%`,
+                    }}
+                  />
+                </span>
+                {/* what is left once this one is kept, for a new claim */}
+                {entry === null && (
+                  <p {...stylex.props(styles.asideFoot)} data-testid="form-room">
+                    {format(m.entriesRoomAfter, {
+                      count: Math.max(0, asked.maxEntries - used - 1),
+                    })}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
 
-          {siblings.length > 0 && (
-            <div {...stylex.props(styles.asideCard)}>
-              <p {...stylex.props(styles.asideTitle)}>{format(m.entryAlreadyFiled)}</p>
-              {siblings.map((one) => (
-                <p key={one.id} {...stylex.props(styles.siblingLine)}>
-                  <span aria-hidden {...stylex.props(styles.siblingDot)} />
-                  <span {...stylex.props(styles.siblingWords)}>{summary(one, item)}</span>
-                </p>
-              ))}
-              <p {...stylex.props(styles.asideFoot)}>
-                {format(m.entryNoDuplicates)}
-                {room !== null && room <= 1 && entry === null && ` ${format(m.entryLastRoom)}`}
-              </p>
-            </div>
-          )}
+          <div {...stylex.props(styles.asideBlock, styles.asideRuled)}>
+            <p {...stylex.props(styles.asideLabel)}>
+              {format(m.entryAlreadyFiled)}
+              <span {...stylex.props(styles.asideCount)}>
+                {format(m.entriesFiledShort, { count: filed.length })}
+              </span>
+            </p>
+            {filed.length === 0 ? (
+              <p {...stylex.props(styles.asideFoot)}>{format(m.entriesNoneFiled)}</p>
+            ) : (
+              <ul {...stylex.props(styles.filed)}>
+                {filed.map((one) => (
+                  <li key={one.id} {...stylex.props(styles.filedLine)}>
+                    <span {...stylex.props(styles.filedWords)}>{summary(one, item)}</span>
+                    <EntryStanding
+                      status={one.status}
+                      source={one.source}
+                      revised={one.currentReviewInstanceId !== null}
+                      asked={one.supplement !== null}
+                      openRound={one.openRound}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p {...stylex.props(styles.asideFoot)}>{format(m.entryNoDuplicates)}</p>
+          </div>
 
           {chain.normal.length > 0 && (
-            <div {...stylex.props(styles.asideCard, styles.asideCardRoomy)}>
-              <p {...stylex.props(styles.asideTitle)}>{format(m.entryFlow)}</p>
+            <div {...stylex.props(styles.asideBlock, styles.asideRuled)}>
+              <p {...stylex.props(styles.asideLabel)}>{format(m.entriesAfterSubmit)}</p>
               {/* Steps by the names the administrator gave them, and only
                   the names: who each step lands on is the round's business
                   and not this reader's to be told. */}
-              {chain.normal.map((label, index) => (
-                <span key={index} {...stylex.props(styles.stepLine)}>
-                  <span aria-hidden {...stylex.props(styles.stepNo)}>
-                    {index + 1}
-                  </span>
-                  <span {...stylex.props(styles.stepName)}>
-                    {label ?? format(m.entryFlowStep, { n: index + 1 })}
-                  </span>
-                </span>
-              ))}
+              <ol {...stylex.props(styles.steps)}>
+                {chain.normal.map((label, index) => (
+                  <li key={index} {...stylex.props(styles.stepLine)}>
+                    <span aria-hidden {...stylex.props(styles.stepNo)}>
+                      {index + 1}
+                    </span>
+                    <span {...stylex.props(styles.stepName)}>
+                      {label ?? format(m.entryFlowStep, { n: index + 1 })}
+                    </span>
+                  </li>
+                ))}
+              </ol>
               {chain.escalation.length > 0 && (
                 <p {...stylex.props(styles.escalationLine)}>
                   <span {...stylex.props(styles.keepShort)}>{format(m.reviewRouteEscalation)}</span>
@@ -675,7 +819,7 @@ function EntryDialogBody({
                   </span>
                 </p>
               )}
-              <p {...stylex.props(styles.flowNote)}>{format(m.entryFlowNote)}</p>
+              <p {...stylex.props(styles.asideFoot)}>{format(m.entriesCountsAfterAll)}</p>
             </div>
           )}
         </aside>

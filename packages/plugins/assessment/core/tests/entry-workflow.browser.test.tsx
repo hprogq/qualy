@@ -352,7 +352,7 @@ describe('filing a claim', () => {
         },
         setEntryStatus: submitted,
       },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
@@ -433,7 +433,7 @@ describe('filing a claim', () => {
             }),
           setEntryStatus: submitted,
         },
-        `/assessment/batches/${BATCH_ID}/my-entries`,
+        `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
         [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
       )
 
@@ -464,7 +464,7 @@ describe('filing a claim', () => {
         createEntry: created,
         setEntryStatus: submitted,
       },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
@@ -497,7 +497,7 @@ describe('filing a claim', () => {
         createEntry: created,
         setEntryStatus: submitted,
       },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
@@ -530,7 +530,7 @@ describe('filing a claim', () => {
         reviseEntry: revised,
         setEntryStatus: submitted,
       },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
@@ -580,7 +580,7 @@ describe('filing a claim', () => {
         listItems: () => Effect.succeed({ items: [withFiles], capabilities: { canManage: false } }),
         prepareAttachmentUpload: prepared,
       },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
@@ -644,7 +644,7 @@ describe('filing a claim', () => {
           ),
         createEntry: created,
       },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
@@ -769,7 +769,7 @@ describe('filing a claim', () => {
           Effect.succeed({ items: [changed ? asked : item()], capabilities: { canManage: false } }),
         createEntry: conflict,
       },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
@@ -855,7 +855,7 @@ describe('filing a claim', () => {
           Effect.succeed({ items: [changed ? asked : before], capabilities: { canManage: false } }),
         createEntry: conflict,
       },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
@@ -1014,7 +1014,7 @@ describe('filing a claim', () => {
             ],
           }),
       },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
@@ -1101,7 +1101,7 @@ describe('filing a claim', () => {
             ],
           }),
       },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
@@ -1176,7 +1176,7 @@ describe('filing a claim', () => {
             ],
           }),
       },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
     await page.getByTestId('claim-row').first().click()
@@ -1231,7 +1231,7 @@ describe('filing a claim', () => {
             rounds: [],
           }),
       },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
     // the standing itself, not the word for it
@@ -1300,7 +1300,7 @@ describe('filing a claim', () => {
               revisions: [],
             }),
         },
-        `/assessment/batches/${BATCH_ID}/my-entries`,
+        `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
         [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
       )
 
@@ -1353,16 +1353,25 @@ describe('filing a claim', () => {
             attention: { unreadItemIds: [] },
           }),
       },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
+    // on a phone the question's requirements come up in a sheet
+    await page.getByTestId('requirements-key').click()
     const block = page.getByTestId('question-chain')
     await expect.element(block).toBeVisible()
-    // step names the administrator gave, joined as a route; the unnamed
-    // step falls back to its number - and nothing names a level or a role
-    await expect.element(block.getByText('班委初审 → 专业复审')).toBeVisible()
-    await expect.element(block.getByText(/年级合议 → 第 2 个审核环节/)).toBeVisible()
+    // step names the administrator gave, in route order; the unnamed step
+    // falls back to its number - and nothing names a level or a role
+    const steps = (route: string) =>
+      [...block.element().querySelectorAll(`[data-route="${route}"] li`)].map((one) =>
+        one.textContent?.trim(),
+      )
+    expect(steps('normal')).toEqual(['班委初审', '专业复审'])
+    expect(steps('escalation')).toEqual([
+      '年级合议',
+      zhCN['assessment/entry/flow-step'].replace('{n}', '2'),
+    ])
   })
 
   it('tells each round as its own section, its end and beginning said out loud', async () => {
@@ -1460,7 +1469,7 @@ describe('filing a claim', () => {
             ],
           }),
       },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
@@ -1554,7 +1563,7 @@ describe('filing a claim', () => {
             ],
           }),
       },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
@@ -1655,7 +1664,7 @@ describe('filing a claim', () => {
             ],
           }),
       },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
@@ -1796,7 +1805,9 @@ describe('filing a claim', () => {
     // the regression: opening a question AND starting a claim is one click
     // but two address layers, and two separate writes raced on the router's
     // snapshot - the second dropped the first, and with a group in ?open=
-    // the dialog never opened at all
+    // the dialog never opened at all. At a desk an address naming the
+    // paper's root lands on its first question, and filing there writes both.
+    await page.viewport(1280, 800)
     await screen(
       {
         listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
@@ -1880,7 +1891,7 @@ describe('filing a claim', () => {
             ],
           }),
       },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
@@ -2566,7 +2577,7 @@ describe('the phase gate on the paper', () => {
             attention: { unreadItemIds: [] },
           }),
       },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
@@ -2589,7 +2600,7 @@ describe('the phase gate on the paper', () => {
             attention: { unreadItemIds: [] },
           }),
       },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
@@ -2614,7 +2625,7 @@ describe('the phase gate on the paper', () => {
             attention: { unreadItemIds: [] },
           }),
       },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
@@ -2641,7 +2652,7 @@ describe('the phase gate on the paper', () => {
             attention: { unreadItemIds: [] },
           }),
       },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
@@ -2659,9 +2670,9 @@ describe('the phase gate on the paper', () => {
 // opened, which the owner never asked for and must not be told was theirs.
 describe('what giving up a contested claim says', () => {
   it.each([
-    ['appeal', 'assessment/entry/abandon-confirm-contested-counted'],
-    ['reopen', 'assessment/entry/abandon-confirm-reopened-counted'],
-  ] as const)('names a running %s as what ends with it', async (origin, sentence) => {
+    ['appeal', 'appeal-and-result'],
+    ['reopen', 'reopen-and-result'],
+  ] as const)('names a running %s as what ends with it', async (origin, consequence) => {
     const running = entry({
       status: 'approved',
       currentReviewInstanceId: 'ri-2',
@@ -2685,7 +2696,7 @@ describe('what giving up a contested claim says', () => {
             attention: { unreadItemIds: [] },
           }),
       },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
     await page.getByTestId('claim-row').first().click()
@@ -2694,8 +2705,12 @@ describe('what giving up a contested claim says', () => {
     await drawer.getByRole('button', { name: '放弃申报' }).click()
     const asked = page.getByRole('alertdialog')
     await expect.element(asked).toBeVisible()
-    // the sentence the catalog holds for this case, whatever its wording
-    await expect.poll(() => asked.element().textContent).toContain(zhCN[sentence])
+    // which case the question speaks to, by its hook rather than its words
+    await expect
+      .poll(() =>
+        asked.element().querySelector('[data-consequence]')?.getAttribute('data-consequence'),
+      )
+      .toBe(consequence)
     await expect
       .element(page.getByTestId('confirm-accept'))
       .toHaveAttribute('data-tone', 'destructive')
@@ -2753,7 +2768,7 @@ describe('the paper while the score is out of reach', () => {
         listScoreGroups: groups,
         getMyResult: standing,
       },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
@@ -2799,7 +2814,7 @@ describe('the paper while the score is out of reach', () => {
         listScoreGroups: groups,
         getMyResult: standing,
       },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
     await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
@@ -2839,7 +2854,7 @@ describe('the paper while the score is out of reach', () => {
         listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
         getMyResult: standing,
       },
-      `/assessment/batches/${BATCH_ID}/my-entries`,
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 

@@ -11,6 +11,7 @@ import { entryRefusalReason } from './refusals.ts'
 import { EntryDetail } from './EntryDetail.tsx'
 import type { ActionAvailability, EntryDto, ItemDto } from './model.ts'
 import { abandonConsequence } from './standing.ts'
+import type { EntryLine } from './workspace/model.ts'
 
 /** what the owner is told giving a claim up takes with it */
 const ABANDON_SAYS = {
@@ -49,10 +50,13 @@ export function EntrySheet({
   onStatus,
   onAppeal,
   onSupplement,
+  summary,
 }: {
   open: boolean
   entry: EntryDto
   item: ItemDto
+  /** how the claim reads in its list, heading the drawer */
+  summary?: EntryLine
   /**
    * The phase gate's word on submitting into this question at all,
    * independent of the claim's state. Withdrawing while it is shut is a
@@ -77,6 +81,7 @@ export function EntrySheet({
   // the server is not a shut one, so only an explicit refusal changes tone
   const oneWay = resubmit !== undefined && resubmit.state !== 'available'
   const declared = item.itemType === 'declaration'
+  const returned = entry.status === 'needs_revision'
 
   return (
     <>
@@ -87,6 +92,7 @@ export function EntrySheet({
         trail={trail}
         onClose={onClose}
         onSupplement={onSupplement}
+        {...(summary === undefined ? {} : { summary })}
         footer={
           <>
             <Offered
@@ -114,17 +120,23 @@ export function EntrySheet({
               <Offered
                 can={entry.capabilities.edit}
                 busy={busy}
+                // sent back, rewriting it is the way on, and handing it in
+                // again happens from the form - never straight from here,
+                // where it would go back unchanged
+                variant={returned ? 'default' : 'outline'}
                 label={format(entry.status === 'draft' ? m.myEntriesResume : m.entryEdit)}
                 onPress={onEdit}
               />
             )}
-            <Offered
-              can={entry.capabilities.submit}
-              busy={busy}
-              variant="default"
-              label={format(entry.status === 'draft' ? m.entrySubmit : m.entryResubmit)}
-              onPress={() => setAsking('in_review')}
-            />
+            {!(returned && !declared) && (
+              <Offered
+                can={entry.capabilities.submit}
+                busy={busy}
+                variant="default"
+                label={format(entry.status === 'draft' ? m.entrySubmit : m.entryResubmit)}
+                onPress={() => setAsking('in_review')}
+              />
+            )}
           </>
         }
       />
@@ -166,6 +178,9 @@ export function EntrySheet({
         )}
         cancelLabel={format(commonMessages.cancel)}
         pending={busy}
+        {...(asking === 'voided'
+          ? { descriptionData: { 'data-consequence': abandonConsequence(entry) } }
+          : {})}
         onCancel={() => setAsking(null)}
         onConfirm={() => {
           const act = asking

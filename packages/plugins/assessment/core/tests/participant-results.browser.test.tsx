@@ -174,6 +174,20 @@ const screen = (
         getParticipant: (request: Request) =>
           Effect.succeed({ participant: participant({ id: request.params?.['participantId'] }) }),
         getParticipantResult: () => Effect.succeed(account),
+        // where the person stands, named for the heading over their account
+        listRosterUnits: () =>
+          Effect.succeed({
+            units: [
+              { id: 'n1', name: '软件学院', parentId: null },
+              { id: 'n2', name: '软件2301班', parentId: 'n1' },
+            ],
+          }),
+        listUserTypeOptions: () =>
+          Effect.succeed({
+            userTypes: [
+              { id: '99999999-9999-4999-8999-999999999999', code: 'student', name: '学生' },
+            ],
+          }),
         listParticipantEntries: () =>
           Effect.succeed({
             participantId: PARTICIPANT_ID,
@@ -702,12 +716,13 @@ describe('the participant results screen', () => {
     )
     // the browser itself reports en-US; the page is read in zh-CN
     await expect.element(page.getByTestId('refusal-when')).toHaveTextContent(
-      new Date(at).toLocaleString('zh-CN', {
-        month: '2-digit',
-        day: '2-digit',
+      new Intl.DateTimeFormat('zh-CN', {
+        month: 'short',
+        day: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
-      }),
+        hour12: false,
+      }).format(new Date(at)),
     )
   })
 
