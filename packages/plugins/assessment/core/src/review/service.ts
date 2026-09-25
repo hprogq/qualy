@@ -1874,10 +1874,11 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                * an upheld decision both leave an approval approved, a revocation
                * makes it a rejection.
                *
-               * A claim in none of those states is not standing on this round
-               * any more, and the whole transaction is refused rather than
-               * leaving a concluded round, and a determination, beside a
-               * claim that never moved.
+               * A claim in none of those states, or one whose pointer names
+               * another round, is not standing on this round any more, and
+               * the whole transaction is refused rather than leaving a
+               * concluded round, and a determination, beside a claim that
+               * never moved.
                */
               const concludeClaim = (to: 'approved' | 'rejected', recognitionId?: string) =>
                 Effect.gen(function* () {
@@ -1885,6 +1886,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                     tenantId,
                     entryId: row.entryId,
                     from: ['in_review', 'approved', 'rejected'],
+                    atRound: instanceId,
                     to,
                     ...(recognitionId === undefined ? {} : { currentRecognitionId: recognitionId }),
                   })

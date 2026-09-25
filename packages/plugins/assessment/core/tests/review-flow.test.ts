@@ -350,6 +350,47 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     expect(refusalOf(result.withdraw)?.reason).toBe('entry-not-withdrawable')
   })
 
+  // An open round the claim no longer stands on - left behind by a path that
+  // moved the claim without ending it - must not move the claim when it is
+  // judged: the pointer is compared, not only the status.
+  it('moves no claim from a round the claim is not standing on', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-orphan')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const { entryId, instanceId } = yield* submitted(f, g, g.p1, f.s1)
+          yield* runSql(
+            sql`update entries set current_review_instance_id = null where id = ${entryId}`,
+          )
+          const decided = yield* Effect.exit(
+            assessment.decideReview(
+              f.t,
+              instanceId,
+              { decision: 'approve' },
+              f.principal(f.reviewer),
+            ),
+          )
+          const claim = one<{ status: string; current_recognition_id: string | null }>(
+            yield* runSql(
+              sql`select status, current_recognition_id from entries where id = ${entryId}`,
+            ),
+          )
+          const round = one<{ state: string }>(
+            yield* runSql(sql`select state from review_instances where id = ${instanceId}`),
+          )
+          return { decided, claim, round }
+        }),
+      ),
+    )
+
+    expect(errorOf<{ _tag: string }>(result.decided)?._tag).toBe('ASSESSMENT_REVIEW_CONFLICT')
+    expect(result.claim).toEqual({ status: 'in_review', current_recognition_id: null })
+    expect(result.round.state).toBe('active')
+  })
+
   it('rejects only with a word, holds advice to the judged evidence, and reopens as a new round', async () => {
     const result = ok(
       await run(

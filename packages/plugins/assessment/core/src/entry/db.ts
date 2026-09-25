@@ -470,6 +470,11 @@ export const setEntryState = (input: {
   currentRevisionId?: string
   currentReviewInstanceId?: string | null
   /**
+   * Only while the claim is standing on this round: a compare-and-set on the
+   * round pointer beside the one on the status.
+   */
+  atRound?: string
+  /**
    * What the claim now stands recognised as.
    *
    * Set in the SAME statement as the status, never after it: an approved
@@ -498,6 +503,9 @@ export const setEntryState = (input: {
         .where('tenantId', '=', input.tenantId)
         .where('id', '=', input.entryId)
         .where('status', 'in', [...input.from])
+        .$if(input.atRound !== undefined, (query) =>
+          query.where('currentReviewInstanceId', '=', input.atRound!),
+        )
         .returning(['id'])
         .executeTakeFirst(),
     )
