@@ -164,13 +164,20 @@ const styles = stylex.create({
   legendItem: {
     display: 'inline-flex',
     minWidth: 0,
+    maxWidth: '100%',
     alignItems: 'center',
     gap: 6,
     fontSize: 12,
     whiteSpace: 'nowrap',
   },
+  // a long group name gives way to its figure rather than to the screen edge
+  legendName: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' },
   swatch: { width: 8, height: 8, flexShrink: 0, borderRadius: 2 },
-  legendValue: { color: tokens.mutedForeground, fontVariantNumeric: 'tabular-nums' },
+  legendValue: {
+    flexShrink: 0,
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
   // narrow: the outline as a row of chips, pinned over the bands
   strip: {
     position: 'sticky',
@@ -210,7 +217,9 @@ const styles = stylex.create({
     outlineOffset: -2,
   },
   chipOn: { backgroundColor: tokens.surfaceMuted, fontWeight: 600, color: tokens.foreground },
-  chipScore: { color: tokens.mutedForeground },
+  // a chip never takes the whole row: a long name is cut, its figure is not
+  chipName: { maxWidth: '12em', overflow: 'hidden', textOverflow: 'ellipsis' },
+  chipScore: { flexShrink: 0, color: tokens.mutedForeground },
   body: { display: 'flex', flexDirection: 'column', gap: 16 },
   bodyWide: {
     display: 'grid',
@@ -1047,7 +1056,9 @@ function Head({
             {model.shares.map((share, index) => (
               <span key={share.id} {...stylex.props(styles.legendItem)}>
                 <span aria-hidden {...stylex.props(styles.swatch, inkAt(index))} />
-                {share.name}
+                <span title={share.name} {...stylex.props(styles.legendName)}>
+                  {share.name}
+                </span>
                 <span {...stylex.props(styles.legendValue)}>{two(share.cents)}</span>
               </span>
             ))}
@@ -1110,7 +1121,9 @@ function Strip({
             onClick={() => onJump(group.id)}
             {...stylex.props(styles.chip, on && styles.chipOn)}
           >
-            {group.name}
+            <span title={group.name} {...stylex.props(styles.chipName)}>
+              {group.name}
+            </span>
             <span {...stylex.props(styles.chipScore)}>{scoreOf(group)}</span>
           </button>
         )

@@ -661,6 +661,49 @@ describe('the score page on a phone', () => {
     await userEvent.click(chipOf('g4'))
     await expect.poll(() => chipOf('g4').getAttribute('aria-current')).toBe('true')
   })
+
+  it('keeps long names and long claims inside the screen', async () => {
+    await page.viewport(390, 844)
+    const longGroup = '学生在校期间参加国家级与省级学科竞赛及大学生创新创业训练计划项目获奖情况认定'
+    const longTitle =
+      '参加全国大学生数学建模竞赛、电子设计竞赛、挑战杯课外学术科技作品竞赛等国家级学科竞赛并获得一等奖及以上奖项'
+    const unbroken = 'https://example.edu.cn/competitions/2026/national/award-certificates/0001'
+    const claims = ['a', 'b', 'c'].map((key) =>
+      entry(`long-${key}`, 'long-q', 'approved', { name: `${longTitle}${key}`, level: unbroken }),
+    )
+    await screen({
+      result: {
+        mode: 'provisional',
+        total: '18.00',
+        groups: [
+          group('long-g', longGroup, { final: '18.00', cap: '20.00' }),
+          group('other-g', `${longGroup}（续）`, { final: '0.00', cap: '10.00' }),
+        ],
+        lines: claims.map((one) => counted(one.id, 'long-q', '6.00')),
+      },
+      items: [
+        item('long-q', 'long-g', longTitle, { each: '6' }),
+        item('long-r', 'other-g', `${longTitle}（团体）`, { each: '4' }),
+        item('long-s', 'other-g', unbroken, { each: '1' }),
+      ],
+      entries: [...claims, entry('long-r-a', 'long-r', 'needs_revision')],
+    })
+    await expect.element(page.getByTestId('result-total')).toHaveTextContent('18.00')
+    await userEvent.click(itemRow('long-q').querySelector('button[aria-expanded]') as HTMLElement)
+    const fold = itemRow('long-q').querySelector('[data-testid="ledger-lines"]') as HTMLElement
+    await expect.poll(() => fold.getAttribute('data-open')).toBe('true')
+    const seat = page.getByTestId('result-ledger').element() as HTMLElement
+    expect(seat.scrollWidth).toBeLessThanOrEqual(seat.clientWidth + 1)
+    expect(scroller().scrollWidth).toBeLessThanOrEqual(scroller().clientWidth + 1)
+    for (const row of document.querySelectorAll<HTMLElement>('[data-testid="ledger-item"]')) {
+      expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth + 1)
+    }
+    // a chip with a long name still leaves room for the others
+    const strip = page.getByTestId('result-strip').element() as HTMLElement
+    for (const chip of page.getByTestId('strip-group').elements()) {
+      expect(chip.getBoundingClientRect().width).toBeLessThan(strip.clientWidth * 0.8)
+    }
+  })
 })
 
 describe('rounds of other shapes', () => {
