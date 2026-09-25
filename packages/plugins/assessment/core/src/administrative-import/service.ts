@@ -25,7 +25,7 @@ import {
   voidAdministrativeEntryTx,
 } from '../entry/administrative-write.ts'
 import type { EntryStatus } from '../entry/db.ts'
-import { entryLimitOf } from '../entry/limit.ts'
+import { entryRefusalOf } from '../entry/limit.ts'
 import { itemOf, revisionOf as itemRevisionOf, revisionsByIdOf } from '../item/db.ts'
 import { opensTo } from '../item/channels.ts'
 import { boundEvidenceKeys, fillBoundEvidence } from '../scoring/bound-evidence.ts'
@@ -1162,10 +1162,13 @@ export const makeAdministrativeImportMethods = (
               }
               const admitted = gate(person.participantId)
               if (!admitted.allowed) return yield* refuse('businessNo', admitted.reason)
-              const already = held.get(person.participantId) ?? 0
+              const already = held.get(person.participantId)
               const here = takenHere.get(person.participantId) ?? 0
-              const ceiling = entryLimitOf(ready.item.maxEntries)
-              if (already + here >= ceiling.limit) return yield* refuse(null, ceiling.reason)
+              const full = entryRefusalOf(ready.item.maxEntries, {
+                onItem: (already?.onItem ?? 0) + here,
+                inRound: (already?.inRound ?? 0) + here,
+              })
+              if (full !== null) return yield* refuse(null, full)
               takenHere.set(person.participantId, here + 1)
               if (row.basis.trim() === '') return yield* refuse('basis', 'basis-required')
               // The round's material window, as it stands under the lock. A

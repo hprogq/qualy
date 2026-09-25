@@ -5,6 +5,7 @@ import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-data
 import { DatabaseNotifications, transaction, type Orm } from '@qualy/plugin-database/server'
 import { Assessment } from '../src/server/index.ts'
 import { ASSESSMENT_LIVE_CHANNEL } from '../src/live/events.ts'
+import { MAX_ENTRIES_PER_ACCOUNT, MAX_ENTRIES_PER_ITEM } from '../src/api.ts'
 import { counts, numbered, recordItem, workbook } from './support/administrative.ts'
 import { errorOf, ok, one, run, runningBatch, seed } from './support/round.ts'
 import { datedScoring, gradedScoring } from './support/catalogs.ts'
@@ -1042,6 +1043,57 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
       expect(
         errorOf<{ issues: { reason: string }[] }>(found.outcome)?.issues.map((one) => one.reason),
       ).toEqual(['max-entries-reached'])
+      expect(found.after).toEqual({ imports: 0, entries: 0 })
+    })
+
+    it('refuses at the platform ceiling when the last place went first', async () => {
+      const found = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const { f, g, item, commit } = yield* prepared('ai-race-ceiling', {})
+            const race = yield* raced(
+              g.batch.id,
+              runSql(sql`
+                insert into entries (tenant_id, batch_id, item_id, participant_id, source, status)
+                select ${f.t}, ${g.batch.id}, ${item.id}, ${g.p1}, 'record', 'draft'
+                from generate_series(1, ${MAX_ENTRIES_PER_ITEM}::int)`),
+              commit,
+            )
+            return { ...race, after: yield* counts(f) }
+          }),
+        ),
+      )
+      expect(found.queued).toBe(true)
+      expect(
+        errorOf<{ issues: { reason: string }[] }>(found.outcome)?.issues.map((one) => one.reason),
+      ).toEqual(['entry-ceiling-reached'])
+      expect(found.after).toEqual({ imports: 0, entries: 0 })
+    })
+
+    it('refuses at the round ceiling when the person filled it elsewhere first', async () => {
+      const found = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const { f, g, commit } = yield* prepared('ai-race-round', {})
+            // on the round's other question, so this one keeps every place
+            const race = yield* raced(
+              g.batch.id,
+              runSql(sql`
+                insert into entries (tenant_id, batch_id, item_id, participant_id, source, status)
+                select ${f.t}, ${g.batch.id}, ${g.item.id}, ${g.p1}, 'self', 'draft'
+                from generate_series(1, ${MAX_ENTRIES_PER_ACCOUNT}::int)`),
+              commit,
+            )
+            return { ...race, after: yield* counts(f) }
+          }),
+        ),
+      )
+      expect(found.queued).toBe(true)
+      expect(
+        errorOf<{ issues: { reason: string }[] }>(found.outcome)?.issues.map((one) => one.reason),
+      ).toEqual(['account-ceiling-reached'])
       expect(found.after).toEqual({ imports: 0, entries: 0 })
     })
 

@@ -6,7 +6,7 @@ import {
   recognitionsOfEntry,
 } from '../scoring/recognition-db.ts'
 import { recordAdministrativeEntryTx, voidAdministrativeEntryTx } from './administrative-write.ts'
-import { entryLimitOf } from './limit.ts'
+import { entryRefusalOf } from './limit.ts'
 import { bindCitedAttachments } from './bind-attachments.ts'
 import { questionFactsOf, type QuestionFacts } from './question-facts.ts'
 import { boundIssues } from '../issues.ts'
@@ -70,7 +70,7 @@ import {
   entryRevisionsOf,
   eventsOfRounds,
   roundsOfEntry,
-  entryCountOf,
+  heldEntriesOf,
   hasOpenRound,
   entryOf,
   entryRevisionOf,
@@ -1050,9 +1050,11 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 }
               }
 
-              const ceiling = entryLimitOf(item.maxEntries)
-              const count = yield* entryCountOf(tenantId, item.id, participant.id)
-              if (count >= ceiling.limit) return yield* refuse('create', ceiling.reason)
+              const full = entryRefusalOf(
+                item.maxEntries,
+                yield* heldEntriesOf(tenantId, item.id, participant.id),
+              )
+              if (full !== null) return yield* refuse('create', full)
 
               const batch = yield* oneBatch(tenantId, item.batchId)
               const materialRange = deps.parseRange(String(batch!.materialRange))

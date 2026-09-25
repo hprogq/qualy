@@ -28,6 +28,7 @@ const SENTENCES: Record<string, MessageDescriptor> = {
   'review-already-open': m.refuseReviewOpen,
   'max-entries-reached': m.refuseMaxEntries,
   'entry-ceiling-reached': m.refuseMaxEntries,
+  'account-ceiling-reached': m.refuseRoundCeiling,
   'item-not-active': m.refuseItemVoided,
   'item-not-configured': m.refuseItemUnconfigured,
   'item-type-not-installed': m.refuseItemUnconfigured,

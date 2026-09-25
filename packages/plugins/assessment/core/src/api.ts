@@ -337,6 +337,17 @@ export const MAX_PLAN_PHASES = 50
 export const MAX_ENTRIES_PER_ITEM = 100
 
 /**
+ * The most live claims one participant may hold across a whole round, on
+ * every question together, counted the same way as the per-question
+ * ceiling. It is what keeps an account readable: one reading evaluates at
+ * most one amount per granted question and one per approved claim, so as
+ * long as the questions a round may hold plus this ceiling stay within
+ * MAX_ACCOUNT_EVALUATIONS, no account the writes admit is refused on
+ * reading. Every door that adds a claim refuses past it.
+ */
+export const MAX_ENTRIES_PER_ACCOUNT = 300
+
+/**
  * The most distinct evaluations one reading of an account may ask for: the
  * questions that grant an amount on their own, plus every approved claim
  * whose determination differs from the others on its question (claims

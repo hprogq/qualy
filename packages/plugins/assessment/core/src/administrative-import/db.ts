@@ -2,6 +2,7 @@ import { Effect } from 'effect'
 import { sql } from 'kysely'
 import { db, staffReachOver } from '../server/db.ts'
 import type { EntryStatus } from '../entry/db.ts'
+import type { HeldEntries } from '../entry/limit.ts'
 
 // The reads a bulk administrative act needs, each of them one statement.
 //
@@ -82,11 +83,13 @@ export const resolveImportParticipants = (input: {
         )
 
 /**
- * How many effective claims each of these people already has on a question.
+ * How many effective claims each of these people already has, on a question
+ * and in their whole round.
  *
  * One aggregate rather than a count per row, and voided claims are not in
  * it - a withdrawn fact does not hold a place, which is what makes "void
- * and record again" a correction rather than a dead end.
+ * and record again" a correction rather than a dead end. A roster row
+ * belongs to one round, so the person alone scopes the second count.
  */
 export const effectiveEntryCounts = (input: {
   tenantId: string
@@ -94,15 +97,17 @@ export const effectiveEntryCounts = (input: {
   participantIds: readonly string[]
 }) =>
   input.participantIds.length === 0
-    ? Effect.succeed(new Map<string, number>())
+    ? Effect.succeed(new Map<string, HeldEntries>())
     : db
         .query((k) =>
           k
             .selectFrom('Entry')
-            .select(['participantId'])
-            .select([sql<number>`count(*)::int`.as('held')])
+            .select('participantId')
+            .select(({ fn }) => [
+              fn.countAll<string>().filterWhere('itemId', '=', input.itemId).as('onItem'),
+              fn.countAll<string>().as('inRound'),
+            ])
             .where('tenantId', '=', input.tenantId)
-            .where('itemId', '=', input.itemId)
             .where('status', '<>', 'voided')
             .where('participantId', 'in', [...input.participantIds])
             .groupBy('participantId')
@@ -112,9 +117,9 @@ export const effectiveEntryCounts = (input: {
           Effect.map(
             (rows) =>
               new Map(
-                (rows as unknown as Record<string, unknown>[]).map((row) => [
-                  String(row['participantId']),
-                  Number(row['held'] ?? 0),
+                rows.map((row): [string, HeldEntries] => [
+                  row.participantId,
+                  { onItem: Number(row.onItem), inRound: Number(row.inRound) },
                 ]),
               ),
           ),

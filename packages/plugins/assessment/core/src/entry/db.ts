@@ -79,17 +79,26 @@ export const entryOf = (tenantId: string, entryId: string) =>
     )
     .pipe(Effect.map((row) => (row ? toEntry(row as Record<string, unknown>) : null)))
 
-/** entries one participant holds on one item, voided ones excepted */
-export const entryCountOf = (tenantId: string, itemId: string, participantId: string) =>
+/**
+ * Entries one participant holds on one item and in their whole round, voided
+ * ones excepted. A roster row belongs to one round, so the participant alone
+ * scopes the second count.
+ */
+export const heldEntriesOf = (tenantId: string, itemId: string, participantId: string) =>
   db
     .query((k) =>
-      sql<{ count: string }>`
-        select count(*) as count from entries
-        where tenant_id = ${tenantId} and item_id = ${itemId}
-          and participant_id = ${participantId} and status <> 'voided'
-      `.execute(k),
+      k
+        .selectFrom('Entry')
+        .select(({ fn }) => [
+          fn.countAll<string>().filterWhere('itemId', '=', itemId).as('onItem'),
+          fn.countAll<string>().as('inRound'),
+        ])
+        .where('tenantId', '=', tenantId)
+        .where('participantId', '=', participantId)
+        .where('status', '<>', 'voided')
+        .executeTakeFirstOrThrow(),
     )
-    .pipe(Effect.map(({ rows }) => Number(rows[0]!.count)))
+    .pipe(Effect.map((row) => ({ onItem: Number(row.onItem), inRound: Number(row.inRound) })))
 
 /** every question currently being asked, for the filing gates to answer per item */
 export const activeItemIdsOf = (tenantId: string, batchId: string) =>

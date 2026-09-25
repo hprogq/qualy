@@ -1094,6 +1094,10 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/refuse-max-entries',
       defaultMessage: 'The submission limit for this item has been reached.',
     },
+    refuseRoundCeiling: {
+      id: 'assessment/entry/refuse-round-ceiling',
+      defaultMessage: 'The limit on claims per person in this round has been reached.',
+    },
     refuseItemVoided: {
       id: 'assessment/entry/refuse-item-voided',
       defaultMessage: 'The item has been disabled.',
@@ -2028,6 +2032,10 @@ const i18n = definePluginMessages({
       id: 'assessment/record/blocker-quota',
       defaultMessage: 'Already at the limit for this item',
     },
+    recordBlockerRoundQuota: {
+      id: 'assessment/record/blocker-round-quota',
+      defaultMessage: 'Already at the limit for this round',
+    },
     recordBlockerOther: {
       id: 'assessment/record/blocker-other',
       defaultMessage: 'Cannot be recorded on right now',
@@ -2235,6 +2243,10 @@ const i18n = definePluginMessages({
     importReasonMaxEntries: {
       id: 'assessment/record/import/reason/max-entries-reached',
       defaultMessage: 'This person has reached the limit for this item',
+    },
+    importReasonRoundCeiling: {
+      id: 'assessment/record/import/reason/account-ceiling-reached',
+      defaultMessage: 'This person has reached the limit for this round',
     },
     importReasonDuplicate: {
       id: 'assessment/record/import/reason/duplicate-in-file',

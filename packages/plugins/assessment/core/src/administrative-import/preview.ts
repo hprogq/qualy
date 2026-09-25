@@ -2,7 +2,7 @@ import type { AtomicSchema } from '@qualy/value-schema'
 import { kindOf } from '@qualy/value-schema'
 import { hashCanonicalJson } from '@qualy/value-schema/hash'
 import type { ParsedWorkbook, RawRow, TemplateColumn } from './workbook.ts'
-import { entryLimitOf } from '../entry/limit.ts'
+import { entryRefusalOf, type HeldEntries } from '../entry/limit.ts'
 
 // What a workbook would do, worked out without writing anything.
 //
@@ -154,8 +154,8 @@ export interface PreviewInput {
   readonly recognitionSchemas: ReadonlyMap<string, AtomicSchema>
   /** which recognition ids the question requires a value for */
   readonly requiredRecognitionIds: readonly string[]
-  /** how many effective claims each participant already holds on this question */
-  readonly held: ReadonlyMap<string, number>
+  /** how many effective claims each participant already holds, on this question and in the round */
+  readonly held: ReadonlyMap<string, HeldEntries>
   readonly maxEntries: number | null
   /** the caller's own user id, so a row about themselves is refused */
   readonly actorUserId: string
@@ -228,12 +228,13 @@ export const judgeRows = (input: PreviewInput): readonly PreviewRow[] => {
     }
 
     if (matched !== undefined) {
-      const already = input.held.get(matched.id) ?? 0
+      const already = input.held.get(matched.id)
       const takenHere = takenInFile.get(matched.id) ?? 0
-      const ceiling = entryLimitOf(input.maxEntries)
-      if (already + takenHere >= ceiling.limit) {
-        issues.push(issue('error', null, ceiling.reason))
-      }
+      const full = entryRefusalOf(input.maxEntries, {
+        onItem: (already?.onItem ?? 0) + takenHere,
+        inRound: (already?.inRound ?? 0) + takenHere,
+      })
+      if (full !== null) issues.push(issue('error', null, full))
       takenInFile.set(matched.id, takenHere + 1)
     }
 

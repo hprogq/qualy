@@ -126,6 +126,7 @@ export default {
   'assessment/entry/refuse-no-appeal-route': '该项目未设置复核流程，暂不能申诉，请联系批次管理员。',
   'assessment/entry/refuse-appeal-under-way': '申诉处理完成后才能修改或重新提交。',
   'assessment/entry/refuse-max-entries': '已达到该项目的申报条数上限。',
+  'assessment/entry/refuse-round-ceiling': '已达到本批次每人申报与认定的总条数上限。',
   'assessment/entry/refuse-item-voided': '项目已停用。',
   'assessment/entry/refuse-item-unconfigured': '项目尚未完成配置，请联系批次管理员。',
   'assessment/entry/refuse-review-level-missing':
@@ -446,6 +447,7 @@ export default {
   'assessment/record/done-many': '已认定 {count} 人。',
   'assessment/record/blocker-self': '不能为自己认定',
   'assessment/record/blocker-quota': '该项目的认定次数已达上限',
+  'assessment/record/blocker-round-quota': '本批次的申报与认定总数已达上限',
   'assessment/record/blocker-other': '当前无法认定',
   'assessment/record/item-cap': '每人最多 {count} 条',
   'assessment/record/list-tab': '认定记录',
@@ -517,6 +519,8 @@ export default {
   'assessment/record/import/reason/basis-required': '认定理由为空',
   'assessment/record/import/reason/recognition-required': '认定结果为空',
   'assessment/record/import/reason/max-entries-reached': '该人员在本项目的认定次数已达上限',
+  'assessment/record/import/reason/account-ceiling-reached':
+    '该人员在本批次的申报与认定总数已达上限',
   'assessment/record/import/reason/duplicate-in-file': '与文件中的另一行相同',
   'assessment/record/import/reason/decimal-syntax': '不是有效的数值',
   'assessment/record/import/reason/integer-syntax': '不是整数',

@@ -4,7 +4,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Assessment } from '../src/server/index.ts'
 import { ScoringRuntimeCatalog } from '../src/plugin.ts'
-import { MAX_ACCOUNT_EVALUATIONS, MAX_ENTRIES_PER_ITEM } from '../src/api.ts'
+import {
+  MAX_ACCOUNT_EVALUATIONS,
+  MAX_ENTRIES_PER_ACCOUNT,
+  MAX_ENTRIES_PER_ITEM,
+} from '../src/api.ts'
+import { ITEMS_PER_BATCH_MOST } from '../src/item/config.ts'
 import { recordItem } from './support/administrative.ts'
 import {
   errorOf,
@@ -28,6 +33,18 @@ const hold = (f: Seeded, batchId: string, itemId: string, participantId: string,
     insert into entries (tenant_id, batch_id, item_id, participant_id, source, status)
     select ${f.t}, ${batchId}, ${itemId}, ${participantId}, 'record', 'draft'
     from generate_series(1, ${count}::int)`)
+
+describe('the ceilings together', () => {
+  it('leave every account the writes admit readable', () => {
+    // one evaluation per granted question and at most one per live claim:
+    // a round of the most questions, with a participant at the round
+    // ceiling, is still one reading
+    expect(ITEMS_PER_BATCH_MOST + MAX_ENTRIES_PER_ACCOUNT).toBeLessThanOrEqual(
+      MAX_ACCOUNT_EVALUATIONS,
+    )
+    expect(MAX_ENTRIES_PER_ITEM).toBeLessThanOrEqual(MAX_ENTRIES_PER_ACCOUNT)
+  })
+})
 
 describe.runIf(postgresAvailable)('the platform ceilings', () => {
   let db: Awaited<ReturnType<typeof createTestContext>>
@@ -109,6 +126,150 @@ describe.runIf(postgresAvailable)('the platform ceilings', () => {
     expect(refusalOf(result.single)?.reason).toBe('entry-ceiling-reached')
     expect(result.blocked.map((one) => one.reason)).toEqual(['entry-ceiling-reached'])
     expect(result.eligible).toBe(1)
+  })
+
+  it('refuses the bulk record write at the ceiling it previewed below', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('pc-record-write')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          const recorded = yield* recordItem(f, g.batch.id, { maxEntries: null })
+          const recorder = f.principal(f.recorder)
+          const revision = one<{ id: string }>(
+            yield* runSql(
+              sql`select current_revision_id as id from assessment_items where id = ${recorded.id}`,
+            ),
+          ).id
+          const input = {
+            itemId: recorded.id,
+            expectedItemRevisionId: revision,
+            target: { kind: 'people' as const, participantIds: [g.p1] },
+            payload: {},
+            basis: '校发〔2026〕3 号',
+          }
+          // one place left when the act is looked at, none when it is pressed
+          yield* hold(f, g.batch.id, recorded.id, g.p1, MAX_ENTRIES_PER_ITEM - 1)
+          const seen = yield* assessment.previewAdministrativeRecord(
+            f.t,
+            g.batch.id,
+            input,
+            recorder,
+          )
+          yield* hold(f, g.batch.id, recorded.id, g.p1, 1)
+          const written = yield* Effect.exit(
+            assessment.recordAdministrativeBatch(
+              f.t,
+              g.batch.id,
+              {
+                ...input,
+                excludedParticipantIds: [],
+                expectedTargetFingerprint: seen.targetFingerprint,
+              },
+              recorder,
+            ),
+          )
+          return { eligible: seen.eligibleCount, written }
+        }),
+      ),
+    )
+    expect(result.eligible).toBe(1)
+    expect(
+      errorOf<{ blocked: { reason: string }[] }>(result.written)?.blocked.map((one) => one.reason),
+    ).toEqual(['entry-ceiling-reached'])
+  })
+
+  it('refuses a claim past the round ceiling by every door, with room left on the question', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('pc-round')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          // the round's whole allowance held on a question of its own, so
+          // the questions asked below still have every place free
+          const elsewhere = yield* recordItem(f, g.batch.id, { maxEntries: null })
+          const recorded = yield* recordItem(f, g.batch.id, { maxEntries: null })
+          yield* hold(f, g.batch.id, elsewhere.id, g.p1, MAX_ENTRIES_PER_ACCOUNT - 1)
+          const recorder = f.principal(f.recorder)
+          const revision = one<{ id: string }>(
+            yield* runSql(
+              sql`select current_revision_id as id from assessment_items where id = ${recorded.id}`,
+            ),
+          ).id
+          const input = {
+            itemId: recorded.id,
+            expectedItemRevisionId: revision,
+            target: { kind: 'people' as const, participantIds: [g.p1] },
+            payload: {},
+            basis: '校发〔2026〕4 号',
+          }
+          const below = yield* assessment.previewAdministrativeRecord(
+            f.t,
+            g.batch.id,
+            input,
+            recorder,
+          )
+          yield* hold(f, g.batch.id, elsewhere.id, g.p1, 1)
+          const written = yield* Effect.exit(
+            assessment.recordAdministrativeBatch(
+              f.t,
+              g.batch.id,
+              {
+                ...input,
+                excludedParticipantIds: [],
+                expectedTargetFingerprint: below.targetFingerprint,
+              },
+              recorder,
+            ),
+          )
+          const filed = yield* Effect.exit(
+            assessment.createEntry(
+              f.t,
+              { itemId: g.item.id, participantId: g.p1, payload: {} },
+              f.principal(f.s1),
+            ),
+          )
+          const single = yield* Effect.exit(
+            assessment.createEntry(
+              f.t,
+              { itemId: recorded.id, participantId: g.p1, payload: {}, note: '校发〔2026〕5 号' },
+              recorder,
+            ),
+          )
+          const at = yield* assessment.previewAdministrativeRecord(
+            f.t,
+            g.batch.id,
+            { ...input, target: { kind: 'people', participantIds: [g.p1, g.p2] } },
+            recorder,
+          )
+          // a voided claim holds no place in the round either
+          yield* runSql(sql`
+            update entries set status = 'voided'
+            where id = (select id from entries where item_id = ${elsewhere.id}
+                          and participant_id = ${g.p1} limit 1)`)
+          const fitted = yield* Effect.exit(
+            assessment.createEntry(
+              f.t,
+              { itemId: g.item.id, participantId: g.p1, payload: {} },
+              f.principal(f.s1),
+            ),
+          )
+          return { written, filed, single, at, fitted }
+        }),
+      ),
+    )
+    expect(
+      errorOf<{ blocked: { reason: string }[] }>(result.written)?.blocked.map((one) => one.reason),
+    ).toEqual(['account-ceiling-reached'])
+    expect(refusalOf(result.filed)?.reason).toBe('account-ceiling-reached')
+    expect(refusalOf(result.single)?.reason).toBe('account-ceiling-reached')
+    expect(result.at.blocked.map((one) => one.reason)).toEqual(['account-ceiling-reached'])
+    expect(result.at.eligibleCount).toBe(1)
+    expect(Exit.isSuccess(result.fitted)).toBe(true)
   })
 
   it('evaluates claims determined alike once, and refuses an account past the ceiling', async () => {

@@ -42,7 +42,7 @@ import {
 import { bindCitedAttachments, type CitedAttachmentStorage } from '../entry/bind-attachments.ts'
 import { announce } from '../live/events.ts'
 import { effectiveEntryCounts } from '../administrative-import/db.ts'
-import { entryLimitOf } from '../entry/limit.ts'
+import { entryRefusalOf, NOTHING_HELD } from '../entry/limit.ts'
 import { lockBatch, oneBatch, resolveRecordTargets } from '../server/db.ts'
 import {
   eventsOfOperation,
@@ -495,9 +495,9 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
         why(admitted.reason)
         continue
       }
-      const ceiling = entryLimitOf(shape.item.maxEntries)
-      if ((held.get(person.id) ?? 0) >= ceiling.limit) {
-        why(ceiling.reason)
+      const full = entryRefusalOf(shape.item.maxEntries, held.get(person.id) ?? NOTHING_HELD)
+      if (full !== null) {
+        why(full)
         continue
       }
       eligible.push(person.id)
@@ -666,10 +666,8 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
               refused.push({ participantId: person.id, reason: admitted.reason })
               continue
             }
-            const ceiling = entryLimitOf(current.maxEntries)
-            if ((held.get(person.id) ?? 0) >= ceiling.limit) {
-              refused.push({ participantId: person.id, reason: ceiling.reason })
-            }
+            const full = entryRefusalOf(current.maxEntries, held.get(person.id) ?? NOTHING_HELD)
+            if (full !== null) refused.push({ participantId: person.id, reason: full })
           }
           // one refusal and the transaction carries nothing: the act was
           // confirmed as a whole, so it happens as a whole

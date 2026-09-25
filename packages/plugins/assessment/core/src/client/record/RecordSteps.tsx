@@ -129,7 +129,9 @@ const blockerMessage = (reason: string) =>
     ? m.recordBlockerSelf
     : reason === 'max-entries-reached' || reason === 'entry-ceiling-reached'
       ? m.recordBlockerQuota
-      : m.recordBlockerOther
+      : reason === 'account-ceiling-reached'
+        ? m.recordBlockerRoundQuota
+        : m.recordBlockerOther
 
 /** the recognition contract as the wire serves it to this form */
 export interface RecognitionWire {

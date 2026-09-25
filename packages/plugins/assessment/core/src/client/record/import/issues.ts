@@ -24,6 +24,7 @@ const WORDS = {
   missing: m.importReasonRecognitionRequired,
   'max-entries-reached': m.importReasonMaxEntries,
   'entry-ceiling-reached': m.importReasonMaxEntries,
+  'account-ceiling-reached': m.importReasonRoundCeiling,
   'duplicate-in-file': m.importReasonDuplicate,
   'decimal-syntax': m.importReasonDecimal,
   'integer-syntax': m.importReasonInteger,
