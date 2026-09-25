@@ -152,6 +152,9 @@ const open = (
           Effect.succeed({ participantId: id(1), entries: [], nextCursor: null }),
         listItems: () => Effect.succeed({ items: [], version: 1 }),
         listScoreGroups: () => Effect.succeed({ groups: [], version: 1 }),
+        // an open account starts on its claims, which mark what waits on this reader
+        listReviewInbox: () =>
+          Effect.succeed({ items: [], nextCursor: null, handledToday: 0, judging: false }),
         ...stubs,
       },
     }),

@@ -1,7 +1,6 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { isApiErrorCode, useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
@@ -19,16 +18,19 @@ import { assessmentMessages as m } from '../i18n.ts'
 import { BatchBanner } from '../batch/BatchScreen.tsx'
 import { inZone, useBatchZone } from '../batch/zone.ts'
 import { useBatchLive } from '../live.ts'
-import { ResultLedger } from './ResultLedger.tsx'
+import { useQueueRefresh } from '../review/queue.ts'
+import { StandingNotice } from '../entry/workspace/StandingNotice.tsx'
+import { ResultLedger, ResultUnavailable } from './ResultLedger.tsx'
 import { ParticipantEntries } from './ParticipantEntries.tsx'
 import { useParticipantEntries } from './participant-entries.ts'
 
 // One participant's whole account, in the page the list came from.
 //
-// The band at the top of the screen becomes this person: who they are, where
-// they stand in the organization and on this round's roster, and the ways to
-// the people either side of them in the list. That is what `BatchBanner` is
-// for, and it is why there is no second heading here.
+// The band at the top of the screen becomes this person: who they are and
+// where they stand in the organization and on this round's roster. That is
+// what `BatchBanner` is for, and it is why there is no second heading here.
+// The ways to the people either side of them in the list are the page's to
+// give, at the end of the tab row.
 //
 // Two halves, because there are two questions: what was filed and decided,
 // read in the same workspace the person files in, and what the total came
@@ -86,15 +88,17 @@ const styles = stylex.create({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
-  neighbours: { display: 'inline-flex', alignItems: 'center', gap: 4 },
   tabBar: {
     display: 'flex',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 4,
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.border,
   },
+  // the page's own keys, at the far end of the row from the tabs
+  tabAside: { display: 'flex', marginInlineStart: 'auto', alignItems: 'center' },
   tab: {
     position: 'relative',
     display: 'inline-flex',
@@ -144,28 +148,7 @@ const styles = stylex.create({
     gridTemplateColumns: 'minmax(0, 1fr) 4rem',
   },
   skBone: { height: 13, borderRadius: 4 },
-  unavailable: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-    gap: 10,
-    borderRadius: tokens.radiusLg,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
-    paddingInline: 20,
-    paddingBlock: 20,
-  },
-  unavailableTitle: { fontSize: 15, fontWeight: 600 },
-  unavailableHint: { fontSize: 13, lineHeight: 1.625, color: tokens.mutedForeground },
 })
-
-/** the people either side of this one in the list the reader came from */
-export interface Neighbours {
-  readonly previous: { readonly id: string; readonly name: string } | null
-  readonly next: { readonly id: string; readonly name: string } | null
-  readonly onGo: (participantId: string) => void
-}
 
 export function ParticipantResultDetail({
   batchId,
@@ -175,10 +158,11 @@ export function ParticipantResultDetail({
   mayRecord,
   view,
   entryId,
-  neighbours,
+  aside,
   onView,
   onEntry,
   onFollow,
+  onItem,
   onBack,
 }: {
   batchId: string
@@ -192,12 +176,14 @@ export function ParticipantResultDetail({
   view: 'score' | 'entries'
   /** which claim is open, if any; the drawer over either half */
   entryId: string
-  /** the list's neighbours, where the page knows them */
-  neighbours?: Neighbours
+  /** the page's own keys at the end of the tab row: the way to the people either side */
+  aside?: ReactNode
   onView: (next: 'score' | 'entries') => void
   onEntry: (entryId: string) => void
-  /** open a claim AND the half it lives on, in one move */
-  onFollow: (entryId: string) => void
+  /** open a claim, its question AND the half it lives on, in one move */
+  onFollow: (entryId: string, itemId: string | null) => void
+  /** every claim under one question, on the claims half */
+  onItem: (itemId: string) => void
   onBack: () => void
 }) {
   const query = useApiQuery(assessmentApi)
@@ -208,12 +194,15 @@ export function ParticipantResultDetail({
   const { format, formatError, locale } = useI18n()
   const zone = useBatchZone()
   const businessNo = useTerm(authTerms.businessNumber)
+  // what waits on this reader's own review is marked in the claims half; the
+  // queue behind it moves with the same wake-ups the review pages hear
+  const refreshQueue = useQueueRefresh(batchId)
 
   // Wake-ups carry no facts - they say "read again" - so each kind names
   // exactly what it could have changed. Invalidating everything on every
   // event would throw away the roster, the paper and the batch on a wake-up
   // about one claim, which is a page that flickers for no reason.
-  useBatchLive(batchId, (kind) => {
+  const { live } = useBatchLive(batchId, (kind) => {
     const stale = (key: readonly unknown[]) => void queryClient.invalidateQueries({ queryKey: key })
     const account = () => {
       stale(
@@ -230,11 +219,19 @@ export function ParticipantResultDetail({
       case 'phase-changed':
         stale(query.assessment.key())
         return
-      // a decision changes both what the claim says and what it counts for
+      // A decision changes both what the claim says and what it counts for,
+      // and takes the round it closed out of whoever's queue it was in.
       case 'entries-changed':
       case 'review-instance-changed':
+        account()
+        refreshQueue()
+        return
       case 'result-changed':
         account()
+        return
+      // somebody else took a round off a queue this reader shares
+      case 'review-inbox-changed':
+        refreshQueue()
         return
       // the paper itself moved: the ledger is grouped by it, and every
       // amount is computed from the arithmetic it carries
@@ -273,20 +270,24 @@ export function ParticipantResultDetail({
 
   const participant = who.data?.participant
   const claims = entries.data?.entries ?? []
-  // The arithmetic behind the account is out of reach. Not an error to read
-  // past: the last total it gave is not the current one, so the ledger is
-  // not drawn at all and the one thing offered is to ask again.
-  const unavailable =
-    result.error !== null && isApiErrorCode(result.error, 'ASSESSMENT_SCORING_UNAVAILABLE')
+  // The arithmetic behind the account is out of reach, and nothing was read
+  // before it went: no figure on this half would be true, so the ledger is
+  // not drawn at all - only why, and asking again where asking can help.
+  const unreadable =
+    result.data === undefined &&
+    result.error !== null &&
+    (isApiErrorCode(result.error, 'ASSESSMENT_SCORING_UNAVAILABLE') ||
+      isApiErrorCode(result.error, 'ASSESSMENT_SCORING_ACCOUNT_TOO_LARGE'))
 
+  // Where they stand, a step at a time. A step whose name this reader is not
+  // given stays in the path as a gap rather than closing up, so the path
+  // never reads as a shorter one than it is.
   const unitNames = new Map((units.data?.units ?? []).map((unit) => [unit.id, unit.name] as const))
-  const path =
+  const steps =
     participant === undefined
       ? []
-      : participant.anchorLineage.flatMap((step) => {
-          const name = unitNames.get(step.nodeId)
-          return name === undefined ? [] : [name]
-        })
+      : participant.anchorLineage.map((step) => unitNames.get(step.nodeId) ?? null)
+  const path = steps.some((name) => name !== null) ? steps.map((name) => name ?? '…') : []
   const kind = (kinds.data?.userTypes ?? []).find((one) => one.id === participant?.userTypeId)
   const dayOf = (iso: string) =>
     new Intl.DateTimeFormat(locale, {
@@ -381,43 +382,6 @@ export function ParticipantResultDetail({
           }
           actions={
             <>
-              {neighbours !== undefined &&
-                (neighbours.previous !== null || neighbours.next !== null) && (
-                  <span {...stylex.props(styles.neighbours)}>
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      data-testid="participant-previous"
-                      disabled={neighbours.previous === null}
-                      aria-label={
-                        neighbours.previous === null
-                          ? format(m.participantPrevious)
-                          : format(m.participantPreviousNamed, { name: neighbours.previous.name })
-                      }
-                      onClick={() =>
-                        neighbours.previous !== null && neighbours.onGo(neighbours.previous.id)
-                      }
-                    >
-                      <ChevronLeftIcon aria-hidden />
-                    </Button>
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      data-testid="participant-next"
-                      disabled={neighbours.next === null}
-                      aria-label={
-                        neighbours.next === null
-                          ? format(m.participantNext)
-                          : format(m.participantNextNamed, { name: neighbours.next.name })
-                      }
-                      onClick={() =>
-                        neighbours.next !== null && neighbours.onGo(neighbours.next.id)
-                      }
-                    >
-                      <ChevronRightIcon aria-hidden />
-                    </Button>
-                  </span>
-                )}
               {manageable && writable && participant !== undefined && (
                 <Button
                   size="sm"
@@ -464,10 +428,12 @@ export function ParticipantResultDetail({
       </BatchBanner>
 
       <div {...stylex.props(styles.tabBar)}>
+        {/* the claims first: what was filed and decided is what somebody
+            checking an account opens it for, and the total follows from it */}
         {(
           [
-            ['score', m.participantResultsScoreTab, null],
             ['entries', m.participantResultsEntriesTab, claims.length],
+            ['score', m.participantResultsScoreTab, null],
           ] as const
         ).map(([key, label, count]) => (
           <button
@@ -483,6 +449,7 @@ export function ParticipantResultDetail({
             {view === key && <span aria-hidden {...stylex.props(styles.tabInk)} />}
           </button>
         ))}
+        {aside !== undefined && <span {...stylex.props(styles.tabAside)}>{aside}</span>}
       </div>
 
       {/* the two halves replace each other in place, seen to change */}
@@ -497,25 +464,27 @@ export function ParticipantResultDetail({
               withdraw: writable && mayRecord,
               record: writable && mayRecord,
             }}
+            live={live}
             onEntry={onEntry}
           />
-        ) : unavailable ? (
-          <section {...stylex.props(styles.unavailable)} data-testid="result-unavailable">
-            <p {...stylex.props(styles.unavailableTitle)}>{format(m.resultUnavailableTitle)}</p>
-            <p {...stylex.props(styles.unavailableHint)}>{format(m.resultUnavailableHint)}</p>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={result.isFetching}
-              onClick={() => void result.refetch()}
-            >
-              {format(m.resultRecalculate)}
-            </Button>
-          </section>
+        ) : unreadable ? (
+          <ResultUnavailable
+            error={result.error}
+            retrying={result.isFetching}
+            onRetry={() => void result.refetch()}
+          />
         ) : (
           <AsyncSection
             pending={result.isPending || items.isPending || entries.isPending || who.isPending}
-            error={result.error ? formatError(result.error) : null}
+            // a read that failed with nothing to show; one that failed later
+            // keeps what it showed, and the account says it may be behind
+            error={
+              [result, items, entries]
+                .map((read) =>
+                  read.data === undefined && read.error !== null ? formatError(read.error) : null,
+                )
+                .find((said) => said !== null) ?? null
+            }
             loadingLabel={format(commonMessages.loading)}
             retryLabel={format(commonMessages.retry)}
             onRetry={() => {
@@ -547,14 +516,31 @@ export function ParticipantResultDetail({
             }
           >
             {result.data !== undefined && (
-              <ResultLedger
-                result={result.data}
-                items={items.data?.items ?? []}
-                entries={claims.map((one) => one.entry)}
-                // a number leads back to the filing it came from; this is
-                // the reason the two halves are one page
-                onEntryOpen={onFollow}
-              />
+              <div {...stylex.props(styles.column)}>
+                {result.error !== null && (
+                  <StandingNotice
+                    error={result.error}
+                    stale
+                    retrying={result.isFetching}
+                    onRetry={() => void result.refetch()}
+                  />
+                )}
+                <ResultLedger
+                  result={result.data}
+                  items={items.data?.items ?? []}
+                  entries={claims.map((one) => one.entry)}
+                  // somebody else's account, lined up with the tabs above it
+                  reader="staff"
+                  align="start"
+                  // a number leads back to the filing it came from, on the
+                  // question it was filed under; this is the reason the two
+                  // halves are one page
+                  onEntryOpen={(id) =>
+                    onFollow(id, claims.find((one) => one.entry.id === id)?.entry.itemId ?? null)
+                  }
+                  onItemOpen={onItem}
+                />
+              </div>
             )}
           </AsyncSection>
         )}

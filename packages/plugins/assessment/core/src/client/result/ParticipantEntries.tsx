@@ -27,10 +27,11 @@ import { standingRows, type Standing } from '../entry/standing.ts'
 import { opensTo, type EntryDto, type ItemDto } from '../entry/model.ts'
 import { EntriesWorkspace } from '../entry/workspace/EntriesWorkspace.tsx'
 import { useWorkspaceMode } from '../entry/workspace/layout.ts'
+import { StandingNotice } from '../entry/workspace/StandingNotice.tsx'
+import { useLineWords } from '../entry/workspace/calc.ts'
 import { useParticipantEntries } from './participant-entries.ts'
 import { useReviewQueueQuery } from '../review/queue.ts'
 import { entryLineOf } from '../entry/workspace/model.ts'
-import { useLineWords } from '../entry/workspace/calc.ts'
 
 // One person's filings, read the way they read them: the same workspace as
 // their own page, with the staff reader's acts in place of the owner's.
@@ -81,6 +82,7 @@ export function ParticipantEntries({
   participantId,
   entryId,
   may,
+  live,
   onEntry,
 }: {
   batchId: string
@@ -93,6 +95,8 @@ export function ParticipantEntries({
     /** recording a finding into a question the office records */
     readonly record: boolean
   }
+  /** whether the round's wake-ups are arriving; without them the queue polls */
+  live: boolean
   onEntry: (entryId: string) => void
 }) {
   const api = useApi(assessmentApi)
@@ -103,18 +107,22 @@ export function ParticipantEntries({
   const lineWords = useLineWords()
   const mode = useWorkspaceMode()
   // which question is open: the same address key the owner's page keeps
-  const [open, setOpen] = usePageQueryState('open', '', {
-    history: mode === 'phone' ? 'push' : 'replace',
-  })
+  const [open] = usePageQueryState('open')
+  const address = usePageQueryUpdate()
 
   const entries = useQuery(useParticipantEntries(batchId, participantId))
   // Which of these claims wait on this reader's own decision: the server's
   // queue answers that, so nothing here guesses who may review what. Read
   // only by a reader who reviews in this round, and shared with the queue
-  // page under the same key.
+  // page under the same key - so the wake-ups that move the queue there
+  // move it here too, and it polls at the queue page's pace without them.
   const batch = useQuery(query.assessment.getBatch.queryOptions({ params: { batchId } }))
   const reviews = batch.data?.batch.capabilities.review === true
-  const queue = useQuery({ ...useReviewQueueQuery(batchId), enabled: reviews })
+  const queue = useQuery({
+    ...useReviewQueueQuery(batchId),
+    enabled: reviews,
+    refetchInterval: live ? 60_000 : 30_000,
+  })
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
   const groups = useQuery(query.assessment.listScoreGroups.queryOptions({ params: { batchId } }))
   // read, not fetched twice: the detail above has it open already
@@ -234,27 +242,34 @@ export function ParticipantEntries({
   const itemsById = new Map(visible.map((item) => [item.id, item] as const))
   const rowsById = new Map(rows.map((row) => [row.id, row] as const))
 
-  // A claim the address names opens on its own question: following a number
-  // back from the account lands on the question it was filed under. Written
-  // into the address in place, so closing the drawer leaves the reader on
-  // that question rather than on whichever one the page would land on.
-  const address = usePageQueryUpdate()
-  const landedOn = opened !== null && open === '' ? opened.entry.itemId : null
+  // A claim the address names opens on its own question, whichever question
+  // the address had open before: following a number back from the account
+  // lands on the question it was filed under, every time. Written into the
+  // address in place, so closing the drawer leaves the reader on that
+  // question rather than on the one they were reading before they followed.
+  const landedOn = opened !== null && opened.entry.itemId !== open ? opened.entry.itemId : null
   useEffect(() => {
     if (landedOn !== null) address({ open: landedOn }, { history: 'replace' })
   }, [landedOn, address])
   const openItem = landedOn ?? open
 
+  // the score out of reach, or read once and failing since
+  const scoreless = result.data === undefined && result.error !== null
+  const scoreStale = result.data !== undefined && result.isError
+
   return (
     <>
       <AsyncSection
         pending={entries.isPending || items.isPending || groups.isPending}
+        // A read that failed with nothing to show is the section's failure -
+        // the groups too, or the structure would draw as a paper with no
+        // sections at all. One that failed later keeps what it showed.
         error={
-          entries.isError
-            ? formatError(entries.error)
-            : items.isError
-              ? formatError(items.error)
-              : null
+          [entries, items, groups]
+            .map((read) =>
+              read.data === undefined && read.error !== null ? formatError(read.error) : null,
+            )
+            .find((said) => said !== null) ?? null
         }
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
@@ -295,7 +310,9 @@ export function ParticipantEntries({
             standing={standing}
             scored={result.data !== undefined}
             open={openItem}
-            onOpen={(id) => setOpen(id)}
+            onOpen={(id, how) =>
+              address({ open: id }, { history: mode === 'phone' ? how : 'replace' })
+            }
             busy={intervene.isPending || reopen.isPending || redetermine.isPending}
             refreshing={entries.isFetching || result.isFetching}
             onRefresh={() => {
@@ -324,25 +341,36 @@ export function ParticipantEntries({
             }
             awaitingMe={new Set(awaiting.keys())}
             notice={
-              firstAwaiting !== undefined && (
-                <div
-                  data-testid="awaiting-me"
-                  data-count={awaiting.size}
-                  {...stylex.props(styles.waiting)}
-                >
-                  <span {...stylex.props(styles.waitingWords)}>
-                    {format(m.entriesAwaitingYouCount, { count: awaiting.size })}
-                  </span>
-                  <Button asChild size="sm" variant="outline">
-                    <PageLink
-                      page="assessment/review-instance"
-                      params={{ batchId, instanceId: firstAwaiting }}
-                    >
-                      {format(m.entriesGoReview)}
-                    </PageLink>
-                  </Button>
-                </div>
-              )
+              <>
+                {/* every figure below is unknown while this stands, and says so */}
+                {(scoreless || scoreStale) && (
+                  <StandingNotice
+                    error={result.error}
+                    stale={scoreStale}
+                    retrying={result.isFetching}
+                    onRetry={() => void result.refetch()}
+                  />
+                )}
+                {firstAwaiting !== undefined && (
+                  <div
+                    data-testid="awaiting-me"
+                    data-count={awaiting.size}
+                    {...stylex.props(styles.waiting)}
+                  >
+                    <span {...stylex.props(styles.waitingWords)}>
+                      {format(m.entriesAwaitingYouCount, { count: awaiting.size })}
+                    </span>
+                    <Button asChild size="sm" variant="outline">
+                      <PageLink
+                        page="assessment/review-instance"
+                        params={{ batchId, instanceId: firstAwaiting }}
+                      >
+                        {format(m.entriesGoReview)}
+                      </PageLink>
+                    </Button>
+                  </div>
+                )}
+              </>
             }
             fit="window"
           />

@@ -4337,22 +4337,6 @@ const i18n = definePluginMessages({
       id: 'assessment/participant/placement-gone',
       defaultMessage: 'Not placed in the organization',
     },
-    participantPrevious: {
-      id: 'assessment/participant/previous',
-      defaultMessage: 'Previous person',
-    },
-    participantPreviousNamed: {
-      id: 'assessment/participant/previous-named',
-      defaultMessage: 'Previous: {name}',
-    },
-    participantNext: {
-      id: 'assessment/participant/next',
-      defaultMessage: 'Next person',
-    },
-    participantNextNamed: {
-      id: 'assessment/participant/next-named',
-      defaultMessage: 'Next: {name}',
-    },
     entriesNoItems: {
       id: 'assessment/entries/no-items',
       defaultMessage: 'This round has no items yet',

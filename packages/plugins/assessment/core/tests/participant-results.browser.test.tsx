@@ -352,7 +352,9 @@ describe('the participant results screen', () => {
     await expect.element(page.getByText('王君惠')).toBeVisible()
 
     await page.getByTestId('participant-row').first().click()
-    // the ledger for that person, in the page the list was in
+    // that person's claims, in the page the list was in, and their total a tab away
+    await expect.element(page.getByTestId('entries-workspace')).toBeVisible()
+    await page.getByTestId('participant-tab-score').click()
     await expect.element(page.getByTestId('result-total')).toHaveTextContent('1.00')
     // the address says who is open, which is what makes a reload and a
     // shared link land here; the router is in memory, so this is the address
@@ -360,7 +362,10 @@ describe('the participant results screen', () => {
   })
 
   it('restores an open account from the address alone', async () => {
-    await screen({}, `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}`)
+    await screen(
+      {},
+      `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}&view=score`,
+    )
     // no press: a reload or a shared link lands on the person
     await expect.element(page.getByTestId('result-total')).toHaveTextContent('1.00')
     await expect.element(page.getByText('2023123456')).toBeVisible()
@@ -369,12 +374,15 @@ describe('the participant results screen', () => {
   it('follows a scored line back to the claim that earned it', async () => {
     await screen()
     await page.getByTestId('participant-row').first().click()
+    await page.getByTestId('participant-tab-score').click()
     await expect.element(page.getByTestId('result-total')).toBeVisible()
     await page.getByTestId('ledger-line').click()
-    // the claim opens over the list, and the address remembers both halves
+    // the claim opens over its question on the claims half, and the address
+    // remembers all three
     await expect.element(page.getByTestId('entry-recognition')).toBeVisible()
     expect(addressNow()).toContain(`entry=${ENTRY_ID}`)
-    expect(addressNow()).toContain('view=entries')
+    expect(addressNow()).toContain(`open=${ITEM_ID}`)
+    expect(addressNow()).not.toContain('view=')
     // what the round determined, which the owner's own page never showed
     await expect.element(page.getByText('省级')).toBeVisible()
     await expect.element(page.getByText('王老师', { exact: false })).toBeVisible()
@@ -577,6 +585,7 @@ describe('the participant results screen', () => {
     expect(page.getByRole('button', { name: '添加人员' }).elements()).toHaveLength(0)
     expect(placements).not.toHaveBeenCalled()
     await page.getByTestId('participant-row').first().click()
+    await page.getByTestId('participant-tab-score').click()
     await expect.element(page.getByTestId('result-total')).toHaveTextContent('1.00')
     // the claim behind the number, and the correction this reader may make
     await page.getByTestId('ledger-line').click()
@@ -641,7 +650,7 @@ describe('the participant results screen', () => {
             ],
           }),
       },
-      `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}`,
+      `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}&view=score`,
     )
     await expect.element(page.getByTestId('result-total')).toHaveTextContent('1.00')
     const excluded = () =>
@@ -816,7 +825,7 @@ describe('the participant results screen', () => {
         getParticipantResult: () =>
           Effect.fail({ _tag: 'ASSESSMENT_SCORING_UNAVAILABLE' } as never),
       },
-      `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}`,
+      `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}&view=score`,
     )
     await expect.element(page.getByTestId('result-unavailable')).toBeVisible()
   })

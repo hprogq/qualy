@@ -1,11 +1,9 @@
 import ParticipantResultsPage from '../src/client/result/ParticipantResultsPage.tsx'
-import { ParticipantResultDetail } from '../src/client/result/ParticipantResultDetail.tsx'
-import { BatchScreen } from '../src/client/batch/BatchScreen.tsx'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
-import { Effect } from 'effect'
-import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { Effect, Stream } from 'effect'
+import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // One person's account read by staff, in the same workspace the person files
 // in: who they are and where they stand at the top, their claims question
@@ -129,6 +127,53 @@ const claim = (n: number, item: string, status: string, over: Record<string, unk
   corrections: { returnForRevision: hidden, reopen: hidden, redetermine: hidden },
 })
 
+/** the account as the result endpoint gives it: one line per claim that counts */
+const account = (lines: readonly unknown[] = []) => ({
+  mode: 'provisional' as const,
+  total: '3.00',
+  groups: [
+    {
+      groupId: GROUP_ID,
+      parentGroupId: null,
+      depth: 0,
+      name: '学业发展',
+      itemsTotal: '3.00',
+      childrenTotal: '0.00',
+      raw: '3.00',
+      final: '3.00',
+      cap: '10.00',
+      floor: null,
+    },
+  ],
+  lines,
+})
+
+/** a line on the account that came from one claim */
+const counted = (n: number, item: string, value = '1.00') => ({
+  lineId: `entry:${entryId(n)}`,
+  kind: 'entry' as const,
+  label: '事项',
+  value,
+  itemId: item,
+  provenance: { entryId: entryId(n) },
+})
+
+/** the round's wake-up channel, holding back one wake-up until the test lets it go */
+const wakeOnce = (kind: string) => {
+  let release = () => {}
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const watchBatch = () =>
+    Effect.succeed(
+      Stream.concat(
+        Stream.fromEffect(Effect.promise(() => gate).pipe(Effect.as({ kind }))),
+        Stream.never,
+      ),
+    )
+  return { watchBatch, release: () => release() }
+}
+
 const screen = ({
   route,
   element = <ParticipantResultsPage />,
@@ -141,14 +186,17 @@ const screen = ({
     claim(4, RECORDED_ITEM, 'approved', { source: 'record' }),
   ],
   who = participant(),
+  stubs = {},
 }: {
   route: string
   element?: ReactNode
   capabilities?: Record<string, boolean>
   claims?: readonly unknown[]
-  /** the reader's own review queue in the round */
-  queue?: readonly unknown[]
+  /** the reader's own review queue in the round, read again on every ask */
+  queue?: readonly unknown[] | (() => readonly unknown[])
   who?: unknown
+  /** any read or write the case needs answered its own way */
+  stubs?: Record<string, unknown>
 }) =>
   renderScreen({
     client: fakeClient({
@@ -181,26 +229,10 @@ const screen = ({
         listParticipantPlacements: () =>
           Effect.succeed({ items: [], nextCursor: null, changedTotal: 0, unavailableTotal: 0 }),
         getParticipant: () => Effect.succeed({ participant: who }),
-        getParticipantResult: () =>
-          Effect.succeed({
-            mode: 'provisional' as const,
-            total: '3.00',
-            groups: [
-              {
-                groupId: GROUP_ID,
-                parentGroupId: null,
-                depth: 0,
-                name: '学业发展',
-                itemsTotal: '3.00',
-                childrenTotal: '0.00',
-                raw: '3.00',
-                final: '3.00',
-                cap: '10.00',
-                floor: null,
-              },
-            ],
-            lines: [],
-          }),
+        getParticipantResult: () => Effect.succeed(account()),
+        // the list the page was opened from; nobody on it unless a case says
+        listParticipantAccounts: () =>
+          Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }),
         listParticipantEntries: () =>
           Effect.succeed({ participantId: PARTICIPANT_ID, entries: claims, nextCursor: null }),
         listItems: () =>
@@ -237,8 +269,14 @@ const screen = ({
           Effect.succeed({ userTypes: [{ id: 'type-student', code: 'student', name: '学生' }] }),
         getRecognitionContract: () => Effect.succeed({ contract: null }),
         listReviewInbox: () =>
-          Effect.succeed({ items: queue, nextCursor: null, handledToday: 0, judging: true }),
+          Effect.succeed({
+            items: typeof queue === 'function' ? queue() : queue,
+            nextCursor: null,
+            handledToday: 0,
+            judging: true,
+          }),
         getEntryHistory: () => Effect.succeed({ revisions: [], rounds: [], events: [] }),
+        ...stubs,
       },
     }),
     routes: [{ path: '/assessment/batches/:batchId/results', element }],
@@ -400,40 +438,228 @@ describe('reading somebody’s entries', () => {
     await expect.poll(() => rows().length).toBe(2)
   })
 
-  // The list knows who comes before and after, in the order and under the
-  // filters the reader left it in; the account only offers the way there.
-  it('steps to the people either side of this one, where the list says who they are', async () => {
+  // Opened from the list, somebody's claims are what the page is for; the
+  // total is the other tab.
+  it('opens on the claims unless the address asks for the total', async () => {
     await page.viewport(1440, 900)
-    const went = vi.fn()
+    await screen({ route: base })
+    await expect.element(page.getByTestId('entries-workspace')).toBeVisible()
+    await expect
+      .element(page.getByTestId('participant-tab-entries'))
+      .toHaveAttribute('aria-current', 'true')
+    // the page's own heading is the person; the workspace's name sits under it
+    await expect
+      .element(page.getByTestId('structure-rail').getByRole('heading', { level: 2 }))
+      .toBeInTheDocument()
+    expect(document.querySelectorAll('[data-testid="entries-workspace"] h1')).toHaveLength(0)
+
+    await page.getByTestId('participant-tab-score').click()
+    await expect.element(page.getByTestId('result-ledger')).toBeVisible()
+    await expect.poll(() => addressNow()).toContain('view=score')
+  })
+
+  // The question the reader had open before is not where a followed number
+  // leads: the claim's own question is, every time.
+  it('follows a number to its claim’s question, whatever question was open', async () => {
+    await page.viewport(1440, 900)
     await screen({
-      route: `/assessment/batches/${BATCH_ID}/results`,
-      element: (
-        <BatchScreen title="参评人员" banner="open">
-          {(batch) => (
-            <ParticipantResultDetail
-              batchId={batch.id}
-              participantId={PARTICIPANT_ID}
-              manageable
-              writable
-              mayRecord={false}
-              view="score"
-              entryId=""
-              neighbours={{
-                previous: null,
-                next: { id: 'next-person', name: '王君惠' },
-                onGo: went,
-              }}
-              onView={() => undefined}
-              onEntry={() => undefined}
-              onFollow={() => undefined}
-              onBack={() => undefined}
-            />
-          )}
-        </BatchScreen>
-      ),
+      route: `${base}&view=score&open=${OWN_ITEM}`,
+      claims: [
+        claim(1, OWN_ITEM, 'approved'),
+        claim(4, RECORDED_ITEM, 'approved', { source: 'record' }),
+      ],
+      stubs: {
+        getParticipantResult: () =>
+          Effect.succeed(account([counted(1, OWN_ITEM), counted(4, RECORDED_ITEM, '2.00')])),
+      },
     })
-    await expect.element(page.getByTestId('participant-previous')).toBeDisabled()
-    await page.getByRole('button', { name: /王君惠/ }).click()
-    expect(went).toHaveBeenCalledWith('next-person')
+    const line = () =>
+      document.querySelector(`[data-testid="ledger-line"][data-entry="${entryId(4)}"]`)
+    await expect.poll(line).not.toBeNull()
+    await userEvent.click(line()!)
+    await expect.poll(() => addressNow()).toContain(`open=${RECORDED_ITEM}`)
+    await expect
+      .poll(() => document.querySelector('[data-testid="item-pane"]')?.getAttribute('data-item'))
+      .toBe(RECORDED_ITEM)
+    await expect.element(page.getByRole('dialog')).toBeVisible()
+    expect(addressNow()).toContain(`entry=${entryId(4)}`)
+  })
+
+  it('opens a claim the address names on its own question, over another one', async () => {
+    await page.viewport(1440, 900)
+    await screen({ route: `${base}&open=${OWN_ITEM}&entry=${entryId(4)}` })
+    await expect.poll(() => addressNow()).toContain(`open=${RECORDED_ITEM}`)
+    await expect
+      .poll(() => document.querySelector('[data-testid="item-pane"]')?.getAttribute('data-item'))
+      .toBe(RECORDED_ITEM)
+  })
+
+  // A question with more claims than the account lists leads to all of them,
+  // on the claims half, at that question.
+  it('takes a question with more claims than the account lists to all of them', async () => {
+    await page.viewport(1440, 900)
+    const many = Array.from({ length: 8 }, (_, i) => claim(10 + i, OWN_ITEM, 'approved'))
+    await screen({
+      route: `${base}&view=score`,
+      claims: many,
+      stubs: {
+        getParticipantResult: () =>
+          Effect.succeed(account(many.map((_, i) => counted(10 + i, OWN_ITEM, '0.25')))),
+      },
+    })
+    const item = () =>
+      document.querySelector(`[data-testid="ledger-item"][data-item="${OWN_ITEM}"]`)
+    await expect.poll(item).not.toBeNull()
+    await userEvent.click(item()!.querySelector('button')!)
+    const more = page.getByTestId('ledger-more')
+    await expect.element(more).toHaveAttribute('data-count', '8')
+    await more.click()
+    await expect.poll(() => addressNow()).toContain(`open=${OWN_ITEM}`)
+    expect(addressNow()).not.toContain('view=score')
+    await expect
+      .poll(() => document.querySelector('[data-testid="item-pane"]')?.getAttribute('data-item'))
+      .toBe(OWN_ITEM)
+  })
+
+  it('offers no recalculation for an account too large to evaluate', async () => {
+    await page.viewport(1440, 900)
+    await screen({
+      route: `${base}&view=score`,
+      stubs: {
+        getParticipantResult: () => Effect.fail(apiError('ASSESSMENT_SCORING_ACCOUNT_TOO_LARGE')),
+      },
+    })
+    const panel = page.getByTestId('result-unavailable')
+    await expect.element(panel).toHaveAttribute('data-reason', 'too-large')
+    expect(panel.getByRole('button').elements()).toHaveLength(0)
+  })
+
+  // The claims stay readable while the score is out of reach, and say that
+  // every figure on them is unknown for now, with the way to ask again.
+  it('says over the claims that the score is out of reach, and asks again', async () => {
+    await page.viewport(1440, 900)
+    let down = true
+    const scored = vi.fn(() =>
+      down ? Effect.fail(apiError('ASSESSMENT_SCORING_UNAVAILABLE')) : Effect.succeed(account()),
+    )
+    await screen({ route: base, stubs: { getParticipantResult: scored } })
+    const notice = page.getByTestId('standing-unavailable')
+    await expect.element(notice).toHaveAttribute('data-standing', 'unavailable')
+    await expect.poll(() => rows().length).toBeGreaterThan(0)
+    down = false
+    await notice.getByRole('button').click()
+    await expect.element(page.getByTestId('standing-unavailable')).not.toBeInTheDocument()
+  })
+
+  it('says the structure could not be read rather than drawing it without sections', async () => {
+    await page.viewport(1440, 900)
+    await screen({
+      route: base,
+      stubs: { listScoreGroups: () => Effect.fail(apiError('SERVICE_UNAVAILABLE')) },
+    })
+    await expect.element(page.getByRole('button', { name: '重试' })).toBeVisible()
+    expect(page.getByTestId('entries-workspace').elements()).toHaveLength(0)
+  })
+
+  // Somebody else deciding the round takes it off this reader's queue, and
+  // the mark on this page goes with it without a reload.
+  it('takes a round off the reader’s marks when the queue moves elsewhere', async () => {
+    await page.viewport(1440, 900)
+    const INSTANCE = '99999999-9999-4999-8999-999999999991'
+    const row = {
+      instanceId: INSTANCE,
+      entryId: entryId(2),
+      batchId: BATCH_ID,
+      batchName: '2026 春季综测',
+      itemId: OWN_ITEM,
+      itemTitle: '科研成果',
+      participantName: '郭航旗',
+      businessNo: '2023123456',
+      unitId: null,
+      unitName: null,
+      roundNo: 1,
+      route: 'normal',
+      values: [],
+      attachmentCount: 0,
+      submittedAt: '2026-03-01T00:00:00.000Z',
+    }
+    let waiting: readonly unknown[] = [row]
+    const { watchBatch, release } = wakeOnce('review-inbox-changed')
+    await screen({
+      route: `${base}&open=${OWN_ITEM}`,
+      capabilities: { review: true },
+      claims: [claim(1, OWN_ITEM, 'in_review'), claim(2, OWN_ITEM, 'in_review')],
+      queue: () => waiting,
+      stubs: { watchBatch },
+    })
+    await expect.element(page.getByTestId('awaiting-me')).toHaveAttribute('data-count', '1')
+    waiting = []
+    release()
+    await expect.element(page.getByTestId('awaiting-me')).not.toBeInTheDocument()
+    expect(rows().filter((one) => one.hasAttribute('data-awaiting-me'))).toHaveLength(0)
+  })
+
+  // Walking down the list keeps the half and the question being read, so one
+  // question can be read person after person; the claim that was open was
+  // the last person's. Going back to the list leaves the question behind.
+  it('walks to the next person on the same question, and back to the list without it', async () => {
+    await page.viewport(1440, 900)
+    const OTHER = '22222222-2222-4222-8222-222222222223'
+    await screen({
+      route: `${base}&view=score&open=${OWN_ITEM}&entry=${entryId(1)}`,
+      stubs: {
+        listParticipantAccounts: () =>
+          Effect.succeed({
+            items: [participant(), participant({ id: OTHER, displayName: '王君惠' })].map(
+              (row) => ({
+                ...row,
+                filings: {
+                  inReview: 0,
+                  toSupplement: 0,
+                  reconsidering: 0,
+                  toRevise: 0,
+                  blocked: 0,
+                },
+              }),
+            ),
+            total: 2,
+            page: 1,
+            pageSize: 20,
+          }),
+        // the list the reader goes back to, with its totals and its doors
+        listParticipantScores: () => Effect.succeed({ scores: [] }),
+        listScopeOptions: () => Effect.succeed({ nodes: [] }),
+        listParticipantCandidates: () =>
+          Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }),
+        previewImport: () => Effect.succeed({ candidates: 0 }),
+      },
+    })
+    const strip = page.getByTestId('roster-neighbors')
+    await expect.element(strip).toHaveAttribute('data-position', '1')
+    await strip.getByRole('button', { name: '下一位' }).click()
+    await expect.poll(() => addressNow()).toContain(`participant=${OTHER}`)
+    expect(addressNow()).toContain('view=score')
+    expect(addressNow()).toContain(`open=${OWN_ITEM}`)
+    expect(addressNow()).not.toContain('entry=')
+
+    await page.getByRole('button', { name: '返回参评人员' }).click()
+    await expect.poll(() => addressNow()).not.toContain('participant=')
+    expect(addressNow()).not.toContain('open=')
+  })
+
+  it('keeps a step of the path it may not name as a gap', async () => {
+    await screen({
+      route: base,
+      who: participant({
+        anchorLineage: [
+          { nodeId: 'n0', nodeTypeId: 'school' },
+          { nodeId: 'n1', nodeTypeId: 'college' },
+          { nodeId: 'n2', nodeTypeId: 'class' },
+        ],
+      }),
+    })
+    await expect
+      .poll(() => document.querySelector('[data-fact="unit"]')?.textContent?.trim())
+      .toBe('… / 软件学院 / 软件2301班')
   })
 })

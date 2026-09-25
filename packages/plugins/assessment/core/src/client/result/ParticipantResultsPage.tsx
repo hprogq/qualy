@@ -36,7 +36,6 @@ const styles = stylex.create({
     flexBasis: '0%',
     flexDirection: 'column',
   },
-  open: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 8 },
 })
 
 export default function ParticipantResultsPage() {
@@ -82,41 +81,52 @@ export default function ParticipantResultsPage() {
               manageable={batch.manageable}
               view={roster}
               onView={moveRoster}
+              // somebody opened from the list starts on their claims, at the
+              // question the workspace lands on
               onOpen={(id) =>
-                address({ participant: id, view: '', entry: '' }, { history: 'push' })
+                address({ participant: id, view: '', entry: '', open: '' }, { history: 'push' })
               }
             />
           ) : (
-            <div {...stylex.props(styles.open)}>
-              <RosterNeighbors
-                batchId={batch.id}
-                participantId={participantId}
-                view={roster}
-                // the list's page follows whoever is open, so going back
-                // lands on their row
-                onOpen={(id, page) =>
-                  address(
-                    { participant: id, view: '', entry: '', ...rosterPageAddress(page) },
-                    { history: 'push' },
-                  )
-                }
-              />
-              <ParticipantResultDetail
-                batchId={batch.id}
-                manageable={batch.manageable}
-                writable={batch.status !== 'archived'}
-                mayRecord={batch.capabilities.record}
-                participantId={participantId}
-                view={view === 'entries' ? 'entries' : 'score'}
-                entryId={entryId}
-                onView={(next) => address({ view: next === 'score' ? '' : next })}
-                onEntry={(id) => address({ entry: id }, { history: 'push' })}
-                // a number leads to the claim behind it: the tab and the claim
-                // are one move, so they are one write
-                onFollow={(id) => address({ view: 'entries', entry: id }, { history: 'push' })}
-                onBack={() => address({ participant: '', view: '', entry: '' })}
-              />
-            </div>
+            <ParticipantResultDetail
+              batchId={batch.id}
+              manageable={batch.manageable}
+              writable={batch.status !== 'archived'}
+              mayRecord={batch.capabilities.record}
+              participantId={participantId}
+              // the claims unless the address asks for the total
+              view={view === 'score' ? 'score' : 'entries'}
+              entryId={entryId}
+              aside={
+                <RosterNeighbors
+                  batchId={batch.id}
+                  participantId={participantId}
+                  view={roster}
+                  // Walking to the next person keeps the half and the
+                  // question being read, so one question can be read down
+                  // the list; the claim open in the drawer was this
+                  // person's. The list's page follows whoever is open, so
+                  // going back lands on their row.
+                  onOpen={(id, page) =>
+                    address(
+                      { participant: id, entry: '', ...rosterPageAddress(page) },
+                      { history: 'push' },
+                    )
+                  }
+                />
+              }
+              onView={(next) => address({ view: next === 'entries' ? '' : next })}
+              onEntry={(id) => address({ entry: id }, { history: 'push' })}
+              // a number leads to the claim behind it: the tab, its question
+              // and the claim are one move, so they are one write
+              onFollow={(id, itemId) =>
+                address({ view: '', open: itemId ?? '', entry: id }, { history: 'push' })
+              }
+              onItem={(itemId) =>
+                address({ view: '', open: itemId, entry: '' }, { history: 'push' })
+              }
+              onBack={() => address({ participant: '', view: '', entry: '', open: '' })}
+            />
           )}
         </Drill>
       )}
