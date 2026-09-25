@@ -638,7 +638,11 @@ describe('choosing how a question is handled', () => {
     await page.getByTestId('browser-back').click()
     await page.getByRole('alertdialog').getByTestId('confirm-accept').click()
     await vi.waitFor(() => expect(document.querySelector('[data-testid="item-editor"]')).toBeNull())
+    // and it stays gone: the dialog closing after the discard must not put
+    // the question back in the address
+    await new Promise((settle) => setTimeout(settle, 400))
     expect(addressNow()).not.toContain('question=')
+    expect(document.querySelector('[data-testid="item-editor"]')).toBeNull()
   })
 
   it('leaves at once when nothing was changed', async () => {

@@ -867,7 +867,12 @@ function Editor({
         title={format(m.itemsLeaveUnsaved)}
         confirmLabel={format(m.discardEdits)}
         cancelLabel={format(commonMessages.cancel)}
-        onConfirm={() => setUnsaved(false)}
+        onConfirm={() => {
+          // the dialog answers a confirm with a cancel as it closes; that
+          // one must not put the discarded question back in the address
+          restoring.current = true
+          setUnsaved(false)
+        }}
         onCancel={stay}
       />
 
