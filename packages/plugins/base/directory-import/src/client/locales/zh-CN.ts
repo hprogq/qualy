@@ -84,6 +84,8 @@ export default {
   'directory-import/issue/user-conflict': '该{businessNo}已存在，且{fields}与现有人员信息不一致',
   'directory-import/issue/business-no-taken': '该{businessNo}已被他人使用',
   'directory-import/issue/node-type-conflict': '{path} 已存在，但组织类型不一致',
+  'directory-import/issue/unit-out-of-reach': '你无权新建组织 {path}',
+  'directory-import/issue/placement-out-of-reach': '你无权向 {path} 添加人员',
   'directory-import/issue/other': '无法读取：{reason}',
   'directory-import/field/display-name': '姓名',
   'directory-import/field/user-type': '人员类型',

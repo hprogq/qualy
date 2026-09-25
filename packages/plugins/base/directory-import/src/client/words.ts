@@ -54,6 +54,10 @@ export const issueText = (format: Format, issue: IssueLike, businessNo: string):
       return format(m.issueBusinessNoTaken, { businessNo })
     case 'node-type-conflict':
       return format(m.issueNodeConflict, { path: issue.detail ?? '' })
+    case 'unit-out-of-reach':
+      return format(m.issueUnitOutOfReach, { path: issue.detail ?? '' })
+    case 'placement-out-of-reach':
+      return format(m.issuePlacementOutOfReach, { path: issue.detail ?? '' })
     default:
       return format(m.issueOther, { reason: issue.reason })
   }

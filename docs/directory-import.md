@@ -35,7 +35,7 @@ directory-import 不自己判断组织规则、站位、权限；它经端口问
 
 ## Preview / Commit
 
-- 文件在事务外读取（`@qualy/spreadsheet`），判定在 `plan()` 中完成：先按 mapping 求链、验证列存在、人员类型可用且可站在链尾类型、`auth.user.manage` 覆盖 anchor（有节点要建时另需 `org.tree.manage`），再折叠期望树、逐级 childNamed、批量 byBusinessNo。
+- 文件在事务外读取（`@qualy/spreadsheet`），判定在 `plan()` 中完成：先按 mapping 求链、验证列存在、人员类型可用且可站在链尾类型、`auth.user.manage` 覆盖 anchor（有节点要建时另需 `org.tree.manage`），再折叠期望树、逐级 childNamed、批量 byBusinessNo。最后按 commit 的写法逐个问将写到的节点：新建单位要求父节点在 `org.tree.manage` 范围内，新建人员要求落位节点在 `auth.user.manage` 范围内；尚未存在的节点只由最近已存在祖先上的 subtree 授权覆盖。够不到的节点列为 `unit-out-of-reach` / `placement-out-of-reach` 问题，而不是等到 commit 才 403。
 - `planFingerprint` = attachment 内容 hash + sheet/headerRow/type/链/anchor + 将建节点 + 将建/已存在的编号集合 + 错误数。Commit 在 `lockTenant` 事务内重跑 plan，指纹不同即 `USER_IMPORT_PLAN_CHANGED`。
 - Commit：父先子后 `createChild` → `createUsers` → `storage.bind` → 写 directory_imports / rows / nodes → 审计 `directory.import.commit`。任一失败整体回滚。`(tenant_id, source_attachment_id)` 唯一：同一份上传只能导入一次（`USER_IMPORT_SOURCE_USED`）。
 

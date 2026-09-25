@@ -59,6 +59,14 @@ const issueNodeConflict = defineMessage<{ path: string }>()({
   id: 'directory-import/issue/node-type-conflict',
   defaultMessage: '{path} exists as a unit of another type',
 })
+const issueUnitOutOfReach = defineMessage<{ path: string }>()({
+  id: 'directory-import/issue/unit-out-of-reach',
+  defaultMessage: 'You cannot create {path}',
+})
+const issuePlacementOutOfReach = defineMessage<{ path: string }>()({
+  id: 'directory-import/issue/placement-out-of-reach',
+  defaultMessage: 'You cannot add people to {path}',
+})
 const issueOther = defineMessage<{ reason: string }>()({
   id: 'directory-import/issue/other',
   defaultMessage: 'Could not be read ({reason})',
@@ -305,6 +313,8 @@ const i18n = definePluginMessages({
     issueUserConflict,
     issueBusinessNoTaken,
     issueNodeConflict,
+    issueUnitOutOfReach,
+    issuePlacementOutOfReach,
     issueOther,
     fieldDisplayName: { id: 'directory-import/field/display-name', defaultMessage: 'name' },
     fieldUserType: { id: 'directory-import/field/user-type', defaultMessage: 'user type' },

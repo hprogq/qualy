@@ -142,6 +142,78 @@ export const make = Effect.gen(function* () {
     }
   })
 
+  /**
+   * Which of the units a commit would write at lie outside the caller's
+   * authority, each named once.
+   *
+   * A target is the key of a unit in the plan, or null for the anchor. One
+   * that exists is reached as the write would reach it; one yet to be made
+   * stands under the nearest unit that exists, and only a grant over that
+   * unit's whole subtree reaches it.
+   */
+  const unreached = Effect.fn('DirectoryImport.unreached')(function* (
+    tenantId: string,
+    as: Principal,
+    anchorId: string,
+    nodeByKey: ReadonlyMap<string, ResolvedNode>,
+    asks: readonly {
+      readonly code: string
+      readonly reason: string
+      readonly targets: readonly { readonly key: string | null; readonly label: string }[]
+    }[],
+  ) {
+    const found: ImportIssue[] = []
+    for (const ask of asks) {
+      if (ask.targets.length === 0) continue
+      const placed = ask.targets.map((target) => {
+        let key = target.key
+        let below = false
+        while (key !== null && nodeByKey.get(key)!.existing === null) {
+          key = nodeByKey.get(key)!.parentKey
+          below = true
+        }
+        const id = key === null ? anchorId : nodeByKey.get(key)!.existing!.id
+        return { ...target, id, below }
+      })
+      const scope = yield* rbac.listAuthorizedScope(as, ask.code)
+      const whole = {
+        tenantWide: scope.tenantWide,
+        anchors: scope.anchors.filter((anchor) => anchor.coverage === 'subtree'),
+      }
+      const at = yield* dieQuery(
+        withDb(
+          nodesReached(
+            tenantId,
+            scope,
+            placed.filter((one) => !one.below).map((one) => one.id),
+          ),
+        ),
+      )
+      const under = yield* dieQuery(
+        withDb(
+          nodesReached(
+            tenantId,
+            whole,
+            placed.filter((one) => one.below).map((one) => one.id),
+          ),
+        ),
+      )
+      const named = new Set<string>()
+      for (const one of placed) {
+        if ((one.below ? under : at).has(one.id) || named.has(one.label)) continue
+        named.add(one.label)
+        found.push({
+          rowNo: null,
+          field: null,
+          severity: 'error',
+          reason: ask.reason,
+          detail: one.label,
+        })
+      }
+    }
+    return found
+  })
+
   /** a unit and everything above it, root first, walked parent by parent */
   const ancestryOf = Effect.fn('DirectoryImport.ancestryOf')(function* (
     tenantId: string,
@@ -463,6 +535,39 @@ export const make = Effect.gen(function* () {
       }
       people.push({ row, disposition: 'existing', existingId: found.id, leafKey })
     }
+
+    // The commit asks each write for its own authority: a unit is created
+    // under org.tree.manage at its parent, a person is placed under
+    // auth.user.manage where they stand. Authority at the anchor alone says
+    // nothing about the units below it when it covers the anchor only, so
+    // every unit the commit would touch is asked here and one it could not is
+    // named, rather than the whole import failing at the commit. A unit yet
+    // to be made is reached only by a grant over the whole subtree of the
+    // nearest unit that exists.
+    const outOfReach = yield* unreached(tenantId, as, chain.anchor.id, nodeByKey, [
+      {
+        code: MANAGE_TREE,
+        reason: 'unit-out-of-reach',
+        // what a creation writes to is the parent
+        targets: creating.map((node) => ({
+          key: node.parentKey,
+          label: node.path,
+        })),
+      },
+      {
+        code: MANAGE,
+        reason: 'placement-out-of-reach',
+        targets: [
+          ...new Set(
+            people.filter((one) => one.disposition === 'create').map((one) => one.leafKey),
+          ),
+        ].map((key) => ({
+          key,
+          label: key === null ? anchorPath : nodeByKey.get(key)!.path,
+        })),
+      },
+    ])
+    issues.push(...outOfReach)
 
     const fingerprint = hashCanonicalJson({
       attachmentId: input.attachmentId,

@@ -548,6 +548,102 @@ describe.runIf(postgresAvailable)('importing people from a spreadsheet', () => {
     expect(result.belowForAdmin).toEqual({ total: 2, numbers: ['230501', '230502'] })
   }, 120_000)
 
+  it('names in the preview every unit the commit could not write at, for authority over the anchor alone', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('reach')
+          const service = yield* DirectoryImport
+          yield* runSql(sql`
+            insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
+            values (${f.tenant}, ${f.software}, ${f.types.grade}, '2022级', 'r.s.g22'::ltree, 2)`)
+          // a secretary whose authority over people and units is the college node alone
+          const secretary = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, business_no)
+              values (${f.tenant}, '秘书', ${f.student}, ${f.software}, 'sec') returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            select ${f.tenant}, ${secretary}, id, ${f.software}, 'self'
+              from roles where tenant_id = ${f.tenant} and code = 'dir'`)
+          const reader: Principal = { tenantId: f.tenant, userId: secretary, sessionId: secretary }
+          const request = (
+            who: Principal,
+            rows: readonly (readonly string[])[],
+            levels: readonly { orgTypeId: string; column: string }[],
+          ) =>
+            Effect.map(staged(f.tenant, who.userId, rows), (attachmentId) => ({
+              attachmentId,
+              sheet: '名单',
+              headerRow: 1,
+              userTypeId: f.student,
+              mapping: {
+                displayName: { column: 'B' },
+                businessNo: { column: 'A' },
+                organization: { anchorNodeId: f.software, levels },
+              },
+            }))
+          const grades = (who: Principal) =>
+            request(
+              who,
+              [
+                ['学号', '姓名', '年级'],
+                ['230601', '张三', '2022级'],
+                ['230602', '李四', '2024级'],
+              ],
+              [{ orgTypeId: f.types.grade, column: 'C' }],
+            )
+          const classes = (who: Principal) =>
+            request(
+              who,
+              [HEADER, ['230603', '王五', '2024级', '1班']],
+              [
+                { orgTypeId: f.types.grade, column: 'C' },
+                { orgTypeId: f.types.klass, column: 'D' },
+              ],
+            )
+          const said = (preview: { issues: readonly { reason: string; detail?: string }[] }) =>
+            preview.issues.map((issue) => [issue.reason, issue.detail])
+          const secretaryGrades = yield* grades(reader)
+          const gradesPreview = yield* service.preview(f.tenant, secretaryGrades, reader)
+          const refused = yield* Effect.exit(
+            service.commit(
+              f.tenant,
+              { ...secretaryGrades, expectedPlanFingerprint: gradesPreview.planFingerprint },
+              reader,
+            ),
+          )
+          return {
+            grades: said(gradesPreview),
+            classes: said(yield* service.preview(f.tenant, yield* classes(reader), reader)),
+            // the same files, for somebody whose authority covers the subtree
+            forAdmin: [
+              ...said(yield* service.preview(f.tenant, yield* grades(f.admin), f.admin)),
+              ...said(yield* service.preview(f.tenant, yield* classes(f.admin), f.admin)),
+            ],
+            refused: tagOf(refused),
+          }
+        }),
+      ),
+    )
+    const at = (...names: string[]) => ['示例大学', '软件学院', ...names].join(' / ')
+    // a unit of the anchor's own is made under the anchor, which the
+    // secretary administers; nobody may be placed below it
+    expect(result.grades).toEqual([
+      ['placement-out-of-reach', at('2022级')],
+      ['placement-out-of-reach', at('2024级')],
+    ])
+    // and a unit under a unit yet to be made is out of reach as well
+    expect(result.classes).toEqual([
+      ['unit-out-of-reach', at('2024级', '1班')],
+      ['placement-out-of-reach', at('2024级', '1班')],
+    ])
+    expect(result.forAdmin).toEqual([])
+    expect(result.refused).toBe('USER_IMPORT_INVALID')
+  }, 120_000)
+
   it('refuses a file with a wrong row whole, and reads a person already on the books as present', async () => {
     const result = ok(
       await run(
