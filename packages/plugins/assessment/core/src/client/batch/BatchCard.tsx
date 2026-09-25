@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { assessmentMessages as m } from '../i18n.ts'
 import { dotDay, dotMoment } from './dates.ts'
+import { lastDay } from '../entry/model.ts'
 import { StatusBadge } from './StatusBadge.tsx'
 import { BatchProgress } from './BatchProgress.tsx'
 import { progressOf, type TimelineLike } from './progress.ts'
@@ -988,10 +989,16 @@ export function BatchCard({
             </div>
             <h2 {...stylex.props(styles.title)}>{row.name}</h2>
             <div {...stylex.props(styles.facts)}>
-              <span>
+              <span
+                data-testid="material-window"
+                data-from={row.materialRange.start}
+                data-until={lastDay(row.materialRange.end)}
+              >
                 {format(m.materialWindow, {
                   from: dotDay(row.materialRange.start),
-                  until: dotDay(row.materialRange.end),
+                  // stored with its end outside the window; the card says
+                  // the last day that counts
+                  until: dotDay(lastDay(row.materialRange.end)),
                 })}
               </span>
               {row.timeline.length > 0 && (

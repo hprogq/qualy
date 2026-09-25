@@ -23,6 +23,7 @@ import { assessmentMessages as m } from '../i18n.ts'
 import { refusalMessage, refusalsOf } from '../refusals.ts'
 import { ReopenDialog } from './ReopenDialog.tsx'
 import type { BatchDto } from '../phase/model.ts'
+import { dayAfter, lastDay } from '../entry/model.ts'
 
 // What the batch is, and what may happen to the batch as a whole.
 //
@@ -377,6 +378,15 @@ function ReasonList({
   )
 }
 
+/**
+ * The window as the picker shows it: first and last day both inside. It is
+ * stored `[start, end)`, so the day named by `end` is not part of it.
+ */
+const pickedOf = (range: { start: string; end: string }) => ({
+  start: range.start,
+  end: lastDay(range.end),
+})
+
 export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
@@ -387,7 +397,7 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
 
   const [name, setName] = useState(batch.name)
   const [description, setDescription] = useState(batch.descriptionMd ?? '')
-  const [range, setRange] = useState(batch.materialRange)
+  const [range, setRange] = useState(() => pickedOf(batch.materialRange))
   const [rejectReasons, setRejectReasons] = useState<readonly string[]>(batch.reviewReasons.reject)
   const [escalateReasons, setEscalateReasons] = useState<readonly string[]>(
     batch.reviewReasons.escalate,
@@ -401,7 +411,7 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
   useEffect(() => {
     setName(batch.name)
     setDescription(batch.descriptionMd ?? '')
-    setRange(batch.materialRange)
+    setRange(pickedOf(batch.materialRange))
     setRejectReasons(batch.reviewReasons.reject)
     setEscalateReasons(batch.reviewReasons.escalate)
   }, [batch])
@@ -429,7 +439,9 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
           payload: {
             name,
             descriptionMd: description.trim() === '' ? null : description,
-            materialRange: range,
+            // the last day picked is inside the window, so the stored end
+            // is the day after it
+            materialRange: { start: range.start, end: dayAfter(range.end) },
             reviewReasons: { reject: rejectReasons, escalate: escalateReasons },
           },
         }),
@@ -506,11 +518,14 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
   })
 
   const editable = batch.manageable && batch.status !== 'archived'
+  const shownRange = pickedOf(batch.materialRange)
+  // a window picked only halfway has no end to send
+  const rangeIncomplete = range.start === '' || range.end === ''
   const unchanged =
     name === batch.name &&
     description === (batch.descriptionMd ?? '') &&
-    range.start === batch.materialRange.start &&
-    range.end === batch.materialRange.end &&
+    range.start === shownRange.start &&
+    range.end === shownRange.end &&
     JSON.stringify(rejectReasons) === JSON.stringify(batch.reviewReasons.reject) &&
     JSON.stringify(escalateReasons) === JSON.stringify(batch.reviewReasons.escalate)
 
@@ -595,7 +610,10 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
             <Appear show={!unchanged}>
               <span {...stylex.props(styles.unsavedNote)}>{format(m.settingsUnsaved)}</span>
             </Appear>
-            <Button type="submit" disabled={!editable || unchanged || save.isPending}>
+            <Button
+              type="submit"
+              disabled={!editable || unchanged || rangeIncomplete || save.isPending}
+            >
               {format(m.saveShort)}
             </Button>
           </div>

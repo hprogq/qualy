@@ -24,6 +24,7 @@ import { acceptOf, FILE_KINDS, kindsOf, unwritableTokens } from '../../file-kind
 import { assessmentMessages as m } from '../../i18n.ts'
 import { Choice } from '../Choice.tsx'
 import { nextOptionKey, type FieldDraft, type FieldType, type OptionDraft } from './model.ts'
+import { lastDay } from '../../entry/model.ts'
 import { TYPE_LABEL } from './words.ts'
 
 // The settings of one submission field, shared by the panel that edits a
@@ -417,7 +418,7 @@ function TypeSettings({
                   id={id}
                   value={field.min === '' ? null : field.min}
                   min={materialRange.start}
-                  max={materialRange.end}
+                  max={lastDay(materialRange.end)}
                   clearLabel={words.clear}
                   localeTag={locale}
                   monthLabel={words.month}
@@ -432,7 +433,7 @@ function TypeSettings({
                   id={id}
                   value={field.max === '' ? null : field.max}
                   min={materialRange.start}
-                  max={materialRange.end}
+                  max={lastDay(materialRange.end)}
                   clearLabel={words.clear}
                   localeTag={locale}
                   monthLabel={words.month}
@@ -453,7 +454,7 @@ function TypeSettings({
               <FieldDescription>
                 {format(m.itemsDateWindow, {
                   from: materialRange.start,
-                  until: materialRange.end,
+                  until: lastDay(materialRange.end),
                 })}
               </FieldDescription>
             </FieldContent>

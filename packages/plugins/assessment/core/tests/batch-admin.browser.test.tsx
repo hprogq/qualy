@@ -767,6 +767,51 @@ describe('the batch lifecycle', () => {
     })
   })
 
+  // The window is stored [start, end): the day named by `end` is already
+  // outside it. The settings page used to hand that day to the picker as the
+  // last one, and send back whatever day was picked as the end - so the day
+  // an administrator chose to end on was left out of the window.
+  it('keeps the last day picked for the material window inside it', async () => {
+    const updateBatch = vi.fn((_request: Request) => Effect.succeed({ batch: batch() }))
+    await screen({ updateBatch }, `/assessment/batches/${BATCH_ID}/settings`)
+
+    await expect
+      .poll(() => document.querySelector('[data-slot="date-range-picker"]') !== null)
+      .toBe(true)
+    await userEvent.click(document.querySelector('[data-slot="date-range-picker"]')!)
+    await expect.poll(() => document.querySelectorAll('table td button').length > 0).toBe(true)
+    const dated = (label: string) =>
+      Array.from(document.querySelectorAll('table td button')).find(
+        (day) => !day.hasAttribute('data-hidden') && day.ariaLabel === label,
+      ) as HTMLElement
+    await userEvent.click(dated('2026年3月1日'))
+    await userEvent.click(dated('2026年3月30日'))
+    await page.getByRole('button', { name: '保存', exact: false }).click()
+
+    await vi.waitFor(() => expect(updateBatch).toHaveBeenCalledTimes(1))
+    expect(updateBatch.mock.calls[0]![0]).toMatchObject({
+      payload: { materialRange: { start: '2026-03-01', end: '2026-03-31' } },
+    })
+  })
+
+  it('says on the card the last day the material window takes', async () => {
+    await screen(
+      {
+        listBatches: () =>
+          Effect.succeed({
+            items: [listRow({ status: 'active', currentPhaseId: ENTRY_PHASE_ID })],
+            nextCursor: null,
+            total: 1,
+            capabilities: { create: true },
+          }),
+      },
+      '/assessment/batches',
+    )
+    await expect
+      .element(page.getByTestId('material-window').first())
+      .toHaveAttribute('data-until', '2026-08-31')
+  })
+
   it('says a scheduled batch has not begun, rather than calling it under way', async () => {
     await screen({
       getBatch: () => Effect.succeed({ batch: batch({ status: 'active', currentPhaseId: null }) }),
