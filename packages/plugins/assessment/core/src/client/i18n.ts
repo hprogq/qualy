@@ -6023,6 +6023,14 @@ const i18n = definePluginMessages({
       id: 'assessment/roster/score-compute-one',
       defaultMessage: "Compute {name}'s current total",
     }),
+    rosterScoreAgainOne: defineMessage<{ name: string }>()({
+      id: 'assessment/roster/score-again-one',
+      defaultMessage: "Compute {name}'s current total again",
+    }),
+    rosterScoresFailed: {
+      id: 'assessment/roster/scores-failed',
+      defaultMessage: "This page's totals could not be computed",
+    },
     rosterScoreWorking: { id: 'assessment/roster/score-working', defaultMessage: 'Computing' },
     rosterScoreUnavailable: {
       id: 'assessment/roster/score-unavailable',

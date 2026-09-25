@@ -56,6 +56,9 @@ import {
 import { assessmentMessages as m } from '../i18n.ts'
 import { assessmentApi } from '../api.ts'
 import { useBatchLive } from '../live.ts'
+import { settler } from '../roster/live-settle.ts'
+import { ScoresNotice } from '../roster/ScoresNotice.tsx'
+import type { BatchLiveEvent } from '../../api.ts'
 
 // The roster, walked by page, with where each person stands.
 //
@@ -101,6 +104,17 @@ const UNNAMED = '…'
 
 /** how long the page waits for a burst of live wake-ups to end before reading again */
 const LIVE_SETTLE = 1_000
+
+/** how long after a burst began the page reads again, whether or not it has ended */
+const LIVE_MAX_WAIT = 5_000
+
+/** the wake-ups that can move somebody's total, rather than only what they wait on */
+const MOVES_TOTALS: ReadonlySet<BatchLiveEvent['kind']> = new Set([
+  'entries-changed',
+  'review-instance-changed',
+  'item-changed',
+  'result-changed',
+])
 
 const WAITING_WORDS: Record<RosterWaiting, (typeof m)[keyof typeof m]> = {
   inReview: m.rosterWaitingInReview,
@@ -287,11 +301,12 @@ export function ParticipantResultList({
   // the page's totals, asked once its rows are known and never before: the
   // rows are what somebody came for, and they must not wait on arithmetic
   const ids = rows.map((row) => row.id)
+  const pageScores = query.assessment.listParticipantScores.queryOptions({
+    params: { batchId },
+    query: { participantIds: ids },
+  })
   const scores = useQuery({
-    ...query.assessment.listParticipantScores.queryOptions({
-      params: { batchId },
-      query: { participantIds: ids },
-    }),
+    ...pageScores,
     enabled: ids.length > 0 && !participants.isPlaceholderData,
   })
   const scored = new Map((scores.data?.scores ?? []).map((one) => [one.participantId, one]))
@@ -299,26 +314,32 @@ export function ParticipantResultList({
   // Live: a claim that moved changes what somebody is waiting on and what
   // they have, so the page and its totals are read again. A burst of
   // wake-ups - a reviewer working down a queue - is one re-read rather than
-  // one per event: each re-read of the totals is a page of accounts.
-  const reread = useRef<ReturnType<typeof setTimeout> | null>(null)
-  useEffect(
-    () => () => {
-      if (reread.current !== null) clearTimeout(reread.current)
-    },
-    [],
+  // one per event, and never waits past the burst's longest wait: each
+  // re-read of the totals is a page of accounts. Only this page's own
+  // question is asked again; a person somebody asked about alone is not
+  // re-asked with it, and their answer gives way to the page's newer one.
+  const latestScores = useRef(pageScores.queryKey)
+  latestScores.current = pageScores.queryKey
+  const live = useMemo(
+    () =>
+      settler<BatchLiveEvent['kind']>({
+        settle: LIVE_SETTLE,
+        maxWait: LIVE_MAX_WAIT,
+        fire: (kinds) => {
+          void queryClient.invalidateQueries({
+            queryKey: query.assessment.listParticipantAccounts.key(),
+          })
+          if (kinds.some((kind) => MOVES_TOTALS.has(kind))) {
+            void queryClient.invalidateQueries({ queryKey: latestScores.current, exact: true })
+          }
+        },
+      }),
+    [queryClient, query],
   )
+  useEffect(() => () => live.cancel(), [live])
   useBatchLive(batchId, (kind) => {
     if (kind === 'heartbeat' || kind === 'plan-changed' || kind === 'review-inbox-changed') return
-    if (reread.current !== null) clearTimeout(reread.current)
-    reread.current = setTimeout(() => {
-      reread.current = null
-      void queryClient.invalidateQueries({
-        queryKey: query.assessment.listParticipantAccounts.key(),
-      })
-      void queryClient.invalidateQueries({
-        queryKey: query.assessment.listParticipantScores.key(),
-      })
-    }, LIVE_SETTLE)
+    live.wake(kind)
   })
 
   // The units the people this list can show were admitted from: the tree the
@@ -623,6 +644,14 @@ export function ParticipantResultList({
               />
             )}
           </div>
+          {/* the rows stand without their totals; why, and the way to ask
+              for them again, said once above them rather than on each row */}
+          {scores.isError && (
+            <ScoresNotice
+              reason={formatError(scores.error)}
+              onRetry={() => void scores.refetch()}
+            />
+          )}
           <AsyncSection
             pending={participants.isPending}
             error={participants.isError ? formatError(participants.error) : null}
@@ -731,6 +760,7 @@ export function ParticipantResultList({
                             participantId={row.id}
                             name={row.displayName}
                             answer={scored.get(row.id)}
+                            answeredAt={scores.dataUpdatedAt}
                             waiting={scores.isPending && scores.fetchStatus !== 'idle'}
                           />
                         </Cell>

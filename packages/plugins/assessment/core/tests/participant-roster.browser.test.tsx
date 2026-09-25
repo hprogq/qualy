@@ -2,8 +2,8 @@ import ParticipantResultsPage from '../src/client/result/ParticipantResultsPage.
 import { lazy } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
-import { Effect } from 'effect'
-import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { Effect, Stream } from 'effect'
+import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The roster as the results page walks it: by page number, narrowed and
 // ordered by the server, each row saying what that person's claims wait on
@@ -256,6 +256,125 @@ describe('the roster on the results page', () => {
     expect(idsOf(single.mock.calls[0]![0])).toEqual([id(3)])
     // pressing a total's button is not opening the person
     expect(addressNow()).not.toContain('participant=')
+  })
+
+  it('offers to ask again where asking again may answer, and nowhere else', async () => {
+    const single = vi.fn((request: Request) =>
+      Effect.succeed({
+        scores: idsOf(request).map((participantId) => ({
+          participantId,
+          state: 'scored' as const,
+          total: '71.00',
+          reason: null,
+        })),
+      }),
+    )
+    const why = ['scoring-unavailable', 'timed-out', 'account-too-large'] as const
+    await open({
+      listParticipantScores: (request: Request) => {
+        const ids = idsOf(request)
+        if (ids.length === 1) return single(request)
+        return Effect.succeed({
+          scores: ids.map((participantId, index) => ({
+            participantId,
+            state: 'unavailable' as const,
+            total: null,
+            reason: why[index % 3]!,
+          })),
+        })
+      },
+    })
+    const score = (n: number) => page.getByTestId('participant-score').nth(n - 1)
+    await expect.element(score(1)).toHaveAttribute('data-score-reason', 'scoring-unavailable')
+    await expect.element(score(2)).toHaveAttribute('data-score-reason', 'timed-out')
+    await expect.element(score(3)).toHaveAttribute('data-score-reason', 'account-too-large')
+    // past the ceiling, asking again would say the same
+    expect(score(3).getByTestId('participant-score-again').elements()).toHaveLength(0)
+
+    await score(2).getByRole('button', { name: '重新计算参评人2的当前总分' }).click()
+    await expect.element(score(2)).toHaveAttribute('data-score', '71.00')
+    expect(idsOf(single.mock.calls[0]![0])).toEqual([id(2)])
+    expect(addressNow()).not.toContain('participant=')
+  })
+
+  it('says why the page has no totals, and asks for them again', async () => {
+    let down = true
+    const asked = vi.fn((request: Request) =>
+      down
+        ? Effect.fail(apiError('ASSESSMENT_SCORING_UNAVAILABLE'))
+        : Effect.succeed({
+            scores: idsOf(request).map((participantId) => ({
+              participantId,
+              state: 'scored' as const,
+              total: '80.00',
+              reason: null,
+            })),
+          }),
+    )
+    await open({ listParticipantScores: asked })
+    const notice = page.getByTestId('roster-scores-failed')
+    await expect.element(notice).toBeVisible()
+    // every row can still ask about its own person
+    await expect
+      .element(page.getByTestId('participant-score').first())
+      .toHaveAttribute('data-score-state', 'deferred')
+    down = false
+    await notice.getByRole('button', { name: '重试' }).click()
+    await expect.element(notice).not.toBeInTheDocument()
+    await expect
+      .element(page.getByTestId('participant-score').first())
+      .toHaveAttribute('data-score', '80.00')
+  })
+
+  it('reads the page again on a live change, without asking again about one person asked alone', async () => {
+    let release = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const watchBatch = () =>
+      Effect.succeed(
+        Stream.concat(
+          Stream.fromEffect(
+            Effect.promise(() => gate).pipe(Effect.as({ kind: 'entries-changed' as const })),
+          ),
+          Stream.never,
+        ),
+      )
+    const pages = vi.fn((request: Request) =>
+      Effect.succeed({
+        scores: idsOf(request).map((participantId, index) =>
+          index === 0
+            ? { participantId, state: 'deferred' as const, total: null, reason: null }
+            : { participantId, state: 'scored' as const, total: '80.00', reason: null },
+        ),
+      }),
+    )
+    const single = vi.fn((request: Request) =>
+      Effect.succeed({
+        scores: idsOf(request).map((participantId) => ({
+          participantId,
+          state: 'scored' as const,
+          total: '66.00',
+          reason: null,
+        })),
+      }),
+    )
+    await open({
+      watchBatch,
+      listParticipantScores: (request: Request) =>
+        idsOf(request).length === 1 ? single(request) : pages(request),
+    })
+    const first = page.getByTestId('participant-score').first()
+    await page.getByRole('button', { name: '计算参评人1的当前总分' }).click()
+    await expect.element(first).toHaveAttribute('data-score', '66.00')
+    const paged = pages.mock.calls.length
+
+    release()
+    await expect.poll(() => pages.mock.calls.length, { timeout: 5_000 }).toBeGreaterThan(paged)
+    // the page's newer answer stands; the person asked about alone is not
+    // asked about again with it
+    await expect.element(first).toHaveAttribute('data-score-state', 'deferred')
+    expect(single).toHaveBeenCalledTimes(1)
   })
 
   it('says what each person’s claims are waiting on', async () => {

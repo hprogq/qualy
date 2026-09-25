@@ -1807,6 +1807,8 @@ export default {
   'assessment/roster/page-summary': '第 {from}–{to} 人，共 {total} 人',
   'assessment/roster/score-compute': '计算',
   'assessment/roster/score-compute-one': '计算{name}的当前总分',
+  'assessment/roster/score-again-one': '重新计算{name}的当前总分',
+  'assessment/roster/scores-failed': '本页总分暂时算不出来',
   'assessment/roster/score-working': '正在计算',
   'assessment/roster/score-unavailable': '计分服务暂不可用',
   'assessment/roster/score-too-large': '条目过多，无法计算',
