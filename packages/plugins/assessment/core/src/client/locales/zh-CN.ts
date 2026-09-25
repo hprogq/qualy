@@ -1791,6 +1791,7 @@ export default {
   'assessment/error/scoring-unavailable': '暂时无法计分，请稍后重试。',
   'assessment/error/administrative-import-not-found': '该导入记录已不存在。',
   'assessment/error/administrative-import-invalid': '该文件当前无法导入。',
+  'assessment/error/administrative-import-busy': '其他文件正在读取中，请稍后重试。',
   'assessment/error/participant-placement-changed': '组织信息在确认期间发生了变化，请重新查看',
   'assessment/error/administrative-record-targets-changed':
     '认定对象已发生变化，请重新确认后再提交',

@@ -8,6 +8,7 @@ import type { Principal } from '@qualy/rbac-contract'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
 import {
   AdministrativeImportInvalid,
+  AdministrativeImportBusy,
   AdministrativeImportNotFound,
   AttachmentUnavailable,
   BatchNotFound,
@@ -295,6 +296,7 @@ export interface AdministrativeImportMethods {
     | EntryActionRefused
     | AttachmentUnavailable
     | AdministrativeImportInvalid
+    | AdministrativeImportBusy
     | ScoringUnavailable
     | AccessDenied,
     ScoringRuntimeCatalog
@@ -327,6 +329,7 @@ export interface AdministrativeImportMethods {
     | EntryActionRefused
     | AttachmentUnavailable
     | AdministrativeImportInvalid
+    | AdministrativeImportBusy
     | DeterminationRefused
     | ScoringUnavailable
     | AccessDenied,
@@ -601,6 +604,7 @@ export const makeAdministrativeImportMethods = (
     const parsed = yield* readWorkbook({
       bytes: source,
       read: parseAdministrativeWorkbook,
+      busy: () => new AdministrativeImportBusy(),
       refused: (error) =>
         new AdministrativeImportInvalid({
           issues: [

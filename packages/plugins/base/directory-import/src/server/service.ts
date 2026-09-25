@@ -31,6 +31,7 @@ import {
   UserImportNotFound,
   UserImportPlanChanged,
   UserImportSourceUnavailable,
+  UserImportBusy,
   UserImportSourceUsed,
 } from './errors.ts'
 import { resolveChain, type ImportMapping, type ResolvedChain } from './mapping.ts'
@@ -314,6 +315,7 @@ export const make = Effect.gen(function* () {
       bytes: bytesOf(tenantId, attachmentId, as),
       read: async (bytes) => readTable(await openWorkbook(bytes), sheet, { headerRow }),
       refused: unreadable,
+      busy: () => new UserImportBusy(),
     })
   })
 
@@ -344,6 +346,7 @@ export const make = Effect.gen(function* () {
         }
       },
       refused: unreadable,
+      busy: () => new UserImportBusy(),
     })
   })
 

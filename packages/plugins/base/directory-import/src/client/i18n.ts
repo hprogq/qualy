@@ -486,6 +486,10 @@ const i18n = definePluginMessages({
       id: 'directory-import/error/source-unavailable',
       defaultMessage: 'The uploaded file is no longer available. Upload it again.',
     },
+    USER_IMPORT_BUSY: {
+      id: 'directory-import/error/busy',
+      defaultMessage: 'Other files are being read right now. Try again in a moment.',
+    },
     USER_IMPORT_SOURCE_USED: {
       id: 'directory-import/error/source-used',
       defaultMessage: 'This file was already imported. Upload it again to import it once more.',

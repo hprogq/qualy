@@ -50,6 +50,13 @@ export class UserImportSourceUnavailable extends Schema.TaggedError<UserImportSo
   { httpApiStatus: 409, identifier: 'UserImportSourceUnavailable' },
 ) {}
 
+/** other workbooks are being read and this one was not reached in time; asking again is the answer */
+export class UserImportBusy extends Schema.TaggedError<UserImportBusy>()(
+  'USER_IMPORT_BUSY',
+  {},
+  { httpApiStatus: 503, identifier: 'UserImportBusy' },
+) {}
+
 /** the same upload was already imported; a new import needs a new upload */
 export class UserImportSourceUsed extends Schema.TaggedError<UserImportSourceUsed>()(
   'USER_IMPORT_SOURCE_USED',

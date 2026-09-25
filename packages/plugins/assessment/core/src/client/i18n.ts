@@ -7002,6 +7002,10 @@ const i18n = definePluginMessages({
       id: 'assessment/error/administrative-import-invalid',
       defaultMessage: 'This file cannot be imported as it stands.',
     },
+    ASSESSMENT_ADMINISTRATIVE_IMPORT_BUSY: {
+      id: 'assessment/error/administrative-import-busy',
+      defaultMessage: 'Other files are being read right now. Try again in a moment.',
+    },
     ASSESSMENT_PARTICIPANT_PLACEMENT_CHANGED: {
       id: 'assessment/error/participant-placement-changed',
       defaultMessage: 'The organization changed while you were deciding. Check the changes again.',

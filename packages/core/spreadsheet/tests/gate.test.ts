@@ -1,6 +1,7 @@
-import { Effect, Fiber } from 'effect'
+import { Effect, Exit, Fiber } from 'effect'
+import { TestClock } from 'effect/testing'
 import { describe, expect, it } from 'vitest'
-import { readWorkbook } from '../src/gate.ts'
+import { readWorkbook, WORKBOOKS_IN_LINE_MOST } from '../src/gate.ts'
 
 // One workbook at a time, whoever asks. The reader's promise cannot be
 // cancelled, so the permit is only handed on once it has actually settled -
@@ -31,7 +32,12 @@ describe('reading workbooks under one permit', () => {
     const results = await Effect.runPromise(
       Effect.all(
         Array.from({ length: 4 }, () =>
-          readWorkbook({ bytes: Effect.succeed(new Uint8Array()), read, refused: String }),
+          readWorkbook({
+            bytes: Effect.succeed(new Uint8Array()),
+            read,
+            refused: String,
+            busy: () => 'busy',
+          }),
         ),
         { concurrency: 'unbounded' },
       ),
@@ -52,6 +58,7 @@ describe('reading workbooks under one permit', () => {
             await first.promise
           },
           refused: String,
+          busy: () => 'busy',
         }),
       )
       yield* Effect.promise(tick)
@@ -64,6 +71,7 @@ describe('reading workbooks under one permit', () => {
             started.push('next')
           },
           refused: String,
+          busy: () => 'busy',
         }),
       )
       yield* Effect.promise(tick)
@@ -77,12 +85,85 @@ describe('reading workbooks under one permit', () => {
     expect(started).toEqual(['abandoned', 'next'])
   })
 
+  // A request in line holds its file's bytes and somebody's screen: past a
+  // few in line, or a wait nobody would sit through, it is turned away to be
+  // asked again rather than joining a line that only grows.
+  it('turns a request away once the line is full, and reads the rest', async () => {
+    const held = deferred()
+    const program = Effect.gen(function* () {
+      const inLine = yield* Effect.forEach(Array.from({ length: WORKBOOKS_IN_LINE_MOST }), () =>
+        Effect.forkChild(
+          readWorkbook({
+            bytes: Effect.succeed(new Uint8Array()),
+            read: async () => {
+              await held.promise
+              return 'read'
+            },
+            refused: String,
+            busy: () => 'busy',
+          }),
+        ),
+      )
+      yield* Effect.promise(tick)
+      const turnedAway = yield* Effect.exit(
+        readWorkbook({
+          bytes: Effect.succeed(new Uint8Array()),
+          read: async () => 'read',
+          refused: String,
+          busy: () => 'busy',
+        }),
+      )
+      held.resolve()
+      const read = yield* Effect.forEach(inLine, (fiber) => Fiber.join(fiber))
+      return { turnedAway, read }
+    })
+    const { turnedAway, read } = await Effect.runPromise(program)
+    expect(Exit.isFailure(turnedAway) && String(turnedAway)).toContain('busy')
+    expect(read).toEqual(Array.from({ length: WORKBOOKS_IN_LINE_MOST }, () => 'read'))
+  })
+
+  it('turns a waiting request away once it has waited as long as anybody would', async () => {
+    const held = deferred()
+    const program = Effect.gen(function* () {
+      const reading = yield* Effect.forkChild(
+        readWorkbook({
+          bytes: Effect.succeed(new Uint8Array()),
+          read: async () => {
+            await held.promise
+            return 'read'
+          },
+          refused: String,
+          busy: () => 'busy',
+        }),
+      )
+      yield* Effect.promise(tick)
+      const waiting = yield* Effect.forkChild(
+        Effect.exit(
+          readWorkbook({
+            bytes: Effect.succeed(new Uint8Array()),
+            read: async () => 'read',
+            refused: String,
+            busy: () => 'busy',
+          }),
+        ),
+      )
+      yield* TestClock.adjust('21 seconds')
+      const waited = yield* Fiber.join(waiting)
+      held.resolve()
+      yield* Fiber.join(reading)
+      return waited
+    }).pipe(Effect.provide(TestClock.layer()))
+    const waited = await Effect.runPromise(program)
+    expect(Exit.isFailure(waited) && String(waited)).toContain('busy')
+  })
+
   it('says why a workbook was not read in the caller own words', async () => {
     const exit = await Effect.runPromiseExit(
       readWorkbook({
         bytes: Effect.succeed(new Uint8Array()),
         read: () => Promise.reject(new Error('not-xlsx')),
         refused: (error) => `refused: ${(error as Error).message}`,
+        busy: () => 'busy',
       }),
     )
     expect(exit._tag).toBe('Failure')

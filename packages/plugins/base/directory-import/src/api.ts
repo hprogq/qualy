@@ -16,6 +16,7 @@ import {
   UserImportNotFound,
   UserImportPlanChanged,
   UserImportSourceUnavailable,
+  UserImportBusy,
   UserImportSourceUsed,
 } from './server/errors.ts'
 
@@ -229,7 +230,9 @@ export const directoryApiGroup = HttpApiGroup.make('directory')
         error: [
           UserImportInvalid,
           UserImportSourceUnavailable,
+          UserImportBusy,
           UserImportSourceUsed,
+          UserImportBusy,
           AccessDenied,
           BadRequest,
         ],
@@ -244,7 +247,9 @@ export const directoryApiGroup = HttpApiGroup.make('directory')
         UserImportInvalid,
         UserImportMappingInvalid,
         UserImportSourceUnavailable,
+        UserImportBusy,
         UserImportSourceUsed,
+        UserImportBusy,
         AccessDenied,
         BadRequest,
       ],
@@ -268,7 +273,9 @@ export const directoryApiGroup = HttpApiGroup.make('directory')
         UserImportMappingInvalid,
         UserImportPlanChanged,
         UserImportSourceUnavailable,
+        UserImportBusy,
         UserImportSourceUsed,
+        UserImportBusy,
         AccessDenied,
         BadRequest,
       ],

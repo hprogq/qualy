@@ -552,6 +552,13 @@ export class AdministrativeImportNotFound extends Schema.TaggedError<Administrat
  * carries - because all of them mean the same thing to the reader: this
  * file, as it stands, is not importable.
  */
+/** other workbooks are being read and this one was not reached in time; asking again is the answer */
+export class AdministrativeImportBusy extends Schema.TaggedError<AdministrativeImportBusy>()(
+  'ASSESSMENT_ADMINISTRATIVE_IMPORT_BUSY',
+  {},
+  { httpApiStatus: 503, identifier: 'AssessmentAdministrativeImportBusy' },
+) {}
+
 export class AdministrativeImportInvalid extends Schema.TaggedError<AdministrativeImportInvalid>()(
   'ASSESSMENT_ADMINISTRATIVE_IMPORT_INVALID',
   {

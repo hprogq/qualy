@@ -149,6 +149,7 @@ export default {
   'directory-import/error/mapping-invalid': '当前列对应关系无法形成有效的组织层级。',
   'directory-import/error/plan-changed': '预检后相关数据发生了变化，请重新预检。',
   'directory-import/error/source-unavailable': '上传的文件已不可用，请重新上传。',
+  'directory-import/error/busy': '其他文件正在读取中，请稍后重试。',
   'directory-import/error/source-used': '该文件已经导入过。如需再次导入，请重新上传。',
   'directory-import/step/next': '下一步',
   'directory-import/step/back': '上一步',
