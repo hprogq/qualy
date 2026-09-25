@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
+import { usePageRouteParams } from '@qualy/web-runtime'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentApi } from '../api.ts'
+import { useReviewQueueQuery } from './queue.ts'
 
 // How many submissions are waiting for this reader, beside the rail entry
 // that opens them.
@@ -34,13 +34,16 @@ export default function QueueBadge({ navigationId }: { navigationId?: string }) 
 }
 
 function Count() {
-  const query = useApiQuery(assessmentApi)
   const { batchId } = usePageRouteParams('batchId')
   const inbox = useQuery({
-    ...query.assessment.listReviewInbox.queryOptions({ query: { batchId } }),
+    ...useReviewQueueQuery(batchId),
     refetchInterval: 30_000,
   })
   const waiting = (inbox.data?.items ?? []).length
   if (waiting === 0) return null
-  return <span {...stylex.props(styles.count)}>{waiting}</span>
+  return (
+    <span {...stylex.props(styles.count)} data-testid="queue-badge" data-count={waiting}>
+      {waiting}
+    </span>
+  )
 }

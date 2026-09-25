@@ -1,14 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { ClockIcon } from 'lucide-react'
-import { useApiQuery, usePageNavigate } from '@qualy/web-runtime'
+import { usePageNavigate } from '@qualy/web-runtime'
 import { useI18n, useList } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { timeLabel, useHowLongAgo, type AwaitingDto } from './model.ts'
+import { useAwaitingQuery } from './queue.ts'
 
 // What this reviewer's step is waiting on somebody else for.
 //
@@ -318,12 +318,11 @@ const styles = stylex.create({
 })
 
 export function AwaitingSection({ batchId }: { batchId: string }) {
-  const query = useApiQuery(assessmentApi)
   const { format } = useI18n()
   const navigate = usePageNavigate()
   const howLongAgo = useHowLongAgo()
   const asked = useQuery({
-    ...query.assessment.listAwaitingSupplements.queryOptions({ query: { batchId } }),
+    ...useAwaitingQuery(batchId),
     refetchInterval: 30_000,
   })
   const rows = asked.data?.items ?? []

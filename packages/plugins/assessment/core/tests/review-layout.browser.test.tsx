@@ -1,5 +1,6 @@
 import ReviewInstancePage from '../src/client/review/ReviewInstancePage.tsx'
 import ReviewInboxPage from '../src/client/review/ReviewInboxPage.tsx'
+import QueueBadge from '../src/client/review/QueueBadge.tsx'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect, Stream } from 'effect'
@@ -786,5 +787,66 @@ describe('the version picker', () => {
     // and the chord that confirms a decision confirms this one
     await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
     await expect.poll(() => rows().length).toBe(0)
+  })
+})
+
+describe('a queue longer than one page', () => {
+  const LATER_ID = '99999999-9999-4999-8999-999999999998'
+  // the api serves the queue oldest first, a page at a time; the second page
+  // holds a submission the first fifty never mention
+  const paged = (seen: (string | undefined)[]) => (input: { query: { cursor?: string } }) => {
+    seen.push(input.query.cursor)
+    return Effect.succeed(
+      input.query.cursor === undefined
+        ? { items: [inboxRow()], nextCursor: 'second-page', handledToday: 0 }
+        : {
+            items: [
+              inboxRow({ instanceId: LATER_ID, participantName: '赵六', businessNo: '2023019999' }),
+            ],
+            nextCursor: null,
+            handledToday: 0,
+          },
+    )
+  }
+  const stubs = (seen: (string | undefined)[]) => ({
+    app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+    assessment: {
+      getBatch: () => Effect.succeed({ batch: batch() }),
+      listReviewInbox: paged(seen),
+      listAwaitingSupplements: () => Effect.succeed({ items: [], nextCursor: null }),
+    },
+  })
+
+  it('counts, and finds, what only the second page carries', async () => {
+    await page.viewport(1280, 800)
+    const seen: (string | undefined)[] = []
+    await renderScreen({
+      client: fakeClient(stubs(seen)),
+      routes: [
+        { path: '/assessment/batches/:batchId/reviews', element: <ReviewInboxPage /> },
+      ] as never,
+      route: `/assessment/batches/${BATCH_ID}/reviews?q=2023019999`,
+    })
+
+    await expect.element(page.getByTestId('review-stats')).toHaveAttribute('data-pending', '2')
+    // the search runs over the whole queue, so the later filer is found
+    await expect.element(page.getByText('赵六').first()).toBeVisible()
+    expect(seen).toContain('second-page')
+  })
+
+  it('badges the rail with the whole count', async () => {
+    const seen: (string | undefined)[] = []
+    await renderScreen({
+      client: fakeClient(stubs(seen)),
+      routes: [
+        {
+          path: '/assessment/batches/:batchId/reviews',
+          element: <QueueBadge navigationId="assessment/batch-reviews/rail" />,
+        },
+      ] as never,
+      route: `/assessment/batches/${BATCH_ID}/reviews`,
+    })
+
+    await expect.element(page.getByTestId('queue-badge')).toHaveAttribute('data-count', '2')
   })
 })

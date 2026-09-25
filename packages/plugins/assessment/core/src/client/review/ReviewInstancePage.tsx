@@ -28,6 +28,7 @@ import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { entryStatusMessage, type EntryDto } from '../entry/model.ts'
 import { reviewOutcomeMessage } from './events.ts'
 import { readRunScope, runRows, type InboxItemDto } from './model.ts'
+import { useReviewQueueQuery } from './queue.ts'
 import type { BatchDto } from '../phase/model.ts'
 import type { ReviewDto } from './model.ts'
 import {
@@ -684,7 +685,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
   })
 
   const inbox = useQuery({
-    ...query.assessment.listReviewInbox.queryOptions({ query: { batchId: batch.id } }),
+    ...useReviewQueueQuery(batch.id),
     refetchInterval: live ? 60_000 : 30_000,
   })
   const detail = useQuery({

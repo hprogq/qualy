@@ -23,6 +23,7 @@ import { useBatchLive } from '../live.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { AwaitingSection } from './AwaitingSection.tsx'
+import { useAwaitingQuery, useReviewQueueQuery } from './queue.ts'
 import {
   groupByDay,
   groupByItem,
@@ -619,13 +620,13 @@ function Queue({
     })
   })
   const inbox = useQuery({
-    ...query.assessment.listReviewInbox.queryOptions({ query: { batchId } }),
+    ...useReviewQueueQuery(batchId),
     refetchInterval: live ? 60_000 : 30_000,
   })
   // the same read the section below makes; one request either way, and the
   // header can say how much is out with somebody else without owning the list
   const asked = useQuery({
-    ...query.assessment.listAwaitingSupplements.queryOptions({ query: { batchId } }),
+    ...useAwaitingQuery(batchId),
     refetchInterval: live ? 60_000 : 30_000,
   })
   const awaiting = asked.data?.items.length ?? 0
@@ -863,7 +864,12 @@ function Stats({
 }) {
   const { format } = useI18n()
   return (
-    <div {...stylex.props(styles.stats)}>
+    <div
+      {...stylex.props(styles.stats)}
+      data-testid="review-stats"
+      data-pending={pending}
+      data-awaiting={awaiting}
+    >
       <Stat label={format(m.reviewStatPending)} value={pending} />
       {awaiting > 0 && <Stat label={format(m.reviewAwaitingTitle)} value={awaiting} />}
       <Stat label={format(m.reviewStatToday)} value={handledToday} />
