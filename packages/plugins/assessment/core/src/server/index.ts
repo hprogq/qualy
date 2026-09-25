@@ -4873,9 +4873,10 @@ export const make = Effect.fn('Assessment.make')(function* () {
         const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
         if (!batch) return yield* new BatchNotFound()
         // the same door as the roster that listed them: administering it, or
-        // re-determining or recording over this person; a reader without any
-        // of them learns nothing about who is on it, not even whether an id
-        // they hold is one of them
+        // re-determining over this person (recording over them is not a door
+        // until the owner rules on it, §30); a reader without either learns
+        // nothing about who is on it, not even whether an id they hold is
+        // one of them
         yield* requireAccountReach(as, tenantId, batchId, participantId)
         const participant = yield* dieQuery(
           withDb(oneParticipant(tenantId, batchId, participantId)),

@@ -608,9 +608,11 @@ export interface EntryDeps {
   ) => Effect.Effect<void, AccessDenied>
   /**
    * Who may read one participant's claims as staff, and which: administering
-   * the roster or re-determining over this participant reads every claim,
-   * recording over them reads the administrative ones. The same refusal
-   * whether the id names nobody or somebody out of reach.
+   * the roster or re-determining over this participant reads every claim.
+   * Recording over them opens none of this until the owner rules on it
+   * (assessment-design §30); the partial reading it would get, the
+   * administrative claims only, is what `AccountReading` still spells. The
+   * same refusal whether the id names nobody or somebody out of reach.
    */
   readonly requireAccountReach: (
     as: Principal,
