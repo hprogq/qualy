@@ -193,5 +193,25 @@ export default defineConfig(({ mode }) => ({
     // like a backend that is down
     port: 5173,
     allowedHosts: ['qualy-dev.hprogq.com'],
+    // What the server hands out under /@fs/. Vite's default is the whole
+    // workspace root, and this one also holds database dumps, backups and
+    // credentials that are nobody's business on a network the server listens
+    // on. The application needs its own directory, the workspace packages
+    // and the installed dependencies, nothing else. A deny list given here
+    // replaces Vite's own rather than extending it, so that list is repeated
+    // in full before the additions.
+    fs: {
+      allow: [`${repoRoot}apps/web`, `${repoRoot}packages`, `${repoRoot}node_modules`],
+      deny: [
+        '.env',
+        '.env.*',
+        '*.{crt,pem,key,p12,pfx,cer,der}',
+        '.npmrc',
+        '.yarnrc.yml',
+        '**/.git/**',
+        '**/*.env',
+        '**/*.dump',
+      ],
+    },
   },
 }))
