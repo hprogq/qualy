@@ -196,8 +196,10 @@ const screen = ({
   ],
   who = participant(),
   stubs = {},
+  locale = 'zh-CN',
 }: {
   route: string
+  locale?: 'zh-CN' | 'en-US'
   element?: ReactNode
   capabilities?: Record<string, boolean>
   claims?: readonly unknown[]
@@ -284,6 +286,7 @@ const screen = ({
     }),
     routes: [{ path: '/assessment/batches/:batchId/results', element }],
     route,
+    locale,
   })
 
 const base = `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}`
@@ -682,6 +685,67 @@ describe('reading somebody’s entries', () => {
     await expect.poll(() => addressNow()).not.toContain('participant=')
     expect(addressNow()).not.toContain('open=')
   })
+
+  // Thousands on the list, the way to either neighbour still fits at the
+  // end of the tab row - beside the tabs, or under them - on a tablet and
+  // on a phone, in either language.
+  it.each([
+    [390, 844, 'zh-CN'],
+    [390, 844, 'en-US'],
+    [834, 1112, 'zh-CN'],
+    [834, 1112, 'en-US'],
+  ] as const)(
+    'keeps the way to the next of thousands inside a %ix%i screen (%s)',
+    async (wide, high, locale) => {
+      await page.viewport(wide, high)
+      const people = Array.from({ length: 20 }, (_, i) =>
+        i === 10
+          ? participant()
+          : participant({
+              id: `22222222-2222-4222-8222-3333333333${String(i).padStart(2, '0')}`,
+              displayName: `参评人${String(i)}`,
+            }),
+      )
+      await screen({
+        route: `${base}&list-page=62`,
+        locale,
+        stubs: {
+          ...listReads,
+          listParticipantAccounts: () =>
+            Effect.succeed({
+              items: people.map((one) => ({ ...one, filings: NO_FILINGS })),
+              total: 3456,
+              page: 62,
+              pageSize: 20,
+            }),
+        },
+      })
+      const strip = page.getByTestId('roster-neighbors')
+      await expect.element(strip).toHaveAttribute('data-position', '1231')
+      expect(strip.element().getAttribute('data-total')).toBe('3456')
+      const keys = strip.getByRole('button').elements()
+      expect(keys).toHaveLength(2)
+      const tabs = [
+        page.getByTestId('participant-tab-entries').element(),
+        page.getByTestId('participant-tab-score').element(),
+      ]
+      // nothing in the row runs past it, or past the screen
+      const row = tabs[0]!.parentElement!
+      expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth)
+      for (const piece of [...tabs, ...keys, strip.element()]) {
+        const at = piece.getBoundingClientRect()
+        expect(at.width).toBeGreaterThan(0)
+        expect(at.left).toBeGreaterThanOrEqual(0)
+        expect(at.right).toBeLessThanOrEqual(wide)
+      }
+      for (const key of keys) await expect.element(key).toBeVisible()
+      expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(wide)
+      // the open tab stands on the row's rule, whatever else the row holds
+      expect(
+        Math.abs(tabs[0]!.getBoundingClientRect().bottom - row.getBoundingClientRect().bottom),
+      ).toBeLessThanOrEqual(2)
+    },
+  )
 
   // A unit the organization has since taken away is still where they were
   // admitted from: it keeps its place on the path, unnamed.

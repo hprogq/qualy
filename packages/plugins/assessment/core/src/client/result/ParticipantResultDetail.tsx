@@ -12,6 +12,7 @@ import { Button } from '@qualy/ui/button'
 import { Count } from '@qualy/ui/count'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Swap } from '@qualy/ui/reveal'
+import { useIsMobile } from '@qualy/ui/use-mobile'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -31,7 +32,7 @@ import { unitPathOf } from '../roster/unit-path.ts'
 // where they stand in the organization and on this round's roster. That is
 // what `BatchBanner` is for, and it is why there is no second heading here.
 // The ways to the people either side of them in the list are the page's to
-// give, at the end of the tab row.
+// give, at the end of the tab row - on a phone, a row above it.
 //
 // Two halves, because there are two questions: what was filed and decided,
 // read in the same workspace the person files in, and what the total came
@@ -100,6 +101,10 @@ const styles = stylex.create({
   },
   // the page's own keys, at the far end of the row from the tabs
   tabAside: { display: 'flex', marginInlineStart: 'auto', alignItems: 'center' },
+  // ...or on a phone, a row of their own above the tabs: wrapped under them
+  // inside the row, they would stand between the active tab's ink and the
+  // rule it is meant to sit on
+  asideAbove: { display: 'flex', justifyContent: 'flex-end', marginBottom: -8 },
   tab: {
     position: 'relative',
     display: 'inline-flex',
@@ -177,7 +182,7 @@ export function ParticipantResultDetail({
   view: 'score' | 'entries'
   /** which claim is open, if any; the drawer over either half */
   entryId: string
-  /** the page's own keys at the end of the tab row: the way to the people either side */
+  /** the page's own keys beside the tabs: the way to the people either side */
   aside?: ReactNode
   onView: (next: 'score' | 'entries') => void
   onEntry: (entryId: string) => void
@@ -194,6 +199,7 @@ export function ParticipantResultDetail({
   const [excluding, setExcluding] = useState(false)
   const { format, formatError, locale } = useI18n()
   const zone = useBatchZone()
+  const phone = useIsMobile()
   const businessNo = useTerm(authTerms.businessNumber)
   // what waits on this reader's own review is marked in the claims half; the
   // queue behind it moves with the same wake-ups the review pages hear
@@ -441,6 +447,7 @@ export function ParticipantResultDetail({
         />
       </BatchBanner>
 
+      {aside !== undefined && phone && <div {...stylex.props(styles.asideAbove)}>{aside}</div>}
       <div {...stylex.props(styles.tabBar)}>
         {/* the claims first: what was filed and decided is what somebody
             checking an account opens it for, and the total follows from it */}
@@ -463,7 +470,7 @@ export function ParticipantResultDetail({
             {view === key && <span aria-hidden {...stylex.props(styles.tabInk)} />}
           </button>
         ))}
-        {aside !== undefined && <span {...stylex.props(styles.tabAside)}>{aside}</span>}
+        {aside !== undefined && !phone && <span {...stylex.props(styles.tabAside)}>{aside}</span>}
       </div>
 
       {/* the two halves replace each other in place, seen to change */}
