@@ -29,3 +29,8 @@ db/data
 .vscode
 .idea
 STATUS.md
+**/.DS_Store
+# the collector's credentials and the brand exporter's renders: neither is
+# an input of any image
+ops/observability/collector.env
+tools/brand/out
