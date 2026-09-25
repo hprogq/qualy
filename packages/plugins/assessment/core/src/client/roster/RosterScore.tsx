@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { RefreshCwIcon } from 'lucide-react'
@@ -21,9 +21,13 @@ import { assessmentMessages as m } from '../i18n.ts'
 // service was down, the reading ran out of time - a way to ask again stands
 // beside the word.
 //
-// What was asked about one person alone stands until the page reads its
-// totals again: a later page answer is newer than it, and a live change that
-// made the page read again made the lone answer old too.
+// What was asked about one person alone stands until the page says
+// something newer about them. A page answer that defers them says nothing:
+// a person the page could not reach before is usually one it cannot reach
+// now, and dropping their total back to a button on every re-read had the
+// reader pressing it again and again. So after a change that may have moved
+// totals, the page's answer is waited for, and only where it defers this
+// person again is this person asked about alone once more.
 
 export type RosterScoreAnswer = ApiResult<
   typeof assessmentApi,
@@ -74,6 +78,7 @@ export function RosterScore({
   answer,
   answeredAt,
   waiting,
+  movedAt,
 }: {
   batchId: string
   participantId: string
@@ -84,24 +89,49 @@ export function RosterScore({
   answeredAt: number
   /** the page's question is still out */
   waiting: boolean
+  /** when the page last heard of a change that may have moved totals; 0 for never */
+  movedAt: number
 }) {
   const query = useApiQuery(assessmentApi)
   const { format } = useI18n()
   const [asked, setAsked] = useState(false)
+  // when the reader last pressed, so a re-read they did not ask for keeps
+  // the total up rather than blanking it while it runs
+  const [pressedAt, setPressedAt] = useState(0)
   const alone = useQuery({
     ...query.assessment.listParticipantScores.queryOptions({
       params: { batchId },
       query: { participantIds: [participantId] },
     }),
     enabled: asked,
+    // asked again after a change that may move it (below), not whenever
+    // the window takes focus: each asking is one whole account
+    refetchOnWindowFocus: false,
   })
-  // the lone answer while it is the newer one
-  const own =
-    asked && alone.data !== undefined && alone.dataUpdatedAt >= answeredAt
-      ? alone.data.scores[0]
-      : undefined
-  const said = own ?? answer
-  const pending = asked && alone.isFetching ? true : own === undefined && waiting
+  const pageSays = answer !== undefined && answer.state !== 'deferred'
+
+  // After a change that may have moved totals, and once the page has
+  // answered since: where it deferred this person again, and nobody has
+  // asked about them alone since, ask. Once per change, whatever the asking
+  // comes to - a failing reading is not asked again and again.
+  const tried = useRef(0)
+  const again = alone.refetch
+  const fetching = alone.isFetching
+  const aloneAt = alone.dataUpdatedAt
+  const held = alone.data !== undefined
+  useEffect(() => {
+    if (!asked || !held || fetching) return
+    if (movedAt <= Math.max(aloneAt, tried.current) || answeredAt < movedAt) return
+    tried.current = movedAt
+    if (!pageSays) void again()
+  }, [asked, held, fetching, aloneAt, movedAt, answeredAt, pageSays, again])
+
+  const own = asked ? alone.data?.scores[0] : undefined
+  const said = own !== undefined && !(pageSays && answeredAt > alone.dataUpdatedAt) ? own : answer
+  const pending =
+    asked && alone.isFetching && (alone.data === undefined || pressedAt >= alone.dataUpdatedAt)
+      ? true
+      : own === undefined && waiting
   const state = pending ? 'pending' : (said?.state ?? 'deferred')
 
   const hooks = {
@@ -113,6 +143,7 @@ export function RosterScore({
   const ask = (event: { stopPropagation: () => void }) => {
     // pressing a total is not opening the person
     event.stopPropagation()
+    setPressedAt(Date.now())
     if (asked) void alone.refetch()
     else setAsked(true)
   }

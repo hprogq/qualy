@@ -327,10 +327,13 @@ export function ParticipantResultList({
   // one per event, and never waits past the burst's longest wait: each
   // re-read of the totals is a page of accounts. Only this page's own
   // question is asked again; a person somebody asked about alone is not
-  // re-asked with it, and their answer gives way to the page's newer one.
-  // Each wake-up is gathered as whether it may move a total.
+  // re-asked with it: their answer gives way to the page's newer one where
+  // that says something about them, and they are asked about alone again
+  // only where it defers them once more (RosterScore). Each wake-up is
+  // gathered as whether it may move a total.
   const latestScores = useRef(pageScores.queryKey)
   latestScores.current = pageScores.queryKey
+  const [movedAt, setMovedAt] = useState(0)
   const live = useMemo(
     () =>
       settler<boolean>({
@@ -341,6 +344,7 @@ export function ParticipantResultList({
             queryKey: query.assessment.listParticipantAccounts.key(),
           })
           if (moves.some(Boolean)) {
+            setMovedAt(Date.now())
             void queryClient.invalidateQueries({ queryKey: latestScores.current, exact: true })
           }
         },
@@ -782,6 +786,7 @@ export function ParticipantResultList({
                             answer={scored.get(row.id)}
                             answeredAt={scores.dataUpdatedAt}
                             waiting={scores.isPending && scores.fetchStatus !== 'idle'}
+                            movedAt={movedAt}
                           />
                         </Cell>
                         {/* the act on one person, where the person is */}

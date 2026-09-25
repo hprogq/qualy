@@ -432,7 +432,11 @@ describe('the roster on the results page', () => {
       .toHaveAttribute('data-score', '80.00')
   })
 
-  it('reads the page again on a live change, without asking again about one person asked alone', async () => {
+  // A total asked for alone stands where the page's own answer defers that
+  // person: the page knows nothing newer about them. After a change that may
+  // have moved totals, that one person is asked about alone again, rather
+  // than dropped back to a button the reader has to press once more.
+  const liveChange = () => {
     let release = () => {}
     const gate = new Promise<void>((resolve) => {
       release = resolve
@@ -446,12 +450,80 @@ describe('the roster on the results page', () => {
           Stream.never,
         ),
       )
+    return { watchBatch, release: () => release() }
+  }
+  /** every state the first row's total has been drawn in, as it happens */
+  const statesOf = (score: Element) => {
+    const cell = score.parentElement!
+    const seen: string[] = []
+    const watch = new MutationObserver(() => {
+      const now = cell
+        .querySelector('[data-testid="participant-score"]')
+        ?.getAttribute('data-score-state')
+      if (now !== null && now !== undefined && seen.at(-1) !== now) seen.push(now)
+    })
+    watch.observe(cell, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['data-score-state'],
+    })
+    return { seen, stop: () => watch.disconnect() }
+  }
+
+  it('keeps a total asked for alone where the page defers the person, and asks again after a change', async () => {
+    const change = liveChange()
     const pages = vi.fn((request: Request) =>
       Effect.succeed({
         scores: idsOf(request).map((participantId, index) =>
           index === 0
             ? { participantId, state: 'deferred' as const, total: null, reason: null }
             : { participantId, state: 'scored' as const, total: '80.00', reason: null },
+        ),
+      }),
+    )
+    const totals = ['66.00', '67.50']
+    const single = vi.fn((request: Request) =>
+      Effect.succeed({
+        scores: idsOf(request).map((participantId) => ({
+          participantId,
+          state: 'scored' as const,
+          total: totals[Math.min(single.mock.calls.length - 1, totals.length - 1)]!,
+          reason: null,
+        })),
+      }),
+    )
+    await open({
+      watchBatch: change.watchBatch,
+      listParticipantScores: (request: Request) =>
+        idsOf(request).length === 1 ? single(request) : pages(request),
+    })
+    const first = page.getByTestId('participant-score').first()
+    await page.getByRole('button', { name: '计算参评人1的当前总分' }).click()
+    await expect.element(first).toHaveAttribute('data-score', '66.00')
+    const paged = pages.mock.calls.length
+    const states = statesOf(first.element())
+
+    change.release()
+    await expect.poll(() => pages.mock.calls.length, { timeout: 5_000 }).toBeGreaterThan(paged)
+    // the page deferred this person again, so they are asked about alone
+    // once more, and their total stays up the whole time
+    await expect.element(first).toHaveAttribute('data-score', '67.50')
+    expect(single).toHaveBeenCalledTimes(2)
+    states.stop()
+    expect(states.seen).not.toContain('deferred')
+    expect(states.seen).not.toContain('pending')
+  })
+
+  it('lets the page’s newer total stand over one asked for alone', async () => {
+    const change = liveChange()
+    let reached = false
+    const pages = vi.fn((request: Request) =>
+      Effect.succeed({
+        scores: idsOf(request).map((participantId, index) =>
+          index === 0 && !reached
+            ? { participantId, state: 'deferred' as const, total: null, reason: null }
+            : { participantId, state: 'scored' as const, total: '70.00', reason: null },
         ),
       }),
     )
@@ -466,20 +538,19 @@ describe('the roster on the results page', () => {
       }),
     )
     await open({
-      watchBatch,
+      watchBatch: change.watchBatch,
       listParticipantScores: (request: Request) =>
         idsOf(request).length === 1 ? single(request) : pages(request),
     })
     const first = page.getByTestId('participant-score').first()
     await page.getByRole('button', { name: '计算参评人1的当前总分' }).click()
     await expect.element(first).toHaveAttribute('data-score', '66.00')
-    const paged = pages.mock.calls.length
 
-    release()
-    await expect.poll(() => pages.mock.calls.length, { timeout: 5_000 }).toBeGreaterThan(paged)
-    // the page's newer answer stands; the person asked about alone is not
-    // asked about again with it
-    await expect.element(first).toHaveAttribute('data-score-state', 'deferred')
+    reached = true
+    change.release()
+    // the page reached this person this time: its answer is the newer one,
+    // and nobody is asked about alone
+    await expect.element(first).toHaveAttribute('data-score', '70.00')
     expect(single).toHaveBeenCalledTimes(1)
   })
 
