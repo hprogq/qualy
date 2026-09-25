@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { safeReturnPath } from '@qualy/ui-contract/return-path'
 import { returnPathFrom, startHref } from '../src/client/sign-in/return-path.ts'
 
 // The way back to where somebody was before signing in: kept when it is an
@@ -25,6 +26,29 @@ describe('the way back after signing in', () => {
       expect(asked(next), next).toBeUndefined()
     }
     expect(returnPathFrom(new URLSearchParams(), '/login')).toBeUndefined()
+  })
+
+  it('is judged as a browser resolves it, dot segments and all', () => {
+    for (const next of [
+      '/.//elsewhere.example/',
+      '/%2e//elsewhere.example/',
+      '/a/..//elsewhere.example/x?y=1',
+      '/./\\elsewhere.example/',
+      '/..//elsewhere.example',
+    ]) {
+      expect(safeReturnPath(next), next).toBeUndefined()
+    }
+    // what it keeps is already resolved, so keeping it again changes nothing
+    for (const next of [
+      '/assessment/batches?open=1#row-3',
+      '/a/../reports',
+      '/./x//y',
+      '/%2e/reports',
+    ]) {
+      const kept = safeReturnPath(next)
+      expect(kept, next).toBeDefined()
+      expect(safeReturnPath(kept), next).toBe(kept)
+    }
   })
 
   it('travels with a way in that leaves, as the flow’s own returnTo', () => {

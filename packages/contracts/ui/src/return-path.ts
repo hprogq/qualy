@@ -13,7 +13,8 @@ export const RETURN_PATH_MAX_LENGTH = 2048
  * a backslash a browser reads as a slash, or anything else that is not a
  * path here is dropped rather than followed: the navigation happens under
  * this application's own name. Resolved against a sentinel origin, so what
- * is judged is what a browser would actually go to.
+ * is judged is what a browser would actually go to, and what is answered is
+ * already the resolved path: a second pass keeps it as it is.
  */
 export const safeReturnPath = (path: string | null | undefined): string | undefined => {
   if (path == null || !path.startsWith('/') || path.startsWith('//')) return undefined
@@ -25,6 +26,9 @@ export const safeReturnPath = (path: string | null | undefined): string | undefi
     return undefined
   }
   if (target.origin !== sentinel) return undefined
+  // resolving folds dot segments and backslashes, so what it answers is
+  // judged again: `/.//elsewhere` resolves to a path that names another host
+  if (target.pathname.startsWith('//')) return undefined
   const inside = `${target.pathname}${target.search}${target.hash}`
   return inside.length > RETURN_PATH_MAX_LENGTH ? undefined : inside
 }

@@ -237,6 +237,8 @@ export const makeFlows = Effect.fn('Auth.makeFlows')(function* () {
                     row.payload_sealed,
                   )
                   .pipe(Effect.orDie)
+          // judged again on the way out, for a row stored under an older rule
+          const returnPath = safeReturnPath(row.return_path)
           return {
             ok: true as const,
             flow: {
@@ -244,7 +246,7 @@ export const makeFlows = Effect.fn('Auth.makeFlows')(function* () {
               purpose,
               ...(row.user_id === null ? {} : { userId: row.user_id }),
               ...(row.session_id === null ? {} : { sessionId: row.session_id }),
-              ...(row.return_path === null ? {} : { returnPath: row.return_path }),
+              ...(returnPath === undefined ? {} : { returnPath }),
               ...(payload === undefined ? {} : { payload }),
             } satisfies ConsumedFlow,
           }

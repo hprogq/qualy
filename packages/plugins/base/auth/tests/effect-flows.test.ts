@@ -437,6 +437,25 @@ describe.runIf(postgresAvailable)('one redirect through somebody else’s server
               provider: door,
               state: Redacted.value(again.state),
             })
+            // a path that only names another host once its dot segments fold
+            const folded = yield* setOut({
+              provider: door,
+              purpose: 'login',
+              returnPath: '/.//elsewhere.example/',
+            })
+            const foldedTaken = yield* comeBack({
+              provider: door,
+              state: Redacted.value(folded.state),
+            })
+            // and one stored before that was judged, judged on the way out
+            const older = yield* setOut({ provider: door, purpose: 'login' })
+            yield* runSql(
+              sql`update auth_flows set return_path = '/.//elsewhere.example/' where id = ${older.flowId}`,
+            )
+            const storedTaken = yield* comeBack({
+              provider: door,
+              state: Redacted.value(older.state),
+            })
             const replayed = yield* Effect.result(
               comeBack({ provider: door, state: Redacted.value(again.state) }),
             )
@@ -457,6 +476,8 @@ describe.runIf(postgresAvailable)('one redirect through somebody else’s server
               strayed,
               afterStray,
               taken,
+              foldedTaken,
+              storedTaken,
               replayed,
               unknown,
               expired,
@@ -477,6 +498,8 @@ describe.runIf(postgresAvailable)('one redirect through somebody else’s server
       expect(Redacted.value(answer.taken.payload!)).toBe('{"verifier":"w"}')
       // a return path that leaves the application is dropped at the start
       expect(answer.taken.returnPath).toBeUndefined()
+      expect(answer.foldedTaken.returnPath).toBeUndefined()
+      expect(answer.storedTaken.returnPath).toBeUndefined()
       expect(reasonOf(answer.replayed)).toBe('consumed')
       expect(reasonOf(answer.unknown)).toBe('unknown')
       expect(reasonOf(answer.expired)).toBe('expired')

@@ -364,6 +364,13 @@ describe.runIf(postgresAvailable)('signing in through a CAS server', () => {
     expect(failureOf(late).code).toBe('AUTH_FLOW_REJECTED')
   })
 
+  it('sends nobody to another site, however the way back was spelled', async () => {
+    const { service } = await depart('campus', '/.//elsewhere.example/login')
+    const back = await comeBack(service, cas.issue(service, '20990001'))
+    expect(back.status).toBe(303)
+    expect(back.headers.get('location')).toBe('/')
+  })
+
   it('is a flow that comes back once', async () => {
     const { service } = await depart('campus')
     const ticket = cas.issue(service, '20990001')
