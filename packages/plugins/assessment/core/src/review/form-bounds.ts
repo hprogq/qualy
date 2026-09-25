@@ -4,6 +4,7 @@ import {
   DATE_MINIMUM,
   DECIMAL_MAXIMUM,
   DECIMAL_MINIMUM,
+  IN_MATERIAL_RANGE,
   kindOf,
   MAX_SCALE,
   parseDecimal,
@@ -74,10 +75,13 @@ export const admittedToday = (frozen: AtomicSchema, today: AtomicSchema): Atomic
       const minimum = pick(was[DATE_MINIMUM], now[DATE_MINIMUM], true)
       const maximum = pick(was[DATE_MAXIMUM], now[DATE_MAXIMUM], false)
       if (minimum !== undefined && maximum !== undefined && minimum > maximum) return frozen
+      // the round's window binds the date when either version says it does
+      const inRange = was[IN_MATERIAL_RANGE] === true || now[IN_MATERIAL_RANGE] === true
       return {
         ...was,
         ...(minimum === undefined ? {} : { [DATE_MINIMUM]: minimum }),
         ...(maximum === undefined ? {} : { [DATE_MAXIMUM]: maximum }),
+        ...(inRange ? { [IN_MATERIAL_RANGE]: true } : {}),
       }
     }
     case 'text': {
@@ -90,10 +94,15 @@ export const admittedToday = (frozen: AtomicSchema, today: AtomicSchema): Atomic
       if (minLength !== undefined && maxLength !== undefined && minLength > maxLength) {
         return frozen
       }
+      // one pattern per field: where today's version asks for one, the form
+      // asks for today's, since that is the one the decision holds the text
+      // to; the frozen one stands only where today's asks for none
+      const pattern = now.pattern ?? was.pattern
       return {
         ...was,
         ...(minLength === undefined ? {} : { minLength }),
         ...(maxLength === undefined ? {} : { maxLength }),
+        ...(pattern === undefined ? {} : { pattern }),
       }
     }
     case 'boolean':

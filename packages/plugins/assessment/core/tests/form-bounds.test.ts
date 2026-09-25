@@ -5,6 +5,7 @@ import {
   DECIMAL_FORMAT,
   DECIMAL_MAXIMUM,
   DECIMAL_MINIMUM,
+  IN_MATERIAL_RANGE,
   MAX_SCALE,
   type AtomicSchema,
 } from '@qualy/value-schema'
@@ -55,6 +56,33 @@ describe('what the approve form offers when the question narrowed mid-round', ()
     expect(
       admittedToday({ type: 'string', maxLength: 200 }, { type: 'string', maxLength: 50 }),
     ).toMatchObject({ maxLength: 50 })
+  })
+
+  // what the day's version added on top of a range is part of what the
+  // decision holds the value to, so the form asks for it too
+  it('asks for the pattern and the round window the day added', () => {
+    expect(
+      admittedToday({ type: 'string' }, { type: 'string', pattern: '^[A-Z]{2}\\d{4}$' }),
+    ).toMatchObject({ pattern: '^[A-Z]{2}\\d{4}$' })
+    expect(
+      admittedToday({ type: 'string', pattern: '^\\d+$' }, { type: 'string', pattern: '^\\d{6}$' }),
+    ).toMatchObject({ pattern: '^\\d{6}$' })
+    // a pattern the day dropped still binds the round's own contract
+    expect(admittedToday({ type: 'string', pattern: '^\\d+$' }, { type: 'string' })).toMatchObject({
+      pattern: '^\\d+$',
+    })
+    expect(
+      admittedToday(
+        { type: 'string', format: 'date' },
+        { type: 'string', format: 'date', [IN_MATERIAL_RANGE]: true },
+      ),
+    ).toMatchObject({ [IN_MATERIAL_RANGE]: true })
+    expect(
+      admittedToday(
+        { type: 'string', format: 'date', [IN_MATERIAL_RANGE]: true },
+        { type: 'string', format: 'date' },
+      ),
+    ).toMatchObject({ [IN_MATERIAL_RANGE]: true })
   })
 
   it('keeps only the options both admit', () => {
