@@ -18,7 +18,8 @@ import { db } from './db.ts'
 // - a hard limit refuses, with a wait. It is for resources - how much hashing
 //   one network exit may ask for, how many mails one address may be sent -
 //   and is set wide, because behind one campus address stand hundreds of
-//   people.
+//   people. A network exit is counted by its network key (`networkKeyOf`):
+//   an IPv4 address, an IPv6 /64.
 // - a risk rule only ever answers whether the next attempt should first be
 //   made to pay for itself with a challenge. It can never refuse. An
 //   identifier is weighed this way and only this way: a limit anybody can
@@ -125,6 +126,25 @@ export const RISK_RULES = {
     scope: 'sign-in:identifier-risk',
     challengeAfter: 5,
     windowSeconds: 900,
+  },
+  /**
+   * Wrong credentials at one entrance, from anywhere: an unknown address, a
+   * person without a password there, a password that did not match.
+   *
+   * What the rules above cannot see: many networks at once, each below its
+   * own count, every attempt at an address nobody has. Past this many in a
+   * window, every attempt at the entrance is challenged until the window
+   * ends; the next window starts from nothing, whether or not the failures
+   * went on, so an attack keeps the challenge up for one window at a time
+   * and never for longer. Counted when a failure is recorded and asked when
+   * an attempt is admitted, so a burst can pass the line by the attempts
+   * already under way - which the rules above still weigh one by one. A
+   * starting point, settled like the fuses against what telemetry shows.
+   */
+  signInFailuresByEntranceRisk: {
+    scope: 'sign-in:entrance-risk',
+    challengeAfter: 300,
+    windowSeconds: 600,
   },
   /** forgotten-password requests from one address, past which each is challenged */
   resetByAddressRisk: { scope: 'reset:address-risk', challengeAfter: 5, windowSeconds: 900 },

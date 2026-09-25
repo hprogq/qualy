@@ -10,6 +10,7 @@ import {
 } from '@qualy/auth-contract/login'
 import { captchaLayerWith } from '@qualy/plugin-captcha/testkit'
 import type { CaptchaProvider } from '@qualy/plugin-captcha/server'
+import { RISK_RULES } from '../src/server/limiter.ts'
 import { SEEDED_EMAILS } from './support/sign-in-seed.ts'
 import {
   SIGN_IN_PASSWORD as password,
@@ -168,6 +169,25 @@ describe.runIf(postgresAvailable)('signing in where a challenge can be asked for
 })
 
 describe.runIf(postgresAvailable)('admitting an attempt', () => {
+  /** as though the request came from this address, read as the host would have read it */
+  const from =
+    (clientIp: string) =>
+    <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      effect.pipe(
+        Effect.provideService(RequestContext, {
+          // an id as the request pipeline mints one: a failure's record keeps it
+          requestId: '00000000-0000-7000-8000-000000000000',
+          clientIp,
+          userAgent: undefined,
+          traceId: undefined,
+          sessionId: undefined,
+          bindSession: () => Effect.void,
+          publicHost: undefined,
+          endpoint: undefined,
+          bindEndpoint: () => Effect.void,
+        }),
+      )
+
   /**
    * The door's own service, asked directly: from one address when one is
    * given - standing in for the request the host would have read it from -
@@ -185,22 +205,7 @@ describe.runIf(postgresAvailable)('admitting an attempt', () => {
       })
       return yield* body(sessions, provider!)
     })
-    const addressed =
-      clientIp === undefined
-        ? program
-        : program.pipe(
-            Effect.provideService(RequestContext, {
-              requestId: 'test',
-              clientIp,
-              userAgent: undefined,
-              traceId: undefined,
-              sessionId: undefined,
-              bindSession: () => Effect.void,
-              publicHost: undefined,
-              endpoint: undefined,
-              bindEndpoint: () => Effect.void,
-            }),
-          )
+    const addressed = clientIp === undefined ? program : program.pipe(from(clientIp))
     return Effect.runPromise(addressed.pipe(Effect.provide(server.signInService)))
   }
 
@@ -235,5 +240,117 @@ describe.runIf(postgresAvailable)('admitting an attempt', () => {
     expect(answer).toMatchObject({ kind: 'challenge', prompt: { provider: 'fake' } })
     expect(await buckets('sign-in:unknown-address')).toHaveLength(1)
     expect(await buckets('sign-in:address-hard')).toEqual([])
+  })
+
+  it('counts an IPv6 address as its /64, and an IPv4 address as itself', async () => {
+    const { challengeAfter } = RISK_RULES.signInByAddressRisk
+    const answers = await admission(undefined, (sessions, provider) =>
+      Effect.gen(function* () {
+        const admit = (clientIp: string, identifier: string) =>
+          sessions.admitAttempt({ provider, identifier }).pipe(
+            from(clientIp),
+            Effect.map((answer) => answer.kind),
+          )
+        // one machine walking its /64, a fresh address and a fresh identifier each time
+        const walked: string[] = []
+        for (let index = 1; index <= challengeAfter + 1; index += 1) {
+          walked.push(yield* admit(`2001:db8:1:2::${index.toString(16)}`, `walk-${index}@x.edu`))
+        }
+        // the /64 next door is somebody else
+        const neighbour = yield* admit('2001:db8:1:3::1', 'neighbour@x.edu')
+        const exact: string[] = []
+        for (let index = 1; index <= challengeAfter + 1; index += 1) {
+          exact.push(yield* admit('198.51.100.7', `v4-${index}@x.edu`))
+        }
+        const nextDoor = yield* admit('198.51.100.8', 'v4-next@x.edu')
+        return { walked, neighbour, exact, nextDoor }
+      }),
+    )
+    const admitted = Array.from({ length: challengeAfter }, () => 'admitted')
+    expect(answers).toEqual({
+      walked: [...admitted, 'challenge'],
+      neighbour: 'admitted',
+      exact: [...admitted, 'challenge'],
+      nextDoor: 'admitted',
+    })
+  })
+
+  it('challenges everybody at an entrance for the rest of a window that saw too many wrong credentials, and only for that window', async () => {
+    const { scope, challengeAfter, windowSeconds } = RISK_RULES.signInFailuresByEntranceRisk
+    const window = () =>
+      Effect.runPromise(
+        runSql<{ started: string; attempts: number }>(
+          sql`select window_started_at::text as started, attempts
+                from auth_rate_limit_buckets where scope = ${scope}`,
+        ).pipe(
+          Effect.map((result) => result.rows),
+          Effect.provide(probeInfra()),
+        ),
+      )
+    /** wrong credentials, each from an address of its own, none near that address's count */
+    const failing = (count: number) => (sessions: LoginSessionsShape, provider: ResolvedProvider) =>
+      Effect.forEach(
+        Array.from({ length: count }, (_, index) => index),
+        (index) =>
+          sessions
+            .failAttempt(provider, {
+              reason: index % 2 === 0 ? 'user-not-found' : 'invalid-credentials',
+            })
+            .pipe(from(`192.0.2.${(index % 250) + 1}`)),
+        { concurrency: 8, discard: true },
+      )
+    /** an attempt nothing else would challenge: a new network, a new identifier */
+    const fresh = (sessions: LoginSessionsShape, provider: ResolvedProvider, at: string) =>
+      sessions.admitAttempt({ provider, identifier: `${at}@x.edu` }).pipe(
+        from(`2001:db8:9:${at.length}::1`),
+        Effect.map((answer) => answer.kind),
+      )
+
+    // an account's own refusal is not a wrong credential
+    await admission(undefined, (sessions, provider) =>
+      sessions.failAttempt(provider, { reason: 'user-disabled' }),
+    )
+    expect(await window()).toEqual([])
+
+    const raised = await admission(undefined, (sessions, provider) =>
+      Effect.gen(function* () {
+        yield* failing(challengeAfter - 1)(sessions, provider)
+        const below = yield* fresh(sessions, provider, 'below')
+        yield* failing(1)(sessions, provider)
+        return { below, at: yield* fresh(sessions, provider, 'at') }
+      }),
+    )
+    expect(raised).toEqual({ below: 'admitted', at: 'challenge' })
+    const [opened] = await window()
+
+    // the failures go on; the window they fall in does not move
+    const still = await admission(undefined, (sessions, provider) =>
+      Effect.gen(function* () {
+        yield* failing(40)(sessions, provider)
+        return yield* fresh(sessions, provider, 'still')
+      }),
+    )
+    expect(still).toBe('challenge')
+    const [kept] = await window()
+    expect(kept!.started).toBe(opened!.started)
+    expect(kept!.attempts).toBe(challengeAfter + 40)
+
+    // the window's own length after it began it is over, and the next one
+    // starts from nothing
+    await Effect.runPromise(
+      runSql(sql`
+        update auth_rate_limit_buckets
+           set window_started_at = window_started_at - make_interval(secs => ${windowSeconds})
+         where scope = ${scope}`).pipe(Effect.provide(probeInfra())),
+    )
+    const after = await admission(undefined, (sessions, provider) =>
+      Effect.gen(function* () {
+        const over = yield* fresh(sessions, provider, 'over')
+        yield* failing(1)(sessions, provider)
+        return { over, next: yield* fresh(sessions, provider, 'next') }
+      }),
+    )
+    expect(after).toEqual({ over: 'admitted', next: 'admitted' })
+    expect((await window()).map((row) => row.attempts)).toEqual([1])
   })
 })

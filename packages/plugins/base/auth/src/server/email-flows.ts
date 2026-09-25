@@ -34,6 +34,7 @@ import {
 import { captchaPurpose, CaptchaRequired, type CaptchaProof } from '@qualy/plugin-captcha/contract'
 import { Captcha } from '@qualy/plugin-captcha/server'
 import { HARD_LIMITS, makeLimiter, RISK_RULES, type HardLimitRule } from './limiter.ts'
+import { networkKeyOf } from './network.ts'
 import { mailFor, noticeFor, type MailLocale, type MailPurpose } from './mail-copy.ts'
 import { makeReauthentication, requireReauthenticated } from './reauthentication.ts'
 import { PublicOriginResolver } from './public-origin.ts'
@@ -629,7 +630,8 @@ export const emailFlowsLayer: Layer.Layer<
         const tenantId = tenant.value.id
         const context = Option.getOrUndefined(yield* currentRequestContext)
         const normalized = normalizeEmail(email) ?? email.trim().toLowerCase()
-        const place = context?.clientIp ?? 'unknown'
+        // an exit as the sign-in limits count one: an IPv6 address by its /64
+        const place = context?.clientIp === undefined ? 'unknown' : networkKeyOf(context.clientIp)
         // Everything up to the lookup is the same for an address nobody has,
         // one that is not verified and one without a password: the answers
         // must not tell them apart.

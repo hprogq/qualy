@@ -35,7 +35,7 @@ import { AuthConfig } from '../src/server/auth-config.ts'
 import { EmailFlows, emailFlowsLayer } from '../src/server/email-flows.ts'
 import { Iam, serviceLayer as authLayer } from '../src/server/index.ts'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
-import { HARD_LIMITS } from '../src/server/limiter.ts'
+import { HARD_LIMITS, RISK_RULES } from '../src/server/limiter.ts'
 import { lockTenant } from '../src/server/db.ts'
 import { authClosure } from './support/closure.ts'
 import { reauthenticated } from './support/reauthenticated.ts'
@@ -823,6 +823,40 @@ describe.runIf(postgresAvailable)('asking for a reset where a challenge can be a
         expect(mail.outbox.filter((message) => message.to === 'ada@school.edu')).toHaveLength(3)
       })
       expect(mail.outbox.filter((message) => message.to === 'nobody@school.edu')).toHaveLength(0)
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('counts requests from one IPv6 /64 as from one place, whichever of its addresses they use', async () => {
+    const db = await createTestContext('email-reset-network')
+    const mail = memoryMailBackend()
+    try {
+      await seed(db.url)
+      const { challengeAfter } = RISK_RULES.resetByAddressRisk
+      /** a request for an address nobody asked about yet, from this one */
+      const ask = (clientIp: string, index: number) =>
+        fromAddress(clientIp)(
+          Effect.flatMap(EmailFlows, (flows) =>
+            Effect.result(flows.requestReset({ email: `walk-${index}@x.edu`, locale: 'en' })),
+          ),
+        ).pipe(Effect.map((result) => tagOf(result) ?? 'ok'))
+      const answer = ok(
+        await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const walked: string[] = []
+            for (let index = 1; index <= challengeAfter + 1; index += 1) {
+              walked.push(yield* ask(`2001:db8:5:6::${index.toString(16)}`, index))
+            }
+            const neighbour = yield* ask('2001:db8:5:7::1', 99)
+            return { walked, neighbour }
+          }).pipe(Effect.provide(stack(db.url, mail.backend, captchaLayerWith(fake)))),
+        ),
+      )
+      expect(answer).toEqual({
+        walked: [...Array.from({ length: challengeAfter }, () => 'ok'), 'CAPTCHA_REQUIRED'],
+        neighbour: 'ok',
+      })
     } finally {
       await db.dispose()
     }

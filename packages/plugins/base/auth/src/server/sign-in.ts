@@ -33,6 +33,7 @@ import { FLOW_TTL_MINUTES, makeFlows } from './flows.ts'
 import { captchaPurpose } from '@qualy/plugin-captcha/contract'
 import { Captcha } from '@qualy/plugin-captcha/server'
 import { HARD_LIMITS, makeLimiter, RISK_RULES, type HardLimitRule } from './limiter.ts'
+import { networkKeyOf } from './network.ts'
 import { actorOf } from './audit-actor.ts'
 import { BindingWritten } from '../actions.ts'
 import { Audit } from '@qualy/audit-contract/effect'
@@ -471,6 +472,13 @@ const insertSession = (input: {
 /** what a sign-in challenge protects; a proof for it is worth nothing anywhere else */
 export const LOGIN_CAPTCHA = captchaPurpose('auth/login')
 
+/** the failures that are a credential being wrong, rather than an account or a server saying no */
+const CREDENTIAL_FAILURES: ReadonlySet<SignInFailureReason> = new Set([
+  'invalid-credentials',
+  'user-not-found',
+  'binding-not-found',
+])
+
 /**
  * Password attempts whose address could not be read. A deployment where this
  * is ever more than a trickle has a proxy or forwarding chain to look at.
@@ -691,7 +699,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
     const answer = yield* limiter.consumeHard(
       provider.tenantId,
       rule,
-      `${provider.providerId}\0${context?.clientIp ?? 'unknown'}`,
+      `${provider.providerId}\0${context?.clientIp === undefined ? 'unknown' : networkKeyOf(context.clientIp)}`,
     )
     if (!answer.allowed) {
       return yield* new TooManyAttempts({ retryAfterSeconds: answer.retryAfterSeconds })
@@ -903,7 +911,9 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
           }
           challengeRequired = true
         } else {
-          const here = `${provider}\0${context.clientIp}`
+          // one exit's share: an IPv6 address is counted as its /64, which a
+          // single machine can otherwise walk through a fresh address at a time
+          const here = `${provider}\0${networkKeyOf(context.clientIp)}`
           const fuse = yield* limiter.consumeHard(tenantId, HARD_LIMITS.signInByAddressHard, here)
           if (!fuse.allowed) {
             return yield* new TooManyAttempts({ retryAfterSeconds: fuse.retryAfterSeconds })
@@ -920,6 +930,14 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
             `${provider}\0${input.identifier}`,
           )
           challengeRequired = challengeRequired || identifier.challengeRequired
+        }
+        // the entrance as a whole, when wrong credentials pour in from
+        // everywhere at once; only asked here - failures are what count it
+        if (
+          !challengeRequired &&
+          (yield* limiter.riskRequired(tenantId, RISK_RULES.signInFailuresByEntranceRisk, provider))
+        ) {
+          challengeRequired = true
         }
         // a proof carried while nothing is raised is not looked at: nothing
         // asked for it, and asking a provider costs
@@ -1098,6 +1116,15 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         input: { reason: SignInFailureReason; userId?: string; bindingId?: string },
       ) {
         yield* record(provider, { outcome: 'failure', ...input })
+        // a wrong credential, whoever it was typed for, weighs on the
+        // entrance; a refusal the account or the other side gave does not
+        if (CREDENTIAL_FAILURES.has(input.reason)) {
+          yield* limiter.observeRisk(
+            provider.tenantId,
+            RISK_RULES.signInFailuresByEntranceRisk,
+            provider.providerId,
+          )
+        }
       }),
     ),
 
