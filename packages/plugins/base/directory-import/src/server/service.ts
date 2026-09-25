@@ -794,7 +794,15 @@ export const make = Effect.gen(function* () {
 
   // --- history ---
 
-  /** one import the reader may see: its anchor is inside their reach */
+  /**
+   * One import the reader may see: its anchor is inside their reach.
+   *
+   * The anchor is not held by a foreign key, because an import is a record
+   * that outlives its units, and cleaning another import's units can take
+   * this one's anchor away. A unit that is gone is inside nobody's anchored
+   * reach, so the import stays readable to a tenant-wide reader, as the list
+   * reads it, instead of vanishing for everybody.
+   */
   const reachable = Effect.fn('DirectoryImport.reachable')(function* (
     tenantId: string,
     importId: string,
@@ -802,6 +810,8 @@ export const make = Effect.gen(function* () {
   ) {
     const row = yield* dieQuery(withDb(importOf(tenantId, importId)))
     if (row === null) return yield* new UserImportNotFound()
+    const scope = yield* rbac.listAuthorizedScope(as, MANAGE)
+    if (scope.tenantWide) return row
     if (!(yield* rbac.canAt(as, MANAGE, row.anchorNodeId))) return yield* new UserImportNotFound()
     return row
   })
@@ -1155,7 +1165,9 @@ const importsPage = (input: {
 }) =>
   db.query((k) => {
     const query = importColumns(k)
-      .innerJoin('OrgNode as n', (join) =>
+      // outer: an anchor another import's cleaning took away leaves the
+      // import to tenant-wide readers rather than to nobody
+      .leftJoin('OrgNode as n', (join) =>
         join.onRef('n.tenantId', '=', 'i.tenantId').onRef('n.id', '=', 'i.anchorNodeId'),
       )
       .where('i.tenantId', '=', input.tenantId)
@@ -1178,7 +1190,9 @@ const importsCount = (input: { tenantId: string; scope: Parameters<typeof scopeC
   db.query((k) =>
     k
       .selectFrom('DirectoryImport as i')
-      .innerJoin('OrgNode as n', (join) =>
+      // outer: an anchor another import's cleaning took away leaves the
+      // import to tenant-wide readers rather than to nobody
+      .leftJoin('OrgNode as n', (join) =>
         join.onRef('n.tenantId', '=', 'i.tenantId').onRef('n.id', '=', 'i.anchorNodeId'),
       )
       .where('i.tenantId', '=', input.tenantId)

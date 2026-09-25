@@ -812,6 +812,99 @@ describe.runIf(postgresAvailable)('importing people from a spreadsheet', () => {
     expect(result.told).toEqual([[2, 'user-conflict', 'displayName,organization']])
   }, 120_000)
 
+  it('keeps an import whose anchor another import cleaned away readable to a tenant-wide reader', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('gone-anchor')
+          const service = yield* DirectoryImport
+          const commit = (
+            rows: readonly (readonly string[])[],
+            anchorNodeId: string,
+            levels: readonly { orgTypeId: string; column: string }[],
+          ) =>
+            Effect.gen(function* () {
+              const request = {
+                attachmentId: yield* staged(f.tenant, f.admin.userId, rows),
+                sheet: '名单',
+                headerRow: 1,
+                userTypeId: f.student,
+                mapping: {
+                  displayName: { column: 'B' },
+                  businessNo: { column: 'A' },
+                  organization: { anchorNodeId, levels },
+                },
+              }
+              const preview = yield* service.preview(f.tenant, request, f.admin)
+              return yield* service.commit(
+                f.tenant,
+                { ...request, expectedPlanFingerprint: preview.planFingerprint },
+                f.admin,
+              )
+            })
+          // one import makes a class, a second one adds somebody to it
+          const first = yield* commit([HEADER, ['230701', '张三', '2023级', '1班']], f.software, [
+            { orgTypeId: f.types.grade, column: 'C' },
+            { orgTypeId: f.types.klass, column: 'D' },
+          ])
+          const klass = one<{ id: string }>(
+            yield* runSql(
+              sql`select id from org_nodes where tenant_id = ${f.tenant} and name = '1班'`,
+            ),
+          ).id
+          const second = yield* commit(
+            [
+              ['学号', '姓名'],
+              ['230702', '李四'],
+            ],
+            klass,
+            [],
+          )
+          // both taken back, and the first one's units cleaned: the class the
+          // second import was anchored at is gone
+          yield* service.reverse(f.tenant, second.importId, { reason: '补录有误' }, f.admin)
+          yield* service.reverse(f.tenant, first.importId, { reason: '名单用错了' }, f.admin)
+          const cleaned = yield* service.cleanNodes(f.tenant, first.importId, f.admin)
+          const secretary = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, business_no)
+              values (${f.tenant}, '秘书', ${f.student}, ${f.software}, 'sec') returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            select ${f.tenant}, ${secretary}, id, ${f.software}, 'subtree'
+              from roles where tenant_id = ${f.tenant} and code = 'dir'`)
+          const reader: Principal = { tenantId: f.tenant, userId: secretary, sessionId: secretary }
+          const ids = (page: { items: readonly { id: string }[]; total: number }) => ({
+            total: page.total,
+            ids: page.items.map((item) => item.id).sort(),
+          })
+          return {
+            first: first.importId,
+            second: second.importId,
+            deleted: cleaned.deleted,
+            forAdmin: ids(yield* service.list(f.tenant, {}, f.admin)),
+            detail: yield* service.detail(f.tenant, second.importId, f.admin),
+            forSecretary: ids(yield* service.list(f.tenant, {}, reader)),
+            secretaryDetail: tagOf(
+              yield* Effect.exit(service.detail(f.tenant, second.importId, reader)),
+            ),
+          }
+        }),
+      ),
+    )
+    expect(result.deleted).toBe(2)
+    expect(result.forAdmin).toEqual({
+      total: 2,
+      ids: [result.first, result.second].sort(),
+    })
+    expect(result.detail.import.id).toBe(result.second)
+    // a unit that is gone is inside nobody's anchored reach
+    expect(result.forSecretary).toEqual({ total: 1, ids: [result.first] })
+    expect(result.secretaryDetail).toBe('USER_IMPORT_NOT_FOUND')
+  }, 120_000)
+
   it('reverses the people through the ordinary lifecycle, cleans only the units nobody uses, and lets the list come in again', async () => {
     const result = ok(
       await run(

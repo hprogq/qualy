@@ -42,7 +42,7 @@ directory-import 不自己判断组织规则、站位、权限；它经端口问
 ## 记录与撤销
 
 - 表：`directory_imports`（映射与链快照、计数、anchor）、`directory_import_rows`（行 → 用户，disposition created|existing）、`directory_import_nodes`（节点，disposition created|reused，orgNodeId 不设外键）、`directory_import_events`（reversed | nodes-cleaned）。不提供删除记录。
-- 读取权限：记录本身（列表、概要）要求 anchor 在读者 `auth.user.manage` 范围内（列表用 `scopeCoverage` 下推）；逐行明细再按每行落位节点（`primary_org_node_id_snapshot`）与读者范围求交，同样下推进 SQL——只在 anchor 本身持有 self 覆盖的读者看不到放进下级单位的人，落位节点已被清理的行只有租户级读者可见。
+- 读取权限：记录本身（列表、概要）要求 anchor 在读者 `auth.user.manage` 范围内（列表用 `scopeCoverage` 下推，anchor 外连接）；anchor 被另一条导入的清理删掉的记录只有租户级读者可见，而不是对所有人消失；逐行明细再按每行落位节点（`primary_org_node_id_snapshot`）与读者范围求交，同样下推进 SQL——只在 anchor 本身持有 self 覆盖的读者看不到放进下级单位的人，落位节点已被清理的行只有租户级读者可见。
 - Reverse：只处理 disposition=created 且仍在的用户，经 `retireUsers`（每人 disable → 撤销授权 → 撤销登录 → 结束会话 → deleted，逐人审计，最后 `assertTenantKeepsAdministrator`）；写 event 与审计 `directory.import.reverse`；已单独删除的跳过。需要 `auth.user.manage` + `auth.user.delete`（在 retireUsers 内逐人校验）。
 - Node cleanup：本次创建的节点按深度倒序，各自一个事务调用 org 的删除语义；有子节点 / 被引用的保留并列出原因；允许部分成功，可重复执行；写 event 与审计 `directory.import.clean-nodes`。
 
