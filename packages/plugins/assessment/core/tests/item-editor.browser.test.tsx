@@ -746,6 +746,41 @@ describe('the submission form', () => {
     expect(fields[0]?.maxFileBytes).toBe(512 * 1024)
   })
 
+  it('says a file limit the api will not take is wrong on the field, not at the save', async () => {
+    const saved: { config?: unknown }[] = []
+    const item = officerItem()
+    item.currentRevision.formConfig = {
+      files: {},
+      fields: [{ id: 'proof', key: 'proof', label: '证明材料', type: 'attachment', maxCount: 2 }],
+    } as never
+    await open({ items: [item], question: ITEM_ID, panel: 'scoring', saved })
+    await page.getByTestId('form-field-row').click()
+    const sheet = page.getByTestId('field-sheet')
+    await sheet.getByRole('textbox', { name: '最多上传文件数' }).fill('2.5')
+    await sheet.getByRole('button', { name: '完成' }).click()
+
+    await expect.element(page.getByTestId('form-field-row')).toHaveAttribute('data-invalid', 'true')
+    await page.getByTestId('pending-trigger').click()
+    expect(
+      page
+        .getByTestId('pending-row')
+        .elements()
+        .map((row) => row.getAttribute('data-code')),
+    ).toContain('field-invalid')
+    expect(saved).toHaveLength(0)
+
+    // a fraction of a megabyte is a size like any other, sent as whole bytes
+    await page.getByTestId('form-field-row').click()
+    await sheet.getByRole('textbox', { name: '最多上传文件数' }).fill('3')
+    await sheet.getByRole('textbox', { name: '单个文件上限（MB）' }).fill('0.3')
+    await sheet.getByRole('button', { name: '完成' }).click()
+    await page.getByTestId('item-save').click()
+    await vi.waitFor(() => expect(saved).toHaveLength(1))
+    const fields = (saved[0]!.config as { formConfig: { fields: { maxFileBytes?: number }[] } })
+      .formConfig.fields
+    expect(fields[0]?.maxFileBytes).toBe(Math.round(0.3 * 1024 * 1024))
+  })
+
   it("returns a formula question's arithmetic exactly as it arrived when nothing about it moved", async () => {
     const saved: { config?: unknown }[] = []
     await open({ items: [formulaItem()], question: ITEM_ID, surfaces: BOTH_CALCULATORS, saved })

@@ -880,6 +880,26 @@ export const linkOf = (
  * determination carries the determination's own type and bounds, whatever
  * it held: the two are one fact, and the determination is where it is set.
  */
+
+/** a size in megabytes as the whole number of bytes the api takes */
+const bytesOf = (megabytes: string): number => Math.round(Number(megabytes.trim()) * 1024 * 1024)
+
+/**
+ * Whether a file field's two limits are ones the api takes: a whole count of
+ * at least one, and a size, when there is one, of at least a byte. Read
+ * here, beside the field, rather than as a refusal of the whole form.
+ */
+const attachmentLimitsHold = (field: FieldDraft): boolean => {
+  const count = field.maxCount.trim()
+  const size = field.maxSizeMb.trim()
+  return (
+    /^\d+$/.test(count) &&
+    Number(count) >= 1 &&
+    Number.isSafeInteger(Number(count)) &&
+    (size === '' || (Number.isFinite(Number(size)) && bytesOf(size) >= 1))
+  )
+}
+
 const fieldToWire = (
   field: FieldDraft,
   draft: Draft,
@@ -960,9 +980,7 @@ const fieldToWire = (
       return {
         ...base,
         maxCount: Number(shaped.maxCount) > 0 ? Number(shaped.maxCount) : 1,
-        ...(shaped.maxSizeMb.trim() !== ''
-          ? { maxFileBytes: Number(shaped.maxSizeMb) * 1024 * 1024 }
-          : {}),
+        ...(shaped.maxSizeMb.trim() !== '' ? { maxFileBytes: bytesOf(shaped.maxSizeMb) } : {}),
         ...(shaped.accept.trim() !== ''
           ? {
               accept: shaped.accept
@@ -1340,6 +1358,17 @@ export const problemsOf = (input: {
         })
         continue
       }
+    }
+    if (field.type === 'attachment' && !attachmentLimitsHold(field)) {
+      found.push({
+        area: 'scoring',
+        block: 'form',
+        code: 'field-invalid',
+        entity,
+        subject: fieldName(field),
+        tone: 'error',
+      })
+      continue
     }
     if (!linked && field.type === 'text') {
       const low = field.minLength.trim()
