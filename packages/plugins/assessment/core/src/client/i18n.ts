@@ -1429,6 +1429,10 @@ const i18n = definePluginMessages({
       id: 'assessment/event/entry-item-voided',
       defaultMessage: 'The item was disabled, voiding the entry',
     },
+    eventSubjectExcluded: {
+      id: 'assessment/event/subject-excluded',
+      defaultMessage: 'Removed from the roster, ending the current review',
+    },
     eventOther: { id: 'assessment/event/other', defaultMessage: 'The record was updated' },
     eventSomebody: { id: 'assessment/event/somebody', defaultMessage: 'Someone' },
     eventReviewer: { id: 'assessment/event/reviewer', defaultMessage: 'A reviewer' },
@@ -1455,6 +1459,10 @@ const i18n = definePluginMessages({
     outcomeApproved: { id: 'assessment/outcome/approved', defaultMessage: 'Approved' },
     outcomeRejected: { id: 'assessment/outcome/rejected', defaultMessage: 'Returned' },
     outcomeCancelled: { id: 'assessment/outcome/cancelled', defaultMessage: 'Ended' },
+    outcomeSubjectExcluded: {
+      id: 'assessment/outcome/subject-excluded',
+      defaultMessage: 'Participant removed',
+    },
     outcomeOther: { id: 'assessment/outcome/other', defaultMessage: 'Closed' },
     reviewStageReviewers: {
       id: 'assessment/review/stage-reviewers',
@@ -3367,6 +3375,10 @@ const i18n = definePluginMessages({
     reviewGoneRerouted: {
       id: 'assessment/review/gone-rerouted',
       defaultMessage: 'The review route was changed; a new round has taken this one over.',
+    },
+    reviewGoneExcluded: {
+      id: 'assessment/review/gone-excluded',
+      defaultMessage: 'The participant was removed from the roster; the review round is closed.',
     },
     reviewGoneDecided: {
       id: 'assessment/review/gone-decided',
@@ -5367,7 +5379,7 @@ const i18n = definePluginMessages({
     excludeBody: {
       id: 'assessment/roster/exclude-body',
       defaultMessage:
-        'The participant will no longer take part in the batch. Existing submissions and review records are retained, and the participant can be added again later.',
+        'The participant will no longer take part in the batch, and reviews in progress will end. Existing submissions and review records are retained, and the participant can be added again later.',
     },
     restore: { id: 'assessment/roster/restore', defaultMessage: 'Restore' },
     participantCount,

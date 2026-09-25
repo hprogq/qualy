@@ -702,8 +702,10 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
         standing?.open === true
           ? { origin: standing.origin as NonNullable<EntryView['openRound']>['origin'] }
           : null,
+      // an ask is answered by a participant, and somebody off the roster is
+      // not one: there is nothing to offer them, and nobody else answers it
       supplement:
-        supplement == null
+        supplement == null || (participant !== null && participant.status !== 'active')
           ? null
           : {
               requestId: supplement.requestId,
@@ -2505,11 +2507,16 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
       Effect.gen(function* () {
         const membership = yield* myMembership(tenantId, batchId, as)
         const unread = yield* unreadItemIdsOf({ tenantId, batchId, participantId: membership.id })
-        const actions = yield* myActionRowsOf({
-          tenantId,
-          batchId,
-          participantId: membership.id,
-        })
+        // every row is something to do, and a member taken off the roster has
+        // nothing left to do here: their history stays readable, not actionable
+        const actions =
+          membership.status === 'active'
+            ? yield* myActionRowsOf({
+                tenantId,
+                batchId,
+                participantId: membership.id,
+              })
+            : []
         // every row is about the reader's own claims: the membership was
         // looked up by them
         const veiled = yield* veiledFor(deps.phaseOpens, {

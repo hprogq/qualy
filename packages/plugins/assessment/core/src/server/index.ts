@@ -226,6 +226,7 @@ import {
   type TemplateRow,
 } from './db.ts'
 import { DEFAULT_REVIEW_REASONS } from '../review/reasons.ts'
+import { endRoundsOfExcluded } from '../entry/exclusion.ts'
 
 // The assessment service: the engine's answers, wired to rows. Every write
 // serializes on its batch row, "entered" is decided by the clock, and the
@@ -4848,6 +4849,23 @@ export const make = Effect.fn('Assessment.make')(function* () {
                   actorId: as.userId,
                   reason: reason ?? null,
                 })
+                // Leaving the roster is losing every act a participant has,
+                // answering an ask included, so nothing of theirs may stay
+                // in motion: the rounds on their claims end here, in the
+                // same transaction, with the asks they were waiting on.
+                const moved = yield* endRoundsOfExcluded({
+                  tenantId,
+                  participantId,
+                  actorId: as.userId,
+                })
+                if (moved.length > 0) {
+                  yield* announce(tenantId, batchId, [
+                    { kind: 'entries-changed', subjectUserId: existing.userId },
+                    { kind: 'review-inbox-changed' },
+                    { kind: 'review-instance-changed' },
+                    { kind: 'result-changed', subjectUserId: existing.userId },
+                  ])
+                }
               }
               return (yield* oneParticipant(tenantId, batchId, participantId))!
             }),

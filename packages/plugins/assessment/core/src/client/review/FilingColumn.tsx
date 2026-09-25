@@ -717,7 +717,7 @@ export const FilingColumn = memo(function FilingColumn({
             <p {...stylex.props(styles.supNote)}>{format(m.reviewSupplementSectionNote)}</p>
           </div>
           {review.supplements.map((one) => (
-            <SupplementCard key={one.id} supplement={one} />
+            <SupplementCard key={one.id} supplement={one} endedBy={review.outcome} />
           ))}
         </section>
       )}
@@ -726,7 +726,14 @@ export const FilingColumn = memo(function FilingColumn({
 })
 
 /** one ask and what came back, read like the filing above it */
-function SupplementCard({ supplement }: { supplement: ReviewDto['supplements'][number] }) {
+function SupplementCard({
+  supplement,
+  endedBy,
+}: {
+  supplement: ReviewDto['supplements'][number]
+  /** how the round ended, which is why an unanswered ask closed */
+  endedBy: string | null
+}) {
   const { format, locale } = useI18n()
   const answers = (supplement.response?.payload ?? {}) as Record<string, unknown>
   return (
@@ -741,7 +748,11 @@ function SupplementCard({ supplement }: { supplement: ReviewDto['supplements'][n
               ? m.supplementStatusAnswered
               : supplement.status === 'cancelled'
                 ? m.supplementStatusCancelled
-                : m.supplementStatusOpen,
+                : supplement.status === 'superseded'
+                  ? endedBy === 'subject-excluded'
+                    ? m.outcomeSubjectExcluded
+                    : m.entryTrailAskSuperseded
+                  : m.supplementStatusOpen,
           )}
         </Badge>
         <span {...stylex.props(styles.spacer)} />

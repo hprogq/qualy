@@ -844,9 +844,11 @@ function Workbench({ batch }: { batch: BatchDto }) {
       ? m.reviewGoneWithdrawn
       : detail.data?.review.outcome === 'superseded'
         ? m.reviewGoneRerouted
-        : detail.data?.review.state === 'completed'
-          ? m.reviewGoneDecided
-          : m.reviewGoneBody
+        : detail.data?.review.outcome === 'subject-excluded'
+          ? m.reviewGoneExcluded
+          : detail.data?.review.state === 'completed'
+            ? m.reviewGoneDecided
+            : m.reviewGoneBody
 
   // Said out loud once, over whatever dialog the reader is writing in - the
   // banner may be standing behind it. And a decision waiting out its undo

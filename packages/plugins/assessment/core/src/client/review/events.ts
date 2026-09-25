@@ -50,6 +50,8 @@ const WITHOUT_ACTOR: Record<string, MessageDescriptor> = {
   'cancelled-item-voided': m.eventItemVoided,
   // the claim's own trail, where no round was open to say it
   'voided-with-item': m.eventEntryItemVoided,
+  // the person whose claim it is left the roster, and the round with them
+  'subject-excluded': m.eventSubjectExcluded,
   // the route under the round changed, by an administrator's configuration
   // decision rather than by anything anybody said about the filing
   rerouted: m.eventRerouted,
@@ -125,7 +127,9 @@ export const reviewOutcomeMessage = (outcome: string): MessageDescriptor =>
         ? m.outcomeCancelled
         : outcome === 'superseded'
           ? m.outcomeSuperseded
-          : m.outcomeOther
+          : outcome === 'subject-excluded'
+            ? m.outcomeSubjectExcluded
+            : m.outcomeOther
 
 /** how a round began, said as its heading's second half */
 export const reviewOriginMessage = (origin: string): MessageDescriptor | null =>

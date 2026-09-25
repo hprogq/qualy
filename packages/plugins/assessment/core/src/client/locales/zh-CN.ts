@@ -243,6 +243,7 @@ export default {
   'assessment/event/abandoned': '{who} 放弃了申报',
   'assessment/event/rerouted': '管理员调整了审核流程',
   'assessment/outcome/superseded': '已转入新一轮审核',
+  'assessment/outcome/subject-excluded': '参评人已移出',
   'assessment/origin/appeal': '申诉',
   'assessment/origin/reroute': '流程调整',
   'assessment/origin/reopen': '重新开启',
@@ -255,6 +256,7 @@ export default {
   'assessment/event/reviewer-found': '已找到审核人，审核继续',
   'assessment/event/item-voided': '项目已停用，本次审核结束',
   'assessment/event/entry-item-voided': '项目已停用，申报随之作废',
+  'assessment/event/subject-excluded': '已移出参评名单，本次审核结束',
   'assessment/event/other': '记录发生变更',
   'assessment/event/somebody': '相关人员',
   'assessment/event/reviewer': '审核人员',
@@ -839,6 +841,7 @@ export default {
   'assessment/review/gone-body': '任务已由他人处理、被申报人撤回或流程已调整。',
   'assessment/review/gone-withdrawn': '申报人已撤回该申报，本轮审核已结束。',
   'assessment/review/gone-rerouted': '审核流程已更新，本任务已由新一轮审核任务替代。',
+  'assessment/review/gone-excluded': '参评人已移出名单，本轮审核已结束。',
   'assessment/review/gone-decided': '该申报已由其他审核人员处理。',
   'assessment/review/gone-kept': '你填写的内容未提交。',
   'assessment/review/gone-next': '继续审核下一条',
@@ -1634,7 +1637,7 @@ export default {
   'assessment/roster/exclude': '移出',
   'assessment/roster/exclude-title': '确认将 {name} 移出参评名单？',
   'assessment/roster/exclude-body':
-    '移出后，该人员将不再参与本批次，已有申报和审核记录仍会保留，之后可以重新加入。',
+    '移出后，该人员将不再参与本批次，进行中的审核随之结束；已有申报和审核记录仍会保留，之后可以重新加入。',
   'assessment/roster/restore': '重新加入',
 
   'assessment/access/hint': '管理本批次工作人员的权限，并处理组织权限变动。',

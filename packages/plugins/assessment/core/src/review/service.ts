@@ -59,7 +59,7 @@ import {
   ReviewNotFound,
   ScoringUnavailable,
 } from '../errors.ts'
-import { lockBatch, oneBatch } from '../server/db.ts'
+import { activeParticipantByUser, lockBatch, oneBatch } from '../server/db.ts'
 import { itemOf, revisionOf } from '../item/db.ts'
 import {
   advanceReviewInstance,
@@ -3041,6 +3041,12 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           if (request === null || row === null) return yield* new ReviewNotFound()
           if (request.status !== 'open' || row.state !== 'awaiting_supplement') {
             return yield* refuse('supplement-answer', 'request-not-open')
+          }
+          // no phase gate, but still a participant's act: somebody taken off
+          // the roster answers nothing, read under the same lock that orders
+          // the exclusion
+          if ((yield* activeParticipantByUser(tenantId, row.batchId, as.userId)) === null) {
+            return yield* refuse('supplement-answer', 'participant-not-active')
           }
           // a contract this build cannot read is not a contract it may
           // judge completeness against: answering fails closed rather than

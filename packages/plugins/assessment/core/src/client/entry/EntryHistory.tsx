@@ -578,7 +578,7 @@ function useTrail(data: History, subject: string | undefined): readonly TrailIte
         seq: seq++,
         kind: 'ask',
         weight: supplement.status === 'open' ? 'alert' : 'plain',
-        render: () => <Ask supplement={supplement} subject={subject} />,
+        render: () => <Ask supplement={supplement} subject={subject} endedBy={round.outcome} />,
       })
       if (supplement.response !== null) {
         const revision = data.revisions.find((one) => one.id === round.revisionId)
@@ -923,7 +923,16 @@ const roundEffectMessage = (effect: 'upheld' | 'corrected' | 'revoked' | 'overtu
         ? m.entryEffectRevoked
         : m.entryEffectOverturned
 
-function Ask({ supplement, subject }: { supplement: Supplement; subject: string | undefined }) {
+function Ask({
+  supplement,
+  subject,
+  endedBy,
+}: {
+  supplement: Supplement
+  subject: string | undefined
+  /** how the round that asked ended, which is why an unanswered ask closed */
+  endedBy: string | null
+}) {
   const { format } = useI18n()
   const standing: MessageDescriptor =
     supplement.status === 'answered'
@@ -931,7 +940,9 @@ function Ask({ supplement, subject }: { supplement: Supplement; subject: string 
       : supplement.status === 'cancelled'
         ? m.entryTrailAskCancelled
         : supplement.status === 'superseded'
-          ? m.entryTrailAskSuperseded
+          ? endedBy === 'subject-excluded'
+            ? m.outcomeSubjectExcluded
+            : m.entryTrailAskSuperseded
           : m.entryTrailAskWaiting
   return (
     <>
