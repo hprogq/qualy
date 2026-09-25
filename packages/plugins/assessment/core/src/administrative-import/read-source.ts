@@ -67,13 +67,26 @@ export const readSourceBytes = (
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
       try {
-        const response = await fetch(open.target.url, { signal: controller.signal })
-        if (!response.ok) throw new SourceUnreadable('source-unavailable')
-        const buffer = await response.arrayBuffer()
-        if (buffer.byteLength > ceiling) throw new SourceUnreadable('source-too-large')
-        return new Uint8Array(buffer)
+        const response = await fetch(open.target.url, {
+          signal: controller.signal,
+          headers: { 'accept-encoding': 'identity' },
+        })
+        if (!response.ok || response.body === null) {
+          throw new SourceUnreadable('source-unavailable')
+        }
+        // The client inflates whatever encoding the response names, before
+        // anything here can count it: a few hundred bytes stored as brotli
+        // arrive as gigabytes. A stored file is its own bytes; one served
+        // with an encoding is not the file an upload wrote.
+        const encoding = response.headers.get('content-encoding')?.trim().toLowerCase() ?? ''
+        if (encoding !== '' && encoding !== 'identity') {
+          throw new SourceUnreadable('source-unavailable')
+        }
+        return await collect(response.body, ceiling)
       } finally {
         clearTimeout(timer)
+        // stops a body that outran the ceiling; after a whole read it is nothing
+        controller.abort()
       }
     },
     catch: (error) =>

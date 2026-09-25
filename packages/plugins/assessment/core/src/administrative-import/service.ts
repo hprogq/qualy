@@ -1,5 +1,6 @@
 import { Clock, Effect, Result } from 'effect'
 import { hashCanonicalJson } from '@qualy/value-schema/hash'
+import { readWorkbook } from '@qualy/spreadsheet'
 import { transaction, type Orm } from '@qualy/plugin-database/server'
 import type { AttachmentOpen, Storage } from '@qualy/plugin-storage/server'
 import type { UploadTicket } from '@qualy/plugin-storage/upload'
@@ -568,8 +569,9 @@ export const makeAdministrativeImportMethods = (
       return yield* new EntryActionRefused({ action: 'import', reason: 'attachment-required' })
     }
 
-    // the bytes, read back from the store rather than taken from anybody
-    const opened = yield* storage
+    // the bytes, read back from the store rather than taken from anybody,
+    // and read as a workbook under the process's one permit
+    const source = storage
       .open({ tenantId, attachmentId: input.attachmentId }, (meta) =>
         meta.ownerUserId === as.userId ? Effect.void : Effect.fail(new AttachmentUnavailable()),
       )
@@ -578,19 +580,22 @@ export const makeAdministrativeImportMethods = (
           STORAGE_ATTACHMENT_NOT_FOUND: () => new AttachmentUnavailable(),
           STORAGE_BACKEND_UNAVAILABLE: (error) => Effect.die(error),
         }),
-      )
-    const bytes = yield* readSourceBytes(opened).pipe(
-      Effect.catch((error: SourceUnreadable) =>
-        Effect.fail(
-          new AdministrativeImportInvalid({
-            issues: [{ rowNo: null, field: null, severity: 'error', reason: error.reason }],
-          }),
+        Effect.flatMap((opened) =>
+          readSourceBytes(opened).pipe(
+            Effect.catch((error: SourceUnreadable) =>
+              Effect.fail(
+                new AdministrativeImportInvalid({
+                  issues: [{ rowNo: null, field: null, severity: 'error', reason: error.reason }],
+                }),
+              ),
+            ),
+          ),
         ),
-      ),
-    )
-    const parsed = yield* Effect.tryPromise({
-      try: () => parseAdministrativeWorkbook(bytes),
-      catch: (error) =>
+      )
+    const parsed = yield* readWorkbook({
+      bytes: source,
+      read: parseAdministrativeWorkbook,
+      refused: (error) =>
         new AdministrativeImportInvalid({
           issues: [
             {
