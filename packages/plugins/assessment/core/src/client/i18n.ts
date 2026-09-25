@@ -1723,6 +1723,10 @@ const i18n = definePluginMessages({
       id: 'assessment/result/unavailable-hint',
       defaultMessage: 'Your score could not be calculated just now. Try again in a moment.',
     },
+    resultStaleTitle: {
+      id: 'assessment/result/stale-title',
+      defaultMessage: 'The score shown may be out of date',
+    },
     resultRecalculate: { id: 'assessment/result/recalculate', defaultMessage: 'Recalculate' },
     resultGroupItems: { id: 'assessment/result/group-items', defaultMessage: 'Item subtotal' },
     resultGroupChildren: {

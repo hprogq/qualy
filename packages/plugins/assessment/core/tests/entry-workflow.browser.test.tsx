@@ -2669,6 +2669,51 @@ describe('the paper while the score is out of reach', () => {
     expect(new Set(ledgers())).toEqual(new Set(['true']))
   })
 
+  it('says the score may be behind when a later read of it fails', async () => {
+    let computable = true
+    const standing = vi.fn(() =>
+      computable
+        ? Effect.succeed({
+            mode: 'provisional' as const,
+            total: '2.00',
+            groups: [],
+            lines: [],
+          })
+        : Effect.fail(apiError('ASSESSMENT_SCORING_UNAVAILABLE')),
+    )
+    await screen(
+      {
+        listItems: () =>
+          Effect.succeed({
+            items: [item({ scoreGroupId: INNER_ID })],
+            capabilities: { canManage: false },
+          }),
+        listScoreGroups: groups,
+        getMyResult: standing,
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+    await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
+    expect(page.getByTestId('standing-unavailable').elements()).toHaveLength(0)
+
+    // read again in the background, and this time it cannot be computed
+    computable = false
+    const before = standing.mock.calls.length
+    window.dispatchEvent(new Event('visibilitychange'))
+    await vi.waitFor(() => expect(standing.mock.calls.length).toBeGreaterThan(before))
+
+    // what was read stays, and says it may be behind, with the way to ask again
+    await expect
+      .element(page.getByTestId('standing-unavailable'))
+      .toHaveAttribute('data-standing', 'stale')
+    computable = true
+    await page.getByTestId('standing-unavailable').getByRole('button').click()
+    await vi.waitFor(() =>
+      expect(page.getByTestId('standing-unavailable').elements()).toHaveLength(0),
+    )
+  })
+
   it('keeps an open form when a later read of the score fails', async () => {
     let computable = true
     const standing = vi.fn(() =>

@@ -1592,6 +1592,9 @@ function Body({
   // never as a settled zero.
   const scored = standing.data !== undefined
   const scoreless = !scored && standing.error !== null
+  // a score that was read once and could not be read again stays on the
+  // paper, and says it may be behind rather than passing for current
+  const stale = scored && standing.isError
   // a read that failed only in the background keeps what it last showed:
   // replacing the page would take an open form down with it
   const failed = (read: { error: unknown; data: unknown }) =>
@@ -1857,14 +1860,14 @@ function Body({
                 </div>
               </div>
               <PaneScroller>
-                {scoreless && (
+                {(scoreless || stale) && (
                   <div
                     data-testid="standing-unavailable"
-                    data-standing="unavailable"
+                    data-standing={stale ? 'stale' : 'unavailable'}
                     {...stylex.props(styles.scoreNotice)}
                   >
                     <span {...stylex.props(styles.scoreNoticeWords)}>
-                      {format(m.resultUnavailableTitle)}
+                      {format(stale ? m.resultStaleTitle : m.resultUnavailableTitle)}
                     </span>
                     <Button
                       variant="outline"
