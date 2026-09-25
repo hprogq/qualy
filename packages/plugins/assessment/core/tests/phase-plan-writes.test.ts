@@ -35,6 +35,7 @@ import {
   type PhaseSpecInput,
   type PlanPhase,
 } from '../src/server/index.ts'
+import { MAX_PLAN_PHASES } from '../src/api.ts'
 import { catalogLayers, storageForTest } from './support/catalogs.ts'
 
 // A plan write states the plan it wants, and every caller states it by
@@ -445,6 +446,56 @@ describe.runIf(postgresAvailable).concurrent('plan writes', () => {
     expect(after.map((row) => row.phaseKey)).toEqual(['entry', 'supplement', 'review', 'archive'])
     expect(after[1]!.entryNote).toBe('waiting on the college')
     expect(scoped).toEqual([only])
+  })
+
+  // A plan write used to be bounded only by the request body: tens of
+  // thousands of phases, each reviewed against the whole plan while the batch
+  // lock was held. The contract refuses a list that long; the service refuses
+  // the plan it would end up with, which is the only place a template
+  // appended to an existing plan can be counted.
+  it('refuses a plan longer than a plan may be, however it is written', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('plan-too-long')
+        const assessment = yield* Assessment
+        const batch = yield* newBatch(f.tenant, 'Long', f.root, f.studentType, f.principal)
+        const many = (count: number) =>
+          Array.from({ length: count }, (_, index) => phase({ phaseKey: `stage-${index + 1}` }))
+
+        const overlong = yield* Effect.exit(
+          assessment.replacePlan(
+            f.tenant,
+            batch.id,
+            { specs: many(MAX_PLAN_PHASES + 1) },
+            f.principal,
+          ),
+        )
+        const untouched = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          { specs: many(MAX_PLAN_PHASES - 1) },
+          f.principal,
+        )
+        const template = yield* assessment.createTemplate(
+          f.tenant,
+          { name: 'two more', phases: [phase({ phaseKey: 'review' }), phase({ phaseKey: 'end' })] },
+          f.principal,
+        )
+        const appended = yield* Effect.exit(
+          assessment.replacePlan(f.tenant, batch.id, { fromTemplateId: template.id }, f.principal),
+        )
+        const after = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        return { overlong, untouched, appended, after }
+      }),
+    )
+    const { overlong, untouched, appended, after } = ok(exit)
+    expect(refusalsIn(overlong)).toEqual(['plan-too-long'])
+    expect(untouched).toEqual([])
+    expect(refusalsIn(appended)).toEqual(['plan-too-long'])
+    expect(after).toHaveLength(MAX_PLAN_PHASES - 1)
   })
 
   // What a field the caller never sent means, measured at the HTTP boundary.

@@ -19,7 +19,7 @@ import { Audit } from '@qualy/audit-contract/effect'
 import { BatchCreated, BatchDeleted } from '../actions.ts'
 import type { Principal } from '@qualy/rbac-contract'
 import type { ApplicableAssignment } from '@qualy/rbac-contract/effect'
-import { assessmentApiGroup } from '../api.ts'
+import { assessmentApiGroup, MAX_PLAN_PHASES } from '../api.ts'
 import {
   applyToPlan,
   reviewInsertion,
@@ -680,6 +680,26 @@ const SWEEP_BATCH_LIMIT = 200
  * over the units of one round comes to.
  */
 const MAX_STAFF_PAIRS = 2000
+
+/** rows gathered under a key, in the order they came; one pass */
+const groupBy = <T, K, V>(
+  rows: readonly T[],
+  keyOf: (row: T) => K,
+  valueOf: (row: T) => V,
+): Map<K, V[]> => {
+  const groups = new Map<K, V[]>()
+  for (const row of rows) {
+    const key = keyOf(row)
+    const group = groups.get(key)
+    if (group) group.push(valueOf(row))
+    else groups.set(key, [valueOf(row)])
+  }
+  return groups
+}
+
+/** a plan write whose result would hold more phases than a plan may */
+const planTooLong = () =>
+  new PlanInvalid({ refusals: [{ reason: 'plan-too-long', phaseId: null }] })
 
 /**
  * Why a role is not on offer for a staffing selection.
@@ -1552,14 +1572,20 @@ export const make = Effect.fn('Assessment.make')(function* () {
     Effect.gen(function* () {
       const rows = yield* listPhaseRows(tenantId, batchId)
       const scopes = yield* scopesForBatch(tenantId, batchId)
+      const itemsOf = groupBy(
+        scopes.items,
+        (entry) => entry.phaseId,
+        (entry) => entry.itemId,
+      )
+      const participantsOf = groupBy(
+        scopes.participants,
+        (entry) => entry.phaseId,
+        (entry) => entry.participantId,
+      )
       return rows.map((row): PlanPhase => ({
         ...row,
-        itemScope: scopes.items
-          .filter((entry) => entry.phaseId === row.id)
-          .map((entry) => entry.itemId),
-        participantScope: scopes.participants
-          .filter((entry) => entry.phaseId === row.id)
-          .map((entry) => entry.participantId),
+        itemScope: itemsOf.get(row.id) ?? [],
+        participantScope: participantsOf.get(row.id) ?? [],
       }))
     })
 
@@ -2783,10 +2809,11 @@ export const make = Effect.fn('Assessment.make')(function* () {
           ),
         ),
       )
-      const byBatch = new Map<string, PhaseRow[]>()
-      for (const phase of phases) {
-        byBatch.set(phase.batchId, [...(byBatch.get(phase.batchId) ?? []), phase])
-      }
+      const byBatch = groupBy(
+        phases,
+        (phase) => phase.batchId,
+        (phase) => phase,
+      )
       // one more query for the whole page rather than a different rule here:
       // a round reopened for a date still to come has nothing in hand, and a
       // list that said otherwise would contradict the round's own page
@@ -3258,6 +3285,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
                   return yield* new BatchStatusInvalid({ from, to, refusal: 'phase-required' })
                 }
                 const rows = yield* listPhaseRows(tenantId, batchId)
+                if (rows.length >= MAX_PLAN_PHASES) return yield* planTooLong()
                 // the same rules any other phase is held to: only codes the
                 // gate knows, and a time that is still ahead of the round
                 const review = reviewInsertion(toSnapshots(rows), now, rows.length, {
@@ -3802,6 +3830,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
               // unscheduled: it says which business states usually follow one
               // another, never when this batch reaches them (32.41)
               const added = template.phases as unknown as readonly PhaseSpecInput[]
+              // each template fits on its own; appended to what is already
+              // there, it may not
+              if (rows.length + added.length > MAX_PLAN_PHASES) return yield* planTooLong()
               const review = reviewPlan(added.map(specToEngine))
               if (review.refusals.length > 0) {
                 return yield* new PlanInvalid({ refusals: review.refusals })
@@ -3828,6 +3859,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
             }
 
             const specs = body.specs ?? []
+            // whichever way the plan is written, what it holds afterwards is
+            // what was submitted
+            if (specs.length > MAX_PLAN_PHASES) return yield* planTooLong()
             const unknown = specs.find(
               (spec) => spec.id !== undefined && !existingById.has(spec.id),
             )
@@ -4199,6 +4233,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
 
     createTemplate: Effect.fn('Assessment.createTemplate')(function* (tenantId, input, as) {
       yield* templatePermission(as)
+      if (input.phases.length > MAX_PLAN_PHASES) return yield* planTooLong()
       const kind = input.kind ?? 'timeline'
       // structural rules only; the clock is judged at application. Scopes
       // name batch-local rows, so a tenant-level template cannot carry them.
@@ -4222,6 +4257,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
       function* (tenantId, templateId, input, as) {
         yield* templatePermission(as)
         if (input.phases !== undefined) {
+          if (input.phases.length > MAX_PLAN_PHASES) return yield* planTooLong()
           const existing = yield* dieQuery(withDb(oneTemplate(tenantId, templateId)))
           if (!existing) return yield* new TemplateNotFound()
           const review = reviewPlan(input.phases.map(specToEngine))

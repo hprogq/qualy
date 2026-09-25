@@ -53,6 +53,7 @@ export function ReopenDialog({
           <Textarea
             id={id}
             rows={3}
+            maxLength={500}
             value={reason}
             placeholder={format(m.reopenReasonPlaceholder)}
             onChange={(event) => setReason(event.target.value)}
@@ -63,6 +64,7 @@ export function ReopenDialog({
         {(id) => (
           <Input
             id={id}
+            maxLength={100}
             value={displayName}
             placeholder={format(m.reopenPhasePlaceholder)}
             onChange={(event) => setDisplayName(event.target.value)}

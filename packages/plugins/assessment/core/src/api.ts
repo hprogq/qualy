@@ -14,6 +14,7 @@ import {
   uuidInput,
 } from '@qualy/api-kit/schema'
 import { Authenticated } from '@qualy/auth-contract/session'
+import { PHASE_GATED_CODES } from './permissions.ts'
 
 /**
  * One wake-up on a batch's live stream.
@@ -282,6 +283,48 @@ const phaseView = Schema.Struct({
 })
 
 /**
+ * A repeated query parameter, which is a list only when it repeats.
+ *
+ * `?a=1&a=2` arrives as an array and `?a=1` as a string - that is what
+ * UrlParams.toRecord builds (repos/effect/packages/effect/src/unstable/http/
+ * UrlParams.ts). A schema asking for an array therefore refused every request
+ * that named exactly one thing, which is most of them.
+ */
+export const idList = Schema.Union([Schema.Array(uuidInput), uuidInput])
+
+/**
+ * A list of ids, with the most one request may name.
+ *
+ * Every list built this way is walked rather than only stored: a position
+ * read, an authorization question or a row written per element, most of it
+ * inside one transaction. The request body's own ceiling is 2 MiB, which is
+ * some fifty thousand ids - so without a bound the largest question anybody
+ * may ask is decided by how long a uuid is. What a caller may send has to be
+ * something the server can finish.
+ */
+const idsUpTo = (most: number) => Schema.Array(uuidInput).check(Schema.isMaxLength(most))
+
+/**
+ * The most phases one plan may hold.
+ *
+ * A real round has a handful; fifty is room for every supplementary period a
+ * year could need. Without it a plan write was bounded only by the request
+ * body, and a few tens of thousands of phases held the batch lock while each
+ * was reviewed against the plan and written - then made every batch list
+ * that showed the round pay for the whole timeline again.
+ */
+export const MAX_PLAN_PHASES = 50
+
+/**
+ * The actions one phase opens. Each is one of the gate's own codes, so there
+ * are never more than the gate knows; the service still names any it does
+ * not recognize.
+ */
+const permissionProfileInput = Schema.Array(Schema.String.check(Schema.isMaxLength(100))).check(
+  Schema.isMaxLength(PHASE_GATED_CODES.length),
+)
+
+/**
  * One phase as a plan write states it: with an id it replaces that phase's
  * editable fields, without one it is an insertion at its position. Times are
  * deliberately absent - a plan write states structure, and when each phase
@@ -298,9 +341,26 @@ const phaseSpec = Schema.Struct({
   description: Schema.optional(boundedText(500)),
   /** what the phase is waiting for, while it has no time of its own */
   entryNote: Schema.optional(boundedText(200)),
+  permissionProfile: Schema.optional(permissionProfileInput),
+  // as many people as one roster write may name, and more items than a
+  // round carries
+  itemScope: Schema.optional(idsUpTo(1000)),
+  participantScope: Schema.optional(idsUpTo(5000)),
+})
+
+/** a whole plan, or a whole timeline template, as one write states it */
+const phaseSpecs = Schema.Array(phaseSpec).check(Schema.isMaxLength(MAX_PLAN_PHASES))
+
+/**
+ * A template's phase as it is served. Only writes carry the ceilings above: a
+ * template stored before them still has to be readable, and a response that
+ * fails its own schema reaches the reader as a server fault.
+ */
+const storedPhaseSpec = Schema.Struct({
+  ...phaseSpec.fields,
   permissionProfile: Schema.optional(Schema.Array(Schema.String)),
-  itemScope: Schema.optional(Schema.Array(uuidInput)),
-  participantScope: Schema.optional(Schema.Array(uuidInput)),
+  itemScope: Schema.optional(Schema.Array(Schema.String)),
+  participantScope: Schema.optional(Schema.Array(Schema.String)),
 })
 
 const planWarning = Schema.Struct({
@@ -446,28 +506,6 @@ const accessSyncPageView = Schema.Struct({
 })
 
 /**
- * A repeated query parameter, which is a list only when it repeats.
- *
- * `?a=1&a=2` arrives as an array and `?a=1` as a string - that is what
- * UrlParams.toRecord builds (repos/effect/packages/effect/src/unstable/http/
- * UrlParams.ts). A schema asking for an array therefore refused every request
- * that named exactly one thing, which is most of them.
- */
-export const idList = Schema.Union([Schema.Array(uuidInput), uuidInput])
-
-/**
- * A list of ids, with the most one request may name.
- *
- * Every list built this way is walked rather than only stored: a position
- * read, an authorization question or a row written per element, most of it
- * inside one transaction. The request body's own ceiling is 2 MiB, which is
- * some fifty thousand ids - so without a bound the largest question anybody
- * may ask is decided by how long a uuid is. What a caller may send has to be
- * something the server can finish.
- */
-const idsUpTo = (most: number) => Schema.Array(uuidInput).check(Schema.isMaxLength(most))
-
-/**
  * How a bulk administrative act found its people.
  *
  * Kept as history once the act is written and never resolved again: it says
@@ -515,7 +553,7 @@ const templateView = Schema.Struct({
   name: Schema.String,
   kind: templateKind,
   version: Schema.Number,
-  phases: Schema.Array(phaseSpec),
+  phases: Schema.Array(storedPhaseSpec),
 })
 
 /** a driver id: lowercase words joined by dots or dashes */
@@ -2438,9 +2476,10 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
           status: Schema.Literal('active'),
           reason: boundedText(500),
           phase: Schema.Struct({
-            displayName: trimmedName(120),
+            // the column every other phase name is written to
+            displayName: trimmedName(100),
             description: Schema.optional(boundedText(500)),
-            permissionProfile: Schema.optional(Schema.Array(Schema.String)),
+            permissionProfile: Schema.optional(permissionProfileInput),
           }),
           /** null starts the new phase now; an instant schedules it */
           plannedEntryAt: Schema.NullOr(isoInstant),
@@ -2613,7 +2652,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       params: Schema.Struct({ batchId: uuidInput }),
       payload: Schema.Struct({
         fromTemplateId: Schema.optional(uuidInput),
-        phases: Schema.optional(Schema.Array(phaseSpec)),
+        phases: Schema.optional(phaseSpecs),
       }).check(
         Schema.makeFilter(
           (value: { fromTemplateId?: string; phases?: readonly unknown[] }) =>
@@ -3475,7 +3514,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       payload: Schema.Struct({
         name: trimmedName(100),
         kind: Schema.optional(templateKind),
-        phases: Schema.Array(phaseSpec),
+        phases: phaseSpecs,
       }),
       success: Schema.Struct({ template: templateView }),
       error: [AccessDenied, TemplateConflict, PlanInvalid, BadRequest],
@@ -3487,7 +3526,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       payload: changed(
         {
           name: Schema.optional(trimmedName(100)),
-          phases: Schema.optional(Schema.Array(phaseSpec)),
+          phases: Schema.optional(phaseSpecs),
         },
         ['name', 'phases'],
       ),

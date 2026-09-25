@@ -1688,6 +1688,7 @@ export default {
   'assessment/refusal/item-not-in-batch': '所选项目中包含不属于本批次的项目。',
   'assessment/refusal/phase-template-shape': '阶段模板仅用于预设阶段基本信息和开放操作。',
   'assessment/refusal/template-not-a-timeline': '阶段模板不能作为时间线模板使用。',
+  'assessment/refusal/plan-too-long': '一条时间线最多容纳 50 个阶段，请先删减阶段。',
 
   'assessment/error/batch-not-found': '未找到该批次。',
   'assessment/error/phase-not-found': '未找到该阶段，请刷新后重试。',

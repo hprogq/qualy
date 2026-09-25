@@ -26,6 +26,7 @@ type ServiceRefusalReason =
   | 'scope-in-template'
   | 'participant-not-in-batch'
   | 'item-not-in-batch'
+  | 'plan-too-long'
 
 /**
  * Every refusal reason the api can return, mapped to its explanation. Typed
@@ -56,6 +57,7 @@ const SENTENCES: Record<EditRefusalReason | ServiceRefusalReason, MessageDescrip
   'scope-in-template': m['refusal.scope-in-template'],
   'participant-not-in-batch': m['refusal.participant-not-in-batch'],
   'item-not-in-batch': m['refusal.item-not-in-batch'],
+  'plan-too-long': m['refusal.plan-too-long'],
 }
 
 export interface PlanRefusalLike {

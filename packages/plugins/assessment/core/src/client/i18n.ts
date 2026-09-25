@@ -5558,6 +5558,10 @@ const i18n = definePluginMessages({
       defaultMessage:
         'The selected template defines a single stage rather than a complete timeline and cannot replace the stage plan.',
     },
+    'refusal.plan-too-long': {
+      id: 'assessment/refusal/plan-too-long',
+      defaultMessage: 'A timeline holds at most 50 stages. Remove some stages first.',
+    },
     // ---- the question editor: shell, tabs and the list of what is left ----
     itemsMode: { id: 'assessment/items/mode', defaultMessage: 'Handling' },
     itemsModeReview: {
