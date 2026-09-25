@@ -991,7 +991,8 @@ source_draft_revision_no integer nullable(restored-from-draft)
 规则:
 
 - `draft_revision` 只在源码或示例变化时递增,并同事务追加一条同号修订;改名、改说明不递增,改为记一条 `assessment.formula.details.change` 审计(改名本身不留别的痕迹)。
-  原 `FormulaDraftReplaced` 审计不再记录,目录项保留以读旧行。修订表就是草稿的领域历史,不再复制进审计。
+  原 `FormulaDraftReplaced` 审计不再记录,目录项保留以读旧行。修订表就是草稿的领域历史,不再复制进审计;
+  它是按公式**有上限的近期历史**,不是完整的保存记录(见下文回收规则 ⑤)。
 - 新建公式的草稿源码为空(修订 1,`created`);从模板复制的修订 1 是 `copied-from-template` 并指向来源版本。空源码不编译、不报错,试运行与发布不可用。
 - **恢复不回退**:`POST .../draft/restores`,`{expectedDraftRevision, from: {kind:'published-version', versionNo} | {kind:'draft-revision', revisionNo}}`,
   从不可变行读取内容,追加一条新修订并记来源;与当前草稿完全相同时是 no-op。历史版本与旧修订本身永不改动(旧修订可能按下一条被回收,但不会被改写)。
@@ -1007,6 +1008,9 @@ source_draft_revision_no integer nullable(restored-from-draft)
   这一个公式的修订;作者在公式 A 写得再多,也不会删到公式 B 的任何修订,包括 B 唯一的草稿。
   回收后修订号不重排,列表出现断号;恢复自某条已回收修订的记录仍写着来源号码,只是那条修订不能再打开或恢复
   (`ASSESSMENT_FORMULA_DRAFT_REVISION_NOT_FOUND`)。本机的试运行记录同样按公式设上限,见 §14.3.1。
+  ⑤ **回收落在哪一格**(CLAUDE.md「记录」三格):三格都不需要。回收本身不写审计、不写领域历史,也不单独记遥测;
+  它删掉的正是领域历史(修订行)本身。草稿修订是作者自己的编辑便利,不是合规记录;需要追溯的「这版规则当时怎么算」
+  由发布版本承担(不可变的版本行,带发布人与发布时间),回收永远碰不到。代价要说清:被回收的那些保存,此后在任何地方都查不到。
 - **发布命名**:`releaseName`(必填,≤100)与 `releaseNotes`(可选,≤1000)是版本的**展示元数据,发布后仍可修改**;
   同一函数内名称唯一(部分唯一索引,旧版本为 null 不参与)。版本的**计算事实**——源码、示例、输入输出结构、产物、各类哈希与工具链版本、
   `versionId` / `versionNo` / `publishedAt` / `publishedBy`——永久不可变(2026-09-18 裁决)。

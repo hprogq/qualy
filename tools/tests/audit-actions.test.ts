@@ -42,8 +42,14 @@ import type { AuditAction } from '../../packages/contracts/audit/src/action.ts'
 // retired action that something records again, so this list cannot hide a
 // live one.
 const RETIRED: ReadonlyMap<string, string> = new Map([
-  // a draft save is a draft revision row now, with the source and examples it saved
-  ['assessment.formula.draft.update', 'assessment_formula_draft_revisions'],
+  // a draft save is a draft revision row now, with the source and examples it
+  // saved - a recent history bounded per formula, not a complete one: the
+  // oldest revisions are recycled, and the recycling itself is recorded
+  // nowhere (docs/assessment-formula-recognition.md 14.3)
+  [
+    'assessment.formula.draft.update',
+    'assessment_formula_draft_revisions, bounded per formula, oldest recycled',
+  ],
   // deletion is final: nothing restores a person, so there is nothing to record
   ['auth.user.restore', 'nothing (a deleted person does not come back)'],
 ])
