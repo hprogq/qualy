@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { ReservationInvalid } from '@qualy/plugin-storage/errors'
 import fs from 'node:fs'
 import { constants as fsConstants } from 'node:fs'
-import { link, mkdir, open, rm, stat as statFile } from 'node:fs/promises'
+import { link, mkdir, open, readdir, rm, stat as statFile } from 'node:fs/promises'
 import path from 'node:path'
 import { Effect } from 'effect'
 import { backendFailure, type BackendUnavailable } from '@qualy/plugin-storage/errors'
@@ -20,7 +20,15 @@ import { localUploadUrl } from '../urls.ts'
 //
 // Both come from the same trick: bytes land in `.tmp` under the ticket's id
 // and are installed with a hard link, which fails if anything already holds
-// the name. A crash mid-upload leaves a temporary file nothing will ever stat.
+// the name.
+//
+// A crash mid-upload leaves that temporary file behind. It used to stay for
+// good, and it held the ticket too: the exclusive open refused every retry,
+// so the uploader got 503 until the ticket ran out. One process receives a
+// store's uploads, so which staging files are being written is known here:
+// one this process is not writing is a dead process's half file, reclaimed
+// by the next upload on its ticket, or swept once nothing could still be
+// writing it.
 
 const fault = (operation: string) => (cause: unknown) => backendFailure(operation, cause)
 
@@ -31,6 +39,19 @@ class Oversized extends Error {}
 const stagingPath = (root: string, reservationId: string) => path.join(root, '.tmp', reservationId)
 
 const objectPath = (root: string, key: string) => path.join(root, key)
+
+/** the staging files this process is writing right now, by absolute path */
+const receiving = new Set<string>()
+
+const EXCLUSIVE_WRITE = fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL
+
+/**
+ * How long a staging file can go untouched before nothing can still be
+ * writing it: twice the longest the host lets one request take to arrive
+ * (apps/server/src/http-server.ts), and an arriving upload touches its file
+ * with every chunk.
+ */
+export const STALE_STAGING_MS = 60 * 60 * 1000
 
 export interface ReceivedUpload {
   readonly bytes: bigint
@@ -73,13 +94,41 @@ const receiveInto = async (
   },
 ): Promise<ReceivedUpload> => {
   const staging = stagingPath(root, input.reservationId)
+  // two uploads on one ticket are two writers on one file, and the second is
+  // refused rather than interleaved
+  if (receiving.has(staging)) {
+    throw new Error(`an upload on ticket ${input.reservationId} is already arriving`)
+  }
+  receiving.add(staging)
+  try {
+    return await receiveExclusively(root, staging, input)
+  } finally {
+    receiving.delete(staging)
+  }
+}
+
+/** the staging file, opened for this upload alone; a file nobody here is writing is reclaimed */
+const openStaging = async (staging: string) => {
   await mkdir(path.dirname(staging), { recursive: true })
-  // exclusive: two uploads on one ticket are two writers on one file, and the
-  // second is refused rather than interleaved
-  const handle = await open(
-    staging,
-    fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL,
-  )
+  try {
+    return await open(staging, EXCLUSIVE_WRITE)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+    await rm(staging, { force: true })
+    return await open(staging, EXCLUSIVE_WRITE)
+  }
+}
+
+const receiveExclusively = async (
+  root: string,
+  staging: string,
+  input: {
+    key: string
+    maxBytes: bigint
+    body: AsyncIterable<Uint8Array>
+  },
+): Promise<ReceivedUpload> => {
+  const handle = await openStaging(staging)
   const digest = createHash('sha256')
   let size = 0n
   try {
@@ -105,6 +154,34 @@ const receiveInto = async (
     throw error
   }
   return { bytes: size, sha256: digest.digest('hex') }
+}
+
+/**
+ * Removes the staging files nothing can still be writing, and says how many.
+ *
+ * Only what a crash left: a file this process is writing is skipped whatever
+ * its age, and so is one touched within `STALE_STAGING_MS`, which is how a
+ * file another process might be writing looks.
+ */
+export const sweepStaging = async (root: string, now: number): Promise<number> => {
+  const directory = path.join(root, '.tmp')
+  let names: string[]
+  try {
+    names = await readdir(directory)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 0
+    throw error
+  }
+  let removed = 0
+  for (const name of names) {
+    const file = path.join(directory, name)
+    if (receiving.has(file)) continue
+    const info = await statFile(file).catch(() => undefined)
+    if (info === undefined || !info.isFile() || now - info.mtimeMs < STALE_STAGING_MS) continue
+    await rm(file, { force: true })
+    removed += 1
+  }
+  return removed
 }
 
 export const localReceiver = (root: string): LocalReceiver => ({
