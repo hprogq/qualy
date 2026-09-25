@@ -1673,11 +1673,21 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             { decision: 'reject', comment: '材料不足' },
             f.principal(f.reviewer),
           )
-          return yield* Effect.exit(assessment.appealEntry(f.t, entry.id, { reason: '请复核' }, s1))
+          // the card and the detail say it before the press, as the write does
+          const card = (yield* assessment.listMyEntries(f.t, g.batch.id, {}, s1)).entries[0]!
+          const detail = yield* assessment.getEntry(f.t, entry.id, s1)
+          const appealed = yield* Effect.exit(
+            assessment.appealEntry(f.t, entry.id, { reason: '请复核' }, s1),
+          )
+          return { card: card.capabilities, detail: detail.capabilities, appealed }
         }),
       ),
     )
-    expect(refusalOf(result)?.reason).toBe('no-appeal-route')
+    expect(refusalOf(result.appealed)?.reason).toBe('no-appeal-route')
+    expect(result.card.appeal).toEqual({ state: 'blocked', reason: 'no-appeal-route' })
+    expect(result.detail.appeal).toEqual({ state: 'blocked', reason: 'no-appeal-route' })
+    // the other door out of a rejection stays open
+    expect(result.card.submit.state).toBe('available')
   })
 
   // Advice for the person who filed rides only a rejection that reaches

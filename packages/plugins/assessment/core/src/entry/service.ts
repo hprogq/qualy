@@ -7,6 +7,7 @@ import {
 } from '../scoring/recognition-db.ts'
 import { recordAdministrativeEntryTx, voidAdministrativeEntryTx } from './administrative-write.ts'
 import { bindCitedAttachments } from './bind-attachments.ts'
+import { questionFactsOf, type QuestionFacts } from './question-facts.ts'
 import { provenRecognition } from '../scoring/proven-recognition.ts'
 import { recognitionHash, seedFromEvidence } from '../scoring/recognition.ts'
 import { ProbeNeeded, probeIdentity, settleWithProbe } from '../scoring/failure-boundary.ts'
@@ -668,9 +669,22 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
      * reads under the lock.
      */
     conclusion?: Conclusion | null,
+    /** what the question itself allows, where the caller read it */
+    question?: QuestionFacts,
   ): EntryView => {
     const own = participant !== null && participant.userId === as.userId
     const active = own && participant.status === 'active'
+    // What the question itself refuses, whatever the minute allows: the
+    // writes say the same words for the same facts, so a button offered here
+    // is a call that goes through.
+    const refusedBy = (act: 'edit' | 'submit' | 'appeal'): ActionDecision | undefined =>
+      question === undefined
+        ? undefined
+        : !question.active
+          ? { allowed: false, layer: 'policy', reason: 'item-not-active' }
+          : act === 'appeal' && !question.appealRoute
+            ? { allowed: false, layer: 'policy', reason: 'no-appeal-route' }
+            : undefined
     // ownership and state say whether an act belongs on this claim at all;
     // the gate says whether this minute allows it. `hidden` is the first
     // kind of no, `blocked` the second - a blocked act renders disabled
@@ -743,7 +757,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             (entry.status === 'draft' ||
               entry.status === 'rejected' ||
               entry.status === 'needs_revision'),
-          underway ?? gates?.edit,
+          underway ?? refusedBy('edit') ?? gates?.edit,
         ),
         // a rejected filing may go back as it stands (§32.65): the word was
         // "no, as filed" and the answer may be "look again". What was sent
@@ -754,7 +768,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             : when(
                 (entry.source === 'self' || entry.source === 'proxy') &&
                   (entry.status === 'draft' || entry.status === 'rejected'),
-                underway ?? gates?.submit,
+                underway ?? refusedBy('submit') ?? gates?.submit,
               ),
         // Taking work back to edit ends where review begins (§32.69): once
         // anybody has decided, escalated, asked for material or voted -
@@ -789,14 +803,14 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                   conclusion !== null,
                   conclusion?.exhausted === true
                     ? { allowed: false, layer: 'policy', reason: 'appeal-exhausted' }
-                    : gates?.appeal,
+                    : (refusedBy('appeal') ?? gates?.appeal),
                 )
               : when(
                   (entry.status === 'approved' || entry.status === 'rejected') &&
                     (entry.currentReviewInstanceId !== null ||
                       ((entry.source === 'record' || entry.source === 'import') &&
                         entry.currentRecognitionId !== null)),
-                  gates?.appeal,
+                  refusedBy('appeal') ?? gates?.appeal,
                 ),
         // Giving a claim up is open across the whole life of the claim,
         // approved included (§32.69): "the school recognized it" and "its
@@ -1269,6 +1283,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               ? new Map<string, { origin: string; begun: boolean; open: boolean }>()
               : yield* withdrawStandingsOf(tenantId, [entry.currentReviewInstanceId])
           const veiled = yield* reviewersVeiled(tenantId, entry.batchId, participant, as)
+          const question = (yield* questionFactsOf(tenantId, [entry.itemId])).get(entry.itemId)
           return veil(
             view(
               entry,
@@ -1283,6 +1298,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 : standings.get(entry.currentReviewInstanceId),
               yield* recognitionOf(tenantId, entry, veiled),
               yield* conclusionOfEntry(tenantId, entryId),
+              question,
             ),
             veiled,
           )
@@ -1861,26 +1877,16 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           // gates per item: the questions being asked now, plus whatever
           // items the page's claims still name (a claim outlives its item)
           const activeItems = yield* activeItemIdsOf(tenantId, batchId)
-          const asked = new Set(activeItems)
-          const phaseGates = yield* gatesFor(as, batchId, membership.id, [
+          const gatesByItem = yield* gatesFor(as, batchId, membership.id, [
             ...new Set([...activeItems, ...pageRows.map((entry) => entry.itemId)]),
           ])
           // A withdrawn question takes no new work on the claims it leaves
-          // behind - no new version, no new round, no appeal - whatever the
-          // phase opens, and those writes refuse it in these words.
-          const withdrawn: ActionDecision = {
-            allowed: false,
-            layer: 'policy',
-            reason: 'item-not-active',
-          }
-          const gatesByItem = new Map(
-            [...phaseGates].map(([itemId, gates]) => [
-              itemId,
-              asked.has(itemId)
-                ? gates
-                : { ...gates, edit: withdrawn, submit: withdrawn, appeal: withdrawn },
-            ]),
-          )
+          // behind, and one with no escalation step hears no appeal, whatever
+          // the phase opens: read once for the page, said by the view the
+          // same way the detail says it
+          const questions = yield* questionFactsOf(tenantId, [
+            ...new Set(pageRows.map((entry) => entry.itemId)),
+          ])
           const askedByEntry = new Map(
             (yield* openSupplementsOfEntries(
               tenantId,
@@ -1926,6 +1932,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                     : standings.get(entry.currentReviewInstanceId),
                   yield* recognitionOf(tenantId, entry, veiled),
                   conclusions.get(entry.id) ?? null,
+                  questions.get(entry.itemId),
                 ),
                 veiled,
               ),

@@ -680,7 +680,7 @@ export default {
   'assessment/items/escalation-title': '复核流程',
   'assessment/items/escalation-hint':
     '审核人需要进一步确认时可转入复核流程，由最后一个复核环节给出最终结论。',
-  'assessment/items/escalation-empty': '未设置复核步骤时，审核人无法提请复核。',
+  'assessment/items/escalation-empty': '未设置复核步骤时，审核人无法提请复核，参评人也无法申诉。',
   'assessment/items/stage-add': '添加审核步骤',
   'assessment/items/stage-remove': '删除步骤',
   'assessment/items/stage-kind': '审核人确定方式',
@@ -2106,7 +2106,7 @@ export default {
   'assessment/items/review-chain-long':
     '参评人员申报的记录按以下步骤依次审核。工作人员统一认定的记录不进入此流程。',
   'assessment/items/escalation-long':
-    '审核通过后有异议时使用。未设置复核步骤时，审核人无法提请复核。',
+    '审核通过后有异议时使用。未设置复核步骤时，审核人无法提请复核，参评人也无法申诉。',
   'assessment/items/summary-section-hint': '记录列表中用来认出一条申报的字段，排在第一的为标题',
   'assessment/items/summary-no-fields': '先在申报表单中添加字段',
   'assessment/items/field-linked-range': '类型与范围来自关联的认定字段',

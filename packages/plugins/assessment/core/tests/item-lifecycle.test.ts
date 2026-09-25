@@ -555,6 +555,7 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
           )
           const card = (yield* assessment.listMyEntries(f.t, g.batch.id, {}, refused.owner))
             .entries[0]!
+          const detail = yield* assessment.getEntry(f.t, refused.entryId, refused.owner)
           const lateAppeal = yield* Effect.exit(
             assessment.appealEntry(f.t, refused.entryId, { reason: '请复核' }, refused.owner),
           )
@@ -575,6 +576,7 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
             claim,
             queued,
             card: card.capabilities,
+            detail: detail.capabilities,
             lateAppeal,
             appealedAgain,
           }
@@ -594,6 +596,10 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
     expect(result.card.appeal).toEqual({ state: 'blocked', reason: 'item-not-active' })
     expect(result.card.edit).toEqual({ state: 'blocked', reason: 'item-not-active' })
     expect(result.card.submit).toEqual({ state: 'blocked', reason: 'item-not-active' })
+    // the detail reads the question the same way the card does
+    expect(result.detail.appeal).toEqual(result.card.appeal)
+    expect(result.detail.edit).toEqual(result.card.edit)
+    expect(result.detail.submit).toEqual(result.card.submit)
     expect(refusalOf(result.lateAppeal)?.reason).toBe('item-not-active')
     expect(refusalOf(result.appealedAgain)?.reason).toBe('appeal-exhausted')
   })

@@ -2741,7 +2741,7 @@ const i18n = definePluginMessages({
     itemsEscalationEmpty: {
       id: 'assessment/items/escalation-empty',
       defaultMessage:
-        'At least one escalation step is required before reviewers can escalate submissions.',
+        'At least one escalation step is required before reviewers can escalate submissions or participants can appeal.',
     },
     itemsStageAdd: { id: 'assessment/items/stage-add', defaultMessage: 'Add review step' },
     itemsStageRemove: { id: 'assessment/items/stage-remove', defaultMessage: 'Delete step' },
@@ -6805,7 +6805,7 @@ const i18n = definePluginMessages({
     itemsEscalationLong: {
       id: 'assessment/items/escalation-long',
       defaultMessage:
-        'Used when an approved record is disputed. With no step here a reviewer cannot ask for one.',
+        'Used when an approved record is disputed. With no step here a reviewer cannot ask for one, and participants cannot appeal.',
     },
     itemsSummarySectionHint: {
       id: 'assessment/items/summary-section-hint',
