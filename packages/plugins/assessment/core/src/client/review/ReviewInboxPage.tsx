@@ -926,7 +926,7 @@ function useOpenRow(batchId: string) {
 }
 
 function ByItem({ batchId, rows }: { batchId: string; rows: readonly InboxItemDto[] }) {
-  const { format } = useI18n()
+  const { format, locale } = useI18n()
   const open = useOpenRow(batchId)
   const groups = groupByItem(rows)
   return (
@@ -982,7 +982,7 @@ function ByItem({ batchId, rows }: { batchId: string; rows: readonly InboxItemDt
                         </span>
                       ))}
                     </span>
-                    <span {...stylex.props(styles.when)}>{timeLabel(row.submittedAt)}</span>
+                    <span {...stylex.props(styles.when)}>{timeLabel(row.submittedAt, locale)}</span>
                     <span {...stylex.props(styles.chipCell)}>
                       <StateChip row={row} />
                     </span>
@@ -1002,7 +1002,7 @@ const GRID_TIME = '4rem 11rem 12rem minmax(0,1fr) 6rem'
 const GRID_PERSON = '12rem minmax(0,1fr) 4rem 7rem 6rem'
 
 function ByTime({ batchId, rows }: { batchId: string; rows: readonly InboxItemDto[] }) {
-  const { format } = useI18n()
+  const { format, locale } = useI18n()
   const open = useOpenRow(batchId)
   const days = groupByDay(rows)
   return (
@@ -1031,7 +1031,7 @@ function ByTime({ batchId, rows }: { batchId: string; rows: readonly InboxItemDt
                   style={{ gridTemplateColumns: GRID_TIME }}
                   onClick={() => open(row, '')}
                 >
-                  <span {...stylex.props(styles.when)}>{clockLabel(row.submittedAt)}</span>
+                  <span {...stylex.props(styles.when)}>{clockLabel(row.submittedAt, locale)}</span>
                   <span {...stylex.props(styles.who)}>
                     <span {...stylex.props(styles.whoName)}>{row.participantName}</span>
                     {row.businessNo !== null && (
@@ -1056,7 +1056,7 @@ function ByTime({ batchId, rows }: { batchId: string; rows: readonly InboxItemDt
 }
 
 function ByPerson({ batchId, rows }: { batchId: string; rows: readonly InboxItemDto[] }) {
-  const { format } = useI18n()
+  const { format, locale } = useI18n()
   const open = useOpenRow(batchId)
   const people = groupByPerson(rows)
   return (
@@ -1119,7 +1119,7 @@ function ByPerson({ batchId, rows }: { batchId: string; rows: readonly InboxItem
                     <span {...stylex.props(styles.filesCell)}>
                       {format(m.reviewFilesCount, { count: row.attachmentCount })}
                     </span>
-                    <span {...stylex.props(styles.when)}>{timeLabel(row.submittedAt)}</span>
+                    <span {...stylex.props(styles.when)}>{timeLabel(row.submittedAt, locale)}</span>
                     <span {...stylex.props(styles.chipCell)}>
                       <StateChip row={row} />
                     </span>

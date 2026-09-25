@@ -397,7 +397,7 @@ export const FilingColumn = memo(function FilingColumn({
   /** the way to another face of the pager, for the summary's links */
   onPart: (part: WorkbenchPart) => void
 }) {
-  const { format } = useI18n()
+  const { format, locale } = useI18n()
   const fine = useFinePointer()
   // every field the question asks, files included and in their own places:
   // a field that asks for a certificate is not "materials", it is the
@@ -534,7 +534,7 @@ export const FilingColumn = memo(function FilingColumn({
             <p {...stylex.props(styles.filedVersion)}>
               {format(m.reviewFiledVersion, {
                 no: review.revision.revisionNo,
-                at: timeLabel(review.submittedAt),
+                at: timeLabel(review.submittedAt, locale),
               })}
             </p>
             <span {...stylex.props(styles.spacer)} />
@@ -727,7 +727,7 @@ export const FilingColumn = memo(function FilingColumn({
 
 /** one ask and what came back, read like the filing above it */
 function SupplementCard({ supplement }: { supplement: ReviewDto['supplements'][number] }) {
-  const { format } = useI18n()
+  const { format, locale } = useI18n()
   const answers = (supplement.response?.payload ?? {}) as Record<string, unknown>
   return (
     <div {...stylex.props(styles.card)}>
@@ -745,7 +745,7 @@ function SupplementCard({ supplement }: { supplement: ReviewDto['supplements'][n
           )}
         </Badge>
         <span {...stylex.props(styles.spacer)} />
-        <p {...stylex.props(styles.cardWhen)}>{timeLabel(supplement.requestedAt)}</p>
+        <p {...stylex.props(styles.cardWhen)}>{timeLabel(supplement.requestedAt, locale)}</p>
       </div>
       <p {...stylex.props(styles.instructions)}>{supplement.instructions}</p>
       {supplement.response !== null && (

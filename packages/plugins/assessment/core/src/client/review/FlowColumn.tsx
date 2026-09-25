@@ -318,7 +318,7 @@ export const FlowColumn = memo(function FlowColumn({
   /** whether the escalation notice stands outside the pager instead of here */
   lifted: boolean
 }) {
-  const { format } = useI18n()
+  const { format, locale } = useI18n()
   const fine = useFinePointer()
   const previous = review.context?.previous ?? null
   const earlier = review.context?.earlier ?? []
@@ -393,7 +393,7 @@ export const FlowColumn = memo(function FlowColumn({
                 <Badge variant="secondary" className={stylex.props(styles.roundBadge).className}>
                   {format(m.reviewStateRound, { round: previous.roundNo })}
                 </Badge>
-                <span {...stylex.props(styles.time)}>{timeLabel(previous.at)}</span>
+                <span {...stylex.props(styles.time)}>{timeLabel(previous.at, locale)}</span>
               </span>
             </div>
             {/* One line, and the name gives way first. A reviewer's full
@@ -473,7 +473,7 @@ export const FlowColumn = memo(function FlowColumn({
                       >
                         {grounds}
                       </span>
-                      <span {...stylex.props(styles.earlierWhen)}>{timeLabel(one.at)}</span>
+                      <span {...stylex.props(styles.earlierWhen)}>{timeLabel(one.at, locale)}</span>
                     </span>
                   )
                 })}
@@ -532,7 +532,7 @@ export const FlowColumn = memo(function FlowColumn({
                       <p {...stylex.props(styles.eventTitle)}>{title}</p>
                       {event.reason !== null && <Badge variant="outline">{event.reason}</Badge>}
                       <span {...stylex.props(styles.spacer)} />
-                      <p {...stylex.props(styles.eventWhen)}>{timeLabel(event.at)}</p>
+                      <p {...stylex.props(styles.eventWhen)}>{timeLabel(event.at, locale)}</p>
                     </div>
                     {event.comment !== null && (
                       <p {...stylex.props(styles.eventComment)}>{event.comment}</p>

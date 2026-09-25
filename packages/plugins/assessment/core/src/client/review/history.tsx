@@ -265,7 +265,7 @@ export function VersionPicker({
   onPick: (revisionId: string) => void
   onClose: () => void
 }) {
-  const { format, formatError } = useI18n()
+  const { format, formatError, locale } = useI18n()
   // a phone gets the sheet where the thumb is; a keyboard gets the digits
   const narrow = useIsBelow(640)
   const fine = useFinePointer()
@@ -421,7 +421,7 @@ export function VersionPicker({
                                 {format(m.reviewVersionName, { no: revision.revisionNo })}
                               </span>
                               <span {...stylex.props(styles.versionWhen)}>
-                                {timeLabel(revision.createdAt)}
+                                {timeLabel(revision.createdAt, locale)}
                               </span>
                             </span>
                             {revision.note !== null && (

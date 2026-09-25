@@ -1668,7 +1668,7 @@ function ClaimRow({
   score: string | null
   onOpen: () => void
 }) {
-  const { format } = useI18n()
+  const { format, locale } = useI18n()
   const fields = fieldsOf(item.currentRevision?.formConfig)
   const payload = (entry.currentRevision?.payload ?? {}) as Record<string, unknown>
   const revisionNo = entry.currentRevision?.revisionNo
@@ -1701,7 +1701,7 @@ function ClaimRow({
           ? format(m.paperUnsubmitted)
           : format(m.entryVersionNo, { no: revisionNo })}
       </span>
-      <span {...stylex.props(styles.claimWhenClock)}>{when(entry)}</span>
+      <span {...stylex.props(styles.claimWhenClock)}>{when(entry, locale)}</span>
     </>
   )
   return (
@@ -1763,8 +1763,8 @@ function ClaimRow({
   )
 }
 
-const when = (entry: EntryDto): string =>
-  new Date(entry.currentRevision?.createdAt ?? entry.createdAt).toLocaleString(undefined, {
+const when = (entry: EntryDto, locale: string): string =>
+  new Date(entry.currentRevision?.createdAt ?? entry.createdAt).toLocaleString(locale, {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',

@@ -443,6 +443,45 @@ describe('the participant results screen', () => {
     await expect.element(page.getByRole('button', { name: '撤销认定' })).toBeVisible()
   })
 
+  it('writes when a claim came back in the language the page is read in', async () => {
+    const at = '2026-03-02T07:05:00.000Z'
+    await screen(
+      {
+        listParticipantEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [
+              {
+                entry: entry({
+                  status: 'needs_revision',
+                  refusal: {
+                    kind: 'returned',
+                    reason: null,
+                    comment: null,
+                    suggestedPayload: null,
+                    actorName: '王老师',
+                    at,
+                  },
+                }),
+                recognition: null,
+              },
+            ],
+            nextCursor: null,
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}&view=entries&entry=${ENTRY_ID}`,
+    )
+    // the browser itself reports en-US; the page is read in zh-CN
+    await expect.element(page.getByTestId('refusal-when')).toHaveTextContent(
+      new Date(at).toLocaleString('zh-CN', {
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+    )
+  })
+
   it('never hands the band over to an empty heading', async () => {
     // the band becomes the person the moment one is chosen, so a banner that
     // waited for the name would leave the heading blank for the length of a

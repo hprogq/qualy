@@ -440,7 +440,7 @@ export function EntryDetail({
   footer?: ReactNode
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format } = useI18n()
+  const { format, locale } = useI18n()
   const yesNo = { yes: format(m.recognitionYes), no: format(m.recognitionNo) }
   const [tab, setTab] = useState<'content' | 'trail'>('content')
   const payload = (entry.currentRevision?.payload ?? {}) as Record<string, unknown>
@@ -569,8 +569,8 @@ export function EntryDetail({
                         </Badge>
                       )}
                       <span {...stylex.props(styles.spacer)} />
-                      <span {...stylex.props(styles.noticeWhen)}>
-                        {new Date(entry.refusal.at).toLocaleString()}
+                      <span {...stylex.props(styles.noticeWhen)} data-testid="refusal-when">
+                        {timeOf(entry.refusal.at, locale)}
                       </span>
                     </div>
                     {(entry.refusal.comment ?? '') !== '' && (
@@ -713,8 +713,8 @@ export function EntryDetail({
                       <p {...stylex.props(styles.sectionNote)}>
                         {format(m.entrySheetSupNote, {
                           round: ask.roundNo,
-                          asked: timeOf(ask.requestedAt),
-                          answered: timeOf(ask.response!.respondedAt),
+                          asked: timeOf(ask.requestedAt, locale),
+                          answered: timeOf(ask.response!.respondedAt, locale),
                         })}
                       </p>
                     </div>
@@ -810,10 +810,10 @@ function RecognizedValues({ entry }: { entry: EntryDto }) {
         <span {...stylex.props(styles.spacer)} />
         <p {...stylex.props(styles.standingWhen)}>
           {standing.actorName === null
-            ? timeOf(standing.createdAt)
+            ? timeOf(standing.createdAt, locale)
             : format(m.recognitionBy, {
                 who: standing.actorName,
-                when: timeOf(standing.createdAt),
+                when: timeOf(standing.createdAt, locale),
               })}
         </p>
       </div>
@@ -830,8 +830,8 @@ function RecognizedValues({ entry }: { entry: EntryDto }) {
   )
 }
 
-const timeOf = (iso: string): string =>
-  new Date(iso).toLocaleString(undefined, {
+const timeOf = (iso: string, locale: string): string =>
+  new Date(iso).toLocaleString(locale, {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',

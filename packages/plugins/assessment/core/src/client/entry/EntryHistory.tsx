@@ -692,12 +692,13 @@ function Line({
   at: string
   tone?: 'alert'
 }) {
+  const { locale } = useI18n()
   return (
     <div {...stylex.props(styles.headRow)}>
       <p {...stylex.props(styles.lineTitle, tone === 'alert' && styles.lineAlert)}>{title}</p>
       {aside}
       <span {...stylex.props(styles.spacer)} />
-      <p {...stylex.props(styles.lineWhen)}>{timeOf(at)}</p>
+      <p {...stylex.props(styles.lineWhen)}>{timeOf(at, locale)}</p>
     </div>
   )
 }
@@ -1121,9 +1122,9 @@ function FiledFields({
  * and with the year whenever it is not this one - "12/31" across a year
  * boundary reads as the wrong year with no warning.
  */
-const timeOf = (iso: string): string => {
+const timeOf = (iso: string, locale: string): string => {
   const then = new Date(iso)
-  return then.toLocaleString(undefined, {
+  return then.toLocaleString(locale, {
     ...(then.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }),
     month: '2-digit',
     day: '2-digit',

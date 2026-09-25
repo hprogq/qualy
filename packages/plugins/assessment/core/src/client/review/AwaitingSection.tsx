@@ -387,7 +387,7 @@ function AwaitingRow({
   howLongAgo: (iso: string) => string
   onOpen: () => void
 }) {
-  const { format } = useI18n()
+  const { format, locale } = useI18n()
   const listJoin = useList()
   const answered = row.status === 'answered'
   return (
@@ -433,7 +433,7 @@ function AwaitingRow({
         <span aria-hidden {...stylex.props(styles.dotSep)}>
           　
         </span>
-        <span {...stylex.props(styles.askedAt)}>{timeLabel(row.requestedAt)}</span>
+        <span {...stylex.props(styles.askedAt)}>{timeLabel(row.requestedAt, locale)}</span>
         <span {...stylex.props(styles.mobileSpacer)} />
         <span {...stylex.props(styles.openSeat)}>
           {/* one way in either way: the round is where both the answer and

@@ -167,9 +167,9 @@ export const rowSummary = (row: InboxItemDto): string => summaryOf(row.values)
  * queue keeps its own coarser day-aware clock - operating surfaces read at
  * a glance, records read exactly.
  */
-export const timeLabel = (iso: string): string => {
+export const timeLabel = (iso: string, locale: string): string => {
   const then = new Date(iso)
-  return then.toLocaleString(undefined, {
+  return then.toLocaleString(locale, {
     ...(then.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }),
     month: '2-digit',
     day: '2-digit',
@@ -179,8 +179,8 @@ export const timeLabel = (iso: string): string => {
   })
 }
 
-export const clockLabel = (iso: string): string =>
-  new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+export const clockLabel = (iso: string, locale: string): string =>
+  new Date(iso).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
 
 /**
  * A clock that admits which day it is.
@@ -192,14 +192,14 @@ export const clockLabel = (iso: string): string =>
  * an hour behind it is noise.
  */
 export function useDayClock(): (iso: string) => string {
-  const { format } = useI18n()
+  const { format, locale } = useI18n()
   return (iso: string) => {
     const at = new Date(iso)
     const floor = (day: Date) => new Date(day.getFullYear(), day.getMonth(), day.getDate())
     const days = Math.round((floor(new Date()).getTime() - floor(at).getTime()) / 86_400_000)
-    if (days <= 0) return clockLabel(iso)
+    if (days <= 0) return clockLabel(iso, locale)
     if (days === 1) return format(m.timeYesterday)
-    return at.toLocaleDateString(undefined, { month: '2-digit', day: '2-digit' })
+    return at.toLocaleDateString(locale, { month: '2-digit', day: '2-digit' })
   }
 }
 
