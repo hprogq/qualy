@@ -13,14 +13,16 @@ import {
   FieldSeparator,
   FieldSet,
 } from '@qualy/ui/field'
-import { PHASE_GATED_CODES, type PhaseGatedCode } from '../permissions.ts'
+import { OFFERED_PHASE_CODES, type PhaseGatedCode } from '../permissions.ts'
 import { assessmentMessages as m } from './i18n.ts'
 
 // What a stage opens, as checkboxes over the gate's own registry.
 //
-// The list is PHASE_GATED_CODES and can be nothing else: a permission from
-// another plugin cannot appear here, because this screen never sees a
-// catalog - it sees the set the gate governs, which is this plugin's alone.
+// The list is the gate's own registry and can be nothing else: a permission
+// from another plugin cannot appear here, because this screen never sees a
+// catalog - it sees the set the gate governs, which is this plugin's alone,
+// less the codes the product does not offer yet (UNOFFERED_CODES). A stored
+// profile that names one of those keeps it, unseen, through an edit.
 // That is the structural half of the decision in §32.13; the labels and the
 // one-line explanations are keyed by the same tuple, so a new gated code
 // without either does not compile.
@@ -70,15 +72,15 @@ const GROUPS: readonly { key: 'entry' | 'review' | 'result'; codes: readonly Pha
   [
     {
       key: 'entry',
-      codes: PHASE_GATED_CODES.filter((code) => code.startsWith('assessment.entry.')),
+      codes: OFFERED_PHASE_CODES.filter((code) => code.startsWith('assessment.entry.')),
     },
     {
       key: 'review',
-      codes: PHASE_GATED_CODES.filter((code) => code.startsWith('assessment.review.')),
+      codes: OFFERED_PHASE_CODES.filter((code) => code.startsWith('assessment.review.')),
     },
     {
       key: 'result',
-      codes: PHASE_GATED_CODES.filter(
+      codes: OFFERED_PHASE_CODES.filter(
         (code) => !code.startsWith('assessment.entry.') && !code.startsWith('assessment.review.'),
       ),
     },

@@ -1667,3 +1667,4 @@ Entry。批量撤销沿这些已物化的记录进行，**绝不按 target 说�
 ③**收紧读取范围**（裁决 #21）：`userBatches` 查他人时只认管理或工作于该批次（不走 `isParticipant`），查本人不变；「某人的申报记录」逐条遵守 `mayReadEntry` 同源的四扇门，下推进 SQL（见 §32.82 修订）。
 ④**被撤销的行政认定保留锚定行**（裁决 #25）：见 §32.30 的扩展。计分读取取条目的 `source`，`voided` 且非随题作废的 record / import 条目进 `excluded` 档（`revoked`），线上带 `revoked: true`；账户总分不变（该行不进聚合器）。
 ⑤**重新开启后等待新阶段时参评人仍可读**（裁决 #27）：参评人对批次的可见性（`isParticipant`）以「任一阶段已按时钟开始」为准，不再只数最近一次归档之后开始的阶段；重新开启、新阶段尚在未来时，参评人照旧能看到批次、自己的申报、历史与成绩，能做什么仍由阶段门控回答。
+⑥**未实现的权限码不出现在任何配置入口**（裁决 #22）：`assessment.entry.proxy` 与 `assessment.publication.manage` 在真正有写路径之前移出插件声明的权限目录（`UNOFFERED_CODES`），因此不进角色编辑器、批次不再接纳（移出 `BATCH_STAFF_CODES`）、阶段编辑器不列出（`OFFERED_PHASE_CODES`）；**不删除权限码本身**：`permissions` 表、角色与批次接纳中已有的行保留且失效（目录不提供的码不授权任何事），已存阶段权限配置里的 `entry.proxy` 仍是合法配置、编辑时原样保留。`qualy.lock.json` 经 `pnpm qualy resolve` 重算；演示种子的角色与阶段配置拿掉这两个码。

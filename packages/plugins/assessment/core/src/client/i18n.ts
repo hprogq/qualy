@@ -5677,10 +5677,6 @@ const i18n = definePluginMessages({
       id: 'assessment/permission-hint/ranking-view',
       defaultMessage: 'View the batch ranking.',
     },
-    'permission-hint.assessment.publication.manage': {
-      id: 'assessment/permission-hint/publication-manage',
-      defaultMessage: 'Announce, publish, or withdraw the batch results.',
-    },
 
     // one label per gated code; the matrix is built from PHASE_GATED_CODES,
     // so a code without a label here does not compile
@@ -5747,12 +5743,6 @@ const i18n = definePluginMessages({
     'permission.assessment.ranking.view': {
       id: 'assessment/permission/ranking-view',
       defaultMessage: 'View ranking',
-    },
-    // not gated by a phase, so the phase editor never lists it; the access
-    // page does, because a role can carry it into a round
-    'permission.assessment.publication.manage': {
-      id: 'assessment/permission/publication-manage',
-      defaultMessage: 'Manage result publication',
     },
 
     // ------------------------------------------------------------------

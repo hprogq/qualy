@@ -108,7 +108,6 @@ const ENTRY = [
   'assessment.entry.submit',
   'assessment.entry.withdraw',
   'assessment.entry.abandon',
-  'assessment.entry.proxy',
   'assessment.entry.record',
   'assessment.review.process',
   'assessment.review.escalate',

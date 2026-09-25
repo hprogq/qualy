@@ -1723,7 +1723,6 @@ export default {
     '可直接更正已有结论的认定结果，参评人员可对新结果申诉。',
   'assessment/permission-hint/result-view-peers': '可查看其他参评人员的成绩。',
   'assessment/permission-hint/ranking-view': '可查看本批次的排名情况。',
-  'assessment/permission-hint/publication-manage': '可预告、发布或撤回本批次的成绩公示。',
 
   'assessment/permission/entry-create': '新建申报',
   'assessment/permission/entry-edit': '修改草稿',
@@ -1741,7 +1740,6 @@ export default {
   'assessment/permission/entry-redetermine': '重新认定',
   'assessment/permission/result-view-peers': '查看他人成绩',
   'assessment/permission/ranking-view': '查看排名',
-  'assessment/permission/publication-manage': '管理成绩公示',
 
   'assessment/refusal/phase-not-found': '部分阶段已不在当前安排中，请刷新后重试。',
   'assessment/refusal/actual-immutable': '已开始阶段的开始时间无法修改。',

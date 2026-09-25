@@ -303,12 +303,7 @@ export const buildWorld = (input: {
     const counsellor = yield* role(
       'counsellor',
       '辅导员',
-      [
-        'assessment.review.process',
-        'assessment.review.reopen',
-        'assessment.entry.record',
-        'assessment.entry.proxy',
-      ],
+      ['assessment.review.process', 'assessment.review.reopen', 'assessment.entry.record'],
       faculty,
       '年级',
     )

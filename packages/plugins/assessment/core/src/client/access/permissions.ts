@@ -12,25 +12,21 @@ import { assessmentMessages as m } from '../i18n.ts'
 export type StaffCode = (typeof BATCH_STAFF_CODES)[number]
 
 const LABELS = {
-  'assessment.entry.proxy': m['permission.assessment.entry.proxy'],
   'assessment.entry.record': m['permission.assessment.entry.record'],
   'assessment.entry.redetermine': m['permission.assessment.entry.redetermine'],
   'assessment.review.process': m['permission.assessment.review.process'],
   'assessment.review.reopen': m['permission.assessment.review.reopen'],
   'assessment.result.view-peers': m['permission.assessment.result.view-peers'],
   'assessment.ranking.view': m['permission.assessment.ranking.view'],
-  'assessment.publication.manage': m['permission.assessment.publication.manage'],
 } as const satisfies Record<StaffCode, MessageDescriptor>
 
 const HINTS = {
-  'assessment.entry.proxy': m['permission-hint.assessment.entry.proxy'],
   'assessment.entry.record': m['permission-hint.assessment.entry.record'],
   'assessment.entry.redetermine': m['permission-hint.assessment.entry.redetermine'],
   'assessment.review.process': m['permission-hint.assessment.review.process'],
   'assessment.review.reopen': m['permission-hint.assessment.review.reopen'],
   'assessment.result.view-peers': m['permission-hint.assessment.result.view-peers'],
   'assessment.ranking.view': m['permission-hint.assessment.ranking.view'],
-  'assessment.publication.manage': m['permission-hint.assessment.publication.manage'],
 } as const satisfies Record<StaffCode, MessageDescriptor>
 
 export const permissionLabel = (code: StaffCode) => LABELS[code]

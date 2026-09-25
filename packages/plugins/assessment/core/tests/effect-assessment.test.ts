@@ -877,7 +877,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
               values (${f.tenant}, ${role}, ${id})`)
           })
         yield* carry('assessment.review.process')
-        yield* carry('assessment.entry.proxy')
+        yield* carry('assessment.entry.record')
         const tutor = one<{ id: string }>(
           yield* runSql(sql`
             insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
@@ -903,11 +903,11 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
 
         // the tenant now widens the role and narrows the assignment's reach in
         // one go: a capability added, a capability taken away
-        yield* carry('assessment.publication.manage')
+        yield* carry('assessment.review.reopen')
         yield* runSql(sql`
           delete from role_permissions rp using permissions p
           where p.id = rp.permission_id and rp.role_id = ${role}
-            and p.code = 'assessment.entry.proxy'`)
+            and p.code = 'assessment.entry.record'`)
         const afterTenantEdit = yield* assessment.listAccess(f.tenant, batch.id, {}, f.principal)
         const plan = yield* assessment.previewAccessSync(f.tenant, batch.id, {}, f.principal)
 
@@ -973,11 +973,11 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     const of = (access: { staff: readonly { userId: string; effective: readonly string[] }[] }) =>
       access.staff.find((row) => row.userId === tutor)?.effective ?? []
 
-    expect(of(atCreation)).toEqual(['assessment.entry.proxy', 'assessment.review.process'])
+    expect(of(atCreation)).toEqual(['assessment.entry.record', 'assessment.review.process'])
     // withdrawing takes effect at once; widening does not arrive on its own
     expect(of(afterTenantEdit)).toEqual(['assessment.review.process'])
-    expect(kind('widened')).toEqual(['assessment.publication.manage'])
-    expect(kind('lapsed')).toEqual(['assessment.entry.proxy'])
+    expect(kind('widened')).toEqual(['assessment.review.reopen'])
+    expect(kind('lapsed')).toEqual(['assessment.entry.record'])
     // a withdrawal is reported but never offered for approval, so the counts
     // separate the errand that needs a decision from the one that does not
     expect(plan.pendingTotal).toBe(1)
@@ -985,7 +985,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(of(afterDeny)).toEqual([])
     // the synchronisation accepts the new capability, and leaves the refusal
     expect(merged).toEqual({ merged: 1, cleared: 1 })
-    expect(of(afterSync)).toEqual(['assessment.publication.manage'])
+    expect(of(afterSync)).toEqual(['assessment.review.reopen'])
     expect(afterPlan.lapsedTotal).toBe(0)
     expect(afterPlan.pendingTotal).toBe(0)
     expect(of(afterRevoke)).toEqual([])

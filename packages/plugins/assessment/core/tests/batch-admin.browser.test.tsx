@@ -1058,7 +1058,10 @@ describe('the stage plan', () => {
     // nothing from outside the gate's registry - no login, no organization
     // administration, no batch administration
     expect(offered.some((code) => code !== null && !code.startsWith('assessment.'))).toBe(false)
-    expect(offered).toHaveLength(15)
+    // and nothing the product does not offer yet: filing on a participant's
+    // behalf has no act behind it (ruling of 2026-09-25 #22)
+    expect(offered).not.toContain('assessment.entry.proxy')
+    expect(offered).toHaveLength(14)
   })
 
   it('fills one stage from a stage preset, as a starting point only', async () => {

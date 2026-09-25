@@ -33,28 +33,6 @@ export const permissions = [
     target: 'org-node',
   },
   {
-    code: 'assessment.publication.manage',
-    name: message('assessment/permission/publication-manage', 'Manage result publication'),
-    description: message(
-      'assessment/permission-hint/publication-manage',
-      'Announce, publish, or withdraw the batch results.',
-    ),
-    groupKey: 'assessment',
-    group: message('assessment/permission-group/assessment', 'Assessment'),
-    target: 'org-node',
-  },
-  {
-    code: 'assessment.entry.proxy',
-    name: message('assessment/permission/entry-proxy', 'Submit on behalf of participants'),
-    description: message(
-      'assessment/permission-hint/entry-proxy',
-      'File material a participant could have filed themselves; it takes the full review chain.',
-    ),
-    groupKey: 'assessment',
-    group: message('assessment/permission-group/assessment', 'Assessment'),
-    target: 'org-node',
-  },
-  {
     code: 'assessment.entry.record',
     name: message('assessment/permission/entry-record', 'Record recognized items'),
     description: message(
@@ -187,7 +165,6 @@ export const REVIEW_ACTION_CODES = [
 ] as const
 
 export const BATCH_STAFF_CODES = [
-  'assessment.entry.proxy',
   'assessment.entry.record',
   // not phase gated: correcting a conclusion is not a window the calendar
   // opens, and the batch's acceptance is what bounds it
@@ -196,8 +173,25 @@ export const BATCH_STAFF_CODES = [
   'assessment.review.reopen',
   'assessment.result.view-peers',
   'assessment.ranking.view',
-  'assessment.publication.manage',
 ] as const
+
+/**
+ * Codes the product has named but does not offer yet (ruling of 2026-09-25
+ * #22): filing on a participant's behalf and managing publication have no
+ * act behind them, so a tick that grants them promises nothing.
+ *
+ * Kept out of the catalog, so the role editor never lists them and a batch
+ * never accepts them, and out of what a stage editor offers. Not deleted:
+ * rows that already name them - a role's permissions, a batch's acceptance,
+ * a stage's profile - stay as they are and inert, since a code the catalog
+ * does not serve authorizes nothing, and a stage profile that names one is
+ * still a valid profile. When an act arrives, the code returns to the
+ * catalog under the same name.
+ */
+export const UNOFFERED_CODES: readonly string[] = [
+  'assessment.entry.proxy',
+  'assessment.publication.manage',
+]
 
 /**
  * Staff codes a role does not carry into a batch merely by holding every
@@ -227,6 +221,11 @@ export const PHASE_GATED_CODES = [
 ] as const
 
 export type PhaseGatedCode = (typeof PHASE_GATED_CODES)[number]
+
+/** what a stage editor offers: the gated codes, less the ones not offered yet */
+export const OFFERED_PHASE_CODES: readonly PhaseGatedCode[] = PHASE_GATED_CODES.filter(
+  (code) => !UNOFFERED_CODES.includes(code),
+)
 
 export const PHASE_GATED: ReadonlySet<string> = new Set(PHASE_GATED_CODES)
 
@@ -262,8 +261,14 @@ for (const code of REVIEW_ACTION_CODES) {
 }
 
 // The gate spans both: it decides which actions are open now, and has no
-// interest in where the authority for one comes from.
-const gateable = new Set<string>([...declared, ...PARTICIPANT_ACTION_CODES, ...REVIEW_ACTION_CODES])
+// interest in where the authority for one comes from. A code not offered yet
+// stays gateable, so a stage profile that already names one stays valid.
+const gateable = new Set<string>([
+  ...declared,
+  ...PARTICIPANT_ACTION_CODES,
+  ...REVIEW_ACTION_CODES,
+  ...UNOFFERED_CODES,
+])
 for (const code of PHASE_GATED) {
   if (!gateable.has(code)) {
     throw new Error(`PHASE_GATED lists '${code}', which @qualy/plugin-assessment does not declare`)
