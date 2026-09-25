@@ -92,6 +92,20 @@ await check('/', async (response) => {
   console.log(`smoke: / policy ${policy}`)
   return undefined
 })
+// the shell again, by way of a path whose last segment looks like a file:
+// the fallback serves the page for it, and the page must carry the same
+// refusal to be framed and the same policy
+await check('/x.', async (response) => {
+  if (response.status === 404) return undefined
+  if (response.status !== 200) return `status ${response.status}`
+  if (response.headers.get('x-frame-options') !== 'DENY') {
+    return `x-frame-options: ${response.headers.get('x-frame-options') ?? 'absent'}, expected DENY`
+  }
+  if (response.headers.get('content-security-policy-report-only') === null) {
+    return 'no content-security-policy-report-only'
+  }
+  return undefined
+})
 // the live channel, answered like any authenticated endpoint: no session,
 // no stream - and the route resolving at all means the listener layer
 // assembled with the rest of the production graph

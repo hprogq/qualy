@@ -169,14 +169,19 @@ const serve = (
     // spa fallback: extension-less GET/HEAD navigations get index.html,
     // missing files with extensions stay 404
     single: true,
-    setHeaders: (response, pathname) => {
+    setHeaders: (response) => {
       commonHeaders(response)
       response.setHeader('Cache-Control', 'no-cache')
-      // pathname is the request path, so spa navigations ('/', '/ping')
-      // have no extension: those serve the html shell, a document
-      if (pathname.endsWith('.html') || !path.posix.extname(pathname)) {
-        documentHeaders(response, policy)
-      }
+      // Every answer from the release's own directory carries the document
+      // headers, not only the ones whose path looks like a page. What is
+      // actually sent is not visible here - `pathname` is the REQUEST path -
+      // and the fallback decides by a rule of its own: `/portal.`,
+      // `/foo.bar/` and a literal `/index.html.br` all came back as the shell
+      // with no policy and no frame refusal, because their path has an
+      // extension. The directory holds the shell, its icons and their
+      // compressed twins; a frame refusal or a policy on an icon costs
+      // nothing.
+      documentHeaders(response, policy)
     },
   })
   const mount = `/${SHARED_ASSETS}`

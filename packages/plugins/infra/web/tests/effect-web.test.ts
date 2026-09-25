@@ -9,6 +9,7 @@ import { HttpRouter, HttpServerResponse } from 'effect/unstable/http'
 import fs from 'node:fs'
 import { createServer } from 'node:http'
 import os from 'node:os'
+import { brotliCompressSync } from 'node:zlib'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
@@ -247,17 +248,44 @@ describe('the shell against the api mount', () => {
     expect(page.headers.get('x-frame-options')).toBe('DENY')
     expect(page.headers.get('content-security-policy-report-only')).toBe("default-src 'self'")
     // an icon is a public file of the release, not a hashed asset: the same
-    // rule as the shell, and none of the document-only headers
+    // rule as the shell, headers included
     const icon = await fetch(`${base}/favicon.svg`)
     expect(icon.status).toBe(200)
     expect(icon.headers.get('cache-control')).toBe('no-cache')
-    expect(icon.headers.get('x-frame-options')).toBeNull()
+    expect(icon.headers.get('x-frame-options')).toBe('DENY')
     expect(icon.headers.get('x-content-type-options')).toBe('nosniff')
     // a hashed asset's name promises its bytes
     const asset = await fetch(`${base}/assets/index-current.js`)
     expect(asset.status).toBe(200)
     expect(asset.headers.get('cache-control')).toBe('public,max-age=31536000,immutable')
     expect(asset.headers.get('x-frame-options')).toBeNull()
+  })
+
+  it('never hands out the shell without its document headers, whatever the path looks like', async () => {
+    // The fallback serves the shell for any path its own rule does not take
+    // for a file, and the headers used to follow a different rule: a path
+    // with an extension. Each of these came back as the page itself, with
+    // no policy and no frame refusal - a link anybody can send.
+    fs.writeFileSync(
+      path.join(assetRoot, 'releases', 'test-release', 'index.html.br'),
+      brotliCompressSync('<!doctype html><title>shell</title>'),
+    )
+    let served = 0
+    for (const address of ['/portal.', '/x.', '/foo.bar/', '/a.b%20c', '/index.html.br']) {
+      const response = await fetch(`${base}${address}`, {
+        headers: { 'accept-encoding': 'br, gzip' },
+      })
+      // refusing the address outright would be as good an answer
+      if (response.status === 404) continue
+      served += 1
+      expect(response.status, address).toBe(200)
+      expect(response.headers.get('x-frame-options'), address).toBe('DENY')
+      expect(response.headers.get('cross-origin-opener-policy'), address).toBe('same-origin')
+      expect(response.headers.get('content-security-policy-report-only'), address).toBe(
+        "default-src 'self'",
+      )
+    }
+    expect(served).toBeGreaterThan(0)
   })
 
   it('keeps serving an asset the current release does not name, for the tab that still needs it', async () => {

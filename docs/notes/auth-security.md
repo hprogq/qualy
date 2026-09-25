@@ -81,7 +81,7 @@ Cookie + 不透明 session token(库存 sha256),不用 JWT/localStorage:
 
 排除:`upgrade: websocket` 的请求与 101 响应不碰(公式 LSP 的握手响应就是升级本身)。**只限这两个前缀**:壳与哈希资源由 sirv 经 `fromConnect` 直接写 Node 响应,Effect 侧拿到的是一个空 200,改它的头到不了浏览器;前缀限定让两边永不相遇。
 
-**2. HTML 壳与静态资源**——`packages/plugins/infra/web/src/server/index.ts` 的 sirv `setHeaders`,唯一能给这些字节设头的地方。所有响应 `X-Content-Type-Options: nosniff` + `Referrer-Policy: strict-origin-when-cross-origin`;壳(`.html` 或无扩展名路径)另加 `X-Frame-Options: DENY`(点击劫持)与 `Cross-Origin-Opener-Policy: same-origin`(仓库里没有 `window.open`,隔离零成本),`Cache-Control: no-cache` 保留;哈希资源保留 `immutable`,不加文档类头。开发态 Vite 不设这些头。
+**2. HTML 壳与静态资源**——`packages/plugins/infra/web/src/server/index.ts` 的 sirv `setHeaders`,唯一能给这些字节设头的地方。所有响应 `X-Content-Type-Options: nosniff` + `Referrer-Policy: strict-origin-when-cross-origin`;发布目录(壳、图标及其压缩副本)的每个响应另加 `X-Frame-Options: DENY`(点击劫持)与 `Cross-Origin-Opener-Policy: same-origin`(仓库里没有 `window.open`,隔离零成本),`Cache-Control: no-cache` 保留——不按请求路径猜是不是页面:SPA 回退对 `/portal.`、`/foo.bar/` 这类带「扩展名」的路径也会返回壳,按路径判断曾让它们不带任何文档头;哈希资源保留 `immutable`,不加文档类头。开发态 Vite 不设这些头。
 
 **3. 边缘(反向代理)**——不是应用代码,参考配置在 `ops/reverse-proxy/`(`Caddyfile` 优先,`nginx.conf` 同义):终结 TLS;`Strict-Transport-Security: max-age=31536000; includeSubDomains`(不加 `preload`,那是整个可注册域的单向门);原样转发 `Host` 并写 `X-Forwarded-For/Proto/Host`,应用侧 `QUALY_TRUSTED_PROXIES` 填代理地址——来源校验与客户端地址都只信受信任代理发来的这几个头;`/api` 下 WebSocket 升级放行;SSE 禁用响应缓冲(nginx `proxy_buffering off`,Caddy `flush_interval -1`);上游 keep-alive 打开。
 
