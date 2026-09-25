@@ -262,6 +262,20 @@ const openItem = () =>
   document.querySelector('[data-testid="item-pane"]')?.getAttribute('data-item') ?? null
 const rows = () => [...document.querySelectorAll('[data-testid="claim-row"]')]
 
+/** a long paper: thirty questions under one section */
+const THIRTY = Array.from({ length: 30 }, (_, i) =>
+  question(i + 1, `品德题目 ${String(i + 1)}`, BAND_A),
+)
+const railRow = (n: number) =>
+  document.querySelector(`[data-rail-row="${itemId(n)}"]`) as HTMLElement
+
+/** wholly on screen within the pane that scrolls it, clear of the section head pinned at its top */
+const inView = (element: HTMLElement, scroller: Element) => {
+  const port = scroller.getBoundingClientRect()
+  const at = element.getBoundingClientRect()
+  return at.top >= port.top + 44 && at.bottom <= port.bottom
+}
+
 describe('finding a question', () => {
   it('lands on the question the address names, and marks it in the structure', async () => {
     await page.viewport(1440, 900)
@@ -399,6 +413,39 @@ describe('finding a question', () => {
     await expect.poll(shape).toBe('structure')
     await expect.poll(() => Math.abs(scroller.scrollTop - was)).toBeLessThan(4)
     expect(document.activeElement).toBe(row())
+  })
+
+  // Focus lands on the row of the question left, which is not the row
+  // pressed once the reader has stepped on from it: the structure shows it.
+  it('shows the row a phone’s focus lands on, after stepping on from the one pressed', async () => {
+    await page.viewport(390, 844)
+    await workspace({ route: base, items: THIRTY })
+    await expect.poll(shape).toBe('structure')
+    const scroller = page.getByTestId('page-scroller').element()
+    // the row pressed stands at the foot of the screen
+    railRow(20).scrollIntoView({ block: 'end' })
+    await expect.poll(() => scroller.scrollTop).toBeGreaterThan(200)
+    await userEvent.click(railRow(20))
+    await expect.poll(shape).toBe('item')
+    await page.getByRole('button', { name: '下一项' }).click()
+    await expect.poll(() => addressNow()).toContain(`open=${itemId(21)}`)
+    await page.getByRole('button', { name: '下一项' }).click()
+    await expect.poll(() => addressNow()).toContain(`open=${itemId(22)}`)
+
+    await page.getByRole('button', { name: /评分结构/ }).click()
+    await expect.poll(shape).toBe('structure')
+    await expect.poll(() => document.activeElement).toBe(railRow(22))
+    expect(inView(railRow(22), scroller)).toBe(true)
+  })
+
+  it('shows the row of a question a link opened, back on a phone’s structure', async () => {
+    await page.viewport(390, 844)
+    await workspace({ route: `${base}?open=${itemId(25)}`, items: THIRTY })
+    await expect.poll(shape).toBe('item')
+    await page.getByRole('button', { name: /评分结构/ }).click()
+    await expect.poll(shape).toBe('structure')
+    await expect.poll(() => document.activeElement).toBe(railRow(25))
+    expect(inView(railRow(25), page.getByTestId('page-scroller').element())).toBe(true)
   })
 
   it('keeps the way to file at the foot of a phone, however little the question holds', async () => {

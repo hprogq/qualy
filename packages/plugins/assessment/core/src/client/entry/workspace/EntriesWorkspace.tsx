@@ -36,6 +36,9 @@ import { filingOf, headStatsOf, movingOn, outlineOf, totalsOf, type Viewer } fro
 /** where a desk is wide enough for the broader structure and requirements columns */
 const WIDE = '@media (min-width: 1600px)'
 
+/** the height of a phone's section head pinned over the rows under it, and a little room */
+const PINNED_HEAD = 48
+
 const styles = stylex.create({
   root: {
     display: 'flex',
@@ -387,9 +390,10 @@ function Workspace({
   const selectedId = selected?.id ?? null
   const addressed = picked !== null
   // On a phone the structure and one question are two screens of one page.
-  // Going into a question remembers where the structure was scrolled to and
-  // which row was pressed, so coming back out lands there - scrolled where
-  // it was, with focus on that row - rather than at the top of a long paper.
+  // Going into a question remembers where the structure was scrolled to, and
+  // coming back out lands there - on the row of the question the reader
+  // leaves, which is not the one they pressed once they have stepped to its
+  // neighbours - rather than at the top of a long paper.
   const structureAt = useRef<number | null>(null)
   const cameFrom = useRef<string | null>(null)
   const wasAddressed = useRef(addressed)
@@ -415,7 +419,32 @@ function Workspace({
         cameFrom.current === null
           ? null
           : node.querySelector(`[data-rail-row="${CSS.escape(cameFrom.current)}"]`)
-      if (row instanceof HTMLElement) row.focus({ preventScroll: true })
+      if (!(row instanceof HTMLElement)) return
+      // Where the structure was left may no longer show the row focus lands
+      // on: the reader stepped on from the one they pressed, or came in by a
+      // link with nothing to return to. Focus is never out of sight, so the
+      // structure moves just enough to show it, clear of the section head
+      // pinned over it.
+      const view =
+        page === null ? { top: 0, bottom: window.innerHeight } : page.getBoundingClientRect()
+      const at = row.getBoundingClientRect()
+      // a section head is itself the thing pinned, with nothing over it
+      const holder = row.closest('li')
+      const clear =
+        holder !== null && getComputedStyle(holder).position === 'sticky' ? 0 : PINNED_HEAD
+      // whole pixels, away from the row: a scroll offset is whole, and rows
+      // are laid out in fractions of one
+      const by =
+        at.top < view.top + clear
+          ? Math.floor(at.top - view.top - clear)
+          : at.bottom > view.bottom
+            ? Math.ceil(at.bottom - view.bottom)
+            : 0
+      if (by !== 0) {
+        if (page === null) window.scrollBy({ top: by })
+        else page.scrollTop += by
+      }
+      row.focus({ preventScroll: true })
       return
     }
     scrollTo(0)
