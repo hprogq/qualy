@@ -389,18 +389,6 @@ const includedAt = defineMessage<{ time: string }>()({
   defaultMessage: 'Added {time}',
 })
 
-// a group whose own limit moved it says both numbers, so the one that counts
-// is never an unexplained figure next to what its questions came to
-const groupCapped = defineMessage<{ raw: string; cap: string }>()({
-  id: 'assessment/result/group-capped',
-  defaultMessage: 'Subtotal {raw}; capped at {cap}',
-})
-
-const groupFloored = defineMessage<{ raw: string; floor: string }>()({
-  id: 'assessment/result/group-floored',
-  defaultMessage: 'Subtotal {raw}; minimum applied: {floor}',
-})
-
 // The score ledger's own words. `reader` is `owner` on one's own page and
 // `staff` on somebody else's; `kind` values are the ledger model's own.
 const resultOutOf = defineMessage<{ full: string }>()({
@@ -1803,66 +1791,10 @@ const i18n = definePluginMessages({
     // ------------------------------------------------------------------
     // one's own provisional standing
     resultTab: { id: 'assessment/result/tab', defaultMessage: 'My score' },
-    resultHint: {
-      id: 'assessment/result/hint',
-      defaultMessage:
-        'Current score based on approved entries. Final results are determined by the published outcome.',
-    },
-    resultProvisional: {
-      id: 'assessment/result/provisional',
-      defaultMessage: 'Current score',
-    },
-    resultFull: {
-      id: 'assessment/result/full',
-      defaultMessage: 'Total possible: {value}',
-    },
-    resultCountedIn: {
-      id: 'assessment/result/counted-in',
-      defaultMessage: 'Approved and counted',
-    },
-    resultPendingLabel: {
-      id: 'assessment/result/pending-label',
-      defaultMessage: 'Under review 　 not counted yet',
-    },
-    resultPendingCount: {
-      id: 'assessment/result/pending-count',
-      defaultMessage: '{count, plural, other {#}}',
-    },
-    resultTrimmed: {
-      id: 'assessment/result/trimmed',
-      defaultMessage: 'Excluded by scoring limits',
-    },
-    resultTableHead: {
-      id: 'assessment/result/table-head',
-      defaultMessage: 'Groups and items',
-    },
-    resultCapChip: {
-      id: 'assessment/result/cap-chip',
-      defaultMessage: 'Limit {value}',
-    },
-    resultNoCap: {
-      id: 'assessment/result/no-cap',
-      defaultMessage: 'No limit',
-    },
-    resultEmptyTitle: {
-      id: 'assessment/result/empty-title',
-      defaultMessage: 'No approved items counted yet',
-    },
-    resultEmptyBody: {
-      id: 'assessment/result/empty-body',
-      defaultMessage:
-        'Approved entries will appear here. Entries under review are not counted yet; progress can be checked under My entries.',
-    },
     resultGoEntries: {
       id: 'assessment/result/go-entries',
       defaultMessage: 'View my entries',
     },
-    resultEmptyCounts: {
-      id: 'assessment/result/empty-counts',
-      defaultMessage:
-        '{pending, plural, other {# under review}}, {drafts, plural, other {# drafts}}',
-    },
-    resultTotal: { id: 'assessment/result/total', defaultMessage: 'Total' },
     resultUnavailableTitle: {
       id: 'assessment/result/unavailable-title',
       defaultMessage: 'Scoring is temporarily unavailable',
@@ -1888,31 +1820,6 @@ const i18n = definePluginMessages({
       defaultMessage: 'The items and entry statuses shown may be out of date',
     },
     resultRecalculate: { id: 'assessment/result/recalculate', defaultMessage: 'Recalculate' },
-    resultGroupItems: { id: 'assessment/result/group-items', defaultMessage: 'Item subtotal' },
-    resultGroupChildren: {
-      id: 'assessment/result/group-children',
-      defaultMessage: 'Subgroup subtotal',
-    },
-    resultGroupFinal: { id: 'assessment/result/group-final', defaultMessage: 'Counted score' },
-    resultGroupCapped: groupCapped,
-    resultGroupFloored: groupFloored,
-    resultLineExcluded: {
-      id: 'assessment/result/line-excluded',
-      defaultMessage: 'Returned 　 not counted',
-    },
-    resultLineNone: { id: 'assessment/result/line-none', defaultMessage: 'Not submitted' },
-    resultLineRevoked: {
-      id: 'assessment/result/line-revoked',
-      defaultMessage: 'Revoked 　 not counted',
-    },
-    resultLineVoided: {
-      id: 'assessment/result/line-voided',
-      defaultMessage: 'Item disabled 　 not counted',
-    },
-    resultLineAdjustment: {
-      id: 'assessment/result/line-adjustment',
-      defaultMessage: 'Group limit',
-    },
     resultProvisionalMark: {
       id: 'assessment/result/provisional-mark',
       defaultMessage: 'Provisional',
