@@ -64,10 +64,12 @@ export const cst = (text: string) => new Date(`${text}+08:00`)
 export const addMinutes = (at: Date, minutes: number) => new Date(at.getTime() + minutes * 60_000)
 
 /**
- * The moment itself, or the next morning's when it falls between 23:00 and
- * 08:00 Beijing time: reviewers decide in the day, whatever the gap between
- * two steps adds up to. The minutes past the hour are kept, so two steps
- * pushed out of the same night stay in their order.
+ * The moment itself, or, when it falls between 23:00 and 08:00 Beijing time,
+ * the ninth hour of the morning after, keeping the minutes past the hour:
+ * reviewers decide in the day, whatever the gap between two steps adds up
+ * to. Two moments pushed out of one night can swap places (01:50 becomes
+ * 09:50, 02:07 becomes 09:07); one claim's steps are scheduled one after
+ * the other, so that never reorders a claim's own story.
  */
 export const awake = (at: Date) => {
   const local = new Date(at.getTime() + 8 * 3_600_000)

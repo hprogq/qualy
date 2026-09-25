@@ -138,7 +138,21 @@ await runOverDemo(
                 join storage_attachments original
                   on original.tenant_id = er.tenant_id and original.id = filed.id::uuid
                where original.integrity_value = answer.integrity_value))
-            as repeated`)) as {
+            as repeated,
+          -- and staff decide in the day, between 08:00 and 23:00 Beijing time
+          -- (seed/context.ts, awake)
+          (select count(*)::int from review_events re
+            where re.kind in ('approved', 'rejected', 'escalated', 'opinion-approved',
+                              'opinion-rejected', 'supplement-requested', 'reopened',
+                              'returned-for-revision', 'rerouted')
+              and extract(hour from re.created_at at time zone 'Asia/Shanghai') not between 8 and 22)
+          + (select count(*)::int from review_votes v
+              where extract(hour from v.created_at at time zone 'Asia/Shanghai') not between 8 and 22)
+          + (select count(*)::int from entry_events ee
+              where ee.kind in ('recognition-corrected', 'approval-revoked', 'rejection-overturned',
+                                'revision-required', 'voided-by-staff')
+                and extract(hour from ee.created_at at time zone 'Asia/Shanghai') not between 8 and 22)
+            as night`)) as {
         rows: {
           verdicts: number
           determinations: number
@@ -146,6 +160,7 @@ await runOverDemo(
           textonly: number
           bare: number
           repeated: number
+          night: number
         }[]
       }
     ).rows[0]!
@@ -155,13 +170,15 @@ await runOverDemo(
     console.log(
       `asks for no file ${broken.textonly} · answers without the file ${broken.bare} · answers repeating the filed picture ${broken.repeated}`,
     )
+    console.log(`staff decisions between 23:00 and 08:00 ${broken.night}`)
     if (
       broken.verdicts +
         broken.determinations +
         broken.orphans +
         broken.textonly +
         broken.bare +
-        broken.repeated >
+        broken.repeated +
+        broken.night >
       0
     ) {
       process.exitCode = 1

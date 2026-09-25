@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { awake, cst } from '../seed/context.ts'
 import { positionalOf, seedOptionsOf } from '../options.ts'
 import { judgeSituations, type Situation } from '../situations.ts'
 
 // demo:check reads the flags demo:seed was given, and asks for a situation
-// only when the run was meant to write it; reviewers act in the day.
+// only when the run was meant to write it.
 
 describe('the seed options', () => {
   it('default to the review stage with the route change made', () => {
@@ -51,16 +50,5 @@ describe('what a check requires', () => {
     const judged = judgeSituations(situations, { stage: 'review', migrationBefore: true })
     expect(labels(judged.missing)).toEqual(['always', 'appeal'])
     expect(labels(judged.notExpected)).toEqual(['reroute'])
-  })
-})
-
-describe('reviewers', () => {
-  it('act in the day', () => {
-    expect(awake(cst('2025-03-05T14:20:00'))).toEqual(cst('2025-03-05T14:20:00'))
-    expect(awake(cst('2025-03-05T22:59:00'))).toEqual(cst('2025-03-05T22:59:00'))
-    expect(awake(cst('2025-03-05T08:00:00'))).toEqual(cst('2025-03-05T08:00:00'))
-    // the small hours move to that morning, the late evening to the next
-    expect(awake(cst('2025-03-06T02:07:00'))).toEqual(cst('2025-03-06T09:07:00'))
-    expect(awake(cst('2025-03-05T23:40:00'))).toEqual(cst('2025-03-06T09:40:00'))
   })
 })
