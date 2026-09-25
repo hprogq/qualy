@@ -469,6 +469,66 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
     )
   })
 
+  // The veil takes judges' names off, never the filer's own: a round the
+  // filer ended themselves still reads as theirs in the next round's
+  // summary. And a member of staff who is also on the roster reads their
+  // own row in the staff list as a filer, veil and all.
+  it('keeps the filer their own name, and veils a staff filer on their own row', async () => {
+    const told = async (slug: string, profile: readonly string[]) =>
+      ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const f = yield* seed(slug)
+            const assessment = yield* Assessment
+            const g = yield* runningBatch(f, { profile: [...profile] })
+            const s1 = f.principal(f.s1)
+            const reviewer = f.principal(f.reviewer)
+            // withdrawn by the filer, then sent again
+            const entry = yield* assessment.createEntry(
+              f.t,
+              { itemId: g.item.id, participantId: g.p1, payload: {} },
+              s1,
+            )
+            yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+            yield* assessment.setEntryStatus(f.t, entry.id, 'draft', s1)
+            const again = (yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1))
+              .currentReviewInstanceId!
+            const round = yield* assessment.getReviewInstance(f.t, again, s1)
+            yield* assessment.decideReview(
+              f.t,
+              again,
+              { decision: 'reject', comment: 'not enough' },
+              reviewer,
+            )
+            // the filer is staff here too: they administer the whole round
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id)
+              select ${f.t}, ${f.s1}, id from roles
+              where tenant_id = ${f.t} and system_key = 'tenant-admin'`)
+            const row = (yield* assessment.listParticipantEntries(
+              f.t,
+              g.batch.id,
+              g.p1,
+              {},
+              s1,
+            )).entries.find((one) => one.entry.id === entry.id)!
+            return {
+              previous: [round.context?.previous?.kind, round.context?.previous?.actorName],
+              ownRow: row.entry.refusal?.actorName ?? null,
+            }
+          }),
+        ),
+      )
+
+    const shut = await told('veil-own-shut', REVIEW_OPEN)
+    expect(shut.previous).toEqual(['cancelled-by-submitter', 'Zhang San'])
+    expect(shut.ownRow).toBeNull()
+    const open = await told('veil-own-open', [...REVIEW_OPEN, 'assessment.review.view-reviewers'])
+    expect(open.previous).toEqual(['cancelled-by-submitter', 'Zhang San'])
+    expect(open.ownRow).toBe('Reviewer')
+  })
+
   it('keeps the round with its reviewer through an open ask, and a rejection ends it', async () => {
     const result = ok(
       await run(

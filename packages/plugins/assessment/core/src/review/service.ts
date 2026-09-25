@@ -845,7 +845,9 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                   kind: previous.kind,
                   reason: previous.reason,
                   comment: previous.comment,
-                  actorName: veiled ? null : previous.actorName,
+                  // the filer's own acts keep their name (§32.85)
+                  actorName:
+                    veiled && previous.actorId !== row.subjectUserId ? null : previous.actorName,
                   at: previous.createdAt,
                 },
           previousRevision:
@@ -860,7 +862,9 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           // everything before the one shown in full, most recent first
           earlier: older
             .filter((one) => one.roundNo !== previous?.roundNo)
-            .map((one) => (veiled ? { ...one, actorName: null } : one)),
+            .map(({ actorId, ...one }) =>
+              veiled && actorId !== row.subjectUserId ? { ...one, actorName: null } : one,
+            ),
         }
       }
       const standingAt = [...policy.normal, ...policy.escalation].find(

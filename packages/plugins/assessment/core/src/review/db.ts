@@ -1313,6 +1313,8 @@ export interface PreviousConclusionRow {
   kind: string
   reason: string | null
   comment: string | null
+  /** who said it, so a reader kept from judges' names still reads their own */
+  actorId: string | null
   actorName: string | null
   createdAt: number
 }
@@ -1356,6 +1358,7 @@ const roundSummaries = (tenantId: string, entryId: string, beforeRound: number) 
           'last.kind',
           'last.reason',
           'last.comment',
+          'last.actorId',
           'u.displayName as actorName',
         ])
         .select([
@@ -1380,6 +1383,7 @@ const roundSummaries = (tenantId: string, entryId: string, beforeRound: number) 
           kind: row.kind ?? row.outcome ?? 'completed',
           reason: row.reason ?? null,
           comment: row.comment ?? null,
+          actorId: row.actorId ?? null,
           actorName: row.actorName,
           createdAt: msOf(row.endedMs),
         })),
@@ -1403,6 +1407,7 @@ export const earlierConclusions = (tenantId: string, entryId: string, beforeRoun
         roundNo: row.roundNo,
         kind: row.kind,
         reason: row.reason,
+        actorId: row.actorId,
         actorName: row.actorName,
         at: row.createdAt,
       })),
