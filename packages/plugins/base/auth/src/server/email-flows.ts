@@ -278,8 +278,20 @@ export class EmailFlows extends Context.Service<
       | DemoAccountLocked
       | ReauthenticationRequired
     >
+    /**
+     * Moves the account to the address a change link went to. Every session
+     * of the person's ends but the one the link was followed in, when it was
+     * followed in one of theirs; the address left behind, when it was
+     * proven, is told.
+     */
     readonly redeemChange: (
       token: string,
+      context?: {
+        /** the language the notice to the old address is written in */
+        readonly locale?: MailLocale
+        /** who followed the link, when anybody was signed in where they did */
+        readonly viewer?: Principal
+      },
     ) => Effect.Effect<void, ChallengeInvalid | UserEmailConflict>
     /** the checks a new password of the reader's own is held to, while it is typed */
     readonly assessPassword: (
@@ -885,12 +897,12 @@ export const emailFlowsLayer: Layer.Layer<
         )
       }),
 
-      redeemChange: Effect.fn('Auth.email.redeemChange')(function* (token) {
+      redeemChange: Effect.fn('Auth.email.redeemChange')(function* (token, context = {}) {
         const tenant = yield* tenants.resolve.pipe(Effect.option)
         if (Option.isNone(tenant)) return yield* new ChallengeInvalid()
         const tenantId = tenant.value.id
         yield* unlessIssued(tenantId, token, 'change')
-        yield* inLock(
+        const left = yield* inLock(
           tenantId,
           Effect.gen(function* () {
             const taken = yield* redeemChallenge(token, 'change')
@@ -914,6 +926,17 @@ export const emailFlowsLayer: Layer.Layer<
                 .where('id', '=', person.id)
                 .execute(),
             )
+            // Whoever was signed in as them is signed out: the account is
+            // reached through another address now. The session the link was
+            // followed in stays, when it is one of theirs.
+            const viewer = context.viewer
+            yield* endSessions(
+              tenantId,
+              person.id,
+              viewer !== undefined && viewer.tenantId === tenantId && viewer.userId === person.id
+                ? viewer.sessionId
+                : undefined,
+            )
             // links to the old address are links to somebody else's inbox now
             yield* retireChallenges(tenantId, person.id, ['verify', 'reset', 'change'])
             yield* audit.record(UserUpdated, {
@@ -925,7 +948,35 @@ export const emailFlowsLayer: Layer.Layer<
                 : { organizationId: person.primaryOrgNodeId }),
               details: { fields: ['email'] },
             })
+            // the address they could show was theirs is the one to tell
+            return person.emailVerifiedAt === null ? null : person.email
           }),
+        )
+        if (left === null) return
+        // after the answer, on its own: a relay that fails costs the notice,
+        // never the change
+        yield* Effect.forkIn(
+          Effect.gen(function* () {
+            const slug = (yield* withDb(tenantSlug(tenantId)).pipe(Effect.orDie)).slug
+            const origin = yield* origins
+              .resolve({ id: tenantId, slug })
+              .pipe(Effect.option, Effect.map(Option.getOrNull))
+            const message = noticeFor('email-changed', context.locale ?? 'en', {
+              to: left,
+              workspace: yield* workspaceOf(tenantId),
+              origin: origin === null ? null : origin.toString(),
+            })
+            yield* mailer
+              .send({ to: left, ...message })
+              .pipe(
+                Effect.catchTag('MailUnavailable', (failed) =>
+                  Effect.logWarning('the old address could not be told of a change').pipe(
+                    Effect.annotateLogs({ tenantId, reason: failed.reason }),
+                  ),
+                ),
+              )
+          }).pipe(Effect.ignore),
+          scope,
         )
       }),
 

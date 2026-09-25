@@ -28,7 +28,7 @@ import { sessionApiGroup } from '../src/api.ts'
 import { sessionApiHandlers } from '../src/server/index.ts'
 import { AuthConfig, layer as signInLayer } from '../src/server/sign-in.ts'
 import { sessionCookieName } from '@qualy/auth-contract/session'
-import { layer as sessionLayer } from '../src/server/session.ts'
+import { layer as sessionLayer, viewerLayer } from '../src/server/session.ts'
 import { authClosure } from './support/closure.ts'
 import { secretsLayer } from '@qualy/plugin-secrets/testkit'
 import { captchaLayer } from '@qualy/plugin-captcha/testkit'
@@ -93,7 +93,11 @@ beforeAll(async () => {
     ),
   )
   const handlers = Layer.mergeAll(sessionApiHandlers, authLocalApiHandlers).pipe(
-    Layer.provide(sessionLayer.pipe(Layer.provide(Layer.mergeAll(infra, authConfig)))),
+    Layer.provide(
+      Layer.mergeAll(sessionLayer, viewerLayer).pipe(
+        Layer.provide(Layer.mergeAll(infra, authConfig)),
+      ),
+    ),
   )
   // the service layers go in at the application level, the way the host wires
   // them: a handler's requirement is per-request, so it travels past the

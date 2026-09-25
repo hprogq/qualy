@@ -27,7 +27,7 @@ import { sessionApiGroup } from '../src/api.ts'
 import { sessionApiHandlers } from '../src/server/index.ts'
 import { makeOutbound } from '../src/server/outbound.ts'
 import { AuthConfig, layer as signInLayer } from '../src/server/sign-in.ts'
-import { layer as sessionLayer } from '../src/server/session.ts'
+import { layer as sessionLayer, viewerLayer } from '../src/server/session.ts'
 import { singleTenantLayer } from '../src/server/tenancy.ts'
 import { singleOriginLayer } from '../src/server/public-origin.ts'
 import { flowCookieNameFor } from '../src/server/session-cookie.ts'
@@ -172,7 +172,11 @@ beforeAll(async () => {
     makeOutbound({ requireHttps: false, allowLoopback: true, privateAllowlist: [] }),
   )
   const handlers = Layer.mergeAll(sessionApiHandlers, casApiHandlers).pipe(
-    Layer.provide(sessionLayer.pipe(Layer.provide(Layer.mergeAll(infra, authConfig)))),
+    Layer.provide(
+      Layer.mergeAll(sessionLayer, viewerLayer).pipe(
+        Layer.provide(Layer.mergeAll(infra, authConfig)),
+      ),
+    ),
   )
   const application = HttpRouter.serve(HttpApiBuilder.layer(api).pipe(Layer.provide(handlers)), {
     middleware: requestContext(),

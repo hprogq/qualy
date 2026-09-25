@@ -19,7 +19,12 @@ import {
 
 import { UiTextSchema } from '@qualy/i18n-contract'
 import { EMAIL_MAX_LENGTH, normalizeEmail } from '@qualy/auth-contract/email'
-import { Authenticated, AuthRequired, TooManyAttemptsResponse } from '@qualy/auth-contract/session'
+import {
+  Authenticated,
+  AuthRequired,
+  TooManyAttemptsResponse,
+  Viewer,
+} from '@qualy/auth-contract/session'
 import { CaptchaProof, CaptchaRequired } from '@qualy/plugin-captcha/contract'
 import { ReauthenticationRequired } from '@qualy/auth-contract/sign-in-failure'
 import {
@@ -1050,13 +1055,15 @@ export const sessionApiGroup = HttpApiGroup.make('auth')
     ),
   )
   .add(
+    // anybody holding the link may follow it; a session it is followed in,
+    // when there is one, is read so it can be the one that stays
     HttpApiEndpoint.post('createEmailChangeRedemption', '/auth/email-changes/redemptions', {
       payload: Schema.Struct({
         token: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
       }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
       error: [ChallengeInvalid, UserEmailConflict],
-    }),
+    }).middleware(Viewer),
   )
 
 /**

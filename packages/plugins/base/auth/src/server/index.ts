@@ -27,7 +27,13 @@ import {
 } from '@qualy/auth-contract/login'
 import { Captcha } from '@qualy/plugin-captcha/server'
 import { AuthConfig, SignIn, layer as signInLayer } from './sign-in.ts'
-import { AuthRequired, Authenticated, CurrentUser, Viewer } from '@qualy/auth-contract/session'
+import {
+  AuthRequired,
+  Authenticated,
+  CurrentUser,
+  CurrentViewer,
+  Viewer,
+} from '@qualy/auth-contract/session'
 import { make as makeUserTypes, type UserTypeRow } from './user-types.ts'
 import { make as makeUsers, type UserProjection } from './users.ts'
 import { make as makeSelf } from './self.ts'
@@ -323,7 +329,13 @@ export const sessionApiHandlers = HttpApiBuilder.group(local, 'auth', (handlers)
       'createEmailChangeRedemption',
       Effect.fn('auth.createEmailChangeRedemption.handler')(function* ({ payload }) {
         const flows = yield* EmailFlows
-        yield* flows.redeemChange(payload.token)
+        const request = yield* HttpServerRequest.HttpServerRequest
+        // the session the link is followed in, if it is one, is the one that stays
+        const viewer = (yield* CurrentViewer).principal
+        yield* flows.redeemChange(payload.token, {
+          locale: mailLocaleOf(request.headers['accept-language']),
+          ...(viewer === undefined ? {} : { viewer }),
+        })
         return { ok: true as const }
       }),
     ),

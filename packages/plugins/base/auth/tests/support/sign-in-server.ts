@@ -27,7 +27,7 @@ import type { Captcha, CaptchaProviders } from '@qualy/plugin-captcha/server'
 import { sessionApiGroup } from '../../src/api.ts'
 import { sessionApiHandlers } from '../../src/server/index.ts'
 import { AuthConfig, layer as signInLayer } from '../../src/server/sign-in.ts'
-import { layer as sessionLayer } from '../../src/server/session.ts'
+import { layer as sessionLayer, viewerLayer } from '../../src/server/session.ts'
 import { singleTenantLayer } from '../../src/server/tenancy.ts'
 import { singleOriginLayer } from '../../src/server/public-origin.ts'
 import { seedSignIn } from './sign-in-seed.ts'
@@ -84,7 +84,11 @@ export const startSignInServer = async (input: {
     ),
   )
   const handlers = Layer.mergeAll(sessionApiHandlers, authLocalApiHandlers).pipe(
-    Layer.provide(sessionLayer.pipe(Layer.provide(Layer.mergeAll(infra, authConfig)))),
+    Layer.provide(
+      Layer.mergeAll(sessionLayer, viewerLayer).pipe(
+        Layer.provide(Layer.mergeAll(infra, authConfig)),
+      ),
+    ),
   )
   const application = HttpRouter.serve(
     HttpApiBuilder.layer(Api.local(sessionApiGroup, authLocalApiGroup)).pipe(

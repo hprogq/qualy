@@ -877,6 +877,70 @@ describe.runIf(postgresAvailable)('an email address', () => {
     }
   })
 
+  it('tells the address it leaves, and signs out everywhere but where the link was followed', async () => {
+    const db = await createTestContext('email-change-aftermath')
+    const mail = memoryMailBackend()
+    try {
+      const f = await seed(db.url)
+      /** the last message sent to an address that carries no link */
+      const noticeTo = (to: string) =>
+        vi.waitFor(
+          () => {
+            const found = mail.outbox
+              .filter((message) => message.to === to && !message.text.includes('https://'))
+              .at(-1)
+            if (found === undefined) throw new Error(`no notice to ${to} yet`)
+            return found
+          },
+          { timeout: 3_000 },
+        )
+      const answer = ok(
+        await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const flows = yield* EmailFlows
+            const ada = f.as(f.ada, f.adaHere)
+            // followed in one of Ada's own sessions
+            yield* flows.requestChange(ada, { newEmail: 'ada.new@school.edu', locale: 'en' })
+            const first = yield* Effect.promise(() => tokenFrom(mail, 'ada.new@school.edu'))
+            yield* flows.redeemChange(first.token, { locale: 'zh-CN', viewer: ada })
+            const kept = yield* runSql<{ id: string }>(
+              sql`select id from sessions where user_id = ${f.ada}`,
+            )
+            const told = yield* Effect.promise(() => noticeTo('ada@school.edu'))
+            // and followed where nobody, or somebody else, is signed in
+            yield* flows.requestChange(ada, { newEmail: 'ada.third@school.edu', locale: 'en' })
+            const second = yield* Effect.promise(() => tokenFrom(mail, 'ada.third@school.edu'))
+            yield* flows.redeemChange(second.token, { viewer: f.as(f.lin, f.linHere) })
+            const left = yield* runSql<{ count: number }>(
+              sql`select count(*)::int as count from sessions where user_id = ${f.ada}`,
+            )
+            const toldAgain = yield* Effect.promise(() => noticeTo('ada.new@school.edu'))
+            const lin = yield* runSql<{ count: number }>(
+              sql`select count(*)::int as count from sessions where user_id = ${f.lin}`,
+            )
+            return {
+              kept: kept.rows.map((row) => row.id),
+              told: told.subject,
+              left: left.rows[0]!.count,
+              toldAgain: toldAgain.subject,
+              lin: lin.rows[0]!.count,
+            }
+          }).pipe(Effect.provide(stack(db.url, mail.backend))),
+        ),
+      )
+      expect(answer).toEqual({
+        kept: [f.adaHere],
+        told: '账号邮箱已更改',
+        left: 0,
+        toldAgain: 'Your account email was changed',
+        // somebody else's session is nobody's business here
+        lin: 1,
+      })
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('does not change once the account has been taken back, however that was done', async () => {
     const db = await createTestContext('email-change-taken-back')
     const mail = memoryMailBackend()

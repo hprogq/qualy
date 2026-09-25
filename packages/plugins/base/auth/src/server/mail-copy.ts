@@ -232,10 +232,11 @@ export const mailFor = (
 
 /**
  * A message with nothing to follow: a code to type back into the page that
- * asked for it. Apart from the links above because it names no link, and so
- * says where it came from only by its workspace.
+ * asked for it, or word of a change already made. Apart from the links above
+ * because it names no link, and so says where it came from only by its
+ * workspace.
  */
-export type NoticePurpose = 'reauthentication-code'
+export type NoticePurpose = 'reauthentication-code' | 'email-changed'
 
 interface WrittenNotice {
   readonly subject: string
@@ -261,6 +262,22 @@ const NOTICES: Record<NoticePurpose, Record<MailLocale, WrittenNotice>> = {
       note: 'The code works for 10 minutes, once, and only on the page that asked for it.',
       footer:
         'If you did not ask for this, do not share the code with anyone, and contact your administrator.',
+    },
+  },
+  'email-changed': {
+    'zh-CN': {
+      subject: '账号邮箱已更改',
+      title: '账号邮箱已更改',
+      lead: '您账号的邮箱已更改为新地址，此邮箱将不再用于登录和找回密码。',
+      note: '该账号在其他设备上的登录已全部退出。',
+      footer: '如非本人操作，请立即联系管理员。',
+    },
+    en: {
+      subject: 'Your account email was changed',
+      title: 'Your account email was changed',
+      lead: 'The email for your account was changed to a new address. This address is no longer used to sign in or to reset the password.',
+      note: 'Every other device signed in to the account was signed out.',
+      footer: 'If you did not make this change, contact your administrator right away.',
     },
   },
 }
