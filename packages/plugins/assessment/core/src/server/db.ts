@@ -1341,6 +1341,46 @@ export const dropEmptyAccessSources = (tenantId: string, batchId: string) =>
     )
     .pipe(Effect.asVoid)
 
+/**
+ * This batch's records of its own appointments of one person, in one role at
+ * one unit, whose assignment has since run out or been withdrawn - what a
+ * new appointment to the same place replaces. The new one is kept.
+ */
+export const dropLapsedExplicitSources = (input: {
+  tenantId: string
+  batchId: string
+  subjectId: string
+  roleId: string
+  orgNodeId: string
+  keep: string
+}) =>
+  db.query((k) =>
+    k
+      .deleteFrom('BatchAccessSource')
+      .where('tenantId', '=', input.tenantId)
+      .where('batchId', '=', input.batchId)
+      .where('subjectId', '=', input.subjectId)
+      .where('origin', '=', 'explicit')
+      .where('roleAssignmentId', '!=', input.keep)
+      .where('roleAssignmentId', 'in', (qb) =>
+        qb
+          .selectFrom('RoleGrant as rg')
+          .select('rg.id')
+          .where('rg.tenantId', '=', input.tenantId)
+          .where('rg.userId', '=', input.subjectId)
+          .where('rg.roleId', '=', input.roleId)
+          .where('rg.orgNodeId', '=', input.orgNodeId)
+          .where('rg.resourceId', '=', input.batchId)
+          .where((eb) =>
+            eb.or([
+              eb('rg.revokedAt', 'is not', null),
+              eb('rg.validUntil', '<=', sql<Date>`now()`),
+            ]),
+          ),
+      )
+      .execute(),
+  )
+
 export const dropAccessSource = (tenantId: string, sourceId: string) =>
   db.query((k) =>
     k

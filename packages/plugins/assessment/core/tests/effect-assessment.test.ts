@@ -2317,6 +2317,67 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(reasonOf(alongside)).toEqual(['already-staffed'])
   })
 
+  // Appointing somebody again after their appointment ran out used to leave
+  // the old record beside the new one: a lapsed source with no role, under
+  // the same person, that an administrator had to find and clear by hand.
+  it('renews a lapsed appointment in place of its record', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('staff-renewal')
+        const assessment = yield* Assessment
+        const reviewer = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into roles (tenant_id, code, name, kind, status, permission_mode,
+                               assignable, eligibility_mode, anchor_mode)
+            values (${f.tenant}, 'reviewer', 'Reviewer', 'org', 'active', 'explicit', true,
+                    'unrestricted', 'unrestricted')
+            returning id`),
+        ).id
+        yield* runSql(sql`
+          insert into role_permissions (tenant_id, role_id, permission_id)
+          select ${f.tenant}, ${reviewer}, id from permissions
+          where code = 'assessment.review.process'`)
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Renewal',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.class1], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        const add = () =>
+          assessment.addStaff(
+            f.tenant,
+            batch.id,
+            { userIds: [f.t1], orgNodeIds: [f.class1], roleId: reviewer },
+            f.principal,
+          )
+        yield* add()
+        // the appointment runs out
+        yield* runSql(sql`
+          update role_grants set valid_until = now() - interval '1 minute'
+          where tenant_id = ${f.tenant} and user_id = ${f.t1} and resource_id = ${batch.id}`)
+        // and somebody appoints the same person to the same place again, next
+        // to an appointment of theirs at another unit that still stands
+        yield* assessment.addStaff(
+          f.tenant,
+          batch.id,
+          { userIds: [f.t1], orgNodeIds: [f.gradeA], roleId: reviewer },
+          f.principal,
+        )
+        yield* add()
+        const listed = yield* assessment.listAccess(f.tenant, batch.id, {}, f.principal)
+        return listed.staff.find((subject) => subject.userId === f.t1)
+      }),
+    )
+    const subject = ok(exit)
+    // the unit held beside it, and the renewal - nothing lapsed between them
+    expect(subject?.sources).toHaveLength(2)
+    expect(subject?.sources.every((source) => source.active)).toBe(true)
+  })
+
   // A grant bound to a batch can only be revoked through the batch's own
   // record of it; the general revocation refuses it. Deleting a draft and
   // clearing a lapsed record both removed that record and left the grant in

@@ -180,6 +180,7 @@ import {
   oneAccessSource,
   dropAcceptedPermissions,
   dropAccessSource,
+  dropLapsedExplicitSources,
   dropEmptyAccessSources,
   explicitAssignments,
   namesOf,
@@ -3914,6 +3915,17 @@ export const make = Effect.fn('Assessment.make')(function* () {
                   origin: 'explicit',
                   permissions: carried,
                   acceptedBy: as.userId,
+                })
+                // an appointment to the same place that ran out is what this
+                // one renews: its record would stand beside the new one as a
+                // lapsed entry nobody asked to keep
+                yield* dropLapsedExplicitSources({
+                  tenantId,
+                  batchId,
+                  subjectId: userId,
+                  roleId: input.roleId,
+                  orgNodeId,
+                  keep: assignmentId,
                 })
               }
             }
