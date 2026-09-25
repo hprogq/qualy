@@ -249,6 +249,57 @@ describe.runIf(postgresAvailable)('the runtime sandbox, shared by scoring and au
     expect(outcome.other.results[0]!.actual).toBe('1')
   }, 120_000)
 
+  // The editor asks for a preview by itself as the author types; one still
+  // out used to take a seat from the runs, so the author's own press on
+  // "run" right after typing was refused as too many at once.
+  it("keeps the previews the editor asks for apart from a person's runs", async () => {
+    const probe = fresh()
+    const outcome = ok(
+      await run(
+        db.url,
+        probe,
+        Effect.gen(function* () {
+          const f = yield* seedFormulaFixture('ss-previews')
+          const library = yield* FormulaLibrary
+          const as = f.principal(f.authorA)
+          const mine = yield* publishedBy(f.t, as, '预览')
+          const asked = yield* Effect.all(
+            [
+              // two windows, each with a preview out
+              Effect.result(library.previewDraft(f.t, mine.functionId, MOODY, as)),
+              Effect.result(library.previewDraft(f.t, mine.functionId, MOODY, as)),
+              // and the two runs a person may have beside them
+              Effect.result(
+                library.evaluateVersion(f.t, mine.functionId, 1, [{ input: FINE }], as),
+              ),
+              Effect.result(
+                library.evaluateDraft(f.t, mine.functionId, MOODY, [{ input: FINE }], as),
+              ),
+            ],
+            { concurrency: 'unbounded' },
+          )
+          // a third preview at once is still one too many
+          const third = yield* Effect.all(
+            [0, 1, 2].map(() =>
+              Effect.result(library.previewDraft(f.t, mine.functionId, MOODY, as)),
+            ),
+            { concurrency: 'unbounded' },
+          )
+          return { asked, third }
+        }),
+      ),
+    )
+    expect(outcome.asked.map((one) => one._tag)).toEqual([
+      'Success',
+      'Success',
+      'Success',
+      'Success',
+    ])
+    const refused = outcome.third.filter((one) => one._tag === 'Failure')
+    expect(refused).toHaveLength(1)
+    expect(refused[0]!.failure).toMatchObject({ _tag: 'ASSESSMENT_FORMULA_AUTHORING_BUSY' })
+  }, 120_000)
+
   it('leaves the rest of a round unrun once one case is interrupted', async () => {
     const probe = fresh()
     const outcome = ok(

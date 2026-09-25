@@ -134,11 +134,19 @@ const DRAFT_WRITE_BURST = 40
 const DRAFT_WRITE_REFILL_MS = 6_000
 
 /**
- * How many runs - previews, try-runs, publications, published versions
- * tried - one person may have under way at once. Two, so a draft and a
- * publication can be tried side by side; one more is refused, not queued.
+ * How many runs - try-runs, publications, published versions tried - one
+ * person may have under way at once. Two, so a draft and a publication can
+ * be tried side by side; one more is refused, not queued.
  */
 const RUNS_PER_PERSON = 2
+
+/**
+ * How many contract previews one person may have under way at once, counted
+ * apart from the runs. The editor asks for one by itself as the author
+ * types, one at a time per window; counted with the runs, a preview still
+ * out refused the author's own press on "run" or "publish" right after it.
+ */
+const PREVIEWS_PER_PERSON = 2
 
 /** how often an example that crossed the scoring deadline is asked again, host permitting */
 const SCORING_BUDGET_ROUNDS = 3
@@ -771,35 +779,41 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     )
 
   // What one person has running, so that one person cannot hold the lane
-  // above, or the compiler's queue, on everybody else's behalf.
+  // above, or the compiler's queue, on everybody else's behalf. Previews the
+  // editor asks for on its own are counted in a ledger of their own.
   const running = yield* Ref.make<ReadonlyMap<string, number>>(new Map())
-  const admitted = <A, E, R>(
-    as: Principal,
-    work: Effect.Effect<A, E, R>,
-  ): Effect.Effect<A, E | FormulaAuthoringBusy, R> => {
-    const key = `${as.tenantId}:${as.userId}`
-    return Effect.acquireUseRelease(
-      Ref.modify(running, (held) => {
-        const now = held.get(key) ?? 0
-        if (now >= RUNS_PER_PERSON) return [false, held] as const
-        const next = new Map(held)
-        next.set(key, now + 1)
-        return [true, next] as const
-      }),
-      (seated): Effect.Effect<A, E | FormulaAuthoringBusy, R> =>
-        seated ? work : Effect.fail(new FormulaAuthoringBusy()),
-      (seated) =>
-        seated
-          ? Ref.update(running, (held) => {
-              const next = new Map(held)
-              const left = (held.get(key) ?? 1) - 1
-              if (left > 0) next.set(key, left)
-              else next.delete(key)
-              return next
-            })
-          : Effect.void,
-    )
-  }
+  const previewing = yield* Ref.make<ReadonlyMap<string, number>>(new Map())
+  const seatedIn =
+    (ledger: Ref.Ref<ReadonlyMap<string, number>>, most: number) =>
+    <A, E, R>(
+      as: Principal,
+      work: Effect.Effect<A, E, R>,
+    ): Effect.Effect<A, E | FormulaAuthoringBusy, R> => {
+      const key = `${as.tenantId}:${as.userId}`
+      return Effect.acquireUseRelease(
+        Ref.modify(ledger, (held) => {
+          const now = held.get(key) ?? 0
+          if (now >= most) return [false, held] as const
+          const next = new Map(held)
+          next.set(key, now + 1)
+          return [true, next] as const
+        }),
+        (seated): Effect.Effect<A, E | FormulaAuthoringBusy, R> =>
+          seated ? work : Effect.fail(new FormulaAuthoringBusy()),
+        (seated) =>
+          seated
+            ? Ref.update(ledger, (held) => {
+                const next = new Map(held)
+                const left = (held.get(key) ?? 1) - 1
+                if (left > 0) next.set(key, left)
+                else next.delete(key)
+                return next
+              })
+            : Effect.void,
+      )
+    }
+  const admitted = seatedIn(running, RUNS_PER_PERSON)
+  const admittedPreview = seatedIn(previewing, PREVIEWS_PER_PERSON)
 
   const latestNoSubquery = sql<number | null>`(
     select max(v.version_no) from assessment_formula_versions v
@@ -2548,7 +2562,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     requireAuthor,
     chargeDraftWrite,
     previewDraft: (tenantId, functionId, sourceTs, as) =>
-      admitted(as, withDb(previewDraft(tenantId, functionId, sourceTs, as))),
+      admittedPreview(as, withDb(previewDraft(tenantId, functionId, sourceTs, as))),
     evaluateDraft: (tenantId, functionId, sourceTs, cases, as) =>
       admitted(as, withDb(evaluateDraft(tenantId, functionId, sourceTs, cases, as))),
     managedDraft: (tenantId, functionId, as) => withDb(managedDraft(tenantId, functionId, as)),
