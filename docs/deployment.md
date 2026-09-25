@@ -123,6 +123,18 @@ database。出现第二种有持久部署副作用的能力时,先设计启动�
 要放宽某一项,在 `DATABASE_URL` 上加同名参数(如 `?statement_timeout=120000`,`0` 为关闭),例如对库跑耗时较长的
 `qualy assessment audit-scoring` 时;取连接的 5s 不开放配置。迁移(`migrate` job 与开发态 apply)用自己的会话,不受这些上限约束。
 
+**远程或托管 PostgreSQL 的 TLS**:compose 拓扑里 server 与 `migrate` 经内网连 `postgres` 服务,不需要 TLS。连远程或托管库时在
+`DATABASE_URL` 上写 `sslmode`,但要按 node-postgres(pg-connection-string 2.x)的口径理解:`sslmode=require`、`prefer`、`verify-ca`
+都按 `verify-full` 处理——既校验证书链也校验主机名,不是 libpq 那种「只加密、不校验」;驱动还会为此在每个进程打印一次 `SECURITY WARNING`,
+直接写 `sslmode=verify-full` 即可免去。库的证书由自签或私有 CA 签发时,把 CA 文件以只读卷挂进 server 与 `migrate` 两个容器,并在 URL 上加
+`sslrootcert=<容器内路径>`;不挂的话每条连接都因证书不受信被拒,server 起不来。不要用 `sslmode=no-verify` 绕过,那等于不再核对连上的是谁。
+URL 原样交给驱动,应用连接池、迁移器与通知监听用的是同一套 TLS 设置。
+
+**CSP 报告与日志量**:`/csp-reports` 是匿名端点,server 对它每分钟最多写 50 行 Warn(同一「指令 + 被拦地址 + 来源文件」一分钟只写一次,
+超出预算的只计数),每行最长约 3KB。有人持续灌入时一天约 200MB,正好是 compose 给 server 的日志轮转上限(`json-file`,20m × 10),
+约一天前的日志会被挤掉。生产部署应把 server 日志转存到机器之外(Docker 的 `journald` / `syslog` / `fluentd` 等 logging driver,
+或主机上的日志采集),并在边缘代理上对 `/csp-reports` 按来源地址限流(nginx 用 `limit_req`,Caddy 需要 rate limit 插件)。
+
 **CAPTCHA provider**(docs/captcha.md):默认 `@qualy/plugin-captcha-altcha`(本地 PoW,不依赖第三方,无需任何配置——签名密钥由
 `QUALY_SECRETS_MASTER_KEY` 派生);`@qualy/plugin-captcha-turnstile` 默认停用,只用于 Cloudflare 可服务的地区,启用时要先停用 altcha
 (两个 provider 同时启用在装配时被拒),并在 `.env` 填 `QUALY_CAPTCHA_TURNSTILE_SITE_KEY` / `QUALY_CAPTCHA_TURNSTILE_SECRET_KEY`(缺失即拒绝启动)。
