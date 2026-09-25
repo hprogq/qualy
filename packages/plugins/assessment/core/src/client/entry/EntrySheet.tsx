@@ -10,6 +10,15 @@ import { assessmentMessages as m } from '../i18n.ts'
 import { entryRefusalReason } from './refusals.ts'
 import { EntryDetail } from './EntryDetail.tsx'
 import type { ActionAvailability, EntryDto, ItemDto } from './model.ts'
+import { abandonConsequence } from './standing.ts'
+
+/** what the owner is told giving a claim up takes with it */
+const ABANDON_SAYS = {
+  'contest-and-result': m.entryAbandonConfirmContestedCounted,
+  contest: m.entryAbandonConfirmContested,
+  result: m.entryAbandonConfirmDecided,
+  claim: m.entryAbandonConfirm,
+} as const
 
 // The owner's drawer: their own claim, and the three things they may do to
 // it. Everything above the buttons is `EntryDetail`, which the staff drawer
@@ -137,7 +146,7 @@ export function EntrySheet({
         )}
         description={format(
           asking === 'voided'
-            ? m.entryAbandonConfirm
+            ? ABANDON_SAYS[abandonConsequence(entry)]
             : asking === 'draft'
               ? oneWay
                 ? m.entryWithdrawFinalHint

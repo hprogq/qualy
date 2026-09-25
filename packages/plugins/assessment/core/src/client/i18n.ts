@@ -1177,6 +1177,20 @@ const i18n = definePluginMessages({
       defaultMessage:
         'Abandon the entry? One submission slot will become available, while the historical record is retained.',
     },
+    entryAbandonConfirmDecided: {
+      id: 'assessment/entry/abandon-confirm-decided',
+      defaultMessage: 'Its result leaves your score, and the record of it is kept.',
+    },
+    entryAbandonConfirmContestedCounted: {
+      id: 'assessment/entry/abandon-confirm-contested-counted',
+      defaultMessage:
+        'You give up the whole entry, not only the appeal: the appeal ends, its result leaves your score, and the record of it is kept.',
+    },
+    entryAbandonConfirmContested: {
+      id: 'assessment/entry/abandon-confirm-contested',
+      defaultMessage:
+        'You give up the whole entry, not only the appeal: the appeal ends, and the record of it is kept.',
+    },
     entrySubmitConfirm: {
       id: 'assessment/entry/submit-confirm',
       defaultMessage: 'Hand this claim on for review?',

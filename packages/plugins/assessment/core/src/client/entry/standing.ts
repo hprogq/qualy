@@ -141,6 +141,23 @@ export const mayFile = (item: ItemDto, entries: readonly EntryDto[]): boolean =>
   opensTo(item, 'participant') &&
   (roomLeft(item, entries) ?? MAX_ENTRIES_PER_ITEM - liveCount(entries)) > 0
 
+/**
+ * What giving a claim up takes with it, as its owner has to be told before
+ * they confirm (ruling of 2026-09-25 #16): giving up is the whole claim,
+ * never only an appeal on it - a running appeal or reopening ends with it,
+ * and a decided claim's result leaves the score.
+ */
+export const abandonConsequence = (
+  entry: Pick<EntryDto, 'status' | 'openRound'>,
+): 'contest-and-result' | 'contest' | 'result' | 'claim' => {
+  const contested =
+    entry.openRound !== null &&
+    (entry.openRound.origin === 'appeal' || entry.openRound.origin === 'reopen')
+  // only an approval counts toward the score; a refusal stays on it at zero
+  const counted = entry.status === 'approved'
+  return contested ? (counted ? 'contest-and-result' : 'contest') : counted ? 'result' : 'claim'
+}
+
 /** what one approved claim is worth, when the question pays a flat amount */
 export const eachWorth = (item: ItemDto): string | undefined =>
   (

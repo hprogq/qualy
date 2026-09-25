@@ -160,6 +160,12 @@ export default {
   'assessment/entry/abandon-confirm':
     '确认放弃该申报？放弃后将释放一个申报名额，历史记录仍会保留。',
   'assessment/entry/abandon-confirm-title': '确认放弃该申报？',
+  'assessment/entry/abandon-confirm-decided':
+    '放弃后，该申报的结果将从成绩中退出，历史记录仍会保留。',
+  'assessment/entry/abandon-confirm-contested-counted':
+    '放弃的是整条申报而不只是申诉：申诉随之结束，结果将从成绩中退出，历史记录仍会保留。',
+  'assessment/entry/abandon-confirm-contested':
+    '放弃的是整条申报而不只是申诉：申诉随之结束，历史记录仍会保留。',
   'assessment/entry/submit-confirm': '确认提交审核？',
   'assessment/entry/submit-confirm-hint': '提交后进入审核流程，审核期间可撤回。',
   'assessment/entry/withdraw-confirm': '确认撤回提交？',
