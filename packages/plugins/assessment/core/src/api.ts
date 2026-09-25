@@ -14,7 +14,7 @@ import {
   uuidInput,
 } from '@qualy/api-kit/schema'
 import { Authenticated } from '@qualy/auth-contract/session'
-import { PHASE_GATED_CODES } from './permissions.ts'
+import { BATCH_STAFF_CODES, PHASE_GATED_CODES } from './permissions.ts'
 
 /**
  * One wake-up on a batch's live stream.
@@ -2535,16 +2535,21 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     HttpApiEndpoint.post('applyAccessSync', '/assessment/batches/:batchId/access/sync', {
       params: Schema.Struct({ batchId: uuidInput }),
       payload: Schema.Struct({
+        // as many changes as a roster has people, each carrying at most the
+        // capabilities a batch accepts at all: what one sync can merge is
+        // bounded by the round, not by the request body
         accept: Schema.Array(
           Schema.Struct({
             kind: Schema.Literals(['new', 'widened']),
             id: uuidInput,
-            permissions: Schema.Array(Schema.String),
+            permissions: Schema.Array(Schema.String.check(Schema.isMaxLength(100))).check(
+              Schema.isMaxLength(BATCH_STAFF_CODES.length),
+            ),
           }),
-        ),
+        ).check(Schema.isMaxLength(5000)),
       }),
       success: Schema.Struct({ merged: Schema.Number, cleared: Schema.Number }),
-      error: [BatchNotFound, AccessDenied],
+      error: [BatchNotFound, BatchReadOnly, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(
@@ -2559,7 +2564,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
           reason: Schema.optional(boundedText(500)),
         }),
         success: Schema.Struct({ staff: Schema.Array(accessSubjectView) }),
-        error: [BatchNotFound, AccessInvalid, AccessDenied],
+        error: [BatchNotFound, BatchReadOnly, AccessInvalid, AccessDenied],
       },
     ).middleware(Authenticated),
   )
@@ -2626,7 +2631,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         validUntil: Schema.optional(isoInstant),
       }),
       success: Schema.Struct({ staff: Schema.Array(accessSubjectView) }),
-      error: [BadRequest, BatchNotFound, AccessInvalid, AccessDenied],
+      error: [BadRequest, BatchNotFound, BatchReadOnly, AccessInvalid, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(

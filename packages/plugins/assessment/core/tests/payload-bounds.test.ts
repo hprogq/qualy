@@ -126,3 +126,27 @@ describe('the roles a staffing selection could be offered', () => {
     expect(accepts(options, { orgNodeIds: ids(201) })).toBe(false)
   })
 })
+
+// A sync names changes the round offers, each with the capabilities to take
+// from it. Neither list had a bound: the selection is walked change by
+// change under the batch lock.
+describe('a staff sync selection', () => {
+  const sync = payloadOf('applyAccessSync')
+  const choice = (n: number, permissions: readonly string[] = ['assessment.review.process']) => ({
+    kind: 'new',
+    id: id(n),
+    permissions,
+  })
+
+  it('takes a roster-sized selection of changes', () => {
+    const accept = Array.from({ length: 5000 }, (_, index) => choice(index))
+    expect(accepts(sync, { accept })).toBe(true)
+    expect(accepts(sync, { accept: [...accept, choice(5000)] })).toBe(false)
+  })
+
+  it('takes no more capabilities for one change than a batch accepts', () => {
+    const many = Array.from({ length: 8 }, () => 'assessment.review.process')
+    expect(accepts(sync, { accept: [choice(1, many.slice(0, 7))] })).toBe(true)
+    expect(accepts(sync, { accept: [choice(1, many)] })).toBe(false)
+  })
+})

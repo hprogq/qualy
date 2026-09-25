@@ -2318,6 +2318,177 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(sources).toEqual([])
   })
 
+  // An archived round is read-only, and who may work on it is part of what
+  // it holds: appointing somebody, accepting more of what the organization
+  // offers or lifting a deny would all stand ready for the day it reopens.
+  // Taking authority away stays open - an appointment the batch made can be
+  // revoked nowhere else.
+  it('appoints nobody and widens nothing on an archived round, and still lets staff go', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('staff-archived')
+        const assessment = yield* Assessment
+        const reviewer = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into roles (tenant_id, code, name, kind, status, permission_mode,
+                               assignable, eligibility_mode, anchor_mode)
+            values (${f.tenant}, 'reviewer', 'Reviewer', 'org', 'active', 'explicit', true,
+                    'unrestricted', 'unrestricted')
+            returning id`),
+        ).id
+        yield* runSql(sql`
+          insert into role_permissions (tenant_id, role_id, permission_id)
+          select ${f.tenant}, ${reviewer}, id from permissions
+          where code = 'assessment.review.process'`)
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Closed',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.class1], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        yield* assessment.addStaff(
+          f.tenant,
+          batch.id,
+          { userIds: [f.t1], orgNodeIds: [f.class1], roleId: reviewer },
+          f.principal,
+        )
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          { specs: [phase({ phaseKey: 'review' })] },
+          f.principal,
+        )
+        const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        yield* assessment.schedulePhase(
+          f.tenant,
+          batch.id,
+          plan[0]!.id,
+          Date.now() + HOUR,
+          f.principal,
+        )
+        yield* assessment.advancePhase(
+          f.tenant,
+          batch.id,
+          { to: plan[0]!.id, force: true, reason: 'starting now' },
+          f.principal,
+        )
+        yield* assessment.setBatchStatus(f.tenant, batch.id, { status: 'archived' }, f.principal)
+
+        const appoint = yield* Effect.exit(
+          assessment.addStaff(
+            f.tenant,
+            batch.id,
+            { userIds: [f.s2], orgNodeIds: [f.class1], roleId: reviewer },
+            f.principal,
+          ),
+        )
+        const accept = yield* Effect.exit(
+          assessment.applyAccessSync(
+            f.tenant,
+            batch.id,
+            {
+              accept: [
+                {
+                  kind: 'new',
+                  id: randomUUID(),
+                  permissions: ['assessment.review.process'],
+                },
+              ],
+            },
+            f.principal,
+          ),
+        )
+        const deny = (denied: boolean) =>
+          Effect.exit(
+            assessment.setAccessDeny(
+              f.tenant,
+              batch.id,
+              { userId: f.t1, permission: 'assessment.review.process', denied },
+              f.principal,
+            ),
+          )
+        const imposed = yield* deny(true)
+        const lifted = yield* deny(false)
+        const clearing = yield* Effect.exit(
+          assessment.applyAccessSync(f.tenant, batch.id, { accept: [] }, f.principal),
+        )
+        const before = yield* assessment.listAccess(f.tenant, batch.id, {}, f.principal)
+        const source = before.staff
+          .find((row) => row.userId === f.t1)!
+          .sources.find((one) => one.origin === 'explicit')!
+        const removed = yield* Effect.exit(
+          assessment.removeStaff(f.tenant, batch.id, source.sourceId, f.principal),
+        )
+        const appointed = rowsOf<{ revoked: boolean }>(
+          yield* runSql(sql`
+            select revoked_at is not null as revoked from role_grants
+            where tenant_id = ${f.tenant} and resource_id = ${batch.id}`),
+        ).map((row) => row.revoked)
+        return { appoint, accept, imposed, lifted, clearing, removed, appointed }
+      }),
+    )
+    const { appoint, accept, imposed, lifted, clearing, removed, appointed } = ok(exit)
+    expect(tagOf(appoint)).toBe('ASSESSMENT_BATCH_READ_ONLY')
+    expect(tagOf(accept)).toBe('ASSESSMENT_BATCH_READ_ONLY')
+    expect(tagOf(lifted)).toBe('ASSESSMENT_BATCH_READ_ONLY')
+    expect(Exit.isSuccess(imposed)).toBe(true)
+    expect(Exit.isSuccess(clearing)).toBe(true)
+    expect(Exit.isSuccess(removed)).toBe(true)
+    // the one appointment made while the round ran, revoked with its record
+    expect(appointed).toEqual([true])
+  })
+
+  it('takes a change named twice in one sync once', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('sync-twice')
+        const assessment = yield* Assessment
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Twice',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.gradeA], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        // an office handed out after the batch was created: news to it
+        const role = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+            values (${f.tenant}, 'tutor', 'Tutor', 'org', 'active', 'explicit', 'unrestricted')
+            returning id`),
+        ).id
+        yield* runSql(sql`
+          insert into role_permissions (tenant_id, role_id, permission_id)
+          select ${f.tenant}, ${role}, id from permissions
+          where code = 'assessment.review.process'`)
+        yield* runSql(sql`
+          insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+          values (${f.tenant}, ${f.t1}, ${role}, ${f.gradeA}, 'subtree')`)
+        const plan = yield* assessment.previewAccessSync(f.tenant, batch.id, {}, f.principal)
+        const offered = plan.items.find((change) => change.kind === 'new')!
+        const choice = {
+          kind: 'new' as const,
+          id: offered.id,
+          permissions: offered.permissions,
+        }
+        return yield* assessment.applyAccessSync(
+          f.tenant,
+          batch.id,
+          { accept: [choice, choice] },
+          f.principal,
+        )
+      }),
+    )
+    expect(ok(exit)).toEqual({ merged: 1, cleared: 0 })
+  })
+
   // Every person-by-unit pair is an assignment, and all of them go in one
   // transaction so half a request never stands. The two lists are bounded
   // separately at the contract, which says nothing about their product: a

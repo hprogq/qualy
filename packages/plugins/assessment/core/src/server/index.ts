@@ -955,14 +955,20 @@ export class Assessment extends Context.Service<
       batchId: string,
       input: AccessSyncSelection,
       as: Principal,
-    ) => Effect.Effect<{ merged: number; cleared: number }, BatchNotFound | AccessDenied>
+    ) => Effect.Effect<
+      { merged: number; cleared: number },
+      BatchNotFound | BatchReadOnly | AccessDenied
+    >
     /** takes one capability back from a person, whichever source offered it */
     readonly setAccessDeny: (
       tenantId: string,
       batchId: string,
       input: { userId: string; permission: string; denied: boolean; reason?: string },
       as: Principal,
-    ) => Effect.Effect<BatchAccessView, BatchNotFound | AccessInvalid | AccessDenied>
+    ) => Effect.Effect<
+      BatchAccessView,
+      BatchNotFound | BatchReadOnly | AccessInvalid | AccessDenied
+    >
     /** the units and roles bringing somebody in can name, for this caller */
     readonly staffOptions: (
       tenantId: string,
@@ -1005,7 +1011,10 @@ export class Assessment extends Context.Service<
         validUntil?: EpochMillis
       },
       as: Principal,
-    ) => Effect.Effect<BatchAccessView, BatchNotFound | AccessInvalid | AccessDenied>
+    ) => Effect.Effect<
+      BatchAccessView,
+      BatchNotFound | BatchReadOnly | AccessInvalid | AccessDenied
+    >
     /** and taking them out again, which revokes the assignment behind it */
     readonly removeStaff: (
       tenantId: string,
@@ -3512,6 +3521,13 @@ export const make = Effect.fn('Assessment.make')(function* () {
               // fault - a 500 for having been second.
               const locked = yield* lockBatch(tenantId, batchId)
               if (!locked) return yield* new BatchNotFound()
+              // A closed round takes on nobody new and no more of anybody:
+              // accepting would widen what it hands out the day it reopens.
+              // What the organization took back still goes, below - that
+              // only narrows, and it is the one way such a record ends.
+              if (locked.status === 'archived' && input.accept.length > 0) {
+                return yield* new BatchReadOnly()
+              }
               const assignments = yield* applicableAssignments(tenantId, batchId)
               // recomputed inside the transaction rather than trusted from the
               // request: the selection says which change and how much of it, and
@@ -3524,8 +3540,14 @@ export const make = Effect.fn('Assessment.make')(function* () {
               )
               const byAssignment = new Map(assignments.map((row) => [row.assignmentId, row]))
               let merged = 0
+              const taken = new Set<string>()
               for (const choice of input.accept) {
-                const change = offered.get(`${choice.kind}/${choice.id}`)
+                const key = `${choice.kind}/${choice.id}`
+                // the same change named twice is one change, not a second
+                // acceptance meeting the first at a unique index
+                if (taken.has(key)) continue
+                taken.add(key)
+                const change = offered.get(key)
                 if (!change) continue
                 const chosen = new Set(choice.permissions)
                 const permissions = change.permissions.filter((code) => chosen.has(code))
@@ -3589,6 +3611,13 @@ export const make = Effect.fn('Assessment.make')(function* () {
       return yield* withDb(
         transaction(
           Effect.gen(function* () {
+            const locked = yield* lockBatch(tenantId, batchId)
+            if (!locked) return yield* new BatchNotFound()
+            // lifting a deny on a closed round hands a capability back for
+            // the day it reopens; imposing one only narrows, and stays open
+            if (locked.status === 'archived' && !input.denied) {
+              return yield* new BatchReadOnly()
+            }
             yield* setAccessDenyRow({
               tenantId,
               batchId,
@@ -3696,6 +3725,11 @@ export const make = Effect.fn('Assessment.make')(function* () {
       return yield* withDb(
         transaction(
           Effect.gen(function* () {
+            // the lock every write on this batch takes, and the status read
+            // under it: a closed round appoints nobody
+            const locked = yield* lockBatch(tenantId, batchId)
+            if (!locked) return yield* new BatchNotFound()
+            if (locked.status === 'archived') return yield* new BatchReadOnly()
             const nodes = yield* nodesByIds(tenantId, input.orgNodeIds)
             if (nodes.length !== new Set(input.orgNodeIds).size) {
               return yield* new AccessInvalid({ reason: 'node-not-found' })
@@ -3792,6 +3826,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
       return yield* withDb(
         transaction(
           Effect.gen(function* () {
+            // Open on a closed round too. It only narrows, and an appointment
+            // this batch made can be revoked nowhere else: refusing it here
+            // would leave the grant standing for as long as the archive does.
             const source = yield* oneAccessSource(tenantId, batchId, sourceId)
             if (!source) return yield* new AccessInvalid({ reason: 'source-not-found' })
             if (source.subjectId === as.userId) {
