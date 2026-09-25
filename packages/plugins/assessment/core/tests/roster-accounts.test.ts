@@ -240,6 +240,35 @@ describe.runIf(postgresAvailable)('the roster, as the results page reads it', ()
     expect(result.blocked).toEqual(['Wang Wu'])
   })
 
+  it('orders the people of one unit by name when the roster is ordered by unit', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ra-unit-order')
+          const g = yield* runningBatch(f, { profile: OPEN })
+          // named against the order they were admitted in, so an order that
+          // falls back on admission reads backwards
+          const admitted = (yield* runSql(sql`
+            select user_id from batch_participants
+             where batch_id = ${g.batch.id} and assessment_anchor_node_id = ${f.classA}
+             order by id`)) as unknown as { rows: { user_id: string }[] }
+          const renamed = ['Zulu', 'Yankee', 'Xray']
+          for (const [index, row] of admitted.rows.entries()) {
+            yield* runSql(
+              sql`update users set display_name = ${renamed[index]!} where id = ${row.user_id}`,
+            )
+          }
+          return yield* page(f, g.batch.id, {
+            order: 'unit',
+            filter: { orgNodeIds: [f.classA], orgScope: 'self' },
+          })
+        }),
+      ),
+    )
+    expect(names(result)).toEqual(['Xray', 'Yankee', 'Zulu'])
+  })
+
   it('lists to a re-determiner only the people it covers, and to a recorder nobody', async () => {
     const result = ok(
       await run(

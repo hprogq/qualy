@@ -3050,7 +3050,8 @@ const rosterAccountsQuery = (
  *
  * Ordered by a total key: the placement path, the name or the business
  * number, each with the membership id last, so a page cannot shuffle under
- * the reader between two requests for it.
+ * the reader between two requests for it. By unit, the people of one unit
+ * are in name order: in the order they were admitted they read as no order.
  */
 export const rosterAccountsPage = (
   tenantId: string,
@@ -3068,9 +3069,9 @@ export const rosterAccountsPage = (
             ? rosterAccountsQuery(k, tenantId, batchId, filter).orderBy('u.businessNo', (by) =>
                 by.asc().nullsLast(),
               )
-            : rosterAccountsQuery(k, tenantId, batchId, filter).orderBy(
-                sql`batch_participants.anchor_path`,
-              )
+            : rosterAccountsQuery(k, tenantId, batchId, filter)
+                .orderBy(sql`batch_participants.anchor_path`)
+                .orderBy('u.displayName')
       return ordered
         .orderBy('BatchParticipant.id')
         .offset(window.offset)
