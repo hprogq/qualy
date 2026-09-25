@@ -1836,11 +1836,13 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
           const shed = (yield* Effect.result(
             access.grants.revoke(f.tenant, own, f.anchored, keeps),
           ))._tag
-          const remaining = one<{ count: string }>(
+          // withdrawn rather than deleted: the row says who took it back
+          const kept = one<{ revoked: boolean; revokedBy: string | null }>(
             yield* runSql(sql`
-              select count(*) as count from role_grants
+              select revoked_at is not null as revoked, revoked_by as "revokedBy"
+              from role_grants
               where tenant_id = ${f.tenant} and id = ${own}`),
-          ).count
+          )
           // and the last administrator still cannot remove themselves: the
           // guard reads the state a removal would leave, not who asked
           const adminGrant = one<{ id: string }>(
@@ -1851,13 +1853,13 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
           const lastAdmin = tagOf(
             yield* Effect.result(access.grants.revoke(f.tenant, adminGrant, f.principal, keeps)),
           )
-          return { unauthorized, shed, remaining, lastAdmin }
+          return { unauthorized, shed, kept, shedder: f.anchored.userId, lastAdmin }
         }),
       )
       const answer = ok(exit)
       expect(answer.unauthorized).toBe('ACCESS_DENIED')
       expect(answer.shed).toBe('Success')
-      expect(answer.remaining).toBe('0')
+      expect(answer.kept).toEqual({ revoked: true, revokedBy: answer.shedder })
       expect(answer.lastAdmin).toBe('LAST_ADMINISTRATOR')
     } finally {
       await db.dispose()

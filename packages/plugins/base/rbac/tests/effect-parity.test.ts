@@ -543,7 +543,8 @@ describe
             const left = one<{ count: number }>(
               yield* runSql(sql`
               select count(*)::int as count from role_grants
-              where tenant_id = ${f.a.tenantId} and role_id = ${f.a.adminRole}`),
+              where tenant_id = ${f.a.tenantId} and role_id = ${f.a.adminRole}
+                and revoked_at is null`),
             ).count
             return { tags: [tagOf(a), tagOf(b)], left }
           }),

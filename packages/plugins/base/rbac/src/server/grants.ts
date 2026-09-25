@@ -31,6 +31,7 @@ import {
   inForce,
   lockTenant,
   orgNodeExists,
+  revokeGrant,
   rolePermissionCodes,
   rolePermissionMode,
   rolesOfTenant,
@@ -408,8 +409,7 @@ const oneGrant = (tenantId: string, grantId: string) =>
       ])
       .where('g.tenantId', '=', tenantId)
       .where('g.id', '=', grantId)
-      // a grant already withdrawn has nothing left to revoke, and deleting the
-      // row would erase the record of an authority that existed
+      // a grant already withdrawn has nothing left to revoke
       .where((eb) =>
         inForce({
           revokedAt: eb.ref('g.revokedAt'),
@@ -487,11 +487,6 @@ const closeLapsedGrants = (input: {
         : lapsed.where('resourceId', '=', input.resourceId)
     return lapsed.execute()
   })
-
-const deleteGrant = (tenantId: string, grantId: string) =>
-  db.query((k) =>
-    k.deleteFrom('RoleGrant').where('tenantId', '=', tenantId).where('id', '=', grantId).execute(),
-  )
 
 export const make = Effect.fn('Rbac.grants.make')(function* (
   authorityFor: (actor: Principal) => Authority,
@@ -1022,7 +1017,9 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
                 }
           yield* mayAdministerGrantsAt(actor, target)
           yield* mayAdministerRole(actor, tenantId, grant.roleId)
-          yield* deleteGrant(tenantId, grantId)
+          // withdrawn, not deleted: who held what, where and until when, and
+          // who took it back, is history the row keeps
+          yield* revokeGrant(tenantId, grantId, actor.userId)
           // checked against the state the removal actually leaves behind
           yield* keepsAdministrator(tenantId)
           yield* audit.record(GrantRevoked, {
