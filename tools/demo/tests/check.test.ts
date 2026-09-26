@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { positionalOf, seedOptionsOf } from '../options.ts'
+import { positionalOf, seedOptionsOf, termsToSeed } from '../options.ts'
 import { judgeSituations, judgeStandings, type Situation, type Standing } from '../situations.ts'
 
 // demo:check reads the flags demo:seed was given, and asks for a situation
@@ -23,6 +23,14 @@ describe('the seed options', () => {
     expect(positionalOf(['--stage=entry', '40'])).toEqual(['40'])
   })
 
+  it('seed every term, the first few, or the ones named', () => {
+    const plans = [{ term: 'a' }, { term: 'b' }, { term: 'c' }]
+    const terms = (value: string | undefined) => termsToSeed(value, plans).map((one) => one.term)
+    expect(terms(undefined)).toEqual(['a', 'b', 'c'])
+    expect(terms('2')).toEqual(['a', 'b'])
+    expect(terms('c, a')).toEqual(['a', 'c'])
+    expect(() => terms('a,d')).toThrow(/names no term d/)
+  })
 })
 
 describe('what a check requires', () => {

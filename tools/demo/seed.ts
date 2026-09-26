@@ -30,7 +30,7 @@ import {
   personaPassword,
 } from './seed/personas.ts'
 import { runSelection } from './seed/selection.ts'
-import { seedOptionsOf } from './options.ts'
+import { seedOptionsOf, termsToSeed } from './options.ts'
 import { writeSignIns } from './seed/telemetry.ts'
 import { sql } from 'kysely'
 import { runSql } from '@qualy/plugin-database/testkit'
@@ -155,8 +155,9 @@ const program = Effect.gen(function* () {
 
   const away: Away[] = []
   let leaving: Student[] = []
-  // QUALY_DEMO_TERMS stops after that many terms, for working on the scenario
-  const terms = TERM_PLANS.slice(0, Number(process.env.QUALY_DEMO_TERMS ?? TERM_PLANS.length))
+  // QUALY_DEMO_TERMS stops after that many terms, or seeds only the terms it
+  // names, for working on the scenario
+  const terms = termsToSeed(process.env.QUALY_DEMO_TERMS, TERM_PLANS)
   for (const [index, plan] of terms.entries()) {
     const started = Date.now()
     if (index > 0) {
@@ -164,7 +165,7 @@ const program = Effect.gen(function* () {
       story.set(dayAt(plan.day, -20, '10:00'))
       yield* betweenTerms({ world, index, away, leaving, random, story })
     }
-    if (plan.term === '23-24-2') {
+    if (plan.term !== '23-24-1' && versions.get('competition')!.length < 2) {
       // the new rules make team places step down by 0.1
       story.set(dayAt(plan.day, -9, '16:00'))
       const competition = functions.get('competition')!
