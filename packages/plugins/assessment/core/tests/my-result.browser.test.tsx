@@ -717,13 +717,15 @@ describe('the rows of the account', () => {
   it('moves the reader to the first claim shown on, whatever rows before it are', async () => {
     await page.viewport(1440, 900)
     const paper = normal()
-    // a line of the account this reader cannot open, among the first six
+    // a line of the account this reader cannot open, among the first six:
+    // nothing names the claim behind it
     const unopened = {
       lineId: 'entry:unopened',
       kind: 'entry' as const,
       label: '志愿服务时长',
       value: '0.00',
       itemId: 'q7',
+      provenance: {} as { entryId: string },
     }
     const lines = paper.result.lines
     const at = lines.findIndex((one) => one.itemId === 'q7')
