@@ -385,6 +385,26 @@ describe('reading somebody’s entries', () => {
     await expect.element(page.getByTestId('entries-live')).toHaveAttribute('data-state', 'live')
   })
 
+  // The total is kept current on the same line, and says so by the same
+  // rule; one taken off the round no longer moves.
+  it('says the total is kept live on the score half too', async () => {
+    await page.viewport(1440, 900)
+    await screen({ route: `${base}&view=score`, stubs: { watchBatch: openLine } })
+    await expect.element(page.getByTestId('result-live')).toHaveAttribute('data-state', 'live')
+  })
+
+  it('says nothing about keeping the total current for somebody off the round', async () => {
+    await page.viewport(1440, 900)
+    await screen({
+      route: `${base}&view=score`,
+      who: participant({ status: 'excluded', excludedAt: '2026-03-02T00:00:00.000Z' }),
+      stubs: { watchBatch: openLine },
+    })
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    expect(page.getByTestId('result-live').elements()).toHaveLength(0)
+  })
+
   it('says nothing about keeping current once the round is archived', async () => {
     await page.viewport(1440, 900)
     await screen({

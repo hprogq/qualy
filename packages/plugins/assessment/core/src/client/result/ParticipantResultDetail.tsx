@@ -19,6 +19,7 @@ import { Button } from '@qualy/ui/button'
 import { Count } from '@qualy/ui/count'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Swap } from '@qualy/ui/reveal'
+import { liveStateOf } from '@qualy/ui/live-mark'
 import { UnitPath } from '@qualy/ui/unit-path'
 import { useIsMobile } from '@qualy/ui/use-mobile'
 import { a11yStyles } from '@qualy/ui/visually-hidden'
@@ -925,6 +926,10 @@ export function ParticipantResultDetail({
                         reader="staff"
                         // an archived round, or somebody taken off it, no longer moves
                         closed={!writable ? 'archived' : excluded ? 'excluded' : null}
+                        // kept current while the line is open, by the rule the
+                        // claims half and the owner's own pages keep; a total
+                        // already said to be behind is not also live
+                        stream={result.error === null ? liveStateOf(line) : null}
                         align="start"
                         // a number leads back to the filing it came from, on
                         // the question it was filed under; this is the reason
