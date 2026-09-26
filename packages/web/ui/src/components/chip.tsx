@@ -35,7 +35,7 @@ const styles = stylex.create({
     color: tokens.foreground,
   },
   // the chosen chip wears the product's own ink; the widget draws the
-  // check inside it
+  // check inside it, in the colour handed to it below
   chipPicked: {
     backgroundColor: {
       default: tokens.primary,
@@ -45,6 +45,8 @@ const styles = stylex.create({
     color: tokens.primaryForeground,
   },
 })
+
+const chipVars = () => ({ root: { '--chip-color': 'var(--q-primary-foreground)' } })
 
 const PickCtx = React.createContext<{ value: string; onChange: (value: string) => void }>({
   value: '',
@@ -107,6 +109,10 @@ function Chip({
         size="sm"
         radius="xl"
         color="var(--q-primary)"
+        // The tick's colour. The widget pairs a filled chip with a
+        // hard-coded white, which vanished on the dark scheme's primary,
+        // itself near white; the primary has its own foreground.
+        vars={chipVars}
         classNames={{
           label: stylex.props(styles.chip, chosen && styles.chipPicked).className,
         }}

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 import { Button } from '@qualy/ui/button'
+import { Chip, ChipGroup } from '@qualy/ui/chip'
 import { DatePicker } from '@qualy/ui/date-picker'
 import { DateTimePicker } from '@qualy/ui/date-time-picker'
 import {
@@ -195,5 +196,23 @@ describe('a calendar in the dark', () => {
     expect(ink(hour.element())).toBe(probe('var(--q-primary-foreground)', 'color'))
     expect(ink(hour.element())).not.toBe(ground(hour.element()))
     await userEvent.keyboard('{Escape}')
+  })
+})
+
+describe('a chosen chip in the dark', () => {
+  // the widget drew its tick in a hard-coded white, on a chip the product
+  // fills with its primary - which is paper in the dark
+  it('draws its tick in the ink that belongs on the primary', async () => {
+    await dark(
+      <ChipGroup value="late" onChange={() => {}}>
+        <Chip value="missing">missing</Chip>
+        <Chip value="late">late</Chip>
+      </ChipGroup>,
+    )
+    const chosen = document.querySelector('[data-slot="chip"][data-state="on"]')!
+    const tick = chosen.querySelector('svg')!
+    expect(tick).not.toBeNull()
+    expect(ink(tick)).toBe(probe('var(--q-primary-foreground)', 'color'))
+    expect(ink(tick)).not.toBe(ground(chosen.querySelector('label')!))
   })
 })
