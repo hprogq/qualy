@@ -413,6 +413,30 @@ export const runTerm = (input: {
       )
     }
 
+    /**
+     * The class lead a visitor signs in as files like the busy cadre they
+     * are: three claims at least, on two kinds of question or more, one per
+     * activity, within what each question allows.
+     */
+    const cadreClaims = (student: Student) => {
+      const busy: Student = { ...student, activity: Math.max(student.activity, 0.85) }
+      const drawn: Claim[] = []
+      const named = new Set<string>()
+      for (let draw = 0; draw < 6; draw++) {
+        for (const claim of claimsOf(busy, plan.term, random, plan.material)) {
+          const what = claim.payload['activity'] ?? claim.payload['name']
+          if (typeof what === 'string') {
+            if (named.has(`${claim.item}:${what}`)) continue
+            named.add(`${claim.item}:${what}`)
+          }
+          drawn.push(claim)
+        }
+        const kept = allowed(drawn, new Map())
+        if (kept.length >= 3 && new Set(kept.map((claim) => claim.item)).size >= 2) return kept
+      }
+      return allowed(drawn, new Map())
+    }
+
     /** a claim on a reopened question that waited for its papers */
     const waited = (claim: Claim) =>
       scoped !== undefined &&
@@ -422,7 +446,12 @@ export const runTerm = (input: {
 
     for (const student of present) {
       if (input.onLeave.some((one) => one.id === student.id)) continue
-      const claims = roomLeft(student, claimsOf(student, plan.term, random, plan.material))
+      const claims = roomLeft(
+        student,
+        student.id === world.cast.classLead.id
+          ? cadreClaims(student)
+          : claimsOf(student, plan.term, random, plan.material),
+      )
       for (const claim of claims) {
         if (scoped !== undefined && waited(claim)) {
           // in the evenings once the stage reopening its question is in

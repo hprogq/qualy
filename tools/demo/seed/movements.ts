@@ -228,7 +228,9 @@ const cohortClass = (world: World, cohort: string, major: MajorKey, no: number, 
 /**
  * A new pair of class leads in every class: the committee elected at the
  * start of a year. The old grants are revoked, the new ones granted, and a
- * review inbox moves from one person to the next with nothing migrated.
+ * review inbox moves from one person to the next with nothing migrated. The
+ * class lead a visitor signs in as is re-elected every time, and nobody the
+ * demonstration signs in as is ever elected in their place.
  */
 export const handOver = (world: World, random: Random, story: Story, away: readonly Away[]) =>
   Effect.gen(function* () {
@@ -236,7 +238,9 @@ export const handOver = (world: World, random: Random, story: Story, away: reado
     const rbac = yield* Rbac
     for (const [classKey, leads] of world.classLeads) {
       if (!classKey.startsWith('2023-')) continue
+      const staying = leads.filter((lead) => world.personas.has(lead))
       for (const lead of leads) {
+        if (staying.includes(lead)) continue
         const grant = world.grants.get(`${lead}:${world.roles.classLead}`)
         if (grant === undefined) continue
         // an organizational grant goes back the way it was given, through
@@ -253,10 +257,11 @@ export const handOver = (world: World, random: Random, story: Story, away: reado
         (student) =>
           student.classKey === classKey &&
           !world.majorLeads.includes(student.id) &&
+          !world.personas.has(student.id) &&
           !away.some((one) => one.student.id === student.id),
       )
       const next: string[] = []
-      while (next.length < 2 && inClass.length > 0) {
+      while (staying.length + next.length < 2 && inClass.length > 0) {
         next.push(inClass.splice(random.int(0, inClass.length - 1), 1)[0]!.id)
       }
       for (const lead of next) {
@@ -278,7 +283,7 @@ export const handOver = (world: World, random: Random, story: Story, away: reado
         )
         world.grants.set(`${lead}:${world.roles.classLead}`, made)
       }
-      world.classLeads.set(classKey, next)
+      world.classLeads.set(classKey, [...staying, ...next])
     }
   })
 

@@ -24,7 +24,6 @@ import { betweenTerms, handOver, type Away } from './seed/movements.ts'
 import type { Student } from './seed/world.ts'
 import {
   arrangeSignInPage,
-  choosePersonaStudent,
   PERSONA_PASSWORD_REQUIRED,
   demoAccountsEnv,
   openPersonaAccounts,
@@ -136,9 +135,8 @@ const program = Effect.gen(function* () {
   const world = yield* buildWorld({ tenantId, admin, story, random })
   console.log(`world: ${world.students.length} students, ${world.classes.size} classes`)
   yield* arrangeSignInPage(world, story)
-  // the student a visitor signs in as stays in the cohort from start to end
-  const personaStudent = choosePersonaStudent(world)
-  world.personas.add(personaStudent.id)
+  // the students a visitor signs in as stay in the cohort from start to end
+  const personaStudent = world.cast.student
 
   // the assessment lead writes the formulas the first term needs
   story.set(cst('2024-02-22T15:00:00'))
@@ -209,7 +207,7 @@ const program = Effect.gen(function* () {
 
   // the demonstration accounts open, a few weeks before the selection
   story.set(new Date(startedAt - 27 * 86_400_000))
-  const personas = yield* openPersonaAccounts(world, personaStudent, story, accountsPassword)
+  const personas = yield* openPersonaAccounts(world, story, accountsPassword)
 
   const history = (
     (yield* runSql(

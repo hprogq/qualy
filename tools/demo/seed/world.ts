@@ -8,6 +8,7 @@ import { transaction } from '@qualy/plugin-database/server'
 import library from '../library.json' with { type: 'json' }
 import { makeNames } from './names.ts'
 import type { Random, Story } from './context.ts'
+import { choosePersonaStudents } from './personas.ts'
 
 // The school as it stood in August 2023: one college, one grade, five
 // majors and their classes, the students the first term counted, and the
@@ -84,6 +85,12 @@ export interface World {
   readonly nextName: () => string
   /** people the demonstration signs in as, who must stay where they are */
   readonly personas: Set<string>
+  /**
+   * The two students among them, fixed before anybody holds an office: the
+   * student whose terms are written out, and a classmate who leads their
+   * class from the first term to the last.
+   */
+  readonly cast: { readonly student: Student; readonly classLead: Student }
 }
 
 const classKeyOf = (cohort: string, no: number) => `${cohort}-${no}`
@@ -363,20 +370,34 @@ export const buildWorld = (input: {
         grants.set(`${userId}:${roleId}`, made)
       })
 
-    // one lead per class, chosen among its students; three major leads from
-    // different majors, the first of whom also leads the grade
+    // two leads per class, chosen among its students; in the class of the
+    // student a visitor signs in as, one seat is the classmate who signs in
+    // as its lead, and the student themself holds none. Three major leads
+    // from different majors, the first of whom also leads the grade.
+    const cast = choosePersonaStudents(students)
     const classLeads = new Map<string, string[]>()
     for (const unit of classes.values()) {
       const inClass = students.filter((person) => person.classKey === unit.key)
-      const first = random.int(0, inClass.length - 1)
-      const second = (first + 1 + random.int(0, inClass.length - 2)) % inClass.length
-      const leads = [inClass[first]!.id, inClass[second]!.id]
+      let leads: string[]
+      if (unit.key === cast.student.classKey) {
+        const others = inClass.filter(
+          (person) => person.id !== cast.student.id && person.id !== cast.classLead.id,
+        )
+        leads = [cast.classLead.id, others[random.int(0, others.length - 1)]!.id]
+      } else {
+        const first = random.int(0, inClass.length - 1)
+        const second = (first + 1 + random.int(0, inClass.length - 2)) % inClass.length
+        leads = [inClass[first]!.id, inClass[second]!.id]
+      }
       classLeads.set(unit.key, leads)
       for (const lead of leads) yield* grant(lead, classLead, unit.nodeId)
     }
     const majorLeads = (['se', 'is', 'cs'] as const).map((major) => {
       const leading = new Set([...classLeads.values()].flat())
-      const pool = students.filter((person) => person.major === major && !leading.has(person.id))
+      const pool = students.filter(
+        (person) =>
+          person.major === major && !leading.has(person.id) && person.id !== cast.student.id,
+      )
       return pool[random.int(0, pool.length - 1)]!.id
     })
     for (const lead of majorLeads) yield* grant(lead, majorLead, grade)
@@ -422,7 +443,8 @@ export const buildWorld = (input: {
       gradeLead: majorLeads[0]!,
       grants,
       nextName,
-      personas: new Set(),
+      personas: new Set([cast.student.id, cast.classLead.id]),
+      cast,
     }
     return world
   })

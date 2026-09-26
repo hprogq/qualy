@@ -36,14 +36,27 @@ export const personaPassword = (): string | undefined => {
 export const demoAccountsEnv = (password: string) =>
   JSON.stringify(PERSONA_ACCOUNTS.map(({ label, email }) => ({ label, email, password })))
 
-/** the student the demonstration follows: near the top in grades, busy, and in a 2023 class */
-export const choosePersonaStudent = (world: World): Student => {
-  const leading = new Set([...world.classLeads.values()].flat().concat(world.majorLeads))
-  const candidates = world.students
-    .filter((student) => student.classKey.startsWith('2023-') && !leading.has(student.id))
+/**
+ * The two students the demonstration signs in as, chosen from the cohort
+ * before anybody holds an office. The student it follows is near the top in
+ * grades and busy. The class lead is a classmate of theirs among the best
+ * three in the class, the busiest of them: somebody who files every term and
+ * whose grades carry an application for the selection.
+ */
+export const choosePersonaStudents = (
+  students: readonly Student[],
+): { student: Student; classLead: Student } => {
+  const student = students
+    .filter((one) => one.classKey.startsWith('2023-'))
     .sort((a, b) => b.standing - a.standing)
     .slice(0, 30)
-  return candidates.sort((a, b) => b.activity - a.activity)[0]!
+    .sort((a, b) => b.activity - a.activity)[0]!
+  const classLead = students
+    .filter((one) => one.classKey === student.classKey && one.id !== student.id)
+    .sort((a, b) => b.standing - a.standing)
+    .slice(0, 3)
+    .sort((a, b) => b.activity - a.activity)[0]!
+  return { student, classLead }
 }
 
 /**
@@ -72,12 +85,7 @@ export const arrangeSignInPage = (world: World, story: Story) =>
   })
 
 /** gives each persona an address and a password, through the product */
-export const openPersonaAccounts = (
-  world: World,
-  student: Student,
-  story: Story,
-  password: string,
-) =>
+export const openPersonaAccounts = (world: World, story: Story, password: string) =>
   Effect.gen(function* () {
     const iam = yield* Iam
     const provider = (
@@ -86,8 +94,8 @@ export const openPersonaAccounts = (
       }
     ).rows[0]!.id
     const people: Record<(typeof PERSONA_ACCOUNTS)[number]['key'], string> = {
-      student: student.id,
-      'class-lead': world.classLeads.get(student.classKey)![0]!,
+      student: world.cast.student.id,
+      'class-lead': world.cast.classLead.id,
       counsellor: world.staff.counsellors[0]!.id,
       lead: world.staff.manager.id,
     }
