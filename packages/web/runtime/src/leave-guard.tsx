@@ -78,7 +78,7 @@ function LeaveQuestion({ gate, children }: { gate: LeaveGate; children: ReactNod
   // the move with it - before the save had said whether it may go ahead.
   const [saving, setSaving] = useState(false)
   const savingNow = useRef(false)
-  const save = held?.guard.save
+  const save = held?.save
   const leave = () => gate.leave()
   return (
     <Gate.Provider value={gate}>
