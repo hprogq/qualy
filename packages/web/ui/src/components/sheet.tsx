@@ -103,8 +103,11 @@ const styles = stylex.create({
     insetBlockStart: 16,
     insetInlineEnd: 16,
   },
+  // the head and the foot keep their size; whatever sits between them is
+  // what gives when the panel runs out of room
   header: {
     display: 'flex',
+    flexShrink: 0,
     flexDirection: 'column',
     gap: 6,
     padding: 24,
@@ -112,6 +115,7 @@ const styles = stylex.create({
   footer: {
     marginTop: 'auto',
     display: 'flex',
+    flexShrink: 0,
     flexDirection: 'column',
     gap: 8,
     padding: 24,

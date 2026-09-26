@@ -6,7 +6,6 @@ import * as stylex from '@stylexjs/stylex'
 import { FocusTrap, Modal as MModal } from '@mantine/core'
 
 import { tokens } from '../theme/tokens.stylex.ts'
-import { breakpoints } from '../theme/breakpoints.stylex.ts'
 import { seatOf } from '../lib/xstyle.ts'
 import { veil } from '../lib/veil.ts'
 import { VisuallyHidden } from '../lib/visually-hidden.tsx'
@@ -93,9 +92,19 @@ const styles = stylex.create({
   // all but solid, letting a trace of the softened page through, a
   // hairline edge, a deep soft shadow, and a thread of light along the
   // top. The radius is the widget's own under the product theme.
+  //
+  // A column, so that the body is the one row that gives. The widget caps
+  // the panel at the window's height and scrolls the whole of it once its
+  // rows outgrow that: the title, the corner button and the buttons at the
+  // foot all went up the screen with whatever was being read. Laid out as a
+  // column, the head and the foot keep their size and the body - which
+  // scrolls itself - is shrunk to what is left, so the panel never has
+  // anything to scroll. A dialog with no body keeps the widget's own
+  // scrolling, which is still better than a clipped one.
   content: {
     position: 'relative',
-    display: 'grid',
+    display: 'flex',
+    flexDirection: 'column',
     gap: 24,
     padding: 24,
     backgroundColor: `color-mix(in oklch, ${tokens.surface} 96%, transparent)`,
@@ -119,33 +128,42 @@ const styles = stylex.create({
     insetBlockStart: 16,
     insetInlineEnd: 16,
   },
+  // the name of the task stays where it was put while the body moves
   header: {
     display: 'flex',
+    flexShrink: 0,
     flexDirection: 'column',
     gap: 8,
   },
+  // Sized by what it holds until the panel runs out of room, then shrunk to
+  // the room there is and scrolled. `auto` rather than a zero basis: the
+  // panel's own height is its content's, and a zero basis would have left
+  // it no taller than its head and foot.
   body: {
     display: 'flex',
     flexDirection: 'column',
     flexGrow: 1,
     flexShrink: 1,
-    flexBasis: '0%',
+    flexBasis: 'auto',
     minHeight: 0,
     gap: 24,
     overflowY: 'auto',
+    overscrollBehavior: 'contain',
     // a margin traded for padding at net zero, so a focus ring at the scroll
     // edge has room instead of being clipped
     margin: -4,
     padding: 4,
   },
+  // The way out stays at the foot. On a phone the keys share one line at
+  // the far end, as they do in the sheet a form rises in there: stacked,
+  // they took a fifth of a panel whose middle is what somebody came to read.
   footer: {
     display: 'flex',
-    flexDirection: { default: 'row', [breakpoints.phone]: 'column-reverse' },
-    justifyContent: {
-      default: null,
-      [breakpoints.tablet]: 'flex-end',
-      [breakpoints.desktop]: 'flex-end',
-    },
+    flexShrink: 0,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
     gap: 8,
   },
   title: {
@@ -408,9 +426,10 @@ function DialogHeader({ className, ...props }: React.ComponentProps<'div'>) {
 }
 
 /**
- * The scrollable middle of a dialog. It continues the content's own rhythm
- * one level down; the height cap belongs to the caller (FormDialog caps the
- * whole content).
+ * The scrollable middle of a dialog, and the only part of it that scrolls.
+ * It continues the content's own rhythm one level down. The panel's height
+ * is the window's to cap; a dialog that wants a fixed height says so on the
+ * content, and the body fills it.
  */
 function DialogBody({
   className,

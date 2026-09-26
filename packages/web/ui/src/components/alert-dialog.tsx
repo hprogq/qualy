@@ -84,8 +84,12 @@ const styles = stylex.create({
     transitionTimingFunction: 'ease',
     pointerEvents: 'none',
   },
+  // A column whose foot keeps its size: an answer that could scroll out of
+  // reach is not an answer anybody can give. Whatever outgrows the window
+  // is the question itself, and that is what scrolls.
   content: {
-    display: 'grid',
+    display: 'flex',
+    flexDirection: 'column',
     gap: 24,
     padding: 24,
     backgroundColor: `color-mix(in oklch, ${tokens.surface} 96%, transparent)`,
@@ -103,6 +107,9 @@ const styles = stylex.create({
   narrowCap: { maxWidth: { default: 'none', [breakpoints.phone]: '20rem' } },
   header: {
     display: 'grid',
+    minHeight: 0,
+    flexShrink: 1,
+    overflowY: 'auto',
     gridTemplateRows: 'auto 1fr',
     placeItems: 'center',
     gap: 6,
@@ -121,6 +128,7 @@ const styles = stylex.create({
   },
   footer: {
     display: 'flex',
+    flexShrink: 0,
     flexDirection: { default: 'row', [breakpoints.phone]: 'column-reverse' },
     justifyContent: {
       default: null,

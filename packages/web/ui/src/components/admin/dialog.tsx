@@ -64,10 +64,9 @@ const styles = stylex.create({
     borderStartEndRadius: 0,
     paddingTop: 'env(safe-area-inset-top)',
   },
-  // never taller than the window, and the middle row is what gives
+  // never taller than the window; the body is the row that gives
   formShell: {
     maxHeight: 'calc(100dvh - 2rem)',
-    gridTemplateRows: 'auto minmax(0, 1fr) auto',
   },
   panelBody: {
     // a flex child is floored at its content unless it is told otherwise,
@@ -157,7 +156,8 @@ export function FormDialog({
             <SheetTitle>{title}</SheetTitle>
             {description && <SheetDescription>{description}</SheetDescription>}
           </SheetHeader>
-          <div {...stylex.props(styles.panelBody)}>
+          {/* the same name as a dialog's body: it is the part that scrolls */}
+          <div data-slot="dialog-body" {...stylex.props(styles.panelBody)}>
             <div {...stylex.props(styles.panelStack)}>{children}</div>
           </div>
           {footer && <SheetFooter xstyle={styles.panelFooter}>{footer}</SheetFooter>}
@@ -167,11 +167,9 @@ export function FormDialog({
   }
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      {/* Never taller than the window, and the middle row is what gives:
-          a form long enough to outgrow a phone used to push its own footer
-          off the bottom, where the button that saves it could not be
-          reached. The three rows are the header, the body and the footer -
-          a dialog without a footer simply leaves the last one empty. */}
+      {/* Never taller than the window, and the body is what gives: a form
+          long enough to outgrow a phone used to push its own footer off the
+          bottom, where the button that saves it could not be reached. */}
       <DialogContent
         restfulFocus={restfulFocus}
         size={size === 'wide' ? '56rem' : size === 'medium' ? '35rem' : '32rem'}
@@ -218,7 +216,7 @@ export function SidePanel({
           <SheetTitle>{title}</SheetTitle>
           {description && <SheetDescription>{description}</SheetDescription>}
         </SheetHeader>
-        <div {...stylex.props(styles.panelBody)}>
+        <div data-slot="dialog-body" {...stylex.props(styles.panelBody)}>
           <div {...stylex.props(styles.panelStack)}>{children}</div>
         </div>
         {footer && <SheetFooter xstyle={styles.panelFooter}>{footer}</SheetFooter>}
