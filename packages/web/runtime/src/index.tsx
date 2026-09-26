@@ -57,8 +57,17 @@ import {
 } from './pages.ts'
 import { PluginComponent, type PluginComponentProps } from './component-boundary.tsx'
 import { Failure } from './failure.tsx'
+import { useLoadFailure } from './load-failure.tsx'
 
 export { Failure } from './failure.tsx'
+export {
+  LoadFailure,
+  useLoadFailure,
+  type LoadFailureOptions,
+  type LoadFailureWayBack,
+  type LoadFailureWords,
+} from './load-failure.tsx'
+export { isRecordId, loadFailureKind, subjectFailureKind } from './failure-kind.ts'
 export {
   buildPageHref,
   sessionDestinationHref,
@@ -303,6 +312,7 @@ function RuntimeLoader({
   children,
 }: Omit<Runtime, 'manifest'> & { children: ReactNode }) {
   const { format } = useI18n()
+  const describe = useLoadFailure()
   const query = utilsFor(appApi) as QueryUtils<ClientOf<typeof appApi>>
   const manifest = useQuery({
     ...query.app.getManifest.queryOptions(),
@@ -338,9 +348,18 @@ function RuntimeLoader({
   const known = manifest.data
   if (known === undefined) {
     if (manifest.isError) {
+      // Nothing under it can say what went wrong, so this does: the
+      // network, the server between processes, or something else - each
+      // with its own move for the reader. What failed is Qualy itself, not
+      // some content inside it, and the heading says so.
+      const failure = describe.of(manifest.error, {
+        copy: { failed: { title: format(commonMessages.manifestLoadFailed) } },
+      })
       return (
         <Failure
-          message={format(commonMessages.manifestLoadFailed)}
+          kind={failure.kind}
+          title={failure.title}
+          description={failure.description}
           onRetry={() => void manifest.refetch()}
           fullscreen
         />

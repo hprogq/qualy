@@ -7,6 +7,7 @@ import type { Manifest } from './runtime-context.tsx'
 import type { ComponentRegistry } from './registry.ts'
 import { buildPageHref, type PageEntry } from './pages.ts'
 import { PluginComponent } from './component-boundary.tsx'
+import { DocumentTitleScope, useDocumentTitleOverride } from './document-title.tsx'
 
 // turns the authorized manifest into react-router route objects. Kept out of
 // the host app so the projection rules — layout nesting, the home target,
@@ -163,11 +164,11 @@ export function ManifestRoutes(options: RouteBuilderOptions) {
     [manifest, registry, homePath, signInPage, slots],
   )
   return (
-    <>
+    <DocumentTitleScope>
       <DocumentTitle pages={options.manifest.pages} />
       <ObservedRoute pages={options.manifest.pages} />
       {useRoutes(routes)}
-    </>
+    </DocumentTitleScope>
   )
 }
 
@@ -208,17 +209,20 @@ const PRODUCT = typeof document === 'undefined' ? '' : document.title
  * its menu entry uses - so the title follows the same authorized projection
  * as everything else, and a page nobody may see never names itself. Pages
  * without either keep the product's own name rather than inventing one from
- * the address.
+ * the address. A page that cannot be shown - its record is not there - is
+ * named by what stands in its place (document-title.tsx).
  */
 function DocumentTitle({ pages }: { pages: Manifest['pages'] }) {
   const { pathname } = useLocation()
   const { formatText } = useI18n()
+  const instead = useDocumentTitleOverride()
   const named = pages.find(
     (page) => page.title !== undefined && matchPath({ path: page.path, end: true }, pathname),
   )
   const title = named?.title
   useEffect(() => {
-    document.title = title === undefined ? PRODUCT : `${formatText(title)} - ${PRODUCT}`
-  }, [title, formatText])
+    const name = instead ?? (title === undefined ? undefined : formatText(title))
+    document.title = name === undefined ? PRODUCT : `${name} - ${PRODUCT}`
+  }, [instead, title, formatText])
   return null
 }

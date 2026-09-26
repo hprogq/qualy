@@ -14,7 +14,7 @@ import type { MessageDescriptor } from '@qualy/i18n-contract'
 // module is a fact for the console and the telemetry, never for the screen
 export const componentMissingMessage = {
   id: 'common/component/missing',
-  defaultMessage: 'This page cannot be opened right now.',
+  defaultMessage: 'This page cannot be opened right now',
 } as const satisfies MessageDescriptor
 
 export const layoutMissingMessage = {
@@ -91,9 +91,11 @@ export const commonMessages = {
     id: 'common/state/more-results',
     defaultMessage: 'More results are available. Narrow the search to see them.',
   },
+  // the heading over whatever the runtime could not load everything else
+  // with; the sentence under it says what the reader can do
   manifestLoadFailed: {
     id: 'common/manifest/load-failed',
-    defaultMessage: 'Qualy could not be loaded. Check your connection and try again.',
+    defaultMessage: 'Qualy could not be loaded',
   },
   componentMissing: componentMissingMessage,
   layoutMissing: layoutMissingMessage,
@@ -104,23 +106,55 @@ export const commonMessages = {
   // go edit a configuration file
   emptyPagesHint: {
     id: 'common/page/empty-hint',
-    defaultMessage: 'Nothing is available to your account yet.',
+    defaultMessage: 'Nothing is available to your account yet',
   },
   goHome: { id: 'common/action/go-home', defaultMessage: 'Go to the home page' },
   notFoundTitle: { id: 'common/page/not-found-title', defaultMessage: "This page can't be opened" },
   pageFailed: {
     id: 'common/component/page-failed',
-    defaultMessage: 'This page could not be displayed.',
+    defaultMessage: 'This page could not be displayed',
   },
   layoutFailed: {
     id: 'common/component/layout-failed',
-    defaultMessage: 'Qualy cannot be displayed right now. Try again.',
+    defaultMessage: 'Qualy cannot be displayed right now',
   },
   // the manifest is an authorization projection, so the shell cannot tell
   // "no such page" from "not yours to see", and must not, since answering
   // differently would leak which pages exist
   notFoundHint: {
     id: 'common/page/not-found-hint',
-    defaultMessage: 'It may not exist, or you may not have access.',
+    defaultMessage: 'It may not exist, or you may not have access',
+  },
+  // A reading that failed, said by what the reader can do about it. The
+  // sentences a failed write gets (formatError) speak of an action; these
+  // speak of something the reader came to look at. A plugin that knows the
+  // noun - a batch, a person - says its own heading instead.
+  loadMissingTitle: { id: 'common/load/missing-title', defaultMessage: "This can't be found" },
+  loadMissingHint: {
+    id: 'common/load/missing-hint',
+    defaultMessage: 'It may have been removed, or the link may be wrong',
+  },
+  loadDeniedTitle: { id: 'common/load/denied-title', defaultMessage: "You can't view this" },
+  loadDeniedHint: {
+    id: 'common/load/denied-hint',
+    defaultMessage: 'Ask an administrator if you need access',
+  },
+  loadOfflineTitle: { id: 'common/load/offline-title', defaultMessage: "Can't reach Qualy" },
+  loadOfflineHint: {
+    id: 'common/load/offline-hint',
+    defaultMessage: 'Check your connection and try again',
+  },
+  loadUnavailableTitle: {
+    id: 'common/load/unavailable-title',
+    defaultMessage: 'Qualy is unavailable right now',
+  },
+  loadUnavailableHint: {
+    id: 'common/load/unavailable-hint',
+    defaultMessage: 'Try again in a moment',
+  },
+  loadFailedTitle: { id: 'common/load/failed-title', defaultMessage: "This couldn't be loaded" },
+  loadFailedHint: {
+    id: 'common/load/failed-hint',
+    defaultMessage: 'Try again, or contact an administrator if it keeps happening',
   },
 } as const satisfies Record<string, MessageDescriptor>

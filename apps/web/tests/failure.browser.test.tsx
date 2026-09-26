@@ -17,7 +17,7 @@ describe('a failure with a way to retry', () => {
       return (
         <Failure
           key={attempt}
-          message="page failed"
+          title="page failed"
           onRetry={() => {
             retried()
             setAttempt((n) => n + 1)

@@ -19,6 +19,7 @@ import { I18nProvider, resolveInitialLocale, useI18n } from '@qualy/web-i18n'
 import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Button } from '@qualy/ui/button'
+import { ResourceState } from '@qualy/ui/resource-state'
 import { ColdStart, LoadingScreen, PageLoading } from '@qualy/ui/spinner'
 import {
   catalogs,
@@ -33,41 +34,11 @@ import { SIGN_IN_PAGE } from '@qualy/auth-contract/sign-in-failure'
 
 // There is no global client to build: each plugin derives its own from the
 // api definitions it calls, through the runtime's per-definition cache.
-// what the host draws when there is no page to draw: a route that leads
-// nowhere; a plugin component that failed to load is the runtime's Failure
 
 const styles = stylex.create({
-  // the whole of the content area, not a band of it: in a shell the page
-  // seat is a growing flex column and this grows with it; standing alone
-  // it is the viewport. A notice that took 60vh left the rest of the page
-  // to the ground behind it, which need not be the same colour
-  notice: {
-    display: 'flex',
-    flexGrow: 1,
-    minHeight: 0,
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    paddingInline: 24,
-    textAlign: 'center',
-  },
-  noticeStandalone: {
+  // no shell around it: the state is the viewport
+  standalone: {
     minHeight: '100dvh',
-  },
-  noticeTitle: {
-    fontSize: 24,
-    lineHeight: '2rem',
-    fontWeight: 600,
-  },
-  noticeHint: {
-    maxWidth: '28rem',
-    fontSize: 14,
-    lineHeight: '1.25rem',
-    color: 'var(--q-muted-foreground)',
-  },
-  noticeAction: {
-    marginTop: 8,
   },
 })
 
@@ -137,97 +108,89 @@ function ManifestRouter() {
   const { format } = useI18n()
   const navigation = useUiCollection(primaryNavigation)
   const home = navigation.find((item) => item.target.kind === 'page')
+  const homePath = home?.target.kind === 'page' ? home.target.path : undefined
   // rebuilt when the locale changes, so route-level fallbacks never keep
   // the previous language
   const slots = useMemo<RouteSlots>(
     () => ({
       pageLoading: <PageLoading />,
       layoutLoading: <LoadingScreen />,
-      pageError: (retry) => <Failure message={format(commonMessages.pageFailed)} onRetry={retry} />,
+      // A page's code that failed is drawn as any page that cannot be shown
+      // is: where the page would have been, with a retry and the way home.
+      pageError: (retry) => (
+        <Failure
+          title={format(commonMessages.pageFailed)}
+          description={format(commonMessages.loadFailedHint)}
+          onRetry={retry}
+          actions={homePath === undefined ? [] : [<HomeLink key="home" to={homePath} />]}
+        />
+      ),
       layoutError: (retry) => (
-        <Failure message={format(commonMessages.layoutFailed)} onRetry={retry} fullscreen />
+        <Failure
+          title={format(commonMessages.layoutFailed)}
+          description={format(commonMessages.loadFailedHint)}
+          onRetry={retry}
+          fullscreen
+        />
       ),
       componentMissing: (surface) => (
-        <MissingComponent surface={surface} message={format(commonMessages.componentMissing)} />
+        <MissingComponent surface={surface} title={format(commonMessages.componentMissing)} />
       ),
-      // the way out of a mistyped address is the home the route builder
+      // The way out of a mistyped address is the home the route builder
       // resolved - one resolution, the same one the origin redirects to - so
       // a viewer with any page to open is always offered it; one with none
       // has nowhere to be sent, and the shell's own header still offers
-      // whatever the session allows
-      notFound: ({ homePath, standalone }) => (
-        <Notice
+      // whatever the session allows. The same state a page draws for a
+      // record that is not there, since an address that leads nowhere is one.
+      notFound: ({ homePath: home, standalone }) => (
+        <ResourceState
+          kind="missing"
           title={format(commonMessages.notFoundTitle)}
-          hint={format(commonMessages.notFoundHint)}
-          action={homePath}
-          actionLabel={format(commonMessages.goHome)}
-          standalone={standalone}
+          description={format(commonMessages.notFoundHint)}
+          actions={home === undefined ? [] : [<HomeLink key="home" to={home} primary />]}
+          {...(standalone ? { xstyle: styles.standalone } : {})}
         />
       ),
       // no page to open at all: there is no shell either, so this is the screen
       empty: (
-        <Notice
+        <ResourceState
+          kind="denied"
           title={format(commonMessages.emptyPagesTitle)}
-          hint={format(commonMessages.emptyPagesHint)}
-          standalone
+          description={format(commonMessages.emptyPagesHint)}
+          xstyle={styles.standalone}
         />
       ),
     }),
-    [format],
+    [format, homePath],
   )
   return (
     <ManifestRoutes
       manifest={manifest}
       registry={registry}
-      homePath={home?.target.kind === 'page' ? home.target.path : undefined}
+      homePath={homePath}
       signInPage={SIGN_IN_PAGE}
       slots={slots}
     />
   )
 }
 
-// a whole-screen state rather than a paragraph in the corner: it renders
-// inside the viewer's shell when there is one and on its own when there is
-// not, so it centres itself either way
-function Notice({
-  title,
-  hint,
-  action,
-  actionLabel,
-  standalone = false,
-}: {
-  title: string
-  hint: string
-  action?: string
-  actionLabel?: string
-  /** no shell around it: the notice is the viewport */
-  standalone?: boolean
-}) {
+/** home, as a way out of a state that is not a page */
+function HomeLink({ to, primary = false }: { to: string; primary?: boolean }) {
+  const { format } = useI18n()
   return (
-    <div {...stylex.props(styles.notice, standalone && styles.noticeStandalone)}>
-      <h2 {...stylex.props(styles.noticeTitle)}>{title}</h2>
-      <p {...stylex.props(styles.noticeHint)}>{hint}</p>
-      {action && (
-        <Button
-          asChild
-          variant="outline"
-          size="sm"
-          className={stylex.props(styles.noticeAction).className}
-        >
-          <Link to={action}>{actionLabel}</Link>
-        </Button>
-      )}
-    </div>
+    <Button asChild variant={primary ? 'default' : 'outline'}>
+      <Link to={to}>{format(commonMessages.goHome)}</Link>
+    </Button>
   )
 }
 
 // a surface the manifest named is not in this bundle: the reader is told the
 // page cannot open, and the console is told which surface and in which
 // release - a fact for whoever ships the bundle, never for the screen
-function MissingComponent({ surface, message }: { surface: BrowserSurface; message: string }) {
+function MissingComponent({ surface, title }: { surface: BrowserSurface; title: string }) {
   const label = surfaceLabel(surface)
   useEffect(() => {
     console.error(`[qualy] missing from this build: ${label} (release ${webRelease.releaseId})`)
   }, [label])
-  return <Failure message={message} />
+  return <Failure title={title} />
 }

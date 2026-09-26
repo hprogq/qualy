@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Button } from '@qualy/ui/button'
 import { Spinner } from '@qualy/ui/spinner'
+import { ResourceState, type ResourceStateKind } from '@qualy/ui/resource-state'
 import { RotateCwIcon } from 'lucide-react'
 
 const nudge = stylex.keyframes({
@@ -14,26 +15,9 @@ const nudge = stylex.keyframes({
 })
 
 const styles = stylex.create({
-  failureFull: {
-    display: 'flex',
+  // standing alone, with no shell around it: the state is the viewport
+  fullscreen: {
     minHeight: '100dvh',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-  },
-  // the page's own failure sits where the page would have been - centred in
-  // the shell's content, not stacked in its corner like a caption of nothing
-  failureInline: {
-    display: 'flex',
-    flexGrow: 1,
-    minHeight: 0,
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    paddingInline: 24,
-    textAlign: 'center',
   },
   // a small shake sideways of the button pressed: the same answer, again
   failedAgain: {
@@ -41,23 +25,30 @@ const styles = stylex.create({
     animationDuration: '360ms',
     animationTimingFunction: 'ease-in-out',
   },
-  quiet: {
-    fontSize: 14,
-    lineHeight: '1.25rem',
-    color: 'var(--q-muted-foreground)',
-  },
 })
 
-// a plugin component failed: the user gets a localized message and a retry,
-// never a stack trace
+// Something the product itself could not draw - a page's code that failed,
+// the shell, the manifest everything stands under. The reader gets a heading
+// in their language, what to do about it, and a retry; never a stack trace.
+// It stands where the page would have been, the same state a page draws for
+// a record that is not there, so every "this cannot be shown" in the product
+// looks like one thing.
 export function Failure({
-  message,
+  title,
+  description,
+  kind = 'failed',
   onRetry,
   fullscreen,
+  actions = [],
 }: {
-  message: string
+  title: string
+  description?: string
+  /** why, when it is known; a failure of the product's own code otherwise */
+  kind?: ResourceStateKind
   onRetry?: () => void
   fullscreen?: boolean
+  /** further ways out, after the retry */
+  actions?: readonly ReactNode[]
 }) {
   const { format } = useI18n()
   // A retry either leaves - the page arrives - or comes back as this same
@@ -66,35 +57,37 @@ export function Failure({
   // notice that comes back right after one says it is a new answer.
   const [trying, setTrying] = useState(false)
   const [again] = useState(() => performance.now() - retriedAt < RETRY_ECHO_MS)
+  const retry =
+    onRetry === undefined ? null : (
+      <Button
+        key="retry"
+        className={stylex.props(again && styles.failedAgain).className}
+        disabled={trying}
+        aria-busy={trying || undefined}
+        onClick={() => {
+          setTrying(true)
+          setTimeout(() => {
+            retriedAt = performance.now()
+            onRetry()
+            setTrying(false)
+          }, RETRY_SHOWN_MS)
+        }}
+      >
+        {/* the same seat before and during: the button does not grow */}
+        {trying ? <Spinner aria-hidden /> : <RotateCwIcon aria-hidden />}
+        {format(commonMessages.retry)}
+      </Button>
+    )
   return (
-    <div
-      {...stylex.props(fullscreen ? styles.failureFull : styles.failureInline)}
+    <ResourceState
       role="alert"
-      data-again={again || undefined}
-    >
-      <p {...stylex.props(styles.quiet)}>{message}</p>
-      {onRetry && (
-        <Button
-          variant="outline"
-          size="sm"
-          className={stylex.props(again && styles.failedAgain).className}
-          disabled={trying}
-          aria-busy={trying || undefined}
-          onClick={() => {
-            setTrying(true)
-            setTimeout(() => {
-              retriedAt = performance.now()
-              onRetry()
-              setTrying(false)
-            }, RETRY_SHOWN_MS)
-          }}
-        >
-          {/* the same seat before and during: the button does not grow */}
-          {trying ? <Spinner aria-hidden /> : <RotateCwIcon aria-hidden />}
-          {format(commonMessages.retry)}
-        </Button>
-      )}
-    </div>
+      data-again={again ? 'true' : undefined}
+      kind={kind}
+      title={title}
+      {...(description === undefined ? {} : { description })}
+      actions={retry === null ? actions : [retry, ...actions]}
+      {...(fullscreen === true ? { xstyle: styles.fullscreen } : {})}
+    />
   )
 }
 

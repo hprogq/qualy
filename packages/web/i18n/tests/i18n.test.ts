@@ -51,7 +51,7 @@ describe('web i18n runtime', () => {
   it('translates through the catalog and falls back to the english default', () => {
     const formatter = formatterFor(zhCN)
     expect(formatter.format(commonMessages.retry)).toBe('重试')
-    expect(formatter.format(commonMessages.componentMissing)).toBe('该页面暂时无法打开。')
+    expect(formatter.format(commonMessages.componentMissing)).toBe('该页面暂时无法打开')
     // an untranslated id renders its english default, never an empty string
     expect(formatter.format({ id: 'x/untranslated', defaultMessage: 'Plain default' })).toBe(
       'Plain default',
