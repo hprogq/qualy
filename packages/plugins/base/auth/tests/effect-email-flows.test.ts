@@ -1585,6 +1585,66 @@ describe.runIf(postgresAvailable)('an email address', () => {
     }
   })
 
+  // A page of somebody's sessions is read on from the cursor it handed out,
+  // for them and nobody else: a cursor carried to another person's list is
+  // refused rather than read as a place in theirs.
+  it('refuses one person’s session cursor on another person’s sessions, over the api', async () => {
+    const db = await createTestContext('person-sessions-cursor-http')
+    const mail = memoryMailBackend()
+    const scope = await Effect.runPromise(Scope.make())
+    try {
+      const f = await seed(db.url)
+      const services = stack(db.url, mail.backend)
+      const application = HttpRouter.serve(
+        HttpApiBuilder.layer(Api.local(identityApiGroup)).pipe(
+          Layer.provide(
+            identityApiHandlers.pipe(Layer.provide(sessionLayer.pipe(Layer.provide(services)))),
+          ),
+        ),
+        { middleware: requestContext() },
+      ).pipe(
+        Layer.provide(services),
+        Layer.provide(NodeHttpServer.layer(createServer, { port: adminPort })),
+      )
+      await Effect.runPromise(Layer.buildWithScope(application, scope))
+      const token = 'administrator-reading-sessions'
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const role = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status, permission_mode, system_key)
+              values (${f.tenant}, 'admin', 'Admin', 'tenant', 'active', 'all-active', 'tenant-admin')
+              returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id)
+            values (${f.tenant}, ${f.admin}, ${role})`)
+          yield* runSql(sql`
+            insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at)
+            values (${f.tenant}, ${f.admin}, ${f.local}, ${hashSessionToken(token)},
+                    now() + interval '1 day')`)
+        }).pipe(Effect.provide(databaseFor(db.url, { migrations: 'off', entities: authClosure }))),
+      )
+      const read = (userId: string, query: string) =>
+        fetch(
+          `http://127.0.0.1:${adminPort}${QUALY_API_PREFIX}/iam/users/${userId}/sessions?${query}`,
+          { headers: { cookie: `qualy_session=${token}` } },
+        )
+      const first = await read(f.ada, 'limit=1')
+      expect(first.status).toBe(200)
+      const cursor = ((await first.json()) as { nextCursor: string | null }).nextCursor
+      expect(cursor).not.toBeNull()
+      // on for Ada, it reads her next page
+      expect((await read(f.ada, `limit=1&cursor=${encodeURIComponent(cursor!)}`)).status).toBe(200)
+      // carried to Lin, it is nobody's place in Lin's list
+      const carried = await read(f.lin, `limit=1&cursor=${encodeURIComponent(cursor!)}`)
+      expect(carried.status).toBe(400)
+    } finally {
+      await Effect.runPromise(Scope.close(scope, Exit.void))
+      await db.dispose()
+    }
+  })
+
   it('says an address is somebody else’s only as often as it would send a link', async () => {
     const db = await createTestContext('email-change-probe')
     const mail = memoryMailBackend()
