@@ -27,7 +27,6 @@ import { sayEntryFailure } from '../entry/refusals.ts'
 import { standingRows, type Standing } from '../entry/standing.ts'
 import { opensTo, type EntryDto, type ItemDto } from '../entry/model.ts'
 import { EntriesWorkspace } from '../entry/workspace/EntriesWorkspace.tsx'
-import { useWorkspaceMode } from '../entry/workspace/layout.ts'
 import { StandingNotice } from '../entry/workspace/StandingNotice.tsx'
 import { useLineWords } from '../entry/workspace/calc.ts'
 import { useParticipantEntries } from './participant-entries.ts'
@@ -127,7 +126,6 @@ export function ParticipantEntries({
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
   const lineWords = useLineWords()
-  const mode = useWorkspaceMode()
   // which question is open: the same address key the owner's page keeps
   const [open] = usePageQueryState('open')
   const address = usePageQueryUpdate()
@@ -338,9 +336,8 @@ export function ParticipantEntries({
             standing={standing}
             scored={result.data !== undefined}
             open={openItem}
-            onOpen={(id, how) =>
-              address({ open: id }, { history: mode === 'phone' ? how : 'replace' })
-            }
+            // the workspace says which moves the back key undoes, as on the owner's page
+            onOpen={(id, how) => address({ open: id }, { history: how })}
             busy={intervene.isPending || reopen.isPending || redetermine.isPending}
             refreshing={entries.isFetching || result.isFetching}
             onRefresh={() => {

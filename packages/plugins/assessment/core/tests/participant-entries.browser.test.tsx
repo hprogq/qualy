@@ -1,5 +1,6 @@
 import ParticipantResultsPage from '../src/client/result/ParticipantResultsPage.tsx'
 import type { ReactNode } from 'react'
+import { useNavigate } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect, Stream } from 'effect'
@@ -307,7 +308,71 @@ const listReads = {
   previewImport: () => Effect.succeed({ candidates: 0 }),
 }
 
+/** the browser's back key, which a router held in memory has no button for */
+function BackKey() {
+  const navigate = useNavigate()
+  return (
+    <button type="button" hidden data-testid="history-back" onClick={() => void navigate(-1)}>
+      back
+    </button>
+  )
+}
+
+const pressBack = () =>
+  (document.querySelector('[data-testid="history-back"]') as HTMLButtonElement).click()
+
 describe('reading somebody’s entries', () => {
+  // Up to a section from a question's requirements is somewhere the back key
+  // returns from, on a desk as on the participant's own page.
+  it('brings the back key back from a section to the question', async () => {
+    await page.viewport(1440, 900)
+    // two groups at the top, so the question's own is a section it sits in
+    // rather than the paper itself
+    const OTHER_GROUP = '55555555-5555-4555-8555-555555555559'
+    const group = (id: string, name: string, sortOrder: number) => ({
+      id,
+      parentGroupId: null,
+      name,
+      cap: '10.00',
+      floor: null,
+      sortOrder,
+      itemCount: 2,
+    })
+    await screen({
+      route: `${base}&view=entries&open=${OWN_ITEM}`,
+      element: (
+        <>
+          <ParticipantResultsPage />
+          <BackKey />
+        </>
+      ),
+      stubs: {
+        listScoreGroups: () =>
+          Effect.succeed({
+            groups: [group(GROUP_ID, '学业发展', 0), group(OTHER_GROUP, '文体素养', 1)],
+            version: 1,
+          }),
+        listItems: () =>
+          Effect.succeed({
+            items: [
+              question(OWN_ITEM, '科研成果', ['participant'], 1),
+              {
+                ...question(RECORDED_ITEM, '体测加分', ['administrative'], 2),
+                scoreGroupId: OTHER_GROUP,
+              },
+            ],
+            version: 1,
+          }),
+      },
+    })
+    await expect.poll(() => rows().length).toBe(2)
+    const aside = page.getByRole('complementary', { name: '填报要求' })
+    await userEvent.click(aside.element().querySelector(`[data-section="${GROUP_ID}"]`)!)
+    await expect.poll(() => addressNow()).toContain(`open=${GROUP_ID}`)
+    pressBack()
+    await expect.poll(() => addressNow()).toContain(`open=${OWN_ITEM}`)
+  })
+
   it('says who the person is and where they stand, above their account', async () => {
     await screen({ route: base, who: participant({ placement: 'changed' }) })
     await expect.element(page.getByText('郭航旗')).toBeVisible()
