@@ -17,7 +17,6 @@ import { Button } from '@qualy/ui/button'
 import { GlideAcross, Sift, SiftRow } from '@qualy/ui/reveal'
 import { Ticker } from '@qualy/ui/ticker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../../i18n.ts'
@@ -447,37 +446,13 @@ const styles = stylex.create({
     textWrap: 'pretty',
   },
   trayHeld: { color: tokens.surfaceMutedForeground },
-  noPointer: { pointerEvents: 'none' },
 })
 
-/** a control the phase has shut, wearing its reason on hover and on focus */
-export function Held({
-  why,
-  children,
-  xstyle,
-}: {
-  why: string | null
-  children: ReactNode
-  xstyle?: stylex.StyleXStyles
-}) {
-  if (why === null) return <>{children}</>
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          {/* a disabled button fires no pointer events, so the focusable
-              wrapper is what anchors the reason */}
-          <span tabIndex={0} {...stylex.props(xstyle)}>
-            {children}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>{why}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  )
-}
-
-/** the key that starts a claim, in whatever state the round allows it */
+/**
+ * The key that starts a claim. Only where the round allows one: while a
+ * stage has shut filing, the question says why where the next claim would
+ * start, and a greyed key beside the title would only say "not now".
+ */
 export function FileKey({
   filing,
   busy,
@@ -490,23 +465,17 @@ export function FileKey({
   onPress: () => void
 }) {
   const { format } = useI18n()
-  const key = (
+  return (
     <Button
       data-testid="file-claim"
       data-gate={filing.gate}
       size={size}
-      disabled={busy || filing.shut}
-      {...stylex.props(filing.shut && styles.noPointer)}
+      disabled={busy}
       onClick={onPress}
     >
       <PlusIcon aria-hidden />
       {format(filing.declared ? m.entryDeclare : m.entryNew)}
     </Button>
-  )
-  return (
-    <Held why={filing.why === null ? null : format(filing.why.message, filing.why.values)}>
-      {key}
-    </Held>
   )
 }
 
@@ -855,10 +824,12 @@ export function ItemPane({
             {item.title}
           </h2>
           {/* on a phone the owner's key stands in the bar at the foot, where
-              the thumb is; everything else keeps its seat beside the title */}
+              the thumb is; everything else keeps its seat beside the title.
+              While a stage has shut filing there is no key at all: why is
+              said once, where the next claim would start */}
           {headerAction ??
             (filing !== null && filing.mayAdd ? (
-              mode === 'phone' ? null : (
+              mode === 'phone' || filing.shut ? null : (
                 <FileKey filing={filing} busy={busy} onPress={onFile} />
               )
             ) : badge !== null ? (

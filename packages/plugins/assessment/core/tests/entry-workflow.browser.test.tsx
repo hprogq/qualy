@@ -2688,19 +2688,17 @@ describe('the phase gate on the paper', () => {
     )
 
     await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
-    // the empty question says why in place of its key, and whatever key is
-    // left on screen to start a claim is one the stage has shut
+    // the empty question says why in place of its key, and no key to start
+    // a claim is left anywhere on screen, greyed or not
     await expect
       .element(page.getByTestId('entries-tray'))
       .toHaveAttribute('data-reason', 'phase-closed')
-    for (const key of page.getByTestId('file-claim').elements()) {
-      expect((key as HTMLButtonElement).disabled).toBe(true)
-      expect(key.getAttribute('data-gate')).toBe('blocked')
-    }
+    expect(page.getByTestId('file-claim').elements()).toHaveLength(0)
     await page.viewport(1280, 800)
-    const head = page.getByTestId('file-claim')
-    await expect.element(head).toBeDisabled()
-    await expect.element(head).toHaveAttribute('data-gate', 'blocked')
+    await expect
+      .element(page.getByTestId('entries-tray'))
+      .toHaveAttribute('data-reason', 'phase-closed')
+    expect(page.getByTestId('file-claim').elements()).toHaveLength(0)
   })
 
   it('shuts the handing-on half of the dialog while drafts stay open', async () => {

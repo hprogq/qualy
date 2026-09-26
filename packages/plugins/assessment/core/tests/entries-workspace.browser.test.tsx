@@ -1133,11 +1133,8 @@ describe('where filing is shut', () => {
     await expect.element(held).toHaveAttribute('data-reason', 'phase-closed')
     // the sentence that names the stage, which this round has
     await expect.element(held).toHaveAttribute('data-said', 'assessment/entries/held-phase')
-    // one way to file on screen, the one in the head, and that one shut
-    const keys = page.getByTestId('file-claim').elements()
-    expect(keys).toHaveLength(1)
-    expect(keys[0]!.getAttribute('data-gate')).toBe('blocked')
-    expect((keys[0] as HTMLButtonElement).disabled).toBe(true)
+    // said there once: no greyed key beside the title saying only "not now"
+    expect(page.getByTestId('file-claim').elements()).toHaveLength(0)
   })
 
   it('says why in an empty question, in place of its key', async () => {

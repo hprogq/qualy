@@ -656,8 +656,9 @@ export const filingOf = (
   const declaredAlready = declared && live.some((entry) => entry.status === 'draft')
   // Structure first, then the phase: `mayFile` says filing belongs on this
   // question at all, the gate says whether this minute allows it. A shut
-  // gate renders the same key disabled with the reason on hover - a key that
-  // only turns into a refusal after the dialog is a trap.
+  // gate takes the key away and says why where the next claim would start -
+  // a key that only turns into a refusal after the dialog is a trap, and a
+  // greyed one says nothing but "not now".
   const mayAdd = !full && mayFile(item, live) && !declaredAlready && gate?.create.state !== 'hidden'
   const shut = gate !== undefined && gate.create.state === 'blocked'
   return {
