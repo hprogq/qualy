@@ -238,9 +238,17 @@ const i18n = definePluginMessages({
       id: 'rbac/grants/none-person-disabled',
       defaultMessage: 'Enable the user before granting them a role',
     },
-    grantNoneRefusedTenant: {
-      id: 'rbac/grants/none-refused-tenant',
-      defaultMessage: 'The roles below do not fit this user',
+    grantNoneRefusedUserType: {
+      id: 'rbac/grants/none-refused-user-type',
+      defaultMessage: 'Their user type cannot hold the roles below',
+    },
+    grantNoneRefusedAuthority: {
+      id: 'rbac/grants/none-refused-authority',
+      defaultMessage: 'You cannot appoint the roles below; ask whoever appoints them',
+    },
+    grantNoneRefusedMixed: {
+      id: 'rbac/grants/none-refused-mixed',
+      defaultMessage: 'The roles below cannot be granted right now',
     },
     grantNoneRefusedUnit: {
       id: 'rbac/grants/none-refused-unit',

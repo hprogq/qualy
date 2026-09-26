@@ -266,8 +266,11 @@ describe('the grants of one person', () => {
     // one scope the reader may give in: no choice of scope is offered
     await expect.element(page.getByTestId('grant-form')).toHaveAttribute('data-scope', 'tenant')
     expect(page.getByRole('radio', { name: '指定组织' }).query()).toBeNull()
-    await expect.element(page.getByTestId('grant-nothing-offered')).toBeInTheDocument()
-    await expect.element(page.getByRole('button', { name: '授予', exact: true })).toBeDisabled()
+    await expect
+      .element(page.getByTestId('grant-nothing-offered'))
+      .toHaveAttribute('data-summary', 'none')
+    // one scope, nothing in it: only the way out stays
+    expect(page.getByRole('button', { name: '授予', exact: true }).query()).toBeNull()
   })
 
   it('names the offices that do not fit here, with why, when none can be given', async () => {
@@ -294,8 +297,75 @@ describe('the grants of one person', () => {
         row.getAttribute('data-refusal'),
       ),
     ).toEqual(['org-type', 'user-type'])
+    // two reasons, so the line above them names neither: each row says its own
+    await expect.element(nothing).toHaveAttribute('data-summary', 'mixed')
     // the office names are the tenant's own words, read as they are
     expect(nothing.element().textContent).toContain('班长')
+  })
+
+  // The sentence above the refused offices follows their reasons: a kind of
+  // person no unit admits is not solved by picking another unit.
+  it('sends the reader to another unit only when the unit is what refuses', async () => {
+    await open(
+      {
+        getRoleGrantOptions: () =>
+          Effect.succeed({
+            roles: [],
+            refused: [
+              { ...refusedRole('monitor', '班长'), refusal: 'user-type' as const },
+              { ...refusedRole('mentor', '学委'), refusal: 'user-type' as const },
+            ],
+          }),
+      },
+      unitPicker.manifest,
+      unitPicker.registry(PickBranch),
+    )
+    await page.getByRole('button', { name: '授予角色' }).click()
+    await page.getByRole('button', { name: '分部' }).click()
+    const nothing = page.getByTestId('grant-nothing-offered')
+    await expect.element(nothing).toHaveAttribute('data-summary', 'user-type')
+    // another unit may still have something, so the form stays open to it
+    await expect.element(page.getByRole('button', { name: '授予', exact: true })).toBeDisabled()
+  })
+
+  it('names the office the reader holds and may not appoint, with why', async () => {
+    await open(
+      {
+        getRoleGrantOptions: () =>
+          Effect.succeed({
+            roles: [],
+            refused: [{ ...refusedRole('monitor', '学院管理员'), refusal: 'authority' as const }],
+          }),
+      },
+      unitPicker.manifest,
+      unitPicker.registry(PickBranch),
+    )
+    await page.getByRole('button', { name: '授予角色' }).click()
+    await page.getByRole('button', { name: '分部' }).click()
+    const nothing = page.getByTestId('grant-nothing-offered')
+    await expect.element(nothing).toHaveAttribute('data-summary', 'authority')
+    await expect
+      .element(nothing.getByTestId('grant-refused'))
+      .toHaveAttribute('data-refusal', 'authority')
+  })
+
+  it('keeps only the way out when nothing the form can change would help', async () => {
+    await open({
+      getUserRoleGrants: () =>
+        Effect.succeed({ grants: [grant()], grantable: { tenant: true, organization: false } }),
+      getRoleGrantOptions: () =>
+        Effect.succeed({
+          roles: [],
+          refused: [{ ...refusedRole('monitor', '班长'), refusal: 'person-disabled' as const }],
+        }),
+    })
+    await page.getByRole('button', { name: '授予角色' }).click()
+    const nothing = page.getByTestId('grant-nothing-offered')
+    await expect.element(nothing).toHaveAttribute('data-summary', 'person-disabled')
+    // a press that can never be pressed is not left standing beside the way out
+    expect(page.getByRole('button', { name: '授予', exact: true }).query()).toBeNull()
+    await page.getByRole('button', { name: '关闭', exact: true }).click()
+    await expect.poll(() => document.querySelector('[data-testid="grant-form"]')).toBeNull()
   })
 
   it('offers what can be given and shows what cannot beneath it, choosing nothing for the reader', async () => {

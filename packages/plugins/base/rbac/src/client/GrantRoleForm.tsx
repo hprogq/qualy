@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useId, useState } from 'react'
+import { ShieldOffIcon } from 'lucide-react'
 import { orgNodePicker, type OrgNodePickerContext } from '@qualy/ui-contract'
 import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import type { ApiResult } from '@qualy/web-runtime/api'
@@ -9,6 +10,7 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
+import { Blank } from '@qualy/ui/screen'
 import {
   Select,
   SelectContent,
@@ -54,34 +56,26 @@ const styles = stylex.create({
     lineHeight: '1.25rem',
     color: tokens.mutedForeground,
   },
-  // said where the role would be chosen, at the size of the field it stands for
+  // said where the role would be chosen, on the ground the field stood on
   nothing: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 4,
-    paddingBlock: 14,
-    paddingInline: 16,
     borderWidth: 1,
     borderStyle: 'solid',
     borderColor: tokens.divider,
     borderRadius: tokens.radiusLg,
     backgroundColor: tokens.surfaceInset,
   },
-  nothingTitle: { fontSize: 14, lineHeight: 1.4, fontWeight: 600 },
-  nothingWhy: { fontSize: 13, lineHeight: 1.5, color: tokens.mutedForeground },
+  // each office with why, read down the left like the rest of the form
   refusals: {
     display: 'flex',
+    width: '100%',
     flexDirection: 'column',
-    gap: 6,
     margin: 0,
-    marginTop: 8,
-    paddingTop: 10,
-    paddingInline: 0,
-    paddingBottom: 0,
+    padding: 0,
     borderTopWidth: 1,
     borderTopStyle: 'solid',
     borderTopColor: tokens.divider,
     listStyle: 'none',
+    textAlign: 'start',
   },
   refusal: {
     display: 'flex',
@@ -89,11 +83,37 @@ const styles = stylex.create({
     alignItems: 'baseline',
     justifyContent: 'space-between',
     gap: 12,
+    paddingBlock: 8,
+    borderBottomWidth: { default: 1, ':last-child': 0 },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
     fontSize: 13,
+    lineHeight: 1.45,
   },
-  refusalName: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  refusalWhy: { flexShrink: 0, fontSize: 12, color: tokens.mutedForeground },
+  // a tenant's own office names run long and share their openings: the
+  // whole name, over two lines when it needs them
+  refusalName: { minWidth: 0, overflowWrap: 'anywhere' },
+  refusalWhy: { flexShrink: 0, maxWidth: '45%', fontSize: 12, color: tokens.mutedForeground },
 })
+
+/**
+ * What the offices refused here have in common, which decides the one
+ * sentence said above them: a reason that is the unit's sends the reader to
+ * another unit, one that is the person's or the reader's own does not.
+ */
+type RefusalSummary = 'none' | 'person-disabled' | 'org-type' | 'user-type' | 'authority' | 'mixed'
+
+const summarize = (refused: readonly Refused[]): RefusalSummary => {
+  if (refused.length === 0) return 'none'
+  const first = refused[0]!.refusal
+  if (!refused.every((role) => role.refusal === first)) return 'mixed'
+  return first === 'person-disabled' ||
+    first === 'org-type' ||
+    first === 'user-type' ||
+    first === 'authority'
+    ? first
+    : 'mixed'
+}
 
 /**
  * The form, in its dialog. Mounted afresh for every opening by whoever opens
@@ -184,6 +204,22 @@ export function GrantRoleDialog({
     radio: true,
   }
 
+  const placeholder = !targeted
+    ? format(m.grantPickUnitFirst)
+    : !loaded
+      ? format(m.grantRolesLoading)
+      : roles.length === 0
+        ? format(m.grantRolesNone)
+        : format(m.grantRoleChoose)
+
+  const summary = summarize(refused)
+  // Nothing the reader can change in this form would put an office on offer:
+  // the person is out of service, or the one scope the reader has has none.
+  // The form then keeps only the way out.
+  const stuck =
+    loaded &&
+    roles.length === 0 &&
+    (summary === 'person-disabled' || (scope === 'tenant' && !grantable.organization))
   const why = (refusal: Refused['refusal']) =>
     format(
       refusal === 'user-type'
@@ -198,18 +234,14 @@ export function GrantRoleDialog({
                 ? m.refusedAuthority
                 : m.refusedUnavailable,
     )
-
-  const placeholder = !targeted
-    ? format(m.grantPickUnitFirst)
-    : !loaded
-      ? format(m.grantRolesLoading)
-      : roles.length === 0
-        ? format(m.grantRolesNone)
-        : format(m.grantRoleChoose)
-
-  // everything refused for the one reason that is the person's, not the role's
-  const personDisabled =
-    refused.length > 0 && refused.every((role) => role.refusal === 'person-disabled')
+  const said = {
+    'person-disabled': m.grantNonePersonDisabled,
+    'org-type': m.grantNoneRefusedUnit,
+    'user-type': m.grantNoneRefusedUserType,
+    authority: m.grantNoneRefusedAuthority,
+    mixed: m.grantNoneRefusedMixed,
+    none: scope === 'tenant' ? m.grantNoneTenant : m.grantNoneUnit,
+  }[summary]
 
   return (
     <FormDialog
@@ -217,14 +249,20 @@ export function GrantRoleDialog({
       title={format(m.grantOpen)}
       onClose={onClose}
       footer={
-        <>
+        stuck ? (
           <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.cancel)}
+            {format(commonMessages.close)}
           </Button>
-          <Button type="submit" form={formId} disabled={grant.isPending || selected === ''}>
-            {format(m.grantSubmit)}
-          </Button>
-        </>
+        ) : (
+          <>
+            <Button variant="outline" onClick={onClose}>
+              {format(commonMessages.cancel)}
+            </Button>
+            <Button type="submit" form={formId} disabled={grant.isPending || selected === ''}>
+              {format(m.grantSubmit)}
+            </Button>
+          </>
+        )
       }
     >
       <form
@@ -302,37 +340,33 @@ export function GrantRoleDialog({
           <div
             data-testid="grant-nothing-offered"
             data-refused={refused.length}
-            {...stylex.props(styles.nothing)}
+            data-summary={summary}
           >
-            <span {...stylex.props(styles.nothingTitle)}>{format(m.grantRolesNone)}</span>
-            <span {...stylex.props(styles.nothingWhy)}>
-              {format(
-                personDisabled
-                  ? m.grantNonePersonDisabled
-                  : refused.length > 0
-                    ? scope === 'tenant'
-                      ? m.grantNoneRefusedTenant
-                      : m.grantNoneRefusedUnit
-                    : scope === 'tenant'
-                      ? m.grantNoneTenant
-                      : m.grantNoneUnit,
-              )}
-            </span>
-            {!personDisabled && refused.length > 0 && (
-              <ul {...stylex.props(styles.refusals)}>
-                {refused.map((role) => (
-                  <li
-                    key={role.id}
-                    data-testid="grant-refused"
-                    data-refusal={role.refusal}
-                    {...stylex.props(styles.refusal)}
-                  >
-                    <span {...stylex.props(styles.refusalName)}>{role.name}</span>
-                    <span {...stylex.props(styles.refusalWhy)}>{why(role.refusal)}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <Blank
+              size="compact"
+              icon={<ShieldOffIcon aria-hidden />}
+              title={format(m.grantRolesNone)}
+              description={format(said)}
+              xstyle={styles.nothing}
+              action={
+                summary !== 'person-disabled' &&
+                refused.length > 0 && (
+                  <ul {...stylex.props(styles.refusals)}>
+                    {refused.map((role) => (
+                      <li
+                        key={role.id}
+                        data-testid="grant-refused"
+                        data-refusal={role.refusal}
+                        {...stylex.props(styles.refusal)}
+                      >
+                        <span {...stylex.props(styles.refusalName)}>{role.name}</span>
+                        <span {...stylex.props(styles.refusalWhy)}>{why(role.refusal)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )
+              }
+            />
           </div>
         ) : (
           <Field label={format(m.grantRole)}>
