@@ -902,6 +902,38 @@ describe('the rows of the account', () => {
     },
   )
 
+  it('draws the account’s own word on a claim at the size of the chip beside it', async () => {
+    await page.viewport(1440, 900)
+    await screen(normal())
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
+    for (const itemId of ['q3', 'q10']) {
+      await userEvent.click(itemRow(itemId).querySelector('button[aria-expanded]') as HTMLElement)
+    }
+    // refused and given up: the account's words; under review: the claim's chip
+    const tag = itemRow('q10').querySelector<HTMLElement>('[data-line-tag]')!
+    const chip = itemRow('q3').querySelector<HTMLElement>('[data-testid="entry-standing"]')!
+    expect(tag.getBoundingClientRect().height).toBe(chip.getBoundingClientRect().height)
+    expect(getComputedStyle(tag).fontSize).toBe(getComputedStyle(chip).fontSize)
+  })
+
+  it('says a draft counts once it is submitted and approved, not only approved', async () => {
+    await page.viewport(1440, 900)
+    await screen(normal())
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
+    for (const itemId of ['q3', 'q9']) {
+      const toggle = itemRow(itemId).querySelector<HTMLElement>('button[aria-expanded]')
+      if (toggle !== null) await userEvent.click(toggle)
+    }
+    const once = (entryId: string) =>
+      document
+        .querySelector(`[data-entry="${entryId}"] [data-testid="ledger-line-figure"]`)
+        ?.getAttribute('data-counts-once') ?? null
+    expect(once('q9-a')).toBe('submitted')
+    expect(once('q3-d')).toBe('approved')
+    // what is on the account already says no more than its figure
+    expect(once('q3-a')).toBeNull()
+  })
+
   it('marks what waits on the reader, what is unsent, and what is only under review', async () => {
     await page.viewport(1440, 900)
     await screen(normal())

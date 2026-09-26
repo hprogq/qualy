@@ -1871,6 +1871,13 @@ const i18n = definePluginMessages({
       id: 'assessment/result/nothing-asked',
       defaultMessage: 'This round has no scored items yet',
     },
+    // a claim its owner gave up, in the word its chip uses
+    resultActAbandoned: { id: 'assessment/result/act-abandoned', defaultMessage: 'abandoned' },
+    // what a draft would come to: it has to be submitted first
+    resultIfSubmitted: {
+      id: 'assessment/result/if-submitted',
+      defaultMessage: 'If submitted and approved',
+    },
     resultTooLargeTitle: {
       id: 'assessment/result/too-large-title',
       defaultMessage: 'The score cannot be calculated right now',

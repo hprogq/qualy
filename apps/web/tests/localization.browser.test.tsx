@@ -278,6 +278,47 @@ describe('the words themselves', () => {
   })
 })
 
+describe('one claim in one word', () => {
+  it('says a claim its owner gave up was given up, on its chip and in what last happened', async () => {
+    const claim = (id: string, status: string) => ({ ...entry(), id, status })
+    const off = (entryId: string) => ({
+      lineId: `entry:${entryId}`,
+      kind: 'excluded-evidence' as const,
+      label: '退役复学',
+      value: '0.00',
+      itemId: ITEM_ID,
+      provenance: { entryId },
+    })
+    const GIVEN_UP = '88888888-8888-4888-8888-888888888888'
+    await screen(
+      {
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [claim(GIVEN_UP, 'voided'), claim(ENTRY_ID, 'rejected')],
+            nextCursor: null,
+          }),
+        getMyResult: () =>
+          Effect.succeed({
+            mode: 'provisional',
+            total: '0.00',
+            groups: [],
+            lines: [off(GIVEN_UP), off(ENTRY_ID)],
+          }),
+      },
+      <MyResultPage />,
+      '/assessment/batches/:batchId/my-result',
+      `/assessment/batches/${BATCH_ID}/my-result`,
+    )
+    await page.getByRole('button', { name: /退役复学/, expanded: false }).click()
+    const line = page.getByRole('button', { name: /3月2日 放弃/ })
+    await expect.element(line).toBeVisible()
+    await expect.element(line.getByText('已放弃', { exact: true })).toBeVisible()
+    // the filing page's word for a withdrawn record is not this one
+    expect(page.getByText(/作废/).elements()).toHaveLength(0)
+  })
+})
+
 // what every language menu calls, reduced to one press
 function LanguageSwitch() {
   const { locale, setLocale } = useI18n()

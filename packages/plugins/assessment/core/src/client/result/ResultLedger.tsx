@@ -726,7 +726,31 @@ const styles = stylex.create({
     fontWeight: 400,
     color: `color-mix(in oklab, ${tokens.mutedForeground} 80%, transparent)`,
   },
-  lineWouldWord: { fontSize: 10.5, whiteSpace: 'nowrap', color: tokens.mutedForeground },
+  lineWouldWord: {
+    // a longer word gives a line to itself rather than widen every figure
+    maxWidth: '6.5rem',
+    fontSize: 10.5,
+    lineHeight: 1.3,
+    textAlign: 'end',
+    textWrap: 'balance',
+    color: tokens.mutedForeground,
+  },
+  // the account's word for a claim, beside the chips of claims still its
+  // owner's: the chip's own size, with the outline of what ended uncounted
+  lineTag: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    height: 20,
+    paddingInline: 7,
+    borderRadius: 6,
+    boxShadow: `inset 0 0 0 1px ${tokens.border}`,
+    fontSize: 12,
+    fontWeight: 500,
+    lineHeight: 1,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
   more: {
     gridColumn: '1 / -1',
     display: 'flex',
@@ -2103,7 +2127,8 @@ const ACT_SAID = {
   approved: m.entriesActApproved,
   submitted: m.entriesActSubmitted,
   revoked: m.entriesActRevoked,
-  abandoned: m.entriesActVoided,
+  // given up by its owner, in the word its chip on the same line uses
+  abandoned: m.resultActAbandoned,
   saved: m.entriesActSaved,
 } as const satisfies Record<LedgerAct, unknown>
 
@@ -2146,13 +2171,16 @@ function LineRow({
           : claim.status === 'draft'
             ? 'unsent'
             : 'undecided'
+  // the account's own words sit in the same column as the claim's chip, so
+  // they are drawn as one: its size, and the outline it gives what ended
+  // without counting
   const standing =
     tagKind !== null ? (
-      <span data-line-tag={tagKind} {...stylex.props(styles.tag, styles.tagNeutral)}>
+      <span data-line-tag={tagKind} {...stylex.props(styles.lineTag)}>
         {format(m.resultLineTag, { kind: tagKind })}
       </span>
     ) : stopped !== null ? (
-      <span data-stopped={stopped} {...stylex.props(styles.tag, styles.tagNeutral)}>
+      <span data-stopped={stopped} {...stylex.props(styles.lineTag)}>
         {format(m.resultStopped, { kind: stopped })}
       </span>
     ) : claim === null ? null : (
@@ -2165,6 +2193,9 @@ function LineRow({
       />
     )
   const note = claim?.note ?? null
+  // what it would come to once approved, while the account still moves
+  const would = off && !closed && line.wouldCents !== null
+  const unsent = claim?.status === 'draft'
   const data = {
     'data-line-kind': line.kind,
     'data-standing': line.standing,
@@ -2238,17 +2269,20 @@ function LineRow({
       )}
       <span
         data-testid="ledger-line-figure"
-        data-would={off && !closed && line.wouldCents !== null ? two(line.wouldCents) : undefined}
+        data-would={would ? two(line.wouldCents ?? 0) : undefined}
+        data-counts-once={would ? (unsent ? 'submitted' : 'approved') : undefined}
         {...stylex.props(styles.lineFigure)}
       >
         {off ? (
-          !closed &&
-          line.wouldCents !== null && (
+          would && (
             <>
               <span {...stylex.props(styles.lineValue, styles.lineWould)}>
-                {two(line.wouldCents)}
+                {two(line.wouldCents ?? 0)}
               </span>
-              <span {...stylex.props(styles.lineWouldWord)}>{format(m.entryScoreIfApproved)}</span>
+              {/* a draft has to be handed in first, as its question's row says */}
+              <span {...stylex.props(styles.lineWouldWord)}>
+                {format(unsent ? m.resultIfSubmitted : m.entryScoreIfApproved)}
+              </span>
             </>
           )
         ) : (

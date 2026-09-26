@@ -358,6 +358,8 @@ export default {
   'assessment/result/outline-label': '分组目录',
   'assessment/result/nothing-asked': '本批次还没有计分项目',
   'assessment/result/too-large-title': '成绩暂时无法计算',
+  'assessment/result/act-abandoned': '放弃',
+  'assessment/result/if-submitted': '提交并通过后计入',
   'assessment/result/out-of': '/ {full} 分',
   'assessment/result/head-note':
     '{pending, plural, =0 {{drafts, plural, =0 {目前没有审核中的申报} other {# 条草稿尚未提交，提交并通过后计入}}} other {# 条申报审核中，通过后计入成绩}}{trimmed, select, none {} other {；超出上限的 {trimmed} 分不计入}}',
