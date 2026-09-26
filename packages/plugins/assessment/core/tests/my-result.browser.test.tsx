@@ -699,6 +699,20 @@ describe('the rows of the account', () => {
     expect(addressNow()).toContain('detail=q6-a')
   })
 
+  it('writes no middle dot anywhere on the page', async () => {
+    // the owner's rule for this page's copy: parts are set apart by space,
+    // a rule or a line of their own
+    await page.viewport(1440, 900)
+    await screen(normal())
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
+    for (const toggle of document.querySelectorAll<HTMLElement>(
+      '[data-testid="ledger-item"] > button[aria-expanded]',
+    )) {
+      await userEvent.click(toggle)
+    }
+    expect(document.body.textContent).not.toContain('·')
+  })
+
   it('keeps a record the office revoked on the account apart from a plain zero', async () => {
     await page.viewport(1440, 900)
     await screen(normal())

@@ -1509,7 +1509,10 @@ const madeOf = (
     const said = format(m.resultWord, { kind: only.standing })
     const word = day === null ? said : `${day} ${said}`
     const identity = [only.lead, only.sub].filter((part): part is string => part !== null).join(' ')
-    return { kind: 'claim', said: identity === '' ? word : `${word} · ${identity}` }
+    return {
+      kind: 'claim',
+      said: identity === '' ? word : format(m.resultMadeClaim, { word, identity }),
+    }
   }
   const told: readonly string[] = tag === null ? [] : TAG_SAYS[tag.kind]
   const parts = FACT_ORDER.filter((kind) => facts[kind] > 0 && !told.includes(kind)).map((kind) =>

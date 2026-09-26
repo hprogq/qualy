@@ -476,6 +476,11 @@ const resultMore = defineMessage<{ count: number; reader: string }>()({
     '{reader, select, staff {View all {count}} other {View all {count} in My entries}}',
 })
 
+const resultMadeClaim = defineMessage<{ word: string; identity: string }>()({
+  id: 'assessment/result/made-claim',
+  defaultMessage: '{word}: {identity}',
+})
+
 const resultTrim = defineMessage<{ rule: string; group: string; raw: string; limit: string }>()({
   id: 'assessment/result/trim',
   defaultMessage:
@@ -1864,6 +1869,7 @@ const i18n = definePluginMessages({
     resultFollow,
     resultMore,
     resultTrim,
+    resultMadeClaim,
     // ------------------------------------------------------------------
     // recording on someone's behalf
     recordTab: { id: 'assessment/record/tab', defaultMessage: 'Administrative records' },

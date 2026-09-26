@@ -383,6 +383,7 @@ export default {
     '{kind, select, todo {{reader, select, staff {查看待参评人处理的 {count} 条} other {去我的申报处理 {count} 条}}} other {{reader, select, staff {查看该项目的全部申报} other {在我的申报中查看该项目}}}}',
   'assessment/result/more':
     '{reader, select, staff {查看全部 {count} 条} other {在我的申报中查看全部 {count} 条}}',
+  'assessment/result/made-claim': '{word}　{identity}',
   'assessment/result/trim':
     '{rule, select, floor {{group}合计 {raw}，低于下限 {limit}，按下限计入} other {{group}合计 {raw}，上限 {limit}，超出部分不计入}}',
   'assessment/record/tab': '行政认定',
