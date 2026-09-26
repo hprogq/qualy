@@ -914,6 +914,56 @@ describe("a person's header", () => {
     expect(fact('unit').querySelector('[title]')?.getAttribute('title')).toBe('本部 / 2023级')
   })
 
+  it('leaves the number off the platform’s own account, which never gets one', async () => {
+    await mount({
+      getUser: () => Effect.succeed({ ...person(), placement: { mode: 'tenant-root' } }),
+    })
+    const facts = page.getByTestId('person-facts')
+    await expect.element(facts).toBeInTheDocument()
+    expect(
+      [...facts.element().querySelectorAll('[data-fact]')].map((el) =>
+        el.getAttribute('data-fact'),
+      ),
+    ).toEqual(['unit', 'email', 'last-sign-in'])
+  })
+
+  // A long address on a phone gets a line of its own and gives way inside
+  // itself, so the word saying it is unproven is still there to read.
+  it('keeps what follows a long address in sight on a narrow screen', async () => {
+    await page.viewport(390, 844)
+    await renderScreen({
+      client: fakeClient(
+        stubs({
+          identity: {
+            getUser: () =>
+              Effect.succeed({
+                ...person(),
+                user: user({
+                  email: 'zhang.mingyuan.information-management-2023@graduate.example.edu.cn',
+                }),
+              }),
+          },
+        }),
+      ),
+      route: `/organization/users/${USER_ID}`,
+      path: '/organization/users/:userId',
+      // the shell's own gutters around the band
+      children: (
+        <div style={{ paddingInline: 16 }}>
+          <UserDetailHeader />
+        </div>
+      ),
+    })
+    const facts = page.getByTestId('person-facts')
+    await expect.element(facts).toBeInTheDocument()
+    const aside = facts
+      .element()
+      .querySelector<HTMLElement>('[data-fact="email"] [data-fact-aside]')!
+    const edge = facts.element().getBoundingClientRect().right
+    expect(aside.getBoundingClientRect().width).toBeGreaterThan(0)
+    expect(aside.getBoundingClientRect().right).toBeLessThanOrEqual(edge + 0.5)
+  })
+
   it('says why a disable was refused once the question is put away, and not in the form after', async () => {
     const status = vi.fn(() => Effect.fail(apiError('LAST_ADMINISTRATOR')))
     await mount({ setUserStatus: status })

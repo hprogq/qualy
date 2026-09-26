@@ -160,10 +160,15 @@ export default function UserProfilePage() {
                     <span
                       data-testid="profile-business-no"
                       data-state={record.businessNo === null ? 'none' : 'set'}
+                      data-warn={record.businessNo === null && !system ? 'yes' : 'no'}
                       {...stylex.props(styles.valueLine)}
                     >
                       {record.businessNo === null ? (
-                        <span {...stylex.props(styles.missing)}>{format(m.fieldUnset)}</span>
+                        // a gap only where somebody could fill it: the
+                        // platform's own account never gets a number
+                        <span {...stylex.props(system ? styles.aside : styles.missing)}>
+                          {format(m.fieldUnset)}
+                        </span>
                       ) : (
                         record.businessNo
                       )}

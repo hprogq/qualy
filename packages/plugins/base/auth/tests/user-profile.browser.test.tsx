@@ -120,7 +120,7 @@ describe("a person's profile", () => {
   it('offers nothing on the system account, whose address is provisioned', async () => {
     await open(
       person(
-        { email: 'root@school.edu', emailVerifiedAt: '2026-09-01T00:00:00.000Z' },
+        { email: 'root@school.edu', emailVerifiedAt: '2026-09-01T00:00:00.000Z', businessNo: null },
         {
           placement: { mode: 'tenant-root' },
         },
@@ -128,5 +128,10 @@ describe("a person's profile", () => {
     )
     await expect.element(emailLine()).toHaveAttribute('data-email-state', 'verified')
     expect(emailLine().element().querySelector('button')).toBeNull()
+    // nobody can give it a number, so its lack is not marked as a gap
+    const number = page.getByTestId('profile-business-no')
+    await expect.element(number).toHaveAttribute('data-state', 'none')
+    await expect.element(number).toHaveAttribute('data-warn', 'no')
+    expect(number.element().querySelector('button')).toBeNull()
   })
 })

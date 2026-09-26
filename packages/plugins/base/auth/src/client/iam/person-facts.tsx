@@ -48,7 +48,13 @@ const styles = stylex.create({
       backgroundColor: `color-mix(in oklab, ${tokens.foreground} 12%, transparent)`,
     },
   },
+  // on one line, every fact but the last keeps its width
   factFixed: { flexShrink: 0 },
+  // Wrapping, a fact wider than the whole line stands on a line of its own
+  // and gives way inside itself: its value ends in an ellipsis and what
+  // follows the value - "unverified" after a long address - stays in sight,
+  // where a fact that kept its width was cut off by the line's edge.
+  factWrapping: { flexShrink: 1, maxWidth: '100%' },
   factLabel: { flexShrink: 0, color: QUIET },
   factValue: {
     minWidth: 0,
@@ -210,8 +216,10 @@ export function PersonFacts({
           data-testid="person-fact"
           data-fact={fact.key}
           data-warn={fact.warn === true ? 'yes' : 'no'}
-          // every fact but the last keeps its width: the line gives way at its end
-          {...stylex.props(styles.fact, index < facts.length - 1 && styles.factFixed)}
+          {...stylex.props(
+            styles.fact,
+            wrap ? styles.factWrapping : index < facts.length - 1 && styles.factFixed,
+          )}
         >
           <span {...stylex.props(styles.factLabel)}>{fact.label}</span>
           <span
@@ -221,7 +229,9 @@ export function PersonFacts({
             {fact.value}
           </span>
           {fact.aside !== undefined && (
-            <span {...stylex.props(styles.factAside)}>{fact.aside}</span>
+            <span data-fact-aside="" {...stylex.props(styles.factAside)}>
+              {fact.aside}
+            </span>
           )}
         </span>
       ))}

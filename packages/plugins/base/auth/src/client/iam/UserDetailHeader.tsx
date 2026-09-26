@@ -290,9 +290,20 @@ export default function UserDetailHeader() {
     record === undefined
       ? []
       : [
-          record.businessNo === null
-            ? { key: 'business-no', label: businessNoWord, value: format(m.fieldUnset), warn: true }
-            : { key: 'business-no', label: businessNoWord, value: record.businessNo },
+          // the platform's own account has no number to give and nobody to
+          // give it one, so a missing one is not a gap to point at
+          ...(record.businessNo !== null
+            ? [{ key: 'business-no', label: businessNoWord, value: record.businessNo }]
+            : system
+              ? []
+              : [
+                  {
+                    key: 'business-no',
+                    label: businessNoWord,
+                    value: format(m.fieldUnset),
+                    warn: true,
+                  },
+                ]),
           {
             key: 'unit',
             label: format(m.personPlacement),
