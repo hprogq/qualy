@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { PencilIcon, TriangleAlertIcon } from 'lucide-react'
+import { PencilIcon } from 'lucide-react'
 import {
   useApi,
   useApiQuery,
@@ -30,6 +30,7 @@ import { itemCeiling, sortOrdersAfterDrop, structureRows, type StructureRow } fr
 import type { GroupTarget, Placement, TreeDraft, TreeGroup, TreeSelection } from './paper.ts'
 import type { Draft as QuestionDraft } from './editor/model.ts'
 import { ReasonDialog } from './ReasonDialog.tsx'
+import { ReviewGapNotice } from './ReviewGapNotice.tsx'
 import { VoidQuestionDialog } from './VoidQuestionDialog.tsx'
 import { amountOf, trimAmount, unitsOf, type ItemDto } from '../entry/model.ts'
 
@@ -133,47 +134,6 @@ const styles = stylex.create({
   skeletonBarLong: { width: '62%' },
   skeletonBarMid: { width: '46%' },
   skeletonBarShort: { width: '30%' },
-  alert: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: 12,
-    borderRadius: tokens.radiusLg,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: `color-mix(in oklab, ${tokens.danger} 40%, transparent)`,
-    backgroundColor: `color-mix(in oklab, ${tokens.danger} 5%, transparent)`,
-    padding: 16,
-  },
-  alertIcon: {
-    marginTop: 2,
-    width: 16,
-    height: 16,
-    flexShrink: 0,
-    color: tokens.danger,
-  },
-  alertBody: {
-    minWidth: 0,
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
-  },
-  alertTitle: {
-    fontSize: 14,
-    fontWeight: 500,
-    color: tokens.danger,
-  },
-  alertList: {
-    paddingTop: 4,
-    fontSize: 14,
-  },
-  alertReason: {
-    color: tokens.mutedForeground,
-  },
-  alertHint: {
-    paddingTop: 4,
-    fontSize: 12,
-    color: tokens.mutedForeground,
-  },
   summary: {
     display: 'flex',
     flexDirection: 'column',
@@ -395,6 +355,7 @@ export default function ItemSettingsPage() {
           batchStatus={batch.status}
           materialRange={batch.materialRange}
           participantCount={batch.participantCount}
+          canAppoint={batch.capabilities.manage}
           question={shown}
           onQuestion={setQuestion}
           composing={holding ? kept.composing : composing}
@@ -418,6 +379,7 @@ function Editor({
   batchStatus,
   materialRange,
   participantCount,
+  canAppoint,
   question,
   onQuestion,
   composing: composingId,
@@ -436,6 +398,8 @@ function Editor({
   materialRange: { start: string; end: string }
   /** how many people are on the roster, for a question granted to all of them */
   participantCount: number
+  /** whether the reader may put people into this round's roles */
+  canAppoint: boolean
   /** the saved question the address says is open, or '' for the structure */
   question: string
   onQuestion: (itemId: string) => void
@@ -871,45 +835,12 @@ function Editor({
       xstyle={styles.grow}
     >
       <div {...stylex.props(styles.grow, styles.editorColumn)}>
-        {(alerts.data?.groups ?? []).length > 0 && selection === null && (
-          <section {...stylex.props(styles.alert)}>
-            <TriangleAlertIcon aria-hidden className={stylex.props(styles.alertIcon).className} />
-            <div {...stylex.props(styles.alertBody)}>
-              <p {...stylex.props(styles.alertTitle)}>{format(m.itemsStuckTitle)}</p>
-              <ul {...stylex.props(styles.alertList)}>
-                {(alerts.data?.groups ?? []).map((row) => (
-                  <li key={`${row.nodeId ?? ''}:${row.roleNames.join(',')}:${row.reason}`}>
-                    {/* a round can also stop at a step that resolved to no
-                        unit at all, and a row naming an empty unit would
-                        read as a bug rather than as the vacancy it is */}
-                    {row.nodeName === null
-                      ? format(m.itemsStuckNowhere, {
-                          roles: row.roleNames.join(format(m.listSeparator)),
-                          count: row.waiting,
-                        })
-                      : format(m.itemsStuckRow, {
-                          unit: row.nodeName,
-                          roles: row.roleNames.join(format(m.listSeparator)),
-                          count: row.waiting,
-                        })}
-                    {/* a staffing gap and a recusal rule call for different
-                        fixes, so the row says which one it is looking at */}
-                    {row.reason !== 'no-assignee' && (
-                      <span {...stylex.props(styles.alertReason)}>
-                        {' - '}
-                        {format(
-                          row.reason === 'panel-seat-unfilled'
-                            ? m.itemsStuckSeat
-                            : m.itemsStuckConflict,
-                        )}
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-              <p {...stylex.props(styles.alertHint)}>{format(m.itemsStuckHint)}</p>
-            </div>
-          </section>
+        {selection === null && (
+          <ReviewGapNotice
+            batchId={batchId}
+            groups={alerts.data?.groups ?? []}
+            canAppoint={canAppoint}
+          />
         )}
 
         <Drill move={move} drillKey={drillKey} className={stylex.props(styles.grow).className}>

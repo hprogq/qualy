@@ -23,9 +23,10 @@ const REVISION_ID = '77777777-7777-4777-8777-777777777777'
 const FORMULA_VERSION_ID = '01920000-0000-7000-8000-0000000000f1'
 const RECOGNITION_ID = '01920000-0000-7000-8000-0000000000f2'
 
-const PAGES = [{ id: 'assessment/batch-items', path: '/assessment/batches/:batchId/items' }].map(
-  (entry) => ({ ...entry, layout: 'admin' }),
-)
+const PAGES = [
+  { id: 'assessment/batch-items', path: '/assessment/batches/:batchId/items' },
+  { id: 'assessment/batch-access', path: '/assessment/batches/:batchId/access' },
+].map((entry) => ({ ...entry, layout: 'admin' }))
 
 const batch = () => ({
   id: BATCH_ID,
@@ -368,6 +369,8 @@ const open = (
     answerAfter?: Promise<void>
     /** a press that does what the browser's back button does */
     withBack?: boolean
+    /** where review is waiting for somebody to review it */
+    alerts?: readonly unknown[]
   } = {},
 ) => {
   // what the server holds, so a save is read back as it was stored
@@ -400,7 +403,7 @@ const open = (
             orgTypes: [{ id: ORG_TYPE_ID, code: 'class', name: '班级' }],
             roles: [{ id: ROLE_ID, name: '审核员' }],
           }),
-        reviewAlerts: () => Effect.succeed({ groups: [] }),
+        reviewAlerts: () => Effect.succeed({ groups: had.alerts ?? [] }),
         reviewCoverage: () => Effect.succeed({ nodes: [] }),
         createItem: (call: { payload: { config?: unknown; itemType?: unknown } }) => {
           const refusal = had.refuse?.shift()
@@ -1240,7 +1243,9 @@ describe('composing the two routes', () => {
     await page.getByTestId('chain-escalation').getByTestId('chain-add').click()
     await expect.element(sheet().getByTestId('stage-participation')).toBeVisible()
     await compose('学院复核小组')
-    await sheet().getByRole('radio', { name: /全员共同审核/ }).click()
+    await sheet()
+      .getByRole('radio', { name: /全员共同审核/ })
+      .click()
     // chosen at the end of the route, it says what it still needs, and is taken
     await expect.element(sheet().getByTestId('stage-owed')).toBeVisible()
     await sheet().getByTestId('stage-apply').click()
@@ -2012,6 +2017,61 @@ describe('rearranging the structure', () => {
     // beside it, among its siblings: that is a reorder, and it is saved
     dragOnto('文体素质', '德育素质', 'top')
     await vi.waitFor(() => expect(regrouped).toHaveLength(1))
+  })
+})
+
+describe('review waiting for a reviewer', () => {
+  it('says in one amber line how much waits, and lays the units out only when asked', async () => {
+    await open({
+      alerts: [
+        {
+          nodeId: 'n-major',
+          nodeName: '大数据管理与应用',
+          roleNames: ['推免专业负责人'],
+          reason: 'no-assignee',
+          waiting: 1,
+        },
+        {
+          nodeId: 'n-class',
+          nodeName: '2023级1班',
+          roleNames: ['班长', '学习委员'],
+          reason: 'no-independent-reviewer',
+          waiting: 4,
+        },
+        { nodeId: null, nodeName: null, roleNames: ['辅导员'], reason: 'no-assignee', waiting: 2 },
+      ],
+    })
+    const notice = page.getByTestId('review-gap-notice')
+    await expect.element(notice).toHaveAttribute('data-waiting', '7')
+    await expect.element(notice).toHaveAttribute('data-variant', 'default')
+    // the rows wait behind a press: the page under this is the paper
+    expect(page.getByTestId('review-gap-row').elements()).toHaveLength(0)
+    await expect
+      .element(notice.getByRole('link', { name: '去任命' }))
+      .toHaveAttribute('href', `/assessment/batches/${BATCH_ID}/access`)
+
+    await notice.getByRole('button', { name: '查看' }).click()
+    await vi.waitFor(() => expect(page.getByTestId('review-gap-row').elements()).toHaveLength(3))
+    expect(
+      page
+        .getByTestId('review-gap-row')
+        .elements()
+        .map((row) => [row.getAttribute('data-reason'), row.getAttribute('data-count')]),
+    ).toEqual([
+      ['no-assignee', '1'],
+      ['no-independent-reviewer', '4'],
+      ['no-assignee', '2'],
+    ])
+    await notice.getByRole('button', { name: '收起' }).click()
+    await vi.waitFor(() => expect(page.getByTestId('review-gap-row').elements()).toHaveLength(0))
+  })
+
+  it('says nothing where no review is waiting', async () => {
+    await open({ items: [{ ...officerItem(), scoreGroupId: PAPER_ID }] })
+    await vi.waitFor(() =>
+      expect(page.getByText('学生干部任职').elements().length).toBeGreaterThan(0),
+    )
+    expect(document.querySelector('[data-testid="review-gap-notice"]')).toBeNull()
   })
 })
 

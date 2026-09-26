@@ -2681,32 +2681,37 @@ const i18n = definePluginMessages({
       id: 'assessment/items/hint',
       defaultMessage: 'Set up groups and items, and how each is filed, scored and reviewed',
     },
-    itemsStuckTitle: {
-      id: 'assessment/items/stuck-title',
-      defaultMessage: 'Review steps without an available reviewer',
-    },
-    itemsStuckRow: {
-      id: 'assessment/items/stuck-row',
+    itemsStuckSummary: {
+      id: 'assessment/items/stuck-summary',
       defaultMessage:
-        '{unit} 　 {roles} 　 {count, plural, one {# submission waiting} other {# submissions waiting}}',
+        '{waiting, plural, one {# submission is} other {# submissions are}} waiting for a reviewer{units, plural, =1 {} other { in # units}}',
+    },
+    itemsStuckShow: { id: 'assessment/items/stuck-show', defaultMessage: 'View' },
+    itemsStuckHide: { id: 'assessment/items/stuck-hide', defaultMessage: 'Hide' },
+    itemsStuckAppoint: {
+      id: 'assessment/items/stuck-appoint',
+      defaultMessage: 'Appoint reviewers',
+    },
+    itemsStuckCount: {
+      id: 'assessment/items/stuck-count',
+      defaultMessage: '{count} waiting',
     },
     itemsStuckNowhere: {
       id: 'assessment/items/stuck-nowhere',
-      defaultMessage:
-        '{roles} 　 {count, plural, one {# submission waiting} other {# submissions waiting}}, with nobody holding this duty anywhere above them',
+      defaultMessage: 'Nobody holds the duty in any unit above',
     },
     itemsStuckConflict: {
       id: 'assessment/items/stuck-conflict',
-      defaultMessage: 'every current reviewer is recused from these rounds',
+      defaultMessage: 'Every current reviewer is recused',
     },
     itemsStuckSeat: {
       id: 'assessment/items/stuck-seat',
-      defaultMessage: 'panel seats are waiting for reviewers',
+      defaultMessage: 'Panel seats are waiting for reviewers',
     },
     itemsStuckHint: {
       id: 'assessment/items/stuck-hint',
       defaultMessage:
-        'Assign any listed role in the relevant unit to resume the affected reviews automatically.',
+        'Once any listed role is filled in its unit, these submissions go on to review by themselves',
     },
     itemsOutlineAddItem: {
       id: 'assessment/items/outline-add-item',
