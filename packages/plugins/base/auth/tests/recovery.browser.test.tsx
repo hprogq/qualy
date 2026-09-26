@@ -417,6 +417,11 @@ describe('showing it is you before the account changes hands', () => {
     await expect.element(asked).toHaveAttribute('data-method', 'unavailable')
     expect(page.getByRole('button', { name: '继续' }).elements()).toHaveLength(0)
     expect(document.querySelector('input[type="email"]')).toBeNull()
+    // said as a state with a title, not a stray line, and the one press left closes it
+    expect(asked.element().querySelector('[data-slot="empty"]')).not.toBeNull()
+    expect(page.getByRole('button', { name: '取消' }).elements()).toHaveLength(0)
+    await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).last().click()
+    await expect.poll(() => document.querySelector('[data-testid="reauthentication"]')).toBeNull()
     expect(change).not.toHaveBeenCalled()
   })
 })

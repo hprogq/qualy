@@ -947,6 +947,10 @@ const i18n = definePluginMessages({
       id: 'auth/account/reauth-sign-in-with',
       defaultMessage: 'Sign in with {name}',
     },
+    reauthUnavailableTitle: {
+      id: 'auth/account/reauth-unavailable-title',
+      defaultMessage: 'There is no way to confirm it’s you here',
+    },
     reauthUnavailable: {
       id: 'auth/account/reauth-unavailable',
       defaultMessage: 'Ask an administrator to make this change',

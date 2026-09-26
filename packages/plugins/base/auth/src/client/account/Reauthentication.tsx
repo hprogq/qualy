@@ -1,11 +1,14 @@
 import { useId, useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
+import { ShieldOffIcon } from 'lucide-react'
+import { LoadFailure, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { Field, FormDialog } from '@qualy/ui/admin'
+import { commonMessages } from '@qualy/web-i18n/messages'
+import { Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
+import { Blank } from '@qualy/ui/screen'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { iamMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
@@ -25,7 +28,6 @@ const styles = stylex.create({
   form: { display: 'flex', flexDirection: 'column', gap: 14 },
   said: { margin: 0, fontSize: 13.5, color: tokens.mutedForeground },
   ways: { display: 'flex', flexDirection: 'column', gap: 8 },
-  refusal: { margin: 0, fontSize: 13, color: tokens.danger },
 })
 
 const tagOf = (error: unknown) => (error as { _tag?: unknown } | null | undefined)?._tag
@@ -89,6 +91,7 @@ function ReauthenticationDialog({
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
+  const describe = useLoadFailure()
   const formId = useId()
   const state = useQuery(query.self.getSelfReauthentication.queryOptions())
   const email = useQuery(query.self.getSelf.queryOptions()).data?.email ?? ''
@@ -127,7 +130,13 @@ function ReauthenticationDialog({
     onClose()
   }
   const method = state.data?.method
-  const refused = prove.error ?? send.error ?? (state.isError ? state.error : null)
+  // what a press was refused, said in the form beside it
+  const refused = prove.error ?? send.error
+  // Nothing in the dialog can be done: there is no way of showing it is
+  // them from here, or the question of how could not be asked. The one
+  // press left is the way out.
+  const unreadable = state.isError && method === undefined
+  const nothingToDo = method === 'unavailable' || unreadable
   /** off to sign in again, to come back to the page that asked */
   const again = (href: string) => {
     const target = new URL(href, window.location.origin)
@@ -148,26 +157,32 @@ function ReauthenticationDialog({
       title={format(m.reauthTitle)}
       onClose={close}
       footer={
-        <>
-          <Button variant="ghost" type="button" onClick={close}>
-            {format(m.cancel)}
+        nothingToDo ? (
+          <Button variant="outline" type="button" onClick={close}>
+            {format(commonMessages.close)}
           </Button>
-          {method === 'email' && (
-            <Button
-              variant={sent ? 'ghost' : 'default'}
-              type="button"
-              disabled={send.isPending}
-              onClick={() => send.mutate()}
-            >
-              {format(sent ? m.reauthCodeAgain : m.reauthCodeSend)}
+        ) : (
+          <>
+            <Button variant="ghost" type="button" onClick={close}>
+              {format(m.cancel)}
             </Button>
-          )}
-          {(method === 'password' || (method === 'email' && sent)) && (
-            <Button type="submit" form={formId} disabled={prove.isPending || !typed}>
-              {format(m.reauthContinue)}
-            </Button>
-          )}
-        </>
+            {method === 'email' && (
+              <Button
+                variant={sent ? 'ghost' : 'default'}
+                type="button"
+                disabled={send.isPending}
+                onClick={() => send.mutate()}
+              >
+                {format(sent ? m.reauthCodeAgain : m.reauthCodeSend)}
+              </Button>
+            )}
+            {(method === 'password' || (method === 'email' && sent)) && (
+              <Button type="submit" form={formId} disabled={prove.isPending || !typed}>
+                {format(m.reauthContinue)}
+              </Button>
+            )}
+          </>
+        )
       }
     >
       <form
@@ -229,9 +244,22 @@ function ReauthenticationDialog({
           </>
         )}
         {method === 'unavailable' && (
-          <p {...stylex.props(styles.said)}>{format(m.reauthUnavailable)}</p>
+          <Blank
+            size="compact"
+            icon={<ShieldOffIcon aria-hidden />}
+            title={format(m.reauthUnavailableTitle)}
+            description={format(m.reauthUnavailable)}
+          />
         )}
-        {refused !== null && <p {...stylex.props(styles.refusal)}>{formatError(refused)}</p>}
+        {unreadable && (
+          <LoadFailure
+            size="section"
+            failure={describe.of(state.error)}
+            onRetry={() => void state.refetch()}
+            retrying={state.isFetching}
+          />
+        )}
+        <Feedback message={refused === null ? null : formatError(refused)} />
       </form>
     </FormDialog>
   )
