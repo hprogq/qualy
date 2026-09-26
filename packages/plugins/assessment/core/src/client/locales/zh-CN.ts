@@ -1042,6 +1042,8 @@ export default {
   'assessment/entries/no-filing-needed': '{calc}，无需申报',
   'assessment/entries/in-sections': '所在分组',
   'assessment/entries/section-full': '已达上限',
+  'assessment/entries/stats-hide': '收起统计',
+  'assessment/entries/stats-show': '展开统计',
   'assessment/entries/section-said': '已得 {got} 分，上限 {cap} 分',
   'assessment/entries/section-said-uncapped': '已得 {got} 分',
   'assessment/entries/description': '填报说明',

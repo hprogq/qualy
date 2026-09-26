@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { ChevronDownIcon, ChevronRightIcon, RefreshCwIcon } from 'lucide-react'
+import { ChevronDownIcon, ChevronRightIcon, ChevronUpIcon, RefreshCwIcon } from 'lucide-react'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
 import { LiveMark, type LiveState } from '@qualy/ui/live-mark'
-import { Portion } from '@qualy/ui/reveal'
+import { Appear, Portion } from '@qualy/ui/reveal'
 import { Ticker } from '@qualy/ui/ticker'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -118,7 +118,29 @@ const styles = stylex.create({
     height: '100%',
     borderRadius: 3,
   },
-  meta: { fontSize: 11.5, color: tokens.mutedForeground },
+  metaRow: { display: 'flex', alignItems: 'center', gap: 8, minHeight: 18 },
+  meta: { minWidth: 0, fontSize: 11.5, color: tokens.mutedForeground },
+  // a quiet word at the end of the line, the way to put the figures away
+  // and bring them back
+  statsKey: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 2,
+    height: 22,
+    marginRight: -6,
+    borderWidth: 0,
+    borderRadius: 6,
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 70%, transparent)`,
+    },
+    paddingInline: 6,
+    fontSize: 11.5,
+    color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
+    cursor: 'pointer',
+  },
+  statsKeyIcon: { width: 12, height: 12 },
   stats: {
     display: 'grid',
     gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
@@ -385,6 +407,8 @@ export function StructureRail({
   total,
   scored,
   stats,
+  statsShown,
+  onStatsShown,
   selectedId,
   onSelect,
   todoOnly,
@@ -409,6 +433,9 @@ export function StructureRail({
   /** false while the score could not be read: every figure is unknown, not zero */
   scored: boolean
   stats: readonly HeadStat[]
+  /** whether the figures under the total are out; the reader may put them away */
+  statsShown: boolean
+  onStatsShown: (shown: boolean) => void
   selectedId: string | null
   onSelect: (id: string) => void
   todoOnly: boolean
@@ -424,6 +451,7 @@ export function StructureRail({
   layout: 'column' | 'screen'
 }) {
   const { format } = useI18n()
+  const statsId = useId()
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set())
   const scroller = useRef<HTMLDivElement | null>(null)
 
@@ -712,14 +740,39 @@ export function StructureRail({
               })}
             </div>
           )}
-          <span {...stylex.props(styles.meta)}>
-            {outline.tops.length === 0
-              ? format(m.myEntriesQuestions, { count: items.length })
-              : format(m.myEntriesPaperMeta, { groups: outline.tops.length, items: items.length })}
-          </span>
+          <div {...stylex.props(styles.metaRow)}>
+            <span {...stylex.props(styles.meta)}>
+              {outline.tops.length === 0
+                ? format(m.myEntriesQuestions, { count: items.length })
+                : format(m.myEntriesPaperMeta, {
+                    groups: outline.tops.length,
+                    items: items.length,
+                  })}
+            </span>
+            <span {...stylex.props(styles.spacer)} />
+            {stats.length > 0 && (
+              <button
+                type="button"
+                data-testid="stats-toggle"
+                aria-expanded={statsShown}
+                aria-controls={statsShown ? statsId : undefined}
+                onClick={() => onStatsShown(!statsShown)}
+                {...stylex.props(styles.statsKey)}
+              >
+                {format(statsShown ? m.entriesStatsHide : m.entriesStatsShow)}
+                {statsShown ? (
+                  <ChevronUpIcon aria-hidden {...stylex.props(styles.statsKeyIcon)} />
+                ) : (
+                  <ChevronDownIcon aria-hidden {...stylex.props(styles.statsKeyIcon)} />
+                )}
+              </button>
+            )}
+          </div>
         </div>
-        {stats.length > 0 && (
-          <div {...stylex.props(styles.stats)}>
+        {/* put away, nothing is lost: what waits on the reader is still
+            counted on the "to do" key below */}
+        <Appear show={stats.length > 0 && statsShown} collapse>
+          <div id={statsId} data-testid="entries-stats" {...stylex.props(styles.stats)}>
             {stats.map((stat) => (
               <span
                 key={stat.key}
@@ -739,7 +792,7 @@ export function StructureRail({
               </span>
             ))}
           </div>
-        )}
+        </Appear>
         <div {...stylex.props(styles.tabs)}>
           <button
             type="button"

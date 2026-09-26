@@ -179,6 +179,7 @@ const workspace = ({
   ],
   stubs = {},
   locale = 'zh-CN',
+  storage = {},
 }: {
   route: string
   items?: readonly unknown[]
@@ -189,6 +190,8 @@ const workspace = ({
   stubs?: Record<string, unknown>
   /** the reader's language, where a case is about how long its words run */
   locale?: 'zh-CN' | 'en-US'
+  /** what this browser already keeps from an earlier visit */
+  storage?: Record<string, string>
 }) =>
   renderScreen({
     client: fakeClient({
@@ -250,6 +253,7 @@ const workspace = ({
     }),
     route,
     locale,
+    storage,
     routes: [
       {
         path: '/assessment/batches/:batchId/my-entries',
@@ -1140,6 +1144,39 @@ describe('the head of the structure', () => {
     expect(looked.mock.calls[0]![0].params.entryId).toBe(entryId(1))
     await expect.poll(() => page.getByTestId('unread-mark').elements().length).toBe(0)
     expect(railRow(2).getAttribute('data-unread')).toBe('false')
+  })
+})
+
+describe('the figures under the total', () => {
+  // They take a good part of a short window. The reader may put them away,
+  // this browser remembers, and nothing is lost: what waits on the reader is
+  // still counted on the "to do" key.
+  it('puts the figures away at the reader’s word, and keeps them away', async () => {
+    await page.viewport(1440, 900)
+    const filed = [claim(1, itemId(1), 'needs_revision'), claim(2, itemId(2), 'draft')]
+    await workspace({ route: `${base}?open=${itemId(1)}`, entries: filed })
+    const key = page.getByTestId('stats-toggle')
+    await expect.element(key).toHaveAttribute('aria-expanded', 'true')
+    await expect.element(page.getByTestId('entries-stats')).toBeVisible()
+    await key.click()
+    await expect.element(key).toHaveAttribute('aria-expanded', 'false')
+    await expect.poll(() => document.querySelector('[data-testid="entries-stats"]')).toBeNull()
+    expect(localStorage.getItem('qualy:assessment-entries-stats:owner')).toBe('0')
+    await expect.element(page.getByTestId('rail-todo')).toHaveAttribute('data-count', '2')
+    await key.click()
+    await expect.element(page.getByTestId('entries-stats')).toBeVisible()
+  })
+
+  it('opens with the figures put away where this browser last left them so', async () => {
+    await page.viewport(1440, 900)
+    await workspace({
+      route: `${base}?open=${itemId(1)}`,
+      entries: [claim(1, itemId(1), 'needs_revision')],
+      storage: { 'qualy:assessment-entries-stats:owner': '0' },
+    })
+    await expect.element(page.getByTestId('stats-toggle')).toHaveAttribute('aria-expanded', 'false')
+    expect(document.querySelector('[data-testid="entries-stats"]')).toBeNull()
+    await expect.element(page.getByTestId('rail-todo')).toHaveAttribute('data-count', '1')
   })
 })
 

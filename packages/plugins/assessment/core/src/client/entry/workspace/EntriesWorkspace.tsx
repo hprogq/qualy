@@ -21,6 +21,7 @@ import { assessmentMessages as m } from '../../i18n.ts'
 import type { EntryDto, FilingGateDto, ItemDto } from '../model.ts'
 import type { Standing, StructureRow } from '../standing.ts'
 import { scrollerAbove, useRoomBelow, useWorkspaceMode, type WorkspaceMode } from './layout.ts'
+import { useStatsShown } from './preferences.ts'
 import { GroupPane } from './GroupPane.tsx'
 import { FileKey, ItemPane } from './ItemPane.tsx'
 import { Requirements } from './Requirements.tsx'
@@ -392,6 +393,7 @@ function Workspace({
   const stream = liveStateOf(live)
   const outline = useMemo(() => outlineOf(rows), [rows])
   const [todoOnly, setTodoOnly] = useState(false)
+  const [statsShown, setStatsShown] = useStatsShown(viewer)
   // which question's requirements are up in a sheet; leaving the question
   // takes its sheet with it
   const [asideFor, setAsideFor] = useState<string | null>(null)
@@ -598,6 +600,8 @@ function Workspace({
       total={totalsOf(outline, standing)}
       scored={scored}
       stats={headStatsOf(viewer, entries)}
+      statsShown={statsShown}
+      onStatsShown={setStatsShown}
       selectedId={phone ? null : (selected?.id ?? null)}
       onSelect={(id) => {
         // from a phone's structure into a question is a layer deeper: the

@@ -4153,6 +4153,8 @@ const i18n = definePluginMessages({
       id: 'assessment/entries/section-full',
       defaultMessage: 'Limit reached',
     },
+    entriesStatsHide: { id: 'assessment/entries/stats-hide', defaultMessage: 'Hide counts' },
+    entriesStatsShow: { id: 'assessment/entries/stats-show', defaultMessage: 'Show counts' },
     entriesSectionSaid: {
       id: 'assessment/entries/section-said',
       defaultMessage: '{got} of {cap} points',
