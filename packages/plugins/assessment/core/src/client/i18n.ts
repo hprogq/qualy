@@ -2729,7 +2729,7 @@ const i18n = definePluginMessages({
     itemsStuckSummary: {
       id: 'assessment/items/stuck-summary',
       defaultMessage:
-        '{waiting, plural, one {# submission is} other {# submissions are}} waiting for a reviewer{units, plural, =1 {} other { in # units}}',
+        '{waiting, plural, one {# submission is} other {# submissions are}} waiting for a reviewer{units, plural, =0 {} =1 {} other { in # units}}',
     },
     itemsStuckShow: { id: 'assessment/items/stuck-show', defaultMessage: 'View' },
     itemsStuckHide: { id: 'assessment/items/stuck-hide', defaultMessage: 'Hide' },

@@ -371,6 +371,8 @@ const open = (
     withBack?: boolean
     /** where review is waiting for somebody to review it */
     alerts?: readonly unknown[]
+    /** whether the reader may give out the round's roles */
+    manage?: boolean
   } = {},
 ) => {
   // what the server holds, so a save is read back as it was stored
@@ -386,7 +388,13 @@ const open = (
           }),
       },
       assessment: {
-        getBatch: () => Effect.succeed({ batch: batch() }),
+        getBatch: () =>
+          Effect.succeed({
+            batch: {
+              ...batch(),
+              capabilities: { ...batch().capabilities, manage: had.manage ?? true },
+            },
+          }),
         listScoreGroups: () =>
           Effect.succeed({
             groups: had.groups ?? [paper],
@@ -2125,29 +2133,51 @@ describe('rearranging the structure', () => {
 })
 
 describe('review waiting for a reviewer', () => {
+  const gaps = [
+    {
+      nodeId: 'n-major',
+      nodeName: '大数据管理与应用',
+      unitPath: ['示例大学', '管理学院', '大数据管理与应用'],
+      roleIds: [ROLE_ID],
+      roleNames: ['推免专业负责人'],
+      reason: 'no-assignee',
+      waiting: 1,
+    },
+    {
+      nodeId: 'n-class',
+      nodeName: '1班',
+      unitPath: ['示例大学', '管理学院', '1班'],
+      roleIds: [ROLE_ID],
+      roleNames: ['班长', '学习委员'],
+      reason: 'no-independent-reviewer',
+      waiting: 4,
+    },
+    {
+      nodeId: 'n-class-2',
+      nodeName: '1班',
+      unitPath: ['示例大学', '信息学院', '1班'],
+      roleIds: [ROLE_ID],
+      roleNames: ['班长'],
+      reason: 'no-assignee',
+      waiting: 3,
+    },
+    {
+      nodeId: null,
+      nodeName: null,
+      unitPath: [],
+      roleIds: [ROLE_ID],
+      roleNames: ['辅导员'],
+      reason: 'no-assignee',
+      waiting: 2,
+    },
+  ]
+
   it('says in one amber line how much waits, and lays the units out only when asked', async () => {
-    await open({
-      alerts: [
-        {
-          nodeId: 'n-major',
-          nodeName: '大数据管理与应用',
-          roleNames: ['推免专业负责人'],
-          reason: 'no-assignee',
-          waiting: 1,
-        },
-        {
-          nodeId: 'n-class',
-          nodeName: '2023级1班',
-          roleNames: ['班长', '学习委员'],
-          reason: 'no-independent-reviewer',
-          waiting: 4,
-        },
-        { nodeId: null, nodeName: null, roleNames: ['辅导员'], reason: 'no-assignee', waiting: 2 },
-      ],
-    })
+    await open({ alerts: gaps })
     const notice = page.getByTestId('review-gap-notice')
-    await expect.element(notice).toHaveAttribute('data-waiting', '7')
-    await expect.element(notice).toHaveAttribute('data-variant', 'default')
+    await expect.element(notice).toHaveAttribute('data-waiting', '10')
+    // a step that stopped at no unit is not one more unit
+    await expect.element(notice).toHaveAttribute('data-units', '3')
     // the rows wait behind a press: the page under this is the paper
     expect(page.getByTestId('review-gap-row').elements()).toHaveLength(0)
     await expect
@@ -2155,19 +2185,52 @@ describe('review waiting for a reviewer', () => {
       .toHaveAttribute('href', `/assessment/batches/${BATCH_ID}/access`)
 
     await notice.getByRole('button', { name: '查看' }).click()
-    await vi.waitFor(() => expect(page.getByTestId('review-gap-row').elements()).toHaveLength(3))
+    await vi.waitFor(() => expect(page.getByTestId('review-gap-row').elements()).toHaveLength(4))
+    // two classes called 1 are told apart by where they sit
     expect(
       page
         .getByTestId('review-gap-row')
         .elements()
-        .map((row) => [row.getAttribute('data-reason'), row.getAttribute('data-count')]),
+        .map((row) => [
+          row.getAttribute('data-place'),
+          row.getAttribute('data-reason'),
+          row.getAttribute('data-count'),
+        ]),
     ).toEqual([
-      ['no-assignee', '1'],
-      ['no-independent-reviewer', '4'],
-      ['no-assignee', '2'],
+      ['管理学院/大数据管理与应用', 'no-assignee', '1'],
+      ['管理学院/1班', 'no-independent-reviewer', '4'],
+      ['信息学院/1班', 'no-assignee', '3'],
+      ['', 'no-assignee', '2'],
     ])
     await notice.getByRole('button', { name: '收起' }).click()
     await vi.waitFor(() => expect(page.getByTestId('review-gap-row').elements()).toHaveLength(0))
+  })
+
+  // Read again every minute, it stands on the page for as long as review
+  // waits: as a live region it cut into a screen reader each time a count
+  // moved, and read the opened rows out in one breath. And its way to
+  // appoint is a button, not a link in running prose: inside the notice's
+  // title it was underlined like one.
+  it('stands quietly on the page, with its way to appoint drawn as a button', async () => {
+    await open({ alerts: gaps })
+    const notice = page.getByTestId('review-gap-notice')
+    await expect.element(notice).toBeVisible()
+    const quiet = (element: Element | null) =>
+      element === null ||
+      (!['alert', 'status', 'log'].includes(element.getAttribute('role') ?? '') &&
+        element.getAttribute('aria-live') === null)
+    const inside = [notice.element(), ...notice.element().querySelectorAll('*')]
+    expect(inside.every(quiet)).toBe(true)
+    const appoint = notice.getByRole('link', { name: '去任命' }).element()
+    expect(getComputedStyle(appoint).textDecorationLine).toBe('none')
+  })
+
+  it('offers no way to appoint to a reader who cannot give out the roles', async () => {
+    await open({ alerts: gaps, manage: false })
+    const notice = page.getByTestId('review-gap-notice')
+    await expect.element(notice).toBeVisible()
+    await expect.element(notice.getByRole('button', { name: '查看' })).toBeVisible()
+    expect(notice.getByRole('link').elements()).toHaveLength(0)
   })
 
   it('says nothing where no review is waiting', async () => {

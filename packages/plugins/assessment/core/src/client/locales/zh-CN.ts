@@ -639,7 +639,7 @@ export default {
   'assessment/items/tab': '项目配置',
   'assessment/items/hint': '设置分组与项目，以及各项目的申报、计分与审核',
   'assessment/items/stuck-summary':
-    '{waiting} 条申报等待审核人{units, plural, =1 {} other {，涉及 # 个单位}}',
+    '{waiting} 条申报等待审核人{units, plural, =0 {} =1 {} other {，涉及 # 个单位}}',
   'assessment/items/stuck-show': '查看',
   'assessment/items/stuck-hide': '收起',
   'assessment/items/stuck-appoint': '去任命',
