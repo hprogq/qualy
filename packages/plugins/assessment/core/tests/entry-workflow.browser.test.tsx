@@ -2957,6 +2957,47 @@ describe('the phase gate on the paper', () => {
   })
 })
 
+// The facts under a claim's name wrap on a phone. A divider between two of
+// them belongs to neither line once they part: none may end a line, and
+// none may start one.
+describe('the head of a claim’s drawer', () => {
+  it('never leaves a divider at the start or the end of a line', async () => {
+    await page.viewport(390, 844)
+    await screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [entry({ status: 'approved' })],
+            nextCursor: null,
+            attention: { unreadItemIds: [] },
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}&detail=${ENTRY_ID}`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    await expect.element(page.getByRole('dialog')).toBeVisible()
+    await expect.poll(() => document.querySelectorAll('[data-head-fact]').length).toBe(3)
+    const facts = [...document.querySelectorAll<HTMLElement>('[data-head-fact]')]
+    const clip = facts[0]!.parentElement!.parentElement!.getBoundingClientRect()
+    const boxes = facts.map((fact) => fact.getBoundingClientRect())
+    // the case proves nothing unless the facts do wrap at this width
+    expect(new Set(boxes.map((box) => Math.round(box.top))).size).toBeGreaterThan(1)
+    facts.forEach((fact, at) => {
+      const rule = fact.firstElementChild!.getBoundingClientRect()
+      const leads = !boxes.some(
+        (other, index) =>
+          index !== at && Math.abs(other.top - boxes[at]!.top) < 2 && other.right <= rule.left,
+      )
+      // a fact that starts a line keeps its divider outside what is seen
+      if (leads) expect(rule.right, fact.dataset['headFact']).toBeLessThanOrEqual(clip.left + 0.5)
+      else expect(rule.left, fact.dataset['headFact']).toBeGreaterThanOrEqual(clip.left)
+    })
+  })
+})
+
 // Giving a claim up while something runs on it names what runs (ruling of
 // 2026-09-25 #16): an appeal the owner made, or a re-examination staff
 // opened, which the owner never asked for and must not be told was theirs.

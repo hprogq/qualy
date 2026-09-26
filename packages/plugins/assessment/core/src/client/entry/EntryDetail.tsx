@@ -139,12 +139,16 @@ const styles = stylex.create({
     flexDirection: 'column',
     gap: 4,
   },
+  titleClip: { minWidth: 0, overflow: 'hidden' },
+  // set back by one divider and its gap, which the clip then hides
   titleRow: {
     display: 'flex',
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: 8,
+    marginInlineStart: -9,
   },
+  headFact: { display: 'inline-flex', alignItems: 'center', gap: 8 },
   versionNote: {
     flexShrink: 0,
     fontSize: 12,
@@ -554,36 +558,45 @@ export function EntryDetail({
             {summary !== undefined && summary.sub !== '' && (
               <p {...stylex.props(styles.headSub)}>{summary.sub}</p>
             )}
-            <div {...stylex.props(styles.titleRow)}>
-              <EntryStanding
-                status={entry.status}
-                source={entry.source}
-                revised={entry.currentReviewInstanceId !== null}
-                asked={entry.supplement !== null}
-                openRound={entry.openRound}
-              />
-              <span {...stylex.props(styles.versionNote)}>
-                {format(sourceLabelOf(entry.source))}
-              </span>
-              {revisionNo !== undefined && entry.status !== 'draft' && (
-                <>
+            {/* Each fact carries the divider before it, and the row is set
+                back by one divider inside a clipped box: whichever fact
+                starts a line has its divider cut off, so a narrow drawer
+                never ends a line on one or starts one with it. */}
+            <div {...stylex.props(styles.titleClip)}>
+              <div {...stylex.props(styles.titleRow)}>
+                <span data-head-fact="standing" {...stylex.props(styles.headFact)}>
                   <span aria-hidden {...stylex.props(styles.headRule)} />
+                  <EntryStanding
+                    status={entry.status}
+                    source={entry.source}
+                    revised={entry.currentReviewInstanceId !== null}
+                    asked={entry.supplement !== null}
+                    openRound={entry.openRound}
+                  />
                   <span {...stylex.props(styles.versionNote)}>
-                    {format(m.entryVersionNo, { no: revisionNo })}
+                    {format(sourceLabelOf(entry.source))}
                   </span>
-                </>
-              )}
-              {summary !== undefined && (
-                <>
-                  <span aria-hidden {...stylex.props(styles.headRule)} />
-                  <span {...stylex.props(styles.versionNote)}>
-                    {format(m.entriesWhen, {
-                      when: timeOf(summary.at, locale, zone),
-                      action: format(summary.action),
-                    })}
+                </span>
+                {revisionNo !== undefined && entry.status !== 'draft' && (
+                  <span data-head-fact="version" {...stylex.props(styles.headFact)}>
+                    <span aria-hidden {...stylex.props(styles.headRule)} />
+                    <span {...stylex.props(styles.versionNote)}>
+                      {format(m.entryVersionNo, { no: revisionNo })}
+                    </span>
                   </span>
-                </>
-              )}
+                )}
+                {summary !== undefined && (
+                  <span data-head-fact="when" {...stylex.props(styles.headFact)}>
+                    <span aria-hidden {...stylex.props(styles.headRule)} />
+                    <span {...stylex.props(styles.versionNote)}>
+                      {format(m.entriesWhen, {
+                        when: timeOf(summary.at, locale, zone),
+                        action: format(summary.action),
+                      })}
+                    </span>
+                  </span>
+                )}
+              </div>
             </div>
           </div>
           <span {...stylex.props(styles.spacer)} />
