@@ -366,9 +366,12 @@ export function OrgNodeChooser({
             selected={context.value[0] ?? null}
             flat={filtering}
             // choosing out of places that mostly may not be chosen wants a
-            // mark on every row; pointing at one unit of any does not
+            // mark on every row, and so does a form's one answer; pointing
+            // at one unit of any does not
             {...(context.disabled === undefined
-              ? {}
+              ? context.radio === true
+                ? { radio: true }
+                : {}
               : { radio: true, barred: new Set(Object.keys(context.disabled)) })}
             meta={badge}
             onSelect={(node) => {

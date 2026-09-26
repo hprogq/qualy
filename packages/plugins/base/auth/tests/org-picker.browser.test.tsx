@@ -44,12 +44,38 @@ const world = () => ({
   },
 })
 
-function Harness({ single }: { single: boolean }) {
+function Harness({ single, radio }: { single: boolean; radio?: boolean }) {
   const [value, setValue] = useState<readonly string[]>([])
-  return <OrgNodePicker context={{ single, value, onChange: setValue }} />
+  return (
+    <OrgNodePicker
+      context={{ single, value, onChange: setValue, ...(radio === undefined ? {} : { radio }) }}
+    />
+  )
 }
 
 describe('the unit picker', () => {
+  // A form's one answer - where a grant applies - is asked with a mark on
+  // every row, the way the move page asks it, and not by a highlight alone.
+  it('marks every row as a choice of one when a form asks it so', async () => {
+    await renderScreen({ client: fakeClient(world()), children: <Harness single radio /> })
+    const college = page.getByRole('radio', { name: /软件学院/ })
+    await expect.element(college).toHaveAttribute('aria-checked', 'false')
+    await college.click()
+    await expect.element(college).toHaveAttribute('aria-checked', 'true')
+    expect(page.getByRole('radio', { name: /示例大学/ }).element()).toHaveAttribute(
+      'aria-checked',
+      'false',
+    )
+  })
+
+  it('points at one unit without marks when nothing asks for them', async () => {
+    await renderScreen({ client: fakeClient(world()), children: <Harness single /> })
+    await expect
+      .element(page.getByRole('button', { name: '软件学院 学院', exact: true }))
+      .toBeVisible()
+    expect(page.getByRole('radio').elements()).toHaveLength(0)
+  })
+
   // Pointing at a branch used to fold it: the row was one button that both
   // chose the unit and toggled it, so looking into a college took the
   // college's classes off the screen.

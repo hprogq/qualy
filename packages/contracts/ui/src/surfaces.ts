@@ -626,6 +626,15 @@ export interface OrgNodePickerContext {
    */
   single?: boolean
   /**
+   * With `single`, a mark on every row that fills on the one chosen.
+   *
+   * For a form's own answer - where a grant applies, say - rather than for
+   * pointing at a unit to narrow a list: a form reads as a question with one
+   * answer, and a row that is merely highlighted does not read as answered.
+   * Implied wherever some units are `disabled`.
+   */
+  radio?: boolean
+  /**
    * As tall as the room it is in, rather than a box of its own size.
    *
    * For a picker standing beside something long - a filter next to a table -
