@@ -1414,6 +1414,8 @@ describe('what a question’s row says at a glance', () => {
       document.querySelector(`[data-testid="claim-row"][data-entry="${entryId(n)}"]`)!
     expect(claimRow(1).getAttribute('data-unread')).toBe('true')
     expect(claimRow(2).getAttribute('data-unread')).toBe('true')
+    // the news is in the list in view: no filter needs to point at it
+    expect(document.querySelector('[data-chip="todo"]')?.hasAttribute('data-unread')).toBe(false)
 
     await userEvent.click(claimRow(1))
     await vi.waitFor(() => expect(looked).toHaveBeenCalledOnce())

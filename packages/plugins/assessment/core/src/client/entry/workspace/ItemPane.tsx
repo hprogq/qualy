@@ -557,14 +557,14 @@ export function ItemPane({
   const counts = new Map(
     chips.map((one) => [one.key, entries.filter((entry) => one.test(entry)).length] as const),
   )
-  // a filter holding a claim with unread news says so, so the news under a
-  // filter the reader is not in is never out of sight
-  const holdsNews = (test: (entry: EntryDto) => boolean) =>
-    unreadEntries !== undefined &&
-    entries.some((entry) => unreadEntries.has(entry.id) && test(entry))
   // a chosen filter that has nothing left under it gives way to all
   const active = chip !== 'all' && (counts.get(chip) ?? 0) === 0 ? 'all' : chip
   const test = chips.find((one) => one.key === active)?.test ?? (() => true)
+  // a filter holding news the list in view leaves out says so, so the news
+  // under a filter the reader is not in is never out of sight
+  const holdsNews = (holds: (entry: EntryDto) => boolean) =>
+    unreadEntries !== undefined &&
+    entries.some((entry) => unreadEntries.has(entry.id) && holds(entry) && !test(entry))
   const offered = chips.filter((one) => one.key === 'all' || (counts.get(one.key) ?? 0) > 0)
 
   // Where the chosen filter sits in its row, measured, so one face slides

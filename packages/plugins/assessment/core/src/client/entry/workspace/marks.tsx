@@ -38,7 +38,9 @@ const styles = stylex.create({
     minWidth: 16,
     height: 16,
     borderRadius: 9999,
-    backgroundColor: tokens.danger,
+    // a shade deeper than the red of text, so the white figure on it reads
+    // in both schemes
+    backgroundColor: `color-mix(in oklab, ${tokens.danger} 88%, black)`,
     paddingInline: 4.5,
     fontSize: 10.5,
     lineHeight: 1,
