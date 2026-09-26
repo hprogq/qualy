@@ -10,6 +10,9 @@ import { ok, phase, run, runningBatch, seed } from './support/round.ts'
 // own allowances, which name roster rows a participant has no business
 // reading.
 
+/** a reader on no roster in the round */
+const OUTSIDER = '00000000-0000-4000-8000-00000000000a'
+
 describe.runIf(postgresAvailable)('a stage allowance on the timeline', () => {
   let db: Awaited<ReturnType<typeof createTestContext>>
 
@@ -86,7 +89,12 @@ describe.runIf(postgresAvailable)('a stage allowance on the timeline', () => {
             admin,
           )
           const timeline = yield* assessment.timeline(f.t, g.batch.id)
-          return { item: g.item, timeline }
+          // read by the participant the stage admits, by one it does not,
+          // and by somebody the roster does not hold at all
+          const admitted = yield* assessment.timeline(f.t, g.batch.id, f.s1)
+          const left = yield* assessment.timeline(f.t, g.batch.id, f.s2)
+          const outsider = yield* assessment.timeline(f.t, g.batch.id, OUTSIDER)
+          return { item: g.item, timeline, admitted, left, outsider }
         }),
       ),
     )
@@ -97,13 +105,18 @@ describe.runIf(postgresAvailable)('a stage allowance on the timeline', () => {
       'archive',
     ])
     // a stage that names nothing opens everything, to everybody
-    expect(scopes[0]).toEqual({ items: null, participantsLimited: false })
-    expect(scopes[2]).toEqual({ items: null, participantsLimited: false })
+    expect(scopes[0]).toEqual({ items: null, participantsLimited: false, includesReader: null })
+    expect(scopes[2]).toEqual({ items: null, participantsLimited: false, includesReader: null })
     // the question in the paper by name; the one being composed not at all
     expect(scopes[1]).toEqual({
       items: [{ id: result.item.id, title: result.item.title }],
       participantsLimited: true,
+      includesReader: null,
     })
+    // each reader hears only about themselves, and only where people are limited
+    expect(result.admitted.map((stage) => stage.scope.includesReader)).toEqual([null, true, null])
+    expect(result.left.map((stage) => stage.scope.includesReader)).toEqual([null, false, null])
+    expect(result.outsider.map((stage) => stage.scope.includesReader)).toEqual([null, null, null])
   })
 
   // Each question's place is kept within its own section, so the rows the

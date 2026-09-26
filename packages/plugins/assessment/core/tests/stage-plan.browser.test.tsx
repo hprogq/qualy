@@ -419,7 +419,10 @@ describe('the stage progress', () => {
   const HOUR = 3600_000
   const at = (ms: number) => new Date(Date.now() + ms).toISOString()
   const names = ['学业成绩', '学科竞赛获奖', '志愿服务', '语言技能证书', '社会实践', '文体活动']
-  const flow = (count: number) => [
+  const flow = (
+    count: number,
+    people: { limited: boolean; you?: boolean | null } = { limited: false },
+  ) => [
     {
       phaseId: 'entry',
       displayName: '正式填报',
@@ -437,16 +440,17 @@ describe('the stage progress', () => {
       entry: { kind: 'pending' as const, at: null },
       scope: {
         items: names.slice(0, count).map((title, index) => ({ id: `i${index}`, title })),
-        participantsLimited: false,
+        participantsLimited: people.limited,
+        includesReader: people.you ?? null,
       },
     },
   ]
-  const mount = (count: number) =>
+  const mount = (count: number, people?: { limited: boolean; you?: boolean | null }) =>
     renderScreen({
       client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
       children: (
         <BatchZone zone="Asia/Shanghai">
-          <BatchFlow timeline={flow(count)} />
+          <BatchFlow timeline={flow(count, people)} />
         </BatchZone>
       ),
     })
@@ -471,5 +475,22 @@ describe('the stage progress', () => {
     const items = page.getByTestId('stage-scope-items')
     await expect.element(items).toHaveAttribute('data-named', '3')
     expect(items.getByRole('button').elements()).toHaveLength(0)
+  })
+
+  it('tells a participant whether a stage kept to some people admits them', async () => {
+    await mount(1, { limited: true, you: true })
+    await expect.element(page.getByTestId('stage-scope')).toHaveAttribute('data-reader', 'in')
+  })
+
+  it('tells a participant a stage kept to some people leaves them out', async () => {
+    await mount(1, { limited: true, you: false })
+    await expect.element(page.getByTestId('stage-scope')).toHaveAttribute('data-reader', 'out')
+  })
+
+  it('says only that people are limited to a reader on no roster', async () => {
+    await mount(1, { limited: true, you: null })
+    const scope = page.getByTestId('stage-scope')
+    await expect.element(scope).toHaveAttribute('data-people', 'limited')
+    expect(scope.element().hasAttribute('data-reader')).toBe(false)
   })
 })

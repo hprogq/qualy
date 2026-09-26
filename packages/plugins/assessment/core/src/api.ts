@@ -455,14 +455,20 @@ const planWarning = Schema.Struct({
  * The items are named, because a participant reading "a supplementary stage"
  * needs to know which question it reopened. The people are not: that a stage
  * admits only some of the roster is the fact a timeline states, and who they
- * are is the roster's business. An item still being composed is left out of
- * the names, since nobody outside the office can see it yet.
+ * are is the roster's business - except for the reader, who is told whether
+ * they are among them. An item still being composed is left out of the
+ * names, since nobody outside the office can see it yet.
  */
 const timelineScope = Schema.Struct({
   /** the items this stage alone opens for filing, in paper order; null when it opens every item */
   items: Schema.NullOr(Schema.Array(Schema.Struct({ id: Schema.String, title: Schema.String }))),
   /** whether this stage admits only some of the round's participants */
   participantsLimited: Schema.Boolean,
+  /**
+   * Whether the reader is among the participants this stage admits; null
+   * when it admits everybody, or the reader is not on the roster.
+   */
+  includesReader: Schema.NullOr(Schema.Boolean),
 })
 
 // The plan as a reader sees it. No phaseKey: `stage-7` is the plan's internal

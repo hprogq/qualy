@@ -460,12 +460,25 @@ function Stage({ stage, upright }: { stage: FlowStage; upright: boolean }) {
           data-testid="stage-scope"
           data-items={stage.onlyItems === null ? 'all' : String(stage.onlyItems.length)}
           data-people={stage.somePeople ? 'limited' : 'all'}
+          // for a reader on the roster, whether the stage admits them: the
+          // line says so in their own terms rather than about "some people"
+          data-reader={stage.forReader === null ? undefined : stage.forReader ? 'in' : 'out'}
         >
           <span {...stylex.props(styles.scopeLine)}>
             <FilterIcon aria-hidden {...stylex.props(styles.scopeGlyph)} />
             <span {...stylex.props(styles.scopeWords)}>
               {stage.onlyItems !== null && <ScopeItems names={stage.onlyItems} />}
-              {stage.somePeople && <span>{format(m.flowScopePeople)}</span>}
+              {stage.somePeople && (
+                <span>
+                  {format(
+                    stage.forReader === true
+                      ? m.flowScopeYou
+                      : stage.forReader === false
+                        ? m.flowScopeNotYou
+                        : m.flowScopePeople,
+                  )}
+                </span>
+              )}
             </span>
           </span>
         </TimelineContent>

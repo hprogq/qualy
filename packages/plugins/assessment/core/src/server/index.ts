@@ -319,12 +319,19 @@ export interface MaterialRange {
  * A stage as a timeline says it, with what it narrows filing to: the items
  * it alone opens (null when it opens every item) and whether it admits only
  * some of the roster. The items are the ones anybody outside the office can
- * see - a question still being composed has no name to give yet.
+ * see - a question still being composed has no name to give yet. Of the
+ * people it admits, the reader is told only about themselves: whether they
+ * are among them, and nothing about anybody else.
  */
 export interface TimelineStage extends TimelineEntry {
   readonly scope: {
     readonly items: readonly { readonly id: string; readonly title: string }[] | null
     readonly participantsLimited: boolean
+    /**
+     * Whether the reader is among the people the stage admits; null when it
+     * admits everybody, or the reader is not on the round's roster.
+     */
+    readonly includesReader: boolean | null
   }
 }
 
@@ -1243,6 +1250,8 @@ export class Assessment extends Context.Service<
     readonly timeline: (
       tenantId: string,
       batchId: string,
+      /** who is reading it, for the one fact about themselves it carries */
+      readerId?: string,
     ) => Effect.Effect<readonly TimelineStage[], BatchNotFound>
     readonly gate: (
       tenantId: string,
@@ -5072,7 +5081,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
       ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
     }),
 
-    timeline: Effect.fn('Assessment.timeline')(function* (tenantId, batchId) {
+    timeline: Effect.fn('Assessment.timeline')(function* (tenantId, batchId, readerId) {
       const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
       if (!batch) return yield* new BatchNotFound()
       const now = yield* Clock.currentTimeMillis
@@ -5089,6 +5098,19 @@ export const make = Effect.fn('Assessment.make')(function* () {
         (entry) => entry.itemId,
       )
       const limited = new Set(scopes.participants.map((entry) => entry.phaseId))
+      // the reader's own place on the roster, asked only when some stage
+      // admits only some of it: whether they are among those, and no more
+      const reader =
+        readerId === undefined || scopes.participants.length === 0
+          ? null
+          : yield* dieQuery(withDb(activeParticipantByUser(tenantId, batchId, readerId)))
+      const admitsReader = new Set(
+        reader === null
+          ? []
+          : scopes.participants
+              .filter((entry) => entry.participantId === reader.id)
+              .map((entry) => entry.phaseId),
+      )
       // the paper, in its own order, only when some stage names a question
       const paper =
         scopes.items.length === 0
@@ -5109,6 +5131,10 @@ export const make = Effect.fn('Assessment.make')(function* () {
                     .filter((item) => named.includes(item.id))
                     .map((item) => ({ id: item.id, title: item.title })),
             participantsLimited: limited.has(stage.phaseId),
+            includesReader:
+              reader === null || !limited.has(stage.phaseId)
+                ? null
+                : admitsReader.has(stage.phaseId),
           },
         }
       })
@@ -7051,7 +7077,11 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         // the plan of a batch is readable by whoever the batch is readable
         // by, which is not the same as whoever knows an id
         yield* assessment.assertVisible(principal.tenantId, params.batchId, principal)
-        const timeline = yield* assessment.timeline(principal.tenantId, params.batchId)
+        const timeline = yield* assessment.timeline(
+          principal.tenantId,
+          params.batchId,
+          principal.userId,
+        )
         return {
           timeline: timeline.map((entry) => ({
             phaseId: entry.phaseId,

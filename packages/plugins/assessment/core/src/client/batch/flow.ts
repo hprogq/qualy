@@ -8,6 +8,8 @@ export interface FlowEntry extends TimelineLike {
   readonly scope?: {
     readonly items: readonly { readonly id: string; readonly title: string }[] | null
     readonly participantsLimited: boolean
+    /** whether the reader is among the people it admits; absent or null when that is not asked */
+    readonly includesReader?: boolean | null
   }
 }
 
@@ -37,6 +39,11 @@ export interface FlowStage {
   readonly onlyItems: readonly string[] | null
   /** whether the stage admits only some of the round's participants */
   readonly somePeople: boolean
+  /**
+   * Whether the reader is among those it admits, for a reader on the
+   * roster of a stage that admits only some; null for anybody else.
+   */
+  readonly forReader: boolean | null
 }
 
 /** the plan as stages with both of their edges filled in */
@@ -55,6 +62,7 @@ export const stagesOf = (timeline: readonly FlowEntry[]): readonly FlowStage[] =
       until: until !== null && Number.isNaN(until) ? null : until,
       onlyItems: entry.scope?.items?.map((item) => item.title) ?? null,
       somePeople: entry.scope?.participantsLimited ?? false,
+      forReader: entry.scope?.includesReader ?? null,
     }
   })
 

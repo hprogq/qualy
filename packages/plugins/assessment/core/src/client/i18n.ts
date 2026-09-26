@@ -6024,6 +6024,8 @@ const i18n = definePluginMessages({
       id: 'assessment/flow/scope-people',
       defaultMessage: 'Only for some participants',
     },
+    flowScopeYou: { id: 'assessment/flow/scope-you', defaultMessage: 'Open to you' },
+    flowScopeNotYou: { id: 'assessment/flow/scope-not-you', defaultMessage: 'Not open to you' },
 
     // ------------------------------------------------------------------
     // participants

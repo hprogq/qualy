@@ -1740,6 +1740,8 @@ export default {
   'assessment/flow/scope-fewer': '收起',
   'assessment/flow/scope-some': '仅开放部分项目',
   'assessment/flow/scope-people': '仅对部分参评人开放',
+  'assessment/flow/scope-you': '本阶段对你开放',
+  'assessment/flow/scope-not-you': '本阶段不对你开放',
   'assessment/action/done': '完成',
   'assessment/schedule/go': '设置时间',
   'assessment/phase/describe-title': '{name}阶段说明',
