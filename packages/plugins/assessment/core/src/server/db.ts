@@ -1094,12 +1094,12 @@ export interface AccessSourceRow {
   /**
    * The assignment as its own record has it, whether or not it still
    * stands: the role and unit a lapsed source came from are what a reader
-   * needs to recognise it. Null only where that record is gone.
+   * needs to recognise it. Null only where that record is gone. The unit is
+   * named at the reader's edge, which knows what they manage.
    */
   roleId: string | null
   roleName: string | null
   orgNodeId: string | null
-  orgNodeName: string | null
   coverage: 'self' | 'subtree' | null
   /** withdrawn by the organization */
   revoked: boolean
@@ -1154,15 +1154,11 @@ const accessSourcesOf = (tenantId: string, batchId: string, subjectIds?: readonl
         .leftJoin('Role as r', (join) =>
           join.onRef('r.tenantId', '=', 'rg.tenantId').onRef('r.id', '=', 'rg.roleId'),
         )
-        .leftJoin('OrgNode as n', (join) =>
-          join.onRef('n.tenantId', '=', 'rg.tenantId').onRef('n.id', '=', 'rg.orgNodeId'),
-        )
         .select(['s.id', 's.roleAssignmentId', 's.subjectId', 's.origin'])
         .select([
           'rg.roleId as roleId',
           'r.name as roleName',
           'rg.orgNodeId as orgNodeId',
-          'n.name as orgNodeName',
           'rg.coverage as coverage',
         ])
         .select([
@@ -2094,28 +2090,6 @@ export const batchUnits = (tenantId: string, batchId: string, held: Authorizatio
         }))
       }),
     )
-
-/**
- * The names of the units these assignments are anchored at.
- *
- * Unfiltered by the reader's reach on purpose: it is asked only for
- * assignments that already work on a batch this reader administers, which
- * cover the units of its own roster from above or below - the path a roster
- * row already shows.
- */
-export const anchorNames = (tenantId: string, nodeIds: readonly string[]) =>
-  nodeIds.length === 0
-    ? Effect.succeed(new Map<string, string>())
-    : db
-        .query((k) =>
-          k
-            .selectFrom('OrgNode')
-            .select(['id', 'name'])
-            .where('tenantId', '=', tenantId)
-            .where('id', 'in', nodeIds as string[])
-            .execute(),
-        )
-        .pipe(Effect.map((rows) => new Map(rows.map((row) => [row.id, row.name]))))
 
 /** the names of these units, leaving out the ones this reader cannot reach */
 export const reachableNodeNames = (

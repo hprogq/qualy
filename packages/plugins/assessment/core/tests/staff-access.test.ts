@@ -228,6 +228,117 @@ describe.runIf(postgresAvailable)('the staff of a round', () => {
     expect(r.withheld.total).toBe(1)
   })
 
+  // A college's administrator runs a round of that college, and a
+  // school-wide supervisor works on it from the root. The administrator is
+  // told the supervisor's role and that it is held somewhere they do not
+  // manage - not the name of that unit, which every other screen of this
+  // plugin keeps from them as well.
+  it('names only the units the reader manages', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('staff-unit-reach')
+        const assessment = yield* Assessment
+        const collegeA = one<{ id: string }>(
+          yield* runSql(sql`
+            select id from org_nodes where tenant_id = ${f.t} and name = 'College A'`),
+        ).id
+        // somebody who reviews for the whole school, appointed at its root
+        const supervisorRole = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into roles (tenant_id, code, name, kind, status, anchor_mode)
+            values (${f.t}, 'supervisor', 'Supervisor', 'org', 'active', 'allow-list')
+            returning id`),
+        ).id
+        yield* runSql(sql`
+          insert into role_permissions (tenant_id, role_id, permission_id)
+          select ${f.t}, ${supervisorRole}, p.id from permissions p
+          where p.code = 'assessment.review.process'`)
+        const supervisor = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+            values (${f.t}, 'Supervisor', ${f.studentType}, ${f.root}) returning id`),
+        ).id
+        yield* runSql(sql`
+          insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+          values (${f.t}, ${supervisor}, ${supervisorRole}, ${f.root}, 'subtree')`)
+        // and the college's own administrator, who manages rounds there only
+        const manager = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+            values (${f.t}, 'Manager', ${f.studentType}, ${collegeA}) returning id`),
+        ).id
+        const managerRole = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into roles (tenant_id, code, name, kind, status, anchor_mode)
+            values (${f.t}, 'college-admin', 'College admin', 'org', 'active', 'allow-list')
+            returning id`),
+        ).id
+        yield* runSql(sql`
+          insert into role_permissions (tenant_id, role_id, permission_id)
+          select ${f.t}, ${managerRole}, p.id from permissions p
+          where p.code = 'assessment.batch.manage'`)
+        yield* runSql(sql`
+          insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+          values (${f.t}, ${manager}, ${managerRole}, ${collegeA}, 'subtree')`)
+
+        const batch = yield* assessment.createBatch(
+          f.t,
+          {
+            name: 'College A round',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [collegeA], userTypeIds: [f.studentType] },
+          },
+          f.principal(f.admin),
+        )
+        // the supervisor is withdrawn and re-appointed after the round
+        // began: a lapsed source and a new one, both at the root
+        yield* runSql(sql`
+          update role_grants set revoked_at = now()
+          where tenant_id = ${f.t} and user_id = ${supervisor}`)
+        yield* runSql(sql`
+          insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+          values (${f.t}, ${supervisor}, ${supervisorRole}, ${f.root}, 'subtree')`)
+        const college = f.principal(manager)
+        const school = f.principal(f.admin)
+        return {
+          f,
+          supervisor,
+          collegeA,
+          byCollege: yield* assessment.listAccess(f.t, batch.id, {}, college),
+          bySchool: yield* assessment.listAccess(f.t, batch.id, {}, school),
+          changesByCollege: yield* assessment.previewAccessSync(f.t, batch.id, {}, college),
+          changesBySchool: yield* assessment.previewAccessSync(f.t, batch.id, {}, school),
+        }
+      }),
+    )
+    const r = ok(exit)
+    const whereOf = (access: typeof r.byCollege, userId: string) =>
+      access.staff
+        .find((row) => row.userId === userId)
+        ?.sources.map((source) => [source.orgNodeId, source.orgNodeName])
+
+    // the supervisor's unit is identified to both, named only to the school
+    expect(whereOf(r.byCollege, r.supervisor)).toEqual([[r.f.root, null]])
+    expect(whereOf(r.bySchool, r.supervisor)).toEqual([[r.f.root, 'Root']])
+    // a unit the college administrator manages is named to them as ever
+    expect(whereOf(r.byCollege, r.f.recorder)).toEqual([[r.collegeA, 'College A']])
+    // the same in the changes waiting to be taken on
+    const supervisorChanges = (page: typeof r.changesByCollege) =>
+      page.items
+        .filter((change) => change.userId === r.supervisor)
+        .map((change) => [change.kind, change.orgNodeId, change.orgNodeName])
+        .sort((left, right) => String(left[0]).localeCompare(String(right[0])))
+    expect(supervisorChanges(r.changesByCollege)).toEqual([
+      ['lapsed', r.f.root, null],
+      ['new', r.f.root, null],
+    ])
+    expect(supervisorChanges(r.changesBySchool)).toEqual([
+      ['lapsed', r.f.root, 'Root'],
+      ['new', r.f.root, 'Root'],
+    ])
+  })
+
   it('names the unit of an assignment the round has not taken on yet', async () => {
     const exit = await run(
       db.url,

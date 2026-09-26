@@ -632,8 +632,9 @@ const accessSourceView = Schema.Struct({
   roleId: Schema.String,
   roleName: Schema.String,
   origin: Schema.Literals(['inherited', 'explicit']),
+  /** where it is anchored; null for a tenant-wide assignment */
   orgNodeId: Schema.NullOr(Schema.String),
-  /** the unit it is anchored at; null for a tenant-wide assignment */
+  /** that unit's name, or null where it lies outside what this caller manages */
   orgNodeName: Schema.NullOr(Schema.String),
   coverage: Schema.NullOr(Schema.Literals(['self', 'subtree'])),
   accepted: Schema.Array(Schema.String),
@@ -672,6 +673,8 @@ const accessChangeView = Schema.Struct({
   businessNo: Schema.NullOr(Schema.String),
   roleName: Schema.String,
   /** where the assignment is anchored; null for a tenant-wide one */
+  orgNodeId: Schema.NullOr(Schema.String),
+  /** that unit's name, or null where it lies outside what this caller manages */
   orgNodeName: Schema.NullOr(Schema.String),
   permissions: Schema.Array(Schema.String),
 })

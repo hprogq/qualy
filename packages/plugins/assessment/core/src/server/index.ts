@@ -189,7 +189,6 @@ import {
   lastArchivedAt,
   lastArchivedFor,
   accessSources,
-  anchorNames,
   liveStaffIds,
   acceptAccessSource,
   acceptPermissions,
@@ -440,7 +439,10 @@ export interface AccessSourceView {
   readonly roleName: string
   readonly origin: 'inherited' | 'explicit'
   readonly orgNodeId: string | null
-  /** the unit it is anchored at, by name; null for a tenant-wide assignment */
+  /**
+   * The unit it is anchored at, by name: null for a tenant-wide assignment,
+   * and for a unit outside what the reader manages (see `namedFor`)
+   */
   readonly orgNodeName: string | null
   readonly coverage: 'self' | 'subtree' | null
   /** the ceiling this batch accepted */
@@ -531,6 +533,9 @@ export interface AccessChange {
   readonly displayName: string
   readonly businessNo: string | null
   readonly roleName: string
+  /** where the assignment is anchored; null for a tenant-wide one */
+  readonly orgNodeId: string | null
+  /** its name, where the reader manages it (see `namedFor`) */
   readonly orgNodeName: string | null
   readonly permissions: readonly string[]
 }
@@ -2655,7 +2660,8 @@ export const make = Effect.fn('Assessment.make')(function* () {
         roleName: assignment?.roleName ?? source.roleName ?? '',
         origin: source.origin,
         orgNodeId: assignment?.orgNodeId ?? source.orgNodeId,
-        orgNodeName: source.orgNodeName,
+        // named where a reader is shown it, by what that reader manages
+        orgNodeName: null,
         coverage: assignment?.coverage ?? source.coverage,
         accepted: source.accepted,
         current: source.accepted.filter((code) => assignment?.codes.includes(code) === true),
@@ -2713,6 +2719,11 @@ export const make = Effect.fn('Assessment.make')(function* () {
             resource: batchResource(batchId),
             assignmentIds: appointed,
           })
+    const unitName = yield* namedFor(
+      tenantId,
+      as,
+      access.staff.flatMap((subject) => subject.sources.map((source) => source.orgNodeId)),
+    )
     const view: BatchAccessView = {
       staff: access.staff.map((subject) => {
         const manageable = subject.userId !== as.userId
@@ -2721,6 +2732,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
           manageable,
           sources: subject.sources.map((source) => ({
             ...source,
+            orgNodeName: unitName(source.orgNodeId),
             removable:
               manageable && source.origin === 'explicit' && revocable.has(source.assignmentId),
           })),
@@ -2728,6 +2740,31 @@ export const make = Effect.fn('Assessment.make')(function* () {
       }),
     }
     return view
+  })
+
+  /**
+   * The names of the units staff sources are anchored at, as one reader may
+   * read them.
+   *
+   * Only the units the reader manages are named, as everywhere else this
+   * plugin shows a unit to a round's administrator (a placement's lineage,
+   * an import's selection): a college administrator does not learn the
+   * names of the units a school-wide role or another college's appointment
+   * hangs from. A unit left unnamed still has its id, so a screen can tell
+   * "somewhere you do not manage" from "the whole tenant".
+   */
+  const namedFor = Effect.fn('Assessment.namedFor')(function* (
+    tenantId: string,
+    as: Principal,
+    nodeIds: readonly (string | null)[],
+  ) {
+    const anchors = [...new Set(nodeIds.filter((id): id is string => id !== null))]
+    const held = anchors.length === 0 ? null : yield* rbac.listAuthorizedScope(as, MANAGE)
+    const names =
+      held === null
+        ? new Map<string, string>()
+        : yield* dieQuery(withDb(reachableNodeNames(tenantId, anchors, held)))
+    return (nodeId: string | null) => (nodeId === null ? null : (names.get(nodeId) ?? null))
   })
 
   /**
@@ -2898,21 +2935,6 @@ export const make = Effect.fn('Assessment.make')(function* () {
     )
     const named = (userId: string) => names.get(userId)?.displayName ?? ''
     const business = (userId: string) => names.get(userId)?.businessNo ?? null
-    // where an assignment not yet accepted is anchored; an accepted one
-    // carries its unit on its own row
-    const anchored = yield* dieQuery(
-      withDb(
-        anchorNames(tenantId, [
-          ...new Set(
-            assignments
-              .filter((assignment) => !accepted.has(assignment.assignmentId))
-              .flatMap((assignment) =>
-                assignment.orgNodeId === null ? [] : [assignment.orgNodeId],
-              ),
-          ),
-        ]),
-      ),
-    )
 
     const newSources = assignments
       .filter((assignment) => !accepted.has(assignment.assignmentId))
@@ -2923,8 +2945,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
         displayName: named(assignment.userId),
         businessNo: business(assignment.userId),
         roleName: assignment.roleName,
-        orgNodeName:
-          assignment.orgNodeId === null ? null : (anchored.get(assignment.orgNodeId) ?? null),
+        orgNodeId: assignment.orgNodeId,
+        // named for the page a reader is shown, not for the whole comparison
+        orgNodeName: null,
         permissions: assignment.codes,
       }))
 
@@ -2943,7 +2966,8 @@ export const make = Effect.fn('Assessment.make')(function* () {
               displayName: named(source.subjectId),
               businessNo: business(source.subjectId),
               roleName: assignment.roleName,
-              orgNodeName: source.orgNodeName,
+              orgNodeId: source.orgNodeId,
+              orgNodeName: null,
               permissions: gained,
             },
           ]
@@ -2970,9 +2994,10 @@ export const make = Effect.fn('Assessment.make')(function* () {
               displayName: named(source.subjectId),
               businessNo: business(source.subjectId),
               // a withdrawn assignment is gone from the live list, but its
-              // own record still names the role and the unit it was
+              // own record still names the role and where it was held
               roleName: assignment?.roleName ?? source.roleName ?? '',
-              orgNodeName: source.orgNodeName,
+              orgNodeId: source.orgNodeId,
+              orgNodeName: null,
               permissions: gone,
             },
           ]
@@ -4139,7 +4164,16 @@ export const make = Effect.fn('Assessment.make')(function* () {
         if (key === null) return yield* cursorUnusable()
         const after = key === undefined ? 0 : positionAfter(changes, key)
         const size = pageSize(page.limit, DEFAULT_PAGE_SIZE)
-        const items = changes.slice(after, after + size)
+        const shown = changes.slice(after, after + size)
+        const unitName = yield* namedFor(
+          tenantId,
+          as,
+          shown.map((change) => change.orgNodeId),
+        )
+        const items = shown.map((change) => ({
+          ...change,
+          orgNodeName: unitName(change.orgNodeId),
+        }))
         const last = items.at(-1)
         return {
           items,
