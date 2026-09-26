@@ -18,8 +18,8 @@ import { momentOf, standingOf, type EntryLine, type LinePart } from './model.ts'
 // there. The version number is not - it belongs to the account in the drawer,
 // where versions are what the reader is looking at.
 //
-// A claim holding news its owner has not read wears a red dot in the margin
-// before its name, and its name in a heavier weight, until it is opened.
+// A claim holding news its owner has not read wears a red dot before its
+// name, and its name in a heavier weight, until it is opened.
 
 const styles = stylex.create({
   row: {
@@ -55,14 +55,13 @@ const styles = stylex.create({
   rowOn: {
     backgroundColor: tokens.selectedSurface,
   },
-  // in the margin, level with the name, so nothing on the row moves for it
-  unread: {
-    position: 'absolute',
-    // the name's first line: the row's own padding, then half its height
-    top: 'calc(14px + 0.65em)',
-    left: 11,
-  },
-  unreadCompact: { left: 5 },
+  // At the head of the name's line and level with it. At a desk it hangs in
+  // the row's margin, so nothing on the row moves for it; a narrow row's
+  // margin is too slight to hold it clear of the edge, so there it stands
+  // before the name.
+  unread: { alignSelf: 'center' },
+  // 28 of margin: the dot 11 in from the edge, the name where it always is
+  unreadHanging: { marginLeft: -17, marginRight: 3 },
   leadUnread: { fontWeight: 600 },
   // a figure's field name, quieter than the figure it names, so the two read
   // as a label and its value rather than as one sentence
@@ -273,10 +272,10 @@ export function EntryRow({
         selected && styles.rowOn,
       )}
     >
-      {unread && <UnreadDot xstyle={[styles.unread, compact && styles.unreadCompact]} />}
       <span {...stylex.props(styles.main)}>
         {unread && <VisuallyHidden>{format(m.claimUnread)}</VisuallyHidden>}
         <span {...stylex.props(styles.identity)}>
+          {unread && <UnreadDot xstyle={[styles.unread, !compact && styles.unreadHanging]} />}
           <span data-part="lead" {...stylex.props(styles.lead, unread && styles.leadUnread)}>
             {lead === undefined ? line.lead : <Part part={lead} />}
           </span>

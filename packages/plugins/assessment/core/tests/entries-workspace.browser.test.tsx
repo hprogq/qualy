@@ -1544,6 +1544,41 @@ describe('what a question’s row says at a glance', () => {
     await expect.element(page.getByTestId('rail-all')).toHaveAccessibleName(new RegExp(holds))
   })
 
+  // The dot on a claim with news stands level with its name and clear of the
+  // row's edge and of the name, at a desk and on a phone alike.
+  it('sets a claim’s news dot level with its name, clear of the edge', async () => {
+    for (const width of [390, 834, 1440]) {
+      await page.viewport(width, 900)
+      const filed = [claim(1, itemId(1), 'in_review'), claim(2, itemId(1), 'approved')]
+      const { unmount } = await workspace({
+        route: `${base}?open=${itemId(1)}`,
+        entries: filed,
+        stubs: {
+          listMyEntries: () =>
+            Effect.succeed({
+              participantId: PARTICIPANT_ID,
+              entries: filed,
+              nextCursor: null,
+              attention: { unreadEntryIds: [entryId(1)] },
+            }),
+        },
+      })
+      await expect.poll(() => rows().length).toBe(2)
+      const row = rows().find((one) => one.getAttribute('data-entry') === entryId(1))!
+      const at = row.getBoundingClientRect()
+      const dot = row.querySelector('[data-testid="unread-dot"]')!.getBoundingClientRect()
+      const lead = row.querySelector('[data-part="lead"]')!.getBoundingClientRect()
+      expect({ width, edge: dot.left - at.left >= 10 }).toEqual({ width, edge: true })
+      expect({ width, gap: lead.left - dot.right >= 6 }).toEqual({ width, gap: true })
+      const middle = (box: DOMRect) => box.top + box.height / 2
+      expect({ width, level: Math.abs(middle(dot) - middle(lead)) <= 1.5 }).toEqual({
+        width,
+        level: true,
+      })
+      await unmount()
+    }
+  })
+
   // Among ended claims the one holding news is where the list opens, and a
   // question still taking claims keeps its way in under them.
   it('opens on the ended claims holding news, and keeps the way to file under them', async () => {
