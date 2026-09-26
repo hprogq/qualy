@@ -803,14 +803,13 @@ function MyDesk({
         navigate('assessment/batch-reviews', { params: { batchId }, search: { view: 'asked' } }),
     })
   }
-  // grouped by the standing each row speaks to, labels only when both exist
+  // grouped by the standing each row speaks to, each under its strip - one
+  // standing as much as two: the strip is how the card reads, not a way of
+  // telling two standings apart
   const laneWord = (which: 'participant' | 'reviewer') =>
     format(which === 'participant' ? m.overviewLaneEntry : m.overviewLaneReview)
-  const todoGroups = (mixed ? (['participant', 'reviewer'] as const) : ([null] as const))
-    .map((which) => ({
-      which,
-      rows: which === null ? todo : todo.filter((row) => row.lane === which),
-    }))
+  const todoGroups = (['participant', 'reviewer'] as const)
+    .map((which) => ({ which, rows: todo.filter((row) => row.lane === which) }))
     .filter((group) => group.rows.length > 0)
 
   return (
@@ -832,16 +831,19 @@ function MyDesk({
         ) : (
           <div {...stylex.props(styles.card, styles.cardRaised)} data-testid="overview-actions">
             {todoGroups.map((group) => (
-              <div key={group.which ?? 'all'} {...stylex.props(styles.lane)}>
+              <div key={group.which} {...stylex.props(styles.lane)}>
                 {/* the standing each row speaks to, as a ruled strip inside the
                     card rather than a heading above a box of its own: two
                     standings are two parts of one desk, not two desks */}
-                {group.which !== null && (
-                  <div {...stylex.props(styles.strip)}>
-                    <span {...stylex.props(styles.stripWord)}>{laneWord(group.which)}</span>
-                    <span {...stylex.props(styles.stripCount)}>{group.rows.length}</span>
-                  </div>
-                )}
+                <div
+                  {...stylex.props(styles.strip)}
+                  data-testid="overview-lane"
+                  data-lane={group.which}
+                  data-count={group.rows.length}
+                >
+                  <span {...stylex.props(styles.stripWord)}>{laneWord(group.which)}</span>
+                  <span {...stylex.props(styles.stripCount)}>{group.rows.length}</span>
+                </div>
                 <div {...stylex.props(styles.laneRows)}>
                   {group.rows.map((row) => (
                     <div

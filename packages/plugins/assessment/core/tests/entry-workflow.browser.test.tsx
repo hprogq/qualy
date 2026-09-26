@@ -314,6 +314,43 @@ describe('the overview desk', () => {
     })
     await page.viewport(414, 896)
   })
+
+  // One standing reads the same as two: its rows under the strip that
+  // names it, as a reviewer's and a participant's desk both do.
+  it('heads a participant’s own rows with their strip, alone as they are', async () => {
+    await page.viewport(1280, 800)
+    await screen(
+      {
+        getTimeline: () => Effect.succeed({ timeline: [] }),
+        getMyOverview: () =>
+          Effect.succeed({
+            participant: {
+              unreadItemIds: [],
+              actions: [
+                {
+                  kind: 'revision' as const,
+                  entryId: ENTRY_ID,
+                  itemId: ITEM_ID,
+                  itemTitle: '退役复学',
+                  at: '2026-03-03T10:00:00.000Z',
+                  who: null,
+                  summary: '2024 年入伍',
+                },
+              ],
+            },
+            reviewer: null,
+          }),
+        listMyActivity: () => Effect.succeed({ items: [], nextCursor: null }),
+      },
+      `/assessment/batches/${BATCH_ID}`,
+      [{ path: '/assessment/batches/:batchId', element: <BatchOverviewPage /> }],
+    )
+    const actions = page.getByTestId('overview-actions')
+    await expect.element(actions).toBeVisible()
+    const lanes = actions.element().querySelectorAll('[data-testid="overview-lane"]')
+    expect([...lanes].map((lane) => lane.getAttribute('data-lane'))).toEqual(['participant'])
+    expect(lanes[0]!.getAttribute('data-count')).toBe('1')
+  })
 })
 
 describe('filing a claim', () => {
