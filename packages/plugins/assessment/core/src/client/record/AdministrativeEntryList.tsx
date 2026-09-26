@@ -43,11 +43,13 @@ const wide = '@media (min-width: 900px)'
 const wider = '@media (min-width: 1100px)'
 
 // name, number, item, standing, recorder, time - and how it came in, once
-// there is the room for it
+// there is the room for it. The item is what a line is read for, so it takes
+// what the others leave: a recorder's name is a few characters wherever the
+// window is, and a share of a wide one only spread it out into air.
 const WIDE_COLUMNS =
-  'minmax(5rem, 0.9fr) 7rem minmax(0, 1.6fr) 5.5rem minmax(4rem, 0.8fr) 7.5rem 1rem'
+  'minmax(5rem, 0.8fr) 7rem minmax(0, 2.2fr) 5.5rem minmax(4rem, 7rem) 7.5rem 1rem'
 const WIDER_COLUMNS =
-  'minmax(5rem, 0.9fr) 7rem minmax(0, 1.6fr) 5rem 5.5rem minmax(4rem, 0.8fr) 7.5rem 1rem'
+  'minmax(5rem, 0.8fr) 7rem minmax(0, 2.4fr) 5rem 5.5rem minmax(4rem, 7rem) 7.5rem 1rem'
 
 const styles = stylex.create({
   column: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 12 },

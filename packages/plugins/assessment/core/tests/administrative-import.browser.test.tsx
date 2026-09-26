@@ -634,6 +634,34 @@ describe('the record book and its histories across a screen', () => {
     { tab: '?tab=imports', row: 'administrative-import', list: 'administrative-imports' },
   ] as const
 
+  // The item is what a line of the book is read for, and it was cut off at
+  // a desk's width while the recorder's column, a name of three characters,
+  // kept a share of the row as empty air.
+  for (const width of [1440, 1920]) {
+    it(`gives the item the room a recorder's name does not need at ${String(width)} wide`, async () => {
+      await page.viewport(width, 900)
+      try {
+        const title = '全国大学生数学建模竞赛（本科组）省级一等奖'
+        await open(base, {
+          listAdministrativeEntries: () =>
+            Effect.succeed({
+              entries: [{ ...bookLine, item: { id: ITEM_ID, title } }],
+              nextCursor: null,
+            }),
+        })
+        const line = page.getByTestId('administrative-entry').first()
+        await expect.element(line).toBeVisible()
+        const item = page.getByTitle(title).element()
+        expect(item.scrollWidth).toBeLessThanOrEqual(item.clientWidth + 1)
+        // the recorder keeps no more than a name's worth of the row
+        const actor = [...line.element().children].find((cell) => cell.textContent === '张老师')!
+        expect(actor.getBoundingClientRect().width).toBeLessThanOrEqual(112.5)
+      } finally {
+        await page.viewport(1280, 800)
+      }
+    })
+  }
+
   it('waits for the record book in the shape of one line a record', async () => {
     await page.viewport(1280, 800)
     await open(base, { listAdministrativeEntries: () => Effect.never })

@@ -29,9 +29,10 @@ import { useWhen } from './when.ts'
 const PAGE = 30
 const wide = '@media (min-width: 900px)'
 
-// what it was, what it filled, what it comes to now, who, and when: one line
-// a record, the time at the right edge
-const WIDE_COLUMNS = 'minmax(0, 1.4fr) minmax(0, 1fr) 9rem minmax(4rem, 0.7fr) 7.5rem 1rem'
+// what it recorded, how the people were found, what it comes to now, who,
+// and when: one line a record, the time at the right edge. The question is
+// what a line is read for; how the people were found is a short phrase.
+const WIDE_COLUMNS = 'minmax(0, 2fr) minmax(0, 1fr) 9rem minmax(4rem, 7rem) 7.5rem 1rem'
 
 const styles = stylex.create({
   card: {

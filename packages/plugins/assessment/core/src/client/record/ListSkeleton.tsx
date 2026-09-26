@@ -51,15 +51,15 @@ const styles = stylex.create({
   entries: {
     gridTemplateColumns: {
       default: 'minmax(0, 1fr) auto 1rem',
-      [wide]: 'minmax(5rem, 0.9fr) 7rem minmax(0, 1.6fr) 5.5rem minmax(4rem, 0.8fr) 7.5rem 1rem',
+      [wide]: 'minmax(5rem, 0.8fr) 7rem minmax(0, 2.2fr) 5.5rem minmax(4rem, 7rem) 7.5rem 1rem',
       [wider]:
-        'minmax(5rem, 0.9fr) 7rem minmax(0, 1.6fr) 5rem 5.5rem minmax(4rem, 0.8fr) 7.5rem 1rem',
+        'minmax(5rem, 0.8fr) 7rem minmax(0, 2.4fr) 5rem 5.5rem minmax(4rem, 7rem) 7.5rem 1rem',
     },
   },
   history: {
     gridTemplateColumns: {
       default: 'minmax(0, 1fr) 1rem',
-      [wide]: 'minmax(0, 1.4fr) minmax(0, 1fr) 9rem minmax(4rem, 0.7fr) 7.5rem 1rem',
+      [wide]: 'minmax(0, 1.4fr) minmax(0, 1.6fr) 9rem minmax(4rem, 7rem) 7.5rem 1rem',
     },
   },
   // the name, where it stands on a phone
