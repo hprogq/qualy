@@ -49,6 +49,9 @@ import {
 
 const PAGE = 20
 
+/** the filters of claims that ended without counting, which "all" leaves out */
+const ENDED: ReadonlySet<ChipKey> = new Set<ChipKey>(['abandoned', 'voided', 'revoked'])
+
 /** the orders the claims can be read in */
 type Order = 'newest' | 'oldest'
 
@@ -557,15 +560,34 @@ export function ItemPane({
   const counts = new Map(
     chips.map((one) => [one.key, entries.filter((entry) => one.test(entry)).length] as const),
   )
-  // a chosen filter that has nothing left under it gives way to all
-  const active = chip !== 'all' && (counts.get(chip) ?? 0) === 0 ? 'all' : chip
+  const live = counts.get('all') ?? 0
+  // Where nothing live is left under a question, what it holds is the
+  // claims that ended - one that went with the question, one given up, a
+  // record taken back - and the list opens on them rather than on an empty
+  // "all" with its one claim behind a filter: the one holding news first.
+  const ended = chips.filter((one) => ENDED.has(one.key) && (counts.get(one.key) ?? 0) > 0)
+  const landing =
+    live > 0
+      ? 'all'
+      : (ended.find((one) =>
+          entries.some((entry) => unreadEntries?.has(entry.id) === true && one.test(entry)),
+        )?.key ??
+        ended[0]?.key ??
+        'all')
+  // a chosen filter that has nothing left under it gives way to where the
+  // list lands
+  const active = (counts.get(chip) ?? 0) > 0 ? chip : landing
   const test = chips.find((one) => one.key === active)?.test ?? (() => true)
   // a filter holding news the list in view leaves out says so, so the news
   // under a filter the reader is not in is never out of sight
   const holdsNews = (holds: (entry: EntryDto) => boolean) =>
     unreadEntries !== undefined &&
     entries.some((entry) => unreadEntries.has(entry.id) && holds(entry) && !test(entry))
-  const offered = chips.filter((one) => one.key === 'all' || (counts.get(one.key) ?? 0) > 0)
+  // "all" counts the live claims: with none left it is not offered, and the
+  // filters of how the rest ended are all there is
+  const offered = chips.filter((one) =>
+    one.key === 'all' ? live > 0 || ended.length === 0 : (counts.get(one.key) ?? 0) > 0,
+  )
 
   // Where the chosen filter sits in its row, measured, so one face slides
   // between filters rather than one switching off and another on. Measured
@@ -630,10 +652,9 @@ export function ItemPane({
     })
   const shown = filtered.slice(0, limit)
   const listed = entries.filter((entry) => entry.status !== 'voided')
-  // nothing shown because of a filter the reader chose, as against nothing
-  // there to show: only a withdrawn record left under a question reads as
-  // an empty question, with its own filter still offered above
-  const narrowed = active !== 'all' || needle !== ''
+  // nothing shown because of a filter or a search, as against nothing there
+  // to show: a question with no claims at all is the only empty one
+  const narrowed = active !== landing || needle !== ''
 
   const counted = row.right === '' ? 0 : Number(row.right)
   const voided = item.status === 'voided'
@@ -796,9 +817,10 @@ export function ItemPane({
   const addLabel = format(filing?.declared === true ? m.entryDeclare : m.entryNew)
   // Where another claim would start, the way in - or, while the stage has
   // shut it, why, in the words the way in would have had: a key that only
-  // says it is unavailable sends the reader looking for the reason.
+  // says it is unavailable sends the reader looking for the reason. A
+  // question with no claims at all says both in its empty tray instead.
   const addRow =
-    filing === null || !filing.mayAdd || listed.length === 0 ? null : filing.shut ? (
+    filing === null || !filing.mayAdd || entries.length === 0 ? null : filing.shut ? (
       <p
         data-testid="filing-held"
         data-reason={filing.reason ?? ''}

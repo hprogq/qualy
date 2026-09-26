@@ -1470,13 +1470,15 @@ describe('what a question’s row says at a glance', () => {
         railRow(2).querySelector('[data-testid="unread-mark"]')?.getAttribute('data-count'),
       )
       .toBe('1')
-    // nothing live under it, and the filter holding the voided claim says it
-    // holds news
-    expect(rows()).toHaveLength(0)
+    // nothing live under it: the list opens on the claim that went with it,
+    // news and all, with no filter to find first and no empty tray saying
+    // there is nothing
+    await expect.poll(() => rows().length).toBe(1)
     const chip = () => document.querySelector('[data-chip="voided"]')!
     expect(chip().getAttribute('data-count')).toBe('1')
-    expect(chip().getAttribute('data-unread')).toBe('true')
-    await userEvent.click(chip())
+    expect(chip().getAttribute('aria-pressed')).toBe('true')
+    expect(document.querySelector('[data-chip="all"]')).toBeNull()
+    expect(document.querySelector('[data-testid="entries-tray"]')).toBeNull()
     const row = document.querySelector(`[data-testid="claim-row"][data-entry="${entryId(1)}"]`)!
     expect(row.getAttribute('data-unread')).toBe('true')
     // went with its question: voided, not given up by its owner
@@ -1496,6 +1498,48 @@ describe('what a question’s row says at a glance', () => {
       .poll(() => document.querySelector('[data-chip="abandoned"]')?.getAttribute('data-count'))
       .toBe('1')
     expect(document.querySelector('[data-chip="voided"]')).toBeNull()
+  })
+
+  // Among ended claims the one holding news is where the list opens, and a
+  // question still taking claims keeps its way in under them.
+  it('opens on the ended claims holding news, and keeps the way to file under them', async () => {
+    await page.viewport(1440, 900)
+    const filed = [
+      claim(1, itemId(1), 'voided'),
+      claim(2, itemId(1), 'voided', { source: 'record' }),
+    ]
+    await workspace({
+      route: `${base}?open=${itemId(1)}`,
+      items: [question(1, '品德题目 1', BAND_A)],
+      entries: filed,
+      stubs: {
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: filed,
+            nextCursor: null,
+            attention: { unreadEntryIds: [entryId(2)] },
+          }),
+      },
+    })
+    await expect
+      .poll(() => rows().map((row) => row.getAttribute('data-entry')))
+      .toEqual([entryId(2)])
+    expect(document.querySelector('[data-chip="revoked"]')?.getAttribute('aria-pressed')).toBe(
+      'true',
+    )
+    // the other ended claim is one filter away, and says nothing it has not
+    expect(document.querySelector('[data-chip="abandoned"]')?.hasAttribute('data-unread')).toBe(
+      false,
+    )
+    expect(document.querySelector('[data-testid="entries-tray"]')).toBeNull()
+    // the way in stands after the claims, where the next one would start
+    const keys = [...document.querySelectorAll('[data-testid="file-claim"]')]
+    expect(
+      keys.some(
+        (key) => rows()[0]!.compareDocumentPosition(key) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+    ).toBe(true)
   })
 
   // The right edge of the structure says one thing one way: a word only
