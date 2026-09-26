@@ -877,8 +877,13 @@ describe('one account beside its person', () => {
       order: 10,
     },
   ]
-  const shelled = (route: string) =>
+  const shelled = (
+    route: string,
+    locale: 'zh-CN' | 'en-US' = 'zh-CN',
+    stubs: Record<string, unknown> = {},
+  ) =>
     renderScreen({
+      locale,
       client: fakeClient({
         app: {
           getManifest: () =>
@@ -930,6 +935,7 @@ describe('one account beside its person', () => {
             Effect.succeed({ participantId: PARTICIPANT_ID, entries: [], nextCursor: null }),
           listItems: () => Effect.succeed({ items: [item], version: 1 }),
           listScoreGroups: () => Effect.succeed({ groups: [], version: 1 }),
+          ...stubs,
         },
       }),
       route,
@@ -988,6 +994,37 @@ describe('one account beside its person', () => {
     const shown = back.element().textContent?.trim() ?? ''
     expect(shown).not.toBe('')
     expect(back.element().getAttribute('aria-label') ?? shown).toContain(shown)
+  })
+
+  it('says where they stand from its own end in the column, in either language', async () => {
+    await page.viewport(1280, 800)
+    const units = [
+      { id: SCHOOL, name: '示例大学', parentId: null },
+      { id: 'n1', name: '计算机与软件学院', parentId: SCHOOL },
+      { id: 'n2', name: '计算机科学与技术2023级1班', parentId: 'n1' },
+    ]
+    for (const locale of ['en-US', 'zh-CN'] as const) {
+      const { unmount } = await shelled(open, locale, {
+        listRosterUnits: () => Effect.succeed({ units }),
+      })
+      const panel = page.getByTestId('participant-panel')
+      await expect.element(panel).toBeVisible()
+      const unitFact = () => panel.element().querySelector('[data-fact="unit"]')
+      await expect.poll(() => unitFact()?.getAttribute('data-path')).toContain('2023级1班')
+      const fact = unitFact()
+      // the class, all of it, however long the name over it is
+      const path = fact!.querySelector('[data-testid="unit-path"]')!
+      const last = path.querySelector('[data-path-step="1"]')!
+      const words = last.lastElementChild as HTMLElement
+      const line = path.getBoundingClientRect()
+      expect(last.getBoundingClientRect().top).toBeLessThan(line.bottom - 1)
+      expect(words.scrollWidth).toBeLessThanOrEqual(words.clientWidth)
+      // named over it, not beside it
+      const name = fact!.previousElementSibling!
+      expect(name.tagName).toBe('DT')
+      expect(name.getBoundingClientRect().bottom).toBeLessThanOrEqual(line.top + 1)
+      await unmount()
+    }
   })
 
   it('opens the whole chain of where they stand, from the school down', async () => {

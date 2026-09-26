@@ -129,16 +129,18 @@ const styles = stylex.create({
     backgroundColor: `color-mix(in oklab, ${tokens.warning} 16%, transparent)`,
     color: tokens.warningForeground,
   },
-  // the facts as a short list of their own names and values
+  // The facts as a short list, each name over its value. The column is
+  // narrow, and a name beside its value took the room from the value in
+  // whichever language names it at length - where somebody stands, said
+  // from its own end, lost its end first.
   facts: {
-    display: 'grid',
-    gridTemplateColumns: 'max-content minmax(0, 1fr)',
-    alignItems: 'center',
-    columnGap: 14,
-    rowGap: 8,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
     margin: 0,
     fontSize: 13,
   },
+  fact: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 2 },
   factName: { margin: 0, fontSize: 12, color: tokens.mutedForeground },
   factValue: {
     display: 'flex',
@@ -636,12 +638,14 @@ export function ParticipantResultDetail({
         !unreadablePerson && <Skeleton className={stylex.props(styles.numberBone).className} />
       ) : (
         <dl {...stylex.props(styles.facts)}>
-          <dt {...stylex.props(styles.factName)}>{businessNo}</dt>
-          <dd data-fact="number" {...stylex.props(styles.factValue, styles.numeric)}>
-            {number}
-          </dd>
+          <div {...stylex.props(styles.fact)}>
+            <dt {...stylex.props(styles.factName)}>{businessNo}</dt>
+            <dd data-fact="number" {...stylex.props(styles.factValue, styles.numeric)}>
+              {number}
+            </dd>
+          </div>
           {unit !== null && (
-            <>
+            <div {...stylex.props(styles.fact)}>
               <dt {...stylex.props(styles.factName)}>{format(m.rosterUnits)}</dt>
               <dd
                 data-fact="unit"
@@ -651,22 +655,24 @@ export function ParticipantResultDetail({
               >
                 {unit}
               </dd>
-            </>
+            </div>
           )}
           {kind !== undefined && (
-            <>
+            <div {...stylex.props(styles.fact)}>
               <dt {...stylex.props(styles.factName)}>{format(m.participantFactKind)}</dt>
               <dd data-fact="kind" {...stylex.props(styles.factValue)}>
                 {kind.name}
               </dd>
-            </>
+            </div>
           )}
-          <dt {...stylex.props(styles.factName)}>
-            {format(excluded ? m.participantFactExcluded : m.participantFactIncluded)}
-          </dt>
-          <dd data-fact="roster" {...stylex.props(styles.factValue)}>
-            {included}
-          </dd>
+          <div {...stylex.props(styles.fact)}>
+            <dt {...stylex.props(styles.factName)}>
+              {format(excluded ? m.participantFactExcluded : m.participantFactIncluded)}
+            </dt>
+            <dd data-fact="roster" {...stylex.props(styles.factValue)}>
+              {included}
+            </dd>
+          </div>
         </dl>
       )}
       {standingKey !== null && <span {...stylex.props(styles.standing)}>{standingKey}</span>}
