@@ -143,40 +143,52 @@ const styles = stylex.create({
     flexDirection: 'column',
   },
   // ---- the table ---------------------------------------------------------
+  // The columns are shared out before anybody's words are read. Sized by
+  // their contents, one long name or one long kind on a page took the width
+  // from every row's unit - which is the column that says where somebody
+  // stands, and whose last step is the one thing it must not lose. So the
+  // box, the number and the kind have widths of their own, the name a share,
+  // and the unit whatever is left; a word longer than its column ends in an
+  // ellipsis and is said whole on hover.
+  fixed: { tableLayout: 'fixed', minWidth: '34rem' },
+  colTick: { width: 40 },
+  colName: { width: '28%' },
+  colNumber: { width: '8rem' },
+  colKind: { width: '7rem' },
   // the head is a strip of small grey words on the page's inset ground, as
   // the roster of users heads its columns
   headCell: {
     height: 32,
     paddingInlineStart: 10,
     paddingInlineEnd: 10,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
     backgroundColor: tokens.surfaceInset,
     fontSize: 12,
     fontWeight: 500,
     color: tokens.mutedForeground,
   },
-  tickCell: { width: '1%', paddingInlineStart: 12 },
+  tickCell: { paddingInlineStart: 12 },
   row: { cursor: 'pointer' },
   rowStill: { cursor: 'default' },
   cell: {
     paddingBlock: 9,
     paddingInlineStart: 10,
     paddingInlineEnd: 10,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
     fontSize: 12.5,
     color: tokens.mutedForeground,
   },
   nameCell: { fontSize: 13.5, color: tokens.foreground },
-  // what is left of the width after every other column took what its words
-  // need: the way down to where somebody stands, which gives way from the
-  // front when it has to
-  unitCell: { width: '100%', maxWidth: 0 },
   numeric: { fontVariantNumeric: 'tabular-nums' },
   quietWord: { color: QUIET },
-  // as wide as the name and whatever is said beside it: the column is sized
-  // by the widest of its cells, and a mark that could shrink to nothing
-  // left the column a pill's padding short of it
-  nameLine: { display: 'inline-flex', minWidth: 'max-content', alignItems: 'center', gap: 8 },
+  // the name gives way before the mark beside it: a mark cut short says
+  // nothing, and the name is whole on hover
+  nameLine: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 8 },
+  nameWord: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   blockedName: { color: tokens.mutedForeground },
-  badge: { fontWeight: 400 },
+  badge: { flexShrink: 0, whiteSpace: 'nowrap', fontWeight: 400 },
   // ---- the phone's lines -------------------------------------------------
   lines: {
     display: 'flex',
@@ -231,9 +243,14 @@ const styles = stylex.create({
     color: tokens.foreground,
   },
   lineNameWord: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  // the kind gives way first, then the name; the mark never does
   lineKind: {
-    flexShrink: 0,
+    flexShrink: 3,
+    minWidth: '3.5em',
+    maxWidth: '45%',
     marginInlineStart: 'auto',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
     fontSize: 12.5,
     color: tokens.mutedForeground,
     whiteSpace: 'nowrap',
@@ -411,7 +428,15 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
   const number = (row: Row) => row.businessNo ?? format(m.personNoBusinessNo, { businessNo })
 
   const table = (
-    <Table fill aria-label={format(m.pickerPeople)}>
+    <Table fill aria-label={format(m.pickerPeople)} xstyle={styles.fixed}>
+      <colgroup>
+        <col {...stylex.props(styles.colTick)} />
+        {/* the unit takes what is left where there is one, the name where not */}
+        <col {...stylex.props(withUnits && styles.colName)} />
+        <col {...stylex.props(styles.colNumber)} />
+        {withUnits && <col />}
+        {withKinds && <col {...stylex.props(styles.colKind)} />}
+      </colgroup>
       <TableHeader sticky>
         <TableRow>
           <TableHead scope="col" xstyle={[styles.headCell, styles.tickCell]}>
@@ -427,7 +452,7 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
           <TableHead scope="col" xstyle={styles.headCell}>
             {format(m.columnName)}
           </TableHead>
-          <TableHead scope="col" xstyle={styles.headCell}>
+          <TableHead scope="col" xstyle={styles.headCell} title={businessNo}>
             {businessNo}
           </TableHead>
           {withUnits && (
@@ -467,7 +492,12 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
               </TableCell>
               <TableCell xstyle={[styles.cell, styles.nameCell]}>
                 <span {...stylex.props(styles.nameLine)}>
-                  <span {...stylex.props(isBlocked && styles.blockedName)}>{row.displayName}</span>
+                  <span
+                    title={row.displayName}
+                    {...stylex.props(styles.nameWord, isBlocked && styles.blockedName)}
+                  >
+                    {row.displayName}
+                  </span>
                   {isBlocked && context.disabledLabel !== undefined && (
                     <Badge variant="secondary" className={stylex.props(styles.badge).className}>
                       {context.disabledLabel}
@@ -476,18 +506,23 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
                 </span>
               </TableCell>
               <TableCell
+                title={number(row)}
                 xstyle={[styles.cell, styles.numeric, row.businessNo === null && styles.quietWord]}
               >
                 {number(row)}
               </TableCell>
               {withUnits && (
-                <TableCell xstyle={[styles.cell, styles.unitCell]}>
+                <TableCell xstyle={styles.cell}>
                   {steps.length > 0 && (
                     <UnitPath steps={steps} plain pickLabel="" onPick={() => {}} />
                   )}
                 </TableCell>
               )}
-              {withKinds && <TableCell xstyle={styles.cell}>{row.userTypeName ?? ''}</TableCell>}
+              {withKinds && (
+                <TableCell xstyle={styles.cell} title={row.userTypeName ?? undefined}>
+                  {row.userTypeName ?? ''}
+                </TableCell>
+              )}
             </TableRow>
           )
         })}
@@ -561,7 +596,10 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
               />
               <span {...stylex.props(styles.lineWords)}>
                 <span {...stylex.props(styles.lineName)}>
-                  <span {...stylex.props(styles.lineNameWord, isBlocked && styles.blockedName)}>
+                  <span
+                    title={row.displayName}
+                    {...stylex.props(styles.lineNameWord, isBlocked && styles.blockedName)}
+                  >
                     {row.displayName}
                   </span>
                   {isBlocked && context.disabledLabel !== undefined && (

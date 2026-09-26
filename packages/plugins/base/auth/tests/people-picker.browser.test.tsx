@@ -189,6 +189,121 @@ describe('the people picker', () => {
   })
 })
 
+describe('the people picker over long words', () => {
+  // somebody with a long name, already taken, of a long kind, in a class
+  // four levels down
+  const LONG = 'Maximilian Alexander Fitzgerald-Worthington'
+  const KIND = '本科生（中外合作办学留学生）'
+  const CLASS = klass(1)
+  const context = (): PeoplePickerViewContext => ({
+    nodes: nodes.map((node) => ({
+      id: node.orgNodeId,
+      name: node.name,
+      parentId: node.parentId,
+    })),
+    userTypes: [],
+    rows: [
+      {
+        id: 'long',
+        displayName: LONG,
+        businessNo: '2023000001',
+        userTypeName: KIND,
+        unitId: CLASS,
+      },
+      {
+        id: 'short',
+        displayName: '王',
+        businessNo: '2023000002',
+        userTypeName: '研究生',
+        unitId: CLASS,
+      },
+    ],
+    nodeId: null,
+    scope: 'subtree',
+    userTypeId: '',
+    search: '',
+    value: [],
+    disabled: ['long'],
+    disabledLabel: '已在名单中',
+    pending: false,
+    hasPrevious: false,
+    hasNext: false,
+    onNodeChange: () => {},
+    onScopeChange: () => {},
+    onUserTypeChange: () => {},
+    onSearchChange: () => {},
+    onToggle: () => {},
+    onPrevious: () => {},
+    onNext: () => {},
+    onRetry: () => {},
+  })
+
+  /** nothing inside it is cut short */
+  const whole = (element: Element) =>
+    [element, ...element.querySelectorAll('*')].every(
+      (inside) => inside.scrollWidth <= inside.clientWidth + 1,
+    )
+
+  it('keeps the unit’s own name whole beside a long name and a long kind', async () => {
+    await page.viewport(1280, 800)
+    // as wide as the dialog it stands in hands the list
+    await renderScreen({
+      client: world(),
+      children: (
+        <div style={{ display: 'flex', width: 900, height: 520, flexDirection: 'column' }}>
+          <PeoplePickerView context={context()} />
+        </div>
+      ),
+    })
+    await expect.poll(() => rows().length).toBe(2)
+
+    const unitHead = page.getByRole('columnheader', { name: '所属组织' }).element()
+    expect(unitHead.getBoundingClientRect().width).toBeGreaterThanOrEqual(150)
+
+    for (const row of rows()) {
+      const path = row.querySelector('[data-testid="unit-path"]')!
+      const cell = path.closest('td')!.getBoundingClientRect()
+      const own = path.querySelector(
+        `[data-path-step="${Number(path.getAttribute('data-steps')) - 1}"]`,
+      )!
+      // the class itself, on the line that shows and not cut short
+      const step = own.getBoundingClientRect()
+      expect(step.left).toBeGreaterThanOrEqual(cell.left)
+      expect(step.right).toBeLessThanOrEqual(cell.right)
+      expect(step.top).toBeGreaterThanOrEqual(path.getBoundingClientRect().top - 1)
+      expect(step.bottom).toBeLessThanOrEqual(path.getBoundingClientRect().bottom + 1)
+      expect(whole(own)).toBe(true)
+    }
+
+    // the long name gives way and is whole on hover; the mark beside it
+    // does not give way at all
+    const long = rows()[0]!
+    const name = long.querySelector(`[title="${LONG}"]`)!
+    expect(name.scrollWidth).toBeGreaterThan(name.clientWidth)
+    expect(whole(long.querySelector('[data-slot="badge"]')!)).toBe(true)
+  })
+
+  it('keeps the mark beside a long name whole on a phone', async () => {
+    await page.viewport(390, 844)
+    await renderScreen({
+      client: world(),
+      children: (
+        <div style={{ display: 'flex', height: 600, flexDirection: 'column' }}>
+          <PeoplePickerView context={context()} />
+        </div>
+      ),
+    })
+    await expect.poll(() => rows().length).toBe(2)
+    const long = rows()[0]!
+    const mark = long.querySelector('[data-slot="badge"]')!
+    expect(whole(mark)).toBe(true)
+    expect(mark.getBoundingClientRect().right).toBeLessThanOrEqual(
+      long.getBoundingClientRect().right,
+    )
+    expect(long.querySelector(`[title="${LONG}"]`)).not.toBeNull()
+  })
+})
+
 describe('the people picker over a list read forwards', () => {
   const view = (over: Partial<PeoplePickerViewContext> = {}): PeoplePickerViewContext => ({
     nodes: [],
