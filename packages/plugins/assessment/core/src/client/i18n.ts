@@ -1407,7 +1407,7 @@ const i18n = definePluginMessages({
     },
     entryStatusNeedsRevision: {
       id: 'assessment/entry/status-needs-revision',
-      defaultMessage: 'Additional material required',
+      defaultMessage: 'Needs revision',
     },
     entryStatusApproved: { id: 'assessment/entry/status-approved', defaultMessage: 'Approved' },
     rowPartialApproved: {
@@ -2001,9 +2001,10 @@ const i18n = definePluginMessages({
       id: 'assessment/record/standing-overturned',
       defaultMessage: 'Not upheld',
     },
+    // an office record taken back: not the owner's own withdrawing of a claim
     recordStandingWithdrawn: {
       id: 'assessment/record/standing-withdrawn',
-      defaultMessage: 'Withdrawn',
+      defaultMessage: 'Revoked',
     },
     recordStepBack: { id: 'assessment/record/step-back', defaultMessage: 'Back' },
     recordStepNext: { id: 'assessment/record/step-next', defaultMessage: 'Next' },
