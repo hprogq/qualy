@@ -1,8 +1,9 @@
 // A look at what the seeded demo database scores, through the product's own
 // scorer: per batch, the spread of totals and of each section over a sample
 // of participants, so a run can be judged against the real cohort's (whose
-// medians sat around 71 to 75). Then what each demonstration account opens
-// onto (situations.ts): the run fails when any of it came out empty.
+// medians sat around 71 to 75). Then what the two students a visitor signs
+// in as have in every batch, and what each demonstration account opens onto
+// (situations.ts): the run fails when any of it came out empty.
 //
 //   QUALY_DEMO_DATABASE_URL=… node tools/demo/check.ts [sample=80] [--stage=…] [--migration-state=before]
 //
@@ -18,7 +19,13 @@ import { demoUrl } from './target.ts'
 import { runOverDemo, runSeedingHooks } from './runtime.ts'
 import { positionalOf, seedOptionsOf } from './options.ts'
 import { principalOf } from './seed/context.ts'
-import { judgeSituations, personaSituations } from './situations.ts'
+import {
+  judgeSituations,
+  judgeStandings,
+  personaSituations,
+  personaStandings,
+} from './situations.ts'
+import { TERM_PLANS } from './seed/term.ts'
 
 const url = demoUrl()
 const argv = process.argv.slice(2)
@@ -171,6 +178,19 @@ await runOverDemo(
       `asks for no file ${broken.textonly} · answers without the file ${broken.bare} · answers repeating the filed picture ${broken.repeated}`,
     )
     console.log(`staff decisions between 23:00 and 08:00 ${broken.night}`)
+    // and nobody on a roster opens onto an empty result: every student has
+    // what the college imports, and the selection's roster is the students
+    // who applied
+    const empty = (
+      (yield* runSql(sql`
+        select count(*)::int as n from batch_participants p
+         where p.status = 'active'
+           and not exists (
+             select 1 from entries e
+              where e.tenant_id = p.tenant_id and e.participant_id = p.id
+                and e.status not in ('draft', 'voided'))`)) as { rows: { n: number }[] }
+    ).rows[0]!.n
+    console.log(`people on a roster with nothing on their result ${empty}`)
     if (
       broken.verdicts +
         broken.determinations +
@@ -178,21 +198,39 @@ await runOverDemo(
         broken.textonly +
         broken.bare +
         broken.repeated +
-        broken.night >
+        broken.night +
+        empty >
       0
     ) {
       process.exitCode = 1
     }
 
-    // what each demonstration account opens onto
+    // the two students a visitor signs in as, batch by batch
+    const { batches: named, standings } = yield* personaStandings
+    console.log('\nthe demonstration students, batch by batch (claims of their own, total):')
+    for (const name of named) {
+      const cells = standings
+        .filter((one) => one.batch === name)
+        .map((one) => `${one.account} ${one.claims}, ${one.total ?? '-'}`)
+      console.log(`  ${name}: ${cells.join('; ')}`)
+    }
+    const problems = judgeStandings(named, standings)
+    if (problems.length > 0) {
+      console.log(`\nthe demonstration students:\n  ${problems.join('\n  ')}`)
+      process.exitCode = 1
+    }
+
+    // what each demonstration account opens onto; a run stopped short of
+    // the last term (QUALY_DEMO_TERMS) is not asked for what only it writes
+    const lastTerm = batches.some((batch) => batch.name === TERM_PLANS.at(-1)!.name)
     const situations = yield* personaSituations
-    const { missing, notExpected, pending } = judgeSituations(situations, options)
+    const { missing, notExpected, pending } = judgeSituations(situations, { ...options, lastTerm })
     console.log(
       `\nwhat the demonstration accounts open onto (selection at ${options.stage}${options.migrationBefore ? ', route change left for the demonstration' : ''}):`,
     )
     for (const one of situations) {
       const note = notExpected.includes(one)
-        ? '  (not seeded at this stage)'
+        ? '  (not seeded by this run)'
         : pending.includes(one)
           ? '  (awaiting a ruling, not required)'
           : ''

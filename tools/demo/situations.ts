@@ -24,10 +24,18 @@ type Key = (typeof PERSONA_ACCOUNTS)[number]['key']
 /**
  * What a situation needs beyond the seeder having written it: the selection
  * past its filing phase (appeals and re-examinations open only then), the
- * route change having been made rather than left for the demonstration, or
- * a policy ruling still to come (docs/assessment-design.md §30).
+ * route change having been made rather than left for the demonstration, the
+ * run having gone on to the last of the six terms (QUALY_DEMO_TERMS stops
+ * short of it), or a policy ruling still to come (docs/assessment-design.md
+ * §30).
  */
-export type Needs = 'review-stage' | 'route-change' | 'ruling'
+export type Needs = 'review-stage' | 'route-change' | 'last-term' | 'ruling'
+
+/** what the run being checked seeded: the flags it took, and how far it went */
+export interface Seeded extends SeedOptions {
+  /** whether it seeded the last of the six terms */
+  readonly lastTerm: boolean
+}
 
 export interface Situation {
   readonly account: Key
@@ -36,14 +44,16 @@ export interface Situation {
   readonly needs?: Needs
 }
 
-const expected = (situation: Situation, options: SeedOptions) => {
+const expected = (situation: Situation, seeded: Seeded) => {
   switch (situation.needs) {
     case undefined:
       return true
     case 'review-stage':
-      return options.stage !== 'entry'
+      return seeded.stage !== 'entry'
     case 'route-change':
-      return options.stage !== 'entry' && !options.migrationBefore
+      return seeded.stage !== 'entry' && !seeded.migrationBefore
+    case 'last-term':
+      return seeded.lastTerm
     case 'ruling':
       return false
   }
@@ -53,9 +63,9 @@ const expected = (situation: Situation, options: SeedOptions) => {
  * Sorts the counts into what failed, what this run's options left out, and
  * what waits on a ruling and is shown without being required.
  */
-export const judgeSituations = (situations: readonly Situation[], options: SeedOptions) => ({
-  missing: situations.filter((one) => expected(one, options) && one.count === 0),
-  notExpected: situations.filter((one) => one.needs !== 'ruling' && !expected(one, options)),
+export const judgeSituations = (situations: readonly Situation[], seeded: Seeded) => ({
+  missing: situations.filter((one) => expected(one, seeded) && one.count === 0),
+  notExpected: situations.filter((one) => one.needs !== 'ruling' && !expected(one, seeded)),
   pending: situations.filter((one) => one.needs === 'ruling'),
 })
 
@@ -223,6 +233,20 @@ export const personaSituations = Effect.gen(function* () {
         join assessment_items i on i.tenant_id = e.tenant_id and i.id = e.item_id
        where i.status = 'voided' and e.status = 'voided'`),
   )
+  add(
+    'student',
+    'past: filed in a stage reopened for some questions',
+    yield* count(sql`
+      select count(*)::int as n from (${history}) e
+        join phase_item_scopes s on s.tenant_id = e.tenant_id and s.item_id = e.item_id
+        join batch_phases ph on ph.tenant_id = s.tenant_id and ph.id = s.phase_id
+       where e.created_at >= ph.actual_entry_at
+         and not exists (
+           select 1 from batch_phases later
+            where later.tenant_id = ph.tenant_id and later.batch_id = ph.batch_id
+              and later.ordinal > ph.ordinal and later.actual_entry_at <= e.created_at)`),
+    'last-term',
+  )
   // what the student's own result pages say about the taken-back facts
   const archived = (
     (yield* runSql(
@@ -384,6 +408,16 @@ export const personaSituations = Effect.gen(function* () {
       'running: rounds concluded',
       yield* acted(classLead, ['approved', 'rejected']),
     )
+    // a student too, who files every term and applied for the selection
+    const own = (archived: boolean) => sql`
+      select count(*)::int as n from entries e
+        join batch_participants p on p.tenant_id = e.tenant_id and p.id = e.participant_id
+        join assessment_batches b on b.tenant_id = e.tenant_id and b.id = e.batch_id
+       where p.user_id = ${classLead} and e.source = 'self'
+         and b.status ${archived ? sql`=` : sql`<>`} 'archived'
+         and e.status ${archived ? sql`= 'approved'` : sql`<> 'draft'`}`
+    add('class-lead', 'past: claims of their own approved', yield* count(own(true)))
+    add('class-lead', 'running: claims of their own sent in', yield* count(own(false)))
   }
 
   if (lead !== null) {
@@ -504,4 +538,97 @@ export const personaSituations = Effect.gen(function* () {
   }
 
   return situations
+})
+
+/** one of the two students a visitor signs in as, in one batch */
+export interface Standing {
+  readonly account: 'student' | 'class-lead'
+  readonly batch: string
+  /** the claims they filed themselves and sent in */
+  readonly claims: number
+  /** their total as their own result page gives it, or null when it could not be read */
+  readonly total: string | null
+}
+
+const STUDENT_ACCOUNTS = ['student', 'class-lead'] as const
+
+/**
+ * What the two students a visitor signs in as show, batch by batch: on the
+ * roster of every batch, with claims of their own and a total above nothing,
+ * and never the same total as each other.
+ */
+export const judgeStandings = (
+  batches: readonly string[],
+  standings: readonly Standing[],
+): string[] => {
+  const problems: string[] = []
+  for (const batch of batches) {
+    const here = standings.filter((one) => one.batch === batch)
+    for (const account of STUDENT_ACCOUNTS) {
+      const one = here.find((standing) => standing.account === account)
+      if (one === undefined) {
+        problems.push(`${account}: not on the roster of ${batch}`)
+        continue
+      }
+      if (one.claims === 0) problems.push(`${account}: nothing of their own in ${batch}`)
+      if (one.total === null) problems.push(`${account}: no result to read in ${batch}`)
+      else if (Number(one.total) === 0) problems.push(`${account}: a total of 0 in ${batch}`)
+    }
+    const totals = here.flatMap((one) => (one.total === null ? [] : [one.total]))
+    if (totals.length === 2 && totals[0] === totals[1]) {
+      problems.push(`both at ${totals[0]} in ${batch}`)
+    }
+  }
+  return problems
+}
+
+/** the two students' standings in every batch, oldest batch first */
+export const personaStandings = Effect.gen(function* () {
+  const assessment = yield* Assessment
+  const batches = (
+    (yield* runSql(sql`select id, name from assessment_batches order by created_at`)) as {
+      rows: { id: string; name: string }[]
+    }
+  ).rows
+  const people = (
+    (yield* runSql(sql`
+      select u.id, u.email, u.tenant_id from users u
+       where u.email = any(${PERSONA_ACCOUNTS.map((account) => account.email)}::text[])`)) as {
+      rows: { id: string; email: string; tenant_id: string }[]
+    }
+  ).rows
+  const standings: Standing[] = []
+  for (const batch of batches) {
+    for (const account of STUDENT_ACCOUNTS) {
+      const email = PERSONA_ACCOUNTS.find((one) => one.key === account)!.email
+      const person = people.find((one) => one.email === email)
+      if (person === undefined) continue
+      const participant = (
+        (yield* runSql(sql`
+          select p.id from batch_participants p
+           where p.batch_id = ${batch.id} and p.user_id = ${person.id} and p.status = 'active'`)) as {
+          rows: { id: string }[]
+        }
+      ).rows[0]
+      if (participant === undefined) continue
+      const claims = yield* count(sql`
+        select count(*)::int as n from entries e
+         where e.participant_id = ${participant.id}
+           and e.source = 'self' and e.status <> 'draft'`)
+      const result = yield* Effect.result(
+        assessment.getMyResult(
+          person.tenant_id,
+          batch.id,
+          principalOf(person.tenant_id, person.id),
+        ),
+      )
+      standings.push({
+        account,
+        batch: batch.name,
+        claims,
+        total: result._tag === 'Success' ? result.success.total : null,
+      })
+    }
+  }
+  return { batches: batches.map((batch) => batch.name), standings }
 })
