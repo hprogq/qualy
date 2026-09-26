@@ -1,7 +1,7 @@
 import MyEntriesPage from '../src/client/entry/MyEntriesPage.tsx'
 import { useNavigate } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { page, userEvent } from 'vitest/browser'
+import { commands, page, userEvent } from 'vitest/browser'
 import { Effect, Stream } from 'effect'
 import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
@@ -647,6 +647,49 @@ describe('reading one question’s claims', () => {
     await expect.element(page.getByTestId('entries-no-match')).toBeVisible()
     await page.getByRole('button', { name: '清除筛选' }).click()
     await expect.poll(() => rows().length).toBe(20)
+  })
+
+  // With motion allowed, a filter closes the claims up over the room the
+  // leaving ones had. What follows the list moves in the same beat, so no
+  // claim on its way up ever slides over the way to file another.
+  it('moves the way to file with the claims closing up above it', async () => {
+    await commands.emulateMedia({ reducedMotion: 'no-preference' })
+    try {
+      await page.viewport(1440, 900)
+      const filed = [1, 2, 3, 4, 5].map((n) =>
+        claim(n, TAIL, n === 1 || n === 4 ? 'approved' : 'in_review'),
+      )
+      await workspace({ route: `${base}?open=${TAIL}`, entries: filed })
+      await expect.poll(() => rows().length).toBe(5)
+      const staying = new Set([entryId(1), entryId(4)])
+      // the last way to file on the pane: the one under the list
+      const foot = () => [...document.querySelectorAll('[data-testid="file-claim"]')].at(-1)!
+      const lowest = () =>
+        Math.max(
+          ...rows()
+            .filter((row) => staying.has(row.getAttribute('data-entry')!))
+            .map((row) => row.getBoundingClientRect().bottom),
+        )
+      const before = lowest()
+
+      ;(document.querySelector('[data-chip="approved"]') as HTMLElement).click()
+      const overlaps: number[] = []
+      const seen: number[] = []
+      for (const until = performance.now() + 450; performance.now() < until;) {
+        await new Promise((resolve) => requestAnimationFrame(resolve))
+        const bottom = lowest()
+        seen.push(bottom)
+        const top = foot().getBoundingClientRect().top
+        if (bottom > top + 1) overlaps.push(bottom - top)
+      }
+      // the claims did travel, and never over what follows them
+      expect(seen[0]).toBeLessThanOrEqual(before)
+      expect(new Set(seen.map(Math.round)).size).toBeGreaterThan(2)
+      expect(overlaps).toEqual([])
+      await expect.poll(() => rows().length).toBe(2)
+    } finally {
+      await commands.emulateMedia({ reducedMotion: 'reduce' })
+    }
   })
 
   it('carries what a reviewer said on the row, and what the claim counts for', async () => {

@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { LayoutGroup, motion, useReducedMotion } from 'motion/react'
 import {
   ArrowDownUpIcon,
   CheckIcon,
@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
-import { GlideAcross } from '@qualy/ui/reveal'
+import { GlideAcross, Sift, SiftRow } from '@qualy/ui/reveal'
 import { Ticker } from '@qualy/ui/ticker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
@@ -917,67 +917,70 @@ export function ItemPane({
         {/* A filter or a search narrows this list in place: rows that leave
             fade out of the way and the rest close up, and a claim that
             arrives fades in where it belongs, so the list reads as the same
-            list changing rather than another one replacing it. */}
-        {shown.length > 0 && (
-          <ul {...stylex.props(styles.rows)}>
-            <AnimatePresence initial={false} mode="popLayout">
-              {shown.map((entry) => (
-                <motion.li
-                  key={entry.id}
-                  layout={still ? false : 'position'}
-                  initial={still ? false : { opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, transition: { duration: still ? 0 : 0.12 } }}
-                  transition={{ duration: still ? 0 : 0.2, ease: [0.4, 0, 0.2, 1] }}
-                >
-                  <EntryRow
-                    entry={entry}
-                    line={lines.get(entry.id)!}
-                    compact={compact}
-                    selected={entry.id === selectedEntryId}
-                    awaitingMe={awaitingMe?.has(entry.id) ?? false}
-                    onOpen={() => onEntry(entry)}
-                  />
-                </motion.li>
-              ))}
-            </AnimatePresence>
-          </ul>
-        )}
-        {entries.length > 0 && filtered.length === 0 && narrowed && (
-          <div {...stylex.props(styles.noMatch)} data-testid="entries-no-match">
-            {format(m.entriesNoMatch)}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setChip('all')
-                setSearch('')
-              }}
-            >
-              {format(m.entriesClearFilter)}
-            </Button>
-          </div>
-        )}
-        {filtered.length > limit && (
-          <div {...stylex.props(styles.more, styles.inset)} data-testid="entries-more">
-            <span>{format(m.entriesShownOf, { shown: shown.length, total: filtered.length })}</span>
-            <span {...stylex.props(styles.spacer)} />
-            <Button variant="outline" size="sm" onClick={() => setLimit((now) => now + PAGE)}>
-              {format(m.entriesShowMore, { count: Math.min(PAGE, filtered.length - limit) })}
-            </Button>
-          </div>
-        )}
-        {addRow}
-        {filing !== null && filing.full && listed.length > 0 && (
-          <div {...stylex.props(styles.note)} data-testid="entries-full">
-            {format(m.myEntriesAddFull)}
-            {item.maxEntries !== null && (
-              <b {...stylex.props(styles.noteStrong)}>
-                {listed.length} / {item.maxEntries}
-              </b>
-            )}
-          </div>
-        )}
+            list changing rather than another one replacing it. What follows
+            the list moves with it, or the rows closing up would slide over
+            it on their way. */}
+        <LayoutGroup>
+          {shown.length > 0 && (
+            <ul {...stylex.props(styles.rows)}>
+              <Sift>
+                {shown.map((entry) => (
+                  <SiftRow key={entry.id}>
+                    <EntryRow
+                      entry={entry}
+                      line={lines.get(entry.id)!}
+                      compact={compact}
+                      selected={entry.id === selectedEntryId}
+                      awaitingMe={awaitingMe?.has(entry.id) ?? false}
+                      onOpen={() => onEntry(entry)}
+                    />
+                  </SiftRow>
+                ))}
+              </Sift>
+            </ul>
+          )}
+          {entries.length > 0 && filtered.length === 0 && narrowed && (
+            <div {...stylex.props(styles.noMatch)} data-testid="entries-no-match">
+              {format(m.entriesNoMatch)}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setChip('all')
+                  setSearch('')
+                }}
+              >
+                {format(m.entriesClearFilter)}
+              </Button>
+            </div>
+          )}
+          {filtered.length > limit && (
+            <Trailing still={still}>
+              <div {...stylex.props(styles.more, styles.inset)} data-testid="entries-more">
+                <span>
+                  {format(m.entriesShownOf, { shown: shown.length, total: filtered.length })}
+                </span>
+                <span {...stylex.props(styles.spacer)} />
+                <Button variant="outline" size="sm" onClick={() => setLimit((now) => now + PAGE)}>
+                  {format(m.entriesShowMore, { count: Math.min(PAGE, filtered.length - limit) })}
+                </Button>
+              </div>
+            </Trailing>
+          )}
+          {addRow !== null && <Trailing still={still}>{addRow}</Trailing>}
+          {filing !== null && filing.full && listed.length > 0 && (
+            <Trailing still={still}>
+              <div {...stylex.props(styles.note)} data-testid="entries-full">
+                {format(m.myEntriesAddFull)}
+                {item.maxEntries !== null && (
+                  <b {...stylex.props(styles.noteStrong)}>
+                    {listed.length} / {item.maxEntries}
+                  </b>
+                )}
+              </div>
+            </Trailing>
+          )}
+        </LayoutGroup>
         {filtered.length === 0 && !narrowed && (
           <Tray
             viewer={viewer}
@@ -991,6 +994,24 @@ export function ItemPane({
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * A row after the claims - the way to start another, why it cannot start,
+ * the rest of a long list - moving to its new place in the same beat as the
+ * claims closing up above it, where it would otherwise jump there at once
+ * and have them slide over it.
+ */
+function Trailing({ still, children }: { still: boolean; children: ReactNode }) {
+  return (
+    <motion.div
+      layout={still ? false : 'position'}
+      // the beat of a sifted row, so the two arrive together
+      transition={{ duration: still ? 0 : 0.2, ease: [0.4, 0, 0.2, 1] }}
+    >
+      {children}
+    </motion.div>
   )
 }
 
