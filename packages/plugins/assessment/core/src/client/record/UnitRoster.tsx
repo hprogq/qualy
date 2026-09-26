@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { Button } from '@qualy/ui/button'
+import { CursorPager } from '@qualy/ui/pager'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
@@ -141,36 +141,23 @@ export function UnitRoster({
           ))}
         </ul>
       )}
+      {/* the pickers' own strip: the way back, the page being read, the
+          way on - this list is read forwards, so it has no count of pages */}
       {(at > 0 || nextCursor !== null) && (
-        <span {...stylex.props(styles.head)}>
-          <span {...stylex.props(styles.note)}>
-            {format(m.recordUnitRosterPage, { page: at + 1 })}
-          </span>
-          <span {...stylex.props(styles.spacer)} />
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={at === 0}
-            onClick={() => setPaging({ question, cursors, at: Math.max(0, at - 1) })}
-          >
-            {format(m.previousPage)}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={nextCursor === null}
-            onClick={() => {
-              if (nextCursor === null) return
-              setPaging({
-                question,
-                cursors: [...cursors.slice(0, at + 1), nextCursor],
-                at: at + 1,
-              })
-            }}
-          >
-            {format(m.nextPage)}
-          </Button>
-        </span>
+        <CursorPager
+          testId="unit-roster-pager"
+          label={format(m.rosterPagerLabel)}
+          previousLabel={format(m.previousPage)}
+          nextLabel={format(m.nextPage)}
+          page={at + 1}
+          hasNext={nextCursor !== null}
+          disabled={people.isFetching}
+          onPrevious={() => setPaging({ question, cursors, at: Math.max(0, at - 1) })}
+          onNext={() => {
+            if (nextCursor === null) return
+            setPaging({ question, cursors: [...cursors.slice(0, at + 1), nextCursor], at: at + 1 })
+          }}
+        />
       )}
     </div>
   )

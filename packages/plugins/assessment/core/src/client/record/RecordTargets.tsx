@@ -45,6 +45,9 @@ const styles = stylex.create({
   none: { fontSize: 13, color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)` },
   spacer: { flexGrow: 1 },
   body: { display: 'flex', minHeight: 'min(62vh, 30rem)', flexDirection: 'column' },
+  // a height of its own that the picker grows into, so the list reaches the
+  // foot of the panel instead of stopping a band short of it
+  peoplePanel: { height: 'min(90dvh, 48rem)' },
   unitsSplit: {
     display: 'grid',
     minHeight: 0,
@@ -140,11 +143,11 @@ export function RecordTargets({
           a phone-sized panel - a tree too narrow to read a unit's name in,
           beside a list that turns a page every four people. */}
       <Dialog open={picking === 'people'} onOpenChange={(open) => !open && setPicking(null)}>
-        <DialogContent size="62rem">
+        <DialogContent size="62rem" xstyle={styles.peoplePanel}>
           <DialogHeader>
             <DialogTitle>{format(m.recordPickPeople)}</DialogTitle>
           </DialogHeader>
-          <DialogBody xstyle={styles.body}>
+          <DialogBody>
             <RosterPeoplePicker batchId={batchId} value={people} onChange={setPeople} />
           </DialogBody>
           <DialogFooter>

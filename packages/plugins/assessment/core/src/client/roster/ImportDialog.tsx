@@ -41,7 +41,6 @@ interface Selection {
 }
 
 const styles = stylex.create({
-  body: { maxHeight: '62vh' },
   units: { display: 'flex', minWidth: 0, flexDirection: 'column' },
   // the plain tree, where the organization's view is not there to draw one
   tree: {
@@ -115,7 +114,7 @@ export function ImportDialog({
           <DialogTitle>{format(m.importTitle)}</DialogTitle>
           <DialogDescription>{format(m.importHint)}</DialogDescription>
         </DialogHeader>
-        <DialogBody xstyle={styles.body}>
+        <DialogBody>
           <AsyncSection
             pending={nodes.isPending || userTypes.isPending}
             error={failed === null ? null : formatError(failed)}

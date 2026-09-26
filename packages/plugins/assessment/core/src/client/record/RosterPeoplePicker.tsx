@@ -22,6 +22,12 @@ import { assessmentMessages as m } from '../i18n.ts'
 // the list is `listParticipants`, whose reach is already narrowed in sql.
 // Nothing chosen here is authorized by having been chosen - the write proves
 // every id again.
+//
+// That list is read forwards by cursor, as a picker's list is, so the pages
+// are walked one at a time rather than numbered: the strip under it is the
+// numbered one's, holding the way back, the page being read and the way on.
+// Numbering it would mean counting the reach on every page for a list that
+// is searched far more often than it is paged through.
 
 const PAGE = 25
 
@@ -63,6 +69,10 @@ export function RosterPeoplePicker({
   )
   const nodes = units.data?.units ?? []
   const here = nodeId ?? nodes[0]?.id ?? null
+  // the kinds this round admitted its people as, which the list narrows by
+  // and each row is named with
+  const kinds = units.data?.userTypes ?? []
+  const kindOf = new Map(kinds.map((kind) => [kind.id, kind.name]))
 
   const question = `${here ?? ''}:${scope}:${search}:${userTypeId}`
   const page = paging.question === question ? paging : { question, cursors: [undefined], at: 0 }
@@ -92,13 +102,15 @@ export function RosterPeoplePicker({
       token={peoplePickerView}
       context={{
         nodes,
-        userTypes: [],
+        userTypes: kinds,
         rows: (people.data?.items ?? []).map((row) => ({
           // the participant is what an act reaches, so it is what is chosen
           id: row.id,
           displayName: row.displayName,
           businessNo: row.businessNo,
-          userTypeName: null,
+          userTypeName: kindOf.get(row.userTypeId) ?? null,
+          // where this round has them, spelled from the round's own units
+          unitId: row.anchorNodeId,
         })),
         nodeId: here,
         scope,
@@ -111,6 +123,7 @@ export function RosterPeoplePicker({
         error: people.isError ? formatError(people.error) : null,
         hasPrevious: at > 0,
         hasNext: nextCursor !== null,
+        position: at + 1,
         onNodeChange: setNodeId,
         onScopeChange: setScope,
         onUserTypeChange: setUserTypeId,
@@ -122,6 +135,8 @@ export function RosterPeoplePicker({
           else next.add(participantId)
           onChange([...next])
         },
+        onChange: (participantIds: readonly string[]) =>
+          onChange(participantIds.filter((id) => !blocked.has(id))),
         onPrevious: () => setPaging({ question, cursors, at: Math.max(0, at - 1) }),
         onNext: () => {
           if (nextCursor !== null && cursors[at + 1] !== nextCursor) {

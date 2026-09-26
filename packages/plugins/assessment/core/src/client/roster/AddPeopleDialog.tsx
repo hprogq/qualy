@@ -30,7 +30,10 @@ import { useCandidates } from './candidates.ts'
 // having been chosen; the write proves every id again.
 
 const styles = stylex.create({
-  body: { height: '58vh' },
+  // A height of its own, which the picker grows into: a panel sized by what
+  // it held left the list a band short of its own foot, and changed height
+  // under the hand with every filter.
+  panel: { height: 'min(90dvh, 48rem)' },
   quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
 })
 
@@ -57,13 +60,12 @@ export function AddPeopleDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent size="56rem">
+      <DialogContent size="60rem" xstyle={styles.panel}>
         <DialogHeader>
           <DialogTitle>{format(m.addPeopleTitle)}</DialogTitle>
           <DialogDescription>{format(m.addPeopleHint, { businessNo })}</DialogDescription>
         </DialogHeader>
-        <DialogBody xstyle={styles.body}>
-          {/* a column, so the picker can be told to fill what is left */}
+        <DialogBody>
           <UiSlot
             token={peoplePickerView}
             context={candidates.context({
@@ -81,6 +83,7 @@ export function AddPeopleDialog({
                   now.includes(userId) ? now.filter((id) => id !== userId) : [...now, userId],
                 )
               },
+              onChange: setChosen,
             })}
             fallback={<p {...stylex.props(styles.quiet)}>{format(m.pickerUnavailable)}</p>}
           />

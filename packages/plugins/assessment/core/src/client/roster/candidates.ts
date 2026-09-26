@@ -69,6 +69,8 @@ export function useCandidates(batchId: string, open: boolean) {
   const context = (choice: {
     value: readonly string[]
     onToggle: (userId: string) => void
+    /** the whole choice at once: a page taken in, everybody let go */
+    onChange: (userIds: readonly string[]) => void
     disabled?: readonly string[]
     disabledLabel?: string
   }): PeoplePickerViewContext => ({
@@ -83,6 +85,8 @@ export function useCandidates(batchId: string, open: boolean) {
       displayName: row.displayName,
       businessNo: row.businessNo,
       userTypeName: row.userTypeName,
+      // spelled from the units above, which are the ones the reader manages
+      unitId: row.orgNodeId,
     })),
     nodeId,
     scope,
@@ -95,11 +99,18 @@ export function useCandidates(batchId: string, open: boolean) {
     error: page.isError ? formatError(page.error) : null,
     hasPrevious: current > 1,
     hasNext: current < pages,
+    paging: {
+      page: current,
+      pageSize: PAGE,
+      total: page.data?.total ?? 0,
+      onPage: (next: number) => setAt(Math.min(pages, Math.max(1, next))),
+    },
     onNodeChange: asking((next: string) => setNodeId(next)),
     onScopeChange: asking(setScope),
     onUserTypeChange: asking(setUserTypeId),
     onSearchChange: asking(setSearch),
     onToggle: choice.onToggle,
+    onChange: choice.onChange,
     onPrevious: () => setAt(Math.max(1, current - 1)),
     onNext: () => setAt(Math.min(pages, current + 1)),
     onRetry: () => void page.refetch(),

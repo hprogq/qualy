@@ -50,8 +50,9 @@ const STEPS = [m.addStaffStepWho, m.addStaffStepWhere, m.addStaffStepAs] as cons
 
 const styles = stylex.create({
   // a fixed height, so the step that holds a picker does not resize the
-  // dialog as the reader walks through the steps
-  body: { height: '58vh', gap: 20 },
+  // dialog as the reader walks through the steps; the picker grows into it
+  panel: { height: 'min(90dvh, 48rem)' },
+  body: { gap: 20 },
   step: {
     display: 'flex',
     minHeight: 0,
@@ -148,7 +149,7 @@ export function AddStaffDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent size="56rem">
+      <DialogContent size="60rem" xstyle={styles.panel}>
         <DialogHeader>
           <DialogTitle>{format(m.addStaffTitle)}</DialogTitle>
           <DialogDescription>{format(m.addStaffHint)}</DialogDescription>
@@ -179,6 +180,7 @@ export function AddStaffDialog({
                       setChosen((now) =>
                         now.includes(userId) ? now.filter((id) => id !== userId) : [...now, userId],
                       ),
+                    onChange: setChosen,
                   })}
                   fallback={<p {...stylex.props(styles.quiet)}>{format(m.pickerUnavailable)}</p>}
                   loading={<Skeleton className={stylex.props(styles.waitingFill).className} />}

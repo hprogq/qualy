@@ -524,10 +524,6 @@ const recognitionBeforeEarliestMessage = defineMessage<{ constraint: string }>()
   id: 'assessment/review/recognition-before-earliest',
   defaultMessage: 'No earlier than {constraint}',
 })
-const recordUnitRosterPageMessage = defineMessage<{ page: number }>()({
-  id: 'assessment/record/unit-roster-page',
-  defaultMessage: 'Page {page}',
-})
 const reviewDraftRestoredMessage = defineMessage<{ when: string }>()({
   id: 'assessment/review/draft-restored',
   defaultMessage: 'Put back from what you wrote here on {when}, still unsent',
@@ -1957,7 +1953,6 @@ const i18n = definePluginMessages({
       id: 'assessment/record/unit-roster-empty',
       defaultMessage: 'Nobody in this round stands in these units',
     },
-    recordUnitRosterPage: recordUnitRosterPageMessage,
     recordUnitsTitle: { id: 'assessment/record/units-title', defaultMessage: 'Units' },
     recordUnitKinds: { id: 'assessment/record/unit-kinds', defaultMessage: 'Kinds of people' },
     recordUnitKindsHint: {
