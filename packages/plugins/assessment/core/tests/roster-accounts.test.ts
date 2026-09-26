@@ -36,6 +36,7 @@ const page = (
     order: 'unit' | 'name' | 'business-no'
     page: number
     limit: number
+    around: string
   }> = {},
   as = f.principal(f.admin),
 ) =>
@@ -49,6 +50,7 @@ const page = (
         order: over.order ?? 'name',
         page: over.page ?? 1,
         limit: over.limit ?? 50,
+        ...(over.around === undefined ? {} : { around: over.around }),
       },
       as,
     )
@@ -406,6 +408,106 @@ describe.runIf(postgresAvailable)('the roster, as the results page reads it', ()
       expect.arrayContaining(['Zhang San', 'Li Si', 'Reviewer', 'Recorder']),
     )
     expect(result.recordable).not.toContain('Wang Wu')
+  })
+
+  // Walking the roster from an open account finds that person's page by
+  // asking for it, whatever page the address still names: the page they are
+  // on is the one that holds them, counted in the list's own order.
+  it('answers the page somebody stands on, in each order the list is read in', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ra-around')
+          const g = yield* runningBatch(f, { profile: OPEN })
+          yield* runSql(sql`update users set business_no = 'S-001' where id = ${f.s3}`)
+          const everyone = (yield* page(f, g.batch.id)).rows.map((row) => row.id)
+          const placed: { order: string; holds: boolean; asPaged: boolean }[] = []
+          for (const order of ['unit', 'name', 'business-no'] as const) {
+            for (const id of everyone) {
+              const found = yield* page(f, g.batch.id, { order, limit: 2, page: 1, around: id })
+              const paged = yield* page(f, g.batch.id, { order, limit: 2, page: found.page })
+              placed.push({
+                order,
+                holds: found.rows.some((row) => row.id === id),
+                asPaged:
+                  JSON.stringify(found.rows.map((row) => row.id)) ===
+                  JSON.stringify(paged.rows.map((row) => row.id)),
+              })
+            }
+          }
+          return {
+            everyone: everyone.length,
+            placed,
+            // Zhang San is sixth by name: the third page of two, the second of three
+            byTwo: yield* page(f, g.batch.id, { limit: 2, page: 1, around: g.p1 }),
+            byThree: yield* page(f, g.batch.id, { limit: 3, page: 1, around: g.p1 }),
+            // asked about Li Si under a search that finds only Wang Wu: the page asked for
+            narrowed: yield* page(f, g.batch.id, {
+              filter: { q: 'S-00' },
+              limit: 1,
+              page: 1,
+              around: g.p2,
+            }),
+            narrowedPlain: yield* page(f, g.batch.id, { filter: { q: 'S-00' }, limit: 1, page: 1 }),
+          }
+        }),
+      ),
+    )
+    expect(result.everyone).toBe(6)
+    // everybody, in every order, is on the page the answer names, and that
+    // page is the same page asked for by its number
+    expect(result.placed).toHaveLength(18)
+    expect(result.placed.filter((one) => !one.holds || !one.asPaged)).toEqual([])
+    expect(result.byTwo.page).toBe(3)
+    expect(names(result.byTwo)).toEqual(['Wang Wu', 'Zhang San'])
+    expect(result.byThree.page).toBe(2)
+    expect(result.narrowed).toEqual(result.narrowedPlain)
+  })
+
+  // Asking where somebody stands says nothing about whether they exist:
+  // somebody the reader cannot open, filtered out, or nobody at all, answers
+  // exactly as the page alone would.
+  it('answers as the page alone would for anybody the question does not hold', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ra-around-reach')
+          const g = yield* runningBatch(f, { profile: OPEN })
+          const inspector = yield* appointStaff(f, g.batch.id, {
+            name: 'Inspector',
+            at: f.classA,
+            codes: ['assessment.entry.redetermine'],
+          })
+          const as = f.principal(inspector.who)
+          return {
+            // Wang Wu stands outside the class the inspector covers
+            outside: yield* page(f, g.batch.id, { limit: 1, page: 2, around: g.p3 }, as),
+            plain: yield* page(f, g.batch.id, { limit: 1, page: 2 }, as),
+            covered: yield* page(f, g.batch.id, { limit: 1, page: 1, around: g.p1 }, as),
+            excluded: yield* page(f, g.batch.id, {
+              filter: { status: 'excluded' },
+              around: g.p1,
+            }),
+            excludedPlain: yield* page(f, g.batch.id, { filter: { status: 'excluded' } }),
+            nobody: yield* page(f, g.batch.id, {
+              limit: 2,
+              page: 2,
+              around: '0190a000-0000-7000-8000-000000000001',
+            }),
+            nobodyPlain: yield* page(f, g.batch.id, { limit: 2, page: 2 }),
+          }
+        }),
+      ),
+    )
+    expect(result.outside).toEqual(result.plain)
+    expect(names(result.plain)).toEqual(['Reviewer'])
+    // the inspector's own list is Li Si, Reviewer and Zhang San
+    expect(result.covered.page).toBe(3)
+    expect(names(result.covered)).toEqual(['Zhang San'])
+    expect(result.excluded).toEqual(result.excludedPlain)
+    expect(result.nobody).toEqual(result.nobodyPlain)
   })
 })
 

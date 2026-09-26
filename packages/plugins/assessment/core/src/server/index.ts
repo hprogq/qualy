@@ -219,6 +219,7 @@ import {
   participantCandidatesTotal,
   participantIdsWithin,
   rosterAccountsPage,
+  rosterAccountsRank,
   rosterAccountsTotal,
   rosterFilingsOf,
   type CandidateFilter,
@@ -1453,6 +1454,8 @@ export class Assessment extends Context.Service<
         order: RosterOrder
         page: number
         limit: number
+        /** the page this participant stands on instead, where the question holds them */
+        around?: string
       },
       as: Principal,
     ) => Effect.Effect<
@@ -5258,7 +5261,20 @@ export const make = Effect.fn('Assessment.make')(function* () {
         const reach = yield* accountReadingOf(tenantId, batchId, as)
         const filter = { ...query.filter, ...(reach === undefined ? {} : { reach }) }
         const total = yield* dieQuery(withDb(rosterAccountsTotal(tenantId, batchId, filter)))
-        const window = pageWindow(query.page, query.limit, total)
+        // Where one person stands is asked of the same filter - reach and
+        // all - so somebody it does not hold answers as nobody does: the
+        // page that was asked for, and not a word about whether they exist.
+        const rank =
+          query.around === undefined
+            ? null
+            : yield* dieQuery(
+                withDb(rosterAccountsRank(tenantId, batchId, filter, query.order, query.around)),
+              )
+        const window = pageWindow(
+          rank === null ? query.page : Math.ceil(rank / query.limit),
+          query.limit,
+          total,
+        )
         const rows = yield* dieQuery(
           withDb(
             rosterAccountsPage(tenantId, batchId, filter, query.order, {
@@ -7412,6 +7428,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             order: query.sort ?? 'unit',
             page: pageNumber(query.page),
             limit,
+            ...(query.around !== undefined ? { around: query.around } : {}),
           },
           principal,
         )

@@ -1,7 +1,7 @@
 import { likeContains } from '@qualy/api-kit/schema'
 import { Effect } from 'effect'
 import { Db } from '@qualy/plugin-database/plugin'
-import { sql, type RawBuilder } from 'kysely'
+import { sql, type OrderByModifiers, type RawBuilder } from 'kysely'
 import { scopeCoverage, type AuthorizationScope } from '@qualy/rbac-contract'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
@@ -3146,12 +3146,39 @@ const rosterAccountsQuery = (
 }
 
 /**
+ * Each order's keys, said once for the page and for a person's place on it:
+ * a place counted in any other order would name a page that does not hold
+ * them. The membership id comes last in every one, so the order is total.
+ */
+const ROSTER_ORDER: Record<
+  RosterOrder,
+  readonly (readonly [
+    'u.displayName' | 'u.businessNo' | 'BatchParticipant.id' | RawBuilder<unknown>,
+    OrderByModifiers,
+  ])[]
+> = {
+  name: [
+    ['u.displayName', 'asc'],
+    ['BatchParticipant.id', 'asc'],
+  ],
+  'business-no': [
+    ['u.businessNo', (by) => by.asc().nullsLast()],
+    ['BatchParticipant.id', 'asc'],
+  ],
+  // by unit, the people of one unit are in name order: in the order they
+  // were admitted they read as no order
+  unit: [
+    [sql`batch_participants.anchor_path`, 'asc'],
+    ['u.displayName', 'asc'],
+    ['BatchParticipant.id', 'asc'],
+  ],
+}
+
+/**
  * One page of the roster, by page number, and how many the filter matches.
  *
- * Ordered by a total key: the placement path, the name or the business
- * number, each with the membership id last, so a page cannot shuffle under
- * the reader between two requests for it. By unit, the people of one unit
- * are in name order: in the order they were admitted they read as no order.
+ * Ordered by a total key (ROSTER_ORDER), so a page cannot shuffle under the
+ * reader between two requests for it.
  */
 export const rosterAccountsPage = (
   tenantId: string,
@@ -3162,25 +3189,51 @@ export const rosterAccountsPage = (
 ) =>
   db
     .query((k) => {
-      const ordered =
-        order === 'name'
-          ? rosterAccountsQuery(k, tenantId, batchId, filter).orderBy('u.displayName')
-          : order === 'business-no'
-            ? rosterAccountsQuery(k, tenantId, batchId, filter).orderBy('u.businessNo', (by) =>
-                by.asc().nullsLast(),
-              )
-            : rosterAccountsQuery(k, tenantId, batchId, filter)
-                .orderBy(sql`batch_participants.anchor_path`)
-                .orderBy('u.displayName')
-      return ordered
-        .orderBy('BatchParticipant.id')
-        .offset(window.offset)
-        .limit(window.limit)
-        .execute()
+      let ordered = rosterAccountsQuery(k, tenantId, batchId, filter)
+      for (const [key, direction] of ROSTER_ORDER[order]) ordered = ordered.orderBy(key, direction)
+      return ordered.offset(window.offset).limit(window.limit).execute()
     })
     .pipe(
       Effect.map((found) => (found as unknown as Record<string, unknown>[]).map(toParticipantRow)),
     )
+
+/**
+ * Where one person stands in the roster the filter matches, counted from
+ * one in the page order; null when the filter does not hold them.
+ */
+export const rosterAccountsRank = (
+  tenantId: string,
+  batchId: string,
+  filter: RosterAccountsFilter,
+  order: RosterOrder,
+  participantId: string,
+) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom(
+          rosterAccountsQuery(k, tenantId, batchId, filter)
+            .clearSelect()
+            .select((eb) => [
+              'BatchParticipant.id as id',
+              eb.fn
+                .agg<string>('row_number')
+                .over((over) => {
+                  let ranked = over
+                  for (const [key, direction] of ROSTER_ORDER[order]) {
+                    ranked = ranked.orderBy(key, direction)
+                  }
+                  return ranked
+                })
+                .as('place'),
+            ])
+            .as('ranked'),
+        )
+        .select('ranked.place')
+        .where('ranked.id', '=', participantId)
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => (row === undefined ? null : Number(row.place))))
 
 /** how many people the same filter matches, across every page */
 export const rosterAccountsTotal = (

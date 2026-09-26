@@ -3474,6 +3474,13 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
           ),
           /** the placement path when absent */
           sort: Schema.optional(Schema.Literals(['unit', 'name', 'business-no'])),
+          /**
+           * The page this participant stands on, in this order and under this
+           * filter, instead of `page`. Somebody the question does not hold -
+           * filtered out, out of the reader's reach, or nobody at all - leaves
+           * the answer exactly what `page` alone would have given.
+           */
+          around: Schema.optional(uuidInput),
         }),
         success: numberedPageOf(participantAccountView),
         error: [BatchNotFound, AccessDenied],
