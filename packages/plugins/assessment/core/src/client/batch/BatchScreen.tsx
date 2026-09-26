@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -136,6 +136,29 @@ const styles = stylex.create({
 const BannerSlot = createContext<HTMLElement | null>(null)
 
 /**
+ * The screen's entrance, or the same box without one: decided once, when
+ * it mounts, so nothing under it is mounted again when that changes.
+ */
+function Arrival({
+  play,
+  className,
+  children,
+}: {
+  play: boolean
+  className: string | undefined
+  children: ReactNode
+}) {
+  const [entering] = useState(play)
+  return entering ? (
+    <Reveal className={className}>{children}</Reveal>
+  ) : (
+    <div data-arrival="still" className={className}>
+      {children}
+    </div>
+  )
+}
+
+/**
  * What the band says while something inside the section is open.
  *
  * Rendered from wherever the open thing lives, because its title and its
@@ -200,6 +223,14 @@ export function BatchScreen({
     staleTime: 30_000,
   })
   const batch = detail.data?.batch
+  // Whether this screen has shown its batch yet. A screen that moves
+  // between a bare section and one that draws its own edges - a list and
+  // the person opened from it - is moving inside itself, and makes its
+  // entrance once rather than again under the move it is already making.
+  const [shown, setShown] = useState(false)
+  useEffect(() => {
+    if (batch !== undefined && !shown) setShown(true)
+  }, [batch, shown])
 
   if (chrome === 'bare') {
     return (
@@ -212,7 +243,7 @@ export function BatchScreen({
         xstyle={styles.fillColumn}
       >
         {batch && (
-          <Reveal className={stylex.props(styles.bareColumn).className}>
+          <Arrival play={!shown} className={stylex.props(styles.bareColumn).className}>
             {batch.status === 'draft' && (
               <p {...stylex.props(styles.draftNote, styles.bareNote)}>{format(m.draftBanner)}</p>
             )}
@@ -220,7 +251,7 @@ export function BatchScreen({
               <ZoneAwayNotice xstyle={styles.bareNote} />
               {children(batch)}
             </BatchZone>
-          </Reveal>
+          </Arrival>
         )}
       </AsyncSection>
     )

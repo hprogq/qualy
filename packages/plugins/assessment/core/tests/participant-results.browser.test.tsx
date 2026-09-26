@@ -363,6 +363,21 @@ describe('the participant results screen', () => {
     expect(addressNow()).toContain(`participant=${PARTICIPANT_ID}`)
   })
 
+  it('makes its entrance once, not again on the way back from a person', async () => {
+    await screen()
+    const first = page.getByTestId('participant-row').first()
+    await expect.element(first).toBeVisible()
+    // the list arrives with the screen's own entrance
+    expect(document.querySelector('[data-arrival="still"]')).toBeNull()
+    await first.click()
+    await expect.poll(() => addressNow()).toContain('participant=')
+    await page.getByRole('button', { name: '返回参评名单' }).click()
+    await expect.poll(() => addressNow()).not.toContain('participant=')
+    await expect.element(page.getByTestId('participant-row').first()).toBeVisible()
+    // coming back is a move inside the screen, which says so on its own
+    expect(document.querySelector('[data-arrival="still"]')).not.toBeNull()
+  })
+
   it('restores an open account from the address alone', async () => {
     await screen(
       {},
