@@ -7605,7 +7605,7 @@ const i18n = definePluginMessages({
     },
     itemsProblemStagePanelLast: {
       id: 'assessment/items/problem-stage-panel-last',
-      defaultMessage: 'needs a review step after it to give the final decision',
+      defaultMessage: 'A review step after this one has to give the final decision',
     },
     itemsProblemStagesTooMany: {
       id: 'assessment/items/problem-stages-too-many',

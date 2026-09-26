@@ -2338,7 +2338,7 @@ export default {
   'assessment/items/problem-recognition-unbound': '该认定字段没有对应的公式参数',
   'assessment/items/problem-recognition-refused': '认定字段的设置不被接受',
   'assessment/items/problem-stage-unnamed': '审核步骤尚未命名',
-  'assessment/items/problem-stage-panel-last': '之后还需要一个复核步骤给出最终结论',
+  'assessment/items/problem-stage-panel-last': '其后还需要一个复核步骤给出最终结论',
   'assessment/items/problem-stages-too-many': '每个流程最多 {max} 个步骤',
   'assessment/items/problem-stage-quorum': '该步骤不能设为全员共同审核',
   'assessment/items/problem-stage-refused': '审核步骤的设置不被接受',
