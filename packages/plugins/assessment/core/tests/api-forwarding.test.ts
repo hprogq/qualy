@@ -29,9 +29,14 @@ const declaredPayloads = (): ReadonlyMap<string, readonly string[]> => {
     const at = rest.indexOf('payload: Schema.Struct({')
     // an endpoint without a payload declares nothing to forward; the search
     // is bounded to this endpoint's own block so the next one's payload is
-    // never read as this one's
-    const ends = rest.indexOf('}).middleware(')
-    if (at === -1 || (ends !== -1 && at > ends)) continue
+    // never read as this one's. A declaration too long for one line closes
+    // on `},` and `)` on lines of their own, so the next declaration bounds
+    // it as well as its own close does.
+    const ends = [
+      rest.indexOf('}).middleware('),
+      rest.indexOf('HttpApiEndpoint.', 'HttpApiEndpoint.'.length),
+    ].filter((index) => index !== -1)
+    if (at === -1 || (ends.length > 0 && at > Math.min(...ends))) continue
     const body = rest.slice(at + 'payload: Schema.Struct({'.length)
     let depth = 1
     let end = 0

@@ -523,6 +523,16 @@ const participantScoreView = Schema.Struct({
   reason: Schema.NullOr(Schema.Literals(['scoring-unavailable', 'account-too-large', 'timed-out'])),
 })
 
+/** somebody on the roster a review route has nowhere to stand for */
+const unreachableParticipantView = Schema.Struct({
+  participantId: Schema.String,
+  userId: Schema.String,
+  displayName: Schema.String,
+  businessNo: Schema.NullOr(Schema.String),
+  /** the units the round drew them from, the root first; a unit deleted since has no name */
+  unitPath: Schema.Array(Schema.NullOr(Schema.String)),
+})
+
 /** somebody the reader could put on the roster, and whether they are on it */
 const participantCandidateView = Schema.Struct({
   userId: Schema.String,
@@ -1511,6 +1521,29 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
             waiting: Schema.Number,
           }),
         ),
+        /**
+         * Questions whose route has nowhere to stand for some of the roster:
+         * every step asks for a kind of unit these people sit under none of,
+         * so their submission (on the ordinary route) or their appeal (on
+         * the escalation route) is refused, and no appointment mends it.
+         * Read off the current routes and the frozen roster, as of now.
+         */
+        unreachable: Schema.Struct({
+          routes: Schema.Array(
+            Schema.Struct({
+              itemId: Schema.String,
+              itemTitle: Schema.String,
+              route: Schema.Literals(['normal', 'escalation']),
+              participants: Schema.Number,
+              /** the kinds of unit the route's steps ask for, named, in its order */
+              levelNames: Schema.Array(Schema.String),
+            }),
+          ),
+          /** people some question's ordinary route finds nowhere, each counted once */
+          cannotSubmit: Schema.Number,
+          /** people some question's escalation route finds nowhere, each counted once */
+          cannotAppeal: Schema.Number,
+        }),
       }),
       error: [BatchNotFound, AccessDenied],
     }).middleware(Authenticated),
@@ -1531,6 +1564,28 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       }),
       error: [BatchNotFound, AccessDenied, BadRequest],
     }).middleware(Authenticated),
+  )
+  .add(
+    // The people a review route has nowhere to stand for, a page at a time:
+    // a question's current route (`itemId`, with the route to ask about), or
+    // the unit kinds a route still being composed asks for (`nodeTypeIds`).
+    // Exactly one of the two.
+    HttpApiEndpoint.get(
+      'listUnreachableParticipants',
+      '/assessment/batches/:batchId/unreachable-participants',
+      {
+        params: Schema.Struct({ batchId: uuidInput }),
+        query: Schema.Struct({
+          ...numberedPageQuery,
+          itemId: Schema.optional(uuidInput),
+          /** which of the question's routes; the ordinary one when not said */
+          route: Schema.optional(Schema.Literals(['normal', 'escalation'])),
+          nodeTypeIds: Schema.optional(idListUpTo(20)),
+        }),
+        success: numberedPageOf(unreachableParticipantView),
+        error: [BatchNotFound, ItemNotFound, AccessDenied, BadRequest],
+      },
+    ).middleware(Authenticated),
   )
   .add(
     // What a save would say about a whole candidate question, asked while it

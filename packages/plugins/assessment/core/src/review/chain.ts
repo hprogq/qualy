@@ -328,6 +328,20 @@ export const routeReaches = (
     return lineage.some((step) => step.nodeTypeId === selector.nodeTypeId)
   })
 
+/**
+ * The unit kinds a route's `roleAt` steps look for, in the route's order and
+ * once each; null when a step finds its person wherever they sit, which makes
+ * the route reachable from any lineage.
+ */
+export const routeLevels = (stages: readonly PolicyStage[]): readonly string[] | null => {
+  const levels: string[] = []
+  for (const stage of stages) {
+    if (stage.selector.kind === 'nearestRole') return null
+    if (!levels.includes(stage.selector.nodeTypeId)) levels.push(stage.selector.nodeTypeId)
+  }
+  return levels
+}
+
 /** the next stage of the same route after this one, or nothing */
 export const nextAfter = (policy: ResolvedPolicy, stage: ResolvedStage): ResolvedStage | null =>
   enterableFrom(policy, stage.route, stage.index + 1)

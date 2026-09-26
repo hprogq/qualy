@@ -104,7 +104,15 @@ import {
   reviewsWaitingByBatchOf,
   tenantsWithOpenRounds,
 } from '../review/db.ts'
-import { stageById } from '../review/chain.ts'
+import { stageById, type ReviewRoute } from '../review/chain.ts'
+import {
+  itemDemandsOf,
+  levelGroupsOf,
+  routeDemandsOf,
+  unreachableOf,
+  unreachablePage,
+  unreachableTotal,
+} from '../review/reach.ts'
 import { reviewersVeiled, unnamedUnlessOwn } from '../review/veil.ts'
 import { makeScoringMethods, type ScoringMethods } from '../scoring/service.ts'
 import { participantRowByUser } from '../scoring/db.ts'
@@ -623,6 +631,8 @@ const ROSTER_READING_CODES: readonly string[] = ['assessment.entry.record', REDE
  * every row on it is a whole account the page then asks the totals of.
  */
 const ROSTER_PAGE_SIZE = 20
+/** a list read in a dialog beside the notice that counts it */
+const UNREACHABLE_PAGE_SIZE = 10
 
 /** a person none of whose claims is waiting on anything */
 const NO_FILINGS: RosterFilings = {
@@ -1575,6 +1585,36 @@ export class Assessment extends Context.Service<
       { nodes: readonly { id: string; name: string; reviewers: number }[] },
       BatchNotFound | AccessDenied
     >
+    /**
+     * The people a review route has nowhere to stand for, a page at a time:
+     * one question's current route, or the unit kinds a route being composed
+     * asks for.
+     */
+    readonly listUnreachableParticipants: (
+      tenantId: string,
+      batchId: string,
+      query: {
+        route:
+          | { readonly kind: 'item'; readonly itemId: string; readonly route: ReviewRoute }
+          | { readonly kind: 'levels'; readonly nodeTypeIds: readonly string[] }
+        page: number
+        limit: number
+      },
+      as: Principal,
+    ) => Effect.Effect<
+      {
+        rows: readonly {
+          participantId: string
+          userId: string
+          displayName: string
+          businessNo: string | null
+          unitPath: readonly (string | null)[]
+        }[]
+        total: number
+        page: number
+      },
+      BatchNotFound | ItemNotFound | AccessDenied
+    >
     readonly itemOptions: (
       tenantId: string,
       batchId: string,
@@ -1620,6 +1660,18 @@ export class Assessment extends Context.Service<
           reason: 'no-assignee' | 'no-independent-reviewer' | 'panel-seat-unfilled'
           waiting: number
         }[]
+        /** questions whose route has nowhere to stand for some of the roster */
+        unreachable: {
+          routes: readonly {
+            itemId: string
+            itemTitle: string
+            route: ReviewRoute
+            participants: number
+            levelNames: readonly string[]
+          }[]
+          cannotSubmit: number
+          cannotAppeal: number
+        }
       },
       BatchNotFound | AccessDenied
     >
@@ -5576,6 +5628,38 @@ export const make = Effect.fn('Assessment.make')(function* () {
       return { nodes: counted }
     }),
 
+    listUnreachableParticipants: Effect.fn('Assessment.listUnreachableParticipants')(
+      function* (tenantId, batchId, query, as) {
+        const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+        if (!batch) return yield* new BatchNotFound()
+        // the same door as the alert panel these people are counted on
+        yield* requireRosterReach(as, tenantId, batchId)
+        let levels: readonly string[] | null
+        if (query.route.kind === 'levels') {
+          levels = query.route.nodeTypeIds
+        } else {
+          const { itemId, route } = query.route
+          const demands = yield* dieQuery(withDb(itemDemandsOf(tenantId, batchId, itemId)))
+          if (demands === null) return yield* new ItemNotFound()
+          // a route that finds its person wherever they sit, or one nobody's
+          // claim walks, makes no demand and misses nobody
+          levels = demands.find((demand) => demand.route === route)?.levels ?? null
+        }
+        if (levels === null) return { rows: [], total: 0, page: 1 }
+        const total = yield* dieQuery(withDb(unreachableTotal(tenantId, batchId, levels)))
+        const window = pageWindow(query.page, query.limit, total)
+        const rows = yield* dieQuery(
+          withDb(
+            unreachablePage(tenantId, batchId, levels, {
+              offset: window.offset,
+              limit: query.limit,
+            }),
+          ),
+        )
+        return { rows, total, page: window.page }
+      },
+    ),
+
     userTypeOptions: Effect.fn('Assessment.userTypeOptions')(function* (tenantId, as) {
       yield* roundsHeld(as)
       return yield* dieQuery(withDb(userTypeOptionRows(tenantId)))
@@ -5816,6 +5900,17 @@ export const make = Effect.fn('Assessment.make')(function* () {
           }),
         ),
       )
+      // the rounds that cannot start at all beside the ones that stopped:
+      // what no appointment mends, said before anybody files into it
+      const reach = unreachableOf(
+        yield* dieQuery(withDb(routeDemandsOf(tenantId, batchId))),
+        yield* dieQuery(withDb(levelGroupsOf(tenantId, batchId))),
+      )
+      const levelNames = new Map(
+        (yield* dieQuery(
+          withDb(orgTypesNamed(tenantId, [...new Set(reach.routes.flatMap((one) => one.levels))])),
+        )).map((type) => [type.id, type.name]),
+      )
       return {
         groups: groups.map((group) => ({
           nodeId: group.nodeId,
@@ -5824,6 +5919,20 @@ export const make = Effect.fn('Assessment.make')(function* () {
           reason: group.reason,
           waiting: group.waiting,
         })),
+        unreachable: {
+          routes: reach.routes.map((one) => ({
+            itemId: one.itemId,
+            itemTitle: one.itemTitle,
+            route: one.route,
+            participants: one.participants,
+            levelNames: one.levels.flatMap((level) => {
+              const name = levelNames.get(level)
+              return name === undefined ? [] : [name]
+            }),
+          })),
+          cannotSubmit: reach.cannotSubmit,
+          cannotAppeal: reach.cannotAppeal,
+        },
       }
     }),
 
@@ -8066,6 +8175,34 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           { nodeTypeId: query.nodeTypeId, roleIds: listed(query.roleIds) },
           principal,
         )
+      }),
+    )
+    .handle(
+      'listUnreachableParticipants',
+      Effect.fn('assessment.listUnreachableParticipants.handler')(function* ({ params, query }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const levels = listed(query.nodeTypeIds)
+        // one question or one composed route: both at once, or neither, is
+        // a request that does not say which people it is about
+        if ((query.itemId === undefined) === (query.nodeTypeIds === undefined)) {
+          return yield* new BadRequest({ message: 'name one question or one set of unit kinds' })
+        }
+        const limit = pageSize(query.limit, UNREACHABLE_PAGE_SIZE)
+        const found = yield* assessment.listUnreachableParticipants(
+          principal.tenantId,
+          params.batchId,
+          {
+            route:
+              query.itemId !== undefined
+                ? { kind: 'item', itemId: query.itemId, route: query.route ?? 'normal' }
+                : { kind: 'levels', nodeTypeIds: levels },
+            page: pageNumber(query.page),
+            limit,
+          },
+          principal,
+        )
+        return { items: found.rows, total: found.total, page: found.page, pageSize: limit }
       }),
     )
     .handle(
