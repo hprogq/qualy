@@ -92,7 +92,7 @@ describe("a person's security activity", () => {
     await vi.waitFor(() => expect(endAll).toHaveBeenCalledWith({ params: { userId: USER_ID } }))
   })
 
-  it('ends one session of theirs by its id', async () => {
+  it('ends one session of theirs by its id, after asking', async () => {
     const endOne = vi.fn(() => Effect.succeed({ ok: true as const }))
     await open(person(), {
       listUserSessions: () => Effect.succeed({ items: [session(SESSION_A)], nextCursor: null }),
@@ -101,7 +101,12 @@ describe("a person's security activity", () => {
     })
     const row = page.getByTestId('session-row')
     await expect.element(row).toBeInTheDocument()
-    await row.getByRole('button').click()
+    // named as what it does to them, not as signing the reader out
+    await row.getByRole('button', { name: '结束会话' }).click()
+    const asked = page.getByRole('alertdialog')
+    await expect.element(asked).toBeInTheDocument()
+    expect(endOne).not.toHaveBeenCalled()
+    await asked.getByTestId('confirm-accept').click()
     await vi.waitFor(() =>
       expect(endOne).toHaveBeenCalledWith({ params: { userId: USER_ID, sessionId: SESSION_A } }),
     )

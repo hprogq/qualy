@@ -57,6 +57,14 @@ const personSessionsEndAllTitleMessage = defineMessage<{ name: string }>()({
   id: 'auth/person/sessions-end-all-title',
   defaultMessage: 'Sign {name} out everywhere?',
 })
+const personSessionEndTitleMessage = defineMessage<{ device: string }>()({
+  id: 'auth/person/session-end-title',
+  defaultMessage: 'End the session on {device}?',
+})
+const personSessionEndBodyMessage = defineMessage<{ name: string }>()({
+  id: 'auth/person/session-end-body',
+  defaultMessage: '{name} will have to sign in again on that device',
+})
 const personVerificationSentMessage = defineMessage<{ email: string }>()({
   id: 'auth/person/verification-sent',
   defaultMessage: 'A verification link went to {email}',
@@ -1129,6 +1137,9 @@ const i18n = definePluginMessages({
       defaultMessage: 'End all sessions',
     },
     personSessionsEndAllTitle: personSessionsEndAllTitleMessage,
+    personSessionEnd: { id: 'auth/person/session-end', defaultMessage: 'End session' },
+    personSessionEndTitle: personSessionEndTitleMessage,
+    personSessionEndBody: personSessionEndBodyMessage,
     personSessionsEndAllBody: {
       id: 'auth/person/sessions-end-all-body',
       defaultMessage: 'They will have to sign in again to carry on',

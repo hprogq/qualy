@@ -126,6 +126,9 @@ export function SessionsCard({ person }: { person?: RecordPerson }) {
   const queryClient = useQueryClient()
   const { format, formatError, locale } = useI18n()
   const [confirming, setConfirming] = useState(false)
+  // somebody else's session, asked about before it is ended: a stray press
+  // signs out a student in the middle of filling something in
+  const [ending, setEnding] = useState<{ id: string; device: string } | null>(null)
   const sessions = useInfiniteQuery({
     queryKey:
       person === undefined
@@ -230,10 +233,17 @@ export function SessionsCard({ person }: { person?: RecordPerson }) {
                 size="xs"
                 variant="ghost"
                 disabled={endOne.isPending}
-                onClick={() => endOne.mutate(session.id)}
+                onClick={() =>
+                  person === undefined
+                    ? endOne.mutate(session.id)
+                    : setEnding({
+                        id: session.id,
+                        device: deviceWords(session.userAgent) ?? format(m.unknownDevice),
+                      })
+                }
                 className={stylex.props(styles.end).className}
               >
-                {format(m.sessionEnd)}
+                {format(person === undefined ? m.sessionEnd : m.personSessionEnd)}
               </Button>
             )}
           </div>
@@ -284,6 +294,23 @@ export function SessionsCard({ person }: { person?: RecordPerson }) {
           endOthers.mutate()
         }}
       />
+      {person !== undefined && (
+        <ConfirmDialog
+          open={ending !== null}
+          tone="destructive"
+          title={format(m.personSessionEndTitle, { device: ending?.device ?? '' })}
+          description={format(m.personSessionEndBody, { name: person.name })}
+          confirmLabel={format(m.personSessionEnd)}
+          cancelLabel={format(m.cancel)}
+          pending={endOne.isPending}
+          onCancel={() => setEnding(null)}
+          onConfirm={() => {
+            const id = ending?.id
+            setEnding(null)
+            if (id !== undefined) endOne.mutate(id)
+          }}
+        />
+      )}
     </Card>
   )
 }
