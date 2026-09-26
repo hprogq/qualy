@@ -426,7 +426,8 @@ export function ParticipantResultList({
     // so turning a page does not blank the table
     placeholderData: keepPreviousData,
   })
-  const rows = participants.data?.items ?? []
+  // one list per answer, so what is measured from the rows is measured once
+  const rows = useMemo(() => participants.data?.items ?? [], [participants.data])
   const total = participants.data?.total ?? 0
   const page = participants.data?.page ?? view.page
 
