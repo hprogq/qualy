@@ -129,15 +129,66 @@ export const shapeOf = (rows: readonly PhaseDto[], currentPhaseId: string | null
   }
 }
 
-/** how many drafts differ from what the server holds, additions included */
+/**
+ * The stored stages an edit has put somewhere else in the plan.
+ *
+ * Measured against the order the kept stages already had: the longest run
+ * of them still in that order stayed where it was, and whatever is outside
+ * it is what moved. One stage taken from the top to the bottom is one move,
+ * not every stage it passed on the way. Order is part of the plan - it is
+ * the order the stages run in - so a move is as unsaved as a rename.
+ */
+export const movedIds = (
+  edited: readonly PhaseDraft[] | null,
+  server: readonly PhaseDraft[],
+): ReadonlySet<string> => {
+  if (edited === null) return new Set()
+  const stored = new Set(server.flatMap((row) => (row.id !== undefined ? [row.id] : [])))
+  const after = edited.flatMap((row) =>
+    row.id !== undefined && stored.has(row.id) ? [row.id] : [],
+  )
+  const kept = new Set(after)
+  const before = server.flatMap((row) => (row.id !== undefined && kept.has(row.id) ? [row.id] : []))
+  // the longest common run, by the usual table: longest[i][j] is how long
+  // it is over the first i of `after` and the first j of `before`
+  const longest = Array.from({ length: after.length + 1 }, () =>
+    Array.from<number>({ length: before.length + 1 }).fill(0),
+  )
+  for (let i = 1; i <= after.length; i += 1) {
+    for (let j = 1; j <= before.length; j += 1) {
+      longest[i]![j] =
+        after[i - 1] === before[j - 1]
+          ? longest[i - 1]![j - 1]! + 1
+          : Math.max(longest[i - 1]![j]!, longest[i]![j - 1]!)
+    }
+  }
+  const moved = new Set(after)
+  let i = after.length
+  let j = before.length
+  while (i > 0 && j > 0) {
+    if (after[i - 1] === before[j - 1]) {
+      moved.delete(after[i - 1]!)
+      i -= 1
+      j -= 1
+    } else if (longest[i - 1]![j]! >= longest[i]![j - 1]!) {
+      i -= 1
+    } else {
+      j -= 1
+    }
+  }
+  return moved
+}
+
+/** how many stages differ from what the server holds: additions, removals and moves included */
 export const countChanges = (
   edited: readonly PhaseDraft[] | null,
   server: readonly PhaseDraft[],
 ): number => {
   if (edited === null) return 0
   const before = new Map(server.map((row) => [row.id!, row]))
+  const moved = movedIds(edited, server)
   const changed = edited.filter(
-    (row) => row.id === undefined || edits(row, before.get(row.id)),
+    (row) => row.id === undefined || edits(row, before.get(row.id)) || moved.has(row.id),
   ).length
   const kept = new Set(edited.flatMap((row) => (row.id !== undefined ? [row.id] : [])))
   return changed + server.filter((row) => !kept.has(row.id!)).length

@@ -1,7 +1,7 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PencilLineIcon, PlusIcon } from 'lucide-react'
-import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
+import { useApi, useApiQuery, useLeaveGuard, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'
@@ -22,6 +22,7 @@ import {
   draftOf,
   edits,
   freshDraft,
+  movedIds,
   scopesToSend,
   shapeOf,
   type BatchDto,
@@ -315,15 +316,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
   const isMobile = useIsMobile()
   const readOnly = batch.status === 'archived'
   const dirty = useMemo(() => countChanges(edited, serverDrafts), [edited, serverDrafts])
-
-  // closing the tab or reloading it takes an unsaved plan with it; the
-  // browser asks first, in its own words
-  useEffect(() => {
-    if (dirty === 0) return
-    const hold = (event: BeforeUnloadEvent) => event.preventDefault()
-    window.addEventListener('beforeunload', hold)
-    return () => window.removeEventListener('beforeunload', hold)
-  }, [dirty])
+  const moved = useMemo(() => movedIds(edited, serverDrafts), [edited, serverDrafts])
 
   const clear = () => {
     setFailure(null)
@@ -451,12 +444,31 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
     [drafts],
   )
 
-  const saveAll = () => {
+  /** saves the plan as edited; true once it is saved, false with the reason on the page */
+  const saveAll = async (): Promise<boolean> => {
     if (blockers.length > 0) {
       setPlanRefusals(blockers)
-      return
+      return false
     }
-    savePlan.mutate({ submitted: drafts, expected: baseline ?? serverFingerprint })
+    try {
+      await savePlan.mutateAsync({ submitted: drafts, expected: baseline ?? serverFingerprint })
+      return true
+    } catch {
+      // said on the page by the mutation's own error handling
+      return false
+    }
+  }
+
+  // Leaving the page takes an unsaved plan with it, whether by a link, the
+  // rail, the browser's own back or a closed tab: each asks first, and in
+  // the application the question can save the plan on the way out.
+  useLeaveGuard({ when: dirty > 0, onSave: saveAll })
+
+  /** out of editing, with whatever the draft still held put down */
+  const stopEditing = () => {
+    clear()
+    dropDraft()
+    setEditing(false)
   }
 
   const addPhase = () => insertAt(drafts.length)
@@ -508,7 +520,9 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
     editing,
     readOnly,
     unsaved:
-      edited !== null && edits(row, row.id !== undefined ? storedById.get(row.id) : undefined),
+      edited !== null &&
+      (edits(row, row.id !== undefined ? storedById.get(row.id) : undefined) ||
+        (row.id !== undefined && moved.has(row.id))),
     scopeTitles: paperOrder
       .filter((id) => row.itemScope.includes(id))
       .flatMap((id) => titles.get(id) ?? []),
@@ -559,11 +573,14 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
                 size="sm"
                 variant="outline"
                 disabled={savePlan.isPending}
-                onClick={() => (dirty > 0 ? setDiscarding(true) : setEditing(false))}
+                // a draft that came back to where it started - a stage moved
+                // down and up again - has nothing to lose, and is put down
+                // rather than carried out of editing
+                onClick={() => (dirty > 0 ? setDiscarding(true) : stopEditing())}
               >
                 {format(m.cancel)}
               </Button>
-              <Button size="sm" disabled={savePlan.isPending} onClick={saveAll}>
+              <Button size="sm" disabled={savePlan.isPending} onClick={() => void saveAll()}>
                 {format(m.saveShort)}
               </Button>
             </>
@@ -766,9 +783,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
         cancelLabel={format(m.cancel)}
         tone="destructive"
         onConfirm={() => {
-          clear()
-          dropDraft()
-          setEditing(false)
+          stopEditing()
           setDiscarding(false)
         }}
         onCancel={() => setDiscarding(false)}
