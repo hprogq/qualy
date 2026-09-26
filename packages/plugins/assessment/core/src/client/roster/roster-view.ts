@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { usePageQueryState, usePageQueryUpdate } from '@qualy/web-runtime'
 
 // Where the reader is in the roster: which page, which people, in what
@@ -108,3 +108,51 @@ export const rosterQueryOf = (view: RosterView) => ({
   ...(view.status !== '' ? { status: view.status } : {}),
   ...(view.waiting !== '' ? { attention: view.waiting } : {}),
 })
+
+/** whether the view narrows the roster by anything other than a search */
+export const rosterFiltered = (view: RosterView): boolean =>
+  view.unit !== '' || view.status !== '' || view.waiting !== ''
+
+/** the filters a search leaves alone, cleared in one move */
+export const ROSTER_UNFILTERED: Partial<RosterView> = { unit: '', status: '', waiting: '' }
+
+/**
+ * The words in a roster's search box, and what they have asked the address.
+ *
+ * Typing does not fire a request per keystroke: the words go to the address
+ * once they have been still for a moment. What the box last asked for is
+ * remembered, so an address that moves by itself - the back button, a link,
+ * the same search typed on the other side of the page - moves the box, rather
+ * than the box writing its old words back over it. `flush` asks at once.
+ */
+export function useRosterSearch(
+  q: string,
+  onView: (changes: Partial<RosterView>) => void,
+): { draft: string; setDraft: (next: string) => void; flush: (next?: string) => void } {
+  const [draft, setDraft] = useState(q)
+  const asked = useRef(q)
+  useEffect(() => {
+    if (q === asked.current) return
+    asked.current = q
+    setDraft(q)
+  }, [q])
+  useEffect(() => {
+    if (draft === asked.current) return
+    const timer = setTimeout(() => {
+      asked.current = draft
+      onView({ q: draft })
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [draft, onView])
+  const flush = useCallback(
+    (next?: string) => {
+      const words = next ?? draft
+      setDraft(words)
+      if (words === asked.current) return
+      asked.current = words
+      onView({ q: words })
+    },
+    [draft, onView],
+  )
+  return { draft, setDraft, flush }
+}

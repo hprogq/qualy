@@ -6271,6 +6271,27 @@ const i18n = definePluginMessages({
       id: 'assessment/roster/position',
       defaultMessage: '{position} of {total}',
     }),
+    /** where the open person stands when the list does not hold them */
+    rosterPositionOff: defineMessage<{ total: number }>()({
+      id: 'assessment/roster/position-off',
+      defaultMessage: '{total} on the list',
+    }),
+    // the list beside an open account, walked from one person to the next
+    rosterWalkHeading: { id: 'assessment/roster/walk-heading', defaultMessage: 'Roster' },
+    rosterWalkOpen: defineMessage<{ place: string }>()({
+      id: 'assessment/roster/walk-open',
+      defaultMessage: 'Roster, {place}',
+    }),
+    rosterWalkOff: { id: 'assessment/roster/walk-off', defaultMessage: 'Not on this list' },
+    rosterWalkFiltered: { id: 'assessment/roster/walk-filtered', defaultMessage: 'Filtered' },
+    rosterWalkClearFilters: {
+      id: 'assessment/roster/walk-clear-filters',
+      defaultMessage: 'Clear filters',
+    },
+    rosterWalkClearSearch: {
+      id: 'assessment/roster/walk-clear-search',
+      defaultMessage: 'Clear search',
+    },
     addPeopleOnRoster: {
       id: 'assessment/roster/add-on-roster',
       defaultMessage: 'On the roster',

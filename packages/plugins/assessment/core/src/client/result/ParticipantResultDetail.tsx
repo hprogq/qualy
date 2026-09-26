@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { ArrowLeftIcon, ChevronDownIcon } from 'lucide-react'
@@ -9,6 +9,7 @@ import {
   useRunApi,
   useScreenAsideOffered,
 } from '@qualy/web-runtime'
+import type { ApiResult } from '@qualy/web-runtime/api'
 import { isApiErrorCode, useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
@@ -18,7 +19,7 @@ import { toast } from '@qualy/ui/toast'
 import { Button } from '@qualy/ui/button'
 import { Count } from '@qualy/ui/count'
 import { Skeleton } from '@qualy/ui/skeleton'
-import { Swap } from '@qualy/ui/reveal'
+import { Drill, Swap, type DrillMove } from '@qualy/ui/reveal'
 import { liveStateOf } from '@qualy/ui/live-mark'
 import { UnitPath } from '@qualy/ui/unit-path'
 import { useIsMobile } from '@qualy/ui/use-mobile'
@@ -36,6 +37,7 @@ import { ResultLedger, ResultUnavailable } from './ResultLedger.tsx'
 import { ParticipantEntries } from './ParticipantEntries.tsx'
 import { useParticipantEntries } from './participant-entries.ts'
 import { unitChainOf, unitPathOf } from '../roster/unit-path.ts'
+import { settler } from '../roster/live-settle.ts'
 
 // One participant's whole account, in the page the list came from.
 //
@@ -43,10 +45,16 @@ import { unitChainOf, unitPathOf } from '../roster/unit-path.ts'
 // workspace shell has a column beside the page, the rail of the round's
 // sections gives it up to this person: their name, where they stand in the
 // organization and on this round's roster, the two halves of their account,
-// the way to the people either side of them and the way back to the list.
-// The work itself - the claims, or the account's arithmetic - then takes the
-// rest of the window, edge to edge. Narrower, the same things stand in a
-// head over the work, and on a phone the facts fold behind the name.
+// the way to the people either side of them and the way back to the list -
+// and under all that the list itself, so the next person to open is a press
+// away. The work itself - the claims, or the account's arithmetic - then
+// takes the rest of the window, edge to edge. Narrower, the same things
+// stand in a head over the work, the list a press away from where this
+// person stands on it, and on a phone the facts fold behind the name.
+//
+// Stepping to another person is the same page with other facts in it: the
+// column stays - and with it the list's place and whatever had the focus -
+// and only the work steps up or down the way the list went.
 //
 // Two halves, because there are two questions: what was filed and decided,
 // read in the same workspace the person files in, and what the total came
@@ -64,14 +72,17 @@ const styles = stylex.create({
     flexDirection: 'column',
   },
   // ---- beside the work, in the column the shell lends ----
+  // As tall as the column at least, the list under the facts taking what
+  // they leave; a column too short for both scrolls whole.
   panel: {
     display: 'flex',
-    minHeight: '100%',
+    flexGrow: 1,
+    flexShrink: 0,
     flexDirection: 'column',
-    gap: 18,
+    gap: 16,
     paddingInline: 16,
     paddingTop: 12,
-    paddingBottom: 20,
+    paddingBottom: 16,
   },
   panelTop: {
     display: 'flex',
@@ -109,6 +120,14 @@ const styles = stylex.create({
     overflowWrap: 'anywhere',
   },
   chips: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
+  // the standing, and the way to change it at the far end of the same line
+  standingLine: {
+    display: 'flex',
+    minHeight: 30,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
   // the roster standing as a chip beside the name: counted in, or taken off
   chip: {
     display: 'inline-flex',
@@ -133,15 +152,20 @@ const styles = stylex.create({
   // The facts as a short list, each name over its value. The column is
   // narrow, and a name beside its value took the room from the value in
   // whichever language names it at length - where somebody stands, said
-  // from its own end, lost its end first.
+  // from its own end, lost its end first. The short ones share a line two
+  // abreast, so the list under them has the room; where they stand takes a
+  // line of its own.
   facts: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 10,
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gridAutoFlow: 'row dense',
+    columnGap: 12,
+    rowGap: 10,
     margin: 0,
     fontSize: 13,
   },
   fact: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 2 },
+  factWide: { gridColumn: '1 / -1' },
   factName: { margin: 0, fontSize: 12, color: tokens.mutedForeground },
   factValue: {
     display: 'flex',
@@ -151,7 +175,6 @@ const styles = stylex.create({
     overflowWrap: 'anywhere',
   },
   numeric: { fontVariantNumeric: 'tabular-nums' },
-  standing: { alignSelf: 'flex-start' },
   // the two halves, as the entries of the column they stand in
   halves: {
     display: 'flex',
@@ -356,6 +379,17 @@ const styles = stylex.create({
   skBone: { height: 13, borderRadius: 4 },
 })
 
+type ParticipantDto = ApiResult<typeof assessmentApi, 'assessment', 'getParticipant'>['participant']
+
+/** how long the list beside the account waits for a burst of wake-ups to end before reading again */
+const ROSTER_SETTLE = 1_000
+
+/** how long after a burst began it reads again, whether or not the burst has ended */
+const ROSTER_MAX_WAIT = 5_000
+
+/** a read this recent is not read again when a line opens */
+const SYNC_FRESH = 2_000
+
 export function ParticipantResultDetail({
   batchId,
   participantId,
@@ -363,8 +397,11 @@ export function ParticipantResultDetail({
   writable,
   mayRecord,
   view,
+  step,
   entryId,
   neighbors,
+  roster,
+  listed,
   onView,
   onEntry,
   onFollow,
@@ -380,10 +417,16 @@ export function ParticipantResultDetail({
   /** whether this reader holds the power that records, and so withdraws, a determination */
   mayRecord: boolean
   view: 'score' | 'entries'
+  /** which way the list went to reach this person; the work steps the same way */
+  step: DrillMove
   /** which claim is open, if any; the drawer over either half */
   entryId: string
   /** the way to the people either side, in the list this page was opened from */
   neighbors?: ReactNode
+  /** that list itself, under the facts in the column beside the work */
+  roster?: ReactNode
+  /** who this is as that list read them, said until they are read themselves */
+  listed?: ParticipantDto | null
   onView: (next: 'score' | 'entries') => void
   onEntry: (entryId: string) => void
   /** open a claim, its question AND the half it lives on, in one move */
@@ -408,6 +451,24 @@ export function ParticipantResultDetail({
   // queue behind it moves with the same wake-ups the review pages hear
   const refreshQueue = useQueueRefresh(batchId)
 
+  // What somebody's claims wait on moves with every claim and round in the
+  // round, and the list beside the account says it on each row: its pages
+  // are read again once a burst of wake-ups has gone quiet, and at the
+  // latest a few seconds after it began, never once per wake-up.
+  const rosterStirred = useMemo(
+    () =>
+      settler<null>({
+        settle: ROSTER_SETTLE,
+        maxWait: ROSTER_MAX_WAIT,
+        fire: () =>
+          void queryClient.invalidateQueries({
+            queryKey: query.assessment.listParticipantAccounts.key(),
+          }),
+      }),
+    [queryClient, query],
+  )
+  useEffect(() => () => rosterStirred.cancel(), [rosterStirred])
+
   // Wake-ups carry no facts - they say "read again" - so each kind names
   // exactly what it could have changed. Invalidating everything on every
   // event would throw away the roster, the paper and the batch on a wake-up
@@ -424,8 +485,20 @@ export function ParticipantResultDetail({
       stale(query.assessment.getParticipantResult.key({ params: { batchId, participantId } }))
     }
     switch (kind) {
-      // a fresh connection, or a phase that may have moved what staff may do
-      case 'sync':
+      // A line just opened: whatever was read before it may have moved
+      // while nobody was listening. What is being read right now, or was
+      // read a moment ago - the page opening, the next person stepped to -
+      // has not, and reading it again would only read the page twice.
+      case 'sync': {
+        const lately = Date.now() - SYNC_FRESH
+        void queryClient.invalidateQueries({
+          queryKey: query.assessment.key(),
+          predicate: (read) =>
+            read.state.fetchStatus !== 'fetching' && read.state.dataUpdatedAt < lately,
+        })
+        return
+      }
+      // a phase that may have moved what staff may do
       case 'phase-changed':
         stale(query.assessment.key())
         return
@@ -434,12 +507,16 @@ export function ParticipantResultDetail({
       case 'review-instance-changed':
         account()
         refreshQueue()
+        rosterStirred.wake(null)
         return
       // Anybody's claim in the round, a saved draft as often as not: the
       // account may have moved, but a queue only moves on a round, and
       // every write that moves one says so in its own wake-up. Reading the
       // whole queue again on each of these would read it on every save.
       case 'entries-changed':
+        account()
+        rosterStirred.wake(null)
+        return
       case 'result-changed':
         account()
         return
@@ -459,9 +536,16 @@ export function ParticipantResultDetail({
     }
   })
 
-  const who = useQuery(
-    query.assessment.getParticipant.queryOptions({ params: { batchId, participantId } }),
-  )
+  // Stepping to the next person, the list beside the account has already
+  // read who they are: said at once, the facts do not blank and come back
+  // under the reader's eyes, and the list under them does not jump with them.
+  const who = useQuery({
+    ...query.assessment.getParticipant.queryOptions({ params: { batchId, participantId } }),
+    placeholderData:
+      listed !== undefined && listed !== null && listed.id === participantId
+        ? { participant: listed }
+        : undefined,
+  })
   const result = useQuery(
     query.assessment.getParticipantResult.queryOptions({ params: { batchId, participantId } }),
   )
@@ -523,11 +607,19 @@ export function ParticipantResultDetail({
   // Taking somebody off the round, or putting them back. It belongs to the
   // person rather than to the list: the list is how somebody is found, and
   // this is the page that says what taking them off would leave behind.
+  // The page stays as the reader steps from one person to the next, so a
+  // change still on its way belongs to whoever it was asked for.
   const setStatus = useMutation({
-    mutationFn: (status: 'active' | 'excluded') =>
+    mutationFn: ({
+      status,
+      participantId: who,
+    }: {
+      status: 'active' | 'excluded'
+      participantId: string
+    }) =>
       run(
         api.assessment.setParticipantStatus({
-          params: { batchId, participantId },
+          params: { batchId, participantId: who },
           payload: { status },
         }),
       ).then((answer) => ({ ...answer, status })),
@@ -540,16 +632,17 @@ export function ParticipantResultDetail({
   })
 
   const excluded = participant?.status === 'excluded'
+  const changing = setStatus.isPending && setStatus.variables.participantId === participantId
   const standingKey =
     manageable && writable && participant !== undefined ? (
       <Button
         size="sm"
         variant="outline"
         data-testid="participant-standing"
-        disabled={setStatus.isPending}
+        disabled={changing}
         onClick={() =>
           excluded
-            ? setStatus.mutate('active')
+            ? setStatus.mutate({ status: 'active', participantId })
             : // taking somebody off is worth a question, because what it
               // keeps is not obvious
               setExcluding(true)
@@ -655,7 +748,12 @@ export function ParticipantResultDetail({
       </div>
       <div {...stylex.props(styles.identity)}>
         {name}
-        {chips}
+        {chips !== null && (
+          <div {...stylex.props(styles.standingLine)}>
+            {chips}
+            {standingKey}
+          </div>
+        )}
       </div>
       {participant === undefined ? (
         !unreadablePerson && <Skeleton className={stylex.props(styles.numberBone).className} />
@@ -668,7 +766,7 @@ export function ParticipantResultDetail({
             </dd>
           </div>
           {unit !== null && (
-            <div {...stylex.props(styles.fact)}>
+            <div {...stylex.props(styles.fact, styles.factWide)}>
               <dt {...stylex.props(styles.factName)}>{format(m.rosterUnits)}</dt>
               <dd
                 data-fact="unit"
@@ -698,7 +796,6 @@ export function ParticipantResultDetail({
           </div>
         </dl>
       )}
-      {standingKey !== null && <span {...stylex.props(styles.standing)}>{standingKey}</span>}
       <ZoneAwayNotice xstyle={styles.zone} />
       <nav aria-label={format(m.participantResultsViews)} {...stylex.props(styles.halves)}>
         {halves.map(({ key, label, count, total }) => (
@@ -721,6 +818,7 @@ export function ParticipantResultDetail({
           </button>
         ))}
       </nav>
+      {roster}
     </div>
   )
 
@@ -833,8 +931,15 @@ export function ParticipantResultDetail({
           })}
         </h2>
       )}
-      <div {...stylex.props(styles.body, filled ? styles.bodyFilled : styles.bodyGrown)}>
-        {/* the two halves replace each other in place, seen to change */}
+      {/* another person's work arrives from the way the list went; the
+          two halves of one person's replace each other in place */}
+      <Drill
+        move={step}
+        drillKey={participantId}
+        className={
+          stylex.props(styles.body, filled ? styles.bodyFilled : styles.bodyGrown).className
+        }
+      >
         <Swap swapKey={view} className={stylex.props(filled && styles.swapFilled).className}>
           {view === 'entries' ? (
             <ParticipantEntries
@@ -949,16 +1054,16 @@ export function ParticipantResultDetail({
             </div>
           )}
         </Swap>
-      </div>
+      </Drill>
       <ConfirmDialog
         open={excluding}
         title={format(m.excludeTitle, { name: participant?.displayName ?? '' })}
         description={format(m.excludeBody)}
         confirmLabel={format(m.exclude)}
         cancelLabel={format(commonMessages.cancel)}
-        pending={setStatus.isPending}
+        pending={changing}
         tone="destructive"
-        onConfirm={() => setStatus.mutate('excluded')}
+        onConfirm={() => setStatus.mutate({ status: 'excluded', participantId })}
         onCancel={() => setExcluding(false)}
       />
     </div>

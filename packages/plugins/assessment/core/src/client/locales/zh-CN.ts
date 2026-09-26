@@ -1882,6 +1882,13 @@ export default {
   'assessment/roster/previous': '上一位',
   'assessment/roster/next': '下一位',
   'assessment/roster/position': '第 {position} / {total} 位',
+  'assessment/roster/position-off': '共 {total} 位',
+  'assessment/roster/walk-heading': '参评人员',
+  'assessment/roster/walk-open': '参评人员，{place}',
+  'assessment/roster/walk-off': '不在当前名单中',
+  'assessment/roster/walk-filtered': '名单已筛选',
+  'assessment/roster/walk-clear-filters': '清除筛选',
+  'assessment/roster/walk-clear-search': '清除搜索',
   'assessment/roster/add-on-roster': '已在名单中',
 
   'assessment/access/hint': '管理本批次工作人员的权限，并处理组织权限变动。',

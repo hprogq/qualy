@@ -3,7 +3,7 @@ import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
 import { Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
-import { Effect } from 'effect'
+import { Effect, Queue, Stream } from 'effect'
 import zhCN from '../src/client/locales/zh-CN.ts'
 import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
@@ -1216,5 +1216,301 @@ describe('one account beside its person', () => {
     } finally {
       await page.viewport(1280, 800)
     }
+  })
+})
+
+// Opened, a person stands among the people either side of them: the list
+// the reader came from, under the facts in the column, with them in its
+// middle and the next one a press away. It searches the same list the list
+// page does, and the keys over it step along the same rows.
+describe('the list beside an open account', () => {
+  const personId = (n: number) => `22222222-2222-4222-8222-${String(n).padStart(12, '0')}`
+  const NONE_WAITING = { inReview: 0, toSupplement: 0, reconsidering: 0, toRevise: 0, blocked: 0 }
+  const PEOPLE = Array.from({ length: 45 }, (_, index) =>
+    participant({
+      id: personId(index + 1),
+      displayName: `参评人${String(index + 1).padStart(2, '0')}`,
+      businessNo: `2023${String(100_000 + index + 1)}`,
+    }),
+  )
+  /** the roster as the server pages it, searched and located the way it is */
+  const paged = (asked: Request[]) => (request: Request) => {
+    asked.push(request)
+    const words = request.query?.['q'] ?? ''
+    const matched = PEOPLE.filter(
+      (one) => words === '' || one.displayName.includes(words) || one.businessNo.includes(words),
+    )
+    const size = Number(request.query?.['limit'] ?? 20)
+    const last = Math.max(1, Math.ceil(matched.length / size))
+    let at = Math.min(Math.max(1, Number(request.query?.['page'] ?? 1)), last)
+    const around = matched.findIndex((one) => one.id === request.query?.['around'])
+    if (around >= 0) at = Math.floor(around / size) + 1
+    return Effect.succeed({
+      items: matched
+        .slice((at - 1) * size, at * size)
+        .map((one) => ({ ...one, filings: NONE_WAITING })),
+      total: matched.length,
+      page: at,
+      pageSize: size,
+    })
+  }
+  const rail = [
+    {
+      id: 'assessment/batch-results/rail',
+      label: { kind: 'literal' as const, value: '参评名单' },
+      target: {
+        kind: 'page',
+        pageId: 'assessment/batch-results',
+        path: '/assessment/batches/:batchId/results',
+      },
+      order: 10,
+    },
+  ]
+  const shelled = (route: string, stubs: Record<string, unknown> = {}) => {
+    const asked: Request[] = []
+    const rendered = renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              pages: PAGES,
+              collections: {
+                'app-shell/navigation-groups': [],
+                'app-shell/navigation-primary': [],
+                'workspace-shell/navigation': rail,
+              },
+            }),
+        },
+        assessment: {
+          getBatch: () => Effect.succeed({ batch }),
+          listParticipantAccounts: paged(asked),
+          listParticipantScores: () => Effect.succeed({ scores: [] }),
+          listScopeOptions: () => Effect.succeed({ nodes: [] }),
+          listParticipantCandidates: () =>
+            Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }),
+          previewImport: () => Effect.succeed({ candidates: 0 }),
+          listParticipantPlacements: () =>
+            Effect.succeed({ items: [], nextCursor: null, changedTotal: 0, unavailableTotal: 0 }),
+          getParticipant: (request: Request) =>
+            Effect.succeed({
+              participant:
+                PEOPLE.find((one) => one.id === request.params?.['participantId']) ?? PEOPLE[0],
+            }),
+          getParticipantResult: () => Effect.succeed(account),
+          listRosterUnits: () => Effect.succeed({ units: [] }),
+          listUserTypeOptions: () => Effect.succeed({ userTypes: [] }),
+          listReviewInbox: () =>
+            Effect.succeed({ items: [], nextCursor: null, handledToday: 0, judging: false }),
+          listParticipantEntries: () =>
+            Effect.succeed({ participantId: PARTICIPANT_ID, entries: [], nextCursor: null }),
+          listItems: () => Effect.succeed({ items: [item], version: 1 }),
+          listScoreGroups: () => Effect.succeed({ groups: [], version: 1 }),
+          ...stubs,
+        },
+      }),
+      route,
+      children: (
+        <Routes>
+          <Route element={<WorkspaceShell />}>
+            <Route
+              path="/assessment/batches/:batchId/results"
+              element={<ParticipantResultsPage />}
+            />
+          </Route>
+        </Routes>
+      ),
+    })
+    return { asked, rendered }
+  }
+  const at = (n: number, rest = '') =>
+    `/assessment/batches/${BATCH_ID}/results?participant=${personId(n)}${rest}`
+  const current = () =>
+    document.querySelector<HTMLElement>('[data-testid="roster-walk-row"][aria-current="true"]')
+  /** how far the open person's row stands from the middle of the list's window */
+  const offCentre = () => {
+    const scroller = document.querySelector('[data-testid="roster-walk-scroller"]')!
+    const box = scroller.getBoundingClientRect()
+    const row = current()!.getBoundingClientRect()
+    return Math.abs(row.top + row.height / 2 - (box.top + box.height / 2))
+  }
+  const rowHeight = () => current()!.getBoundingClientRect().height
+
+  it('stands the list under the facts in the column, the open person in its middle', async () => {
+    await page.viewport(1280, 800)
+    await shelled(at(23, '&list-page=2')).rendered
+    const column = page.getByTestId('workspace-rail')
+    const list = column.getByTestId('roster-walk')
+    await expect.element(list).toHaveAttribute('data-total', '45')
+    await expect.poll(() => current()?.dataset['participant']).toBe(personId(23))
+    // under the two halves, in the same column
+    const halves = column.getByTestId('participant-tab-score').element().getBoundingClientRect()
+    expect(list.element().getBoundingClientRect().top).toBeGreaterThanOrEqual(halves.bottom)
+    await expect.poll(offCentre).toBeLessThanOrEqual(rowHeight())
+    // named, so a reader moving by landmarks finds it
+    await expect.element(column.getByRole('navigation', { name: '参评人员' })).toBeInTheDocument()
+  })
+
+  it('keeps room for a handful of rows on a short window, the column scrolling whole', async () => {
+    await page.viewport(1280, 640)
+    try {
+      await shelled(at(23, '&list-page=2')).rendered
+      await expect.poll(() => current()?.dataset['participant']).toBe(personId(23))
+      const scroller = page.getByTestId('roster-walk-scroller').element()
+      const halves = page.getByTestId('participant-tab-score').element().getBoundingClientRect()
+      expect(scroller.getBoundingClientRect().top).toBeGreaterThanOrEqual(halves.bottom)
+      const list = page.getByTestId('roster-walk').element().getBoundingClientRect()
+      expect(list.height).toBeGreaterThanOrEqual(239)
+      const seat = page.getByTestId('workspace-aside').element()
+      expect(seat.scrollHeight).toBeGreaterThan(seat.clientHeight)
+    } finally {
+      await page.viewport(1280, 800)
+    }
+  })
+
+  it('follows the next person to the middle, the column and its focus staying put', async () => {
+    await page.viewport(1280, 800)
+    await shelled(at(18, '&list-page=1')).rendered
+    await expect.poll(() => current()?.dataset['participant']).toBe(personId(18))
+    const panel = page.getByTestId('participant-panel').element()
+    const scroller = page.getByTestId('roster-walk-scroller').element()
+    const before = scroller.scrollTop
+    const next = page.getByRole('button', { name: '下一位' })
+    await next.click()
+    await next.click()
+    await expect.poll(() => current()?.dataset['participant']).toBe(personId(20))
+    await expect.poll(offCentre).toBeLessThanOrEqual(rowHeight())
+    expect(scroller.scrollTop).toBeGreaterThan(before)
+    // the same column, not one drawn again: the key pressed keeps the focus
+    expect(page.getByTestId('participant-panel').element()).toBe(panel)
+    expect(document.activeElement).toBe(next.element())
+    // and across a page's edge, the list's page moves with them
+    await next.click()
+    await next.click()
+    await expect.poll(() => addressNow()).toContain(`participant=${personId(22)}`)
+    expect(addressNow()).toContain('list-page=2')
+    await expect.poll(offCentre).toBeLessThanOrEqual(rowHeight())
+  })
+
+  it('opens somebody from the list, keeping the half and the question read', async () => {
+    await page.viewport(1440, 900)
+    await shelled(at(23, `&list-page=2&view=score&open=${ITEM_ID}&entry=${ENTRY_ID}`)).rendered
+    await expect.poll(() => current()?.dataset['participant']).toBe(personId(23))
+    await page
+      .getByTestId('roster-walk')
+      .getByRole('button', { name: /参评人25/ })
+      .click()
+    await expect.poll(() => addressNow()).toContain(`participant=${personId(25)}`)
+    const address = addressNow()
+    expect(address).toContain('view=score')
+    expect(address).toContain(`open=${ITEM_ID}`)
+    expect(address).not.toContain('entry=')
+    expect(address).toContain('list-page=2')
+    await expect.poll(() => current()?.dataset['participant']).toBe(personId(25))
+  })
+
+  it('finds the page of somebody the address does not place, and moves the list there', async () => {
+    await page.viewport(1280, 800)
+    const { asked, rendered } = shelled(at(44))
+    await rendered
+    await expect.poll(() => current()?.dataset['participant']).toBe(personId(44))
+    expect(asked.some((one) => one.query?.['around'] === personId(44))).toBe(true)
+    await expect.poll(() => addressNow()).toContain('list-page=3')
+    await expect
+      .element(page.getByTestId('roster-neighbors'))
+      .toHaveAttribute('data-position', '44')
+  })
+
+  it('searches the list the list page shows, and says the open person is off it', async () => {
+    await page.viewport(1440, 900)
+    const { asked, rendered } = shelled(at(23, '&list-page=2'))
+    await rendered
+    await expect.poll(() => current()?.dataset['participant']).toBe(personId(23))
+    const search = page.getByTestId('roster-walk').getByRole('searchbox')
+    await search.fill('参评人0')
+    // one question for both sides of the page: the list page's own words
+    await expect.poll(() => addressNow()).toContain('list-q=')
+    expect(addressNow()).not.toContain('list-page=')
+    await expect.poll(() => asked.at(-1)?.query?.['q']).toBe('参评人0')
+    await expect.element(page.getByTestId('roster-walk-off')).toBeVisible()
+    const strip = page.getByTestId('roster-neighbors')
+    await expect.element(strip).toHaveAttribute('data-off', 'true')
+    await expect.element(strip.getByRole('button', { name: '下一位' })).toBeDisabled()
+    await expect.element(strip.getByRole('button', { name: '上一位' })).toBeDisabled()
+    // Enter opens the first it finds
+    await search.click()
+    await userEvent.keyboard('{Enter}')
+    await expect.poll(() => addressNow()).toContain(`participant=${personId(1)}`)
+    // with the words gone, the open person is found again
+    await search.fill('')
+    await expect.poll(() => addressNow()).not.toContain('list-q=')
+    await expect.poll(() => current()?.dataset['participant']).toBe(personId(1))
+    expect(page.getByTestId('roster-walk-off').elements()).toHaveLength(0)
+  })
+
+  it('opens the list over the account where the window lends no column', async () => {
+    for (const [wide, high] of [
+      [834, 1112],
+      [390, 844],
+    ] as const) {
+      await page.viewport(wide, high)
+      const { unmount } = await shelled(at(23, '&list-page=2')).rendered
+      const opener = page.getByTestId('roster-walk-open')
+      await expect.element(opener).toHaveAttribute('aria-haspopup', 'dialog')
+      expect(page.getByTestId('participant-panel').elements()).toHaveLength(0)
+      await opener.click()
+      const sheet = page.getByTestId('roster-walk-sheet')
+      await expect.element(sheet).toBeVisible()
+      await expect.poll(() => current()?.dataset['participant']).toBe(personId(23))
+      await expect.poll(offCentre).toBeLessThanOrEqual(rowHeight())
+      await sheet.getByRole('button', { name: /参评人24/ }).click()
+      await expect.poll(() => addressNow()).toContain(`participant=${personId(24)}`)
+      await expect.element(sheet).not.toBeInTheDocument()
+      await unmount()
+    }
+    await page.viewport(1280, 800)
+  })
+
+  it('keeps one line to the round across people, and the list current on it', async () => {
+    await page.viewport(1280, 800)
+    // the round's line, saying only what the test tells it to
+    let wake = (_kind: string) => {}
+    const watchBatch = vi.fn(() =>
+      Effect.succeed(
+        Stream.callback<{ kind: string }>((queue) =>
+          Effect.sync(() => {
+            wake = (kind) => void Queue.offerUnsafe(queue, { kind })
+          }),
+        ),
+      ),
+    )
+    const results = vi.fn(() => Effect.succeed(account))
+    const { asked, rendered } = shelled(at(23, '&list-page=2&view=score'), {
+      watchBatch,
+      getParticipantResult: results,
+    })
+    await rendered
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
+    await new Promise((settle) => setTimeout(settle, 100))
+    const readBefore = results.mock.calls.length
+    // the first word on the line finds reads the page has only just made
+    wake('sync')
+    // and the score half says it is kept current, as the claims half does
+    await expect.element(page.getByTestId('result-live')).toHaveAttribute('data-state', 'live')
+    await new Promise((settle) => setTimeout(settle, 300))
+    expect(results.mock.calls.length).toBe(readBefore)
+
+    // stepping to the next person keeps the same line, and says so throughout
+    const dialled = watchBatch.mock.calls.length
+    await page.getByRole('button', { name: '下一位' }).click()
+    await expect.poll(() => current()?.dataset['participant']).toBe(personId(24))
+    await expect.element(page.getByTestId('result-live')).toHaveAttribute('data-state', 'live')
+    expect(watchBatch.mock.calls.length).toBe(dialled)
+
+    // what somebody's claims wait on moved: the list is read again
+    const reads = asked.length
+    wake('entries-changed')
+    wake('review-instance-changed')
+    await expect.poll(() => asked.length, { timeout: 4_000 }).toBeGreaterThan(reads)
   })
 })

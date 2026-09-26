@@ -862,8 +862,15 @@ describe('reading somebody’s entries', () => {
       const strip = page.getByTestId('roster-neighbors')
       await expect.element(strip).toHaveAttribute('data-position', '1231')
       expect(strip.element().getAttribute('data-total')).toBe('3456')
-      const keys = strip.getByRole('button').elements()
-      expect(keys).toHaveLength(2)
+      // either neighbour, and where this person stands as the way to the
+      // whole list, which has no column of its own here
+      const [before, after] = locale === 'en-US' ? ['Previous', 'Next'] : ['上一位', '下一位']
+      const keys = [
+        strip.getByRole('button', { name: before, exact: true }).element(),
+        strip.getByTestId('roster-walk-open').element(),
+        strip.getByRole('button', { name: after, exact: true }).element(),
+      ]
+      expect(strip.getByRole('button').elements()).toHaveLength(3)
       const tabs = [
         page.getByTestId('participant-tab-entries').element(),
         page.getByTestId('participant-tab-score').element(),
