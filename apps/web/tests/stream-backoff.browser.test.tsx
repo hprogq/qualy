@@ -1,4 +1,6 @@
+import { StrictMode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { page } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 import { Effect, Stream } from 'effect'
 import { useApiStream } from '@qualy/web-runtime'
@@ -52,5 +54,31 @@ describe('a stream that dies as soon as it opens', () => {
     await vi.waitFor(() => expect(waits.length).toBeGreaterThanOrEqual(3), { timeout: 5_000 })
     expect(waits.slice(0, 3)).toEqual([6_000, 12_000, 24_000])
     expect(dials).toBeGreaterThanOrEqual(4)
+  })
+})
+
+/** a stream that answers at once and then stays open, and what the hook says of it */
+function OpenStream() {
+  const { live } = useApiStream<string>(
+    () => Effect.succeed(Stream.concat(Stream.succeed('sync'), Stream.never)),
+    () => {},
+    { key: 'probe' },
+  )
+  return <p data-testid="probe" data-live={String(live)} />
+}
+
+describe('a connection that was replaced', () => {
+  it('does not take the live mark from the connection that replaced it', async () => {
+    // a development mount runs every effect twice: the first connection is
+    // let go of at once, and it settles after the second has already heard
+    await render(
+      <StrictMode>
+        <OpenStream />
+      </StrictMode>,
+    )
+    const probe = page.getByTestId('probe')
+    await expect.element(probe).toHaveAttribute('data-live', 'true')
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    expect(probe.element().getAttribute('data-live')).toBe('true')
   })
 })

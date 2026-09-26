@@ -83,8 +83,12 @@ export function useApiStream<A>(
         .then(() => undefined)
         .catch((error: unknown) => (isAuthenticationError(error) ? ('stop' as const) : undefined))
         .then((verdict) => {
+          // a connection this effect has already let go of speaks for
+          // nothing: the one that replaced it - a second mount, a new key -
+          // may have heard from its own server by the time this one settles
+          if (controller.signal.aborted) return
           setLive(false)
-          if (verdict === 'stop' || controller.signal.aborted) return
+          if (verdict === 'stop') return
           // a clean end and a failed one are the same question here: a
           // connection the server closes at once is not one it will serve
           // any better on the next try
