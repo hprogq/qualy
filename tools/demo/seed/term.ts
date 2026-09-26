@@ -16,7 +16,7 @@ import type { FieldSpec, ItemSpec, Term } from '../rules.ts'
 import { claimsOf, type Claim } from './claims.ts'
 import { SCRIPTED_ASKS, answerAsk, askFor, requestAsk, type Ask } from './asks.ts'
 import { addMinutes, awake, cst, principalOf, type Random, type Story } from './context.ts'
-import { episodesOf, TRIAL_ITEM, type Episode } from './episodes.ts'
+import { EPISODE_DOORS, TRIAL_ITEM, type Episode } from './episodes.ts'
 import { stageProof, stageWorkbook } from './files.ts'
 import { buildTermItems, reviewPolicyOf, scoringConfigOf, type Versions } from './items.ts'
 import { EventQueue } from './queue.ts'
@@ -178,8 +178,8 @@ export interface TermOutcome {
 export const runTerm = (input: {
   world: World
   plan: TermPlan
-  /** which term of the six this is, from 0 */
-  index: number
+  /** what the student a visitor signs in as goes through this term (episodes.ts `episodesOf`) */
+  episodes: readonly Episode[]
   versions: Versions
   story: Story
   random: Random
@@ -189,8 +189,7 @@ export const runTerm = (input: {
   persona: Student
 }) =>
   Effect.gen(function* () {
-    const { world, plan, versions, story, random, persona } = input
-    const episodes = episodesOf(plan.term, input.index)
+    const { world, plan, episodes, versions, story, random, persona } = input
     const staging = STAGING[plan.term]
     const description = openingDescription(staging, episodes)
     const scoped = staging.scoped
@@ -1414,7 +1413,7 @@ export const runTerm = (input: {
           const { ask } = SCRIPTED_ASKS.correctedList
           fileAt(0, '20:50', episode.claim!)
           on(1, '20:30', approveNow('官网公示名单中该生为二等奖，按公示名单认定', { rank: 2 }))
-          on(6, '10:20', (entry) =>
+          on(...EPISODE_DOORS.reopen.at, (entry) =>
             Effect.gen(function* () {
               const round = yield* assessment.reopenEntry(
                 t,
@@ -1511,7 +1510,7 @@ export const runTerm = (input: {
               recorded.entryId = row.id
             }),
           )
-          queue.at(addMinutes(at(7, '10:00'), order * 7), 'episode', () =>
+          queue.at(addMinutes(at(...EPISODE_DOORS['record-void'].at), order * 7), 'episode', () =>
             Effect.asVoid(
               assessment.interveneOnEntry(
                 t,

@@ -1,6 +1,6 @@
 import type { Term } from '../rules.ts'
 import type { Claim } from './claims.ts'
-import { TRIAL_NOTICE, type Episode } from './episodes.ts'
+import { EPISODE_DOORS, TRIAL_NOTICE, type Episode, type EpisodeKind } from './episodes.ts'
 
 // How each term's batch is staged: the plan the assessment lead writes when
 // setting it up, what each stage is for, and the moment the story moves the
@@ -132,6 +132,20 @@ export const stageAt = (staging: Staging, moment: Moment): Stage | undefined =>
   stagesOf(staging)
     .filter((stage) => minutesOf(stage.enters) <= minutesOf(moment))
     .at(-1)
+
+/**
+ * Of `kinds`, the episodes a batch staged so keeps from playing: the door
+ * each walks through at its moment (EPISODE_DOORS) is shut in the stage the
+ * batch stands in then.
+ */
+export const shutDoors = (staging: Staging, kinds: Iterable<EpisodeKind>): EpisodeKind[] =>
+  [...new Set(kinds)].filter((kind) => {
+    const door = (EPISODE_DOORS as Partial<Record<EpisodeKind, { at: Moment; opens: string }>>)[
+      kind
+    ]
+    if (door === undefined) return false
+    return !(stageAt(staging, door.at)?.permissionProfile.includes(door.opens) ?? false)
+  })
 
 /**
  * The description a term's batch is created with: a term that tries a

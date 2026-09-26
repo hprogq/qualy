@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { positionalOf, seedOptionsOf, termsToSeed } from '../options.ts'
+import { episodeHostOf, positionalOf, seedOptionsOf, termsToSeed } from '../options.ts'
+import { EPISODE_KINDS } from '../seed/episodes.ts'
+import { STAGING, shutDoors } from '../seed/stages.ts'
+import { TERM_PLANS } from '../seed/term.ts'
 import { judgeSituations, judgeStandings, type Situation, type Standing } from '../situations.ts'
 
 // demo:check reads the flags demo:seed was given, and asks for a situation
@@ -25,11 +28,53 @@ describe('the seed options', () => {
 
   it('seed every term, the first few, or the ones named', () => {
     const plans = [{ term: 'a' }, { term: 'b' }, { term: 'c' }]
-    const terms = (value: string | undefined) => termsToSeed(value, plans).map((one) => one.term)
+    const terms = (value: string | undefined) =>
+      termsToSeed(value, plans).map((one) => one.plan.term)
     expect(terms(undefined)).toEqual(['a', 'b', 'c'])
     expect(terms('2')).toEqual(['a', 'b'])
     expect(terms('c, a')).toEqual(['a', 'c'])
     expect(() => terms('a,d')).toThrow(/names no term d/)
+  })
+
+  it('keep each named term in its place among all of them', () => {
+    // the movements before a term are looked up by that place
+    const places = (value: string) =>
+      termsToSeed(value, TERM_PLANS).map(({ plan, index }) => [plan.term, index])
+    expect(places('25-26-1,25-26-2')).toEqual([
+      ['25-26-1', 4],
+      ['25-26-2', 5],
+    ])
+    expect(places('24-25-1')).toEqual([['24-25-1', 2]])
+    expect(places('2')).toEqual([
+      ['23-24-1', 0],
+      ['23-24-2', 1],
+    ])
+  })
+})
+
+describe('where the episodes play', () => {
+  const host = (value: string | undefined, terms: string) =>
+    episodeHostOf(
+      value,
+      termsToSeed(terms, TERM_PLANS).map(({ plan }) => plan.term),
+      (term) => shutDoors(STAGING[term], EPISODE_KINDS),
+    )
+
+  it('each in its own term unless asked', () => {
+    expect(host(undefined, '')).toBeNull()
+    expect(host('', '25-26-2')).toBeNull()
+    expect(() => host('last', '')).toThrow(/takes only first/)
+  })
+
+  it('all in the first term the run seeds', () => {
+    expect(host('first', '')).toBe('23-24-1')
+    expect(host('first', '1')).toBe('23-24-1')
+    expect(host('first', '25-26-1,25-26-2')).toBe('25-26-1')
+  })
+
+  it('refuses a first term whose stages keep one from playing, before anything is written', () => {
+    // its stage reopening a question shuts recording when a deduction is taken back
+    expect(() => host('first', '25-26-2')).toThrow(/25-26-2, whose stages keep record-void/)
   })
 })
 

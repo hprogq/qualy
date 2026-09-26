@@ -30,7 +30,9 @@ import {
   personaPassword,
 } from './seed/personas.ts'
 import { runSelection } from './seed/selection.ts'
-import { seedOptionsOf, termsToSeed } from './options.ts'
+import { episodeHostOf, seedOptionsOf, termsToSeed } from './options.ts'
+import { EPISODE_KINDS, episodesOf } from './seed/episodes.ts'
+import { STAGING, shutDoors } from './seed/stages.ts'
 import { writeSignIns } from './seed/telemetry.ts'
 import { sql } from 'kysely'
 import { runSql } from '@qualy/plugin-database/testkit'
@@ -52,6 +54,17 @@ const accountsPassword = personaPassword()
 if (accountsPassword === undefined) throw new Error(PERSONA_PASSWORD_REQUIRED)
 // demo:check takes the same two flags, to know what this run left out
 const { stage, migrationBefore } = seedOptionsOf(process.argv.slice(2))
+// QUALY_DEMO_TERMS stops after that many terms, or seeds only the terms it
+// names, each after the movements just before it but none of the terms it
+// skips; QUALY_DEMO_EPISODES=first plays every episode in the first of them.
+// Both are for working on the scenario, and are refused before anything is
+// written when they cannot play.
+const terms = termsToSeed(process.env.QUALY_DEMO_TERMS, TERM_PLANS)
+const episodeHost = episodeHostOf(
+  process.env.QUALY_DEMO_EPISODES,
+  terms.map(({ plan }) => plan.term),
+  (term) => shutDoors(STAGING[term], EPISODE_KINDS),
+)
 await requireEmpty(url)
 console.log(`seeding ${describeTarget(url)}`)
 const startedAt = Date.now()
@@ -155,13 +168,10 @@ const program = Effect.gen(function* () {
 
   const away: Away[] = []
   let leaving: Student[] = []
-  // QUALY_DEMO_TERMS stops after that many terms, or seeds only the terms it
-  // names, for working on the scenario
-  const terms = termsToSeed(process.env.QUALY_DEMO_TERMS, TERM_PLANS)
-  for (const [index, plan] of terms.entries()) {
+  for (const { plan, index } of terms) {
     const started = Date.now()
     if (index > 0) {
-      // the summer or the winter between two assessments
+      // the summer or the winter before it, by its place among all the terms
       story.set(dayAt(plan.day, -20, '10:00'))
       yield* betweenTerms({ world, index, away, leaving, random, story })
     }
@@ -191,7 +201,7 @@ const program = Effect.gen(function* () {
     const outcome = yield* runTerm({
       world,
       plan,
-      index,
+      episodes: episodesOf(plan.term, episodeHost),
       versions,
       story,
       random,

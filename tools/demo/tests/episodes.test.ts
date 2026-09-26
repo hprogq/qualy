@@ -174,11 +174,12 @@ describe('the persona episodes', () => {
     }
   })
 
-  it('plays every episode in the first term when asked to', () => {
-    process.env.QUALY_DEMO_EPISODES = 'first'
-    expect(episodesOf('23-24-1', 0)).toHaveLength(Object.values(EPISODES).flat().length)
-    expect(episodesOf('23-24-2', 1)).toEqual([])
-    delete process.env.QUALY_DEMO_EPISODES
-    expect(episodesOf('23-24-2', 1)).toBe(EPISODES['23-24-2'])
+  it('plays every episode in the term hosting them all, and none in the others', () => {
+    const all = Object.values(EPISODES).flat()
+    expect(episodesOf('23-24-1', '23-24-1')).toEqual(all)
+    expect(episodesOf('23-24-2', '23-24-1')).toEqual([])
+    // a run that names later terms hosts them in the first it names
+    expect(episodesOf('24-25-2', '24-25-2')).toEqual(all)
+    expect(episodesOf('23-24-2', null)).toBe(EPISODES['23-24-2'])
   })
 })

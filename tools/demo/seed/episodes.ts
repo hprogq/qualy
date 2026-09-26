@@ -1,6 +1,7 @@
 import type { ItemSpec, Term } from '../rules.ts'
 import { SCRIPTED_ASKS } from './asks.ts'
 import type { Claim } from './claims.ts'
+import type { Moment } from './stages.ts'
 
 // What the student a visitor signs in as went through, term by term.
 //
@@ -43,6 +44,18 @@ export const EPISODE_KINDS = [
   'reroute',
 ] as const
 export type EpisodeKind = (typeof EPISODE_KINDS)[number]
+
+/**
+ * The moments an episode acts at through a door not every stage holds open,
+ * counted from the day filing opens. Whichever term plays the episode must be
+ * staged to hold it open then (stages.ts `shutDoors`); term.ts acts at them.
+ */
+export const EPISODE_DOORS = {
+  // the counsellor takes the recorded deduction back
+  'record-void': { at: [7, '10:00'], opens: 'assessment.entry.record' },
+  // a counsellor re-examines the lowered determination
+  reopen: { at: [6, '10:20'], opens: 'assessment.review.reopen' },
+} as const satisfies Partial<Record<EpisodeKind, { readonly at: Moment; readonly opens: string }>>
 
 export interface Episode {
   readonly kind: EpisodeKind
@@ -206,11 +219,12 @@ export const EPISODES: Readonly<Record<Term, readonly Episode[]>> = {
 }
 
 /**
- * The episodes a term plays. `QUALY_DEMO_EPISODES=first` plays every one of
- * them in the first term instead, for working on them without seeding three
- * years first.
+ * The episodes a term plays: its own, or with `QUALY_DEMO_EPISODES=first`
+ * (`host` names the first term the run seeds, options.ts `episodeHostOf`)
+ * every one of them in that term and none in the others, for working on them
+ * without seeding three years first.
  */
-export const episodesOf = (term: Term, index: number): readonly Episode[] => {
-  if (process.env.QUALY_DEMO_EPISODES !== 'first') return EPISODES[term]
-  return index === 0 ? Object.values(EPISODES).flat() : []
+export const episodesOf = (term: Term, host: Term | null): readonly Episode[] => {
+  if (host === null) return EPISODES[term]
+  return term === host ? Object.values(EPISODES).flat() : []
 }

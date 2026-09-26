@@ -3,12 +3,13 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { OFFERED_PHASE_CODES } from '@qualy/plugin-assessment/permissions'
 import { itemsOf } from '../rules.ts'
-import { EPISODES, TRIAL_NOTICE } from '../seed/episodes.ts'
+import { EPISODE_DOORS, EPISODE_KINDS, EPISODES, TRIAL_NOTICE } from '../seed/episodes.ts'
 import { SELECTION_DESCRIPTION, SELECTION_PHASES } from '../seed/selection.ts'
 import {
   STAGING,
   minutesOf,
   openingDescription,
+  shutDoors,
   stageAt,
   stagesOf,
   voidedDescription,
@@ -25,7 +26,7 @@ import { TERM_PLANS } from '../seed/term.ts'
 
 const ASSETS = path.resolve('tools/demo/assets')
 const CREATE = ['assessment.entry.create', 'assessment.entry.submit']
-const plans = TERM_PLANS.map((plan, index) => ({ ...plan, index, staging: STAGING[plan.term] }))
+const plans = TERM_PLANS.map((plan) => ({ ...plan, staging: STAGING[plan.term] }))
 const opens = (stage: Stage | undefined, code: string) =>
   stage?.permissionProfile.includes(code) ?? false
 /** the stage a moment falls in, by key */
@@ -108,7 +109,7 @@ describe('the plan of each term', () => {
   })
 
   it('keeps the moments the story acts at', () => {
-    for (const { term, index, staging } of plans) {
+    for (const { term, staging } of plans) {
       // filing opens at D 08:00 and closes at D+5 00:00
       for (const moment of [
         [0, '08:00'],
@@ -144,18 +145,44 @@ describe('the plan of each term', () => {
       ] as const) {
         expect(opens(stageAt(staging, moment), 'assessment.entry.appeal'), term).toBe(true)
       }
-      // the episodes' own moments; every episode plays in the first term
-      // when QUALY_DEMO_EPISODES=first asks it to
-      const kinds = new Set(
-        (index === 0 ? Object.values(EPISODES).flat() : EPISODES[term]).map((one) => one.kind),
-      )
-      if (kinds.has('record-void')) {
-        expect(opens(stageAt(staging, [7, '10:00']), 'assessment.entry.record'), term).toBe(true)
-      }
-      if (kinds.has('reopen')) {
-        expect(opens(stageAt(staging, [6, '10:20']), 'assessment.review.reopen'), term).toBe(true)
-      }
+      // what the term's own episodes do where not every stage lets them
+      expect(
+        shutDoors(
+          staging,
+          EPISODES[term].map((one) => one.kind),
+        ),
+        term,
+      ).toEqual([])
     }
+  })
+})
+
+describe('the doors an episode walks through', () => {
+  it('are shut only where a stage shuts them', () => {
+    const staging = STAGING['23-24-1']
+    for (const [kind, door] of Object.entries(EPISODE_DOORS)) {
+      expect(opens(stageAt(staging, door.at), door.opens), kind).toBe(true)
+      const shut: Staging = {
+        ...staging,
+        stages: staging.stages.map((stage) =>
+          stage === stageAt(staging, door.at)
+            ? {
+                ...stage,
+                permissionProfile: stage.permissionProfile.filter((code) => code !== door.opens),
+              }
+            : stage,
+        ),
+      }
+      expect(shutDoors(shut, EPISODE_KINDS), kind).toEqual([kind])
+    }
+  })
+
+  it('are all open in every term but the one reopening filing for a question', () => {
+    // QUALY_DEMO_EPISODES=first refuses a first term shutting any (options.ts)
+    const hosts = plans.filter(({ staging }) => shutDoors(staging, EPISODE_KINDS).length === 0)
+    expect(hosts.map(({ term }) => term)).toEqual(
+      plans.filter(({ staging }) => staging.scoped === undefined).map(({ term }) => term),
+    )
   })
 })
 
@@ -222,15 +249,16 @@ describe('the stage that reopens filing for some questions', () => {
   })
 
   it('never falls where staff record, which its question scope would refuse', () => {
-    for (const { term, index, staging } of reopened) {
+    for (const { term, staging } of reopened) {
       const scoped = staging.scoped!
       expect(opens(scoped.stage, 'assessment.entry.record'), term).toBe(false)
       expect(
         CREATE.every((code) => opens(scoped.stage, code)),
         term,
       ).toBe(true)
-      // QUALY_DEMO_EPISODES=first plays a record taken back in the first term
-      expect(index, term).toBeGreaterThan(0)
+      // a recorded deduction taken back while it stands would be refused, so
+      // the term plays none and cannot host every episode of a first-only run
+      expect(shutDoors(staging, EPISODE_KINDS), term).toContain('record-void')
       expect(
         EPISODES[term].filter((episode) => episode.kind === 'record-void'),
         term,
