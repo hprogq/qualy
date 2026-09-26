@@ -585,8 +585,16 @@ describe('reading one question’s claims', () => {
     await page.getByRole('button', { name: /再显示/ }).click()
     await expect.poll(() => rows().length).toBe(45)
     expect(page.getByTestId('entries-more').elements()).toHaveLength(0)
-    // and the other way round, oldest first
-    await page.getByTestId('entries-sort').click()
+    // and the other way round, oldest first: chosen from the list, which
+    // names the order in force, and in force only once chosen
+    const sort = page.getByRole('combobox', { name: '排序方式' })
+    await expect.element(sort).toHaveAttribute('data-order', 'newest')
+    await sort.click()
+    await expect.element(page.getByRole('option', { name: '最近更新在前' })).toBeVisible()
+    // opening the list changes nothing by itself
+    expect(rows()[0]!.getAttribute('data-entry')).toBe(entryId(45))
+    await page.getByRole('option', { name: '最早在前' }).click()
+    await expect.element(sort).toHaveAttribute('data-order', 'oldest')
     await expect.poll(() => rows()[0]!.getAttribute('data-entry')).toBe(entryId(1))
   })
 

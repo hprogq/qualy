@@ -1035,6 +1035,7 @@ export default {
   'assessment/entries/filter-label': '筛选申报',
   'assessment/entries/search': '搜索',
   'assessment/entries/search-close': '关闭搜索',
+  'assessment/entries/sort-label': '排序方式',
   'assessment/entries/sort-newest': '最近更新在前',
   'assessment/entries/sort-oldest': '最早在前',
   'assessment/entries/held-phase': '当前阶段「{phase}」不能新增申报',

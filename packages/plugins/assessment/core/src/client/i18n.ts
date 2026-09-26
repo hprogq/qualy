@@ -4121,6 +4121,10 @@ const i18n = definePluginMessages({
       id: 'assessment/entries/search-close',
       defaultMessage: 'Close search',
     },
+    entriesSortLabel: {
+      id: 'assessment/entries/sort-label',
+      defaultMessage: 'Order',
+    },
     entriesSortNewest: {
       id: 'assessment/entries/sort-newest',
       defaultMessage: 'Latest first',

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../../i18n.ts'
@@ -42,6 +43,9 @@ import {
 // whatever the server offers them instead.
 
 const PAGE = 20
+
+/** the orders the claims can be read in */
+type Order = 'newest' | 'oldest'
 
 /** the pane width from which the toolbar and the rows take their desk shape */
 const ROOMY = 720
@@ -268,11 +272,13 @@ const styles = stylex.create({
   chipCount: { fontVariantNumeric: 'tabular-nums', color: tokens.mutedForeground },
   chipCountWaits: { color: tokens.warningForeground },
   spacer: { flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  // gives up its room before the filters do: a filter cut off at the edge
+  // is a filter nobody finds
   search: {
     display: 'flex',
     minWidth: 128,
     flexGrow: 0,
-    flexShrink: 1,
+    flexShrink: 4,
     flexBasis: 220,
     alignItems: 'center',
     gap: 6,
@@ -307,7 +313,15 @@ const styles = stylex.create({
     color: tokens.surfaceMutedForeground,
     cursor: 'pointer',
   },
-  sortIcon: { width: 14, height: 14 },
+  sortIcon: { width: 14, height: 14, flexShrink: 0 },
+  sortSeat: { flexShrink: 0 },
+  sortFace: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    verticalAlign: 'middle',
+    color: tokens.surfaceMutedForeground,
+  },
   rows: { display: 'flex', flexDirection: 'column' },
   noMatch: {
     display: 'flex',
@@ -526,7 +540,7 @@ export function ItemPane({
   const [chip, setChip] = useState<ChipKey>('all')
   const [search, setSearch] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
-  const [oldestFirst, setOldestFirst] = useState(false)
+  const [order, setOrder] = useState<Order>('newest')
   const [limit, setLimit] = useState(PAGE)
 
   const lineWords = useLineWords()
@@ -549,8 +563,8 @@ export function ItemPane({
     .filter((entry) => needle === '' || (lines.get(entry.id)?.words.includes(needle) ?? false))
     .sort((a, b) => {
       const at = (entry: EntryDto) => Date.parse(lines.get(entry.id)?.at ?? entry.createdAt)
-      const order = at(b) - at(a) || Date.parse(b.createdAt) - Date.parse(a.createdAt)
-      return oldestFirst ? -order : order
+      const newer = at(b) - at(a) || Date.parse(b.createdAt) - Date.parse(a.createdAt)
+      return order === 'oldest' ? -newer : newer
     })
   const shown = filtered.slice(0, limit)
   const listed = entries.filter((entry) => entry.status !== 'voided')
@@ -666,17 +680,27 @@ export function ItemPane({
           <SearchIcon aria-hidden />
         </Button>
       )}
-      <Button
-        variant="ghost"
-        size={roomy ? 'sm' : 'icon-sm'}
-        aria-label={format(oldestFirst ? m.entriesSortOldest : m.entriesSortNewest)}
-        data-testid="entries-sort"
-        data-order={oldestFirst ? 'oldest' : 'newest'}
-        onClick={() => setOldestFirst((now) => !now)}
-      >
-        <ArrowDownUpIcon aria-hidden {...stylex.props(styles.sortIcon)} />
-        {roomy && format(oldestFirst ? m.entriesSortOldest : m.entriesSortNewest)}
-      </Button>
+      {/* the order is chosen from a list that shows the one in force, and
+          takes effect on the choice, not on a press that flips it unseen */}
+      <Select value={order} onValueChange={(next) => setOrder(next as Order)}>
+        <SelectTrigger
+          size="sm"
+          aria-label={format(m.entriesSortLabel)}
+          data-testid="entries-sort"
+          data-order={order}
+          xstyle={styles.sortSeat}
+        >
+          <span {...stylex.props(styles.sortFace)}>
+            <ArrowDownUpIcon aria-hidden {...stylex.props(styles.sortIcon)} />
+            {/* narrower, the list names the order in force when it opens */}
+            {roomy && <SelectValue />}
+          </span>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="newest">{format(m.entriesSortNewest)}</SelectItem>
+          <SelectItem value="oldest">{format(m.entriesSortOldest)}</SelectItem>
+        </SelectContent>
+      </Select>
     </div>
   )
 
