@@ -632,7 +632,7 @@ export default {
   'assessment/record/import/column-determination': '当前认定',
   'assessment/record/import/view-import': '查看本次导入',
   'assessment/items/tab': '项目配置',
-  'assessment/items/hint': '配置本批次的分组与项目，并设置各项目的申报、计分和审核方式。',
+  'assessment/items/hint': '设置分组与项目，以及各项目的申报、计分与审核',
   'assessment/items/stuck-title': '以下审核步骤暂无审核人',
   'assessment/items/stuck-row': '{unit} - {roles} / {count} 条申报正在等待',
   'assessment/items/stuck-nowhere': '{roles} / {count} 条申报正在等待,其上级单位中无人担任该职务',

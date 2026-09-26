@@ -2679,8 +2679,7 @@ const i18n = definePluginMessages({
     itemsTab: { id: 'assessment/items/tab', defaultMessage: 'Item configuration' },
     itemsHint: {
       id: 'assessment/items/hint',
-      defaultMessage:
-        'Configure groups and assessment items, including submission, scoring, and review rules.',
+      defaultMessage: 'Set up groups and items, and how each is filed, scored and reviewed',
     },
     itemsStuckTitle: {
       id: 'assessment/items/stuck-title',

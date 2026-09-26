@@ -499,6 +499,9 @@ const composeQuestion = async () => {
 
 const tab = (name: RegExp) => page.getByRole('tab', { name })
 
+/** the way back to the structure, at the head of the band */
+const backButton = () => page.getByRole('button', { name: '返回项目配置' })
+
 /** the one element a data attribute names, once it is on screen */
 const seat = async (selector: string) => {
   await vi.waitFor(() => {
@@ -610,7 +613,7 @@ describe('choosing how a question is handled', () => {
     await expect.element(page.getByRole('textbox', { name: '项目名称' })).toBeVisible()
     await page.getByRole('textbox', { name: '项目名称' }).fill('学生干部任职（改）')
 
-    await page.getByTestId('item-back').click()
+    await backButton().click()
     const asked = page.getByRole('alertdialog')
     await expect.element(asked).toBeVisible()
     await asked.getByRole('button', { name: '取消' }).click()
@@ -619,7 +622,7 @@ describe('choosing how a question is handled', () => {
       .element(page.getByRole('textbox', { name: '项目名称' }))
       .toHaveValue('学生干部任职（改）')
 
-    await page.getByTestId('item-back').click()
+    await backButton().click()
     await page.getByRole('alertdialog').getByTestId('confirm-accept').click()
     await vi.waitFor(() => expect(document.querySelector('[data-testid="item-editor"]')).toBeNull())
   })
@@ -699,14 +702,14 @@ describe('choosing how a question is handled', () => {
   it('leaves at once when nothing was changed', async () => {
     await open({ items: [officerItem()], question: ITEM_ID })
     await expect.element(editor()).toBeVisible()
-    await page.getByTestId('item-back').click()
+    await backButton().click()
     await vi.waitFor(() => expect(document.querySelector('[data-testid="item-editor"]')).toBeNull())
     expect(page.getByRole('alertdialog').elements()).toHaveLength(0)
   })
 
   it('lets a blank new question go at once, and asks once something is written in it', async () => {
     await composeQuestion()
-    await page.getByTestId('item-back').click()
+    await backButton().click()
     await vi.waitFor(() => expect(document.querySelector('[data-testid="item-editor"]')).toBeNull())
     expect(page.getByRole('alertdialog').elements()).toHaveLength(0)
 
@@ -714,7 +717,7 @@ describe('choosing how a question is handled', () => {
     await page.getByRole('menuitem', { name: '新建项目' }).click()
     await expect.element(editor()).toBeVisible()
     await page.getByRole('textbox', { name: '项目名称' }).fill('志愿服务')
-    await page.getByTestId('item-back').click()
+    await backButton().click()
     await expect.element(page.getByRole('alertdialog')).toBeVisible()
   })
 
@@ -1351,7 +1354,7 @@ describe('the band', () => {
       question: ITEM_ID,
       surfaces: BOTH_CALCULATORS,
     })
-    await expect.element(page.getByTestId('item-back')).toBeVisible()
+    await expect.element(backButton()).toBeVisible()
     await expect.element(page.getByTestId('item-meta')).toHaveAttribute('data-revision', '1')
     await expect.element(page.getByTestId('item-meta')).toHaveAttribute('data-standing', 'active')
     // the handling is said in the band, never changed from it
@@ -1359,6 +1362,89 @@ describe('the band', () => {
     await expect.element(mode).toBeVisible()
     expect(mode.element().closest('button')).toBeNull()
     expect(mode.element().querySelector('svg')).toBeNull()
+  })
+
+  // The question's heading is the section heading's own shape, and its three
+  // views are the first row of the body: a band that grew a row of tabs each
+  // time a question opened pushed everything under it down by that row.
+  for (const width of [1280, 390]) {
+    it(`keeps the band one height whether the structure or a question holds it, at ${width}`, async () => {
+      await page.viewport(width, 900)
+      try {
+        await open({ items: [{ ...officerItem(), scoreGroupId: PAPER_ID }] })
+        const band = page.getByTestId('batch-band')
+        await expect.element(band).toHaveAttribute('data-banner', 'section')
+        await vi.waitFor(() =>
+          expect(page.getByText('学生干部任职').elements().length).toBeGreaterThan(0),
+        )
+        await new Promise((settle) => setTimeout(settle, 300))
+        const section = band.element().getBoundingClientRect().height
+
+        await userEvent.click(
+          page
+            .getByText('学生干部任职')
+            .elements()
+            .find((one) => (one as HTMLElement).checkVisibility())!,
+        )
+        await expect.element(band).toHaveAttribute('data-banner', 'open')
+        await expect.element(tab(/基本信息/)).toBeVisible()
+        await new Promise((settle) => setTimeout(settle, 400))
+        const question = band.element().getBoundingClientRect().height
+        expect(Math.abs(question - section)).toBeLessThanOrEqual(1)
+        // the views are under the band, not inside it
+        expect(band.element().querySelector('[role="tab"]')).toBeNull()
+      } finally {
+        await page.viewport(1280, 900)
+      }
+    })
+  }
+
+  it('keeps the section heading in the band until a question arriving by address can take it', async () => {
+    let release: (() => void) | undefined
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({ ...emptyManifest(), pages: PAGES, ...CALCULATOR_SURFACES }),
+        },
+        assessment: {
+          getBatch: () => Effect.succeed({ batch: batch() }),
+          listScoreGroups: () =>
+            Effect.succeed({ groups: [paper], version: 1, capabilities: { canManage: true } }),
+          listItems: () =>
+            Effect.promise(() => held).pipe(
+              Effect.as({ items: [officerItem()], capabilities: { canManage: true } }),
+            ),
+          itemOptions: () =>
+            Effect.succeed({
+              orgTypes: [{ id: ORG_TYPE_ID, code: 'class', name: '班级' }],
+              roles: [{ id: ROLE_ID, name: '审核员' }],
+            }),
+          reviewAlerts: () => Effect.succeed({ groups: [] }),
+          reviewCoverage: () => Effect.succeed({ nodes: [] }),
+          checkItem: () => Effect.succeed({ issues: [], standing: [] }),
+          previewScoring: () => Effect.succeed(previewFor('fixed@1')),
+        },
+      }),
+      routes: [
+        { path: '/assessment/batches/:batchId/items', element: <ItemSettingsPage /> },
+      ] as never,
+      route: `/assessment/batches/${BATCH_ID}/items?question=${ITEM_ID}`,
+    })
+    await expect.element(page.getByTestId('question-skeleton')).toBeVisible()
+    const band = page.getByTestId('batch-band')
+    // an empty band would stand shorter and grow when the question came
+    await expect.element(band).toHaveAttribute('data-banner', 'section')
+    const waiting = band.element().getBoundingClientRect().height
+    expect(waiting).toBeGreaterThan(60)
+    release?.()
+    await expect.element(band).toHaveAttribute('data-banner', 'open')
+    await expect.element(editor()).toBeVisible()
+    await new Promise((settle) => setTimeout(settle, 400))
+    expect(Math.abs(band.element().getBoundingClientRect().height - waiting)).toBeLessThanOrEqual(1)
   })
 })
 

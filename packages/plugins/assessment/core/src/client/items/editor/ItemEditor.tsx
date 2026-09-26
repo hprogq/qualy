@@ -1,14 +1,14 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { ArrowLeftIcon, ChevronRightIcon, EllipsisVerticalIcon, EyeIcon } from 'lucide-react'
+import { ChevronRightIcon, EllipsisVerticalIcon, EyeIcon } from 'lucide-react'
 import { useApi, useRunApi, usePageQueryState, useUiCollection } from '@qualy/web-runtime'
 import { useI18n, useList } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { kindOf, type AtomicSchema, type ChoiceSchema } from '@qualy/value-schema'
 import type { FieldDraft as ValueDraft } from '@qualy/web-value-form/model'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { ConfirmDialog } from '@qualy/ui/admin'
+import { BannerBack, ConfirmDialog, PageHeader } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@qualy/ui/dropdown-menu'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
@@ -92,80 +92,57 @@ const styles = stylex.create({
     flexBasis: '0%',
     flexDirection: 'column',
   },
-  // three rows, each doing one thing: where this is, what it is, and the
-  // ways around it. The last row is the tabs, and it stands on the band's
-  // own bottom rule.
-  band: { display: 'flex', flexDirection: 'column', gap: 14 },
-  trailRow: { display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 },
-  trail: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    minWidth: 0,
-    fontSize: 13,
-    color: tokens.mutedForeground,
-  },
-  // the way back IS the first level of where this is
-  back: {
+  // The band is the section heading's own shape: the question's name with
+  // its standing beside it, the way back on the line under it, and what can
+  // be done at the far end. The three views of the question are the first
+  // row of the body rather than a third row of the band: a band that grew a
+  // row of tabs pushed everything under it down each time a question opened.
+  bandHead: { flexWrap: 'nowrap', alignItems: 'center' },
+  titleWord: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  titleUnset: { color: tokens.mutedForeground },
+  // the handling is said again in the first view, where it is changed; a
+  // phone keeps the room for the name
+  modeSeat: { display: { default: 'inline-flex', [breakpoints.phone]: 'none' }, flexShrink: 0 },
+  trail: { display: 'inline-flex', minWidth: 0, alignItems: 'center', gap: 6 },
+  trailWord: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  // where in the paper the question sits; a phone keeps only the way back
+  crumbWide: { display: { default: 'inline-flex', [breakpoints.phone]: 'none' } },
+  crumbRule: { width: 12, height: 12, flexShrink: 0 },
+  meta: {
     display: 'inline-flex',
     flexShrink: 0,
     alignItems: 'center',
-    gap: 6,
-    height: 28,
-    marginLeft: -8,
-    paddingInline: 8,
-    borderRadius: 8,
-    borderWidth: 0,
-    fontFamily: 'inherit',
-    fontSize: 13,
-    fontWeight: 500,
-    color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
-    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
-    cursor: 'pointer',
-  },
-  backIcon: { width: 15, height: 15 },
-  crumbRule: { width: 12, height: 12, flexShrink: 0 },
-  crumb: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    display: { default: null, [breakpoints.phone]: 'none' },
-  },
-  crumbHere: { color: tokens.foreground },
-  meta: {
-    display: { default: 'inline-flex', [breakpoints.phone]: 'none' },
-    flexShrink: 0,
-    alignItems: 'center',
     gap: 10,
+    marginLeft: 6,
     fontSize: 12,
     fontVariantNumeric: 'tabular-nums',
     whiteSpace: 'nowrap',
   },
-  metaRule: { width: 1, height: 10, backgroundColor: tokens.border },
+  metaRule: { width: 1, height: 10, flexShrink: 0, backgroundColor: tokens.border },
   metaUnsaved: { display: 'inline-flex', alignItems: 'center', gap: 6, color: tokens.foreground },
-  titleRow: { display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flexWrap: 'wrap' },
-  titleLine: { display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 },
-  title: {
-    margin: 0,
+  wideOnly: { display: { default: 'inline-flex', [breakpoints.phone]: 'none' } },
+  // The views of the question, and what is left before it can be saved. It
+  // stays in reach while a long form scrolls under it; a phone scrolls it
+  // away with the rest, because there the room is the form's.
+  tabStrip: {
+    position: { default: 'sticky', [breakpoints.phone]: 'static' },
+    top: 0,
+    zIndex: 3,
+    display: 'flex',
     minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontSize: 22,
-    lineHeight: 1.3,
-    fontWeight: 600,
-    letterSpacing: '-0.025em',
+    alignItems: 'flex-end',
+    gap: { default: 24, [breakpoints.phone]: 12 },
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    backgroundColor: tokens.background,
   },
-  titleUnset: { color: tokens.mutedForeground },
-  actions: { display: 'flex', flexShrink: 0, alignItems: 'center', gap: 8 },
-  tabsRow: { display: 'flex', alignItems: 'flex-end', gap: 24, minWidth: 0 },
   tabsSeat: { minWidth: 0, overflowX: 'auto', scrollbarWidth: 'none' },
-  tabList: { gap: 24 },
+  tabList: { gap: { default: 24, [breakpoints.phone]: 16 } },
   tab: { height: 38, paddingInline: 2 },
   tabLabel: { display: 'inline-flex', alignItems: 'center', gap: 7 },
   spacer: { flexGrow: 1 },
-  body: { display: 'flex', flexDirection: 'column', gap: 24, paddingTop: 4, paddingBottom: 40 },
+  body: { display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 40 },
   menu: { width: 176 },
 })
 
@@ -1324,144 +1301,158 @@ export function ItemEditor({
       data-panel={area}
     >
       <BatchBanner>
-        <div {...stylex.props(styles.band)} data-testid="item-band">
-          <div {...stylex.props(styles.trailRow)}>
-            <nav aria-label={format(m.itemsBack)} {...stylex.props(styles.trail)}>
-              <button
-                type="button"
-                {...stylex.props(styles.back)}
-                onClick={leave}
-                data-testid="item-back"
-              >
-                <ArrowLeftIcon aria-hidden {...stylex.props(styles.backIcon)} />
-                {format(m.itemsCrumbRoot)}
-              </button>
-              {trail.map((name, index) => (
-                <Fragment key={`${index}:${name}`}>
-                  <ChevronRightIcon aria-hidden {...stylex.props(styles.crumbRule)} />
-                  <span {...stylex.props(styles.crumb)}>{name}</span>
-                </Fragment>
-              ))}
-              <ChevronRightIcon aria-hidden {...stylex.props(styles.crumbRule, styles.crumb)} />
-              <span {...stylex.props(styles.crumb, styles.crumbHere)} aria-current="page">
-                {heading}
-              </span>
-            </nav>
-            <span {...stylex.props(styles.spacer)} />
-            <span
-              {...stylex.props(styles.meta)}
-              data-testid="item-meta"
-              data-revision={revision?.revisionNo ?? 0}
-              data-standing={item?.status ?? 'new'}
-            >
-              <span>
-                {revision === null
-                  ? format(m.itemsVersionNew)
-                  : format(m.itemsVersionNo, { no: revision.revisionNo })}
-              </span>
-              <span aria-hidden {...stylex.props(styles.metaRule)} />
-              <span>
-                {format(item?.status === 'active' ? m.structureStatusLive : m.itemsStatusDraft)}
-              </span>
-              {(dirty || savedWhen !== null) && (
-                <span aria-hidden {...stylex.props(styles.metaRule)} />
-              )}
-              {dirty ? (
-                <span {...stylex.props(styles.metaUnsaved)} data-testid="item-unsaved">
-                  <Dot tone="pending" />
-                  {format(m.itemsUnsaved)}
-                </span>
-              ) : (
-                savedWhen !== null && <span>{format(m.itemsSavedAt, { when: savedWhen })}</span>
-              )}
-            </span>
-          </div>
-
-          <div {...stylex.props(styles.titleRow)}>
-            <div {...stylex.props(styles.titleLine)}>
-              <h1 {...stylex.props(styles.title, draft.title.trim() === '' && styles.titleUnset)}>
-                {heading}
-              </h1>
-              <Tag tall testId="item-standing">
-                {item === null || item.status === 'draft'
-                  ? format(m.itemsStatusComposing)
-                  : item.status === 'voided'
-                    ? format(m.itemsStatusVoided)
-                    : format(m.structureStatusLive)}
-              </Tag>
-              {/* said, not offered: the handling is changed where its consequences are laid out */}
-              <Tag tall outline testId="item-mode">
-                {modeChip}
-              </Tag>
-            </div>
-            <span {...stylex.props(styles.spacer)} />
-            <div {...stylex.props(styles.actions)}>
-              <Button variant="outline" onClick={() => setSheet({ kind: 'preview' })}>
-                <EyeIcon aria-hidden />
-                {format(m.itemsPreview)}
-              </Button>
-              <Button
-                disabled={save.isPending || reloading || wrong}
-                onClick={onSave}
-                data-testid="item-save"
-                data-blocked={wrong}
-              >
-                {format(m.entrySave)}
-              </Button>
-              {menu !== undefined && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="icon" aria-label={format(m.itemsMoreActions)}>
-                      <EllipsisVerticalIcon aria-hidden />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className={stylex.props(styles.menu).className}>
-                    {menu}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-            </div>
-          </div>
-
-          <div {...stylex.props(styles.tabsRow)}>
-            <div {...stylex.props(styles.tabsSeat)}>
-              <Tabs value={area} onValueChange={(next) => setPanelParam(next)}>
-                <TabsList xstyle={styles.tabList}>
-                  {AREAS.filter((one) => one !== 'rules' || draft.mode !== 'automatic').map(
-                    (one) => (
-                      <TabsTrigger
-                        key={one}
-                        value={one}
-                        xstyle={styles.tab}
-                        data-area={one}
-                        data-pending={toneOf(one) !== 'ok'}
-                        data-tone={toneOf(one)}
-                      >
-                        <span {...stylex.props(styles.tabLabel)}>
-                          <Dot tone={toneOf(one)} />
-                          {format(
-                            one === 'basics'
-                              ? m.itemsTabBasics
-                              : one === 'scoring'
-                                ? draft.mode === 'automatic'
-                                  ? m.itemsTabScoring
-                                  : m.itemsTabForm
-                                : m.itemsTabRules,
-                          )}
-                        </span>
-                      </TabsTrigger>
-                    ),
+        <div data-testid="item-band">
+          <PageHeader
+            variant="banner"
+            xstyle={styles.bandHead}
+            title={
+              <>
+                <span
+                  {...stylex.props(
+                    styles.titleWord,
+                    draft.title.trim() === '' && styles.titleUnset,
                   )}
-                </TabsList>
-              </Tabs>
-            </div>
-            <span {...stylex.props(styles.spacer)} />
-            <PendingList problems={problems} failed={failed} onGo={jumpTo} />
-          </div>
+                  title={heading}
+                >
+                  {heading}
+                </span>
+                <Tag tall testId="item-standing">
+                  {item === null || item.status === 'draft'
+                    ? format(m.itemsStatusComposing)
+                    : item.status === 'voided'
+                      ? format(m.itemsStatusVoided)
+                      : format(m.structureStatusLive)}
+                </Tag>
+                {/* said, not offered: the handling is changed where its consequences are laid out */}
+                <span {...stylex.props(styles.modeSeat)}>
+                  <Tag tall outline testId="item-mode">
+                    {modeChip}
+                  </Tag>
+                </span>
+              </>
+            }
+            description={
+              <>
+                <BannerBack label={format(m.itemsBack)} onBack={leave}>
+                  <span {...stylex.props(styles.trail)}>
+                    <span {...stylex.props(styles.trailWord)}>{format(m.itemsCrumbRoot)}</span>
+                    {trail.map((name, index) => (
+                      <span
+                        key={`${index}:${name}`}
+                        {...stylex.props(styles.trail, styles.crumbWide)}
+                      >
+                        <ChevronRightIcon aria-hidden {...stylex.props(styles.crumbRule)} />
+                        <span {...stylex.props(styles.trailWord)}>{name}</span>
+                      </span>
+                    ))}
+                  </span>
+                </BannerBack>
+                <span
+                  {...stylex.props(styles.meta)}
+                  data-testid="item-meta"
+                  data-revision={revision?.revisionNo ?? 0}
+                  data-standing={item?.status ?? 'new'}
+                >
+                  <span aria-hidden {...stylex.props(styles.metaRule, styles.wideOnly)} />
+                  <span {...stylex.props(styles.wideOnly)}>
+                    {revision === null
+                      ? format(m.itemsVersionNew)
+                      : format(m.itemsVersionNo, { no: revision.revisionNo })}
+                  </span>
+                  {dirty ? (
+                    <>
+                      <span aria-hidden {...stylex.props(styles.metaRule, styles.wideOnly)} />
+                      <span {...stylex.props(styles.metaUnsaved)} data-testid="item-unsaved">
+                        <Dot tone="pending" />
+                        {format(m.itemsUnsaved)}
+                      </span>
+                    </>
+                  ) : (
+                    savedWhen !== null && (
+                      <>
+                        <span aria-hidden {...stylex.props(styles.metaRule, styles.wideOnly)} />
+                        <span {...stylex.props(styles.wideOnly)}>
+                          {format(m.itemsSavedAt, { when: savedWhen })}
+                        </span>
+                      </>
+                    )
+                  )}
+                </span>
+              </>
+            }
+            actions={
+              <>
+                <Button
+                  variant="outline"
+                  aria-label={format(m.itemsPreview)}
+                  onClick={() => setSheet({ kind: 'preview' })}
+                >
+                  <EyeIcon aria-hidden />
+                  <span {...stylex.props(styles.wideOnly)}>{format(m.itemsPreview)}</span>
+                </Button>
+                <Button
+                  disabled={save.isPending || reloading || wrong}
+                  onClick={onSave}
+                  data-testid="item-save"
+                  data-blocked={wrong}
+                >
+                  {format(m.entrySave)}
+                </Button>
+                {menu !== undefined && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="icon" aria-label={format(m.itemsMoreActions)}>
+                        <EllipsisVerticalIcon aria-hidden />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="end"
+                      className={stylex.props(styles.menu).className}
+                    >
+                      {menu}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </>
+            }
+          />
         </div>
       </BatchBanner>
 
       <div {...stylex.props(styles.body)}>
+        <div {...stylex.props(styles.tabStrip)} data-testid="item-tabs">
+          <div {...stylex.props(styles.tabsSeat)}>
+            <Tabs value={area} onValueChange={(next) => setPanelParam(next)}>
+              <TabsList xstyle={styles.tabList}>
+                {AREAS.filter((one) => one !== 'rules' || draft.mode !== 'automatic').map((one) => (
+                  <TabsTrigger
+                    key={one}
+                    value={one}
+                    xstyle={styles.tab}
+                    data-area={one}
+                    data-pending={toneOf(one) !== 'ok'}
+                    data-tone={toneOf(one)}
+                  >
+                    <span {...stylex.props(styles.tabLabel)}>
+                      <Dot tone={toneOf(one)} />
+                      {format(
+                        one === 'basics'
+                          ? m.itemsTabBasics
+                          : one === 'scoring'
+                            ? draft.mode === 'automatic'
+                              ? m.itemsTabScoring
+                              : m.itemsTabForm
+                            : m.itemsTabRules,
+                      )}
+                    </span>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          </div>
+          <span {...stylex.props(styles.spacer)} />
+          <PendingList problems={problems} failed={failed} onGo={jumpTo} />
+        </div>
         {failed && !dismissed && (
           <FailureList problems={problems} onGo={jumpTo} onDismiss={() => setDismissed(true)} />
         )}

@@ -117,6 +117,18 @@ const styles = stylex.create({
     borderBottomColor: tokens.divider,
   },
   skeletonHeading: { width: 96, height: 14, borderRadius: 4 },
+  // the question's three views, standing on their rule the way the real row does
+  skeletonTabs: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 24,
+    height: 39,
+    marginBottom: -4,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+  },
+  skeletonTab: { height: 12, borderRadius: 4 },
   skeletonBar: { height: 12, borderRadius: 4 },
   skeletonBarLong: { width: '62%' },
   skeletonBarMid: { width: '46%' },
@@ -241,27 +253,58 @@ const BAR_LENGTH = {
   short: styles.skeletonBarShort,
 } as const
 
+const bar = (length: keyof typeof BAR_LENGTH) => (
+  <Skeleton className={stylex.props(styles.skeletonBar, BAR_LENGTH[length]).className} />
+)
+
+/** one heading over a card of that many rows */
+function SkeletonBlock({ rows }: { rows: number }) {
+  return (
+    <div {...stylex.props(styles.skeletonBlock)}>
+      <Skeleton className={stylex.props(styles.skeletonHeading).className} />
+      <div {...stylex.props(styles.skeletonCard)}>
+        {Array.from({ length: rows }, (_unused, row) => (
+          <div key={row} {...stylex.props(styles.skeletonRow)}>
+            {bar(row % 2 === 0 ? 'long' : 'mid')}
+            {bar(row % 2 === 0 ? 'mid' : 'long')}
+            {bar('short')}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /** the page in outline while it loads: one heading-and-card per block, with that many rows */
 function StructureSkeleton({ blocks }: { blocks: readonly number[] }) {
-  const bar = (length: keyof typeof BAR_LENGTH) => (
-    <Skeleton className={stylex.props(styles.skeletonBar, BAR_LENGTH[length]).className} />
-  )
   return (
     <div {...stylex.props(styles.skeletonStack)} aria-hidden data-testid="structure-skeleton">
       {blocks.map((rows, block) => (
-        <div key={block} {...stylex.props(styles.skeletonBlock)}>
-          <Skeleton className={stylex.props(styles.skeletonHeading).className} />
-          <div {...stylex.props(styles.skeletonCard)}>
-            {Array.from({ length: rows }, (_unused, row) => (
-              <div key={row} {...stylex.props(styles.skeletonRow)}>
-                {bar(row % 2 === 0 ? 'long' : 'mid')}
-                {bar(row % 2 === 0 ? 'mid' : 'long')}
-                {bar('short')}
-              </div>
-            ))}
-          </div>
-        </div>
+        <SkeletonBlock key={block} rows={rows} />
       ))}
+    </div>
+  )
+}
+
+/**
+ * A question on its way: the row of its three views, then its first view's
+ * blocks. The band above keeps the section's own heading until the question
+ * can take it over, and the two are one height, so nothing moves when it does.
+ */
+function QuestionSkeleton() {
+  return (
+    <div {...stylex.props(styles.skeletonStack)} aria-hidden data-testid="question-skeleton">
+      <div {...stylex.props(styles.skeletonTabs)}>
+        {[56, 72, 64].map((width) => (
+          <Skeleton
+            key={width}
+            className={stylex.props(styles.skeletonTab).className}
+            width={width}
+          />
+        ))}
+      </div>
+      <SkeletonBlock rows={2} />
+      <SkeletonBlock rows={3} />
     </div>
   )
 }
@@ -335,13 +378,16 @@ export default function ItemSettingsPage() {
     restoring.current = true
     setUnsaved(false)
   }
+  // The band is handed over once the question is there to take it. Handed
+  // over on the address alone, it stood empty while the round was still
+  // being read, and grew into the question's heading when that arrived.
+  const [questionUp, setQuestionUp] = useState(false)
 
   return (
     <BatchScreen
       title={format(m.itemsTab)}
       description={format(m.itemsHint)}
-      banner={shown === '' ? 'section' : 'open'}
-      bannerFlush
+      banner={shown !== '' && questionUp ? 'open' : 'section'}
     >
       {(batch) => (
         <Editor
@@ -360,6 +406,7 @@ export default function ItemSettingsPage() {
           heldPanel={holding ? kept.panel : undefined}
           onStay={stay}
           onLetGo={letGo}
+          onQuestionUp={setQuestionUp}
         />
       )}
     </BatchScreen>
@@ -382,6 +429,7 @@ function Editor({
   heldPanel,
   onStay,
   onLetGo,
+  onQuestionUp,
 }: {
   batchId: string
   batchStatus: string
@@ -411,6 +459,8 @@ function Editor({
   onStay: () => void
   /** let the held question's changes go */
   onLetGo: () => void
+  /** whether a question is on screen to speak through the band */
+  onQuestionUp: (up: boolean) => void
 }) {
   const query = useApiQuery(assessmentApi)
   const api = useApi(assessmentApi)
@@ -770,6 +820,8 @@ function Editor({
         onSaved={(itemId) => void opened(itemId)}
       />
     ) : null
+  const questionUp = editorArea !== null
+  useEffect(() => onQuestionUp(questionUp), [questionUp, onQuestionUp])
 
   const structure =
     paper === undefined ? (
@@ -815,7 +867,7 @@ function Editor({
         void groups.refetch()
         void items.refetch()
       }}
-      skeleton={<StructureSkeleton blocks={question === '' ? [6] : [1, 3, 2]} />}
+      skeleton={question === '' ? <StructureSkeleton blocks={[6]} /> : <QuestionSkeleton />}
       xstyle={styles.grow}
     >
       <div {...stylex.props(styles.grow, styles.editorColumn)}>
