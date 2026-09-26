@@ -779,7 +779,7 @@ describe('the participant results screen', () => {
     await page.getByTestId('participant-row').first().click()
     // the section's own heading is gone and something stands in its place,
     // with the way back already usable
-    await expect.element(page.getByRole('button', { name: '返回参评人员' })).toBeVisible()
+    await expect.element(page.getByRole('button', { name: '返回参评名单' })).toBeVisible()
   })
 
   it('says a determination a review panel made is the panel’s', async () => {
@@ -838,7 +838,7 @@ describe('the participant results screen', () => {
     )
     await expect.element(page.getByTestId('participant-unreadable')).toBeVisible()
     // and the way back to the list stands beside it
-    await expect.element(page.getByRole('button', { name: '返回参评人员' })).toBeVisible()
+    await expect.element(page.getByRole('button', { name: '返回参评名单' })).toBeVisible()
   })
 
   it('says a score cannot be read rather than showing an old one', async () => {
@@ -966,10 +966,28 @@ describe('one account beside its person', () => {
     // the score half carries the total beside its name
     await expect.element(panel.getByTestId('participant-total')).toHaveTextContent('1.00')
 
-    await panel.getByRole('button', { name: '返回参评人员' }).click()
+    await panel.getByRole('button', { name: '返回参评名单' }).click()
     await expect.poll(() => addressNow()).not.toContain('participant=')
     await expect.element(column).not.toHaveAttribute('data-lent')
     await expect.element(column.getByRole('link', { name: '参评名单' })).toBeVisible()
+  })
+
+  it('names the column after the person and says whose work the main part is', async () => {
+    await page.viewport(1280, 800)
+    await shelled(open)
+    // a landmark found by the person it is about
+    const column = page.getByRole('complementary', { name: '郭航旗' })
+    await expect.element(column).toBeVisible()
+    // the main part of the page carries a heading of its own that names them
+    const main = page.getByRole('main')
+    await expect
+      .element(main.getByRole('heading', { level: 2, name: /郭航旗/ }))
+      .toBeInTheDocument()
+    // the way back is called by the words it shows, so saying them presses it
+    const back = column.getByRole('button', { name: '返回参评名单' })
+    const shown = back.element().textContent?.trim() ?? ''
+    expect(shown).not.toBe('')
+    expect(back.element().getAttribute('aria-label') ?? shown).toContain(shown)
   })
 
   it('opens the whole chain of where they stand, from the school down', async () => {

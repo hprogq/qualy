@@ -1722,6 +1722,11 @@ const i18n = definePluginMessages({
       id: 'assessment/participant-results/back',
       defaultMessage: 'Back to participants',
     },
+    /** whose account the work beside the person's column is, and which half of it */
+    participantAccountHeading: defineMessage<{ name: string; half: string }>()({
+      id: 'assessment/participant-results/account-heading',
+      defaultMessage: '{name}: {half}',
+    }),
     /** the two halves of one account, as the way between them is named */
     participantResultsViews: {
       id: 'assessment/participant-results/views',

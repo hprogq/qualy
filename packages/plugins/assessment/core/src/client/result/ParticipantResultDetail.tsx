@@ -21,6 +21,7 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { Swap } from '@qualy/ui/reveal'
 import { UnitPath } from '@qualy/ui/unit-path'
 import { useIsMobile } from '@qualy/ui/use-mobile'
+import { a11yStyles } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentApi } from '../api.ts'
@@ -539,6 +540,7 @@ export function ParticipantResultDetail({
   const back = (
     <button
       type="button"
+      // the words on it are the list's name; what it is called says where it goes
       aria-label={format(m.participantResultsBack)}
       {...stylex.props(styles.back)}
       onClick={onBack}
@@ -785,8 +787,21 @@ export function ParticipantResultDetail({
   const filled = view === 'entries' && !phone
   return (
     <div data-testid="participant-account" data-beside={beside} {...stylex.props(styles.root)}>
-      <ScreenAside>{panel}</ScreenAside>
+      <ScreenAside label={participant?.displayName}>{panel}</ScreenAside>
       {!beside && head}
+      {/* Beside the column the name stands in the column, which is a
+          landmark of its own; the work still says whose it is, for a reader
+          moving by headings through the main part of the page. */}
+      {beside && participant !== undefined && (
+        <h2 {...stylex.props(a11yStyles.visuallyHidden)}>
+          {format(m.participantAccountHeading, {
+            name: participant.displayName,
+            half: format(
+              view === 'score' ? m.participantResultsScoreTab : m.participantResultsEntriesTab,
+            ),
+          })}
+        </h2>
+      )}
       <div {...stylex.props(styles.body, filled ? styles.bodyFilled : styles.bodyGrown)}>
         {/* the two halves replace each other in place, seen to change */}
         <Swap swapKey={view} className={stylex.props(filled && styles.swapFilled).className}>

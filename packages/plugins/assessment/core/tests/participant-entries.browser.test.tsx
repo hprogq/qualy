@@ -688,7 +688,7 @@ describe('reading somebody’s entries', () => {
     expect(addressNow()).toContain(`open=${OWN_ITEM}`)
     expect(addressNow()).not.toContain('entry=')
 
-    await page.getByRole('button', { name: '返回参评人员' }).click()
+    await page.getByRole('button', { name: '返回参评名单' }).click()
     await expect.poll(() => addressNow()).not.toContain('participant=')
     expect(addressNow()).not.toContain('open=')
   })
