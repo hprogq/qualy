@@ -4,7 +4,7 @@ import { page } from 'vitest/browser'
 import { Effect } from 'effect'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import type { auditApi } from '../src/client/api.ts'
-import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // One person's part of the trail, on their record: what was done to their
 // account by default, what they did one press away, each read from the
@@ -88,6 +88,18 @@ describe("a person's audit events", () => {
         page.getByTestId('audit-row').element().querySelector('[data-cell="target"]'),
       ).not.toBeNull(),
     )
+  })
+
+  // A reading that failed is said as a reading, with a heading and another
+  // try; a refusal to read the trail offers no try that cannot help.
+  it('says the trail could not be read, and whether another try can help', async () => {
+    await open(() => Effect.fail(apiError('ACCESS_DENIED')))
+    await expect
+      .poll(() =>
+        document.querySelector('[data-slot="resource-state"]')?.getAttribute('data-state'),
+      )
+      .toBe('denied')
+    expect(page.getByRole('button', { name: '重试' }).query()).toBeNull()
   })
 
   it('opens a row into what the trail kept, and offers no narrowing to one actor here', async () => {

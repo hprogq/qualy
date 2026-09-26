@@ -9,7 +9,7 @@ import '../../../../../../apps/web/src/app.css'
 
 export const catalogs = [auditCatalogs]
 
-export { addressNow, emptyManifest, fakeClient } from '@qualy/testkit/browser'
+export { addressNow, apiError, emptyManifest, fakeClient } from '@qualy/testkit/browser'
 
 export const renderScreen = (
   options: Omit<Parameters<typeof render>[0], 'catalogs' | 'errorMessages'>,

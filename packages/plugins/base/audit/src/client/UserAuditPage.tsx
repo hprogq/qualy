@@ -5,6 +5,7 @@ import {
   cursorPages,
   useApi,
   useApiQuery,
+  useLoadFailure,
   usePageQueryState,
   usePageRouteParams,
   useRunApi,
@@ -38,6 +39,7 @@ export default function UserAuditPage() {
   const runApi = useRunApi()
   const query = useApiQuery(auditApi)
   const { format } = useI18n()
+  const describe = useLoadFailure()
   // kept in the address, so a reload or a link keeps which half is read
   const [view, setView] = usePageQueryState('view')
   const by = view === 'by'
@@ -74,7 +76,9 @@ export default function UserAuditPage() {
       />
       <AsyncSection
         pending={events.isPending}
-        error={events.isError ? format(m.loadFailed) : undefined}
+        error={events.isError ? describe.of(events.error) : undefined}
+        retrying={events.isFetching}
+        framed
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void events.refetch()}
