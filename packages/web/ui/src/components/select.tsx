@@ -139,6 +139,16 @@ const triggerStyles = stylex.create({
   },
   // inside a form field: the width of the field, like the input above it
   fill: { width: '100%' },
+  // the control itself, drawn as a quiet key: the height and ground of an
+  // icon key beside it, and no box
+  quiet: {
+    height: 32,
+    minHeight: 32,
+    borderRadius: tokens.radiusMd,
+    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
+    paddingInline: 8,
+    color: tokens.foreground,
+  },
 })
 
 const styles = stylex.create({
@@ -218,12 +228,19 @@ function SelectTrigger({
   className,
   xstyle,
   size = 'default',
+  quiet = false,
   children,
   onKeyDown,
   'aria-invalid': ariaInvalid,
   ...props
 }: React.ComponentProps<'button'> & {
   size?: 'sm' | 'default'
+  /**
+   * Drawn as a quiet key rather than a field: no box and no chevron, for a
+   * toolbar whose neighbours are icon keys. What it shows must still say
+   * the choice in force.
+   */
+  quiet?: boolean
   /**
    * The standard StyleX seat, composed over the trigger's base styles -
    * sizing a field is its main use. `className` stays as the legacy escape
@@ -266,9 +283,13 @@ function SelectTrigger({
         style={sx.style}
         className={clsx(sx.className, className)}
         {...(invalid ? { error: true } : {})}
+        {...(quiet
+          ? {
+              variant: 'unstyled',
+              classNames: { input: stylex.props(triggerStyles.quiet).className ?? '' },
+            }
+          : { rightSection: <Combobox.Chevron />, rightSectionPointerEvents: 'none' as const })}
         disabled={disabled}
-        rightSection={<Combobox.Chevron />}
-        rightSectionPointerEvents="none"
         onClick={toggle}
         onKeyDown={(event) => {
           onKeyDown?.(event)
