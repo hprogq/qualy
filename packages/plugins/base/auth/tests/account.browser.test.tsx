@@ -6,7 +6,7 @@ import { page } from 'vitest/browser'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import type { authApi } from '@qualy/plugin-auth/client/api'
 import { Effect } from 'effect'
-import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The reader's own account. What the screens have to get right is what they
 // offer: facts to read, and letting go of an account only where the server
@@ -118,6 +118,27 @@ describe('the reader’s banner', () => {
     })
     await expect.element(page.getByTestId('person-facts')).toBeInTheDocument()
     expect(facts()).toEqual(['unit'])
+  })
+
+  // Their own record not coming is said in the banner's own place, with
+  // another try, and the banner keeps its height rather than becoming an alert.
+  it('keeps its place when their record would not come, with another try', async () => {
+    const answers = { down: true }
+    await renderScreen({
+      client: fakeClient(
+        stubs([], {
+          getSelf: () =>
+            answers.down ? Effect.fail(apiError('INTERNAL_FAILURE')) : Effect.succeed(me()),
+        }),
+      ),
+      children: <AccountHeader />,
+    })
+    const banner = page.getByTestId('account-header')
+    await expect.element(banner).toHaveAttribute('data-state', 'unread')
+    expect(document.querySelector('[role="alert"]')).toBeNull()
+    answers.down = false
+    await banner.getByRole('button', { name: '重试' }).click()
+    await expect.element(page.getByTestId('person-facts')).toBeInTheDocument()
   })
 })
 

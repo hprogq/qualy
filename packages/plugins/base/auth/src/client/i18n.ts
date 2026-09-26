@@ -959,6 +959,10 @@ const i18n = definePluginMessages({
       id: 'auth/account/reauth-sign-in-with',
       defaultMessage: 'Sign in with {name}',
     },
+    accountHeaderUnread: {
+      id: 'auth/account/header-unread',
+      defaultMessage: 'Your details could not be loaded',
+    },
     reauthUnavailableTitle: {
       id: 'auth/account/reauth-unavailable-title',
       defaultMessage: 'There is no way to confirm it’s you here',

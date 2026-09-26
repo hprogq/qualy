@@ -4,8 +4,11 @@ import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { Feedback } from '@qualy/ui/admin'
+import { RotateCwIcon, UserRoundIcon } from 'lucide-react'
+import { commonMessages } from '@qualy/web-i18n/messages'
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
+import { Button } from '@qualy/ui/button'
+import { Spinner } from '@qualy/ui/spinner'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { initialsOf } from '@qualy/ui/person'
 import { Tag } from '@qualy/ui/screen'
@@ -61,18 +64,55 @@ const styles = stylex.create({
     fontWeight: 600,
     letterSpacing: '-0.025em',
   },
+  // what the banner says when the reader's own record would not come: in
+  // the banner's own place and measure, not an alert standing in for it
+  unread: {
+    display: 'flex',
+    margin: 0,
+    minWidth: 0,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 14,
+    color: tokens.mutedForeground,
+  },
+  unreadGlyph: { width: 22, height: 22, color: tokens.mutedForeground },
   boneName: { width: 160, height: 24, borderRadius: 6 },
   boneMeta: { width: '100%', maxWidth: 240, height: 14, borderRadius: 4 },
 })
 
 export default function AccountHeader() {
   const query = useApiQuery(authApi)
-  const { format, formatError } = useI18n()
+  const { format } = useI18n()
   const businessNoWord = useTerm(authTerms.businessNumber)
   const self = useQuery(query.self.getSelf.queryOptions())
 
-  if (self.isError) return <Feedback message={formatError(self.error)} />
   const me = self.data
+  if (me === undefined && self.isError) {
+    return (
+      <div data-testid="account-header" data-state="unread" {...stylex.props(styles.who)}>
+        <Avatar className={stylex.props(styles.portrait).className}>
+          <AvatarFallback className={stylex.props(styles.portraitFace).className}>
+            <UserRoundIcon aria-hidden {...stylex.props(styles.unreadGlyph)} />
+          </AvatarFallback>
+        </Avatar>
+        <div {...stylex.props(styles.text)}>
+          <p role="status" {...stylex.props(styles.unread)}>
+            {format(m.accountHeaderUnread)}
+            <Button
+              size="xs"
+              variant="ghost"
+              disabled={self.isFetching}
+              onClick={() => void self.refetch()}
+            >
+              {self.isFetching ? <Spinner aria-hidden /> : <RotateCwIcon aria-hidden />}
+              {format(commonMessages.retry)}
+            </Button>
+          </p>
+        </div>
+      </div>
+    )
+  }
   // The line the directory shows over their record, as far as it is theirs:
   // their number and their unit. A number they do not have is left out
   // rather than said missing, since it is not theirs to fill in; their

@@ -265,6 +265,7 @@ export default {
   'auth/account/reauth-code-again': '重新发送',
   'auth/account/reauth-sign-in-hint': '请通过以下方式重新登录后继续',
   'auth/account/reauth-sign-in-with': '通过{name}登录',
+  'auth/account/header-unread': '个人资料暂时无法加载',
   'auth/account/reauth-unavailable-title': '无法在此验证你的身份',
   'auth/account/reauth-unavailable': '请联系管理员代为办理',
   'auth/account/reauth-continue': '继续',
