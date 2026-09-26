@@ -272,7 +272,8 @@ describe('the words themselves', () => {
     expect(page.getByText('我的成绩').elements()).toHaveLength(0)
     // and that line is not scored in words that cannot be read as the
     // participant having been taken off the roster
-    await expect.element(page.getByText('Not scored', { exact: true })).toBeVisible()
+    // (said on the row, and again beside the claim in its fold)
+    await expect.element(page.getByText('Not scored', { exact: true }).first()).toBeVisible()
     expect(page.getByText(/excluded/i).elements()).toHaveLength(0)
   })
 })

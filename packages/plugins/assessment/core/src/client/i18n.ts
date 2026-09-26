@@ -481,9 +481,25 @@ const resultLive = defineMessage<{ state: string }>()({
   defaultMessage: '{state, select, live {Live} other {Reconnecting}}',
 })
 
+const resultShowRest = defineMessage<{ count: number }>()({
+  id: 'assessment/result/show-rest',
+  defaultMessage: 'Show {count} more',
+})
+
 const resultMadeClaim = defineMessage<{ word: string; identity: string }>()({
   id: 'assessment/result/made-claim',
   defaultMessage: '{word}: {identity}',
+})
+
+const resultStopped = defineMessage<{ kind: string }>()({
+  id: 'assessment/result/stopped',
+  defaultMessage:
+    '{kind, select, unsupplied {Material not added} unrevised {Not resubmitted} unsent {Draft not submitted} other {Not decided}}',
+})
+
+const resultEditAway = defineMessage<{ kind: string }>()({
+  id: 'assessment/result/edit-away',
+  defaultMessage: '{kind, select, draft {Continue in My entries} other {Edit in My entries}}',
 })
 
 const resultTrim = defineMessage<{ rule: string; group: string; raw: string; limit: string }>()({
@@ -1871,7 +1887,10 @@ const i18n = definePluginMessages({
     resultMore,
     resultTrim,
     resultLive,
+    resultShowRest,
     resultMadeClaim,
+    resultStopped,
+    resultEditAway,
     // ------------------------------------------------------------------
     // recording on someone's behalf
     recordTab: { id: 'assessment/record/tab', defaultMessage: 'Administrative records' },

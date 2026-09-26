@@ -112,13 +112,30 @@ const item = (
   createdAt: '2026-03-01T00:00:00.000Z',
 })
 
-const hidden = { state: 'hidden' as const, reason: null }
+type Availability = { state: 'available' | 'blocked' | 'hidden'; reason: string | null }
+const hidden: Availability = { state: 'hidden', reason: null }
+
+type Refusal = {
+  kind: string
+  reason: string | null
+  comment: string | null
+  suggestedPayload: unknown
+  actorName: string | null
+  at: string
+}
 
 const entry = (
   id: string,
   itemId: string,
   status: string,
-  over: { source?: string; name?: string; level?: string; supplement?: boolean } = {},
+  over: {
+    source?: string
+    name?: string
+    level?: string
+    supplement?: boolean
+    refusal?: Refusal
+    capabilities?: Record<'edit' | 'submit' | 'withdraw' | 'appeal' | 'abandon', Availability>
+  } = {},
 ) => ({
   id,
   batchId: BATCH_ID,
@@ -152,7 +169,7 @@ const entry = (
           requestedAt: '2026-03-03T00:00:00.000Z',
         }
       : null,
-  refusal: null,
+  refusal: over.refusal ?? null,
   openRound: null,
   recognition:
     status === 'approved'
@@ -167,7 +184,13 @@ const entry = (
           byPanel: false,
         }
       : null,
-  capabilities: { edit: hidden, submit: hidden, withdraw: hidden, appeal: hidden, abandon: hidden },
+  capabilities: over.capabilities ?? {
+    edit: hidden,
+    submit: hidden,
+    withdraw: hidden,
+    appeal: hidden,
+    abandon: hidden,
+  },
 })
 
 const counted = (entryId: string, itemId: string, value: string, label = 'label') => ({
@@ -424,6 +447,8 @@ const screen = (paper: Paper, over: Record<string, unknown> = {}) =>
       assessment: {
         getBatch: () => Effect.succeed({ batch }),
         getMyResult: () => Effect.succeed(paper.result),
+        // what a claim's drawer reads beside it
+        getEntryHistory: () => Effect.succeed({ revisions: [], events: [], rounds: [] }),
         listItems: () => Effect.succeed({ items: paper.items, capabilities: { canManage: false } }),
         listMyEntries: () =>
           Effect.succeed({
@@ -571,7 +596,7 @@ describe('the score page at a desk', () => {
 })
 
 describe('the rows of the account', () => {
-  it('opens a question with several claims in place, and a claim leads to its filing', async () => {
+  it('opens a question’s claims in place, and reads one in its drawer without leaving', async () => {
     await page.viewport(1440, 900)
     await screen(normal())
     await expect.element(page.getByTestId('result-total')).toBeVisible()
@@ -591,12 +616,27 @@ describe('the rows of the account', () => {
       'q8-c',
       'q8-d',
     ])
+    // each says where it stands and what last happened to it, not only its figure
+    expect(
+      lines[1]!
+        .querySelector('[data-testid="entry-standing"]')
+        ?.getAttribute('data-entry-standing'),
+    ).toBe('approved')
+    expect(lines[1]!.getAttribute('data-act')).toBe('approved')
     // the claim names itself from what was filed
     expect(lines[1]!.textContent).toContain('调研b')
     await userEvent.click(lines[1]!)
-    await expect.element(page.getByTestId('entries-page')).toBeInTheDocument()
-    expect(addressNow()).toContain('open=q8')
+    // the drawer opens over the account; the page stays where it is
+    const drawer = page.getByRole('dialog')
+    await expect.element(drawer).toBeVisible()
+    await expect.element(drawer.getByText('调研b').first()).toBeVisible()
+    expect(page.getByTestId('entries-page').elements()).toHaveLength(0)
+    expect(addressNow()).toContain('/my-result')
     expect(addressNow()).toContain('detail=q8-b')
+    // and closes back onto it
+    await userEvent.keyboard('{Escape}')
+    await expect.poll(() => addressNow().includes('detail=')).toBe(false)
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
   })
 
   it('opens and folds a question from the keyboard', async () => {
@@ -617,7 +657,7 @@ describe('the rows of the account', () => {
     await expect.poll(() => toggle.getAttribute('aria-expanded')).toBe('false')
   })
 
-  it('lists the first six claims and leads to the rest on the filing page', async () => {
+  it('lists the first six claims and shows the rest in place', async () => {
     await page.viewport(1440, 900)
     await screen(normal())
     await expect.element(page.getByTestId('result-total')).toBeVisible()
@@ -625,16 +665,25 @@ describe('the rows of the account', () => {
     await userEvent.click(row.querySelector('button[aria-expanded]') as HTMLElement)
     const fold = row.querySelector('[data-testid="ledger-lines"]') as HTMLElement
     await expect.poll(() => fold.getAttribute('data-open')).toBe('true')
-    expect(fold.querySelectorAll('[data-testid="ledger-line"]')).toHaveLength(6)
-    const more = fold.querySelector('[data-testid="ledger-more"][data-follow="all"]') as HTMLElement
-    expect(more.getAttribute('data-count')).toBe('78')
+    const listed = () => [...fold.querySelectorAll<HTMLElement>('[data-testid="ledger-line"]')]
+    expect(listed()).toHaveLength(6)
+    // seventy-eight on the account and four still on their way
+    const more = fold.querySelector('[data-testid="ledger-more"]') as HTMLElement
+    expect(more.getAttribute('data-follow')).toBe('expand')
+    expect(more.getAttribute('data-count')).toBe('76')
+    // nothing in the fold leads away
+    expect(
+      fold.querySelector('[data-follow="all"], [data-follow="todo"], [data-follow="rest"]'),
+    ).toBeNull()
     await userEvent.click(more)
-    await expect.element(page.getByTestId('entries-page')).toBeInTheDocument()
-    expect(addressNow()).toContain('open=q7')
-    expect(addressNow()).not.toContain('detail=')
+    await expect.poll(() => listed().length).toBe(82)
+    expect(fold.querySelector('[data-testid="ledger-more"]')).toBeNull()
+    // the reader's place is the first claim that was not listed before
+    await expect.poll(() => document.activeElement).toBe(listed()[6])
+    expect(page.getByTestId('entries-page').elements()).toHaveLength(0)
   })
 
-  it('leads from what waits on the reader to that very claim', async () => {
+  it('lists what waits on the reader first, and opens it in place', async () => {
     await page.viewport(1440, 900)
     await screen(normal())
     await expect.element(page.getByTestId('result-total')).toBeVisible()
@@ -644,24 +693,43 @@ describe('the rows of the account', () => {
     await userEvent.click(row.querySelector('button[aria-expanded]') as HTMLElement)
     const fold = row.querySelector('[data-testid="ledger-lines"]') as HTMLElement
     await expect.poll(() => fold.getAttribute('data-open')).toBe('true')
-    const waiting = fold.querySelector('[data-follow="todo"]') as HTMLElement
-    expect(waiting.getAttribute('data-count')).toBe('1')
-    await userEvent.click(waiting)
-    await expect.element(page.getByTestId('entries-page')).toBeInTheDocument()
-    expect(addressNow()).toContain('open=q3')
+    const lines = [...fold.querySelectorAll<HTMLElement>('[data-testid="ledger-line"]')]
+    // the one sent back, then the four under review, then the account's own
+    expect(lines.map((one) => one.getAttribute('data-entry'))).toEqual([
+      'q3-h',
+      'q3-d',
+      'q3-e',
+      'q3-f',
+      'q3-g',
+      'q3-a',
+    ])
+    expect(lines[0]!.getAttribute('data-standing')).toBe('open')
+    expect(lines[0]!.getAttribute('data-act')).toBe('returned')
+    expect(lines[5]!.getAttribute('data-standing')).toBe('approved')
+    expect(fold.querySelector('[data-follow="todo"]')).toBeNull()
+    await userEvent.click(lines[0]!)
+    await expect.element(page.getByRole('dialog')).toBeVisible()
     expect(addressNow()).toContain('detail=q3-h')
+    expect(page.getByTestId('entries-page').elements()).toHaveLength(0)
   })
 
-  it('leads from a question with nothing on the account yet to its claims', async () => {
+  it('opens a question with nothing on the account yet to the claims under review', async () => {
     await page.viewport(1440, 900)
     await screen(normal())
     await expect.element(page.getByTestId('result-total')).toBeVisible()
-    // two under review and nothing decided: the row itself goes there
-    const lead = itemRow('q4').querySelector('[data-testid="ledger-lead"]') as HTMLElement
-    await userEvent.click(lead)
-    await expect.element(page.getByTestId('entries-page')).toBeInTheDocument()
-    expect(addressNow()).toContain('open=q4')
-    expect(addressNow()).not.toContain('detail=')
+    // two under review and nothing decided: the row opens to them
+    const row = itemRow('q4')
+    expect(row.querySelector('[data-testid="ledger-lead"]')).toBeNull()
+    await userEvent.click(row.querySelector('button[aria-expanded]') as HTMLElement)
+    const lines = [...row.querySelectorAll<HTMLElement>('[data-testid="ledger-line"]')]
+    expect(lines.map((one) => [one.getAttribute('data-entry'), one.dataset['standing']])).toEqual([
+      ['q4-a', 'open'],
+      ['q4-b', 'open'],
+    ])
+    // not on the account, so what it would come to is said apart from the figure
+    expect(row.getAttribute('data-value')).toBe('0.00')
+    expect(lines[0]!.querySelector('[data-would]')?.getAttribute('data-would')).toBe('8.00')
+    expect(page.getByTestId('entries-page').elements()).toHaveLength(0)
   })
 
   it('says under a question what its figure waits for, not the count its mark already gives', async () => {
@@ -683,20 +751,23 @@ describe('the rows of the account', () => {
     expect(rule('q3')).toBe('each')
   })
 
-  it('takes a question with one claim straight to it', async () => {
+  it('opens a question with one claim in place too', async () => {
     await page.viewport(1440, 900)
     await screen(normal())
     await expect.element(page.getByTestId('result-total')).toBeVisible()
     const row = itemRow('q6')
-    // no fold to open: the row is the claim
-    expect(row.querySelector('[data-testid="ledger-lines"]')).toBeNull()
-    const claim = row.querySelector('[data-testid="ledger-line"]') as HTMLElement
-    expect(claim.getAttribute('data-entry')).toBe('q6-a')
     expect(row.getAttribute('data-value')).toBe('9.50')
+    await userEvent.click(row.querySelector('button[aria-expanded]') as HTMLElement)
+    const fold = row.querySelector('[data-testid="ledger-lines"]') as HTMLElement
+    await expect.poll(() => fold.getAttribute('data-open')).toBe('true')
+    const claim = fold.querySelector('[data-testid="ledger-line"]') as HTMLElement
+    expect(claim.getAttribute('data-entry')).toBe('q6-a')
+    // the office's record says it was recorded, not approved
+    expect(claim.getAttribute('data-act')).toBe('recorded')
     await userEvent.click(claim)
-    await expect.element(page.getByTestId('entries-page')).toBeInTheDocument()
-    expect(addressNow()).toContain('open=q6')
+    await expect.element(page.getByRole('dialog')).toBeVisible()
     expect(addressNow()).toContain('detail=q6-a')
+    expect(page.getByTestId('entries-page').elements()).toHaveLength(0)
   })
 
   it('writes no middle dot anywhere on the page', async () => {
@@ -1135,6 +1206,164 @@ describe('rounds of other shapes', () => {
   })
 })
 
+describe('a claim read in its drawer on the score page', () => {
+  const available: Availability = { state: 'available', reason: null }
+  const can = (acts: readonly ('edit' | 'submit' | 'withdraw' | 'appeal' | 'abandon')[]) => ({
+    edit: acts.includes('edit') ? available : hidden,
+    submit: acts.includes('submit') ? available : hidden,
+    withdraw: acts.includes('withdraw') ? available : hidden,
+    appeal: acts.includes('appeal') ? available : hidden,
+    abandon: acts.includes('abandon') ? available : hidden,
+  })
+  const refusal = (kind: 'rejected' | 'returned', comment: string): Refusal => ({
+    kind,
+    reason: null,
+    comment,
+    suggestedPayload: null,
+    actorName: null,
+    at: '2026-03-06T06:00:00.000Z',
+  })
+  // one question: a claim under review, one sent back, and one refused
+  const paper = (): Paper =>
+    onPaper<Paper>({
+      result: {
+        mode: 'provisional',
+        total: '0.00',
+        groups: [group('g', '学术与科研', { final: '0.00', cap: '20.00' })],
+        lines: [
+          {
+            lineId: 'entry:no',
+            kind: 'excluded-evidence' as const,
+            label: '学术竞赛获奖',
+            value: '0.00',
+            itemId: 'q',
+            provenance: { entryId: 'no' },
+          },
+        ],
+      },
+      items: [item('q', 'g', '学术竞赛获奖', { each: '6' })],
+      entries: [
+        entry('sent', 'q', 'in_review', { name: '数学建模', capabilities: can(['withdraw']) }),
+        entry('back', 'q', 'needs_revision', {
+          name: '电子设计',
+          refusal: refusal('returned', '证书扫描件模糊'),
+          capabilities: can(['edit', 'abandon']),
+        }),
+        entry('no', 'q', 'rejected', {
+          name: '挑战杯',
+          refusal: refusal('rejected', '项目未结题'),
+          capabilities: can(['appeal']),
+        }),
+      ],
+    })
+
+  const openClaim = async (entryId: string) => {
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
+    const row = itemRow('q')
+    const toggle = row.querySelector('button[aria-expanded]') as HTMLElement
+    if (toggle.getAttribute('aria-expanded') !== 'true') await userEvent.click(toggle)
+    await userEvent.click(
+      row.querySelector(`[data-testid="ledger-line"][data-entry="${entryId}"]`) as HTMLElement,
+    )
+    const drawer = page.getByRole('dialog')
+    await expect.element(drawer).toBeVisible()
+    return drawer
+  }
+
+  it('says why a claim came back on its own row', async () => {
+    await page.viewport(1440, 900)
+    await screen(paper())
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
+    await userEvent.click(itemRow('q').querySelector('button[aria-expanded]') as HTMLElement)
+    const line = (entryId: string) =>
+      itemRow('q').querySelector<HTMLElement>(
+        `[data-testid="ledger-line"][data-entry="${entryId}"]`,
+      )!
+    expect(line('back').getAttribute('data-note')).toBe('return')
+    expect(line('back').textContent).toContain('证书扫描件模糊')
+    expect(line('no').getAttribute('data-note')).toBe('refusal')
+    expect(line('sent').getAttribute('data-note')).toBeNull()
+    // the order the reader acts in: what waits on them, then what is under review
+    expect(
+      [...itemRow('q').querySelectorAll('[data-testid="ledger-line"]')].map((one) =>
+        one.getAttribute('data-entry'),
+      ),
+    ).toEqual(['back', 'sent', 'no'])
+  })
+
+  it('takes a claim back from its drawer without leaving the page', async () => {
+    await page.viewport(1440, 900)
+    const setEntryStatus = vi.fn(() => Effect.succeed({ entry: entry('sent', 'q', 'draft') }))
+    await screen(paper(), { setEntryStatus })
+    const drawer = await openClaim('sent')
+    await drawer.getByRole('button', { name: '撤回提交' }).click()
+    // asked first, as on the filing page
+    await expect.element(page.getByRole('alertdialog')).toBeVisible()
+    expect(setEntryStatus).not.toHaveBeenCalled()
+    await page.getByTestId('confirm-accept').click()
+    await vi.waitFor(() => expect(setEntryStatus).toHaveBeenCalledOnce())
+    expect(setEntryStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ params: { entryId: 'sent' }, payload: { status: 'draft' } }),
+    )
+    expect(page.getByTestId('entries-page').elements()).toHaveLength(0)
+    expect(addressNow()).toContain('/my-result')
+  })
+
+  it('appeals from its drawer without leaving the page', async () => {
+    await page.viewport(1440, 900)
+    const appealEntry = vi.fn(() => Effect.succeed({ entry: entry('no', 'q', 'rejected') }))
+    await screen(paper(), { appealEntry })
+    const drawer = await openClaim('no')
+    await drawer.getByRole('button', { name: '申诉' }).click()
+    const reason = page.getByRole('textbox')
+    await expect.element(reason).toBeVisible()
+    await reason.fill('项目已于三月结题')
+    await page.getByRole('button', { name: '申诉' }).last().click()
+    await vi.waitFor(() => expect(appealEntry).toHaveBeenCalledOnce())
+    expect(appealEntry).toHaveBeenCalledWith(expect.objectContaining({ params: { entryId: 'no' } }))
+    expect(page.getByTestId('entries-page').elements()).toHaveLength(0)
+  })
+
+  it('goes to My entries only to rewrite a claim, and the button says so', async () => {
+    await page.viewport(1440, 900)
+    await screen(paper())
+    const drawer = await openClaim('back')
+    // named for where it goes; the filing page's own word would not say
+    await drawer.getByRole('button', { name: '去我的申报修改' }).click()
+    await expect.element(page.getByTestId('entries-page')).toBeInTheDocument()
+    expect(addressNow()).toContain('open=q')
+    expect(addressNow()).toContain('entry=back')
+  })
+
+  it('keeps the claim open across a reload of the address', async () => {
+    await page.viewport(390, 844)
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+        assessment: {
+          getBatch: () => Effect.succeed({ batch }),
+          getMyResult: () => Effect.succeed(paper().result),
+          getEntryHistory: () => Effect.succeed({ revisions: [], events: [], rounds: [] }),
+          listItems: () =>
+            Effect.succeed({ items: paper().items, capabilities: { canManage: false } }),
+          listMyEntries: () =>
+            Effect.succeed({
+              participantId: PARTICIPANT_ID,
+              entries: paper().entries,
+              nextCursor: null,
+              attention: { unreadItemIds: [] },
+            }),
+        },
+      }),
+      routes: [{ path: '/assessment/batches/:batchId/my-result', element: <MyResultPage /> }],
+      route: `/assessment/batches/${BATCH_ID}/my-result?detail=back`,
+    })
+    const drawer = page.getByRole('dialog')
+    await expect.element(drawer).toBeVisible()
+    await expect.element(drawer.getByText('证书扫描件模糊').first()).toBeVisible()
+  })
+})
+
 describe('an account that has stopped moving', () => {
   const tagOf = (itemId: string) =>
     itemRow(itemId).querySelector('[data-tag]')?.getAttribute('data-tag') ?? null
@@ -1163,6 +1392,21 @@ describe('an account that has stopped moving', () => {
     expect(page.getByTestId('result-live').elements()).toHaveLength(0)
     await userEvent.click(itemRow('q3').querySelector('button[aria-expanded]') as HTMLElement)
     expect(itemRow('q3').querySelector('[data-follow="todo"]')).toBeNull()
+    // a claim that never reached a decision is listed where it stopped, with
+    // no figure it would come to
+    const undecided = itemRow('q4').querySelectorAll('[data-testid="ledger-line"]')
+    expect(undecided).toHaveLength(2)
+    expect(itemRow('q4').querySelector('[data-would]')).toBeNull()
+    const stoppedOf = (entryId: string) =>
+      document
+        .querySelector(`[data-testid="ledger-line"][data-entry="${entryId}"] [data-stopped]`)
+        ?.getAttribute('data-stopped') ?? null
+    expect(stoppedOf('q4-a')).toBe('undecided')
+    expect(stoppedOf('q3-h')).toBe('unrevised')
+    expect(stoppedOf('q7-ask')).toBe('unsupplied')
+    expect(stoppedOf('q9-a')).toBe('unsent')
+    // what was decided keeps its own word
+    expect(stoppedOf('q3-a')).toBeNull()
   })
 
   it('says so when the reader was taken off the roster', async () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildLedger,
   filingShutOf,
+  trailOf,
   type LedgerEntry,
   type LedgerItem,
   type LedgerItemView,
@@ -1034,5 +1035,174 @@ describe('the score ledger model', () => {
     expect(recorded!.lines[0]).toMatchObject({ recorded: true })
     expect(withdrawn).toMatchObject({ voided: true, cents: 0 })
     expect(constant).toMatchObject({ perPerson: '2', each: null })
+  })
+
+  it('lists the claims off the account, what waits on the participant first, with what each would come to', () => {
+    const model = buildLedger({
+      result: {
+        mode: 'provisional',
+        total: '6.00',
+        groups: [group({ groupId: 'g', final: '6.00', raw: '6.00', itemsTotal: '6.00' })],
+        lines: [
+          line({
+            lineId: 'l',
+            kind: 'entry',
+            value: '6.00',
+            itemId: 'q',
+            provenance: { entryId: 'counted' },
+          }),
+        ],
+      },
+      items: [item({ id: 'q', scoreGroupId: 'g' })],
+      entries: [
+        claim({ id: 'counted', itemId: 'q', status: 'approved' }),
+        claim({ id: 'kept', itemId: 'q', status: 'draft' }),
+        claim({ id: 'sent', itemId: 'q', status: 'in_review' }),
+        claim({ id: 'back', itemId: 'q', status: 'needs_revision' }),
+        claim({ id: 'asked', itemId: 'q', status: 'in_review', supplement: { requestId: 's' } }),
+        // given up: nothing about it is still to come
+        claim({ id: 'gone', itemId: 'q', status: 'voided' }),
+      ],
+    })
+    const [view] = itemsOf(model)
+    expect(view!.open.map((one) => one.entryId)).toEqual(['back', 'asked', 'sent', 'kept'])
+    expect(view!.open.every((one) => one.kind === 'claim' && one.standing === 'open')).toBe(true)
+    // off the account they count for nothing yet, and say what they would
+    expect(view!.open.map((one) => [one.cents, one.wouldCents])).toEqual([
+      [0, 600],
+      [0, 600],
+      [0, 600],
+      [0, 600],
+    ])
+    expect(view!.lines.map((one) => one.wouldCents)).toEqual([null])
+    // the rows still add up to the figure
+    expect(view!.cents).toBe(600)
+  })
+
+  it('says what last happened to each claim, with a reviewer’s words and its files', () => {
+    const payload = (name: string, files: number) => ({
+      payload: {
+        name,
+        proof: Array.from({ length: files }, (_, index) => `file-${String(index)}`),
+      },
+      createdAt: '2026-03-02T00:00:00.000Z',
+    })
+    const model = buildLedger({
+      result: {
+        mode: 'provisional',
+        total: '0.00',
+        groups: [group({ groupId: 'g' })],
+        lines: [
+          line({
+            lineId: 'r',
+            kind: 'excluded-evidence',
+            value: '0.00',
+            itemId: 'q',
+            provenance: { entryId: 'refused' },
+          }),
+          line({
+            lineId: 'o',
+            kind: 'entry',
+            value: '0.00',
+            itemId: 'q',
+            provenance: { entryId: 'office' },
+          }),
+        ],
+      },
+      items: [
+        item({
+          id: 'q',
+          scoreGroupId: 'g',
+          currentRevision: {
+            entryChannels: ['participant', 'administrative'],
+            formConfig: {
+              fields: [
+                { id: 'name', key: 'name', type: 'text', label: 'Name' },
+                { id: 'proof', key: 'proof', type: 'attachment', label: 'Proof' },
+              ],
+            },
+            scoringConfig: { calculator: { ref: 'fixed@1', config: { value: '0' } } },
+          },
+        }),
+      ],
+      entries: [
+        claim({
+          id: 'refused',
+          itemId: 'q',
+          status: 'rejected',
+          currentRevision: payload('Robot contest', 2),
+          refusal: { at: '2026-03-06T00:00:00.000Z', comment: ' Certificate unreadable ' },
+        }),
+        claim({
+          id: 'back',
+          itemId: 'q',
+          status: 'needs_revision',
+          currentRevision: payload('Essay prize', 1),
+          refusal: { at: '2026-03-07T00:00:00.000Z', comment: null, reason: 'Missing proof' },
+        }),
+        claim({
+          id: 'asked',
+          itemId: 'q',
+          status: 'in_review',
+          currentRevision: payload('Volunteering', 0),
+          supplement: { requestedAt: '2026-03-08T00:00:00.000Z', instructions: 'Add the stamp' },
+        }),
+        claim({
+          id: 'office',
+          itemId: 'q',
+          status: 'approved',
+          source: 'record',
+          recognition: { createdAt: '2026-03-09T00:00:00.000Z' },
+          currentRevision: payload('Course score', 0),
+        }),
+      ],
+    })
+    const [view] = itemsOf(model)
+    const byEntry = new Map(
+      [...view!.open, ...view!.lines].map((one) => [one.entryId, one.claim] as const),
+    )
+    expect(byEntry.get('refused')).toMatchObject({
+      act: 'refused',
+      actAt: '2026-03-06T00:00:00.000Z',
+      note: { kind: 'refusal', text: 'Certificate unreadable' },
+      files: 2,
+    })
+    expect(byEntry.get('back')).toMatchObject({
+      act: 'returned',
+      actAt: '2026-03-07T00:00:00.000Z',
+      note: { kind: 'return', text: 'Missing proof' },
+      files: 1,
+    })
+    // an ask outranks the claim's own state
+    expect(byEntry.get('asked')).toMatchObject({
+      act: 'asked',
+      asked: true,
+      actAt: '2026-03-08T00:00:00.000Z',
+      note: { kind: 'ask', text: 'Add the stamp' },
+      files: 0,
+    })
+    // the office recorded it; nobody approved it
+    expect(byEntry.get('office')).toMatchObject({
+      act: 'recorded',
+      actAt: '2026-03-09T00:00:00.000Z',
+      note: null,
+    })
+  })
+
+  it('heads a claim with the groups above its question, the paper lifted away', () => {
+    const groups = [
+      group({ groupId: 'inner', parentGroupId: 'outer', name: 'Competitions' }),
+      group({ groupId: 'outer', parentGroupId: 'paper', name: 'Academics' }),
+      group({ groupId: 'paper', name: 'Assessment' }),
+    ]
+    expect(trailOf(groups, 'inner')).toEqual(['Academics', 'Competitions'])
+    expect(trailOf(groups, 'paper')).toEqual([])
+    // several roots: none of them is the paper, so every name stays
+    expect(trailOf([...groups, group({ groupId: 'other', name: 'Other' })], 'inner')).toEqual([
+      'Assessment',
+      'Academics',
+      'Competitions',
+    ])
+    expect(trailOf(groups, 'missing')).toEqual([])
   })
 })

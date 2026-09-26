@@ -51,12 +51,18 @@ export function EntrySheet({
   onAppeal,
   onSupplement,
   summary,
+  editLabel,
 }: {
   open: boolean
   entry: EntryDto
   item: ItemDto
   /** how the claim reads in its list, heading the drawer */
   summary?: EntryLine
+  /**
+   * What the edit button says, where editing happens somewhere other than
+   * the page the drawer is open on: the button names where it goes.
+   */
+  editLabel?: string
   /**
    * The phase gate's word on submitting into this question at all,
    * independent of the claim's state. Withdrawing while it is shut is a
@@ -133,7 +139,9 @@ export function EntrySheet({
                 // again happens from the form rather than straight from here,
                 // where it would go back unchanged
                 variant={returned && !resubmitHere ? 'default' : 'outline'}
-                label={format(entry.status === 'draft' ? m.myEntriesResume : m.entryEdit)}
+                label={
+                  editLabel ?? format(entry.status === 'draft' ? m.myEntriesResume : m.entryEdit)
+                }
                 onPress={onEdit}
               />
             )}

@@ -24,12 +24,20 @@ export interface LedgerEntry {
   readonly source?: string
   readonly createdAt?: string
   readonly currentRevision?: { readonly payload: unknown; readonly createdAt: string } | null
-  /** an open ask for more material on it */
+  /** an open ask for more material on it: when it was asked, and what for */
   readonly supplement?: unknown
   /** a round running on it right now */
   readonly openRound?: { readonly origin: string } | null
   /** what it stands determined as, and when that was decided */
   readonly recognition?: { readonly createdAt: string } | null
+  /** why it came back or was refused, while it stands so */
+  readonly refusal?: {
+    readonly at?: string
+    readonly comment?: string | null
+    readonly reason?: string | null
+  } | null
+  /** a round has run on it before */
+  readonly currentReviewInstanceId?: string | null
 }
 
 /** what the ledger needs of a question */
@@ -55,6 +63,8 @@ export type LedgerLineKind =
   | 'item-voided'
   | 'group-adjustment'
   | 'derived'
+  /** not a line of the account: a claim still on its way to one */
+  | 'claim'
 
 interface ResultGroup {
   readonly groupId: string
@@ -117,6 +127,37 @@ export type LedgerLineStanding =
   | 'excluded'
   | 'derived'
   | 'voided'
+  /** off the account and still to come to something: undecided, unsent, or waiting */
+  | 'open'
+
+/** the last thing that happened to a claim, in the words its list uses */
+export type LedgerAct =
+  | 'asked'
+  | 'returned'
+  | 'refused'
+  | 'recorded'
+  | 'approved'
+  | 'submitted'
+  | 'revoked'
+  | 'abandoned'
+  | 'saved'
+
+/** a claim as its own row says it, where the reader holds the claim */
+export interface LedgerClaim {
+  readonly status: string
+  readonly source: string | null
+  /** a round has run on it before */
+  readonly revised: boolean
+  /** a reviewer is waiting for more material */
+  readonly asked: boolean
+  readonly openRound: { readonly origin: string } | null
+  readonly act: LedgerAct
+  readonly actAt: string | null
+  /** a reviewer's words it carries: what to add, why it came back, or why it was refused */
+  readonly note: { readonly kind: 'ask' | 'return' | 'refusal'; readonly text: string } | null
+  /** files attached to the version it stands at */
+  readonly files: number
+}
 
 /** one line of the account, joined to the claim it came from when that is readable */
 export interface LedgerLineView {
@@ -124,6 +165,8 @@ export interface LedgerLineView {
   readonly kind: LedgerLineKind
   readonly standing: LedgerLineStanding
   readonly cents: number
+  /** what a claim off the account would come to once approved, where the question pays a flat amount */
+  readonly wouldCents: number | null
   readonly revoked: boolean
   /** the claim behind it; absent where this reader may not open it */
   readonly entryId: string | null
@@ -134,6 +177,8 @@ export interface LedgerLineView {
   readonly at: string | null
   /** the office recorded it; nobody filed it */
   readonly recorded: boolean
+  /** the claim itself, where the reader holds it */
+  readonly claim: LedgerClaim | null
 }
 
 /** where one question's claims stand, counted */
@@ -180,6 +225,12 @@ export interface LedgerItemView {
   readonly lines: readonly LedgerLineView[]
   /** claims on the question that are not on the account: undecided, unsent, or waiting on the participant; none on a withdrawn question */
   readonly aside: number
+  /**
+   * Those claims themselves, in the order they matter to the participant:
+   * what waits on them first, then what is under review, then what they
+   * have not sent.
+   */
+  readonly open: readonly LedgerLineView[]
   /** the one claim waiting on the participant to revise or add material, when there is exactly one */
   readonly waitingOn: string | null
 }
@@ -341,6 +392,31 @@ export const inTreeOrder = <Group extends { groupId: string; parentGroupId: stri
   return out
 }
 
+/**
+ * The groups above a question, outermost first, for the path a claim's
+ * drawer is headed by. A lone root is the paper and is lifted away, the way
+ * the ledger lifts it; a group naming a parent the account does not hold
+ * starts the path.
+ */
+export const trailOf = (
+  groups: readonly { groupId: string; parentGroupId: string | null; name: string }[],
+  groupId: string,
+): readonly string[] => {
+  const byId = new Map(groups.map((group) => [group.groupId, group]))
+  const path: string[] = []
+  const seen = new Set<string>()
+  for (let at = byId.get(groupId); at !== undefined && !seen.has(at.groupId);) {
+    seen.add(at.groupId)
+    path.unshift(at.name)
+    at = at.parentGroupId === null ? undefined : byId.get(at.parentGroupId)
+  }
+  const roots = groups.filter(
+    (group) => group.parentGroupId === null || !byId.has(group.parentGroupId),
+  )
+  const lone = roots.length === 1 ? roots[0] : undefined
+  return lone !== undefined && path.length > 0 && seen.has(lone.groupId) ? path.slice(1) : path
+}
+
 const RECORDED_SOURCES = new Set(['record', 'import'])
 
 const isLive = (entry: LedgerEntry) => entry.status !== 'voided'
@@ -356,6 +432,90 @@ export const isMoving = (entry: LedgerEntry): boolean =>
 /** a draft nobody has submitted */
 export const isDraft = (entry: LedgerEntry): boolean =>
   entry.status === 'draft' && entry.openRound == null
+
+/** the reviewer's open ask on a claim, as far as the ledger reads it */
+const askOf = (
+  entry: LedgerEntry,
+): { readonly requestedAt: string | null; readonly instructions: string } | null => {
+  const ask = entry.supplement
+  if (ask === null || ask === undefined || typeof ask !== 'object') return null
+  const { requestedAt, instructions } = ask as { requestedAt?: unknown; instructions?: unknown }
+  return {
+    requestedAt: typeof requestedAt === 'string' ? requestedAt : null,
+    instructions: typeof instructions === 'string' ? instructions.trim() : '',
+  }
+}
+
+/**
+ * The last thing that happened to a claim and when, the way the filing page
+ * lists it: an open ask outranks the claim's own state, and a fact the
+ * office recorded is recorded or revoked rather than approved or given up.
+ */
+const actOf = (entry: LedgerEntry): { act: LedgerAct; at: string | null } => {
+  const revised = entry.currentRevision?.createdAt ?? entry.createdAt ?? null
+  const office = entry.source !== undefined && RECORDED_SOURCES.has(entry.source)
+  const ask = askOf(entry)
+  if (ask !== null) return { act: 'asked', at: ask.requestedAt ?? revised }
+  switch (entry.status) {
+    case 'needs_revision':
+      return { act: 'returned', at: entry.refusal?.at ?? revised }
+    case 'rejected':
+      return {
+        act: 'refused',
+        at: entry.refusal?.at ?? entry.recognition?.createdAt ?? revised,
+      }
+    case 'approved':
+      return { act: office ? 'recorded' : 'approved', at: entry.recognition?.createdAt ?? revised }
+    case 'in_review':
+      return { act: 'submitted', at: revised }
+    case 'voided':
+      return { act: office ? 'revoked' : 'abandoned', at: revised }
+    default:
+      return { act: 'saved', at: revised }
+  }
+}
+
+/** the reviewer's words a claim carries: what to add, why it came back, or why it was refused */
+const noteOf = (entry: LedgerEntry): LedgerClaim['note'] => {
+  const ask = askOf(entry)
+  if (ask !== null) return ask.instructions === '' ? null : { kind: 'ask', text: ask.instructions }
+  const said = (entry.refusal?.comment ?? entry.refusal?.reason ?? '').trim()
+  if (said === '') return null
+  if (entry.status === 'needs_revision') return { kind: 'return', text: said }
+  if (entry.status === 'rejected') return { kind: 'refusal', text: said }
+  return null
+}
+
+/** how many files the claim's current version carries, over the question's file fields */
+const filesOf = (entry: LedgerEntry, item: LedgerItem): number => {
+  const fields = (item.currentRevision?.formConfig as { fields?: unknown } | null | undefined)
+    ?.fields
+  const payload = entry.currentRevision?.payload
+  if (!Array.isArray(fields) || payload === null || typeof payload !== 'object') return 0
+  let count = 0
+  for (const field of fields as readonly { key?: unknown; type?: unknown }[]) {
+    if (field.type !== 'attachment' || typeof field.key !== 'string') continue
+    if (!Object.hasOwn(payload, field.key)) continue
+    const value = (payload as Record<string, unknown>)[field.key]
+    if (Array.isArray(value)) count += value.length
+  }
+  return count
+}
+
+const claimOf = (entry: LedgerEntry, item: LedgerItem): LedgerClaim => {
+  const { act, at } = actOf(entry)
+  return {
+    status: entry.status,
+    source: entry.source ?? null,
+    revised: entry.currentReviewInstanceId != null,
+    asked: askOf(entry) !== null,
+    openRound: entry.openRound ?? null,
+    act,
+    actAt: at,
+    note: noteOf(entry),
+    files: filesOf(entry, item),
+  }
+}
 
 /**
  * What a line says became of its claim. A line of a claim no longer counted
@@ -480,9 +640,8 @@ export const buildLedger = ({
   }
 
   const itemView = (item: LedgerItem, depth: number): LedgerItemView => {
-    const lines = (linesOf.get(item.id) ?? []).map((line): LedgerLineView => {
-      const entryId = line.provenance?.entryId ?? null
-      const entry = entryId === null ? undefined : byId.get(entryId)
+    /** what a claim says of itself, from its own payload */
+    const identityOf = (entry: LedgerEntry | undefined) => {
       const parts =
         entry === undefined
           ? []
@@ -495,6 +654,18 @@ export const buildLedger = ({
         .slice(1)
         .map((part) => part.value)
         .join(' ')
+      return { lead: parts[0]?.value ?? null, sub: sub === '' ? null : sub }
+    }
+    const decidedAt = (entry: LedgerEntry | undefined) =>
+      entry === undefined
+        ? null
+        : (entry.recognition?.createdAt ??
+          entry.currentRevision?.createdAt ??
+          entry.createdAt ??
+          null)
+    const lines = (linesOf.get(item.id) ?? []).map((line): LedgerLineView => {
+      const entryId = line.provenance?.entryId ?? null
+      const entry = entryId === null ? undefined : byId.get(entryId)
       const kind = line.kind as LedgerLineKind
       const revoked = line.revoked === true
       const recorded = entry?.source !== undefined && RECORDED_SOURCES.has(entry.source)
@@ -503,18 +674,13 @@ export const buildLedger = ({
         kind,
         standing: standingOf(kind, revoked, recorded, entry),
         cents: centsOf(line.value),
+        wouldCents: null,
         revoked,
         entryId,
-        lead: parts[0]?.value ?? null,
-        sub: sub === '' ? null : sub,
-        at:
-          entry === undefined
-            ? null
-            : (entry.recognition?.createdAt ??
-              entry.currentRevision?.createdAt ??
-              entry.createdAt ??
-              null),
+        ...identityOf(entry),
+        at: decidedAt(entry),
         recorded,
+        claim: entry === undefined ? null : claimOf(entry, item),
       }
     })
     let approved = 0
@@ -543,6 +709,7 @@ export const buildLedger = ({
     let aside = 0
     const todo: (string | null)[] = []
     const onAccount = new Set(lines.map((line) => line.entryId))
+    const offAccount: LedgerEntry[] = []
     // A withdrawn question is scored as one line of its own, whatever its
     // claims came to: a claim already decided when it was withdrawn keeps its
     // decision but is not on the account, and nothing about it is left to
@@ -563,11 +730,37 @@ export const buildLedger = ({
       // off the account and still to come to something: undecided, unsent,
       // or waiting on the participant
       const open = waits || isMoving(claim) || isDraft(claim)
-      if (open && (claim.id === undefined || !onAccount.has(claim.id))) aside += 1
+      if (open && (claim.id === undefined || !onAccount.has(claim.id))) {
+        aside += 1
+        offAccount.push(claim)
+      }
     }
     const channels = item.currentRevision?.entryChannels ?? []
     const derived = lines.some((line) => line.kind === 'derived')
     const flat = flatAmountOf(item)
+    // what one more approved claim would add, where the rule names a flat
+    // amount; a formula's answer is not written anywhere a reader can see
+    const wouldCents =
+      flat === null || derived || item.itemType === 'constant' ? null : centsOf(flat)
+    // the claims off the account, what waits on the participant first
+    const rank = (claim: LedgerEntry) =>
+      claim.supplement != null || claim.status === 'needs_revision' ? 0 : isDraft(claim) ? 2 : 1
+    const open = offAccount
+      .map((claim, index) => ({ claim, index }))
+      .sort((a, b) => rank(a.claim) - rank(b.claim) || a.index - b.index)
+      .map(({ claim }): LedgerLineView => ({
+        key: `claim:${claim.id ?? ''}`,
+        kind: 'claim',
+        standing: 'open',
+        cents: 0,
+        wouldCents,
+        revoked: false,
+        entryId: claim.id ?? null,
+        ...identityOf(claim),
+        at: decidedAt(claim),
+        recorded: claim.source !== undefined && RECORDED_SOURCES.has(claim.source),
+        claim: claimOf(claim, item),
+      }))
     return {
       kind: 'item',
       id: item.id,
@@ -595,6 +788,7 @@ export const buildLedger = ({
       },
       lines,
       aside,
+      open,
       waitingOn: todo.length === 1 ? (todo[0] ?? null) : null,
     }
   }

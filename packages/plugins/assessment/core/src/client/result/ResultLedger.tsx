@@ -18,9 +18,12 @@ import { AlignLeftIcon, BarChart3Icon, ChevronDownIcon, ChevronRightIcon } from 
 import { isApiErrorCode, useI18n, useList } from '@qualy/web-i18n'
 import { assessmentMessages as m } from '../i18n.ts'
 import { inZone, useBatchZone } from '../batch/zone.ts'
+import { EntryStanding } from '../entry/EntryStanding.tsx'
+import type { EntryDto } from '../entry/model.ts'
 import {
   buildLedger,
   twoPlaces,
+  type LedgerAct,
   type LedgerAdjustmentView,
   type LedgerEntry,
   type LedgerGroupView,
@@ -57,7 +60,10 @@ export type { LedgerEntry, LedgerItem, LedgerResult } from './ledger.ts'
 // It is presentation and nothing else. It does not know which api answered
 // or where a claim opens - the page hands it `onEntryOpen` and `onItemOpen`
 // for that - which is the point: a participant reading their own standing
-// and staff checking it are looking at one explanation of one number.
+// and staff checking it are looking at one explanation of one number. What
+// a question's fold holds is the page's to say too: staff read the lines on
+// the account and move to the claims beside it, while the participant reads
+// every claim of the question where they stand, without leaving the page.
 
 /** below this much room the outline folds into chips over the ledger */
 const OUTLINE_AT = 880
@@ -571,14 +577,25 @@ const styles = stylex.create({
     borderRadius: tokens.radiusMd,
     backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 55%, ${tokens.surface})`,
   },
+  // one claim: which it is and what became of it, where it stands, and its
+  // figure - a column each at a desk; on a phone where it stands leads the
+  // second line, and the figure keeps its column
   line: {
     display: 'grid',
     width: '100%',
-    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    gridTemplateColumns: {
+      default: 'minmax(0, 1fr) 6.5rem 4.5rem',
+      [breakpoints.phone]: 'auto minmax(0, 1fr) auto',
+    },
+    gridTemplateAreas: {
+      default: '"first chip figure" "second chip figure"',
+      [breakpoints.phone]: '"first first figure" "chip second figure"',
+    },
     alignItems: 'center',
-    columnGap: 12,
+    columnGap: { default: 12, [breakpoints.phone]: 8 },
+    rowGap: 4,
     minHeight: 34,
-    paddingBlock: 6,
+    paddingBlock: 8,
     paddingInline: 12,
     borderWidth: 0,
     borderTopWidth: { default: 1, ':first-child': 0 },
@@ -589,7 +606,13 @@ const styles = stylex.create({
     fontSize: 12.5,
     color: 'inherit',
   },
-  lineMain: {
+  // nothing to say of where it stands: the words take the room
+  lineBare: {
+    gridTemplateColumns: 'minmax(0, 1fr) 4.5rem',
+    gridTemplateAreas: '"first figure" "second figure"',
+  },
+  lineFirst: {
+    gridArea: 'first',
     display: 'flex',
     minWidth: 0,
     flexWrap: { default: 'nowrap', [breakpoints.phone]: 'wrap' },
@@ -602,6 +625,8 @@ const styles = stylex.create({
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
+    fontSize: 13,
+    fontWeight: 500,
     color: tokens.foreground,
   },
   lineSub: {
@@ -612,13 +637,61 @@ const styles = stylex.create({
     whiteSpace: 'nowrap',
     color: tokens.mutedForeground,
   },
-  lineWhen: {
-    flexShrink: 0,
+  // what last happened, the files, and a reviewer's words, on one line at a
+  // desk; on a phone the words take a line of their own
+  lineSecond: {
+    gridArea: 'second',
+    display: 'flex',
+    minWidth: 0,
+    flexWrap: { default: 'nowrap', [breakpoints.phone]: 'wrap' },
+    alignItems: 'center',
+    columnGap: 8,
+    rowGap: 4,
     fontSize: 11.5,
     color: tokens.mutedForeground,
     fontVariantNumeric: 'tabular-nums',
   },
-  lineValue: { textAlign: 'end', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' },
+  lineKeep: { flexShrink: 0, whiteSpace: 'nowrap' },
+  lineRule: { width: 1, height: 10, flexShrink: 0, backgroundColor: tokens.border },
+  lineRuleWide: { display: { default: 'block', [breakpoints.phone]: 'none' } },
+  lineNote: {
+    display: { default: 'block', [breakpoints.phone]: '-webkit-box' },
+    flexBasis: { default: 'auto', [breakpoints.phone]: '100%' },
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: { default: 'nowrap', [breakpoints.phone]: 'normal' },
+    WebkitBoxOrient: 'vertical',
+    WebkitLineClamp: 2,
+    lineHeight: 1.5,
+  },
+  lineNoteWaits: { color: tokens.warningForeground },
+  lineChip: {
+    gridArea: 'chip',
+    display: 'flex',
+    alignSelf: { default: 'center', [breakpoints.phone]: 'start' },
+    minWidth: 0,
+  },
+  lineFigure: {
+    gridArea: 'figure',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 2,
+  },
+  lineValue: {
+    textAlign: 'end',
+    fontSize: 13,
+    fontWeight: 500,
+    whiteSpace: 'nowrap',
+    fontVariantNumeric: 'tabular-nums',
+  },
+  // what a claim still on its way would come to: said, but not as if it counted
+  lineWould: {
+    fontWeight: 400,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 80%, transparent)`,
+  },
+  lineWouldWord: { fontSize: 10.5, whiteSpace: 'nowrap', color: tokens.mutedForeground },
   more: {
     display: 'flex',
     width: '100%',
@@ -780,6 +853,14 @@ function useViewportHeight(seat: RefObject<HTMLElement | null>): number | null {
  * neither and the lines stay plain text. `heading` names the page when the
  * ledger is the page; without it the head says only "total score".
  *
+ * `fold` says what a question opens to. `account`, the default, lists its
+ * lines on the account and hands the claims off it, and the rest of a long
+ * list, to `onItemOpen`. `claims` lists every claim of the question in place
+ * - where it stands, what it came to or would, what last happened to it and
+ * a reviewer's words - and a long list goes on in place; a press on a claim
+ * is still `onEntryOpen`, which a page reading claims in place answers
+ * without leaving.
+ *
  * `closed` says the account will not move on its own any more - the batch
  * is archived, or the participant was taken off its roster - so nothing on
  * it promises what a decision still to come would do, and nothing is marked
@@ -805,6 +886,7 @@ export function ResultLedger({
   align = 'center',
   closed = null,
   shut = NONE_SHUT,
+  fold = 'account',
   stream = null,
 }: {
   result: LedgerResult
@@ -830,6 +912,8 @@ export function ResultLedger({
   closed?: 'archived' | 'excluded' | null
   /** the questions the stages keep shut to the reader, and why */
   shut?: ReadonlyMap<string, FilingShut>
+  /** what a question opens to: its lines on the account, or every claim read in place */
+  fold?: 'account' | 'claims'
   /** whether the page is keeping the account current as the round moves */
   stream?: 'live' | 'reconnecting' | null
 }) {
@@ -994,6 +1078,7 @@ export function ResultLedger({
                 // a closed account says what was filed, not what may be
                 shut={closed === null ? shut : NONE_SHUT}
                 open={open}
+                fold={fold}
                 onToggle={toggle}
                 onEntryOpen={onEntryOpen}
                 onItemOpen={onItemOpen}
@@ -1316,6 +1401,7 @@ function Section({
   closed,
   shut,
   open,
+  fold,
   onToggle,
   onEntryOpen,
   onItemOpen,
@@ -1331,6 +1417,7 @@ function Section({
   closed: boolean
   shut: ReadonlyMap<string, FilingShut>
   open: ReadonlySet<string>
+  fold: 'account' | 'claims'
   onToggle: (id: string) => void
   onEntryOpen: ((entryId: string) => void) | undefined
   onItemOpen: ((itemId: string) => void) | undefined
@@ -1407,6 +1494,7 @@ function Section({
             closed={closed}
             shut={shut.get(row.id) ?? null}
             open={open.has(row.id)}
+            fold={fold}
             onToggle={onToggle}
             onEntryOpen={onEntryOpen}
             onItemOpen={onItemOpen}
@@ -1627,12 +1715,15 @@ const ruleOf = (item: LedgerItemView): { kind: 'person' | 'each'; value: string 
 /**
  * One question: what it is and what it came to, then where that came from.
  *
- * Several claims open in place under it; a single claim is the row itself,
- * and pressing it goes to that claim, since listing one claim under a row
- * that already names it would say the same thing twice. Claims that are not
- * on the account - undecided, unsent, or waiting on the participant - are
- * reached from it too: from the fold when the question has lines to open,
- * from the row itself when it has none.
+ * Read on the account, several claims open in place under it; a single
+ * claim is the row itself, and pressing it goes to that claim, since
+ * listing one claim under a row that already names it would say the same
+ * thing twice. Claims that are not on the account - undecided, unsent, or
+ * waiting on the participant - are reached from it too: from the fold when
+ * the question has lines to open, from the row itself when it has none.
+ *
+ * Read claim by claim, any question with a claim opens in place, one claim
+ * or many, and the fold holds all of them: nothing on the row leads away.
  */
 function ItemRow({
   item,
@@ -1641,6 +1732,7 @@ function ItemRow({
   closed,
   shut,
   open,
+  fold,
   onToggle,
   onEntryOpen,
   onItemOpen,
@@ -1653,6 +1745,7 @@ function ItemRow({
   /** why the stages keep the question shut to the reader, if they do */
   shut: FilingShut | null
   open: boolean
+  fold: 'account' | 'claims'
   onToggle: (id: string) => void
   onEntryOpen: ((entryId: string) => void) | undefined
   onItemOpen: ((itemId: string) => void) | undefined
@@ -1661,23 +1754,36 @@ function ItemRow({
   const zone = useBatchZone()
   const list = useList()
   const panelId = useId()
+  const inPlace = fold === 'claims'
   const waitingOn = item.waitingOn
   const toItem = onItemOpen === undefined ? null : () => onItemOpen(item.id)
   // the claims waiting on the participant: the one claim itself, or the
   // question on the filing page when there are several
   const toWaiting =
-    closed || item.voided || item.facts.asked + item.facts.returned === 0
+    inPlace || closed || item.voided || item.facts.asked + item.facts.returned === 0
       ? null
       : waitingOn !== null && onEntryOpen !== undefined
         ? () => onEntryOpen(waitingOn)
         : toItem
-  const toAside = item.aside > 0 ? (toWaiting ?? toItem) : null
+  const toAside = inPlace ? null : item.aside > 0 ? (toWaiting ?? toItem) : null
+  // read in place, the fold holds every claim: those still on their way
+  // first, what waits on the participant leading, then the account's own
+  const claims = inPlace
+    ? [...item.open, ...item.lines.filter((line) => line.kind !== 'derived')]
+    : item.lines
   // a withdrawn question is one line that says so, and nothing opens under it
   const expandable =
-    !item.voided && (item.lines.length >= 2 || (item.lines.length === 1 && toAside !== null))
+    !item.voided &&
+    (inPlace
+      ? claims.length >= 1
+      : item.lines.length >= 2 || (item.lines.length === 1 && toAside !== null))
   const only = item.lines.length === 1 ? item.lines[0] : undefined
   const follow =
-    !expandable && only !== undefined && only.entryId !== null && onEntryOpen !== undefined
+    !expandable &&
+    !inPlace &&
+    only !== undefined &&
+    only.entryId !== null &&
+    onEntryOpen !== undefined
       ? only.entryId
       : null
   // nothing on the account yet, and claims to go to
@@ -1801,10 +1907,13 @@ function ItemRow({
         <Lines
           id={panelId}
           item={item}
+          claims={claims}
           open={open}
           reader={reader}
+          inPlace={inPlace}
+          closed={closed}
           onEntryOpen={onEntryOpen}
-          toItem={toItem}
+          toItem={inPlace ? null : toItem}
           toWaiting={toWaiting}
         />
       )}
@@ -1814,33 +1923,57 @@ function ItemRow({
 
 /**
  * A question's claims, opened under it: the first few, then the way to what
- * the fold does not hold - the claims waiting on the participant, the rest
- * of a long list, or the claims not on the account at all.
+ * the fold does not hold. On the account that is the claims waiting on the
+ * participant, the rest of a long list, or the claims not on the account at
+ * all, each a way to the page that holds them; read in place it is only the
+ * rest of the list, drawn where it is.
  */
 function Lines({
   id,
   item,
+  claims,
   open,
   reader,
+  inPlace,
+  closed,
   onEntryOpen,
   toItem,
   toWaiting,
 }: {
   id: string
   item: LedgerItemView
+  /** what the fold lists, in order */
+  claims: readonly LedgerLineView[]
   open: boolean
   reader: 'owner' | 'staff'
+  /** every claim is here and the list goes on in place */
+  inPlace: boolean
+  /** the account has stopped moving: a claim on its way will not arrive */
+  closed: boolean
   onEntryOpen: ((entryId: string) => void) | undefined
   toItem: (() => void) | null
   toWaiting: (() => void) | null
 }) {
   const { format } = useI18n()
-  const all = item.lines.length > LINES_SHOWN ? toItem : null
-  const shown = all !== null ? item.lines.slice(0, LINES_SHOWN) : item.lines
+  const [whole, setWhole] = useState(false)
+  const seat = useRef<HTMLDivElement>(null)
+  const long = claims.length > LINES_SHOWN
+  const all = !inPlace && long ? toItem : null
+  const shown = long && !(inPlace && whole) ? claims.slice(0, LINES_SHOWN) : claims
+  const hidden = claims.length - shown.length
   const waiting = item.facts.asked + item.facts.returned
   // the waiting claims lead to the question's page as well; a second way
   // there would only repeat it
-  const rest = all === null && toWaiting === null && item.aside > 0 ? toItem : null
+  const rest = !inPlace && all === null && toWaiting === null && item.aside > 0 ? toItem : null
+  const goOn = () => {
+    setWhole(true)
+    // the reader's place moves to the first claim that was not there before
+    requestAnimationFrame(() =>
+      seat.current
+        ?.querySelectorAll<HTMLElement>('[data-testid="ledger-line"]')
+        [LINES_SHOWN]?.focus({ preventScroll: true }),
+    )
+  }
   return (
     <div
       id={id}
@@ -1856,10 +1989,29 @@ function Lines({
           {...stylex.props(styles.foldSeat)}
           style={{ paddingInlineStart: 16 + item.depth * INDENT }}
         >
-          <div {...stylex.props(styles.lines)}>
+          <div ref={seat} {...stylex.props(styles.lines)}>
             {shown.map((line) => (
-              <LineRow key={line.key} line={line} fallback={item.title} onEntryOpen={onEntryOpen} />
+              <LineRow
+                key={line.key}
+                line={line}
+                fallback={item.title}
+                closed={closed}
+                onEntryOpen={onEntryOpen}
+              />
             ))}
+            {inPlace && hidden > 0 && (
+              <button
+                type="button"
+                data-testid="ledger-more"
+                data-follow="expand"
+                data-count={hidden}
+                onClick={goOn}
+                {...stylex.props(styles.more, styles.pressable)}
+              >
+                {format(m.resultShowRest, { count: hidden })}
+                <ChevronDownIcon aria-hidden {...stylex.props(styles.moreIcon)} />
+              </button>
+            )}
             {toWaiting !== null && (
               <button
                 type="button"
@@ -1906,50 +2058,163 @@ function Lines({
   )
 }
 
-/** one claim on the account: which it is, when, and what it came to */
+/** what last happened to a claim, in the words the filing page lists it with */
+const ACT_SAID = {
+  asked: m.entriesActAsked,
+  returned: m.entriesActReturned,
+  refused: m.entriesActRejected,
+  recorded: m.entriesActRecorded,
+  approved: m.entriesActApproved,
+  submitted: m.entriesActSubmitted,
+  revoked: m.entriesActRevoked,
+  abandoned: m.entriesActVoided,
+  saved: m.entriesActSaved,
+} as const satisfies Record<LedgerAct, unknown>
+
+/**
+ * One claim: which it is, where it stands, what last happened to it, and
+ * what it came to - or, off the account, what it would once approved, while
+ * the account still moves. A reviewer's words ride on the row, so the
+ * reason a claim came back is read without opening it.
+ */
 function LineRow({
   line,
   fallback,
+  closed,
   onEntryOpen,
 }: {
   line: LedgerLineView
   /** what to call a claim that says nothing of itself this reader can see */
   fallback: string
+  /** the account has stopped moving: a claim on its way will not arrive */
+  closed: boolean
   onEntryOpen: ((entryId: string) => void) | undefined
 }) {
   const { format, locale } = useI18n()
   const zone = useBatchZone()
   const tagKind = UNCOUNTED.has(line.standing) ? line.standing : null
-  const when = dayOf(line.at, locale, zone)
+  const claim = line.claim
+  const when = dayOf(claim?.actAt ?? line.at, locale, zone)
+  const off = line.standing === 'open'
+  // the account's own word where it says more than the claim's state does:
+  // not counted, refused, given up, taken back
+  // on an account that has stopped moving, a claim that never got there says
+  // where it stopped, not what it is waiting for
+  const stopped =
+    !closed || !off || claim === null
+      ? null
+      : claim.asked
+        ? 'unsupplied'
+        : claim.status === 'needs_revision'
+          ? 'unrevised'
+          : claim.status === 'draft'
+            ? 'unsent'
+            : 'undecided'
+  const standing =
+    tagKind !== null ? (
+      <span data-line-tag={tagKind} {...stylex.props(styles.tag, styles.tagNeutral)}>
+        {format(m.resultLineTag, { kind: tagKind })}
+      </span>
+    ) : stopped !== null ? (
+      <span data-stopped={stopped} {...stylex.props(styles.tag, styles.tagNeutral)}>
+        {format(m.resultStopped, { kind: stopped })}
+      </span>
+    ) : claim === null ? null : (
+      <EntryStanding
+        status={claim.status as EntryDto['status']}
+        {...(claim.source === null ? {} : { source: claim.source })}
+        revised={claim.revised}
+        asked={claim.asked}
+        openRound={claim.openRound as EntryDto['openRound']}
+      />
+    )
+  const note = claim?.note ?? null
   const data = {
     'data-line-kind': line.kind,
     'data-standing': line.standing,
     'data-revoked': line.revoked ? 'true' : undefined,
     'data-entry': line.entryId ?? undefined,
+    'data-act': claim?.act,
+    'data-files': claim === null ? undefined : String(claim.files),
+    'data-note': note?.kind,
   }
-  const cells = (
-    <>
-      <span {...stylex.props(styles.lineMain)}>
-        <span {...stylex.props(styles.lineLead)}>{line.lead ?? fallback}</span>
-        {line.sub !== null && <span {...stylex.props(styles.lineSub)}>{line.sub}</span>}
-        {tagKind !== null && (
-          <span {...stylex.props(styles.tag, styles.tagNeutral)}>
-            {format(m.resultLineTag, { kind: tagKind })}
+  const second =
+    when !== null || (claim !== null && claim.files > 0) || note !== null ? (
+      <span {...stylex.props(styles.lineSecond)}>
+        {when !== null && (
+          <span {...stylex.props(styles.lineKeep)}>
+            {claim === null
+              ? when
+              : format(m.entriesWhen, { when, action: format(ACT_SAID[claim.act]) })}
           </span>
         )}
-        {when !== null && <span {...stylex.props(styles.lineWhen)}>{when}</span>}
-      </span>
-      <span
-        {...stylex.props(
-          styles.lineValue,
-          (line.cents === 0 || tagKind !== null) && styles.zero,
-          line.cents < 0 && styles.negative,
+        {claim !== null && claim.files > 0 && (
+          <>
+            {when !== null && <span aria-hidden {...stylex.props(styles.lineRule)} />}
+            <span {...stylex.props(styles.lineKeep)}>
+              {format(m.entriesFiles, { count: claim.files })}
+            </span>
+          </>
         )}
+        {note !== null && (
+          <>
+            <span aria-hidden {...stylex.props(styles.lineRule, styles.lineRuleWide)} />
+            <span
+              title={note.text}
+              {...stylex.props(
+                styles.lineNote,
+                note.kind !== 'refusal' && !closed && styles.lineNoteWaits,
+              )}
+            >
+              {note.kind === 'return'
+                ? format(m.entriesNoteReturned, { text: note.text })
+                : note.kind === 'ask'
+                  ? format(m.entriesNoteAsked, { text: note.text })
+                  : note.text}
+            </span>
+          </>
+        )}
+      </span>
+    ) : null
+  // one set of parts, which the grid lays out: a column each at a desk; on a
+  // phone the standing leads the second line and the figure keeps its column
+  const cells = (
+    <>
+      <span {...stylex.props(styles.lineFirst)}>
+        <span {...stylex.props(styles.lineLead)}>{line.lead ?? fallback}</span>
+        {line.sub !== null && <span {...stylex.props(styles.lineSub)}>{line.sub}</span>}
+      </span>
+      {standing !== null && <span {...stylex.props(styles.lineChip)}>{standing}</span>}
+      {second}
+      <span
+        data-would={off && !closed && line.wouldCents !== null ? two(line.wouldCents) : undefined}
+        {...stylex.props(styles.lineFigure)}
       >
-        {two(line.cents)}
+        {off ? (
+          !closed &&
+          line.wouldCents !== null && (
+            <>
+              <span {...stylex.props(styles.lineValue, styles.lineWould)}>
+                {two(line.wouldCents)}
+              </span>
+              <span {...stylex.props(styles.lineWouldWord)}>{format(m.entryScoreIfApproved)}</span>
+            </>
+          )
+        ) : (
+          <span
+            {...stylex.props(
+              styles.lineValue,
+              (line.cents === 0 || tagKind !== null) && styles.zero,
+              line.cents < 0 && styles.negative,
+            )}
+          >
+            {two(line.cents)}
+          </span>
+        )}
       </span>
     </>
   )
+  const shape = [styles.line, standing === null && styles.lineBare]
   const entryId = line.entryId
   return entryId !== null && onEntryOpen !== undefined ? (
     <button
@@ -1957,12 +2222,12 @@ function LineRow({
       data-testid="ledger-line"
       {...data}
       onClick={() => onEntryOpen(entryId)}
-      {...stylex.props(styles.line, styles.pressable)}
+      {...stylex.props(shape, styles.pressable)}
     >
       {cells}
     </button>
   ) : (
-    <div {...data} {...stylex.props(styles.line)}>
+    <div {...data} {...stylex.props(shape)}>
       {cells}
     </div>
   )

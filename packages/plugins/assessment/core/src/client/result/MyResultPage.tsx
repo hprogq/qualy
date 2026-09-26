@@ -4,19 +4,27 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { layout } from '@qualy/ui/theme/layout.stylex'
-import { useApi, useApiQuery, usePageNavigate } from '@qualy/web-runtime'
+import { useApi, useApiQuery, usePageNavigate, usePageQueryState } from '@qualy/web-runtime'
 import { isApiErrorCode, useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
+import { useLingering } from '@qualy/ui/use-lingering'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
-import type { EntryDto, FilingGateDto } from '../entry/model.ts'
+import type { EntryDto, FilingGateDto, ItemDto } from '../entry/model.ts'
+import { EntrySheet } from '../entry/EntrySheet.tsx'
+import { AppealDialog } from '../entry/AppealDialog.tsx'
+import { SupplementAnswerDialog } from '../entry/SupplementAnswerDialog.tsx'
+import { useOwnClaimActs } from '../entry/own-acts.ts'
+import { entryLineOf } from '../entry/workspace/model.ts'
+import { useLineWords } from '../entry/workspace/calc.ts'
+import { useWorkspaceMode } from '../entry/workspace/layout.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { useBatchLive } from '../live.ts'
 import { ResultLedger, ResultUnavailable } from './ResultLedger.tsx'
-import { filingShutOf } from './ledger.ts'
+import { filingShutOf, trailOf } from './ledger.ts'
 import { useMyEntriesQuery } from '../entry/my-entries.ts'
 
 // One's own standing in a round, and the page it is read on.
@@ -25,8 +33,9 @@ import { useMyEntriesQuery } from '../entry/my-entries.ts'
 // staff view of a participant. What belongs to this page is everything
 // around it: reading the three answers, keeping them current while the
 // round moves and saying so, what to say when the arithmetic cannot be
-// reached, and where a line leads - to the claim, on this reader's own
-// filing page.
+// reached, and reading a claim behind a line without leaving - its drawer
+// opens here, with the owner's acts on it. Only rewriting a claim needs the
+// filing page, and the button that goes there says so.
 
 /** how long the stream may be down before the page says it is reconnecting */
 const RECONNECT_GRACE = 2_500
@@ -36,7 +45,13 @@ export default function MyResultPage() {
   return (
     // no band: the ledger carries its own head, with the total in it
     <BatchScreen title={format(m.resultTab)} size="full" chrome="none">
-      {(batch) => <Standing batchId={batch.id} archived={batch.status === 'archived'} />}
+      {(batch) => (
+        <Standing
+          batchId={batch.id}
+          archived={batch.status === 'archived'}
+          materialRange={batch.materialRange}
+        />
+      )}
     </BatchScreen>
   )
 }
@@ -119,12 +134,27 @@ function useStreamState(live: boolean, heard: boolean): 'live' | 'reconnecting' 
   return live || !lost ? 'live' : 'reconnecting'
 }
 
-function Standing({ batchId, archived }: { batchId: string; archived: boolean }) {
+function Standing({
+  batchId,
+  archived,
+  materialRange,
+}: {
+  batchId: string
+  archived: boolean
+  materialRange: { start: string; end: string }
+}) {
   const api = useApi(assessmentApi)
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
   const navigate = usePageNavigate()
   const { format, formatError } = useI18n()
+  const lineWords = useLineWords()
+  // on a phone the drawer is somewhere the back key leaves; at a desk it is
+  // furniture over the page, and closing it is not a step back
+  const phone = useWorkspaceMode() === 'phone'
+  const [detail, setDetail] = usePageQueryState('detail', '', {
+    history: phone ? 'push' : 'replace',
+  })
 
   // Wake-ups say "read again" and name what moved: a decision moves the
   // account, a filing moves the counts beside it, and a change to the paper
@@ -172,7 +202,8 @@ function Standing({ batchId, archived }: { batchId: string; archived: boolean })
   })
   // the filings, for what is still moving and for which claim a line was
   const mine = useQuery({ ...useMyEntriesQuery(batchId), refetchInterval: cadence })
-  const entries = (mine.data?.entries ?? []) as readonly EntryDto[]
+  const entries = useMemo(() => (mine.data?.entries ?? []) as readonly EntryDto[], [mine.data])
+  const questions = useMemo(() => (items.data?.items ?? []) as readonly ItemDto[], [items.data])
   // Taken off the roster, a participant may still read their account but
   // file into nothing: the server then hides the filing gate of every
   // question, which it never does for anybody still on the roster.
@@ -201,6 +232,25 @@ function Standing({ batchId, archived }: { batchId: string; archived: boolean })
   )
   const stages = plan.data?.timeline
   const shut = useMemo(() => filingShutOf(gates, stages), [gates, stages])
+
+  // The claim the drawer holds, resolved from the address, so a reload
+  // keeps it and a link carries it. One that is gone opens nothing.
+  const groups = result.data?.groups
+  const detailed = useMemo(() => {
+    if (detail === '') return null
+    const entry = entries.find((one) => one.id === detail)
+    const item = entry === undefined ? undefined : questions.find((one) => one.id === entry.itemId)
+    return entry === undefined || item === undefined
+      ? null
+      : { entry, item, trail: trailOf(groups ?? [], item.scoreGroupId) }
+  }, [detail, entries, questions, groups])
+  const lingering = useLingering(detailed)
+  const [appealing, setAppealing] = useState<EntryDto | null>(null)
+  const lingeringAppeal = useLingering(appealing)
+  const [answering, setAnswering] = useState<EntryDto | null>(null)
+  const lingeringAnswer = useLingering(answering)
+  const acts = useOwnClaimActs({ items: questions, entries, materialRange })
+  const refresh = () => void queryClient.invalidateQueries({ queryKey: query.assessment.key() })
 
   const toEntries = (search?: Record<string, string>) =>
     navigate('assessment/batch-my-entries', {
@@ -357,7 +407,7 @@ function Standing({ batchId, archived }: { batchId: string; archived: boolean })
           )}
           <ResultLedger
             result={result.data}
-            items={items.data?.items ?? []}
+            items={questions}
             entries={entries}
             heading={format(m.resultTab)}
             reader="owner"
@@ -365,14 +415,78 @@ function Standing({ batchId, archived }: { batchId: string; archived: boolean })
             shut={shut}
             stream={stream}
             emptyAction={goEntries}
-            // a line leads to its claim on the filing page, opened there
-            onEntryOpen={(entryId) => {
-              const itemId = entries.find((entry) => entry.id === entryId)?.itemId
-              toEntries({ ...(itemId === undefined ? {} : { open: itemId }), detail: entryId })
-            }}
-            onItemOpen={(itemId) => toEntries({ open: itemId })}
+            // every claim of a question is read where it stands, and its
+            // drawer opens over the account rather than on another page
+            fold="claims"
+            onEntryOpen={setDetail}
           />
         </div>
+      )}
+
+      {/* kept mounted while it shuts, or it would vanish rather than close */}
+      {lingering !== null && (
+        <EntrySheet
+          open={detailed !== null}
+          entry={detailed?.entry ?? lingering.entry}
+          item={lingering.item}
+          trail={lingering.trail}
+          resubmit={gates.find((gate) => gate.itemId === lingering.item.id)?.submit}
+          busy={acts.isPending}
+          summary={entryLineOf(
+            detailed?.entry ?? lingering.entry,
+            lingering.item,
+            result.data ?? null,
+            lineWords,
+          )}
+          onClose={() => setDetail('')}
+          // rewriting a claim is the filing page's form; the button names it
+          editLabel={format(m.resultEditAway, {
+            kind: lingering.entry.status === 'draft' ? 'draft' : 'edit',
+          })}
+          onEdit={() => toEntries({ open: lingering.item.id, entry: lingering.entry.id })}
+          onStatus={(status, expectedItemRevisionId) => {
+            // the version the drawer is showing is the one handed on
+            const shownRevision = (detailed?.entry ?? lingering.entry).currentRevision?.id
+            acts.mutate({
+              entryId: lingering.entry.id,
+              itemId: lingering.item.id,
+              status,
+              ...(expectedItemRevisionId === undefined ? {} : { expectedItemRevisionId }),
+              ...(status !== 'in_review' || shownRevision === undefined
+                ? {}
+                : { expectedEntryRevisionId: shownRevision }),
+            })
+          }}
+          onAppeal={() => setAppealing(lingering.entry)}
+          onSupplement={() => setAnswering(lingering.entry)}
+        />
+      )}
+      {lingeringAppeal !== null && (
+        <AppealDialog
+          // keyed by what it is about, so a second request does not open on
+          // the first one's typing
+          key={lingeringAppeal.id}
+          open={appealing !== null}
+          entryId={lingeringAppeal.id}
+          onClose={() => setAppealing(null)}
+          onDone={() => {
+            setAppealing(null)
+            refresh()
+          }}
+        />
+      )}
+      {lingeringAnswer?.supplement != null && (
+        <SupplementAnswerDialog
+          key={lingeringAnswer.supplement.requestId}
+          open={answering !== null}
+          entry={lingeringAnswer}
+          supplement={lingeringAnswer.supplement}
+          onClose={() => setAnswering(null)}
+          onDone={() => {
+            setAnswering(null)
+            refresh()
+          }}
+        />
       )}
     </AsyncSection>
   )
