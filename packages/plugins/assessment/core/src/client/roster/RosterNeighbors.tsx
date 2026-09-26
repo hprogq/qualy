@@ -17,8 +17,10 @@ import type { RosterWalk } from './roster-walk.ts'
 // window lends no column for that list, where this person stands is itself
 // the way to it: pressed, the list opens over the account.
 //
-// When the list does not hold the open person - a search that does not find
-// them, somebody taken off the round - the keys stay where they are and say
+// When the list lets go of the open person while they are open - dealt with,
+// on a list of everybody with something waiting - the keys go on from the
+// place they left. When it never held them - a search that does not find
+// them, a link to somebody off it - the keys stay where they are and say
 // there is nowhere to step, rather than leaving the row with a hole in it.
 
 const styles = stylex.create({

@@ -15,7 +15,8 @@ import { rosterFiltered, rosterQueryOf, type RosterView } from './roster-view.ts
 // address names; when they are not on it - opened from a link, a search
 // typed since, somebody taken off the round moving everybody up a place -
 // the server is asked where they stand, and the address follows. Somebody
-// the list does not hold at all is said to be off it, never guessed at.
+// the list does not hold at all is said to be off it, never guessed at; one
+// it let go of while they were open leaves a place the walk goes on from.
 
 /** how near either end of what has been read the open person may stand before the page beyond is read */
 const EDGE = 10
@@ -59,6 +60,10 @@ export interface RosterWalk {
   readonly here: WalkRow | null
   /** the list does not hold the open person: filtered out, or taken off it */
   readonly off: boolean
+  /**
+   * The people either side of the open person; where the list let go of
+   * them while they were open, either side of the place they left.
+   */
   readonly previous: WalkRow | null
   readonly next: WalkRow | null
   /** the list is narrowed by a search or a filter */
@@ -69,6 +74,35 @@ export interface RosterWalk {
   readonly loadEarlier: () => void
   readonly loadLater: () => void
   readonly retry: () => void
+}
+
+/** where somebody stood on one question's list, and who stood either side */
+interface Place {
+  /** the question and the person, as one key */
+  readonly person: string
+  readonly position: number
+  readonly before: string | null
+  readonly after: string | null
+}
+
+/**
+ * The people either side of a place somebody has left: whoever stood after
+ * them and whoever stands before that, found by name where they are still
+ * on the list, and by the place itself where they are not.
+ */
+const besideGap = (
+  rows: readonly WalkRow[],
+  gap: Place,
+): readonly [WalkRow | null, WalkRow | null] => {
+  const after = gap.after === null ? -1 : rows.findIndex((row) => row.id === gap.after)
+  if (after >= 0) return [rows[after - 1] ?? null, rows[after]!]
+  const before = gap.before === null ? -1 : rows.findIndex((row) => row.id === gap.before)
+  if (before >= 0) return [rows[before]!, rows[before + 1] ?? null]
+  // everybody after them moved up a place
+  return [
+    rows.find((row) => row.position === gap.position - 1) ?? null,
+    rows.find((row) => row.position === gap.position) ?? null,
+  ]
 }
 
 const rowsOf = (answer: Answer): WalkRow[] =>
@@ -154,6 +188,38 @@ export function useRosterWalk({
   const at = stale ? -1 : rows.findIndex((row) => row.id === participantId)
   const here = at < 0 ? null : rows[at]!
 
+  // Where the open person stood the last time the list held them, and who
+  // stood either side. Working down a filtered list - everybody with
+  // something waiting - the person just dealt with leaves it the moment the
+  // list is read again; the walk goes on from the place they left, so the
+  // next one is whoever stood after them.
+  const person = `${question}|${participantId}`
+  const [left, setLeft] = useState<Place | null>(null)
+  if (here !== null) {
+    const place: Place = {
+      person,
+      position: here.position,
+      before: rows[at - 1]?.id ?? null,
+      after: rows[at + 1]?.id ?? null,
+    }
+    if (
+      left === null ||
+      left.person !== place.person ||
+      left.position !== place.position ||
+      left.before !== place.before ||
+      left.after !== place.after
+    ) {
+      setLeft(place)
+    }
+  }
+  const gap = here === null && !stale && left !== null && left.person === person ? left : null
+  const [previous, next] =
+    here !== null
+      ? [rows[at - 1] ?? null, rows[at + 1] ?? null]
+      : gap === null
+        ? [null, null]
+        : besideGap(rows, gap)
+
   // Reading on around them: enough either side to stand them in the middle
   // of the column, and the page beyond whichever end they are near, so the
   // key to the next one works across a page's edge.
@@ -185,7 +251,6 @@ export function useRosterWalk({
   const latest = useRef({ optionsOf, onPage, page: view.page })
   latest.current = { optionsOf, onPage, page: view.page }
   const [missing, setMissing] = useState<string | null>(null)
-  const person = `${question}|${participantId}`
   const locate =
     active && answered !== undefined && !stale && !anchor.isFetching && here === null
       ? `${person}|${String(anchor.dataUpdatedAt)}`
@@ -240,8 +305,8 @@ export function useRosterWalk({
     total,
     here,
     off,
-    previous: at > 0 ? rows[at - 1]! : null,
-    next: at >= 0 && at < rows.length - 1 ? rows[at + 1]! : null,
+    previous,
+    next,
     narrowed: view.q.trim() !== '' || rosterFiltered(view),
     earlier,
     later,

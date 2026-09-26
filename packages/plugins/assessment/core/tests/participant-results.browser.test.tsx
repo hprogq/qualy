@@ -1247,27 +1247,37 @@ describe('the list beside an open account', () => {
       businessNo: `2023${String(100_000 + index + 1)}`,
     }),
   )
-  /** the roster as the server pages it, searched and located the way it is */
-  const paged = (asked: Request[]) => (request: Request) => {
-    asked.push(request)
-    const words = request.query?.['q'] ?? ''
-    const matched = PEOPLE.filter(
-      (one) => words === '' || one.displayName.includes(words) || one.businessNo.includes(words),
-    )
-    const size = Number(request.query?.['limit'] ?? 20)
-    const last = Math.max(1, Math.ceil(matched.length / size))
-    let at = Math.min(Math.max(1, Number(request.query?.['page'] ?? 1)), last)
-    const around = matched.findIndex((one) => one.id === request.query?.['around'])
-    if (around >= 0) at = Math.floor(around / size) + 1
-    return Effect.succeed({
-      items: matched
-        .slice((at - 1) * size, at * size)
-        .map((one) => ({ ...one, filings: NONE_WAITING })),
-      total: matched.length,
-      page: at,
-      pageSize: size,
-    })
-  }
+  /**
+   * The roster as the server pages it, searched and located the way it is.
+   * Asked for everybody with something waiting, it leaves out whoever the
+   * test has since dealt with.
+   */
+  const paged =
+    (asked: Request[], dealtWith: ReadonlySet<string> = new Set()) =>
+    (request: Request) => {
+      asked.push(request)
+      const words = request.query?.['q'] ?? ''
+      const waiting = request.query?.['attention'] !== undefined
+      const matched = PEOPLE.filter(
+        (one) =>
+          (words === '' || one.displayName.includes(words) || one.businessNo.includes(words)) &&
+          !(waiting && dealtWith.has(one.id)),
+      )
+      const size = Number(request.query?.['limit'] ?? 20)
+      const last = Math.max(1, Math.ceil(matched.length / size))
+      let at = Math.min(Math.max(1, Number(request.query?.['page'] ?? 1)), last)
+      const around = matched.findIndex((one) => one.id === request.query?.['around'])
+      if (around >= 0) at = Math.floor(around / size) + 1
+      return Effect.succeed({
+        items: matched
+          .slice((at - 1) * size, at * size)
+          .map((one) => ({ ...one, filings: waiting ? ONE_IN_REVIEW : NONE_WAITING })),
+        total: matched.length,
+        page: at,
+        pageSize: size,
+      })
+    }
+  const ONE_IN_REVIEW = { ...NONE_WAITING, inReview: 1 }
   const rail = [
     {
       id: 'assessment/batch-results/rail',
@@ -1280,7 +1290,11 @@ describe('the list beside an open account', () => {
       order: 10,
     },
   ]
-  const shelled = (route: string, stubs: Record<string, unknown> = {}) => {
+  const shelled = (
+    route: string,
+    stubs: Record<string, unknown> = {},
+    dealtWith: ReadonlySet<string> = new Set(),
+  ) => {
     const asked: Request[] = []
     const rendered = renderScreen({
       client: fakeClient({
@@ -1298,8 +1312,10 @@ describe('the list beside an open account', () => {
         },
         assessment: {
           getBatch: () => Effect.succeed({ batch }),
-          listParticipantAccounts: paged(asked),
+          listParticipantAccounts: paged(asked, dealtWith),
           listParticipantScores: () => Effect.succeed({ scores: [] }),
+          // the reader's own desk, which a decided round is read again for
+          getMyOverview: () => Effect.never,
           listScopeOptions: () => Effect.succeed({ nodes: [] }),
           listParticipantCandidates: () =>
             Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }),
@@ -1339,6 +1355,20 @@ describe('the list beside an open account', () => {
       ),
     })
     return { asked, rendered }
+  }
+  /** the round's line, saying only what the test tells it to */
+  const line = () => {
+    const said = { wake: (_kind: string) => {} }
+    const watchBatch = vi.fn(() =>
+      Effect.succeed(
+        Stream.callback<{ kind: string }>((queue) =>
+          Effect.sync(() => {
+            said.wake = (kind) => void Queue.offerUnsafe(queue, { kind })
+          }),
+        ),
+      ),
+    )
+    return { said, watchBatch }
   }
   const at = (n: number, rest = '') =>
     `/assessment/batches/${BATCH_ID}/results?participant=${personId(n)}${rest}`
@@ -1527,8 +1557,24 @@ describe('the list beside an open account', () => {
     // what somebody's claims wait on moved: the list is read again
     const reads = asked.length
     wake('entries-changed')
-    wake('review-instance-changed')
     await expect.poll(() => asked.length, { timeout: 4_000 }).toBeGreaterThan(reads)
+  })
+
+  it('reads the list again when a round is decided, on its own', async () => {
+    await page.viewport(1280, 800)
+    const { said, watchBatch } = line()
+    const { asked, rendered } = shelled(at(23, '&list-page=2'), { watchBatch })
+    await rendered
+    await expect.poll(() => current()?.dataset['participant']).toBe(personId(23))
+    await expect.poll(() => watchBatch.mock.calls.length).toBeGreaterThan(0)
+    await new Promise((settle) => setTimeout(settle, 300))
+    const reads = asked.length
+    said.wake('review-instance-changed')
+    await expect.poll(() => asked.length, { timeout: 4_000 }).toBeGreaterThan(reads)
+    // and the line is still there for the next one
+    const again = asked.length
+    said.wake('entries-changed')
+    await expect.poll(() => asked.length, { timeout: 4_000 }).toBeGreaterThan(again)
   })
 
   it('asks about taking off only the person it was opened for', async () => {
@@ -1569,5 +1615,42 @@ describe('the list beside an open account', () => {
     } finally {
       await page.viewport(1280, 800)
     }
+  })
+
+  it('goes on from where somebody dealt with stood, on a list of the waiting', async () => {
+    await page.viewport(1280, 800)
+    const { said, watchBatch } = line()
+    const dealtWith = new Set<string>()
+    const { rendered } = shelled(at(8, '&list-waiting=any'), { watchBatch }, dealtWith)
+    await rendered
+    await expect.poll(() => current()?.dataset['participant']).toBe(personId(8))
+    await expect.poll(() => watchBatch.mock.calls.length).toBeGreaterThan(0)
+    await new Promise((settle) => setTimeout(settle, 300))
+    // their round is decided, and the list of the waiting no longer holds them
+    dealtWith.add(personId(8))
+    said.wake('review-instance-changed')
+    await expect.poll(() => current(), { timeout: 4_000 }).toBeNull()
+    const strip = page.getByTestId('roster-neighbors')
+    const next = strip.getByRole('button', { name: '下一位' })
+    const previous = strip.getByRole('button', { name: '上一位' })
+    await expect.element(next).toBeEnabled()
+    await expect.element(previous).toBeEnabled()
+    await next.click()
+    // whoever stood after them
+    await expect.poll(() => addressNow()).toContain(`participant=${personId(9)}`)
+    await expect.poll(() => current()?.dataset['participant']).toBe(personId(9))
+    // and the one before that is the one who stood before them
+    await previous.click()
+    await expect.poll(() => addressNow()).toContain(`participant=${personId(7)}`)
+  })
+
+  it('does not step from somebody the list never held', async () => {
+    await page.viewport(1280, 800)
+    const dealtWith = new Set([personId(8)])
+    await shelled(at(8, '&list-waiting=any'), {}, dealtWith).rendered
+    const strip = page.getByTestId('roster-neighbors')
+    await expect.element(strip).toHaveAttribute('data-off', 'true')
+    await expect.element(strip.getByRole('button', { name: '下一位' })).toBeDisabled()
+    await expect.element(strip.getByRole('button', { name: '上一位' })).toBeDisabled()
   })
 })
