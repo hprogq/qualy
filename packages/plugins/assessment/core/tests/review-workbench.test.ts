@@ -286,6 +286,8 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
     expect(Array.isArray(context.siblings[0]!.values)).toBe(true)
     // identity travels with the round for the header that names the person
     expect(result.round2.unitName).toBe('Class A1')
+    // and where that unit stands, from the root down, for the chain it opens
+    expect(result.round2.unitPath).toEqual(['Root', 'College A', 'Class A1'])
   })
 
   it('shows a reviewer only what was handed in, never a sibling still on the desk', async () => {

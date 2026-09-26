@@ -11,14 +11,17 @@ import {
 import * as stylex from '@stylexjs/stylex'
 import { usePageNavigate } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { commonMessages } from '@qualy/web-i18n/messages'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { GlideAcross } from '@qualy/ui/reveal'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
+import { UnitPath } from '@qualy/ui/unit-path'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
+import { UNNAMED } from '../roster/unit-path.ts'
 import { useBeside, useFinePointer } from './pointer.ts'
 import type { ReviewDto } from './model.ts'
 import { PART_LABEL, WORKBENCH_PARTS, type WorkbenchPart } from './Pane.tsx'
@@ -154,9 +157,11 @@ const styles = stylex.create({
     whiteSpace: 'nowrap',
   },
   businessNo: {
+    flexShrink: 0,
     fontSize: 12,
     color: tokens.mutedForeground,
     fontVariantNumeric: 'tabular-nums',
+    whiteSpace: 'nowrap',
   },
   unitName: {
     display: {
@@ -169,6 +174,16 @@ const styles = stylex.create({
     whiteSpace: 'nowrap',
     fontSize: 12,
     color: tokens.mutedForeground,
+  },
+  // where they stand, said from its own end in whatever the line has left,
+  // and the whole chain a press away; at every width, since a phone has the
+  // sheet the chain rises in
+  unitSeat: {
+    display: 'flex',
+    minWidth: 0,
+    maxWidth: { default: '100%', [lg]: '22rem' },
+    flexShrink: 1,
+    alignSelf: 'center',
   },
   itemLine: {
     minWidth: 0,
@@ -379,6 +394,7 @@ export function PersonStrip({
   const { format } = useI18n()
   const fine = useFinePointer()
   const round = review.context?.worth.groupName
+  const levels = review.unitPath.map((name) => name ?? UNNAMED)
   return (
     <header {...stylex.props(styles.personBar)}>
       {/* The door back, for every width where the queue rail is not beside:
@@ -405,8 +421,23 @@ export function PersonStrip({
           {review.businessNo !== null && (
             <span {...stylex.props(styles.businessNo)}>{review.businessNo}</span>
           )}
-          {review.unitName !== null && (
-            <span {...stylex.props(styles.unitName)}>{review.unitName}</span>
+          {review.unitPath.length > 0 ? (
+            <span data-testid="review-unit" {...stylex.props(styles.unitSeat)}>
+              <UnitPath
+                // the root everybody on the round shares is left off the
+                // line, and kept on the chain
+                steps={levels.length > 1 ? levels.slice(1) : levels}
+                chain={{
+                  label: format(m.rosterUnits),
+                  closeLabel: format(commonMessages.close),
+                  levels,
+                }}
+              />
+            </span>
+          ) : (
+            review.unitName !== null && (
+              <span {...stylex.props(styles.unitName)}>{review.unitName}</span>
+            )
           )}
         </div>
         <p {...stylex.props(styles.itemLine)}>

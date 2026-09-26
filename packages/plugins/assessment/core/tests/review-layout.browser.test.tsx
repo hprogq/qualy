@@ -61,6 +61,7 @@ const review = {
   participantName: '周予安',
   businessNo: '2023011047',
   unitName: '软件2023级2班',
+  unitPath: ['示例大学', '软件学院', '软件2023级2班'],
   submittedAt: '2026-03-03T00:00:00.000Z',
   completedAt: null,
   revision: {
@@ -995,5 +996,40 @@ describe('a queue longer than one page', () => {
 
     // the queue it had stands; the page is not swapped for an error
     await expect.element(page.getByTestId('review-stats')).toHaveAttribute('data-pending', '2')
+  })
+})
+
+// The reviewer judges somebody placed somewhere, and the header says where
+// from the unit's own end; the whole chain, from the school down, is a press
+// away - beside the pointer on a desk, from the foot on a phone.
+describe('where the person being judged stands', () => {
+  const chain = () => [...document.querySelectorAll('[data-testid="unit-chain"] li')]
+
+  it('names the unit in the header and opens the whole chain on a press', async () => {
+    await page.viewport(1440, 900)
+    await open()
+    const unit = page.getByTestId('review-unit')
+    await expect.element(unit).toBeVisible()
+    // the line leaves off the root the whole round shares
+    await expect
+      .element(unit.getByTestId('unit-path'))
+      .toHaveAttribute('data-steps', String(review.unitPath.length - 1))
+    await unit.getByTestId('unit-chain-open').click()
+    await expect.element(page.getByTestId('unit-chain')).toBeVisible()
+    expect(chain().map((level) => level.textContent)).toEqual(review.unitPath)
+    expect(chain().at(-1)!.getAttribute('aria-current')).toBe('true')
+    await userEvent.keyboard('{Escape}')
+    await expect.element(page.getByTestId('unit-chain')).not.toBeInTheDocument()
+  })
+
+  it('keeps the unit in reach on a phone, and raises the chain from the foot', async () => {
+    await page.viewport(390, 844)
+    await open()
+    const unit = page.getByTestId('review-unit')
+    await expect.element(unit).toBeVisible()
+    await unit.getByTestId('unit-chain-open').click()
+    const sheet = page.getByTestId('unit-chain')
+    await expect.element(sheet).toHaveAttribute('data-side', 'bottom')
+    expect(chain().map((level) => level.textContent)).toEqual(review.unitPath)
   })
 })

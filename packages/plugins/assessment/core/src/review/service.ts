@@ -277,6 +277,7 @@ export interface ReviewDetailView {
   readonly participantName: string
   readonly businessNo: string | null
   readonly unitName: string | null
+  readonly unitPath: readonly (string | null)[]
   readonly submittedAt: number
   readonly completedAt: number | null
   readonly revision: {
@@ -927,6 +928,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         participantName: row.subjectName,
         businessNo: row.subjectBusinessNo,
         unitName: row.unitName,
+        unitPath: row.unitPath,
         submittedAt: row.createdAt,
         completedAt: row.completedAt,
         revision: {

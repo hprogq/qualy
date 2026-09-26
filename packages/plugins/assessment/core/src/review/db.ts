@@ -442,6 +442,8 @@ export interface ReviewInstanceDetailRow {
   subjectBusinessNo: string | null
   /** the unit the participant stands in, by the live tree; null if it went */
   unitName: string | null
+  /** their frozen lineage from the root down, named by the live tree; null where a unit went */
+  unitPath: readonly (string | null)[]
   actorId: string
   itemRevisionId: string
   maxEntries: number | null
@@ -581,6 +583,15 @@ export const instanceOf = (tenantId: string, instanceId: string) =>
         ])
         .select([
           sql<string>`b.material_range::text`.as('batchMaterialRange'),
+          // the lineage is stored from the unit up, so it is read backwards
+          sql<(string | null)[]>`coalesce((
+            select array_agg(n.name order by step.at desc)
+            from jsonb_array_elements(${sql.ref('bp.anchor_lineage')})
+              with ordinality as step(element, at)
+            left join org_nodes n
+              on n.tenant_id = ${sql.ref('bp.tenant_id')}
+              and n.id = (step.element->>'nodeId')::uuid
+          ), '{}')`.as('unitPath'),
           epoch('ri.created_at').as('createdMs'),
           epoch('ri.completed_at').as('completedMs'),
         ])
@@ -623,6 +634,7 @@ export const instanceOf = (tenantId: string, instanceId: string) =>
               subjectName: row.subjectName,
               subjectBusinessNo: row.subjectBusinessNo,
               unitName: row.unitName,
+              unitPath: row.unitPath,
               actorId: row.actorId,
               itemRevisionId: row.itemRevisionId,
               maxEntries: row.maxEntries,

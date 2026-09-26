@@ -85,6 +85,7 @@ const review = (over: Record<string, unknown> = {}) => ({
   participantName: '周予安',
   businessNo: '2023011047',
   unitName: '软件2023级2班',
+  unitPath: ['示例大学', '软件学院', '软件2023级2班'],
   submittedAt: '2026-03-03T00:00:00.000Z',
   completedAt: null,
   revision: {

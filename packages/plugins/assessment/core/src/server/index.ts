@@ -5993,6 +5993,7 @@ const reviewDto = (review: ReviewDetailView) => ({
   participantName: review.participantName,
   businessNo: review.businessNo,
   unitName: review.unitName,
+  unitPath: review.unitPath,
   submittedAt: new Date(review.submittedAt).toISOString(),
   completedAt: review.completedAt === null ? null : new Date(review.completedAt).toISOString(),
   revision: review.revision,

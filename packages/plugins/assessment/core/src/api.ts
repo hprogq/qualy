@@ -1254,6 +1254,12 @@ const reviewDetailView = Schema.Struct({
   participantName: Schema.String,
   businessNo: Schema.NullOr(Schema.String),
   unitName: Schema.NullOr(Schema.String),
+  /**
+   * Where the participant stood when they joined the round, from the root
+   * down to that unit, each named as the organization names it today; null
+   * for a unit that is gone. The header says its end, and opens the whole.
+   */
+  unitPath: Schema.Array(Schema.NullOr(Schema.String)),
   submittedAt: Schema.String,
   completedAt: Schema.NullOr(Schema.String),
   /** exactly what is being judged: the revision the round froze, not the entry's latest */
