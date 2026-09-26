@@ -192,6 +192,7 @@ export default {
   'assessment/entry/status-approved': '已通过',
   'assessment/entry/status-rejected': '未通过',
   'assessment/entry/status-voided': '已作废',
+  'assessment/entry/status-abandoned': '已放弃',
   'assessment/entry/file-uploading': '正在上传…',
   'assessment/entry/file-remove': '移除',
   'assessment/entry/file-failed': '文件上传失败，请重试。',

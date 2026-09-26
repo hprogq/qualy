@@ -435,13 +435,34 @@ describe('reading somebody’s entries', () => {
     await page.viewport(1440, 900)
     await screen({ route: `${base}&view=entries&open=${RECORDED_ITEM}` })
     await expect.poll(() => rows().length).toBe(1)
-    const voided = () => document.querySelector('[data-chip="voided"]')
+    const voided = () => document.querySelector('[data-chip="revoked"]')
     await expect.poll(() => voided()?.getAttribute('data-count')).toBe('1')
     await userEvent.click(voided()!)
     await expect
       .poll(() => rows().map((row) => row.getAttribute('data-entry')))
       .toEqual([entryId(3)])
     expect(rows()[0]!.getAttribute('data-standing')).toBe('voided')
+  })
+
+  // Giving a claim up is its owner's act, and taking a record back is the
+  // office's: two filters, each named the way the chip on its rows is.
+  it('keeps a claim its owner gave up apart from a record taken back', async () => {
+    await page.viewport(1440, 900)
+    await screen({
+      route: `${base}&view=entries&open=${OWN_ITEM}`,
+      claims: [claim(1, OWN_ITEM, 'approved'), claim(5, OWN_ITEM, 'voided')],
+    })
+    await expect.poll(() => rows().length).toBe(1)
+    const givenUp = () => document.querySelector('[data-chip="abandoned"]')
+    await expect.poll(() => givenUp()?.getAttribute('data-count')).toBe('1')
+    expect(document.querySelector('[data-chip="revoked"]')).toBeNull()
+    await userEvent.click(givenUp()!)
+    await expect
+      .poll(() => rows().map((row) => row.getAttribute('data-entry')))
+      .toEqual([entryId(5)])
+    const chip = rows()[0]!.querySelector('[data-testid="entry-standing"]')!
+    expect(chip.getAttribute('data-entry-standing')).toBe('voided')
+    expect(givenUp()!.textContent).toContain(chip.textContent!)
   })
 
   it('reads a question left with only a withdrawn record as empty, the record a filter away', async () => {
@@ -452,7 +473,7 @@ describe('reading somebody’s entries', () => {
     })
     await expect.element(page.getByTestId('entries-tray')).toBeVisible()
     expect(page.getByTestId('entries-no-match').elements()).toHaveLength(0)
-    await userEvent.click(document.querySelector('[data-chip="voided"]')!)
+    await userEvent.click(document.querySelector('[data-chip="revoked"]')!)
     await expect
       .poll(() => rows().map((row) => row.getAttribute('data-entry')))
       .toEqual([entryId(3)])

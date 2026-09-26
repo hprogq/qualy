@@ -112,7 +112,11 @@ export function EntryStanding({
             ? // a draft with a round behind it is not a fresh draft: it
               // exists because something was asked of it
               m.entryStatusRevising
-            : entryStatusMessage[status]
+            : status === 'voided'
+              ? // a claim somebody filed ends voided only by their giving it
+                // up; voiding is what happens to a question or a record
+                m.entryStatusAbandoned
+              : entryStatusMessage[status]
   const standing = asked === true ? 'awaiting_supplement' : contested ? 'contested' : status
   const tone =
     asked === true || (status === 'needs_revision' && !administrative)

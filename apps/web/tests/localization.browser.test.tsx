@@ -316,6 +316,12 @@ describe('one claim in one word', () => {
     await expect.element(line.getByText('已放弃', { exact: true })).toBeVisible()
     // the filing page's word for a withdrawn record is not this one
     expect(page.getByText(/作废/).elements()).toHaveLength(0)
+    // and the drawer the line opens says it the same way, chip and act
+    await line.click()
+    const drawer = page.getByRole('dialog')
+    await expect.element(drawer.getByTestId('entry-standing')).toHaveTextContent('已放弃')
+    await expect.element(drawer.getByText(/3月2日 .*放弃/)).toBeVisible()
+    expect(drawer.getByText(/作废/).elements()).toHaveLength(0)
   })
 })
 

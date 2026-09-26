@@ -1424,6 +1424,11 @@ const i18n = definePluginMessages({
     },
     entryStatusRejected: { id: 'assessment/entry/status-rejected', defaultMessage: 'Not approved' },
     entryStatusVoided: { id: 'assessment/entry/status-voided', defaultMessage: 'Voided' },
+    // a claim its owner gave up: their act, never a question voided under it
+    entryStatusAbandoned: {
+      id: 'assessment/entry/status-abandoned',
+      defaultMessage: 'Abandoned',
+    },
     entryFileUploading: { id: 'assessment/entry/file-uploading', defaultMessage: 'Uploading…' },
     entryFileRemove: { id: 'assessment/entry/file-remove', defaultMessage: 'Remove' },
     entryFileFailed: {

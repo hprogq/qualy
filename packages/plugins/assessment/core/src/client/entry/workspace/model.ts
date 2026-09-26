@@ -311,7 +311,7 @@ export const entryLineOf = (
   let amountWord: MessageDescriptor = m.entryScoreIfApproved
   let amountTone: EntryLine['amountTone'] = 'pending'
   if (entry.status === 'voided') {
-    amountWord = administrative(entry) ? m.recordStandingWithdrawn : m.entryStatusVoided
+    amountWord = administrative(entry) ? m.recordStandingWithdrawn : m.entryStatusAbandoned
     amountTone = 'muted'
   } else if (item.status === 'voided' || entry.status === 'rejected') {
     amountWord = m.entriesAmountNotCounted
@@ -386,7 +386,8 @@ export type ChipKey =
   | 'contested'
   | 'approved'
   | 'rejected'
-  | 'voided'
+  | 'abandoned'
+  | 'revoked'
 
 export interface Chip {
   readonly key: ChipKey
@@ -449,12 +450,21 @@ export const chipsFor = (viewer: Viewer): readonly Chip[] => [
     test: (entry) => entry.status === 'rejected' && !contested(entry),
     urgent: false,
   },
+  // What ended without counting, under the word for who ended it: a claim
+  // its owner gave up, and a record the office took back. The chip on each
+  // row says the same, so the filter never calls a row something else.
   ...(viewer === 'staff'
     ? [
         {
-          key: 'voided' as const,
-          label: m.entryStatusVoided,
-          test: (entry: EntryDto) => entry.status === 'voided',
+          key: 'abandoned' as const,
+          label: m.entryStatusAbandoned,
+          test: (entry: EntryDto) => entry.status === 'voided' && !administrative(entry),
+          urgent: false,
+        },
+        {
+          key: 'revoked' as const,
+          label: m.recordStandingWithdrawn,
+          test: (entry: EntryDto) => entry.status === 'voided' && administrative(entry),
           urgent: false,
         },
       ]
