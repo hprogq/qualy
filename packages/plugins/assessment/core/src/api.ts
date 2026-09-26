@@ -554,6 +554,17 @@ const participantScoreView = Schema.Struct({
   reason: Schema.NullOr(Schema.Literals(['scoring-unavailable', 'account-too-large', 'timed-out'])),
 })
 
+/**
+ * What people put on the roster leave it with, said beside the count and
+ * stopping nothing (§32.93): how many of them some question's ordinary
+ * route finds nowhere, so they could not file it, and how many are system
+ * accounts, whom the round is not for.
+ */
+const admissionWarnings = Schema.Struct({
+  cannotSubmit: Schema.Number,
+  systemAccounts: Schema.Number,
+})
+
 /** somebody on the roster a review route has nowhere to stand for */
 const unreachableParticipantView = Schema.Struct({
   participantId: Schema.String,
@@ -605,6 +616,12 @@ const placementDifferenceView = Schema.Struct({
   currentBeyondReach: Schema.Boolean,
   /** whether this reader may take the organization's placement into the round */
   canSync: Schema.Boolean,
+  /**
+   * How many questions they could not file once the organization's placement
+   * is taken in: the ones whose ordinary route finds nobody there. Null where
+   * there is no placement shown to take.
+   */
+  unfileableAfterSync: Schema.NullOr(Schema.Number),
   /** what a decision about this row carries back; null where there is nothing to decide */
   observedFingerprint: Schema.NullOr(Schema.String),
 })
@@ -3806,20 +3823,24 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       // people named one at a time by somebody reading a list; the bulk way
       // in is importing from the organization, which names units instead
       payload: Schema.Struct({ userIds: idsUpTo(500) }),
-      success: Schema.Struct({ added: Schema.Number, skipped: Schema.Number }),
+      success: Schema.Struct({
+        added: Schema.Number,
+        skipped: Schema.Number,
+        ...admissionWarnings.fields,
+      }),
       error: [BatchNotFound, BatchReadOnly, ParticipantInvalid, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(
     // how many people a selection would add, so the number can be confirmed
-    // before anybody is added
+    // before anybody is added, and what they would leave the roster with
     HttpApiEndpoint.get('previewImport', '/assessment/batches/:batchId/import-candidates', {
       params: Schema.Struct({ batchId: uuidInput }),
       query: Schema.Struct({
         orgNodeIds: idList,
         userTypeIds: idList,
       }),
-      success: Schema.Struct({ candidates: Schema.Number }),
+      success: Schema.Struct({ candidates: Schema.Number, ...admissionWarnings.fields }),
       error: [BatchNotFound, AccessDenied],
     }).middleware(Authenticated),
   )
@@ -3830,7 +3851,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     HttpApiEndpoint.post('importParticipants', '/assessment/batches/:batchId/participant-imports', {
       params: Schema.Struct({ batchId: uuidInput }),
       payload: importSelection,
-      success: Schema.Struct({ added: Schema.Number }),
+      success: Schema.Struct({ added: Schema.Number, ...admissionWarnings.fields }),
       error: [
         BatchNotFound,
         BatchReadOnly,

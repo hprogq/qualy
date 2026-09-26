@@ -328,8 +328,8 @@ describe.runIf(postgresAvailable).concurrent('the roster management face', () =>
       atCreation.map((row) => row.userId).sort(),
     )
     // running it again is a decision, and it offers only what is new
-    expect(preview).toEqual({ candidates: 1 })
-    expect(imported).toEqual({ added: 1 })
+    expect(preview).toEqual({ candidates: 1, cannotSubmit: 0, systemAccounts: 0 })
+    expect(imported).toEqual({ added: 1, cannotSubmit: 0, systemAccounts: 0 })
     expect(after.map((row) => row.userId)).toContain(late)
     // both runs are recorded as the acts they were, and the page says it
     // has reached the end rather than leaving the reader to guess
@@ -394,7 +394,7 @@ describe.runIf(postgresAvailable).concurrent('the roster management face', () =>
       }),
     )
     const { preview } = ok(exit)
-    expect(preview).toEqual({ candidates: 0 })
+    expect(preview).toEqual({ candidates: 0, cannotSubmit: 0, systemAccounts: 0 })
   })
 
   it('adds people by name, skipping whoever is already taking part', async () => {
@@ -425,7 +425,7 @@ describe.runIf(postgresAvailable).concurrent('the roster management face', () =>
       }),
     )
     const { added, stranger, already } = ok(exit)
-    expect(added).toEqual({ added: 1, skipped: already.length })
+    expect(added).toEqual({ added: 1, skipped: already.length, cannotSubmit: 0, systemAccounts: 0 })
     expect(reasonIn(stranger)).toBe('user-not-found')
   })
 
@@ -466,7 +466,7 @@ describe.runIf(postgresAvailable).concurrent('the roster management face', () =>
       }),
     )
     const { added, rows, first } = ok(exit)
-    expect(added).toEqual({ added: 1, skipped: 0 })
+    expect(added).toEqual({ added: 1, skipped: 0, cannotSubmit: 0, systemAccounts: 0 })
     // one row, the same one, and the withdrawal cleared off it
     expect(rows).toHaveLength(1)
     expect(rows[0]!.id).toBe(first.id)

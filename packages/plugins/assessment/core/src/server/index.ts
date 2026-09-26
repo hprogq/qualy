@@ -108,12 +108,17 @@ import {
 } from '../review/db.ts'
 import { stageById, type ReviewRoute } from '../review/chain.ts'
 import {
+  admissionWarningsOf,
+  admittedGroupsOf,
+  candidateGroupsOf,
   itemDemandsOf,
   levelGroupsOf,
   routeDemandsOf,
+  unfileableFor,
   unreachableOf,
   unreachablePage,
   unreachableTotal,
+  type AdmissionWarnings,
 } from '../review/reach.ts'
 import { reviewersVeiled, unnamedUnlessOwn } from '../review/veil.ts'
 import { makeScoringMethods, type ScoringMethods } from '../scoring/service.ts'
@@ -612,6 +617,8 @@ export interface PlacementDifference {
   readonly current: PlacementView | null
   readonly currentBeyondReach: boolean
   readonly canSync: boolean
+  /** questions they could not file once the placement shown is taken in; null where none is shown */
+  readonly unfileableAfterSync: number | null
   readonly observedFingerprint: string | null
 }
 
@@ -1567,7 +1574,8 @@ export class Assessment extends Context.Service<
      * Importing from the organization resolves its units to people first, so
      * there is one way in and it takes user ids. Anybody already taking part
      * is skipped rather than refused: adding a hundred people of whom two are
-     * already there is not a mistake.
+     * already there is not a mistake. What the people admitted leave the
+     * roster with is said beside the count, and stops nothing (§32.93).
      */
     readonly addParticipants: (
       tenantId: string,
@@ -1575,16 +1583,16 @@ export class Assessment extends Context.Service<
       userIds: readonly string[],
       as: Principal,
     ) => Effect.Effect<
-      { added: number; skipped: number },
+      { added: number; skipped: number } & AdmissionWarnings,
       BatchNotFound | BatchReadOnly | ParticipantInvalid | AccessDenied
     >
-    /** how many people a set of units and types would add, before adding them */
+    /** how many people a set of units and types would add, and what they would leave, before adding them */
     readonly previewImport: (
       tenantId: string,
       batchId: string,
       selection: { orgNodeIds: readonly string[]; userTypeIds: readonly string[] },
       as: Principal,
-    ) => Effect.Effect<{ candidates: number }, BatchNotFound | AccessDenied>
+    ) => Effect.Effect<{ candidates: number } & AdmissionWarnings, BatchNotFound | AccessDenied>
     /** and doing it, which is recorded as the act it is */
     readonly importParticipants: (
       tenantId: string,
@@ -1592,7 +1600,7 @@ export class Assessment extends Context.Service<
       selection: { orgNodeIds: readonly string[]; userTypeIds: readonly string[] },
       as: Principal,
     ) => Effect.Effect<
-      { added: number },
+      { added: number } & AdmissionWarnings,
       BatchNotFound | BatchReadOnly | BatchReferenceInvalid | ParticipantInvalid | AccessDenied
     >
     /** what was imported, when, and on what grounds; history, never a rule */
@@ -2353,6 +2361,29 @@ export const make = Effect.fn('Assessment.make')(function* () {
     })
 
   /**
+   * What the people a roster write just admitted leave it with (§32.93),
+   * read once the write is done: the batch's lock is the front door for
+   * filing and deciding, and a warning is not worth holding it for.
+   */
+  const admittedWarnings = (
+    tenantId: string,
+    batchId: string,
+    participantIds: readonly string[],
+  ) =>
+    participantIds.length === 0
+      ? Effect.succeed({ cannotSubmit: 0, systemAccounts: 0 })
+      : dieQuery(
+          withDb(
+            Effect.gen(function* () {
+              return admissionWarningsOf(
+                yield* routeDemandsOf(tenantId, batchId),
+                yield* admittedGroupsOf(tenantId, participantIds),
+              )
+            }),
+          ),
+        )
+
+  /**
    * The record of an admission, one line per person admitted.
    *
    * Written wherever people join a roster, and told apart by whether the row
@@ -2383,10 +2414,18 @@ export const make = Effect.fn('Assessment.make')(function* () {
    * Where the organization has somebody now is named only when this reader
    * manages it: seeing that a member moved is theirs to see, where to is not
    * when it is somebody else's unit. Units above the reader's reach are there
-   * by id without a name, on either side.
+   * by id without a name, on either side. Where the placement is shown, so
+   * is what taking it in would cost: the questions whose ordinary route
+   * finds nobody there (§32.93), counted by the same rule as the roster's.
    */
-  const placementDifferences = (tenantId: string, rows: readonly PlacementRow[], as: Principal) =>
+  const placementDifferences = (
+    tenantId: string,
+    batchId: string,
+    rows: readonly PlacementRow[],
+    as: Principal,
+  ) =>
     Effect.gen(function* () {
+      const demands = yield* dieQuery(withDb(routeDemandsOf(tenantId, batchId)))
       const within = new Set<string>()
       for (const row of rows) {
         if (row.live !== null && (yield* rbac.canAt(as, MANAGE, row.live.nodeId))) {
@@ -2426,6 +2465,15 @@ export const make = Effect.fn('Assessment.make')(function* () {
           current: current === null ? null : viewOf(current),
           currentBeyondReach: row.live !== null && current === null,
           canSync: current !== null,
+          unfileableAfterSync:
+            current === null
+              ? null
+              : unfileableFor(
+                  demands,
+                  current.lineage.flatMap((step) =>
+                    step.nodeTypeId === null ? [] : [step.nodeTypeId],
+                  ),
+                ),
           observedFingerprint: row.unavailable === null ? row.liveFingerprint : null,
         }
       })
@@ -5460,16 +5508,21 @@ export const make = Effect.fn('Assessment.make')(function* () {
 
     addParticipants: Effect.fn('Assessment.addParticipants')(
       function* (tenantId, batchId, userIds, as) {
-        return yield* withDb(
+        const { ids, ...written } = yield* withDb(
           transaction(
             Effect.gen(function* () {
               yield* rosterWriteGuards(tenantId, batchId, as)
-              if (userIds.length === 0) return { added: 0, skipped: 0 }
+              if (userIds.length === 0) return { added: 0, skipped: 0, ids: [] as string[] }
               const { admitted, wanted } = yield* admit(tenantId, batchId, userIds, as)
-              return { added: admitted.length, skipped: wanted - admitted.length }
+              return {
+                added: admitted.length,
+                skipped: wanted - admitted.length,
+                ids: admitted.map((row) => row.id),
+              }
             }),
           ),
         ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+        return { ...written, ...(yield* admittedWarnings(tenantId, batchId, ids)) }
       },
     ),
 
@@ -5490,13 +5543,25 @@ export const make = Effect.fn('Assessment.make')(function* () {
             ),
           ),
         )
-        return { candidates: candidates.length }
+        // what they would leave the roster with, said before anybody is added
+        const warnings = admissionWarningsOf(
+          yield* dieQuery(withDb(routeDemandsOf(tenantId, batchId))),
+          yield* dieQuery(
+            withDb(
+              candidateGroupsOf(
+                tenantId,
+                candidates.map((one) => one.userId),
+              ),
+            ),
+          ),
+        )
+        return { candidates: candidates.length, ...warnings }
       },
     ),
 
     importParticipants: Effect.fn('Assessment.importParticipants')(
       function* (tenantId, batchId, selection, as) {
-        return yield* withDb(
+        const { ids, ...written } = yield* withDb(
           transaction(
             Effect.gen(function* () {
               yield* rosterWriteGuards(tenantId, batchId, as)
@@ -5528,10 +5593,11 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 importedCount: added.length,
                 actorId: as.userId,
               })
-              return { added: added.length }
+              return { added: added.length, ids: added.map((row) => row.id) }
             }),
           ),
         ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+        return { ...written, ...(yield* admittedWarnings(tenantId, batchId, ids)) }
       },
     ),
 
@@ -5679,7 +5745,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
         const rows = found.slice(from, from + size)
         const last = rows.at(-1)
         return {
-          items: yield* placementDifferences(tenantId, rows, as),
+          items: yield* placementDifferences(tenantId, batchId, rows, as),
           nextCursor:
             from + size < found.length && last !== undefined
               ? encodeQueryCursor(fingerprint, placementKey(last))

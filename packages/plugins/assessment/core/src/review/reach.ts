@@ -104,6 +104,33 @@ export const unreachableOf = (
   return { routes, cannotSubmit: distinct('normal'), cannotAppeal: distinct('escalation') }
 }
 
+/**
+ * How many questions somebody standing under these unit kinds could not
+ * file: the ones whose ordinary route finds them nowhere.
+ */
+export const unfileableFor = (demands: readonly RouteDemand[], levels: readonly string[]): number =>
+  demands.filter((demand) => demand.route === 'normal' && !reaches(demand, levels)).length
+
+/**
+ * What admitting these people leaves the roster with: how many of them some
+ * question's ordinary route finds nowhere, and how many are system
+ * accounts - kinds of person the round is not for, standing at the root,
+ * where a route by class or grade finds nobody. Both are said, and neither
+ * stops the admission (§32.93).
+ */
+export interface AdmissionWarnings {
+  readonly cannotSubmit: number
+  readonly systemAccounts: number
+}
+
+export const admissionWarningsOf = (
+  demands: readonly RouteDemand[],
+  groups: readonly (LevelGroup & { readonly system: number })[],
+): AdmissionWarnings => ({
+  cannotSubmit: unreachableOf(demands, groups).cannotSubmit,
+  systemAccounts: groups.reduce((sum, group) => sum + group.system, 0),
+})
+
 /** the unit kinds on one frozen lineage, once each and in a stable order */
 const lineageLevels = sql<string[]>`coalesce((
   select array_agg(distinct step.value->>'nodeTypeId' order by step.value->>'nodeTypeId')
@@ -136,6 +163,92 @@ export const levelGroupsOf = (tenantId: string, batchId: string) =>
         })),
       ),
     )
+
+const warningGroups = (
+  rows: readonly { levels: unknown; participants: unknown; system: unknown }[],
+): (LevelGroup & { system: number })[] =>
+  rows.map((row) => ({
+    levels: ((row.levels ?? []) as unknown[]).map(String),
+    participants: Number(row.participants),
+    system: Number(row.system),
+  }))
+
+/**
+ * Members just written to the roster, grouped as `levelGroupsOf` groups the
+ * whole of it - by the unit kinds they were frozen under - with how many
+ * in each group are of a system kind, as they were frozen too.
+ */
+export const admittedGroupsOf = (tenantId: string, participantIds: readonly string[]) =>
+  participantIds.length === 0
+    ? Effect.succeed([] as (LevelGroup & { system: number })[])
+    : db
+        .query((k) =>
+          k
+            .selectFrom((inner) =>
+              inner
+                .selectFrom('BatchParticipant as bp')
+                .innerJoin('UserType as ut', (join) =>
+                  join
+                    .onRef('ut.tenantId', '=', 'bp.tenantId')
+                    .onRef('ut.id', '=', 'bp.userTypeId'),
+                )
+                .select([lineageLevels.as('levels'), 'ut.isSystem as system'])
+                .where('bp.tenantId', '=', tenantId)
+                .where(sql<boolean>`${sql.ref('bp.id')} = any(${[...participantIds]}::uuid[])`)
+                .as('member'),
+            )
+            .select([
+              'member.levels',
+              (eb) => eb.fn.countAll<string>().as('participants'),
+              (eb) => eb.fn.countAll<string>().filterWhere('member.system', '=', true).as('system'),
+            ])
+            .groupBy('member.levels')
+            .execute(),
+        )
+        .pipe(Effect.map(warningGroups))
+
+/** the unit kinds above somebody's live placement, the unit included, once each */
+const liveLevels = sql<string[]>`coalesce((
+  select array_agg(distinct a.org_type_id::text order by a.org_type_id::text)
+    from org_nodes a
+   where a.tenant_id = ${sql.ref('n.tenant_id')} and a.path @> ${sql.ref('n.path')}
+), '{}')`
+
+/**
+ * The same grouping for people not yet on the roster, by where the
+ * organization has them now: what admitting them would leave it with.
+ */
+export const candidateGroupsOf = (tenantId: string, userIds: readonly string[]) =>
+  userIds.length === 0
+    ? Effect.succeed([] as (LevelGroup & { system: number })[])
+    : db
+        .query((k) =>
+          k
+            .selectFrom((inner) =>
+              inner
+                .selectFrom('User as u')
+                .innerJoin('OrgNode as n', (join) =>
+                  join
+                    .onRef('n.tenantId', '=', 'u.tenantId')
+                    .onRef('n.id', '=', 'u.primaryOrgNodeId'),
+                )
+                .innerJoin('UserType as ut', (join) =>
+                  join.onRef('ut.tenantId', '=', 'u.tenantId').onRef('ut.id', '=', 'u.userTypeId'),
+                )
+                .select([liveLevels.as('levels'), 'ut.isSystem as system'])
+                .where('u.tenantId', '=', tenantId)
+                .where(sql<boolean>`${sql.ref('u.id')} = any(${[...userIds]}::uuid[])`)
+                .as('member'),
+            )
+            .select([
+              'member.levels',
+              (eb) => eb.fn.countAll<string>().as('participants'),
+              (eb) => eb.fn.countAll<string>().filterWhere('member.system', '=', true).as('system'),
+            ])
+            .groupBy('member.levels')
+            .execute(),
+        )
+        .pipe(Effect.map(warningGroups))
 
 /** every question the round is asking, in its own order, with its current routes */
 export const routeDemandsOf = (tenantId: string, batchId: string) =>

@@ -260,6 +260,118 @@ describe.runIf(postgresAvailable)('routes with nowhere to stand', () => {
     expect(result.fewer.unreachable.cannotSubmit).toBe(1)
   })
 
+  // Putting people on the roster is never refused for this (§32.93): what
+  // they leave it with is said beside the count - how many of them some
+  // question's ordinary route finds nowhere, and how many are system
+  // accounts - before an import, and by the write itself.
+  it('says what the people it admits leave the roster with, and admits them anyway', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('reach-admit')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const g = yield* runningBatch(f)
+          const system = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into user_types (tenant_id, code, name, placement_mode, is_system)
+              values (${f.t}, 'system-account', 'System', 'unrestricted', true) returning id`),
+          ).id
+          const operator = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.t}, 'Operator', ${system}, ${f.root}) returning id`),
+          ).id
+          const late = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.t}, 'Late', ${f.studentType}, ${f.classA}) returning id`),
+          ).id
+          // an import of the system kind from the root, counted before it runs
+          const preview = yield* assessment.previewImport(
+            f.t,
+            g.batch.id,
+            { orgNodeIds: [f.root], userTypeIds: [system] },
+            admin,
+          )
+          const imported = yield* assessment.importParticipants(
+            f.t,
+            g.batch.id,
+            { orgNodeIds: [f.root], userTypeIds: [system] },
+            admin,
+          )
+          // somebody in a class, whom the class step reaches, added by name
+          const reached = yield* assessment.addParticipants(f.t, g.batch.id, [late], admin)
+          // the recorder, at a college under no class, taken off and let back in
+          const recorder = one<{ id: string }>(
+            yield* runSql(sql`
+              select id from batch_participants
+              where batch_id = ${g.batch.id} and user_id = ${f.recorder}`),
+          ).id
+          yield* assessment.setParticipantStatus(
+            f.t,
+            g.batch.id,
+            recorder,
+            'excluded',
+            undefined,
+            admin,
+          )
+          const readded = yield* assessment.addParticipants(f.t, g.batch.id, [f.recorder], admin)
+          const onRoster = one<{ n: string }>(
+            yield* runSql(sql`
+              select count(*) as n from batch_participants
+              where batch_id = ${g.batch.id} and user_id = ${operator} and status = 'active'`),
+          )
+          return { preview, imported, reached, readded, onRoster: Number(onRoster.n) }
+        }),
+      ),
+    )
+    expect(result.preview).toEqual({ candidates: 1, cannotSubmit: 1, systemAccounts: 1 })
+    expect(result.imported).toEqual({ added: 1, cannotSubmit: 1, systemAccounts: 1 })
+    // warned about, and on the roster all the same
+    expect(result.onRoster).toBe(1)
+    expect(result.reached).toEqual({ added: 1, skipped: 0, cannotSubmit: 0, systemAccounts: 0 })
+    expect(result.readded).toEqual({ added: 1, skipped: 0, cannotSubmit: 1, systemAccounts: 0 })
+  })
+
+  // Taking in where the organization has somebody now can leave them under
+  // no unit a question's ordinary route asks for; the difference says so
+  // before anybody decides, by the same rule the roster is counted by.
+  it('says what taking in a new placement would cost, where the placement is shown', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('reach-placement')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const g = yield* runningBatch(f)
+          const collegeA = one<{ id: string }>(
+            yield* runSql(sql`select parent_id as id from org_nodes where id = ${f.classA}`),
+          ).id
+          const classB = one<{ id: string }>(
+            yield* runSql(sql`
+              select primary_org_node_id as id from users where id = ${f.s3}`),
+          ).id
+          // one moves up to the college, out of every class; one moves to
+          // the other class, where the class step still finds them
+          yield* runSql(sql`update users set primary_org_node_id = ${collegeA} where id = ${f.s1}`)
+          yield* runSql(sql`update users set primary_org_node_id = ${classB} where id = ${f.s2}`)
+          return {
+            page: yield* assessment.listParticipantPlacements(f.t, g.batch.id, {}, admin),
+            people: { s1: f.s1, s2: f.s2 },
+          }
+        }),
+      ),
+    )
+    const byPerson = new Map(
+      result.page.items.map((row) => [row.displayName, row.unfileableAfterSync] as const),
+    )
+    expect(byPerson.get('Zhang San')).toBe(1)
+    expect(byPerson.get('Li Si')).toBe(0)
+  })
+
   // Who they are, for the administrator deciding whether to move the route
   // or the people: a question's saved route, or the unit kinds a route still
   // being composed asks for, read a page at a time and to the same door as
