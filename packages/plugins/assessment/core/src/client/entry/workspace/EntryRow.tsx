@@ -8,7 +8,7 @@ import { useBatchZone } from '../../batch/zone.ts'
 import { EntryStanding } from '../EntryStanding.tsx'
 import type { EntryDto } from '../model.ts'
 import { UnreadDot } from './marks.tsx'
-import { momentOf, standingOf, type EntryLine } from './model.ts'
+import { momentOf, standingOf, type EntryLine, type LinePart } from './model.ts'
 
 // One claim as one row: two lines that say which claim it is and what last
 // happened to it, and a column that says what it counts for.
@@ -64,6 +64,13 @@ const styles = stylex.create({
   },
   unreadCompact: { left: 5 },
   leadUnread: { fontWeight: 600 },
+  // a figure's field name, quieter than the figure it names, so the two read
+  // as a label and its value rather than as one sentence
+  partLabel: {
+    marginRight: '0.4em',
+    fontWeight: 400,
+    color: tokens.mutedForeground,
+  },
   main: {
     display: 'flex',
     minWidth: 0,
@@ -177,6 +184,20 @@ const styles = stylex.create({
   },
 })
 
+/** one part of the identity line: a field's name set apart from its figure */
+function Part({ part }: { part: LinePart }) {
+  return part.label === null ? (
+    <>{part.value}</>
+  ) : (
+    <>
+      <span data-part-label="" {...stylex.props(styles.partLabel)}>
+        {part.label}
+      </span>
+      {part.value}
+    </>
+  )
+}
+
 export function EntryRow({
   entry,
   line,
@@ -203,6 +224,9 @@ export function EntryRow({
 }) {
   const { format, locale } = useI18n()
   const zone = useBatchZone()
+  // what stands between two parts of the line, in the reader's language
+  const between = format(m.entriesPartJoin, { before: '', after: '' })
+  const [lead, ...rest] = line.parts
   const when = momentOf(line.at, locale, zone)
   const standing = (
     <EntryStanding
@@ -254,11 +278,16 @@ export function EntryRow({
         {unread && <VisuallyHidden>{format(m.claimUnread)}</VisuallyHidden>}
         <span {...stylex.props(styles.identity)}>
           <span data-part="lead" {...stylex.props(styles.lead, unread && styles.leadUnread)}>
-            {line.lead}
+            {lead === undefined ? line.lead : <Part part={lead} />}
           </span>
-          {line.sub !== '' && (
+          {rest.length > 0 && (
             <span data-part="sub" {...stylex.props(styles.sub)}>
-              {line.sub}
+              {rest.map((part, index) => (
+                <span key={index}>
+                  {index > 0 && between}
+                  <Part part={part} />
+                </span>
+              ))}
             </span>
           )}
         </span>

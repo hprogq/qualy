@@ -821,10 +821,16 @@ describe('reading one question’s claims', () => {
     })
     const only = () => rows()[0]!
     const lead = () => only().querySelector('[data-part="lead"]')?.textContent ?? ''
-    // a figure that differs from what it came to keeps its name beside it
+    // a figure that differs from what it came to keeps its name beside it,
+    // set apart and quieter, so the two read as a name and its value
     await expect.poll(() => only().getAttribute('data-entry')).toBe(entryId(1))
     expect(lead()).toContain('课程加权平均分')
     expect(lead()).toContain('95.02')
+    const name = only().querySelector('[data-part="lead"] [data-part-label]')!
+    expect(name.textContent).toBe('课程加权平均分')
+    expect(getComputedStyle(name).color).not.toBe(
+      getComputedStyle(only().querySelector('[data-part="lead"]')!).color,
+    )
     expect(only().querySelector('[data-amount]')?.getAttribute('data-amount')).toBe('9.50')
 
     // one that equals it is said once, in the amount; the field alone names the row

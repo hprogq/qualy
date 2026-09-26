@@ -251,10 +251,21 @@ export const voidedWithItem = (entry: EntryDto, item: Pick<ItemDto, 'status'>): 
 export const standingOf = (entry: EntryDto): string =>
   entry.supplement !== null ? 'awaiting_supplement' : contested(entry) ? 'contested' : entry.status
 
+/**
+ * One part of a claim's identity line: a value as filed, and - for a figure,
+ * which says nothing without it - the name of the field it was filed under.
+ */
+export interface LinePart {
+  readonly label: string | null
+  readonly value: string
+}
+
 /** how one claim reads in a list */
 export interface EntryLine {
   readonly lead: string
   readonly sub: string
+  /** the same line in parts, the first being the lead, for a list that sets names apart */
+  readonly parts: readonly LinePart[]
   /** every value it was filed with, for finding it by search */
   readonly words: string
   readonly amount: string | null
@@ -358,16 +369,25 @@ export const entryLineOf = (
   const kept = figures.filter(
     (part) => counted === null || unitsOf(part.value) !== unitsOf(counted),
   )
-  const said = [...texts, ...kept.map((part) => words.figure(part.label, part.value))]
-  if (said.length === 0) said.push(figures[0]?.label ?? item.title)
+  const said: LinePart[] = [
+    ...texts.map((value) => ({ label: null, value })),
+    ...kept.map((part) => ({ label: part.label, value: part.value })),
+  ]
+  if (said.length === 0) said.push({ label: null, value: figures[0]?.label ?? item.title })
+  const text = (part: LinePart) =>
+    part.label === null ? part.value : words.figure(part.label, part.value)
 
   // what last happened to it, the reviewer's words it carries and its files
   // are read the way every list of claims reads them, the account's included
   const { act, at } = claimActOf(entry)
 
   return {
-    lead: said[0]!,
-    sub: said.slice(1).reduce((line, part) => (line === '' ? part : words.join(line, part)), ''),
+    lead: text(said[0]!),
+    sub: said
+      .slice(1)
+      .map(text)
+      .reduce((line, part) => (line === '' ? part : words.join(line, part)), ''),
+    parts: said,
     words: [item.title, ...parts.map((part) => part.value)].join(' ').toLowerCase(),
     amount,
     amountWord,

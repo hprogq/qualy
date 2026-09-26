@@ -186,6 +186,12 @@ describe('a claim’s identity line', () => {
     )
     expect(line.lead).toBe('National')
     expect(line.sub).toBe('First|GPA=3.9')
+    // in parts, a figure keeps the name of its field apart from its value
+    expect(line.parts).toEqual([
+      { label: null, value: 'National' },
+      { label: null, value: 'First' },
+      { label: 'GPA', value: '3.9' },
+    ])
   })
 
   // The filing page and the account list the same claim; what last happened
