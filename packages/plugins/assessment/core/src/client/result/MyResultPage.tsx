@@ -209,6 +209,12 @@ function Standing({
   )
   const stages = plan.data?.timeline
   const shut = useMemo(() => filingShutOf(gates, stages), [gates, stages])
+  // the questions another claim can be filed on right now, on the filing page
+  const addable = useMemo(
+    () =>
+      new Set(gates.filter((gate) => gate.create.state === 'available').map((gate) => gate.itemId)),
+    [gates],
+  )
 
   // The claim the drawer holds, resolved from the address, so a reload
   // keeps it and a link carries it. One that is gone opens nothing.
@@ -402,6 +408,8 @@ function Standing({
             // drawer opens over the account rather than on another page
             fold="claims"
             onEntryOpen={setDetail}
+            addable={addable}
+            onItemAdd={(itemId) => toEntries({ open: itemId })}
           />
         </div>
       )}

@@ -1003,6 +1003,63 @@ describe('the rows of the account', () => {
   })
 })
 
+describe('the way to file another claim', () => {
+  const open = { state: 'available' as const, reason: null }
+  const full = { state: 'blocked' as const, reason: 'max-entries' }
+  const read = async (status = 'active') => {
+    await page.viewport(1440, 900)
+    const paper = normal()
+    await screen(paper, {
+      getBatch: () => Effect.succeed({ batch: { ...batch, status } }),
+      listMyEntries: () =>
+        Effect.succeed({
+          participantId: PARTICIPANT_ID,
+          entries: paper.entries,
+          nextCursor: null,
+          attention: { unreadItemIds: [] },
+          filing: paper.items.map((one) => ({
+            itemId: one.id,
+            create: one.id === 'q8' ? full : open,
+            submit: open,
+          })),
+        }),
+    })
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
+  }
+  const addOf = (itemId: string) =>
+    itemRow(itemId).querySelector<HTMLElement>('[data-follow="add"]')
+
+  it('offers it at the foot of a question’s claims, and goes to My entries at that question', async () => {
+    await read()
+    await userEvent.click(itemRow('q3').querySelector('button[aria-expanded]') as HTMLElement)
+    // a question already full offers no way to add to it
+    expect(addOf('q8')).toBeNull()
+    await userEvent.click(addOf('q3')!)
+    await expect.element(page.getByTestId('entries-page')).toBeInTheDocument()
+    expect(addressNow()).toContain('open=q3')
+  })
+
+  it('opens a question with one claim to hold the way on, rather than opening the claim', async () => {
+    await read()
+    const toggle = itemRow('q9').querySelector<HTMLElement>('button[aria-expanded]')!
+    await userEvent.click(toggle)
+    const fold = itemRow('q9').querySelector<HTMLElement>('[data-testid="ledger-lines"]')!
+    await expect.poll(() => fold.getAttribute('data-open')).toBe('true')
+    expect(fold.querySelector('[data-entry="q9-a"]')).not.toBeNull()
+    expect(addOf('q9')).not.toBeNull()
+  })
+
+  it('offers none on an account that has stopped moving', async () => {
+    await read('archived')
+    for (const toggle of document.querySelectorAll<HTMLElement>(
+      '[data-testid="ledger-item"] > button[aria-expanded]',
+    )) {
+      await userEvent.click(toggle)
+    }
+    expect(document.querySelector('[data-follow="add"]')).toBeNull()
+  })
+})
+
 describe('a question the stages keep shut', () => {
   const stage = (status: 'ended' | 'current' | 'future', index: number) => ({
     phaseId: `stage-${String(index)}`,

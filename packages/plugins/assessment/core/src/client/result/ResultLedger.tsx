@@ -86,6 +86,8 @@ const breathe = stylex.keyframes({
 
 /** a reader the stages keep out of nothing, one stable value across renders */
 const NONE_SHUT: ReadonlyMap<string, FilingShut> = new Map()
+/** a reader who files on nothing */
+const NONE_ADDABLE: ReadonlySet<string> = new Set()
 
 const two = twoPlaces
 
@@ -941,6 +943,11 @@ function useViewportHeight(seat: RefObject<HTMLElement | null>): number | null {
  *
  * `stream` is whether the page is keeping the account current while the
  * round moves; a page that does not say draws no mark for it.
+ *
+ * `onItemAdd` is where another claim is filed on a question, for a page
+ * whose reader files; `addable` names the questions that take one right
+ * now, and a question read claim by claim offers the way at the foot of
+ * its claims.
  */
 export function ResultLedger({
   result,
@@ -957,6 +964,8 @@ export function ResultLedger({
   shut = NONE_SHUT,
   fold = 'account',
   stream = null,
+  addable = NONE_ADDABLE,
+  onItemAdd,
 }: {
   result: LedgerResult
   items: readonly LedgerItem[]
@@ -985,6 +994,10 @@ export function ResultLedger({
   fold?: 'account' | 'claims'
   /** whether the page is keeping the account current as the round moves */
   stream?: 'live' | 'reconnecting' | null
+  /** the questions the reader may file another claim on right now */
+  addable?: ReadonlySet<string>
+  /** where another claim is filed on a question; the button says where that is */
+  onItemAdd?: (itemId: string) => void
 }) {
   const model = useMemo(() => buildLedger({ result, items, entries }), [result, items, entries])
   const seat = useRef<HTMLDivElement>(null)
@@ -1151,6 +1164,9 @@ export function ResultLedger({
                 onToggle={toggle}
                 onEntryOpen={onEntryOpen}
                 onItemOpen={onItemOpen}
+                // a closed account files nothing more
+                addable={closed === null ? addable : NONE_ADDABLE}
+                onItemAdd={onItemAdd}
                 holdSection={(element) => {
                   if (section.group === null) return
                   if (element === null) sections.current.delete(section.group.id)
@@ -1474,6 +1490,8 @@ function Section({
   onToggle,
   onEntryOpen,
   onItemOpen,
+  addable,
+  onItemAdd,
   holdSection,
   holdBand,
 }: {
@@ -1490,6 +1508,8 @@ function Section({
   onToggle: (id: string) => void
   onEntryOpen: ((entryId: string) => void) | undefined
   onItemOpen: ((itemId: string) => void) | undefined
+  addable: ReadonlySet<string>
+  onItemAdd: ((itemId: string) => void) | undefined
   holdSection: (element: HTMLElement | null) => void
   holdBand: (element: HTMLElement | null) => void
 }) {
@@ -1567,6 +1587,7 @@ function Section({
             onToggle={onToggle}
             onEntryOpen={onEntryOpen}
             onItemOpen={onItemOpen}
+            onAdd={onItemAdd !== undefined && addable.has(row.id) ? () => onItemAdd(row.id) : null}
           />
         )
       })}
@@ -1814,6 +1835,7 @@ function ItemRow({
   onToggle,
   onEntryOpen,
   onItemOpen,
+  onAdd,
 }: {
   item: LedgerItemView
   first: boolean
@@ -1827,6 +1849,8 @@ function ItemRow({
   onToggle: (id: string) => void
   onEntryOpen: ((entryId: string) => void) | undefined
   onItemOpen: ((itemId: string) => void) | undefined
+  /** filing another claim on the question, where the reader may right now */
+  onAdd: (() => void) | null
 }) {
   const { format, locale } = useI18n()
   const zone = useBatchZone()
@@ -1855,12 +1879,15 @@ function ItemRow({
     inPlace && claims.length === 1 && claims[0]!.claim !== null && claims[0]!.entryId !== null
       ? claims[0]
       : undefined
-  // a withdrawn question is one line that says so, and nothing opens under it
+  // read claim by claim, the fold's foot is the way to file another
+  const toAdd = inPlace && !item.voided ? onAdd : null
+  // a withdrawn question is one line that says so, and nothing opens under
+  // it; one claim opens by itself unless the fold has more to give
   const expandable =
     !item.voided &&
     (inPlace
       ? claims.length >= 2 ||
-        (claims.length === 1 && (sole === undefined || onEntryOpen === undefined))
+        (claims.length === 1 && (sole === undefined || onEntryOpen === undefined || toAdd !== null))
       : item.lines.length >= 2 || (item.lines.length === 1 && toAside !== null))
   const only = item.lines.length === 1 ? item.lines[0] : undefined
   const pressed = sole ?? only
@@ -2010,6 +2037,7 @@ function ItemRow({
           onEntryOpen={onEntryOpen}
           toItem={inPlace ? null : toItem}
           toWaiting={toWaiting}
+          toAdd={toAdd}
         />
       )}
     </div>
@@ -2034,6 +2062,7 @@ function Lines({
   onEntryOpen,
   toItem,
   toWaiting,
+  toAdd,
 }: {
   id: string
   item: LedgerItemView
@@ -2048,6 +2077,8 @@ function Lines({
   onEntryOpen: ((entryId: string) => void) | undefined
   toItem: (() => void) | null
   toWaiting: (() => void) | null
+  /** filing another claim on the question, on the page where that is done */
+  toAdd: (() => void) | null
 }) {
   const { format } = useI18n()
   const [whole, setWhole] = useState(false)
@@ -2145,6 +2176,18 @@ function Lines({
                 {...stylex.props(styles.more, styles.pressable)}
               >
                 {format(m.resultFollow, { kind: 'rest', count: item.aside, reader })}
+                <ChevronRightIcon aria-hidden {...stylex.props(styles.moreIcon)} />
+              </button>
+            )}
+            {toAdd !== null && (
+              <button
+                type="button"
+                data-testid="ledger-more"
+                data-follow="add"
+                onClick={toAdd}
+                {...stylex.props(styles.more, styles.pressable)}
+              >
+                {format(m.resultAddAway)}
                 <ChevronRightIcon aria-hidden {...stylex.props(styles.moreIcon)} />
               </button>
             )}

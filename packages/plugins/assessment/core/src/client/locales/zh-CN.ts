@@ -359,6 +359,7 @@ export default {
   'assessment/result/nothing-asked': '本批次还没有计分项目',
   'assessment/result/too-large-title': '成绩暂时无法计算',
   'assessment/result/act-abandoned': '放弃',
+  'assessment/result/add-away': '去我的申报新增',
   'assessment/result/if-submitted': '提交并通过后计入',
   'assessment/result/out-of': '/ {full} 分',
   'assessment/result/head-note':

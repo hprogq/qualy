@@ -1866,6 +1866,11 @@ const i18n = definePluginMessages({
       id: 'assessment/result/nothing-asked',
       defaultMessage: 'This round has no scored items yet',
     },
+    // the way from a question's claims to filing another, named for where it goes
+    resultAddAway: {
+      id: 'assessment/result/add-away',
+      defaultMessage: 'Add another in My entries',
+    },
     // a claim its owner gave up, in the word its chip uses
     resultActAbandoned: { id: 'assessment/result/act-abandoned', defaultMessage: 'abandoned' },
     // what a draft would come to: it has to be submitted first
