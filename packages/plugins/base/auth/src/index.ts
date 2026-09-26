@@ -131,6 +131,16 @@ const plugin = Plugin.define(
     title: message('auth/person/tab-identities', 'Ways in'),
     visibility: permissionOf('auth.user.read'),
   }),
+  // where they are signed in and every attempt to come in as them: security
+  // data, so read by whoever administers their account, and only them
+  Ui.page({
+    id: 'auth/user-activity',
+    path: '/organization/users/:userId/activity',
+    component: Ui.react('./client/iam/UserActivityPage'),
+    layout: USER_DETAIL_SHELL,
+    title: message('auth/activity/title', 'Security activity'),
+    visibility: permissionOf('auth.user.manage'),
+  }),
   Ui.slot({
     key: userDetailHeader.key,
     id: 'auth/user-detail-header',
@@ -174,6 +184,19 @@ const plugin = Plugin.define(
           order: 20,
         },
         visibility: permissionOf('auth.user.read'),
+      },
+      {
+        collection: userDetailNavigation,
+        id: 'auth/user-detail/activity',
+        value: {
+          id: 'auth/user-detail/activity',
+          label: message('auth/activity/title', 'Security activity'),
+          target: { kind: 'page', pageId: 'auth/user-activity' },
+          icon: 'calendar-clock',
+          // after the ways in, before the roles another plugin files at 30
+          order: 25,
+        },
+        visibility: permissionOf('auth.user.manage'),
       },
     ],
   }),

@@ -583,6 +583,21 @@ smtp 后端对着 Mailpit 跑同一套,CI 设 `QUALY_REQUIRE_MAILPIT_TESTS=1`,�
 - **分页**：登录记录和账号变更按用户要求使用页码分页（`numberedPageQuery` / `numberedPageOf` + `pageWindow`），并支持日期范围。这偏离了 CLAUDE.md「向前读的流用 keyset」的默认约定，代价是每页多一次 count 和一次 offset；两个列表都按单个用户过滤，规模有限。排序键是 (时间, id)，是全序。
 - **最近登录**：两张入口表的「最近登录」按入口从 `sign_in_events` 取最近一次成功登录，不再读绑定的 `lastUsedAt`。这是因为按字段找人的入口（CAS）没有绑定行。
 
+## 管理员查看他人的会话与登录记录（2026-09-26 用户裁决 #6）
+
+- 用户详情多一个「安全活动」分区（`auth/user-activity`，排在登录方式之后、角色授权之前），内容与本人的「当前登录」「登录记录」同源同形：
+  `GET /iam/users/{userId}/sessions`（keyset）、`GET /iam/users/{userId}/sign-ins`（结果、日期范围、页码）、
+  `DELETE /iam/users/{userId}/sessions/{sessionId}`、`DELETE /iam/users/{userId}/sessions`。响应形状与 `/iam/self/*` 共用同一组 schema。
+- **门控是账号门**：IP 与设备是安全数据不是名册信息，读与写都要求在该人节点持有 `auth.user.manage` 且过「管人边界」的账号门
+  （`users.accountGuard` = `administered` + `requireAccount`，与改邮箱、重置密码同一判定）；查不到与够不着一律 `ACCESS_DENIED`。
+  分区的导航与页面可见性是 `permissionOf('auth.user.manage')`，页面再按 `getUser` 的 `accountManageable` 决定是显示记录还是一句无权说明，
+  够不着的人不会发出任何记录请求。没有新增权限码。
+- **结束会话**：单个与全部都可以，系统账户也可以；管理员自己正在用的会话永远不在其中（与本人接口同一排除），结束后同一事务作废该人待确认的改邮箱链接。
+  写在租户锁内、同一事务里复跑账号门。**记审计** `auth.user.session.revoke`（`scope: one | all`，只在确实结束了会话时记），声明了 `subject`
+  「管理员结束了你的登录会话」，本人在「账号变更」里看得到；管理员在这里结束自己的会话按本人操作记 `auth.session.revoke`。读取不记审计。
+- **账号变更**不在这个分区：它来自审计，由 audit 插件向用户详情贡献「操作记录」分区（`audit/user-events`，`permissionOf('audit.event.read')`），
+  只对持有审计读权限的人显示（同一裁决）。
+
 ## 登录方式图标：两种背景与 SVG（2026-09-24 定案）
 
 - **按所在背景选，不按主题选**：上传的图标最多两张，`onLight`（必填）与 `onDark`（可选，缺省时沿用 `onLight`）。深色背景既包括深色主题的页面，也包括浅色主题下被推荐的实心按钮；组件用 `tone: 'plain' | 'inverse'` 说明自己站在页面底色上还是它的反色上，再结合当前主题得出实际背景。内置图标里线条类跟随文字颜色，品牌色字母块在两种背景上都清楚的不变，Apple 在深色背景上换成浅底深字。不对彩色图做 `filter: invert()`，那会毁掉品牌色。

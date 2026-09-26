@@ -572,3 +572,115 @@ describe.runIf(postgresAvailable)('the reader’s own devices and sign-ins', () 
     }
   })
 })
+
+describe.runIf(postgresAvailable)('somebody else’s devices and sign-ins', () => {
+  it('are read and ended by whoever administers the account, and by nobody else', async () => {
+    const db = await createTestContext('person-sessions')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const iam = yield* Iam
+            const role = one<{ id: string }>(
+              yield* runSql(sql`
+                insert into roles (tenant_id, code, name, kind, status, permission_mode, system_key)
+                values (${f.tenant}, 'admin', 'Admin', 'tenant', 'active', 'all-active', 'tenant-admin')
+                returning id`),
+            ).id
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id)
+              values (${f.tenant}, ${f.admin}, ${role})`)
+            const adminHere = one<{ id: string }>(
+              yield* runSql(sql`
+                insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at)
+                values (${f.tenant}, ${f.admin}, ${f.local}, repeat('d', 64), now() + interval '1 day')
+                returning id`),
+            ).id
+            yield* runSql(sql`
+              insert into sign_in_events (tenant_id, occurred_at, provider_id, provider_type, provider_code, user_id, outcome, client_ip)
+              values (${f.tenant}, now(), ${f.local}, 'local', 'local', ${f.ada}, 'failure', '203.0.113.9')`)
+            const admin = f.as(f.admin, adminHere)
+            const lin = f.as(f.lin, f.linByHub)
+            const guard = (as: Principal, userId: string) =>
+              iam.users.accountGuard(f.tenant, userId, as)
+            const person = iam.selfSecurity.person
+            const sessions = yield* person.sessions(
+              admin,
+              f.ada,
+              { limit: 20 },
+              guard(admin, f.ada),
+            )
+            const signIns = yield* person.signIns(
+              admin,
+              f.ada,
+              {},
+              { page: 1, pageSize: 10 },
+              guard(admin, f.ada),
+            )
+            // somebody with no authority over the account reads nothing of it
+            const peeked = yield* Effect.result(
+              person.sessions(lin, f.ada, { limit: 20 }, guard(lin, f.ada)),
+            )
+            const pressed = yield* Effect.result(person.endSessions(lin, f.ada, guard(lin, f.ada)))
+            // one of theirs, then the rest; somebody else's id is not theirs
+            const stray = yield* Effect.result(
+              person.endSession(admin, f.ada, f.linByHub, guard(admin, f.ada)),
+            )
+            yield* person.endSession(admin, f.ada, f.adaByHub, guard(admin, f.ada))
+            const rest = yield* person.endSessions(admin, f.ada, guard(admin, f.ada))
+            const ada = yield* person.sessions(admin, f.ada, { limit: 20 }, guard(admin, f.ada))
+            // the administrator's own session is never among what they end
+            const own = yield* person.endSessions(admin, f.admin, guard(admin, f.admin))
+            const kept = yield* runSql<{ n: string }>(
+              sql`select count(*)::text as n from sessions where id = ${adminHere}`,
+            )
+            const recorded = yield* runSql<{
+              action: string
+              details: { scope: string; ended: number }
+            }>(sql`
+              select action_code as action, details from audit_events
+               where target_id = ${f.ada} order by occurred_at, id`)
+            const lins = yield* runSql<{ n: string }>(
+              sql`select count(*)::text as n from sessions where user_id = ${f.lin}`,
+            )
+            return {
+              sessions,
+              signIns,
+              peeked,
+              pressed,
+              stray,
+              rest,
+              ada,
+              own,
+              kept: kept.rows[0]!.n,
+              recorded: recorded.rows,
+              lins: lins.rows[0]!.n,
+            }
+          }),
+        ),
+      )
+      expect(answer.sessions.map((row) => row.id).sort()).toEqual(
+        [f.adaByHub, f.adaByPassword].sort(),
+      )
+      // their refused attempts are theirs to be read too
+      expect(answer.signIns.rows.map((row) => row.outcome)).toEqual(['failure'])
+      expect(tagOf(answer.peeked)).toBe('ACCESS_DENIED')
+      expect(tagOf(answer.pressed)).toBe('ACCESS_DENIED')
+      expect(tagOf(answer.stray)).toBe('AUTH_SESSION_NOT_FOUND')
+      expect(answer.rest).toBe(1)
+      expect(answer.ada).toEqual([])
+      expect(answer.own).toBe(0)
+      expect(answer.kept).toBe('1')
+      expect(answer.lins).toBe('1')
+      // told to the person as an administrator's act, one and then all
+      expect(answer.recorded).toEqual([
+        { action: 'auth.user.session.revoke', details: { scope: 'one', ended: 1 } },
+        { action: 'auth.user.session.revoke', details: { scope: 'all', ended: 1 } },
+      ])
+    } finally {
+      await db.dispose()
+    }
+  })
+})

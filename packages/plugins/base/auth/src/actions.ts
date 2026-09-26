@@ -272,8 +272,21 @@ export const SessionsEnded = AuditAction.define({
   details: Schema.Struct({ scope: Schema.Literals(['one', 'others']), ended: Schema.Number }),
 })
 
+// Somebody else's sessions, ended by whoever administers their account: one,
+// or every one of them. What they ended is said to the person in their own
+// account changes; the administrator's own session is never among them.
+export const UserSessionsEnded = AuditAction.define({
+  code: 'auth.user.session.revoke',
+  target: 'auth.user',
+  version: 1,
+  name: message('auth/audit/user-session-revoke', 'End a user’s sign-in sessions'),
+  subject: message('auth/audit-subject/user-session-revoke', 'An administrator signed you out'),
+  details: Schema.Struct({ scope: Schema.Literals(['one', 'all']), ended: Schema.Number }),
+})
+
 export const userActions = [
   SessionsEnded,
+  UserSessionsEnded,
   BindingWritten,
   BindingRevoked,
   UserCreated,

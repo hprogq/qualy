@@ -105,10 +105,21 @@ function Meta({ parts }: { parts: readonly (string | null)[] }) {
 }
 
 /**
- * The reader's sessions still open, with a way to end any but the one in
- * hand, or all of those at once.
+ * Whose record this is, when it is not the reader's own: somebody the reader
+ * administers, read and acted on through the directory rather than the
+ * reader's own account.
  */
-export function SessionsCard() {
+export interface RecordPerson {
+  readonly userId: string
+  readonly name: string
+}
+
+/**
+ * The sessions still open, with a way to end any but the one in hand, or all
+ * of those at once: the reader's own, or those of somebody whose account the
+ * reader administers.
+ */
+export function SessionsCard({ person }: { person?: RecordPerson }) {
   const api = useApi(authApi)
   const run = useRunApi()
   const query = useApiQuery(authApi)
@@ -116,18 +127,35 @@ export function SessionsCard() {
   const { format, formatError, locale } = useI18n()
   const [confirming, setConfirming] = useState(false)
   const sessions = useInfiniteQuery({
-    queryKey: [...query.self.listSelfSessions.key({ query: {} }), 'infinite'],
-    queryFn: ({ pageParam }) =>
-      run(
-        api.self.listSelfSessions({ query: pageParam === undefined ? {} : { cursor: pageParam } }),
-      ),
+    queryKey:
+      person === undefined
+        ? [...query.self.listSelfSessions.key({ query: {} }), 'infinite']
+        : [
+            ...query.identity.listUserSessions.key({
+              params: { userId: person.userId },
+              query: {},
+            }),
+            'infinite',
+          ],
+    queryFn: ({ pageParam }) => {
+      const page = pageParam === undefined ? {} : { cursor: pageParam }
+      return person === undefined
+        ? run(api.self.listSelfSessions({ query: page }))
+        : run(api.identity.listUserSessions({ params: { userId: person.userId }, query: page }))
+    },
     ...cursorPages,
   })
   const items = sessions.data?.pages.flatMap((page) => page.items) ?? []
   const others = items.filter((session) => !session.current).length
-  const refresh = () => queryClient.invalidateQueries({ queryKey: query.self.key() })
+  const refresh = () =>
+    queryClient.invalidateQueries({
+      queryKey: person === undefined ? query.self.key() : query.identity.key(),
+    })
   const endOne = useMutation({
-    mutationFn: (sessionId: string) => run(api.self.deleteSelfSession({ params: { sessionId } })),
+    mutationFn: (sessionId: string) =>
+      person === undefined
+        ? run(api.self.deleteSelfSession({ params: { sessionId } }))
+        : run(api.identity.deleteUserSession({ params: { userId: person.userId, sessionId } })),
     onSuccess: async () => {
       toast.success(format(m.sessionEnded))
       await refresh()
@@ -135,7 +163,10 @@ export function SessionsCard() {
     onError: (error: unknown) => toast.error(formatError(error)),
   })
   const endOthers = useMutation({
-    mutationFn: () => run(api.self.deleteSelfSessions({})),
+    mutationFn: () =>
+      person === undefined
+        ? run(api.self.deleteSelfSessions({}))
+        : run(api.identity.deleteUserSessions({ params: { userId: person.userId } })),
     onSuccess: async ({ ended }) => {
       toast.success(format(m.sessionsEnded, { count: ended }))
       await refresh()
@@ -144,17 +175,20 @@ export function SessionsCard() {
   })
 
   return (
-    <Card data-testid="sessions-card">
+    <Card data-testid="sessions-card" data-count={items.length}>
       <CardHead title={format(m.sessionsTitle)}>
         {/* the history of how they came in is its own page; this card is
-            what is signed in now */}
-        <PageLink
-          page="auth/account-activity"
-          unavailable={null}
-          className={stylex.props(styles.all).className}
-        >
-          {format(m.sessionsActivity)}
-        </PageLink>
+            what is signed in now. Somebody else's history is on the page
+            this card stands on. */}
+        {person === undefined && (
+          <PageLink
+            page="auth/account-activity"
+            unavailable={null}
+            className={stylex.props(styles.all).className}
+          >
+            {format(m.sessionsActivity)}
+          </PageLink>
+        )}
       </CardHead>
       <AsyncSection
         pending={sessions.isPending}
@@ -164,6 +198,9 @@ export function SessionsCard() {
         onRetry={() => void sessions.refetch()}
         skeleton={<TableSkeleton rows={2} />}
       >
+        {/* the reader's own list always has the session in hand; somebody
+            else's may have none at all */}
+        {items.length === 0 && <CardEmpty>{format(m.personSessionsNone)}</CardEmpty>}
         {items.map((session) => (
           <div
             key={session.id}
@@ -221,7 +258,7 @@ export function SessionsCard() {
                 disabled={endOthers.isPending}
                 onClick={() => setConfirming(true)}
               >
-                {format(m.sessionsEndOthers)}
+                {format(person === undefined ? m.sessionsEndOthers : m.personSessionsEndAll)}
               </Button>
             )}
           </CardFoot>
@@ -230,9 +267,15 @@ export function SessionsCard() {
       <ConfirmDialog
         open={confirming}
         tone="destructive"
-        title={format(m.sessionsEndOthersTitle)}
-        description={format(m.sessionsEndOthersBody)}
-        confirmLabel={format(m.sessionsEndOthers)}
+        title={
+          person === undefined
+            ? format(m.sessionsEndOthersTitle)
+            : format(m.personSessionsEndAllTitle, { name: person.name })
+        }
+        description={format(
+          person === undefined ? m.sessionsEndOthersBody : m.personSessionsEndAllBody,
+        )}
+        confirmLabel={format(person === undefined ? m.sessionsEndOthers : m.personSessionsEndAll)}
         cancelLabel={format(m.cancel)}
         pending={endOthers.isPending}
         onCancel={() => setConfirming(false)}
@@ -448,15 +491,39 @@ function RecordCard<Item extends { readonly id: string }>({
   )
 }
 
-/** the reader's sign-ins: the latest few here, all of them in the sheet */
-export function SignInRecords() {
+/** one page of sign-ins, the reader's own or somebody's they administer */
+const useSignIns = (
+  person: RecordPerson | undefined,
+  asked: {
+    outcome?: 'success' | 'failure'
+    from?: string
+    to?: string
+    page: string
+    limit: string
+  },
+  keepPrevious = false,
+) => {
+  const api = useApi(authApi)
+  const run = useRunApi()
   const query = useApiQuery(authApi)
+  // one query, whichever record it is: the other one is not asked for at all
+  return useQuery({
+    queryKey:
+      person === undefined
+        ? query.self.listSelfSignIns.key({ query: asked })
+        : query.identity.listUserSignIns.key({ params: { userId: person.userId }, query: asked }),
+    queryFn: () =>
+      person === undefined
+        ? run(api.self.listSelfSignIns({ query: asked }))
+        : run(api.identity.listUserSignIns({ params: { userId: person.userId }, query: asked })),
+    ...(keepPrevious ? { placeholderData: keepPreviousData } : {}),
+  })
+}
+
+/** the sign-ins: the latest few here, all of them in the sheet */
+export function SignInRecords({ person }: { person?: RecordPerson }) {
   const { format } = useI18n()
-  const recent = useQuery(
-    query.self.listSelfSignIns.queryOptions({
-      query: { page: '1', limit: String(RECENT) },
-    }),
-  )
+  const recent = useSignIns(person, { page: '1', limit: String(RECENT) })
   return (
     <RecordCard
       testId="sign-ins-card"
@@ -464,7 +531,7 @@ export function SignInRecords() {
       empty={format(m.signInsEmpty)}
       recent={recent}
       row={(attempt: SignIn) => <SignInRow attempt={attempt} />}
-      whole={<AllSignIns />}
+      whole={<AllSignIns person={person} />}
     />
   )
 }
@@ -491,23 +558,21 @@ export function AccountChanges() {
 }
 
 /** every sign-in, a numbered page at a time, within the days and outcome asked for */
-function AllSignIns() {
-  const query = useApiQuery(authApi)
+function AllSignIns({ person }: { person: RecordPerson | undefined }) {
   const { format, formatError } = useI18n()
   const [outcome, setOutcome] = useState<'all' | 'success' | 'failure'>('all')
   const [range, setRange] = useState<DateRange>({ start: '', end: '' })
   const [page, setPage] = useState(1)
-  const signIns = useQuery({
-    ...query.self.listSelfSignIns.queryOptions({
-      query: {
-        ...(outcome === 'all' ? {} : { outcome }),
-        ...periodOf(range),
-        page: String(page),
-        limit: String(PAGE_SIZE),
-      },
-    }),
-    placeholderData: keepPreviousData,
-  })
+  const signIns = useSignIns(
+    person,
+    {
+      ...(outcome === 'all' ? {} : { outcome }),
+      ...periodOf(range),
+      page: String(page),
+      limit: String(PAGE_SIZE),
+    },
+    true,
+  )
   const items = signIns.data?.items ?? []
   return (
     <div {...stylex.props(styles.whole)}>

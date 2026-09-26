@@ -29,6 +29,7 @@
     "./client/iam/PeoplePickerView": "./src/client/iam/PeoplePickerView.tsx",
     "./client/iam/PersonCard": "./src/client/iam/PersonCard.tsx",
     "./client/iam/UserDetailHeader": "./src/client/iam/UserDetailHeader.tsx",
+    "./client/iam/UserActivityPage": "./src/client/iam/UserActivityPage.tsx",
     "./client/iam/UserIdentitiesPage": "./src/client/iam/UserIdentitiesPage.tsx",
     "./client/iam/UserOrganizationPage": "./src/client/iam/UserOrganizationPage.tsx",
     "./client/iam/UserProfilePage": "./src/client/iam/UserProfilePage.tsx",

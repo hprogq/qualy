@@ -474,16 +474,7 @@ export const selfApiHandlers = HttpApiBuilder.group(local, 'self', (handlers) =>
           { page: pageNumber(query.page), pageSize },
         )
         return {
-          items: found.rows.map((row) => ({
-            id: row.id,
-            occurredAt: instant(row.occurredAt) ?? '',
-            outcome: row.outcome === 'success' ? ('success' as const) : ('failure' as const),
-            entrance:
-              row.providerName === null ? null : { name: row.providerName, type: row.providerType },
-            current: row.sessionId !== null && row.sessionId === principal.sessionId,
-            clientIp: row.clientIp,
-            userAgent: row.userAgent,
-          })),
+          items: found.rows.map(signInItem(principal)),
           total: found.total,
           page: found.page,
           pageSize,
@@ -519,19 +510,7 @@ export const selfApiHandlers = HttpApiBuilder.group(local, 'self', (handlers) =>
         const items = found.slice(0, limit)
         const last = items.at(-1)
         return {
-          items: items.map((row) => ({
-            id: row.id,
-            current: row.id === principal.sessionId,
-            entrance:
-              row.providerName === null || row.providerType === null
-                ? null
-                : { name: row.providerName, type: row.providerType },
-            createdAt: instant(row.createdAt) ?? '',
-            lastUsedAt: instant(row.lastUsedAt),
-            expiresAt: instant(row.expiresAt) ?? '',
-            clientIp: row.loginIp,
-            userAgent: row.userAgent,
-          })),
+          items: items.map(sessionItem(principal)),
           nextCursor:
             found.length > limit && last !== undefined
               ? encodeQueryCursor('self-sessions', [last.cursorAt, last.id])
@@ -608,6 +587,37 @@ const requireUserRead = Effect.fn('iam.requireUserRead')(function* (principal: P
 /** a timestamp as the wire carries it; the driver hands back either shape */
 const instant = (value: Date | string | null): string | null =>
   value === null ? null : value instanceof Date ? value.toISOString() : String(value)
+
+type SignInRow = Effect.Success<
+  ReturnType<Iam['Service']['selfSecurity']['signIns']>
+>['rows'][number]
+type SessionRow = Effect.Success<ReturnType<Iam['Service']['selfSecurity']['sessions']>>[number]
+
+/** one attempt to sign in, as the record reads it to `reader`, whoever it is about */
+const signInItem = (reader: Principal) => (row: SignInRow) => ({
+  id: row.id,
+  occurredAt: instant(row.occurredAt) ?? '',
+  outcome: row.outcome === 'success' ? ('success' as const) : ('failure' as const),
+  entrance: row.providerName === null ? null : { name: row.providerName, type: row.providerType },
+  current: row.sessionId !== null && row.sessionId === reader.sessionId,
+  clientIp: row.clientIp,
+  userAgent: row.userAgent,
+})
+
+/** one open session, as the record reads it to `reader`, whoever it is about */
+const sessionItem = (reader: Principal) => (row: SessionRow) => ({
+  id: row.id,
+  current: row.id === reader.sessionId,
+  entrance:
+    row.providerName === null || row.providerType === null
+      ? null
+      : { name: row.providerName, type: row.providerType },
+  createdAt: instant(row.createdAt) ?? '',
+  lastUsedAt: instant(row.lastUsedAt),
+  expiresAt: instant(row.expiresAt) ?? '',
+  clientIp: row.loginIp,
+  userAgent: row.userAgent,
+})
 
 const toUserDto = (row: UserProjection) => ({
   id: row.id,
@@ -1052,6 +1062,87 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
           mailLocaleOf(request.headers['accept-language']),
           iam.users.accountGuard(principal.tenantId, params.userId, principal),
         )
+      }),
+    )
+    .handle(
+      'listUserSessions',
+      Effect.fn('iam.listUserSessions.handler')(function* ({ params, query }) {
+        const iam = yield* Iam
+        const principal = yield* CurrentUser
+        const limit = pageSize(query.limit, SELF_PAGE_SIZE)
+        const key = readQueryCursor(query.cursor, `user-sessions:${params.userId}`, [
+          'timestamp',
+          'uuid',
+        ])
+        if (key === null) return yield* cursorUnusable()
+        const found = yield* iam.selfSecurity.person.sessions(
+          principal,
+          params.userId,
+          {
+            ...(key === undefined ? {} : { after: [key[0]!, key[1]!] as const }),
+            limit: limit + 1,
+          },
+          iam.users.accountGuard(principal.tenantId, params.userId, principal),
+        )
+        const items = found.slice(0, limit)
+        const last = items.at(-1)
+        return {
+          items: items.map(sessionItem(principal)),
+          nextCursor:
+            found.length > limit && last !== undefined
+              ? encodeQueryCursor(`user-sessions:${params.userId}`, [last.cursorAt, last.id])
+              : null,
+        }
+      }),
+    )
+    .handle(
+      'deleteUserSession',
+      Effect.fn('iam.deleteUserSession.handler')(function* ({ params }) {
+        const iam = yield* Iam
+        const principal = yield* CurrentUser
+        yield* iam.selfSecurity.person.endSession(
+          principal,
+          params.userId,
+          params.sessionId,
+          iam.users.accountGuard(principal.tenantId, params.userId, principal),
+        )
+        return { ok: true as const }
+      }),
+    )
+    .handle(
+      'deleteUserSessions',
+      Effect.fn('iam.deleteUserSessions.handler')(function* ({ params }) {
+        const iam = yield* Iam
+        const principal = yield* CurrentUser
+        return {
+          ended: yield* iam.selfSecurity.person.endSessions(
+            principal,
+            params.userId,
+            iam.users.accountGuard(principal.tenantId, params.userId, principal),
+          ),
+        }
+      }),
+    )
+    .handle(
+      'listUserSignIns',
+      Effect.fn('iam.listUserSignIns.handler')(function* ({ params, query }) {
+        const iam = yield* Iam
+        const principal = yield* CurrentUser
+        const period = yield* periodOf(query)
+        const pageSize = numberedPageSize(query.limit)
+        const found = yield* iam.selfSecurity.person.signIns(
+          principal,
+          params.userId,
+          { ...period, ...(query.outcome === undefined ? {} : { outcome: query.outcome }) },
+          { page: pageNumber(query.page), pageSize },
+          iam.users.accountGuard(principal.tenantId, params.userId, principal),
+        )
+        return {
+          items: found.rows.map(signInItem(principal)),
+          total: found.total,
+          page: found.page,
+          pageSize,
+        }
       }),
     )
     .handle(

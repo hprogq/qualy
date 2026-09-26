@@ -341,6 +341,43 @@ const authProvider = Schema.Struct({
   audience: audiencePolicyView,
 })
 
+// One person's security record, the same whoever reads it: the person on
+// their own account, or somebody administering theirs.
+
+/** where an attempt or a session came in, as the door is named now; null for one since deleted */
+const recordDoor = Schema.NullOr(Schema.Struct({ name: Schema.String, type: Schema.String }))
+
+/** one attempt to sign in as the person */
+const signInAttempt = Schema.Struct({
+  id: Schema.String,
+  occurredAt: Schema.String,
+  outcome: Schema.Literals(['success', 'failure']),
+  entrance: recordDoor,
+  /** the attempt that opened the session the reader is using */
+  current: Schema.Boolean,
+  clientIp: Schema.NullOr(Schema.String),
+  userAgent: Schema.NullOr(Schema.String),
+})
+
+/** a stretch of time to read within: inclusive lower and exclusive upper instants */
+const recordPeriod = {
+  from: Schema.optional(Schema.String.check(Schema.isMaxLength(40))),
+  to: Schema.optional(Schema.String.check(Schema.isMaxLength(40))),
+}
+
+/** one of the person's open sessions */
+const signInSession = Schema.Struct({
+  id: Schema.String,
+  /** the one the reader's request came in on */
+  current: Schema.Boolean,
+  entrance: recordDoor,
+  createdAt: Schema.String,
+  lastUsedAt: Schema.NullOr(Schema.String),
+  expiresAt: Schema.String,
+  clientIp: Schema.NullOr(Schema.String),
+  userAgent: Schema.NullOr(Schema.String),
+})
+
 export const identityApiGroup = HttpApiGroup.make('identity')
   .add(
     // the tenant's ways in, with who may use each: the door's own audience,
@@ -857,6 +894,48 @@ export const identityApiGroup = HttpApiGroup.make('identity')
       error: [AccessDenied, EmailMissing, MailNotSent, TooManyAttemptsResponse],
     }).middleware(Authenticated),
   )
+  // One person's sessions and sign-ins, for whoever administers their
+  // account: the same records the person reads of themselves, and a way to
+  // end the sessions. IP addresses and devices are security data rather than
+  // directory data, so reading them takes the account's authority too; an id
+  // the caller may not act on answers exactly as one that names nobody.
+  .add(
+    HttpApiEndpoint.get('listUserSessions', '/iam/users/:userId/sessions', {
+      params: Schema.Struct({ userId: uuidInput }),
+      query: Schema.Struct({ ...pageQuery }),
+      success: pageOf(signInSession),
+      error: [BadRequest, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // one of theirs; never the one the caller is using, which is ended by signing out
+    HttpApiEndpoint.delete('deleteUserSession', '/iam/users/:userId/sessions/:sessionId', {
+      params: Schema.Struct({ userId: uuidInput, sessionId: uuidInput }),
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+      error: [SessionNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // every one of theirs, but the caller's own in hand
+    HttpApiEndpoint.delete('deleteUserSessions', '/iam/users/:userId/sessions', {
+      params: Schema.Struct({ userId: uuidInput }),
+      success: Schema.Struct({ ended: Schema.Number }),
+      error: [AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // every attempt to come in as them, newest first, as they read it themselves
+    HttpApiEndpoint.get('listUserSignIns', '/iam/users/:userId/sign-ins', {
+      params: Schema.Struct({ userId: uuidInput }),
+      query: Schema.Struct({
+        outcome: Schema.optional(Schema.Literals(['success', 'failure'])),
+        ...recordPeriod,
+        ...numberedPageQuery,
+      }),
+      success: numberedPageOf(signInAttempt),
+      error: [BadRequest, AccessDenied],
+    }).middleware(Authenticated),
+  )
   // Every entrance in the tenant as it stands for one person: whether it
   // admits them, what is bound, and whether anything can be. A page of its
   // own question rather than more of getUser, which every banner reads.
@@ -1109,27 +1188,6 @@ const selfEntrance = Schema.Struct({
   unbindable: Schema.Boolean,
 })
 
-/** where an attempt or a session came in, as the door is named now; null for one since deleted */
-const selfDoor = Schema.NullOr(Schema.Struct({ name: Schema.String, type: Schema.String }))
-
-/** one attempt to sign in as the reader */
-const selfSignIn = Schema.Struct({
-  id: Schema.String,
-  occurredAt: Schema.String,
-  outcome: Schema.Literals(['success', 'failure']),
-  entrance: selfDoor,
-  /** the attempt that opened the session in hand */
-  current: Schema.Boolean,
-  clientIp: Schema.NullOr(Schema.String),
-  userAgent: Schema.NullOr(Schema.String),
-})
-
-/** a stretch of time to read within: inclusive lower and exclusive upper instants */
-const selfPeriod = {
-  from: Schema.optional(Schema.String.check(Schema.isMaxLength(40))),
-  to: Schema.optional(Schema.String.check(Schema.isMaxLength(40))),
-}
-
 /** one thing done to the reader's account, in the words given for them */
 const selfAccountChange = Schema.Struct({
   id: Schema.String,
@@ -1137,19 +1195,6 @@ const selfAccountChange = Schema.Struct({
   name: UiTextSchema,
   /** the reader themselves, or somebody else */
   actor: Schema.Literals(['self', 'other']),
-})
-
-/** one of the reader's open sessions */
-const selfSession = Schema.Struct({
-  id: Schema.String,
-  /** the one this request came in on */
-  current: Schema.Boolean,
-  entrance: selfDoor,
-  createdAt: Schema.String,
-  lastUsedAt: Schema.NullOr(Schema.String),
-  expiresAt: Schema.String,
-  clientIp: Schema.NullOr(Schema.String),
-  userAgent: Schema.NullOr(Schema.String),
 })
 
 export const selfApiGroup = HttpApiGroup.make('self')
@@ -1316,10 +1361,10 @@ export const selfApiGroup = HttpApiGroup.make('self')
     HttpApiEndpoint.get('listSelfSignIns', '/iam/self/sign-ins', {
       query: Schema.Struct({
         outcome: Schema.optional(Schema.Literals(['success', 'failure'])),
-        ...selfPeriod,
+        ...recordPeriod,
         ...numberedPageQuery,
       }),
-      success: numberedPageOf(selfSignIn),
+      success: numberedPageOf(signInAttempt),
       error: [BadRequest],
     }).middleware(Authenticated),
   )
@@ -1327,7 +1372,7 @@ export const selfApiGroup = HttpApiGroup.make('self')
     // what was done to the reader's account - their password, their address,
     // their ways in, their sessions - as the trail tells it to them
     HttpApiEndpoint.get('listSelfAccountChanges', '/iam/self/account-changes', {
-      query: Schema.Struct({ ...selfPeriod, ...numberedPageQuery }),
+      query: Schema.Struct({ ...recordPeriod, ...numberedPageQuery }),
       success: numberedPageOf(selfAccountChange),
       error: [BadRequest],
     }).middleware(Authenticated),
@@ -1336,7 +1381,7 @@ export const selfApiGroup = HttpApiGroup.make('self')
     // the reader's sessions still open, the one in hand among them
     HttpApiEndpoint.get('listSelfSessions', '/iam/self/sessions', {
       query: Schema.Struct({ ...pageQuery }),
-      success: pageOf(selfSession),
+      success: pageOf(signInSession),
       error: [BadRequest],
     }).middleware(Authenticated),
   )

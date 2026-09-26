@@ -53,6 +53,10 @@ const businessNoMissingMessage = defineMessage<{ businessNo: string }>()({
   id: 'auth/person/business-no-missing',
   defaultMessage: 'No {businessNo} yet',
 })
+const personSessionsEndAllTitleMessage = defineMessage<{ name: string }>()({
+  id: 'auth/person/sessions-end-all-title',
+  defaultMessage: 'Sign {name} out everywhere?',
+})
 const personVerificationSentMessage = defineMessage<{ email: string }>()({
   id: 'auth/person/verification-sent',
   defaultMessage: 'A verification link went to {email}',
@@ -316,6 +320,14 @@ const i18n = definePluginMessages({
     'audit.auth.session.revoke': {
       id: 'auth/audit/session-revoke',
       defaultMessage: 'End sign-in sessions',
+    },
+    'audit.auth.user.session.revoke': {
+      id: 'auth/audit/user-session-revoke',
+      defaultMessage: 'End a user’s sign-in sessions',
+    },
+    'audit-subject.auth.user.session.revoke': {
+      id: 'auth/audit-subject/user-session-revoke',
+      defaultMessage: 'An administrator signed you out',
     },
     // what the person an action happened to reads in their own activity
     'audit-subject.auth.user.update': {
@@ -1110,6 +1122,27 @@ const i18n = definePluginMessages({
     fieldUnset: { id: 'auth/person/field-unset', defaultMessage: 'Not set' },
     emailSystemShort: { id: 'auth/person/email-system', defaultMessage: 'Set by the deployment' },
     personVerificationSent: personVerificationSentMessage,
+    personSessionsEndAll: {
+      id: 'auth/person/sessions-end-all',
+      defaultMessage: 'End all sessions',
+    },
+    personSessionsEndAllTitle: personSessionsEndAllTitleMessage,
+    personSessionsEndAllBody: {
+      id: 'auth/person/sessions-end-all-body',
+      defaultMessage: 'They will have to sign in again to carry on',
+    },
+    personSessionsNone: {
+      id: 'auth/person/sessions-none',
+      defaultMessage: 'Not signed in anywhere',
+    },
+    personActivityDenied: {
+      id: 'auth/person/activity-denied',
+      defaultMessage: 'You cannot see this user’s sign-ins',
+    },
+    personActivityDeniedHint: {
+      id: 'auth/person/activity-denied-hint',
+      defaultMessage: 'Only someone who administers their account can',
+    },
     personAlreadyVerified: {
       id: 'auth/person/already-verified',
       defaultMessage: 'That address is verified already',

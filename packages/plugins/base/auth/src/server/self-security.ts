@@ -4,7 +4,7 @@ import { transaction, withDatabase } from '@qualy/plugin-database/server'
 import { Audit } from '@qualy/audit-contract/effect'
 import { pageWindow } from '@qualy/api-kit/schema'
 import type { Principal } from '@qualy/rbac-contract'
-import { SessionsEnded } from '../actions.ts'
+import { SessionsEnded, UserSessionsEnded } from '../actions.ts'
 import { actorOf } from './audit-actor.ts'
 import { db, lockTenant } from './db.ts'
 import { retireChallenges } from './email-flows.ts'
@@ -12,7 +12,9 @@ import { SessionNotFound, UserNotFound } from './errors.ts'
 
 // The reader's own security record: where they came in from and when, the
 // sessions still open for them, and ending those. As with the rest of the
-// self surface nothing here takes a person: it is the principal, always.
+// self surface the self half takes no person: it is the principal, always.
+// The `person` half is the same record of somebody else, for whoever
+// administers their account, and asks that authority before anything else.
 
 /** one page of a list read newest first, resuming strictly after a row */
 export interface NewestFirst {
@@ -185,7 +187,109 @@ export const make = Effect.fn('Iam.selfSecurity.make')(function* () {
     ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
   })
 
+  /**
+   * Ends somebody else's sessions at an administrator's asking: one, or all
+   * of them, never the one the administrator is using. `guard` is the
+   * caller's authority over the person's account, asked under the tenant
+   * lock on this transaction.
+   */
+  const endFor = <E, R>(
+    principal: Principal,
+    userId: string,
+    guard: Effect.Effect<void, E, R>,
+    sessionId?: string,
+  ) =>
+    withDb(
+      transaction(
+        Effect.gen(function* () {
+          yield* lockTenant(principal.tenantId)
+          yield* guard
+          const person = yield* personOf(principal.tenantId, userId)
+          // the guard has just found them living: this is a row that went
+          // in between, and nothing of theirs is left to end
+          if (person === undefined) return 0
+          const ended = yield* db.query((k) => {
+            let query = k
+              .deleteFrom('Session')
+              .where('tenantId', '=', principal.tenantId)
+              .where('userId', '=', userId)
+              .where('id', '!=', principal.sessionId)
+            if (sessionId !== undefined) query = query.where('id', '=', sessionId)
+            return query.returning('id').execute()
+          })
+          if (sessionId !== undefined && ended.length === 0) return yield* new SessionNotFound()
+          // whoever held those sessions must not keep a move to another
+          // address one of them asked for
+          yield* retireChallenges(principal.tenantId, userId, ['change'])
+          if (ended.length > 0) {
+            const target = { id: person.id, label: person.displayName }
+            const organization =
+              person.primaryOrgNodeId === null ? {} : { organizationId: person.primaryOrgNodeId }
+            const scope = sessionId === undefined ? 'all' : 'one'
+            // one's own record is one's own act, told as one's own page tells it
+            if (userId === principal.userId) {
+              yield* audit.record(SessionsEnded, {
+                tenantId: principal.tenantId,
+                actor: yield* actorOf(principal.tenantId, principal),
+                target,
+                ...organization,
+                details: { scope: scope === 'all' ? 'others' : 'one', ended: ended.length },
+              })
+            } else {
+              yield* audit.record(UserSessionsEnded, {
+                tenantId: principal.tenantId,
+                actor: yield* actorOf(principal.tenantId, principal),
+                target,
+                ...organization,
+                details: { scope, ended: ended.length },
+              })
+            }
+          }
+          return ended.length
+        }),
+      ),
+    ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+
   return {
+    /**
+     * Somebody else's record, for whoever administers their account: the
+     * same reads as the person's own, behind `guard`, which answers for
+     * the caller's authority over them before anything of theirs is read.
+     */
+    person: {
+      signIns: <E, R>(
+        principal: Principal,
+        userId: string,
+        filter: SignInFilter,
+        page: NumberedPage,
+        guard: Effect.Effect<void, E, R>,
+      ) =>
+        withDb(
+          guard.pipe(Effect.andThen(signInsOf(principal.tenantId, userId, filter, page))),
+        ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
+      sessions: <E, R>(
+        principal: Principal,
+        userId: string,
+        page: NewestFirst,
+        guard: Effect.Effect<void, E, R>,
+      ) =>
+        withDb(guard.pipe(Effect.andThen(sessionsOf(principal.tenantId, userId, page)))).pipe(
+          Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+        ),
+      /** one of their sessions, by its id; never the caller's own in hand */
+      endSession: <E, R>(
+        principal: Principal,
+        userId: string,
+        sessionId: string,
+        guard: Effect.Effect<void, E, R>,
+      ) => endFor(principal, userId, guard, sessionId).pipe(Effect.asVoid),
+      /** every session of theirs but the caller's own in hand; how many there were */
+      endSessions: <E, R>(principal: Principal, userId: string, guard: Effect.Effect<void, E, R>) =>
+        // with no id to miss, nothing is ever not found: none ended is zero
+        endFor(principal, userId, guard).pipe(
+          Effect.catchTag('AUTH_SESSION_NOT_FOUND', () => Effect.succeed(0)),
+        ),
+    },
     signIns: (principal: Principal, filter: SignInFilter, page: NumberedPage) =>
       withDb(signInsOf(principal.tenantId, principal.userId, filter, page)).pipe(Effect.orDie),
     /** what was done to the reader's account, as the trail tells it to them */
