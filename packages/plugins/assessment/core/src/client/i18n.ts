@@ -1977,7 +1977,7 @@ const i18n = definePluginMessages({
     recordHint: {
       id: 'assessment/record/hint',
       defaultMessage:
-        'Record the additions, deductions and other findings the institution has already settled.',
+        'Record the additions, deductions and other findings the institution has already settled',
     },
     recordEmpty: {
       id: 'assessment/record/empty',
@@ -1985,7 +1985,7 @@ const i18n = definePluginMessages({
     },
     recordEmptyHint: {
       id: 'assessment/record/empty-hint',
-      defaultMessage: 'Items appear here once they are set to be settled by the institution.',
+      defaultMessage: 'Items appear here once they are set to be settled by the institution',
     },
     recordItem: { id: 'assessment/record/item', defaultMessage: 'Which item' },
     recordNeedsTargets: {
@@ -2031,7 +2031,7 @@ const i18n = definePluginMessages({
     },
     recordDropBlockedHint: {
       id: 'assessment/record/drop-blocked-hint',
-      defaultMessage: 'Checking runs again, so you see the list once more before confirming.',
+      defaultMessage: 'Checking runs again, so you see the list once more before confirming',
     },
     recordStandingSettled: {
       id: 'assessment/record/standing-settled',
@@ -2098,11 +2098,11 @@ const i18n = definePluginMessages({
     },
     recordDialogHint: {
       id: 'assessment/record/dialog-hint',
-      defaultMessage: 'One finding, settled on one or more participants. It takes effect at once.',
+      defaultMessage: 'One finding, settled on one or more participants. It takes effect at once',
     },
     importDialogHint: {
       id: 'assessment/record/import/dialog-hint',
-      defaultMessage: 'One file, one item. The findings take effect as soon as they are imported.',
+      defaultMessage: 'One file, one item. The findings take effect as soon as they are imported',
     },
     recordActsTab: { id: 'assessment/record/acts-tab', defaultMessage: 'Bulk records' },
     recordActsEmpty: {
@@ -2111,7 +2111,7 @@ const i18n = definePluginMessages({
     },
     recordActsEmptyHint: {
       id: 'assessment/record/acts-empty-hint',
-      defaultMessage: 'They appear here once a finding is settled on several people at once.',
+      defaultMessage: 'They appear here once a finding is settled on several people at once',
     },
     recordActBack: { id: 'assessment/record/act-back', defaultMessage: 'Back to the bulk records' },
     recordActTitle: { id: 'assessment/record/act-title', defaultMessage: 'Bulk record' },
@@ -2227,7 +2227,7 @@ const i18n = definePluginMessages({
     },
     recordListEmptyHint: {
       id: 'assessment/record/list-empty-hint',
-      defaultMessage: 'They appear here once anything is recorded.',
+      defaultMessage: 'They appear here once anything is recorded',
     },
     recordSearchList: defineMessage<{ businessNo: string }>()({
       id: 'assessment/record/search-list',
@@ -2253,14 +2253,14 @@ const i18n = definePluginMessages({
     }),
     recordNobodyFound: {
       id: 'assessment/record/nobody-found',
-      defaultMessage: 'Nobody in this round matches.',
+      defaultMessage: 'Nobody in this round matches',
     },
     recordMoreWho: { id: 'assessment/record/more-who', defaultMessage: 'Load more' },
     recordBasis: { id: 'assessment/record/basis', defaultMessage: 'Reason' },
     recordBasisHint: {
       id: 'assessment/record/basis-hint',
       defaultMessage:
-        'Required. Say what this rests on, such as a document title or reference number; the participant is shown it.',
+        'Required. Say what this rests on, such as a document title or reference number; the participant is shown it',
     },
     recordEffectNotice: {
       id: 'assessment/record/effect-notice',
@@ -2346,7 +2346,7 @@ const i18n = definePluginMessages({
     },
     importAllReady: {
       id: 'assessment/record/import/all-ready',
-      defaultMessage: 'Every row can be imported.',
+      defaultMessage: 'Every row can be imported',
     },
     importConfirmWarnings: {
       id: 'assessment/record/import/confirm-warnings',
@@ -2387,7 +2387,7 @@ const i18n = definePluginMessages({
     },
     importRefusedHint: {
       id: 'assessment/record/import/refused-hint',
-      defaultMessage: 'Download the template again, fill it in, and upload that.',
+      defaultMessage: 'Download the template again, fill it in, and upload that',
     },
     importReasonBusinessNoRequired: defineMessage<{ businessNo: string }>()({
       id: 'assessment/record/import/reason/business-no-required',
@@ -2615,7 +2615,7 @@ const i18n = definePluginMessages({
     },
     importHistoryEmptyHint: {
       id: 'assessment/record/import/history-empty-hint',
-      defaultMessage: 'They appear here once a list has been imported.',
+      defaultMessage: 'They appear here once a list has been imported',
     },
     importColumnFile: { id: 'assessment/record/import/column-file', defaultMessage: 'File' },
     importColumnStanding: { id: 'assessment/record/import/column-standing', defaultMessage: 'Now' },
@@ -6375,7 +6375,7 @@ const i18n = definePluginMessages({
     accessHint: {
       id: 'assessment/access/hint',
       defaultMessage:
-        'Manage staff permissions for this batch and process permission changes from the organization.',
+        'Manage staff permissions for this batch and process permission changes from the organization',
     },
     accessEmpty: {
       id: 'assessment/access/empty',
@@ -6475,7 +6475,7 @@ const i18n = definePluginMessages({
     accessAdjustHint: {
       id: 'assessment/access/adjust-hint',
       defaultMessage:
-        'Changes apply only to this batch and do not modify the user\u2019s organization roles.',
+        'Changes apply only to this batch and do not modify the user\u2019s organization roles',
     },
     accessAdjustArchivedHint: {
       id: 'assessment/access/adjust-archived-hint',
@@ -6502,12 +6502,12 @@ const i18n = definePluginMessages({
     accessSyncPrompt: {
       id: 'assessment/access/sync-prompt',
       defaultMessage:
-        'Organization permissions changed. Review the changes before applying them to this batch.',
+        'Organization permissions changed. Review the changes before applying them to this batch',
     },
     accessSyncLapsedPrompt: {
       id: 'assessment/access/sync-lapsed-prompt',
       defaultMessage:
-        'Some organization permissions were revoked and the corresponding batch permissions are no longer active.',
+        'Some organization permissions were revoked and the corresponding batch permissions are no longer active',
     },
     accessSyncOpen: { id: 'assessment/access/sync-open', defaultMessage: 'Review changes' },
     accessSyncSelectPage: {
@@ -6516,7 +6516,7 @@ const i18n = definePluginMessages({
     },
     accessSyncHint: {
       id: 'assessment/access/sync-hint',
-      defaultMessage: 'Select the organization permission changes to apply to this batch.',
+      defaultMessage: 'Select the organization permission changes to apply to this batch',
     },
     accessSyncArchivedHint: {
       id: 'assessment/access/sync-archived-hint',
@@ -6552,7 +6552,7 @@ const i18n = definePluginMessages({
     },
     addStaffHint: {
       id: 'assessment/access/add-staff-hint',
-      defaultMessage: 'Assigned permissions apply only to this batch.',
+      defaultMessage: 'Assigned permissions apply only to this batch',
     },
     addStaffStepWho: { id: 'assessment/access/add-staff-step-who', defaultMessage: 'Person' },
     addStaffStepWhere: { id: 'assessment/access/add-staff-step-where', defaultMessage: 'Unit' },
@@ -6560,11 +6560,11 @@ const i18n = definePluginMessages({
     addStaffWhereHint: {
       id: 'assessment/access/add-staff-where-hint',
       defaultMessage:
-        'Select the organization scope the user will be responsible for in this batch.',
+        'Select the organization scope the user will be responsible for in this batch',
     },
     addStaffAsHint: {
       id: 'assessment/access/add-staff-as-hint',
-      defaultMessage: 'The selected role determines the user\u2019s permissions in this batch.',
+      defaultMessage: 'The selected role determines the user\u2019s permissions in this batch',
     },
     roleRefusedUserType: {
       id: 'assessment/access/role-refused-user-type',
