@@ -1159,8 +1159,8 @@ describe('an account that has stopped moving', () => {
     expect(madeOf('q8')).toBe('claims')
     // and a record the office never made is not one still to come
     expect(madeOf('q1')).toBe('unrecorded')
-    // a score that no longer changes is not called provisional
-    expect(page.getByTestId('result-mode').elements()).toHaveLength(0)
+    // a score that no longer changes is not said to be kept current
+    expect(page.getByTestId('result-live').elements()).toHaveLength(0)
     await userEvent.click(itemRow('q3').querySelector('button[aria-expanded]') as HTMLElement)
     expect(itemRow('q3').querySelector('[data-follow="todo"]')).toBeNull()
   })
@@ -1206,7 +1206,6 @@ describe('an account that has stopped moving', () => {
     expect(tagOf('q3')).toBe('todo')
     expect(madeOf('q4')).toBe('waits')
     expect(madeOf('q1')).toBe('recorded')
-    await expect.element(page.getByTestId('result-mode')).toBeVisible()
   })
 })
 
@@ -1262,10 +1261,65 @@ describe('a round that moves while the page is open', () => {
       getMyResult: () => Effect.succeed({ ...paper.result, total }),
       watchBatch: wake,
     })
-    await expect.element(page.getByTestId('result-total')).toHaveTextContent('49.50')
+    await expect.element(page.getByTestId('result-total')).toHaveAttribute('data-total', '49.50')
     total = '55.50'
     release()
+    await expect.element(page.getByTestId('result-total')).toHaveAttribute('data-total', '55.50')
     await expect.element(page.getByTestId('result-total')).toHaveTextContent('55.50')
+  })
+
+  it('says the account is live once the line opens, and nothing before', async () => {
+    const paper = normal()
+    let open = () => {}
+    const opened = new Promise<void>((resolve) => {
+      open = resolve
+    })
+    await screen(paper, {
+      watchBatch: () =>
+        Effect.succeed(
+          Stream.concat(
+            Stream.fromEffect(
+              Effect.promise(() => opened).pipe(Effect.as({ kind: 'sync' as const })),
+            ),
+            Stream.never,
+          ),
+        ),
+    })
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
+    expect(page.getByTestId('result-live').elements()).toHaveLength(0)
+    open()
+    await expect.element(page.getByTestId('result-live')).toHaveAttribute('data-state', 'live')
+  })
+
+  it('says it is reconnecting once the line has been down for a moment, and not before', async () => {
+    const paper = normal()
+    let dials = 0
+    // the first connection says hello and drops; the next ones stay silent
+    const watchBatch = () => {
+      dials += 1
+      return Effect.succeed(dials === 1 ? Stream.make({ kind: 'sync' as const }) : Stream.never)
+    }
+    await screen(paper, { watchBatch })
+    const live = page.getByTestId('result-live')
+    await expect.element(live).toBeInTheDocument()
+    // a stream that comes straight back is not worth a word
+    expect(['live', 'reconnecting']).toContain(live.element().getAttribute('data-state'))
+    await expect
+      .poll(() => live.element().getAttribute('data-state'), { timeout: 6_000 })
+      .toBe('reconnecting')
+  })
+
+  it('says nothing about keeping current on an account that has stopped moving', async () => {
+    const paper = normal()
+    await screen(paper, {
+      getBatch: () => Effect.succeed({ batch: { ...batch, status: 'archived' } }),
+      watchBatch: () =>
+        Effect.succeed(Stream.concat(Stream.make({ kind: 'sync' as const }), Stream.never)),
+    })
+    await expect
+      .element(page.getByTestId('result-moving'))
+      .toHaveAttribute('data-closed', 'archived')
+    expect(page.getByTestId('result-live').elements()).toHaveLength(0)
   })
 
   it('keeps what it read when a later read fails, and says it may be behind', async () => {

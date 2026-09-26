@@ -476,6 +476,11 @@ const resultMore = defineMessage<{ count: number; reader: string }>()({
     '{reader, select, staff {View all {count}} other {View all {count} in My entries}}',
 })
 
+const resultLive = defineMessage<{ state: string }>()({
+  id: 'assessment/result/live',
+  defaultMessage: '{state, select, live {Live} other {Reconnecting}}',
+})
+
 const resultMadeClaim = defineMessage<{ word: string; identity: string }>()({
   id: 'assessment/result/made-claim',
   defaultMessage: '{word}: {identity}',
@@ -1837,10 +1842,6 @@ const i18n = definePluginMessages({
       defaultMessage: 'The items and entry statuses shown may be out of date',
     },
     resultRecalculate: { id: 'assessment/result/recalculate', defaultMessage: 'Recalculate' },
-    resultProvisionalMark: {
-      id: 'assessment/result/provisional-mark',
-      defaultMessage: 'Provisional',
-    },
     resultGrandTotal: { id: 'assessment/result/grand-total', defaultMessage: 'Total score' },
     resultGroupFull: { id: 'assessment/result/group-full', defaultMessage: 'Full' },
     resultUngrouped: { id: 'assessment/result/ungrouped', defaultMessage: 'Ungrouped items' },
@@ -1869,6 +1870,7 @@ const i18n = definePluginMessages({
     resultFollow,
     resultMore,
     resultTrim,
+    resultLive,
     resultMadeClaim,
     // ------------------------------------------------------------------
     // recording on someone's behalf

@@ -11,6 +11,7 @@ import {
 import * as stylex from '@stylexjs/stylex'
 import { Portion } from '@qualy/ui/reveal'
 import { Button } from '@qualy/ui/button'
+import { Ticker } from '@qualy/ui/ticker'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AlignLeftIcon, BarChart3Icon, ChevronDownIcon, ChevronRightIcon } from 'lucide-react'
@@ -72,6 +73,11 @@ const LINES_SHOWN = 6
 const INDENT = 14
 const REDUCE = '@media (prefers-reduced-motion: reduce)'
 
+const breathe = stylex.keyframes({
+  '0%': { opacity: 0.7, transform: 'scale(0.6)' },
+  '70%, 100%': { opacity: 0, transform: 'scale(1.6)' },
+})
+
 /** a reader the stages keep out of nothing, one stable value across renders */
 const NONE_SHUT: ReadonlyMap<string, FilingShut> = new Map()
 
@@ -113,20 +119,46 @@ const styles = stylex.create({
     letterSpacing: '-0.02em',
   },
   totalLabel: { margin: 0, fontSize: 13, fontWeight: 500, color: tokens.mutedForeground },
-  mode: {
+  // the account keeping time with the round, and the way back when it lost it
+  live: {
     display: 'inline-flex',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
     height: 22,
     paddingInline: 8,
     borderRadius: 6,
-    backgroundColor: tokens.surfaceMuted,
+    backgroundColor: `color-mix(in oklab, ${tokens.success} 12%, transparent)`,
     fontSize: 12,
     fontWeight: 500,
     whiteSpace: 'nowrap',
-    color: tokens.surfaceMutedForeground,
+    color: tokens.successForeground,
   },
-  modeDot: { width: 6, height: 6, borderRadius: 9999, backgroundColor: tokens.warning },
+  liveLost: { backgroundColor: tokens.surfaceMuted, color: tokens.surfaceMutedForeground },
+  liveDot: {
+    position: 'relative',
+    width: 6,
+    height: 6,
+    flexShrink: 0,
+    borderRadius: 9999,
+    backgroundColor: tokens.success,
+    // a slow ring that says the line is open; still where motion is not wanted
+    '::after': {
+      content: '""',
+      position: 'absolute',
+      inset: -3,
+      borderRadius: 9999,
+      backgroundColor: `color-mix(in oklab, ${tokens.success} 45%, transparent)`,
+      opacity: 0,
+      animationName: { default: breathe, [REDUCE]: 'none' },
+      animationDuration: '2.4s',
+      animationTimingFunction: 'cubic-bezier(0.4, 0, 0.6, 1)',
+      animationIterationCount: 'infinite',
+    },
+  },
+  liveDotLost: {
+    backgroundColor: tokens.warning,
+    '::after': { animationName: 'none' },
+  },
   totalRow: {
     display: 'flex',
     alignItems: 'baseline',
@@ -756,6 +788,9 @@ function useViewportHeight(seat: RefObject<HTMLElement | null>): number | null {
  * `shut` names the questions the round's stages keep shut to the reader, so
  * one nobody filed into says filing is not open rather than that nothing
  * was filed; a page that cannot tell passes nothing.
+ *
+ * `stream` is whether the page is keeping the account current while the
+ * round moves; a page that does not say draws no mark for it.
  */
 export function ResultLedger({
   result,
@@ -770,6 +805,7 @@ export function ResultLedger({
   align = 'center',
   closed = null,
   shut = NONE_SHUT,
+  stream = null,
 }: {
   result: LedgerResult
   items: readonly LedgerItem[]
@@ -794,6 +830,8 @@ export function ResultLedger({
   closed?: 'archived' | 'excluded' | null
   /** the questions the stages keep shut to the reader, and why */
   shut?: ReadonlyMap<string, FilingShut>
+  /** whether the page is keeping the account current as the round moves */
+  stream?: 'live' | 'reconnecting' | null
 }) {
   const model = useMemo(() => buildLedger({ result, items, entries }), [result, items, entries])
   const seat = useRef<HTMLDivElement>(null)
@@ -904,7 +942,13 @@ export function ResultLedger({
           align === 'start' && styles.measureStart,
         )}
       >
-        <Head model={model} mode={result.mode} heading={heading} reader={reader} closed={closed} />
+        <Head
+          model={model}
+          heading={heading}
+          reader={reader}
+          closed={closed}
+          stream={closed === null ? stream : null}
+        />
       </div>
       {/* a direct child of the whole ledger, so it holds for all of it */}
       {strip && (
@@ -996,16 +1040,16 @@ const scoreOf = (group: LedgerGroupView): string =>
 /** the page's first line: the total, what it is out of, and how it will move */
 function Head({
   model,
-  mode,
   heading,
   reader,
   closed,
+  stream,
 }: {
   model: LedgerModel
-  mode: string
   heading: ReactNode | undefined
   reader: 'owner' | 'staff'
   closed: 'archived' | 'excluded' | null
+  stream: 'live' | 'reconnecting' | null
 }) {
   const { format } = useI18n()
   return (
@@ -1017,21 +1061,31 @@ function Head({
           ) : (
             <h1 {...stylex.props(styles.title)}>{heading}</h1>
           )}
-          {/* an archived batch's score no longer changes, which is what the
-              note under it says; a mark calling it provisional would say otherwise */}
-          {closed !== 'archived' && (
-            <span data-testid="result-mode" data-mode={mode} {...stylex.props(styles.mode)}>
-              <span aria-hidden {...stylex.props(styles.modeDot)} />
-              {format(m.resultProvisionalMark)}
+          {/* the account follows the round as it moves; a closed one no
+              longer moves, which the note under the total says */}
+          {stream !== null && (
+            <span
+              role="status"
+              data-testid="result-live"
+              data-state={stream}
+              {...stylex.props(styles.live, stream === 'reconnecting' && styles.liveLost)}
+            >
+              <span
+                aria-hidden
+                {...stylex.props(styles.liveDot, stream === 'reconnecting' && styles.liveDotLost)}
+              />
+              {format(m.resultLive, { state: stream })}
             </span>
           )}
         </div>
         <div {...stylex.props(styles.totalRow)}>
+          {/* a figure that moves while it is read turns over digit by digit */}
           <span
             data-testid="result-total"
+            data-total={two(model.totalCents)}
             {...stylex.props(styles.total, model.totalCents < 0 && styles.negative)}
           >
-            {two(model.totalCents)}
+            <Ticker value={two(model.totalCents)} />
           </span>
           {model.fullCents !== null && (
             <span

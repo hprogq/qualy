@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -24,8 +24,12 @@ import { useMyEntriesQuery } from '../entry/my-entries.ts'
 // The account itself is `ResultLedger`, which this page shares with the
 // staff view of a participant. What belongs to this page is everything
 // around it: reading the three answers, keeping them current while the
-// round moves, what to say when the arithmetic cannot be reached, and where
-// a line leads - to the claim, on this reader's own filing page.
+// round moves and saying so, what to say when the arithmetic cannot be
+// reached, and where a line leads - to the claim, on this reader's own
+// filing page.
+
+/** how long the stream may be down before the page says it is reconnecting */
+const RECONNECT_GRACE = 2_500
 
 export default function MyResultPage() {
   const { format } = useI18n()
@@ -96,6 +100,25 @@ const styles = stylex.create({
   staleWhy: { flexBasis: '100%', color: tokens.mutedForeground },
 })
 
+/**
+ * Whether the page is keeping time with the round: live while the stream
+ * holds, reconnecting once it has been down past a moment's grace - a
+ * stream a proxy recycles every minute comes straight back, and saying so
+ * each time would be noise. Until the line has carried anything, nothing is
+ * said at all.
+ */
+function useStreamState(live: boolean, heard: boolean): 'live' | 'reconnecting' | null {
+  const [lost, setLost] = useState(false)
+  if (live && lost) setLost(false)
+  useEffect(() => {
+    if (live || !heard) return
+    const timer = setTimeout(() => setLost(true), RECONNECT_GRACE)
+    return () => clearTimeout(timer)
+  }, [live, heard])
+  if (!heard) return null
+  return live || !lost ? 'live' : 'reconnecting'
+}
+
 function Standing({ batchId, archived }: { batchId: string; archived: boolean }) {
   const api = useApi(assessmentApi)
   const query = useApiQuery(assessmentApi)
@@ -106,7 +129,11 @@ function Standing({ batchId, archived }: { batchId: string; archived: boolean })
   // Wake-ups say "read again" and name what moved: a decision moves the
   // account, a filing moves the counts beside it, and a change to the paper
   // moves how the account is laid out.
+  // every connection opens with a catch-up signal, which the page's own
+  // alarm clock never sends: the first one says the line has carried
+  const [heard, setHeard] = useState(false)
   const { live } = useBatchLive(batchId, (kind) => {
+    if (kind === 'sync') setHeard(true)
     const stale = (key: readonly unknown[]) => void queryClient.invalidateQueries({ queryKey: key })
     switch (kind) {
       case 'sync':
@@ -153,6 +180,7 @@ function Standing({ batchId, archived }: { batchId: string; archived: boolean })
   const gates = useMemo(() => (filing ?? []) as readonly FilingGateDto[], [filing])
   const offRoster = gates.length > 0 && gates.every((gate) => gate.create.state === 'hidden')
   const closed = archived ? 'archived' : offRoster ? 'excluded' : null
+  const stream = useStreamState(live, heard)
   // The timetable, read already by the page's live wake-ups under the same
   // key, says whether a question the stages keep shut has not opened yet or
   // has nothing left to open it. A harness without it leaves it unasked.
@@ -335,6 +363,7 @@ function Standing({ batchId, archived }: { batchId: string; archived: boolean })
             reader="owner"
             closed={closed}
             shut={shut}
+            stream={stream}
             emptyAction={goEntries}
             // a line leads to its claim on the filing page, opened there
             onEntryOpen={(entryId) => {

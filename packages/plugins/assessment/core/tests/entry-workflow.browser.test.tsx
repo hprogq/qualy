@@ -2647,9 +2647,7 @@ describe('reading one’s standing', () => {
     await page.viewport(1280, 800)
     // the ledger speaks with two decimals throughout
     await expect.element(page.getByText('2.00', { exact: true }).first()).toBeVisible()
-    await expect
-      .element(page.getByTestId('result-mode'))
-      .toHaveAttribute('data-mode', 'provisional')
+    await expect.element(page.getByTestId('result-total')).toHaveAttribute('data-total', '2.00')
     await expect.element(page.getByText('3.00', { exact: true }).first()).toBeVisible()
     // the limit is one line, worded from the group's own figures
     await expect.element(page.getByTestId('group-adjustment')).toBeVisible()
