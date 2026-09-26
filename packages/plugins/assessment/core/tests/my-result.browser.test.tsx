@@ -440,8 +440,13 @@ const demo = (over: { own?: boolean; total?: string } = {}): Paper => {
   return { result: { mode: 'provisional', total, groups, lines }, items, entries }
 }
 
-const screen = (paper: Paper, over: Record<string, unknown> = {}) =>
+const screen = (
+  paper: Paper,
+  over: Record<string, unknown> = {},
+  locale: 'zh-CN' | 'en-US' = 'zh-CN',
+) =>
   renderScreen({
+    locale,
     client: fakeClient({
       app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
       assessment: {
@@ -840,6 +845,62 @@ describe('the rows of the account', () => {
       ['q10-b', 'abandoned'],
     ])
   })
+
+  // the English words for a claim's state run long: "Additional material
+  // required" is three times "In review"
+  it.each([1920, 1280, 834, 390, 360])(
+    'keeps where each claim stands clear of its figure, however long the word for it (%i wide)',
+    async (width) => {
+      await page.viewport(width, 900)
+      await screen(normal(), {}, 'en-US')
+      await expect.element(page.getByTestId('result-total')).toBeVisible()
+      for (const itemId of ['q3', 'q7', 'q10']) {
+        const toggle = itemRow(itemId).querySelector<HTMLElement>('button[aria-expanded]')!
+        if (toggle.getAttribute('aria-expanded') !== 'true') await userEvent.click(toggle)
+      }
+      const lines = [...document.querySelectorAll<HTMLElement>('[data-testid="ledger-line"]')]
+      const standing = lines.filter((one) =>
+        one.querySelector('[data-testid="ledger-line-standing"]'),
+      )
+      // the long ones are there to be kept clear of
+      expect(
+        standing.some((one) => one.querySelector('[data-entry-standing="needs_revision"]')),
+      ).toBe(true)
+      for (const line of standing) {
+        const figure = line
+          .querySelector<HTMLElement>('[data-testid="ledger-line-figure"]')!
+          .getBoundingClientRect()
+        const seat = line.querySelector<HTMLElement>('[data-testid="ledger-line-standing"]')!
+        const chip = seat.firstElementChild as HTMLElement
+        const drawn = chip.getBoundingClientRect()
+        // the chip is drawn whole, inside its own place, and short of the figure
+        expect(drawn.right, `${String(width)} ${line.dataset['entry']}`).toBeLessThanOrEqual(
+          figure.left,
+        )
+        expect(drawn.right).toBeLessThanOrEqual(seat.getBoundingClientRect().right + 0.5)
+        if (width >= 390) expect(chip.scrollWidth).toBeLessThanOrEqual(seat.clientWidth + 0.5)
+        // and nothing else on the line runs into the figure either
+        for (const part of line.querySelectorAll<HTMLElement>('span')) {
+          if (part.closest('[data-testid="ledger-line-figure"]') !== null) continue
+          const box = part.getBoundingClientRect()
+          if (box.width === 0) continue
+          expect(box.right, `${String(width)} ${line.dataset['entry']}`).toBeLessThanOrEqual(
+            figure.left + 0.5,
+          )
+        }
+      }
+      // every chip in a question's claims starts at the same place at a desk
+      if (width >= 834) {
+        const fold = itemRow('q3').querySelector<HTMLElement>('[data-testid="ledger-lines"]')!
+        const starts = new Set(
+          [...fold.querySelectorAll<HTMLElement>('[data-testid="ledger-line-standing"]')].map(
+            (one) => Math.round(one.getBoundingClientRect().left),
+          ),
+        )
+        expect(starts.size).toBe(1)
+      }
+    },
+  )
 
   it('marks what waits on the reader, what is unsent, and what is only under review', async () => {
     await page.viewport(1440, 900)

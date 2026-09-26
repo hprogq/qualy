@@ -570,29 +570,28 @@ const styles = stylex.create({
   foldOpen: { gridTemplateRows: '1fr' },
   foldInner: { minHeight: 0, overflow: 'hidden' },
   foldSeat: { paddingBottom: 12, paddingInlineEnd: { default: 16, [breakpoints.phone]: 12 } },
+  // A question's claims share three columns - what each one is, where it
+  // stands, and its figure - so every chip and every figure lines up however
+  // long the word in it is: each column is as wide as the widest of its
+  // kind, and what a claim is gives way. On a phone there are two: where a
+  // claim stands leads its second line, and the figure keeps its column.
   lines: {
-    display: 'flex',
-    flexDirection: 'column',
+    display: 'grid',
+    gridTemplateColumns: {
+      default: 'minmax(0, 1fr) auto auto',
+      [breakpoints.phone]: 'minmax(0, 1fr) auto',
+    },
+    columnGap: { default: 12, [breakpoints.phone]: 8 },
     overflow: 'hidden',
     borderRadius: tokens.radiusMd,
     backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 55%, ${tokens.surface})`,
   },
-  // one claim: which it is and what became of it, where it stands, and its
-  // figure - a column each at a desk; on a phone where it stands leads the
-  // second line, and the figure keeps its column
+  // one claim: a row of the columns above
   line: {
     display: 'grid',
-    width: '100%',
-    gridTemplateColumns: {
-      default: 'minmax(0, 1fr) 6.5rem 4.5rem',
-      [breakpoints.phone]: 'auto minmax(0, 1fr) auto',
-    },
-    gridTemplateAreas: {
-      default: '"first chip figure" "second chip figure"',
-      [breakpoints.phone]: '"first first figure" "chip second figure"',
-    },
+    gridColumn: '1 / -1',
+    gridTemplateColumns: 'subgrid',
     alignItems: 'center',
-    columnGap: { default: 12, [breakpoints.phone]: 8 },
     rowGap: 4,
     minHeight: 34,
     paddingBlock: 8,
@@ -606,13 +605,13 @@ const styles = stylex.create({
     fontSize: 12.5,
     color: 'inherit',
   },
-  // nothing to say of where it stands: the words take the room
-  lineBare: {
-    gridTemplateColumns: 'minmax(0, 1fr) 4.5rem',
-    gridTemplateAreas: '"first figure" "second figure"',
-  },
+  // what happened to it takes a line of its own; where it stands takes one
+  // on a phone even when nothing else does
+  lineTwoRows: { gridTemplateRows: 'auto auto' },
+  lineTwoRowsNarrow: { gridTemplateRows: { default: 'auto', [breakpoints.phone]: 'auto auto' } },
   lineFirst: {
-    gridArea: 'first',
+    gridColumn: '1',
+    gridRow: '1',
     display: 'flex',
     minWidth: 0,
     flexWrap: { default: 'nowrap', [breakpoints.phone]: 'wrap' },
@@ -620,6 +619,8 @@ const styles = stylex.create({
     columnGap: 8,
     rowGap: 2,
   },
+  // nothing to say of where it stands: the words take its column too
+  lineWide: { gridColumn: { default: '1 / 3', [breakpoints.phone]: '1' } },
   lineLead: {
     minWidth: 0,
     overflow: 'hidden',
@@ -637,13 +638,37 @@ const styles = stylex.create({
     whiteSpace: 'nowrap',
     color: tokens.mutedForeground,
   },
+  // where it stands and what last happened to it: at a desk each goes to its
+  // own column; on a phone they are one line that wraps, standing first
+  lineMeta: {
+    display: { default: 'contents', [breakpoints.phone]: 'flex' },
+    gridColumn: '1',
+    gridRow: '2',
+    minWidth: 0,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 8,
+    rowGap: 4,
+  },
+  lineChip: {
+    gridColumn: '2',
+    gridRow: '1 / -1',
+    justifySelf: 'start',
+    display: 'flex',
+    minWidth: 0,
+    maxWidth: '100%',
+    // past the very narrowest screen a chip is cut rather than let over the figure
+    overflow: 'hidden',
+    borderRadius: 6,
+  },
   // what last happened, the files, and a reviewer's words, on one line at a
   // desk; on a phone the words take a line of their own
   lineSecond: {
-    gridArea: 'second',
-    display: 'flex',
+    gridColumn: '1',
+    gridRow: '2',
+    display: { default: 'flex', [breakpoints.phone]: 'contents' },
     minWidth: 0,
-    flexWrap: { default: 'nowrap', [breakpoints.phone]: 'wrap' },
+    flexWrap: 'nowrap',
     alignItems: 'center',
     columnGap: 8,
     rowGap: 4,
@@ -651,7 +676,22 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
     fontVariantNumeric: 'tabular-nums',
   },
-  lineKeep: { flexShrink: 0, whiteSpace: 'nowrap' },
+  lineFacts: {
+    display: 'flex',
+    flexShrink: 0,
+    maxWidth: '100%',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 8,
+  },
+  lineKeep: {
+    flexShrink: { default: 0, [breakpoints.phone]: 1 },
+    minWidth: 0,
+    maxWidth: '100%',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
   lineRule: { width: 1, height: 10, flexShrink: 0, backgroundColor: tokens.border },
   lineRuleWide: { display: { default: 'block', [breakpoints.phone]: 'none' } },
   lineNote: {
@@ -666,14 +706,9 @@ const styles = stylex.create({
     lineHeight: 1.5,
   },
   lineNoteWaits: { color: tokens.warningForeground },
-  lineChip: {
-    gridArea: 'chip',
-    display: 'flex',
-    alignSelf: { default: 'center', [breakpoints.phone]: 'start' },
-    minWidth: 0,
-  },
   lineFigure: {
-    gridArea: 'figure',
+    gridColumn: { default: '3', [breakpoints.phone]: '2' },
+    gridRow: '1 / -1',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'flex-end',
@@ -693,6 +728,7 @@ const styles = stylex.create({
   },
   lineWouldWord: { fontSize: 10.5, whiteSpace: 'nowrap', color: tokens.mutedForeground },
   more: {
+    gridColumn: '1 / -1',
     display: 'flex',
     width: '100%',
     alignItems: 'center',
@@ -2140,21 +2176,27 @@ function LineRow({
   }
   const second =
     when !== null || (claim !== null && claim.files > 0) || note !== null ? (
-      <span {...stylex.props(styles.lineSecond)}>
-        {when !== null && (
-          <span {...stylex.props(styles.lineKeep)}>
-            {claim === null
-              ? when
-              : format(m.entriesWhen, { when, action: format(ACT_SAID[claim.act]) })}
+      <span {...stylex.props(styles.lineSecond, standing === null && styles.lineWide)}>
+        {/* when and how many files travel together, so a line that wraps
+            never leaves the rule between them at its end */}
+        {(when !== null || (claim !== null && claim.files > 0)) && (
+          <span {...stylex.props(styles.lineFacts)}>
+            {when !== null && (
+              <span {...stylex.props(styles.lineKeep)}>
+                {claim === null
+                  ? when
+                  : format(m.entriesWhen, { when, action: format(ACT_SAID[claim.act]) })}
+              </span>
+            )}
+            {claim !== null && claim.files > 0 && (
+              <>
+                {when !== null && <span aria-hidden {...stylex.props(styles.lineRule)} />}
+                <span {...stylex.props(styles.lineKeep)}>
+                  {format(m.entriesFiles, { count: claim.files })}
+                </span>
+              </>
+            )}
           </span>
-        )}
-        {claim !== null && claim.files > 0 && (
-          <>
-            {when !== null && <span aria-hidden {...stylex.props(styles.lineRule)} />}
-            <span {...stylex.props(styles.lineKeep)}>
-              {format(m.entriesFiles, { count: claim.files })}
-            </span>
-          </>
         )}
         {note !== null && (
           <>
@@ -2176,17 +2218,26 @@ function LineRow({
         )}
       </span>
     ) : null
-  // one set of parts, which the grid lays out: a column each at a desk; on a
-  // phone the standing leads the second line and the figure keeps its column
+  // one set of parts, which the columns lay out: at a desk the standing has a
+  // column of its own; on a phone it leads the second line, which wraps
   const cells = (
     <>
-      <span {...stylex.props(styles.lineFirst)}>
+      <span {...stylex.props(styles.lineFirst, standing === null && styles.lineWide)}>
         <span {...stylex.props(styles.lineLead)}>{line.lead ?? fallback}</span>
         {line.sub !== null && <span {...stylex.props(styles.lineSub)}>{line.sub}</span>}
       </span>
-      {standing !== null && <span {...stylex.props(styles.lineChip)}>{standing}</span>}
-      {second}
+      {(standing !== null || second !== null) && (
+        <span {...stylex.props(styles.lineMeta)}>
+          {standing !== null && (
+            <span data-testid="ledger-line-standing" {...stylex.props(styles.lineChip)}>
+              {standing}
+            </span>
+          )}
+          {second}
+        </span>
+      )}
       <span
+        data-testid="ledger-line-figure"
         data-would={off && !closed && line.wouldCents !== null ? two(line.wouldCents) : undefined}
         {...stylex.props(styles.lineFigure)}
       >
@@ -2214,7 +2265,10 @@ function LineRow({
       </span>
     </>
   )
-  const shape = [styles.line, standing === null && styles.lineBare]
+  const shape = [
+    styles.line,
+    second !== null ? styles.lineTwoRows : standing !== null && styles.lineTwoRowsNarrow,
+  ]
   const entryId = line.entryId
   return entryId !== null && onEntryOpen !== undefined ? (
     <button
