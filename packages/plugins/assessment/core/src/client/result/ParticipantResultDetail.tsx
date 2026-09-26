@@ -619,9 +619,12 @@ export function ParticipantResultDetail({
 
   // the two halves: what was filed and decided first, since that is what
   // somebody checking an account opens it for, and the total follows from it
+  // How many claims there are is said once they are read: counted from
+  // nothing while they are on their way, the half said nobody had filed.
+  const counted = entries.data === undefined ? null : claims.length
   const halves = [
-    { key: 'entries', label: m.participantResultsEntriesTab, count: claims.length },
-    { key: 'score', label: m.participantResultsScoreTab, count: null },
+    { key: 'entries', label: m.participantResultsEntriesTab, count: counted, total: false },
+    { key: 'score', label: m.participantResultsScoreTab, count: null, total: true },
   ] as const
 
   const panel = (
@@ -678,24 +681,22 @@ export function ParticipantResultDetail({
       {standingKey !== null && <span {...stylex.props(styles.standing)}>{standingKey}</span>}
       <ZoneAwayNotice xstyle={styles.zone} />
       <nav aria-label={format(m.participantResultsViews)} {...stylex.props(styles.halves)}>
-        {halves.map(({ key, label, count }) => (
+        {halves.map(({ key, label, count, total }) => (
           <button
             key={key}
             type="button"
             data-testid={`participant-tab-${key}`}
+            data-count={count ?? ''}
             aria-current={view === key}
             onClick={() => onView(key)}
             {...stylex.props(styles.half, view === key && styles.halfOn)}
           >
             <span {...stylex.props(styles.halfWord)}>{format(label)}</span>
-            {count !== null ? (
-              <Count>{String(count)}</Count>
-            ) : (
-              result.data !== undefined && (
-                <span data-testid="participant-total" {...stylex.props(styles.halfFigure)}>
-                  {result.data.total}
-                </span>
-              )
+            {count !== null && <Count>{String(count)}</Count>}
+            {total && result.data !== undefined && (
+              <span data-testid="participant-total" {...stylex.props(styles.halfFigure)}>
+                {result.data.total}
+              </span>
             )}
           </button>
         ))}
@@ -776,6 +777,7 @@ export function ParticipantResultDetail({
             key={key}
             type="button"
             data-testid={`participant-tab-${key}`}
+            data-count={count ?? ''}
             aria-current={view === key}
             onClick={() => onView(key)}
             {...stylex.props(styles.tab, view === key && styles.tabOn)}

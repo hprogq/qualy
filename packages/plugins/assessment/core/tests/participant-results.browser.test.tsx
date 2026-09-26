@@ -1055,6 +1055,20 @@ describe('one account beside its person', () => {
     }
   })
 
+  it('counts the claims only once they are read', async () => {
+    await page.viewport(1280, 800)
+    await shelled(open, 'zh-CN', { listParticipantEntries: () => Effect.never })
+    const half = page.getByTestId('participant-panel').getByTestId('participant-tab-entries')
+    await expect.element(half).toBeVisible()
+    await expect.element(half).toHaveAttribute('data-count', '')
+    expect(half.element().textContent).not.toMatch(/\d/)
+    // the head a narrower window draws says the same
+    await page.viewport(834, 1112)
+    const tab = page.getByTestId('participant-head').getByTestId('participant-tab-entries')
+    await expect.element(tab).toHaveAttribute('data-count', '')
+    await page.viewport(1280, 800)
+  })
+
   it('opens the whole chain of where they stand, from the school down', async () => {
     await page.viewport(1280, 800)
     await shelled(open)
