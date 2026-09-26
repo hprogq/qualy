@@ -212,7 +212,7 @@ export const STAGING: Readonly<Record<Term, Staging>> = {
       archive,
     ],
   },
-  // appeals stay open until the next day's noon
+  // appeals stay open until the next day's noon, and the plan says so by name
   '24-25-1': {
     descriptionMd: described(
       '24-25-1',
@@ -221,7 +221,10 @@ export const STAGING: Readonly<Record<Term, Staging>> = {
     stages: [
       filing('24-25-1'),
       review,
-      appeal('因学院春季运动会，申诉截止顺延至3月15日 12:00。'),
+      {
+        ...appeal('因学院春季运动会，申诉截止顺延至3月15日 12:00。'),
+        displayName: '结果申诉（顺延）',
+      },
       settling([12, '12:00']),
       archive,
     ],

@@ -30,11 +30,13 @@ const opens = (stage: Stage | undefined, code: string) =>
 const keyAt = (staging: Staging, moment: Moment) => stageAt(staging, moment)?.phaseKey
 
 describe('the plan of each term', () => {
-  it('differs from every other term', () => {
-    const shapes = plans.map(({ staging }) =>
-      JSON.stringify(stagesOf(staging).map((stage) => [stage.displayName, stage.enters])),
+  it('names its stages unlike any other term, so the plans read apart', () => {
+    const names = plans.map(({ staging }) =>
+      stagesOf(staging)
+        .map((stage) => stage.displayName)
+        .join(' → '),
     )
-    expect(new Set(shapes).size).toBe(plans.length)
+    expect(new Set(names).size, names.join('\n')).toBe(plans.length)
   })
 
   it('says what every stage is for, within what a plan write takes', () => {
