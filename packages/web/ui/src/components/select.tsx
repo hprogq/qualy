@@ -107,12 +107,24 @@ function Select(props: {
       // a closed list leaves the document entirely - a hidden copy of every
       // option is a phantom for tests and assistive tech alike
       keepMounted={false}
-      // The list is at least as wide as its widest option, and a trigger
-      // narrower than that - an icon at the end of a toolbar - centres it
-      // past the window's edge. The widget turns sideways shifting off for
-      // a list the width of its trigger; this one is not always that, so it
-      // may slide back inside the window, still under its trigger.
-      middlewares={{ flip: true, shift: { mainAxis: true, padding: 8 } }}
+      // The list is as wide as its widest option and never narrower than
+      // its trigger. The widget's own list is the trigger's width exactly,
+      // so a field showing a short choice folded every longer option over
+      // two or three lines. A trigger narrower than the list - an icon at
+      // the end of a toolbar - centres it past the window's edge, and the
+      // widget turns sideways shifting off for a list the width of its
+      // trigger; this one is not, so it may slide back inside the window,
+      // still under its trigger.
+      width="max-content"
+      middlewares={{
+        flip: true,
+        shift: { mainAxis: true, padding: 8 },
+        size: {
+          apply: ({ rects, elements }) => {
+            elements.floating.style.minWidth = `max(9rem, ${rects.reference.width}px)`
+          },
+        },
+      }}
       transitionProps={dropIn}
       disabled={disabled}
       onOptionSubmit={(next) => {
@@ -165,10 +177,12 @@ const styles = stylex.create({
     overflow: 'hidden',
     whiteSpace: 'nowrap',
   },
-  // the list's measure; its surface is the anchored panels' material
+  // the list's measure - its floor is its trigger, set as it is placed -
+  // and past a line's comfortable length an option wraps; its surface is the
+  // anchored panels' material
   content: {
     maxHeight: '18rem',
-    minWidth: '9rem',
+    maxWidth: 'min(24rem, calc(100vw - 16px))',
     overflowX: 'hidden',
     overflowY: 'auto',
   },

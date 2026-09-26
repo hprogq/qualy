@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
+import * as stylex from '@stylexjs/stylex'
 import { UiProvider } from '@qualy/ui/provider'
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@qualy/ui/select'
 import '../src/app.css'
@@ -10,6 +11,8 @@ import '../src/app.css'
 // force. Asserted on geometry, computed style and the options' own state.
 
 afterEach(() => page.viewport(1280, 800))
+
+const caller = stylex.create({ full: { width: '100%' } })
 
 describe('a quiet select trigger', () => {
   // For a toolbar whose neighbours are icon keys: the key's own ground and
@@ -88,6 +91,60 @@ describe('a select’s open list', () => {
     const chosen = page.getByRole('option', { selected: true })
     await expect.element(chosen).toHaveAttribute('aria-selected', 'true')
     expect(inWindow(chosen.element().querySelector('svg')!)).toBe(true)
+  })
+
+  // A field showing a short choice used to open a list exactly its own
+  // width, folding every longer option over two or three lines. The list
+  // takes its widest option's width, and a field wider than that still
+  // gets a list as wide as itself.
+  it('is as wide as its widest option, and never narrower than its field', async () => {
+    await render(
+      <UiProvider scheme="light">
+        <Select value="short">
+          <SelectTrigger aria-label="unit">
+            <span>A</span>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="short">A</SelectItem>
+            <SelectItem value="long">School of Computer Science and Engineering</SelectItem>
+          </SelectContent>
+        </Select>
+        <div style={{ width: 420, marginTop: 240 }}>
+          <Select value="a">
+            <SelectTrigger aria-label="wide" xstyle={caller.full}>
+              <span>A</span>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="a">A</SelectItem>
+              <SelectItem value="b">B</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </UiProvider>,
+    )
+    const unit = page.getByRole('combobox', { name: 'unit' })
+    await unit.click()
+    const long = page.getByRole('option', { name: 'School of Computer Science and Engineering' })
+    await expect.element(long).toBeVisible()
+    const short = page.getByRole('option', { name: 'A', exact: true })
+    // one line each: the long option stands no taller than the short one
+    expect(long.element().getBoundingClientRect().height).toBe(
+      short.element().getBoundingClientRect().height,
+    )
+    const list = () => document.querySelector('[data-slot="select-content"]')!
+    expect(list().getBoundingClientRect().width).toBeGreaterThan(
+      unit.element().getBoundingClientRect().width,
+    )
+    await userEvent.keyboard('{Escape}')
+    await expect.poll(() => document.querySelector('[data-slot="select-content"]')).toBeNull()
+
+    const wide = page.getByRole('combobox', { name: 'wide' })
+    await wide.click()
+    await expect.element(page.getByRole('option', { name: 'B', exact: true })).toBeVisible()
+    await expect
+      .poll(() => Math.round(list().getBoundingClientRect().width))
+      .toBe(Math.round(wide.element().getBoundingClientRect().width))
+    await userEvent.keyboard('{Escape}')
   })
 
   it('says which option is the one in force', async () => {
