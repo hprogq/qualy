@@ -23,6 +23,7 @@ import { EntryTrail } from './EntryHistory.tsx'
 import { EntryStanding } from './EntryStanding.tsx'
 import { choiceLabel, displayTitle, kindOf, type AtomicSchema } from '@qualy/value-schema'
 import { answerOf, displayValueOf, fieldsOf, type EntryDto, type ItemDto } from './model.ts'
+import { LineParts } from './workspace/LineText.tsx'
 import { useWorkspaceMode } from './workspace/layout.ts'
 import { momentOf, voidedWithItem, type EntryLine } from './workspace/model.ts'
 
@@ -552,11 +553,19 @@ export function EntryDetail({
                 {item.title}
               </span>
             </Breadcrumb>
+            {/* the claim by its own identity line, field names set apart as
+                its row in the list sets them */}
             <SheetTitle className={stylex.props(styles.sheetTitle).className}>
-              {summary === undefined ? format(m.entrySheetTitle) : summary.lead}
+              {summary === undefined ? (
+                format(m.entrySheetTitle)
+              ) : (
+                <LineParts parts={summary.parts.slice(0, 1)} />
+              )}
             </SheetTitle>
-            {summary !== undefined && summary.sub !== '' && (
-              <p {...stylex.props(styles.headSub)}>{summary.sub}</p>
+            {summary !== undefined && summary.parts.length > 1 && (
+              <p data-part="sub" {...stylex.props(styles.headSub)}>
+                <LineParts parts={summary.parts.slice(1)} />
+              </p>
             )}
             {/* Each fact carries the divider before it, and the row is set
                 back by one divider inside a clipped box: whichever fact

@@ -873,7 +873,23 @@ describe('reading one question’s claims', () => {
     expect(getComputedStyle(name).color).not.toBe(
       getComputedStyle(only().querySelector('[data-part="lead"]')!).color,
     )
+    // the name and its figure stand as the language's catalog words them
+    const figured = zhCN['assessment/entries/figure']
+      .replace('{label}', '课程加权平均分')
+      .replace('{value}', '95.02')
+    expect(lead()).toBe(figured)
     expect(only().querySelector('[data-amount]')?.getAttribute('data-amount')).toBe('9.50')
+
+    // the drawer is headed by the same line, its field name set apart the same way
+    await userEvent.click(only())
+    const title = page.getByRole('dialog').getByRole('heading', { level: 2 }).first()
+    await expect.element(title).toBeVisible()
+    expect(title.element().textContent).toBe(figured)
+    const titled = title.element().querySelector('[data-part-label]')!
+    expect(titled.textContent).toBe('课程加权平均分')
+    expect(getComputedStyle(titled).color).not.toBe(getComputedStyle(title.element()).color)
+    await userEvent.keyboard('{Escape}')
+    await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull()
 
     // one that equals it is said once, in the amount; the field alone names the row
     await userEvent.click(document.querySelector(`[data-rail-row="${FITNESS}"]`)!)
