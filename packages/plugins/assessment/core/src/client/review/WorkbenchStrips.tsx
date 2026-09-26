@@ -22,7 +22,7 @@ import { UnitPath } from '@qualy/ui/unit-path'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
-import { UNNAMED } from '../roster/unit-path.ts'
+import { namedChainOf } from '../roster/unit-path.ts'
 import { useBeside, useFinePointer } from './pointer.ts'
 import type { ReviewDto } from './model.ts'
 import { PART_LABEL, WORKBENCH_PARTS, type WorkbenchPart } from './Pane.tsx'
@@ -418,7 +418,9 @@ export function PersonStrip({
   const { format } = useI18n()
   const fine = useFinePointer()
   const round = review.context?.worth.groupName
-  const levels = review.unitPath.map((name) => name ?? UNNAMED)
+  // a unit that has left the organization since is said to have gone,
+  // rather than drawn with the mark the line uses for levels it leaves off
+  const { levels, gone } = namedChainOf(review.unitPath, format(m.reviewUnitGone))
   return (
     <header {...stylex.props(styles.personBar)}>
       {/* The door back, for every width where the queue rail is not beside:
@@ -449,7 +451,7 @@ export function PersonStrip({
           )}
         </div>
         {review.unitPath.length > 0 ? (
-          <span data-testid="review-unit" {...stylex.props(styles.unitSeat)}>
+          <span data-testid="review-unit" data-gone={gone} {...stylex.props(styles.unitSeat)}>
             <UnitPath
               // the root everybody on the round shares is left off the
               // line, and kept on the chain

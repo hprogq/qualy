@@ -47,3 +47,24 @@ export const unitChainOf = (
   lineage: readonly { readonly nodeId: string }[],
   nameOf: (nodeId: string) => string | undefined,
 ): readonly string[] => [...lineage].reverse().map((step) => nameOf(step.nodeId) ?? UNNAMED)
+
+/**
+ * A chain the server has already named from the root down, where a unit
+ * that has since left the organization comes back as null.
+ *
+ * A level that is gone is said as gone, by the word the caller hands in,
+ * and a run of them once: the mark a line puts in front of the levels it
+ * left off must never also stand for a unit that no longer exists. `gone`
+ * counts the levels the chain could not name.
+ */
+export const namedChainOf = (
+  path: readonly (string | null)[],
+  goneWord: string,
+): { readonly levels: readonly string[]; readonly gone: number } => {
+  const levels: string[] = []
+  path.forEach((name, index) => {
+    if (name !== null) levels.push(name)
+    else if (index === 0 || path[index - 1] !== null) levels.push(goneWord)
+  })
+  return { levels, gone: path.filter((name) => name === null).length }
+}

@@ -843,6 +843,7 @@ export default {
   'assessment/review/comment-placeholder-advise': '填写审核意见',
   'assessment/review/undo': '撤回',
   'assessment/review/back-to-queue': '返回待审核列表',
+  'assessment/review/unit-gone': '已不存在的单位',
   'assessment/review/run-start': '开始审核',
   'assessment/review/filed': '申报内容',
   'assessment/review/filed-version-short': '第 {no} 版',

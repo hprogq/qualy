@@ -3421,6 +3421,11 @@ const i18n = definePluginMessages({
       id: 'assessment/review/back-to-queue',
       defaultMessage: 'Back to pending reviews',
     },
+    /** a level of where somebody stands whose unit has since left the organization */
+    reviewUnitGone: {
+      id: 'assessment/review/unit-gone',
+      defaultMessage: 'Unit no longer exists',
+    },
     reviewRunStart: { id: 'assessment/review/run-start', defaultMessage: 'Start reviewing' },
     reviewFiled: { id: 'assessment/review/filed', defaultMessage: 'Submission content' },
     reviewFiledVersionShort: {

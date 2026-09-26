@@ -1,6 +1,7 @@
 import ReviewInstancePage from '../src/client/review/ReviewInstancePage.tsx'
 import ReviewInboxPage from '../src/client/review/ReviewInboxPage.tsx'
 import QueueBadge from '../src/client/review/QueueBadge.tsx'
+import { UNNAMED } from '../src/client/roster/unit-path.ts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect, Stream } from 'effect'
@@ -1056,6 +1057,35 @@ describe('where the person being judged stands', () => {
       })
     }
   }
+
+  // A unit deleted from the organization since the round froze the lineage
+  // comes back unnamed. It is said to be gone, once for a run of them, and
+  // never with the mark the line puts in front of the levels it left off.
+  it('says a unit that has gone as gone, never as a level left off', async () => {
+    await page.viewport(1440, 900)
+    await open({
+      getReviewInstance: () =>
+        Effect.succeed({
+          review: { ...review, unitName: null, unitPath: ['示例大学', null, null] },
+        }),
+    })
+    const unit = page.getByTestId('review-unit')
+    await expect.element(unit).toHaveAttribute('data-gone', '2')
+    const path = unit.getByTestId('unit-path')
+    // one level, the one that went, and nothing folded in front of it
+    await expect.element(path).toHaveAttribute('data-steps', '1')
+    await expect.element(path).toHaveAttribute('data-clipped', 'false')
+    const said = [...path.element().querySelectorAll('[data-path-step]')].map((step) =>
+      step.textContent?.replace('/', '').trim(),
+    )
+    expect(said).not.toContain(UNNAMED)
+    expect(said.every((one) => one !== '')).toBe(true)
+    // the whole chain keeps the root and says the rest is gone
+    await unit.getByTestId('unit-chain-open').click()
+    await expect.element(page.getByTestId('unit-chain')).toBeVisible()
+    expect(chain().map((level) => level.textContent)).toEqual(['示例大学', said[0]])
+    await userEvent.keyboard('{Escape}')
+  })
 
   it('keeps the unit in reach on a phone, and raises the chain from the foot', async () => {
     await page.viewport(390, 844)
