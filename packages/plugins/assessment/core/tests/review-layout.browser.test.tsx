@@ -5,6 +5,7 @@ import { UNNAMED } from '../src/client/roster/unit-path.ts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect, Stream } from 'effect'
+import { ScreenFillScope, useScreenFillClaimed } from '@qualy/web-runtime'
 import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 // The only suite that needs the real stylesheet: what it asserts is which
 // parts a width shows, and without the sheet every breakpoint is the same
@@ -361,6 +362,70 @@ describe('one workbench, three widths', () => {
     await expect
       .element(page.getByTestId('review-inbox-empty'))
       .toHaveAttribute('data-empty', 'nothing')
+  })
+
+  // The workbench is a screenful at every width and scrolls its parts
+  // inside itself, so it says so to the shell: a shell that keeps room for
+  // a page scrollbar beside it only draws an empty strip down its right.
+  it('claims the whole screen from the shell around it', async () => {
+    await page.viewport(1440, 900)
+    function Claimed() {
+      return <span data-testid="fill-claimed" data-claimed={String(useScreenFillClaimed())} />
+    }
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+        assessment: {
+          getBatch: () => Effect.succeed({ batch: batch() }),
+          listReviewInbox: () =>
+            Effect.succeed({ items: [inboxRow()], nextCursor: null, handledToday: 0 }),
+          getReviewInstance: () => Effect.succeed({ review }),
+          getEntryHistory: () => Effect.succeed({ revisions: [], events: [], rounds: [] }),
+        },
+      }),
+      routes: [
+        {
+          path: '/assessment/batches/:batchId/reviews/:instanceId',
+          element: (
+            <ScreenFillScope>
+              <Claimed />
+              <div style={{ display: 'flex', height: '90dvh', flexDirection: 'column' }}>
+                <ReviewInstancePage />
+              </div>
+            </ScreenFillScope>
+          ),
+        },
+      ] as never,
+      route: `/assessment/batches/${BATCH_ID}/reviews/${INSTANCE_ID}`,
+    })
+    await expect.element(page.getByTestId('fill-claimed')).toHaveAttribute('data-claimed', 'true')
+  })
+
+  // The run is said once, on the run's own terms. A strip above used to
+  // count the sitting and the bar below it what was left, and "4/12" over
+  // "1/9" on one screen read as two runs.
+  it('says the run’s place once, counting what the sitting already dealt with', async () => {
+    await page.viewport(1440, 900)
+    await open()
+    await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
+    const place = page.getByTestId('run-position')
+    expect(place.elements()).toHaveLength(1)
+    await expect.element(place).toHaveAttribute('data-at', '1')
+    await expect.element(place).toHaveAttribute('data-total', '2')
+    // one way out of the run, not three
+    expect(document.querySelectorAll('[data-testid="queue-back"]')).toHaveLength(1)
+
+    await page.getByRole('button', { name: /^通过/ }).click()
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /^通过/ })
+      .click()
+    // the next one is the second of the same two, with the first behind it
+    await expect.element(place).toHaveAttribute('data-at', '2')
+    await expect.element(place).toHaveAttribute('data-done', '1')
+    await expect.element(place).toHaveAttribute('data-total', '2')
+    await expect.element(page.getByTestId('queue-key')).toHaveAttribute('data-count', '1')
+    expect(page.getByTestId('run-position').elements()).toHaveLength(1)
   })
 
   it('keeps the queue inside the width it is given', async () => {
@@ -1126,6 +1191,8 @@ describe('the queue, a page at a time', () => {
     // a row on the second page opens the run over the whole question
     await rows().first().click()
     await expect.element(page.getByTestId('queue-key')).toHaveAttribute('data-count', '23')
+    await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-total', '23')
+    await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-at', '11')
 
     // and the way back finds the queue on the page it was left on
     await page.getByTestId('queue-back').click()
@@ -1140,6 +1207,8 @@ describe('the queue, a page at a time', () => {
     await withBench(both(), `?item=${OTHER_ITEM}`)
     await page.getByTestId('review-start').click()
     await expect.element(page.getByTestId('queue-key')).toHaveAttribute('data-count', '25')
+    await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-total', '25')
+    await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-at', '1')
   })
 
   // Narrower than a desk the list and a question's filings are one screen

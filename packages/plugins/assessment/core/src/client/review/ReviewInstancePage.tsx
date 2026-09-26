@@ -5,6 +5,7 @@ import {
   useApi,
   useApiQuery,
   usePageNavigate,
+  useClaimScreenFill,
   useClaimScreenFoot,
   usePageQueryState,
   usePageRouteParams,
@@ -42,7 +43,7 @@ import { SupplementDialog, type WordedSupplement } from './SupplementDialog.tsx'
 import { type WorkbenchPart } from './Pane.tsx'
 import { useBenchColumns } from './bench-columns.tsx'
 import { QueueRail } from './QueueRail.tsx'
-import { PartStrip, PersonStrip, RunStrip } from './WorkbenchStrips.tsx'
+import { PartStrip, PersonStrip } from './WorkbenchStrips.tsx'
 import { queuePlaceOf } from './queue-place.ts'
 import { EscalationNotice } from './EscalationNotice.tsx'
 import { FlowColumn } from './FlowColumn.tsx'
@@ -1216,6 +1217,8 @@ function Workbench({ batch }: { batch: BatchDto }) {
   const done = remaining.length === 0 && log.length > 0 && !inbox.isPending
   const bar = !done && !lostTurn && review !== undefined && review.capabilities.canDecide
   useClaimScreenFoot(bar)
+  // a screenful at every width: the parts scroll inside it, never the page
+  useClaimScreenFill(true)
 
   return (
     <AsyncSection
@@ -1282,22 +1285,21 @@ function Workbench({ batch }: { batch: BatchDto }) {
               <BenchSkeleton />
             ) : (
               <>
-                {/* the run's standing, for a screen with room for it: narrow,
-                    the header already says which of how many this is, and a
-                    second bar would cost a tenth of the phone to say it
-                    again */}
-                {scopeRows.length > 0 && (
-                  <RunStrip
-                    at={handled.length + (currentIndex === -1 ? 1 : currentIndex + 1)}
-                    total={total}
-                    done={handled.length}
-                    batchId={batch.id}
-                  />
-                )}
                 <PersonStrip
                   review={review}
-                  at={currentIndex === -1 ? null : currentIndex + 1}
-                  of={remaining.length}
+                  // which of the whole sitting this is, the ones already
+                  // dealt with counted in; a round opened from outside the
+                  // run is no place in it
+                  run={
+                    currentIndex === -1
+                      ? null
+                      : {
+                          at: handled.length + currentIndex + 1,
+                          total,
+                          done: handled.length,
+                        }
+                  }
+                  remaining={remaining.length}
                   canPrev={currentIndex > 0}
                   canNext={currentIndex !== -1 && currentIndex < remaining.length - 1}
                   onMove={move}

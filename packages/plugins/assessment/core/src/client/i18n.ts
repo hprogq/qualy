@@ -3183,9 +3183,12 @@ const i18n = definePluginMessages({
     reviewQueueTitle: { id: 'assessment/review/queue-title', defaultMessage: 'Pending reviews' },
     reviewRunPosition: {
       id: 'assessment/review/run-position',
+      defaultMessage: '{at} of {count}',
+    },
+    reviewRunPositionShort: {
+      id: 'assessment/review/run-position-short',
       defaultMessage: '{at}/{count}',
     },
-    reviewRunExit: { id: 'assessment/review/run-exit', defaultMessage: 'Exit continuous review' },
     reviewPrior: { id: 'assessment/review/prior', defaultMessage: 'Review process' },
     // the phone's filing page carries a two-line situation summary, and the
     // decision dialogs a last quiet word about faces not yet read
@@ -3236,7 +3239,7 @@ const i18n = definePluginMessages({
       id: 'assessment/review/about-section',
       defaultMessage: 'About this question',
     },
-    reviewQueueKey: { id: 'assessment/review/queue-key', defaultMessage: 'Pending' },
+    reviewQueueKey: { id: 'assessment/review/queue-key', defaultMessage: 'Left' },
     reviewStageVeiled: { id: 'assessment/review/stage-veiled', defaultMessage: 'A later step' },
     reviewResizeFlow: {
       id: 'assessment/review/resize-flow',

@@ -9,7 +9,6 @@ import {
   CircleArrowUpIcon,
 } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
-import { usePageNavigate } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
@@ -31,43 +30,23 @@ const lg = '@media (min-width: 1024px)'
 const belowLg = '@media (max-width: 1023.98px)'
 
 const styles = stylex.create({
-  // ---- the run's own strip ----
-  runStrip: {
-    display: {
-      default: 'none',
-      [lg]: 'flex',
-    },
-    flexShrink: 0,
-    alignItems: 'center',
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: tokens.border,
-    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 40%, transparent)`,
-    paddingInline: 16,
-    paddingBlock: 8,
-  },
-  runPosition: {
-    flexShrink: 0,
-    fontSize: 12,
-    color: tokens.mutedForeground,
-    fontVariantNumeric: 'tabular-nums',
-  },
+  // ---- where the run stands, drawn along the bar's own lower edge ----
   runTrack: {
+    pointerEvents: 'none',
+    position: 'absolute',
+    insetInline: 0,
+    bottom: -1,
     display: 'flex',
-    minWidth: 0,
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
-    gap: 4,
+    height: 2,
+    gap: 2,
   },
   runSegment: {
-    height: 4,
+    height: 2,
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: '0%',
-    borderRadius: '9999px',
     transitionProperty: 'background-color',
+    transitionDuration: '200ms',
   },
   runSegmentDone: {
     backgroundColor: tokens.foreground,
@@ -78,16 +57,12 @@ const styles = stylex.create({
   runSegmentAhead: {
     backgroundColor: tokens.border,
   },
-  runExit: {
-    flexShrink: 0,
-    fontSize: 12,
-    color: tokens.mutedForeground,
-  },
   // ---- the person bar ----
   // One line of who across a desk. Narrower, where they stand takes a line
   // of its own under the name, so the bar grows by that line rather than
   // squeezing the unit to a mark between the number and the queue key.
   personBar: {
+    position: 'relative',
     display: 'flex',
     height: { default: 'auto', [lg]: 56 },
     minHeight: 56,
@@ -242,7 +217,10 @@ const styles = stylex.create({
     flexShrink: 0,
     color: tokens.mutedForeground,
   },
+  runAtWords: { display: { default: null, [breakpoints.phone]: 'none' } },
+  runAtFigures: { display: { default: 'none', [breakpoints.phone]: 'inline' } },
   runAt: {
+    flexShrink: 0,
     fontSize: 12,
     whiteSpace: 'nowrap',
     color: tokens.mutedForeground,
@@ -336,65 +314,20 @@ const styles = stylex.create({
 })
 
 /**
- * Where the run stands: one segment per filing, filled behind the reader and
- * marked at the one they are on.
+ * Who is being judged, this round's standing at a glance, and where the run
+ * stands.
  *
- * It used to light only what was finished, so the segment for the filing on
- * screen stayed grey until it had been dealt with - the bar was always one
- * behind what the reader was looking at.
+ * The run is said once, on the run's own terms: which filing of the whole
+ * sitting this is, the ones dealt with behind it included. It used to be
+ * said twice - a strip above counting the sitting and this bar counting
+ * what was left - and "4/12" over "1/9" on one screen read as two runs. Its
+ * segments ride the bar's lower edge, filled behind the reader and marked
+ * at the one they are on, rather than taking a band of their own.
  */
-export function RunStrip({
-  at,
-  total,
-  done,
-  batchId,
-}: {
-  /** which filing of the run is on screen, counting from one */
-  at: number
-  total: number
-  /** how many have been dealt with this sitting */
-  done: number
-  batchId: string
-}) {
-  const { format } = useI18n()
-  const navigate = usePageNavigate()
-  return (
-    <div {...stylex.props(styles.runStrip)}>
-      <p {...stylex.props(styles.runPosition)}>
-        {format(m.reviewRunPosition, { at, count: total })}
-      </p>
-      <span {...stylex.props(styles.runTrack)}>
-        {Array.from({ length: Math.min(total, 60) }, (_, index) => (
-          <span
-            key={index}
-            {...stylex.props(
-              styles.runSegment,
-              index < done
-                ? styles.runSegmentDone
-                : index === at - 1
-                  ? styles.runSegmentAt
-                  : styles.runSegmentAhead,
-            )}
-          />
-        ))}
-      </span>
-      <Button
-        variant="ghost"
-        size="sm"
-        className={stylex.props(styles.runExit).className}
-        onClick={() => navigate('assessment/batch-reviews', { params: { batchId } })}
-      >
-        {format(m.reviewRunExit)}
-      </Button>
-    </div>
-  )
-}
-
-/** who is being judged, and this round's standing at a glance */
 export function PersonStrip({
   review,
-  at,
-  of,
+  run,
+  remaining,
   canPrev,
   canNext,
   onMove,
@@ -403,12 +336,14 @@ export function PersonStrip({
   onKeys,
 }: {
   review: ReviewDto
-  at: number | null
-  of: number
+  /** which filing of the run is on screen, counting from one, of how many, and how many are dealt with */
+  run: { at: number; total: number; done: number } | null
+  /** how many of the run are still to be dealt with, this one included */
+  remaining: number
   canPrev: boolean
   canNext: boolean
   onMove: (step: 1 | -1) => void
-  /** the way out, where the queue rail is not there to hold one */
+  /** the way out: back to the queue, where it was left */
   onBack: () => void
   /** who else is waiting, brought out from the side */
   onQueue: () => void
@@ -423,19 +358,26 @@ export function PersonStrip({
   const { levels, gone } = namedChainOf(review.unitPath, format(m.reviewUnitGone))
   return (
     <header {...stylex.props(styles.personBar)}>
-      {/* The door back, for every width where the queue rail is not beside:
-          a small key, the way the rail's own header key is small, because
-          the person being judged owns this bar. On a phone the system back
-          key is the reader's other way out. */}
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label={format(m.reviewBackToQueue)}
-        data-testid="queue-back"
-        onClick={onBack}
-      >
-        <ChevronLeftIcon aria-hidden />
-      </Button>
+      {/* The one way out of the run, at every width: a small key, because
+          the person being judged owns this bar, named on hover for a reader
+          who cannot guess where a bare arrow goes. On a phone the system
+          back key is the other way out. */}
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={format(m.reviewBackToQueue)}
+              data-testid="queue-back"
+              onClick={onBack}
+            >
+              <ChevronLeftIcon aria-hidden />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{format(m.reviewBackToQueue)}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <Avatar className={stylex.props(styles.avatar).className}>
         <AvatarFallback className={stylex.props(styles.avatarFace).className}>
           {review.participantName.slice(0, 1)}
@@ -504,13 +446,13 @@ export function PersonStrip({
         variant="ghost"
         size="sm"
         data-testid="queue-key"
-        data-count={of}
+        data-count={remaining}
         className={stylex.props(styles.queueKey).className}
         onClick={onQueue}
       >
         <ListIcon aria-hidden className={stylex.props(styles.queueKeyIcon).className} />
         {format(m.reviewQueueKey)}
-        <span {...stylex.props(styles.queueKeyCount)}>{of}</span>
+        <span {...stylex.props(styles.queueKeyCount)}>{remaining}</span>
         {fine && <Kbd>Q</Kbd>}
       </Button>
       {/* the keys panel belongs to a keyboard; without one the letters are
@@ -528,8 +470,23 @@ export function PersonStrip({
           <Kbd>?</Kbd>
         </Button>
       )}
-      {at !== null && (
-        <p {...stylex.props(styles.runAt)}>{format(m.reviewRunPosition, { at, count: of })}</p>
+      {run !== null && (
+        <p
+          data-testid="run-position"
+          data-at={run.at}
+          data-total={run.total}
+          data-done={run.done}
+          {...stylex.props(styles.runAt)}
+        >
+          {/* a phone's bar has the name's line to keep: there the place is
+              said as figures alone, and in words where there is room */}
+          <span {...stylex.props(styles.runAtWords)}>
+            {format(m.reviewRunPosition, { at: run.at, count: run.total })}
+          </span>
+          <span {...stylex.props(styles.runAtFigures)}>
+            {format(m.reviewRunPositionShort, { at: run.at, count: run.total })}
+          </span>
+        </p>
       )}
       <span {...stylex.props(styles.edgeKeys)}>
         <EdgeButton
@@ -544,6 +501,23 @@ export function PersonStrip({
           <ChevronDownIcon aria-hidden />
         </EdgeButton>
       </span>
+      {run !== null && run.total > 1 && (
+        <span aria-hidden data-testid="run-track" {...stylex.props(styles.runTrack)}>
+          {Array.from({ length: Math.min(run.total, 60) }, (_, index) => (
+            <span
+              key={index}
+              {...stylex.props(
+                styles.runSegment,
+                index < run.done
+                  ? styles.runSegmentDone
+                  : index === run.at - 1
+                    ? styles.runSegmentAt
+                    : styles.runSegmentAhead,
+              )}
+            />
+          ))}
+        </span>
+      )}
     </header>
   )
 }
