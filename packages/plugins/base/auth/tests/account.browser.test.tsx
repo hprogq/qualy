@@ -1,3 +1,4 @@
+import AccountHeader from '../src/client/account/AccountHeader.tsx'
 import AccountLoginsPage from '../src/client/account/AccountLoginsPage.tsx'
 import AccountProfilePage from '../src/client/account/AccountProfilePage.tsx'
 import { describe, expect, it, vi } from 'vitest'
@@ -91,6 +92,33 @@ const stubs = (entrances: Entrance[], over: Record<string, unknown> = {}) => ({
       Effect.succeed({ method: 'password' as const, until: null, entrances: [] }),
     ...over,
   },
+})
+
+describe('the reader’s banner', () => {
+  const facts = () =>
+    [...document.querySelectorAll('[data-testid="person-fact"]')].map((el) =>
+      el.getAttribute('data-fact'),
+    )
+
+  it('says their number beside their unit, the line the directory shows over them', async () => {
+    await renderScreen({ client: fakeClient(stubs([])), children: <AccountHeader /> })
+    await expect.element(page.getByTestId('person-facts')).toBeInTheDocument()
+    expect(facts()).toEqual(['business-no', 'unit'])
+    expect(page.getByTestId('person-facts').element().textContent).toContain('20990001')
+    // the unit, and the whole way down to it on hover
+    expect(document.querySelector('[data-fact="unit"] [title]')?.getAttribute('title')).toBe(
+      '示例大学 / 示例学院',
+    )
+  })
+
+  it('leaves out a number they do not have, which is not theirs to fill in', async () => {
+    await renderScreen({
+      client: fakeClient(stubs([], { getSelf: () => Effect.succeed(me({ businessNo: null })) })),
+      children: <AccountHeader />,
+    })
+    await expect.element(page.getByTestId('person-facts')).toBeInTheDocument()
+    expect(facts()).toEqual(['unit'])
+  })
 })
 
 describe('the reader’s profile', () => {

@@ -9,12 +9,16 @@ import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { initialsOf } from '@qualy/ui/person'
 import { Tag } from '@qualy/ui/screen'
+import { useTerm } from '@qualy/plugin-settings/client/terms'
+import { authTerms } from '@qualy/auth-contract/terms'
 import { authApi } from '../api.ts'
+import { iamMessages as m } from '../i18n.ts'
+import { PersonFacts, type PersonFact } from '../iam/person-facts.tsx'
 
 // Who is signed in, above every page of their own account: the name, the
-// kind of person they are filed as, and the unit they stand at. Read from
-// the session rather than from the address - there is nobody else it could
-// be about.
+// kind of person they are filed as, their number and the unit they stand
+// at. Read from the session rather than from the address - there is nobody
+// else it could be about.
 
 const styles = stylex.create({
   who: {
@@ -57,18 +61,40 @@ const styles = stylex.create({
     fontWeight: 600,
     letterSpacing: '-0.025em',
   },
-  where: { fontSize: 13, color: tokens.mutedForeground },
   boneName: { width: 160, height: 24, borderRadius: 6 },
   boneMeta: { width: '100%', maxWidth: 240, height: 14, borderRadius: 4 },
 })
 
 export default function AccountHeader() {
   const query = useApiQuery(authApi)
-  const { formatError } = useI18n()
+  const { format, formatError } = useI18n()
+  const businessNoWord = useTerm(authTerms.businessNumber)
   const self = useQuery(query.self.getSelf.queryOptions())
 
   if (self.isError) return <Feedback message={formatError(self.error)} />
   const me = self.data
+  // The line the directory shows over their record, as far as it is theirs:
+  // their number and their unit. A number they do not have is left out
+  // rather than said missing, since it is not theirs to fill in; their
+  // address is the security page's, where it can be proven.
+  const facts: PersonFact[] =
+    me === undefined
+      ? []
+      : [
+          ...(me.businessNo === null
+            ? []
+            : [{ key: 'business-no', label: businessNoWord, value: me.businessNo }]),
+          ...(me.unit === null
+            ? []
+            : [
+                {
+                  key: 'unit',
+                  label: format(m.personPlacement),
+                  value: me.unit.name,
+                  title: me.unitLineage.map((step) => step.name).join(' / '),
+                },
+              ]),
+        ]
   return (
     <div data-testid="account-header" {...stylex.props(styles.who)}>
       {me === undefined ? (
@@ -91,7 +117,7 @@ export default function AccountHeader() {
               <h1 {...stylex.props(styles.name)}>{me.displayName}</h1>
               <Tag>{me.userType.name}</Tag>
             </div>
-            {me.unit !== null && <span {...stylex.props(styles.where)}>{me.unit.name}</span>}
+            {facts.length > 0 && <PersonFacts facts={facts} />}
           </div>
         </>
       )}

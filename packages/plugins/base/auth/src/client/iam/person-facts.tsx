@@ -1,4 +1,5 @@
 import * as stylex from '@stylexjs/stylex'
+import type { StyleXStyles } from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
@@ -10,7 +11,56 @@ import { iamMessages as m } from '../i18n.ts'
 // administering them in the directory, or the person on their own account.
 // The screens around them differ in who may do what; these do not.
 
+const QUIET = `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`
+
 const styles = stylex.create({
+  // What is true of them at a glance, each under its own small word. The
+  // rule between two facts is drawn by the second, in the gap before it, and
+  // the line clips whatever stands outside it: a fact that wraps to the start
+  // of a line takes its rule along to where it cannot be seen, instead of
+  // leaving one hanging at the end of the line above.
+  facts: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    columnGap: 14,
+    rowGap: 6,
+    overflow: 'hidden',
+  },
+  factsWrap: { flexWrap: 'wrap' },
+  // one line, the last fact giving way first: the banner above the reader's
+  // own pages is held at the height of a name and one line under it
+  factsLine: { flexWrap: 'nowrap' },
+  fact: {
+    position: 'relative',
+    display: 'inline-flex',
+    minWidth: 0,
+    alignItems: 'baseline',
+    gap: 6,
+    fontSize: 12.5,
+    '::before': {
+      content: '""',
+      position: 'absolute',
+      insetInlineStart: -8,
+      top: '50%',
+      width: 1,
+      height: 10,
+      marginTop: -5,
+      backgroundColor: `color-mix(in oklab, ${tokens.foreground} 12%, transparent)`,
+    },
+  },
+  factFixed: { flexShrink: 0 },
+  factLabel: { flexShrink: 0, color: QUIET },
+  factValue: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.surfaceMutedForeground,
+  },
+  factWarn: { color: tokens.warningForeground },
+  factAside: { flexShrink: 0, color: QUIET },
   emailLine: {
     display: 'inline-flex',
     flexWrap: 'wrap',
@@ -120,5 +170,64 @@ export function EntranceAccount({
         )}
       </span>
     </Cell>
+  )
+}
+
+/** one fact of a person's banner line */
+export interface PersonFact {
+  /** stable across renders and locales, for React and for a test to find */
+  readonly key: string
+  readonly label: string
+  readonly value: string
+  /** said in the warning colour: something is missing that should not be */
+  readonly warn?: boolean
+  /** a word after the value, quieter than it: a state of the value itself */
+  readonly aside?: string
+  /** the whole of a value the line shows only the end of, on hover */
+  readonly title?: string
+}
+
+/**
+ * A person's facts on one line under their name, "label value", a thin rule
+ * between each: the same line over the directory's record of them and over
+ * their own account, so the two read as one person seen from two sides.
+ */
+export function PersonFacts({
+  facts,
+  wrap = false,
+  xstyle,
+}: {
+  facts: readonly PersonFact[]
+  /** onto further lines when the width runs out, rather than cutting the last */
+  wrap?: boolean
+  xstyle?: StyleXStyles
+}) {
+  return (
+    <div
+      data-testid="person-facts"
+      {...stylex.props(styles.facts, wrap ? styles.factsWrap : styles.factsLine, xstyle)}
+    >
+      {facts.map((fact, index) => (
+        <span
+          key={fact.key}
+          data-testid="person-fact"
+          data-fact={fact.key}
+          data-warn={fact.warn === true ? 'yes' : 'no'}
+          // every fact but the last keeps its width: the line gives way at its end
+          {...stylex.props(styles.fact, index < facts.length - 1 && styles.factFixed)}
+        >
+          <span {...stylex.props(styles.factLabel)}>{fact.label}</span>
+          <span
+            title={fact.title ?? fact.value}
+            {...stylex.props(styles.factValue, fact.warn === true && styles.factWarn)}
+          >
+            {fact.value}
+          </span>
+          {fact.aside !== undefined && (
+            <span {...stylex.props(styles.factAside)}>{fact.aside}</span>
+          )}
+        </span>
+      ))}
+    </div>
   )
 }

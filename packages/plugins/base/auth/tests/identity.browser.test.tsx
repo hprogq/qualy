@@ -884,6 +884,36 @@ describe("a person's header", () => {
       children: <UserDetailHeader />,
     })
 
+  it('reads the line under the name the way the person reads their own, with what is missing marked', async () => {
+    await mount({
+      getUser: () =>
+        Effect.succeed({
+          ...person(),
+          orgPath: [
+            { id: ROOT_NODE_ID, name: '本部', orgTypeName: '学校' },
+            { id: 'a', name: '2023级', orgTypeName: '年级' },
+          ],
+          lastSignInAt: '2026-09-25T06:30:00.000Z',
+        }),
+    })
+    const facts = page.getByTestId('person-facts')
+    await expect.element(facts).toBeInTheDocument()
+    const fact = (key: string) =>
+      facts.element().querySelector<HTMLElement>(`[data-fact="${key}"]`)!
+    // their number, their unit, their address and when they last came in;
+    // the roles are a section of their own and no count stands in for them
+    expect(
+      [...facts.element().querySelectorAll('[data-fact]')].map((el) =>
+        el.getAttribute('data-fact'),
+      ),
+    ).toEqual(['business-no', 'unit', 'email', 'last-sign-in'])
+    // a number they lack is said once, as missing, and not as its own label
+    expect(fact('business-no').dataset['warn']).toBe('yes')
+    expect(fact('email').dataset['warn']).toBe('no')
+    // the unit shows its own name, the whole way down to it on hover
+    expect(fact('unit').querySelector('[title]')?.getAttribute('title')).toBe('本部 / 2023级')
+  })
+
   it('says why a disable was refused once the question is put away, and not in the form after', async () => {
     const status = vi.fn(() => Effect.fail(apiError('LAST_ADMINISTRATOR')))
     await mount({ setUserStatus: status })

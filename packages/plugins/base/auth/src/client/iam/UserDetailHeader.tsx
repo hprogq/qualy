@@ -1,6 +1,6 @@
 import type { Effect } from 'effect'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Fragment, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ArrowLeftIcon, EllipsisIcon } from 'lucide-react'
 import {
   PageLink,
@@ -34,6 +34,8 @@ import { iamMessages as m } from '../i18n.ts'
 import { rosterSearch } from './users/roster-address.ts'
 import { authApi } from '../api.ts'
 import { needsReauthentication, useReauthentication } from '../account/Reauthentication.tsx'
+import { instantWords } from '../when.ts'
+import { PersonFacts, type PersonFact } from './person-facts.tsx'
 
 // Who the open person is, above every section of their record.
 //
@@ -42,8 +44,6 @@ import { needsReauthentication, useReauthentication } from '../account/Reauthent
 // beside it do. It carries the acts that concern the person as a whole -
 // their name, address and kind, whether they may sign in at all, whether
 // they stay on the books - and nothing that belongs to one section.
-
-const QUIET = `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`
 
 const styles = stylex.create({
   // two rows: the way back, then the person. The strip this sits in is the
@@ -121,32 +121,11 @@ const styles = stylex.create({
     fontWeight: 600,
     letterSpacing: '-0.025em',
   },
-  // what is true of them at a glance, each under its own small word
-  facts: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    columnGap: 14,
-    rowGap: 6,
+  // what is true of them at a glance: on a phone, the row under the portrait
+  // and the name, the whole width
+  factsSeat: {
     gridColumn: { default: null, [breakpoints.phone]: '1 / -1' },
     gridRow: { default: null, [breakpoints.phone]: 2 },
-  },
-  fact: { display: 'inline-flex', minWidth: 0, alignItems: 'baseline', gap: 6, fontSize: 12.5 },
-  factLabel: { flexShrink: 0, color: QUIET },
-  factValue: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontVariantNumeric: 'tabular-nums',
-    color: tokens.surfaceMutedForeground,
-  },
-  factWarn: { color: tokens.warningForeground },
-  factRule: {
-    width: 1,
-    height: 10,
-    flexShrink: 0,
-    backgroundColor: `color-mix(in oklab, ${tokens.foreground} 12%, transparent)`,
   },
   actions: {
     display: 'flex',
@@ -177,7 +156,7 @@ export default function UserDetailHeader() {
   const runApi = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
+  const { format, formatError, locale } = useI18n()
   const businessNoWord = useTerm(authTerms.businessNumber)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
@@ -300,27 +279,38 @@ export default function UserDetailHeader() {
     setFeedback(null)
   }
 
-  const facts: { label: string; value: string; warn?: boolean }[] =
+  // The same line the person reads over their own account, with what an
+  // administrator looks for first in any section: whether the address was
+  // proven, and whether they come in at all. Their roles are a section of
+  // their own, named there; a count of them said nothing.
+  const path = user.data?.orgPath ?? []
+  const lastSignInAt = user.data?.lastSignInAt ?? null
+  const facts: PersonFact[] =
     record === undefined
       ? []
       : [
+          record.businessNo === null
+            ? { key: 'business-no', label: businessNoWord, value: format(m.fieldUnset), warn: true }
+            : { key: 'business-no', label: businessNoWord, value: record.businessNo },
           {
-            label: businessNoWord,
-            value:
-              record.businessNo ?? format(m.personNoBusinessNo, { businessNo: businessNoWord }),
-          },
-          {
-            label: format(m.emailLabel),
-            value: record.email ?? format(m.emailNone),
-          },
-          {
+            key: 'unit',
             label: format(m.personPlacement),
-            // the unit itself: the whole way down to it is on the profile below
-            value: user.data?.orgPath.at(-1)?.name ?? '—',
+            // the unit itself, the whole way down to it on hover
+            value: path.at(-1)?.name ?? '—',
+            title: path.map((step) => step.name).join(' / '),
           },
+          record.email === null
+            ? { key: 'email', label: format(m.emailLabel), value: format(m.fieldUnset), warn: true }
+            : {
+                key: 'email',
+                label: format(m.emailLabel),
+                value: record.email,
+                ...(record.emailVerifiedAt === null ? { aside: format(m.emailUnverified) } : {}),
+              },
           {
-            label: format(m.rolesLabel),
-            value: format(m.grantCount, { count: user.data?.roles.length ?? 0 }),
+            key: 'last-sign-in',
+            label: format(m.lastSignInLabel),
+            value: lastSignInAt === null ? format(m.neverUsed) : instantWords(locale, lastSignInAt),
           },
         ]
 
@@ -366,21 +356,7 @@ export default function UserDetailHeader() {
                   {format(record.status === 'disabled' ? m.disabledBadge : m.statusActive)}
                 </Status>
               </div>
-              <div {...stylex.props(styles.facts)}>
-                {facts.map((fact, index) => (
-                  <Fragment key={fact.label}>
-                    {index > 0 && <span aria-hidden {...stylex.props(styles.factRule)} />}
-                    <span {...stylex.props(styles.fact)}>
-                      <span {...stylex.props(styles.factLabel)}>{fact.label}</span>
-                      <span
-                        {...stylex.props(styles.factValue, fact.warn === true && styles.factWarn)}
-                      >
-                        {fact.value}
-                      </span>
-                    </span>
-                  </Fragment>
-                ))}
-              </div>
+              <PersonFacts facts={facts} wrap xstyle={styles.factsSeat} />
             </div>
             {manageable && (
               <div {...stylex.props(styles.actions)}>
