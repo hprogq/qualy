@@ -8,7 +8,8 @@ import type { PageHrefOptions } from './pages.ts'
 // is the whole reference: real component values and paths exist only at the
 // declaration, and the manifest is where a path comes from. A page the
 // current viewer cannot see renders as plain text rather than a link into a
-// route that would only bounce them back; a missing `:name` value fails
+// route that would only bounce them back - or as whatever `unavailable`
+// says instead, `null` for nothing at all; a missing `:name` value fails
 // loudly in the href builder.
 export function PageLink({
   page,
@@ -25,7 +26,8 @@ export function PageLink({
 } & PageHrefOptions &
   Omit<LinkProps, 'to' | 'children'>) {
   const href = usePageHref(page, { params, search, hash })
-  if (!href) return <>{unavailable ?? children}</>
+  // `null` is an answer - draw nothing - not the absence of one
+  if (!href) return <>{unavailable === undefined ? children : unavailable}</>
   return (
     <Link to={href} {...props}>
       {children}
