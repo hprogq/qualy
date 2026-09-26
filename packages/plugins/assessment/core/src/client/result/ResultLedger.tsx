@@ -525,7 +525,7 @@ const styles = stylex.create({
   },
   valueZero: { fontWeight: 400, color: tokens.mutedForeground },
   // one line at a desk, cut short if it must; on a phone it wraps, and the
-  // chevron follows the last word
+  // chevron rides on the last word
   madeCell: {
     display: { default: 'flex', [breakpoints.phone]: 'block' },
     minWidth: 0,
@@ -556,13 +556,14 @@ const styles = stylex.create({
     width: 12,
     height: 12,
     flexShrink: 0,
-    marginInlineStart: { default: 0, [breakpoints.phone]: 4 },
     verticalAlign: 'middle',
     color: tokens.mutedForeground,
     transitionProperty: 'transform',
     transitionDuration: { default: '200ms', [REDUCE]: '0s' },
   },
   chevronOpen: { transform: 'rotate(180deg)' },
+  markBeside: { display: { default: 'flex', [breakpoints.phone]: 'none' }, flexShrink: 0 },
+  markTail: { display: { default: 'none', [breakpoints.phone]: 'inline' }, whiteSpace: 'nowrap' },
   rule: {
     textAlign: 'end',
     fontSize: 12,
@@ -1910,6 +1911,13 @@ function ItemRow({
   )
   const nothing = item.lines.length === 0 && item.cents === 0
   const inset = { paddingInlineStart: 16 + item.depth * INDENT }
+  // what pressing the row does, drawn after the line under its name: opens in
+  // place, or opens the claim
+  const mark = expandable ? (
+    <ChevronDownIcon {...stylex.props(styles.chevron, open && styles.chevronOpen)} />
+  ) : follow !== null || lead !== null ? (
+    <ChevronRightIcon {...stylex.props(styles.chevron)} />
+  ) : null
   const lineData =
     pressed === undefined
       ? {}
@@ -1963,15 +1971,19 @@ function ItemRow({
               {made.identity}
             </>
           )}
+          {/* on a phone the mark rides on the last word, never on a line of its own */}
+          {mark !== null && (
+            <span aria-hidden {...stylex.props(styles.markTail)}>
+              {'\u00a0'}
+              {mark}
+            </span>
+          )}
         </span>
-        {expandable && (
-          <ChevronDownIcon
-            aria-hidden
-            {...stylex.props(styles.chevron, open && styles.chevronOpen)}
-          />
-        )}
-        {(follow !== null || lead !== null) && (
-          <ChevronRightIcon aria-hidden {...stylex.props(styles.chevron)} />
+        {/* at a desk it stands after the words, which are cut short before it is */}
+        {mark !== null && (
+          <span aria-hidden {...stylex.props(styles.markBeside)}>
+            {mark}
+          </span>
         )}
       </span>
       <span data-rule={rule?.kind} {...stylex.props(styles.rule)}>

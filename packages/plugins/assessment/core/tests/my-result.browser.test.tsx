@@ -858,9 +858,12 @@ describe('the rows of the account', () => {
     // one record by the office: when and what, then what it says of itself
     const made = itemRow('q6').querySelector<HTMLElement>('[data-made="claim"]')!
     const rule = made.querySelector<HTMLElement>('[aria-hidden]')!
+    const said = [...made.childNodes].find((node) =>
+      node.textContent?.includes('课程加权平均分 95.02'),
+    )!
+    expect(said.nodeType).toBe(Node.TEXT_NODE)
     const identity = document.createRange()
-    identity.selectNodeContents(made.lastChild!)
-    expect(made.lastChild!.textContent).toContain('课程加权平均分 95.02')
+    identity.selectNodeContents(said)
     expect(rule.getBoundingClientRect().width).toBeGreaterThan(0)
     expect(identity.getBoundingClientRect().left).toBeGreaterThan(
       rule.getBoundingClientRect().right,
@@ -1189,6 +1192,37 @@ describe('the score page on a phone', () => {
       .toBeLessThan(2)
     await userEvent.click(chipOf('g4'))
     await expect.poll(() => chipOf('g4').getAttribute('aria-current')).toBe('true')
+  })
+
+  it('keeps the mark a row opens with on the line of its last words', async () => {
+    for (const width of [390, 360]) {
+      await page.viewport(width, 844)
+      const { unmount } = await screen(normal())
+      await expect.element(page.getByTestId('result-total')).toBeVisible()
+      for (const made of document.querySelectorAll<HTMLElement>('[data-made]')) {
+        const mark = [...made.parentElement!.querySelectorAll('svg')].find(
+          (one) => one.getBoundingClientRect().width > 0,
+        )
+        if (mark === undefined) continue
+        const box = mark.getBoundingClientRect()
+        const middle = (box.top + box.bottom) / 2
+        // the words themselves, not the space that joins the mark to them
+        const words: DOMRect[] = []
+        const walk = document.createTreeWalker(made, NodeFilter.SHOW_TEXT)
+        for (let node = walk.nextNode(); node !== null; node = walk.nextNode()) {
+          if ((node.textContent ?? '').trim() === '') continue
+          const range = document.createRange()
+          range.selectNodeContents(node)
+          words.push(...range.getClientRects())
+        }
+        const item = made.closest<HTMLElement>('[data-item]')?.dataset['item']
+        expect(
+          words.some((line) => line.top <= middle && middle <= line.bottom),
+          `${String(width)} ${String(item)}`,
+        ).toBe(true)
+      }
+      await unmount()
+    }
   })
 
   it('keeps long names and long claims inside the screen', async () => {
