@@ -7,6 +7,7 @@ import {
   entryLineOf,
   filingHeldOf,
   headStatsOf,
+  moveBetween,
   outlineOf,
   totalsOf,
   type RoundState,
@@ -205,5 +206,28 @@ describe('why a new claim cannot be started', () => {
     expect(said('participant-out-of-scope', null)).toBe('assessment/entries/held-participant-scope')
     expect(said('account-ceiling-reached', null)).toBe('assessment/entries/held-round-full')
     expect(said('something-new', null)).toBe('assessment/entries/held-now')
+  })
+})
+
+describe('which way the pane arrives', () => {
+  const outline = outlineOf([
+    row({ id: 'a' }),
+    row({ id: 'a1', kind: 'item', depth: 1, parentId: 'a' }),
+    row({ id: 'a2', kind: 'item', depth: 1, parentId: 'a' }),
+    row({ id: 'b' }),
+    row({ id: 'b1', kind: 'item', depth: 1, parentId: 'b' }),
+  ])
+
+  it('goes out to a section above, in to what a section holds, along otherwise', () => {
+    expect(moveBetween(outline, 'a2', 'a')).toBe('out')
+    expect(moveBetween(outline, 'a', 'a1')).toBe('in')
+    expect(moveBetween(outline, 'a1', 'a2')).toBe('next')
+    expect(moveBetween(outline, 'b1', 'a2')).toBe('previous')
+  })
+
+  it('draws no arrival where nothing moved, or nothing was shown before', () => {
+    expect(moveBetween(outline, 'a1', 'a1')).toBe('none')
+    expect(moveBetween(outline, null, 'a1')).toBe('none')
+    expect(moveBetween(outline, 'gone', 'a1')).toBe('none')
   })
 })

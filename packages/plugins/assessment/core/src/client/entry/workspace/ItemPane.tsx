@@ -1,5 +1,6 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import {
   ArrowDownUpIcon,
   CheckIcon,
@@ -13,6 +14,8 @@ import {
 } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
+import { GlideAcross } from '@qualy/ui/reveal'
+import { Ticker } from '@qualy/ui/ticker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -234,6 +237,7 @@ const styles = stylex.create({
     gap: 4,
   },
   chipsDesk: {
+    position: 'relative',
     flexGrow: 0,
     flexWrap: 'nowrap',
     gap: 2,
@@ -242,6 +246,14 @@ const styles = stylex.create({
     borderRadius: 9999,
     backgroundColor: tokens.surfaceMuted,
     padding: 3,
+  },
+  // the chosen filter's face, one piece sliding from filter to filter
+  chipMark: {
+    top: 3,
+    height: 26,
+    borderRadius: 9999,
+    backgroundColor: tokens.background,
+    boxShadow: '0 1px 2px color-mix(in oklab, black 8%, transparent)',
   },
   chip: {
     display: 'inline-flex',
@@ -258,13 +270,15 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
     cursor: 'pointer',
   },
-  chipDesk: { backgroundColor: 'transparent' },
+  // over the sliding face, which is what shows the chosen one
+  chipDesk: { position: 'relative', backgroundColor: 'transparent' },
   chipOn: {
     backgroundColor: tokens.background,
     boxShadow: '0 1px 2px color-mix(in oklab, black 8%, transparent)',
     fontWeight: 500,
     color: tokens.foreground,
   },
+  chipOnDesk: { backgroundColor: 'transparent', boxShadow: 'none' },
   chipOnCompact: {
     backgroundColor: `color-mix(in oklab, ${tokens.foreground} 9%, ${tokens.background})`,
     boxShadow: 'none',
@@ -322,7 +336,15 @@ const styles = stylex.create({
     verticalAlign: 'middle',
     color: tokens.surfaceMutedForeground,
   },
-  rows: { display: 'flex', flexDirection: 'column' },
+  // positioned, so a row on its way out can leave the flow and still be drawn
+  rows: {
+    position: 'relative',
+    display: 'flex',
+    flexDirection: 'column',
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
+  },
   noMatch: {
     display: 'flex',
     flexDirection: 'column',
@@ -531,6 +553,7 @@ export function ItemPane({
 }) {
   const { format } = useI18n()
   const calc = useCalcLine()
+  const still = useReducedMotion() === true
   // the toolbar and the rows lay out by the room the pane is given, not by
   // the window: at a desk inside a narrower page the pane is narrow too
   const [paneRef, paneWidth] = useWidthOf()
@@ -557,6 +580,35 @@ export function ItemPane({
   // a chosen filter that has nothing left under it gives way to all
   const active = chip !== 'all' && (counts.get(chip) ?? 0) === 0 ? 'all' : chip
   const test = chips.find((one) => one.key === active)?.test ?? (() => true)
+  const offered = chips.filter((one) => one.key === 'all' || (counts.get(one.key) ?? 0) > 0)
+
+  // Where the chosen filter sits in its row, measured, so one face slides
+  // between filters rather than one switching off and another on. Measured
+  // again whenever the row is laid out anew: a count that gains a digit
+  // widens its filter and moves every one after it.
+  const chipRow = useRef<HTMLDivElement | null>(null)
+  const [mark, setMark] = useState<{ left: number; width: number } | null>(null)
+  const offeredKey = offered.map((one) => `${one.key}:${String(counts.get(one.key))}`).join()
+  useLayoutEffect(() => {
+    const row = chipRow.current
+    if (row === null || compact) {
+      setMark(null)
+      return
+    }
+    const measure = () => {
+      const on = row.querySelector(`[data-chip="${active}"]`)
+      if (!(on instanceof HTMLElement)) return
+      setMark((was) =>
+        was !== null && was.left === on.offsetLeft && was.width === on.offsetWidth
+          ? was
+          : { left: on.offsetLeft, width: on.offsetWidth },
+      )
+    }
+    measure()
+    const watch = new ResizeObserver(measure)
+    watch.observe(row)
+    return () => watch.disconnect()
+  }, [active, compact, offeredKey])
   const needle = search.trim().toLowerCase()
   const filtered = entries
     .filter(test)
@@ -606,40 +658,47 @@ export function ItemPane({
       )}
     >
       <div
+        ref={chipRow}
         role="group"
         aria-label={format(m.entriesFilterLabel)}
         {...stylex.props(styles.chips, !compact && styles.chipsDesk)}
       >
-        {chips
-          .filter((one) => one.key === 'all' || (counts.get(one.key) ?? 0) > 0)
-          .map((one) => {
-            const on = one.key === active
-            const count = counts.get(one.key) ?? 0
-            return (
-              <button
-                key={one.key}
-                type="button"
-                aria-pressed={on}
-                data-chip={one.key}
-                data-count={count}
-                onClick={() => {
-                  setChip(one.key)
-                  setLimit(PAGE)
-                }}
-                {...stylex.props(
-                  styles.chip,
-                  !compact && styles.chipDesk,
-                  on && styles.chipOn,
-                  on && compact && styles.chipOnCompact,
-                )}
-              >
-                {format(one.label)}
-                <span {...stylex.props(styles.chipCount, one.urgent && styles.chipCountWaits)}>
-                  {count}
-                </span>
-              </button>
-            )
-          })}
+        {!compact && mark !== null && (
+          <GlideAcross
+            left={mark.left}
+            width={mark.width}
+            className={stylex.props(styles.chipMark).className}
+          />
+        )}
+        {offered.map((one) => {
+          const on = one.key === active
+          const count = counts.get(one.key) ?? 0
+          return (
+            <button
+              key={one.key}
+              type="button"
+              aria-pressed={on}
+              data-chip={one.key}
+              data-count={count}
+              onClick={() => {
+                setChip(one.key)
+                setLimit(PAGE)
+              }}
+              {...stylex.props(
+                styles.chip,
+                !compact && styles.chipDesk,
+                on && styles.chipOn,
+                on && compact && styles.chipOnCompact,
+                on && !compact && mark !== null && styles.chipOnDesk,
+              )}
+            >
+              {format(one.label)}
+              <span {...stylex.props(styles.chipCount, one.urgent && styles.chipCountWaits)}>
+                <Ticker value={String(count)} />
+              </span>
+            </button>
+          )
+        })}
       </div>
       {!compact && <span {...stylex.props(styles.spacer)} />}
       {searchOpen || search !== '' || roomy ? (
@@ -840,20 +899,34 @@ export function ItemPane({
 
       <div {...stylex.props(styles.card)}>
         {toolbar}
+        {/* A filter or a search narrows this list in place: rows that leave
+            fade out of the way and the rest close up, and a claim that
+            arrives fades in where it belongs, so the list reads as the same
+            list changing rather than another one replacing it. */}
         {shown.length > 0 && (
-          <div {...stylex.props(styles.rows)}>
-            {shown.map((entry) => (
-              <EntryRow
-                key={entry.id}
-                entry={entry}
-                line={lines.get(entry.id)!}
-                compact={compact}
-                selected={entry.id === selectedEntryId}
-                awaitingMe={awaitingMe?.has(entry.id) ?? false}
-                onOpen={() => onEntry(entry)}
-              />
-            ))}
-          </div>
+          <ul {...stylex.props(styles.rows)}>
+            <AnimatePresence initial={false} mode="popLayout">
+              {shown.map((entry) => (
+                <motion.li
+                  key={entry.id}
+                  layout={still ? false : 'position'}
+                  initial={still ? false : { opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, transition: { duration: still ? 0 : 0.12 } }}
+                  transition={{ duration: still ? 0 : 0.2, ease: [0.4, 0, 0.2, 1] }}
+                >
+                  <EntryRow
+                    entry={entry}
+                    line={lines.get(entry.id)!}
+                    compact={compact}
+                    selected={entry.id === selectedEntryId}
+                    awaitingMe={awaitingMe?.has(entry.id) ?? false}
+                    onOpen={() => onEntry(entry)}
+                  />
+                </motion.li>
+              ))}
+            </AnimatePresence>
+          </ul>
         )}
         {entries.length > 0 && filtered.length === 0 && narrowed && (
           <div {...stylex.props(styles.noMatch)} data-testid="entries-no-match">

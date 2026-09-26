@@ -74,6 +74,7 @@
     "exceljs": "catalog:",
     "kysely": "catalog:",
     "lucide-react": "^0.552.0",
+    "motion": "catalog:",
     "react-router": "catalog:"
   },
   "devDependencies": {

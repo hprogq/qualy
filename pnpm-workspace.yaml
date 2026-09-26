@@ -125,6 +125,10 @@ catalog:
   # its own TLS modes and timeouts. Ships its own types.
   nodemailer: 10.0.10
   clsx: 2.1.1
+  # the animation library behind @qualy/ui's motion primitives, and behind
+  # screens that animate something those primitives do not cover; the one
+  # version the ui packages already resolve, so the browser holds one copy
+  motion: 12.43.0
   '@vitest/browser-playwright': 5.0.1
   'vitest-browser-react': 2.3.0
   playwright: 1.62.1

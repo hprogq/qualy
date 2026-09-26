@@ -1,6 +1,7 @@
 import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
+import { Portion } from '@qualy/ui/reveal'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { trimAmount, type EntryDto } from '../model.ts'
@@ -337,9 +338,11 @@ export function GroupPane({
         </div>
         {cap !== null && cap > 0 && (
           <span {...stylex.props(styles.bar)} data-testid="section-bar" data-full={full}>
-            <span
-              {...stylex.props(styles.barFill, full ? meterStyles.full : meterStyles.fill)}
-              style={{ width: `${scored ? Math.max(0, Math.min(100, (got / cap) * 100)) : 0}%` }}
+            <Portion
+              share={scored ? Math.max(0, Math.min(100, (got / cap) * 100)) : 0}
+              className={
+                stylex.props(styles.barFill, full ? meterStyles.full : meterStyles.fill).className
+              }
             />
           </span>
         )}

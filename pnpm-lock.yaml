@@ -123,6 +123,9 @@ catalogs:
     lightningcss:
       specifier: 1.33.0
       version: 1.33.0
+    motion:
+      specifier: 12.43.0
+      version: 12.43.0
     nodemailer:
       specifier: 10.0.10
       version: 10.0.10
@@ -973,6 +976,9 @@ importers:
       lucide-react:
         specifier: ^0.552.0
         version: 0.552.0(react@19.2.8)
+      motion:
+        specifier: 'catalog:'
+        version: 12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8

@@ -1,6 +1,7 @@
 import * as stylex from '@stylexjs/stylex'
 import { ArrowRightIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
+import { Portion } from '@qualy/ui/reveal'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { recordedOnly, trimAmount, type EntryDto, type ItemDto } from '../model.ts'
@@ -211,9 +212,9 @@ export function Requirements({
               </span>
             </div>
             <span {...stylex.props(styles.bar)}>
-              <span
-                {...stylex.props(styles.barFill, meterStyles.fill)}
-                style={{ width: `${Math.min(100, (used / Math.max(1, item.maxEntries)) * 100)}%` }}
+              <Portion
+                share={Math.min(100, (used / Math.max(1, item.maxEntries)) * 100)}
+                className={stylex.props(styles.barFill, meterStyles.fill).className}
               />
             </span>
           </div>
@@ -270,14 +271,12 @@ export function Requirements({
                   </span>
                   {cap !== null && cap > 0 && (
                     <span {...stylex.props(styles.bar, styles.barThin)}>
-                      <span
-                        {...stylex.props(
-                          styles.barFill,
-                          full ? meterStyles.full : meterStyles.fill,
-                        )}
-                        style={{
-                          width: `${scored ? Math.max(0, Math.min(100, (got / cap) * 100)) : 0}%`,
-                        }}
+                      <Portion
+                        share={scored ? Math.max(0, Math.min(100, (got / cap) * 100)) : 0}
+                        className={
+                          stylex.props(styles.barFill, full ? meterStyles.full : meterStyles.fill)
+                            .className
+                        }
                       />
                     </span>
                   )}

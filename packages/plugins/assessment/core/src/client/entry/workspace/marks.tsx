@@ -1,4 +1,5 @@
 import * as stylex from '@stylexjs/stylex'
+import { motion, useReducedMotion } from 'motion/react'
 import { useI18n } from '@qualy/web-i18n'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -64,6 +65,7 @@ export const meterStyles = stylex.create({
  * drawn, so it is hidden from assistive technology.
  */
 export function SectionMeter({ got, cap }: { got: number; cap: number }) {
+  const reduced = useReducedMotion() === true
   const share = cap <= 0 ? 0 : Math.max(0, Math.min(1, got / cap))
   const full = got >= cap
   return (
@@ -84,15 +86,17 @@ export function SectionMeter({ got, cap }: { got: number; cap: number }) {
         {...stylex.props(styles.rim, full && styles.full)}
       />
       {share > 0 && (
-        <circle
+        <motion.circle
           cx="7"
           cy="7"
           r={WEDGE}
           fill="none"
           strokeWidth={WEDGE * 2}
           strokeDasharray={ROUND}
-          strokeDashoffset={ROUND * (1 - share)}
           transform="rotate(-90 7 7)"
+          initial={reduced ? false : { strokeDashoffset: ROUND }}
+          animate={{ strokeDashoffset: ROUND * (1 - share) }}
+          transition={{ duration: reduced ? 0 : 0.5, ease: [0.22, 0.61, 0.36, 1] }}
           {...stylex.props(styles.wedge, full && styles.full)}
         />
       )}

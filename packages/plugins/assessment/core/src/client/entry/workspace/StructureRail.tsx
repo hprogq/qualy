@@ -4,6 +4,8 @@ import { ChevronDownIcon, ChevronRightIcon, RefreshCwIcon } from 'lucide-react'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
+import { Portion } from '@qualy/ui/reveal'
+import { Ticker } from '@qualy/ui/ticker'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -661,7 +663,7 @@ export function StructureRail({
               data-cap={total.cap === null ? '' : trimAmount(String(total.cap))}
               {...stylex.props(styles.totalGot, (!scored || got === 0) && styles.totalMuted)}
             >
-              {scored && total.got !== null ? two(total.got) : '–'}
+              <Ticker value={scored && total.got !== null ? two(total.got) : '–'} />
             </span>
             {total.cap !== null && (
               <span {...stylex.props(styles.quiet)}>
@@ -684,14 +686,12 @@ export function StructureRail({
                     {...stylex.props(styles.segment)}
                     style={{ flexGrow: cap, flexBasis: 0 }}
                   >
-                    <span
-                      {...stylex.props(
-                        styles.segmentFill,
-                        full ? meterStyles.full : meterStyles.fill,
-                      )}
-                      style={{
-                        width: `${scored ? Math.max(0, Math.min(100, (part / cap) * 100)) : 0}%`,
-                      }}
+                    <Portion
+                      share={scored ? Math.max(0, Math.min(100, (part / cap) * 100)) : 0}
+                      className={
+                        stylex.props(styles.segmentFill, full ? meterStyles.full : meterStyles.fill)
+                          .className
+                      }
                     />
                   </span>
                 )
@@ -719,7 +719,7 @@ export function StructureRail({
                     stat.waits && stat.count > 0 && styles.statWaits,
                   )}
                 >
-                  {stat.count}
+                  <Ticker value={String(stat.count)} />
                 </b>
                 <span {...stylex.props(styles.statLabel)}>{format(stat.label)}</span>
               </span>
@@ -746,7 +746,7 @@ export function StructureRail({
           >
             {format(todoLabel)}
             <span {...stylex.props(styles.tabCount, todoCount > 0 && styles.tabCountWaits)}>
-              {todoCount}
+              <Ticker value={String(todoCount)} />
             </span>
           </button>
         </div>

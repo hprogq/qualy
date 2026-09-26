@@ -100,6 +100,26 @@ export const chainOf = (outline: Outline, row: StructureRow): readonly Structure
   return chain
 }
 
+/**
+ * Which way the reader went from one row to another, for the pane that
+ * arrives: up to a section the row sits in is out, down into something a
+ * section holds is in, and anything else is along the paper, forward or back.
+ */
+export const moveBetween = (
+  outline: Outline,
+  from: string | null,
+  to: string | null,
+): 'in' | 'out' | 'next' | 'previous' | 'none' => {
+  if (from === null || to === null || from === to) return 'none'
+  const was = outline.byId.get(from)
+  const now = outline.byId.get(to)
+  if (was === undefined || now === undefined) return 'none'
+  if (chainOf(outline, was).some((row) => row.id === to)) return 'out'
+  if (chainOf(outline, now).some((row) => row.id === from)) return 'in'
+  const at = (id: string) => outline.rows.findIndex((row) => row.id === id)
+  return at(to) > at(from) ? 'next' : 'previous'
+}
+
 /** the rows under a group, in paper order, depth still counted from the paper */
 export const insideOf = (outline: Outline, group: StructureRow): readonly StructureRow[] => {
   const at = outline.rows.findIndex((row) => row.id === group.id)

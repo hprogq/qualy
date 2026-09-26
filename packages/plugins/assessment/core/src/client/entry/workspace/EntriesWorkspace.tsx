@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate, useNavigationType } from 'react-router'
 import * as stylex from '@stylexjs/stylex'
+import { motion, useReducedMotion } from 'motion/react'
 import {
   ChevronDownIcon,
   ChevronLeftIcon,
@@ -12,6 +13,7 @@ import { useClaimScreenFoot } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Button } from '@qualy/ui/button'
+import { Drill } from '@qualy/ui/reveal'
 import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../../i18n.ts'
@@ -25,6 +27,7 @@ import { StructureRail } from './StructureRail.tsx'
 import {
   filingOf,
   headStatsOf,
+  moveBetween,
   movingOn,
   outlineOf,
   totalsOf,
@@ -69,6 +72,8 @@ const styles = stylex.create({
   // foot sits at the foot however little the question holds
   phoneScreen: { minHeight: '100%' },
   phoneBody: { display: 'flex', flexGrow: 1, flexDirection: 'column' },
+  // the pane as it arrives: as tall as the room it arrives in, like the pane
+  arrived: { display: 'flex', minHeight: '100%', flexGrow: 1, flexDirection: 'column' },
   columns: {
     display: 'grid',
     minHeight: 0,
@@ -422,6 +427,21 @@ function Workspace({
   const structureAt = useRef<number | null>(null)
   const cameFrom = useRef<string | null>(null)
   const wasAddressed = useRef(addressed)
+
+  // Which way the pane arrives, from the row shown last to the one shown
+  // now: a phone's step from its structure goes in, a section above goes
+  // out, a neighbour comes up or down. The row shown last is kept after each
+  // commit, so a render that leaves the same row open draws no arrival.
+  const still = useReducedMotion() === true
+  const shownLast = useRef<string | null>(null)
+  const arrival =
+    phone && addressed && !wasAddressed.current
+      ? 'in'
+      : moveBetween(outline, shownLast.current, selectedId)
+  useEffect(() => {
+    shownLast.current = selectedId
+  }, [selectedId])
+
   useLayoutEffect(() => {
     if (!phone) {
       wasAddressed.current = addressed
@@ -694,7 +714,18 @@ function Workspace({
         {...stylex.props(styles.root, styles.flow, onPane && styles.phoneScreen)}
       >
         {notice}
-        <div {...stylex.props(onPane && styles.gone)}>{rail('screen')}</div>
+        {/* the structure stays mounted under a question, folds and all, and
+            slides back in from the side the question left towards */}
+        <motion.div
+          initial={false}
+          animate={onPane ? { opacity: 0, x: -26 } : { opacity: 1, x: 0 }}
+          transition={
+            onPane || still ? { duration: 0 } : { duration: 0.2, ease: [0.22, 0.61, 0.36, 1] }
+          }
+          {...stylex.props(onPane && styles.gone)}
+        >
+          {rail('screen')}
+        </motion.div>
         {onPane && (
           <>
             <div {...stylex.props(styles.phoneBar)}>
@@ -727,7 +758,15 @@ function Workspace({
                 <ChevronDownIcon aria-hidden {...stylex.props(styles.arrowIcon)} />
               </button>
             </div>
-            <div {...stylex.props(styles.phoneBody)}>{pane}</div>
+            <div {...stylex.props(styles.phoneBody)}>
+              <Drill
+                move={arrival}
+                drillKey={selected?.id ?? ''}
+                className={stylex.props(styles.arrived).className}
+              >
+                {pane}
+              </Drill>
+            </div>
             {footed && filing !== null && item !== null && (
               <div {...stylex.props(styles.phoneFoot)} data-testid="phone-foot">
                 <span {...stylex.props(styles.footWords)}>
@@ -775,7 +814,13 @@ function Workspace({
         <div {...stylex.props(styles.rail)}>{rail('column')}</div>
         <div {...stylex.props(styles.main)}>
           <div ref={scroller} {...stylex.props(styles.mainScroll)}>
-            {pane}
+            <Drill
+              move={arrival}
+              drillKey={selected?.id ?? ''}
+              className={stylex.props(styles.arrived).className}
+            >
+              {pane}
+            </Drill>
           </div>
           {item !== null && (previous !== null || next !== null) && (
             <nav aria-label={format(m.entriesStepLabel)} {...stylex.props(styles.stepper)}>
