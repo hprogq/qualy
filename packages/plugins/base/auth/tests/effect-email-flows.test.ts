@@ -924,6 +924,87 @@ describe.runIf(postgresAvailable)('an email address', () => {
     }
   })
 
+  it('is proven at an administrator’s asking, out of the person’s own allowance, and only by the link', async () => {
+    const db = await createTestContext('email-verify-by-administrator')
+    const mail = memoryMailBackend()
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const flows = yield* EmailFlows
+            const iam = yield* Iam
+            const role = one<{ id: string }>(
+              yield* runSql(sql`
+                insert into roles (tenant_id, code, name, kind, status, permission_mode, system_key)
+                values (${f.tenant}, 'admin', 'Admin', 'tenant', 'active', 'all-active', 'tenant-admin')
+                returning id`),
+            ).id
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id)
+              values (${f.tenant}, ${f.admin}, ${role})`)
+            const admin = f.as(f.admin, f.adminHere)
+            const lin = f.as(f.lin, f.linHere)
+            const askFor = (as: Principal, userId: string) =>
+              flows.requestVerificationFor(
+                f.tenant,
+                userId,
+                'zh-CN',
+                iam.users.accountGuard(f.tenant, userId, as),
+              )
+            const first = yield* askFor(admin, f.lin)
+            const link = yield* Effect.promise(() => tokenFrom(mail, 'lin@school.edu'))
+            // asking is not proving: the address stands unproven until followed
+            const before = yield* runSql<{ verified: boolean }>(
+              sql`select email_verified_at is not null as verified from users where id = ${f.lin}`,
+            )
+            // Lin's own asks and the administrator's come out of one allowance
+            for (let asked = 1; asked < HARD_LIMITS.mailBySelf.limit; asked += 1) {
+              yield* flows.requestVerification(lin, 'zh-CN')
+            }
+            const spent = yield* Effect.result(askFor(admin, f.lin))
+            // somebody with no authority over the person learns nothing of them
+            const stranger = yield* Effect.result(askFor(lin, f.ada))
+            const nobody = yield* Effect.result(
+              askFor(admin, '00000000-0000-7000-8000-000000000000'),
+            )
+            // an address already proven is not sent anything
+            const proven = yield* askFor(admin, f.ada)
+            // a link is followed as the person's own would be: the newest,
+            // which retired every older one
+            const latest = yield* Effect.promise(() => tokenFrom(mail, 'lin@school.edu'))
+            yield* flows.redeemVerification(latest.token)
+            const after = yield* runSql<{ verified: boolean }>(
+              sql`select email_verified_at is not null as verified from users where id = ${f.lin}`,
+            )
+            return {
+              first,
+              link,
+              before: before.rows[0]!.verified,
+              spent,
+              stranger,
+              nobody,
+              proven,
+              after: after.rows[0]!.verified,
+            }
+          }).pipe(Effect.provide(stack(db.url, mail.backend))),
+        ),
+      )
+      expect(answer.first).toEqual({ sent: true })
+      // worded as asked for by somebody else, to the same page as their own
+      expect(answer.link.subject).toBe('请验证您的邮箱')
+      expect(answer.link.url.pathname).toBe('/confirm-email')
+      expect(answer.before).toBe(false)
+      expect(tagOf(answer.spent)).toBe('TOO_MANY_ATTEMPTS')
+      expect(tagOf(answer.stranger)).toBe('ACCESS_DENIED')
+      expect(tagOf(answer.nobody)).toBe('ACCESS_DENIED')
+      expect(answer.proven).toEqual({ sent: false })
+      expect(answer.after).toBe(true)
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('changes only once the new one is proven, and never to an address somebody has', async () => {
     const db = await createTestContext('email-change')
     const mail = memoryMailBackend()

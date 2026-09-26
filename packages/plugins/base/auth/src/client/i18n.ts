@@ -53,6 +53,10 @@ const businessNoMissingMessage = defineMessage<{ businessNo: string }>()({
   id: 'auth/person/business-no-missing',
   defaultMessage: 'No {businessNo} yet',
 })
+const personVerificationSentMessage = defineMessage<{ email: string }>()({
+  id: 'auth/person/verification-sent',
+  defaultMessage: 'A verification link went to {email}',
+})
 const businessNoSetTitleMessage = defineMessage<{ businessNo: string }>()({
   id: 'auth/person/business-no-set-title',
   defaultMessage: 'Add {businessNo}',
@@ -1105,6 +1109,11 @@ const i18n = definePluginMessages({
     },
     fieldUnset: { id: 'auth/person/field-unset', defaultMessage: 'Not set' },
     emailSystemShort: { id: 'auth/person/email-system', defaultMessage: 'Set by the deployment' },
+    personVerificationSent: personVerificationSentMessage,
+    personAlreadyVerified: {
+      id: 'auth/person/already-verified',
+      defaultMessage: 'That address is verified already',
+    },
     fromEmail: { id: 'auth/person/from-email', defaultMessage: 'the person’s email' },
     credentialSet: { id: 'auth/person/credential-set', defaultMessage: 'Password set' },
     credentialUnset: { id: 'auth/person/credential-unset', defaultMessage: 'No password yet' },

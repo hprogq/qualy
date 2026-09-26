@@ -107,6 +107,7 @@ export const FROZEN_ROUTES = [
   'GET /iam/users/{userId}/entrances',
   'PUT /iam/users/{userId}/auth-bindings/{providerId}',
   'POST /iam/users/{userId}/auth-bindings/{providerId}/assessments',
+  'POST /iam/users/{userId}/email-verifications',
   'DELETE /iam/users/{userId}/auth-bindings/{providerId}',
   'GET /iam/users/{userId}/effective-permissions',
   'GET /iam/users/{userId}/role-grants',

@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { PageLink, useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { PageLink, useApi, useApiQuery, usePageRouteParams, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
@@ -9,6 +9,7 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
+import { toast } from '@qualy/ui/toast'
 import {
   Card,
   CardEmpty,
@@ -99,7 +100,10 @@ const styles = stylex.create({
 
 export default function UserProfilePage() {
   const { userId } = usePageRouteParams('userId')
+  const api = useApi(authApi)
+  const run = useRunApi()
   const query = useApiQuery(authApi)
+  const queryClient = useQueryClient()
   const { format, formatError, locale } = useI18n()
   const businessNoWord = useTerm(authTerms.businessNumber)
   const user = useQuery(query.identity.getUser.queryOptions({ params: { userId } }))
@@ -111,6 +115,22 @@ export default function UserProfilePage() {
   const system = user.data?.placement.mode === 'tenant-root'
   const accountFields = (user.data?.accountManageable ?? false) && !system
   const [setting, setSetting] = useState<'email' | 'businessNo' | null>(null)
+  const sendVerification = useMutation({
+    mutationFn: (email: string) =>
+      run(api.identity.createUserEmailVerification({ params: { userId } })).then((answer) => ({
+        ...answer,
+        email,
+      })),
+    onSuccess: async ({ sent, email }) => {
+      if (sent) toast.success(format(m.personVerificationSent, { email }))
+      else {
+        // proven meanwhile: the page says so once it reads the person again
+        toast.success(format(m.personAlreadyVerified))
+        await queryClient.invalidateQueries({ queryKey: query.identity.key() })
+      }
+    },
+    onError: (error: unknown) => toast.error(formatError(error)),
+  })
   const when = (iso: string) =>
     new Intl.DateTimeFormat(locale, {
       month: 'long',
@@ -182,6 +202,18 @@ export default function UserProfilePage() {
                       )}
                       {accountFields ? (
                         <span {...stylex.props(styles.lineActions)}>
+                          {/* the person proves it by following a link; the
+                              administrator can only have one sent */}
+                          {record.email !== null && record.emailVerifiedAt === null && (
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              disabled={sendVerification.isPending}
+                              onClick={() => sendVerification.mutate(record.email!)}
+                            >
+                              {format(m.sendVerification)}
+                            </Button>
+                          )}
                           <Button size="xs" variant="ghost" onClick={() => setSetting('email')}>
                             {format(record.email === null ? m.emailSetAction : m.emailChangeAction)}
                           </Button>

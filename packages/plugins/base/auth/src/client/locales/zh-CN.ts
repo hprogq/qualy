@@ -381,6 +381,8 @@ export default {
   'auth/person/email-change-consequence': '更改后需重新验证，该用户可能需要重新登录',
   'auth/person/field-unset': '未设置',
   'auth/person/email-system': '由部署配置',
+  'auth/person/verification-sent': '验证邮件已发送至 {email}',
+  'auth/person/already-verified': '该邮箱已通过验证',
   'auth/person/from-email': '使用用户邮箱',
   'auth/person/credential-set': '已设置密码',
   'auth/person/credential-unset': '未设置密码',

@@ -845,6 +845,18 @@ export const identityApiGroup = HttpApiGroup.make('identity')
       error: [UserVersionConflict, SystemAccountProtected, LastAdministrator, AccessDenied],
     }).middleware(Authenticated),
   )
+  .add(
+    // A link to the person's address on file, at an administrator's asking:
+    // following it proves the address theirs, exactly as when they ask for
+    // it themselves, and out of the same hourly allowance. Nobody but the
+    // person following the link can mark an address proven.
+    HttpApiEndpoint.post('createUserEmailVerification', '/iam/users/:userId/email-verifications', {
+      params: Schema.Struct({ userId: uuidInput }),
+      // false when the address is proven already and nothing was sent
+      success: Schema.Struct({ sent: Schema.Boolean }),
+      error: [AccessDenied, EmailMissing, MailNotSent, TooManyAttemptsResponse],
+    }).middleware(Authenticated),
+  )
   // Every entrance in the tenant as it stands for one person: whether it
   // admits them, what is bound, and whether anything can be. A page of its
   // own question rather than more of getUser, which every banner reads.

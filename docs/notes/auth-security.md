@@ -448,6 +448,15 @@ smtp 后端对着 Mailpit 跑同一套,CI 设 `QUALY_REQUIRE_MAILPIT_TESTS=1`,�
   链接在它之前提交就一并作废,不会在作废之后才提交而漏网。
   **管理员改某人的邮箱**(`PATCH /iam/users/{userId}`)同样通知旧地址(仅当它曾被验证,2026-09-25 起):提交后另起 fiber 发
   `email-changed-by-administrator`,「各设备已退出」一句只在这次修改确实结束了会话时才写。
+- **管理员代发验证邮件**(2026-09-26 用户裁决 #6):`POST /iam/users/{userId}/email-verifications`,链接与本人自发的是同一种
+  (purpose verify,兑换规则不变),邮件用 `mail-copy` 的 `verify-by-administrator`,写明由管理员请求、末句面向「不认识该组织」的收件人。
+  门控是「能管这个人的账号」:节点上的 `auth.user.manage` 加账号门(`requireAccount`),由 auth 的 users 服务以 `accountGuard` 交给
+  EmailFlows,在签发链接的同一把租户锁、同一个事务里复核;查不到与够不着一律 `ACCESS_DENIED`。**与本人共用每人每小时 5 封的额度**
+  (`mailBySelf` 按被验证人计),谁来要都不会让一个收件箱收到更多。已验证答 `sent: false` 不发信。发信**不记审计**:它不改变任何账号事实,
+  滥用由额度承担。系统账户同样可发(不改地址)。
+- **管理员不能手动标记已验证**(同一裁决):`email_verified_at` 的含义是「本人证明过能收到」,它是找回密码、无密码者首次设密码、
+  无密码者重新认证三件事的钥匙;把一个填错的地址手动标记为已验证,等于把找回密码的链接交给陌生人,而管理员本来就能直接设置 / 重置密码,
+  这个开关没有收益。管理员侧只能看到验证状态、代发链接;更换地址照旧清空验证状态并作废全部未用链接(`users.update`)。
 - 界面:`/reset-password`(无 token 时问邮箱,有 token 时设新密码)、`/confirm-email`(打开即兑换,按 token 去重只请求一次)两个 PUBLIC 页;
   本地登录表单的「忘记密码？」;「我的 → 账号安全」(改 / 设密码、验证邮箱、改邮箱)。
 

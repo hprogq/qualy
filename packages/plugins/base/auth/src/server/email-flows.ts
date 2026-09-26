@@ -266,6 +266,28 @@ export class EmailFlows extends Context.Service<
       principal: Principal,
       locale: MailLocale,
     ) => Effect.Effect<{ readonly sent: boolean }, EmailMissing | MailNotSent | TooManyAttempts>
+    /**
+     * The same link to somebody else's address on file, at an administrator's
+     * asking, and worded so. It comes out of the person's own hourly
+     * allowance, whoever asks: their inbox gets no more for having more
+     * people able to fill it. Nothing is marked proven here - following the
+     * link is still the only proof there is.
+     *
+     * `guard` is the caller's authority over this person's account, owned by
+     * whoever owns that question; it is asked inside the tenant lock, on the
+     * transaction the link is written on, and an id the caller may not act
+     * on is refused before anything about the person is read.
+     */
+    readonly requestVerificationFor: <E, R>(
+      tenantId: string,
+      userId: string,
+      locale: MailLocale,
+      guard: Effect.Effect<void, E, R>,
+    ) => Effect.Effect<
+      { readonly sent: boolean },
+      E | EmailMissing | MailNotSent | TooManyAttempts,
+      Exclude<R, Orm>
+    >
     readonly redeemVerification: (token: string) => Effect.Effect<void, ChallengeInvalid>
     readonly requestChange: (
       principal: Principal,
@@ -876,6 +898,42 @@ export const emailFlowsLayer: Layer.Layer<
           return { sent: true }
         },
       ),
+
+      requestVerificationFor: (tenantId, userId, locale, guard) =>
+        Effect.gen(function* () {
+          const issued = yield* inLock(
+            tenantId,
+            Effect.gen(function* () {
+              yield* guard
+              const person = yield* personOf(tenantId, userId)
+              if (person === undefined || person.email === null) return yield* new EmailMissing()
+              if (person.emailVerifiedAt !== null) return undefined
+              // the person's own allowance, whoever asks for the link
+              yield* throttle(tenantId, HARD_LIMITS.mailBySelf, person.id)
+              return {
+                email: person.email,
+                challenge: yield* issueChallenge(tenantId, person.id, 'verify', person.email),
+              }
+            }),
+          )
+          if (issued === undefined) return { sent: false }
+          const link = yield* withDb(
+            linkTo(tenantId, CONFIRM_EMAIL_PATH, {
+              purpose: 'verify',
+              token: Redacted.value(issued.challenge.token),
+            }),
+          ).pipe(Effect.orDie)
+          yield* deliver(
+            tenantId,
+            issued.challenge.id,
+            issued.email,
+            mailFor('verify-by-administrator', locale, link, {
+              to: issued.email,
+              workspace: yield* workspaceOf(tenantId),
+            }),
+          )
+          return { sent: true }
+        }).pipe(Effect.withSpan('Auth.email.requestVerificationFor')),
 
       redeemVerification: Effect.fn('Auth.email.redeemVerification')(function* (token) {
         const tenant = yield* tenants.resolve.pipe(Effect.option)

@@ -1038,6 +1038,23 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
       }),
     )
     .handle(
+      'createUserEmailVerification',
+      Effect.fn('iam.createUserEmailVerification.handler')(function* ({ params }) {
+        const iam = yield* Iam
+        const flows = yield* EmailFlows
+        const principal = yield* CurrentUser
+        const request = yield* HttpServerRequest.HttpServerRequest
+        // the address is the account's, so it is asked of whoever may
+        // administer the account, inside the lock the link is written under
+        return yield* flows.requestVerificationFor(
+          principal.tenantId,
+          params.userId,
+          mailLocaleOf(request.headers['accept-language']),
+          iam.users.accountGuard(principal.tenantId, params.userId, principal),
+        )
+      }),
+    )
+    .handle(
       'listUserEntrances',
       Effect.fn('iam.listUserEntrances.handler')(function* ({ params }) {
         const iam = yield* Iam

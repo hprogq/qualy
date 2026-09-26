@@ -1105,6 +1105,18 @@ export const make = Effect.fn('Iam.users.make')(function* () {
 
   return {
     provisioning,
+    /**
+     * Whether the caller may act on this person's account on their behalf -
+     * a living person they administer, whose account is theirs to - asked on
+     * the caller's own transaction. For a write another service makes under
+     * the tenant lock it holds itself, which asks this inside that lock
+     * rather than opening a second connection to ask it beside.
+     */
+    accountGuard: (tenantId: string, userId: string, as: Principal) =>
+      Effect.gen(function* () {
+        yield* administered(tenantId, userId, as)
+        yield* requireAccount(tenantId, userId, as)
+      }).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
     list: bound(
       Effect.fn('Iam.users.list')(function* (
         principal: Principal,

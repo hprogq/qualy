@@ -19,6 +19,12 @@ export const mailLocaleOf = (acceptLanguage: string | undefined): MailLocale => 
 
 export type MailPurpose = 'verify' | 'reset' | 'change'
 
+/**
+ * What a link's mail says: one per purpose, and the proof of an address a
+ * second time, for when an administrator asked for it rather than the reader.
+ */
+export type MailCopy = MailPurpose | 'verify-by-administrator'
+
 interface Written {
   readonly subject: string
   readonly text: (link: string) => string
@@ -42,7 +48,31 @@ const SHARED: Record<MailLocale, { readonly sentTo: string; readonly fallback: s
   },
 }
 
-const COPY: Record<MailPurpose, Record<MailLocale, Written>> = {
+const COPY: Record<MailCopy, Record<MailLocale, Written>> = {
+  // asked for by somebody else, so the last line is for a reader who does
+  // not know the organization at all rather than one who did not ask
+  'verify-by-administrator': {
+    'zh-CN': {
+      subject: '请验证您的邮箱',
+      text: (link) =>
+        `管理员请您确认该邮箱，请点击下方链接完成验证。此链接有效期为 24 小时，且仅限使用一次。\n\n${link}\n\n如您不认识该组织，请直接忽略此邮件。`,
+      title: '验证您的邮箱',
+      lead: '管理员请您确认该邮箱，请点击下方链接完成验证。',
+      action: '验证邮箱',
+      note: '此链接有效期为 24 小时，且仅限使用一次。',
+      footer: '如您不认识该组织，请直接忽略此邮件。',
+    },
+    en: {
+      subject: 'Please verify your email address',
+      text: (link) =>
+        `An administrator asked you to confirm this address. Please click the link below to verify it. This link is valid for 24 hours and can only be used once.\n\n${link}\n\nIf you do not know this organization, you can safely ignore this email.`,
+      title: 'Verify your email address',
+      lead: 'An administrator asked you to confirm this address. Please click the link below to verify it.',
+      action: 'Verify Email',
+      note: 'This link is valid for 24 hours and can only be used once.',
+      footer: 'If you do not know this organization, you can safely ignore this email.',
+    },
+  },
   verify: {
     'zh-CN': {
       subject: '验证您的邮箱',
@@ -215,7 +245,7 @@ const htmlOf = (
 }
 
 export const mailFor = (
-  purpose: MailPurpose,
+  purpose: MailCopy,
   locale: MailLocale,
   link: string,
   // who it is going to, and from which workspace, for the html alone

@@ -78,6 +78,23 @@ describe("a person's profile", () => {
       .toHaveValue('zhang@school.edu')
   })
 
+  it('has a link sent to an address nobody proved, and no press to prove it by hand', async () => {
+    const send = vi.fn(() => Effect.succeed({ sent: true }))
+    await open(person({ email: 'zhang@school.edu' }), { createUserEmailVerification: send })
+    await expect.element(emailLine()).toHaveAttribute('data-email-state', 'unverified')
+    // two presses and no third: have a link sent, or change the address
+    expect(emailLine().element().querySelectorAll('button')).toHaveLength(2)
+    await emailLine().getByRole('button', { name: '发送验证邮件' }).click()
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1))
+    expect(send).toHaveBeenCalledWith({ params: { userId: USER_ID } })
+  })
+
+  it('offers no link for an address already proven', async () => {
+    await open(person({ email: 'zhang@school.edu', emailVerifiedAt: '2026-09-01T00:00:00.000Z' }))
+    await expect.element(emailLine()).toHaveAttribute('data-email-state', 'verified')
+    expect(emailLine().getByRole('button', { name: '发送验证邮件' }).query()).toBeNull()
+  })
+
   it('sets a missing number the same way', async () => {
     const update = vi.fn(() => Effect.succeed({ ok: true as const }))
     await open(person({ businessNo: null }), { updateUser: update })

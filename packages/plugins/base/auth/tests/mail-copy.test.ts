@@ -22,6 +22,23 @@ describe('the mail a link goes out in', () => {
     )
   })
 
+  it('says who asked when an administrator asked for the proof of an address', () => {
+    const link = 'https://qualy.example/confirm-email#token=t&purpose=verify'
+    const theirs = mailFor('verify', 'zh-CN', link, { to: 'li@school.edu', workspace: '示范大学' })
+    const asked = mailFor('verify-by-administrator', 'zh-CN', link, {
+      to: 'li@school.edu',
+      workspace: '示范大学',
+    })
+    // the same link, and a message that is not the reader's own asking
+    expect(asked.text).toContain(link)
+    expect(asked.text).toContain('管理员')
+    expect(theirs.text).not.toContain('管理员')
+    // the last line is for somebody who does not know the organization,
+    // not for somebody who did not ask
+    expect(asked.text).not.toContain('如非本人操作')
+    expect(mailFor('verify-by-administrator', 'en', link).text).toContain('An administrator')
+  })
+
   it('escapes a workspace name and an address that are not text', () => {
     const mail = mailFor('verify', 'en', 'https://qualy.example/confirm#token=t', {
       to: '"><script>alert(1)</script>',
