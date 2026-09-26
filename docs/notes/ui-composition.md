@@ -73,6 +73,22 @@ pageId 上网。
   没有 auth 的装配就没有「我的」。`accountNavigation.key` 在 `navigationCollections` 里,pageId → path 照常解析。
 - 其他插件要加「我的 → …」:声明 `layout: ACCOUNT_SHELL` 的页面并往 `account-shell/navigation` 放条目,不改 layout-default 或 auth。
 
+## 工作区侧栏借给打开的对象(2026-09-26 扩展)
+
+参评名单打开一位参评人后,批次侧栏(各分区)对正在读的这个人没有话说,而这个人的身份、站位、两半账户的切换、
+上一位 / 下一位与回名单才是读者需要站在工作旁边的东西。做法不是新增布局契约(页面仍是同一张
+`assessment/batch-results`,`?participant=` 深链不变),而是 `workspace-shell/v1` 多一项**可选能力**:
+
+- 协议在 `@qualy/web-runtime`(与 `ScreenFootScope` / `ScreenFillScope` 同类):壳挂 `ScreenAsideScope offered`,
+  页面用 `<ScreenAside>` 把内容放进壳的侧栏位置,`useScreenAsideOffered()` 告诉页面此刻有没有可借的栏。
+  认领按计数(路由切换时新旧两屏重叠),在绘制前认领,侧栏不会先闪一帧导航再换。
+- layout-default 的 RailShell 只在工作区形态、宽度 ≥ 1024 时出借;借出期间画 280px 的栏并不再画导航,
+  归还即恢复。用户详情 / 「我的」两壳不出借(分区本就在页面自己的量度里)。
+- **没有栏可借时,页面把同样的内容画在自己流里**(平板为工作区上方的头部,手机再把事实折叠到姓名后面);
+  业务插件因此只依赖 web-runtime 的协议,不依赖布局实现,换一个不支持出借的壳也照常可用。
+
+同批次:工作区侧栏的收起状态按浏览器记住(`qualy:workspace-rail-folded`),宽表格页面收起一次即持续有效。
+
 ## 规则
 
 - 页面声明 navigation 语法糖 → registry 展开为导航贡献;特殊导航项(外链)直接 contribute
