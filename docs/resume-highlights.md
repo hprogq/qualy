@@ -398,7 +398,7 @@
 
 - `qualy.yml` 的 `application.logging` 是提交的默认值且**不进 manifestHash**(调级别不触发漂移),环境变量最高优先,支持按来源设置最低级别,未知键拒绝。
 - pretty 格式 `HH:MM:SS.mmm LEVEL [source] message`,来源按首次出现顺序分配稳定颜色(红色留给错误),插件名缩写;json 格式顶层 `request_id` / `trace_id` / `span_id`(对齐 CLS 键索引),从**正在说话的 fiber** 读取,子 span 内的日志带子 span id,从不伪造。
-- **自研访问日志**:5xx=Error、429=Warn、其他 4xx=Info、成功按配置(dev Debug / prod Info)、客户端断开(499 / 中断)=Debug、SSE 流结束=Debug(时长是连接寿命不是延迟);模式 `off | api | all`,默认排除健康探针。
+- **自研访问日志**:5xx=Error、429=Warn、其他 4xx 与成功同级按配置(dev Debug / prod Info,4xx 是客户端自己的答案,不是本进程的故障)、客户端断开(499 / 中断)=Debug、SSE 流结束=Debug(时长是连接寿命不是延迟);模式 `off | api | all`,默认排除健康探针。
 - `X-Qualy-Request-Id`:每请求 `randomUUID()`,进 header 不进 body;`RequestContext` 还承载按受信代理策略(CIDR BlockList、`X-Forwarded-For` 自右向左、伪造项置空)解析的 clientIp、userAgent、traceId、publicHost、sessionId。
 - 关闭可诊断:每个 layer 的 finalizer 记录开始/结束毫秒,超时点名仍在释放的 layer;连接池不关时每 5s 报告谁持有 checkout(fiber/span)并附一次 `pg_stat_activity` 快照。
 

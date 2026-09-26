@@ -11,9 +11,15 @@ import type { LoggingSettings } from './logging.ts'
 // closed websocket) is a failed exit, so a normal dev session showed a wall
 // of `InterruptError` lines that read like the process was on fire. Here a
 // request line has a level that means something: server faults are errors,
-// throttling is a warning, client errors are informational, success is
-// whatever the settings say - Debug in development, where vite traffic would
-// otherwise drown the terminal.
+// throttling is a warning, and everything else - success and every other
+// client error alike - is whatever the settings say: Debug in development,
+// where vite traffic would otherwise drown the terminal, Info in production,
+// where the log keeps one line per request.
+//
+// A client error rides with success because it is the client's answer, not
+// this process's trouble. The anonymous "am I signed in" probe every fresh
+// tab sends is answered 401 by design, and at Info in development it was the
+// one line left standing among silenced successes, reading like a fault.
 
 const strip = (url: string): string => {
   const at = url.search(/[?#]/)
@@ -87,11 +93,9 @@ export const accessLog =
               ? Effect.logError(line(status))
               : status === 429
                 ? Effect.logWarning(line(status))
-                : status >= 400
-                  ? Effect.logInfo(line(status))
-                  : streamed
-                    ? Effect.logDebug(line(status, ' (event stream closed)'))
-                    : successLog(settings.level, line(status))
+                : streamed && status < 400
+                  ? Effect.logDebug(line(status, ' (event stream closed)'))
+                  : successLog(settings.level, line(status))
           return Effect.andThen(annotated(log), exit)
         }
         // A failed exit usually carries the response that was already sent -
@@ -123,7 +127,9 @@ export const accessLog =
                     Option.isSome(remainder) ? `\n${Cause.pretty(remainder.value)}` : '',
                   ),
                 )
-              : Effect.logInfo(line(response.status))
+              : response.status === 429
+                ? Effect.logWarning(line(response.status))
+                : successLog(settings.level, line(response.status))
         return Effect.andThen(annotated(log), exit)
       })
     })
