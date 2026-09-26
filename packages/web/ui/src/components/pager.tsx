@@ -2,6 +2,7 @@
 
 import { Pagination } from '@mantine/core'
 import * as stylex from '@stylexjs/stylex'
+import { clsx } from 'clsx'
 import { tokens } from '../theme/tokens.stylex.ts'
 
 // Pages by number, at the foot of a list somebody walks around in: first,
@@ -26,6 +27,9 @@ const styles = stylex.create({
   },
   spacer: { flexGrow: 1 },
   controls: { display: 'flex', alignItems: 'center', gap: 8 },
+  // the page being read, drawn as the numbered strip draws its own and
+  // pointing at nothing
+  here: { cursor: 'default', userSelect: 'none' },
 })
 
 /** the names the two arrows are spoken by, where the caller has given them */
@@ -156,11 +160,19 @@ export function CursorPager({
         >
           <div {...stylex.props(styles.controls)}>
             <Pagination.Previous aria-label={previousLabel} />
-            {/* where the reader is, drawn as the numbered strip draws it;
-                it is not a way anywhere, so it takes no focus */}
-            <Pagination.Control active aria-current="page" tabIndex={-1}>
+            {/* Where the reader is, in the numbered strip's own look. It is
+                not a way anywhere, so it is not a button: a control that
+                does nothing when pressed is still announced as one to
+                press. */}
+            <span
+              aria-current="page"
+              data-active
+              data-with-padding
+              data-disabled={disabled || undefined}
+              className={clsx(Pagination.classes.control, stylex.props(styles.here).className)}
+            >
               {page}
-            </Pagination.Control>
+            </span>
             <Pagination.Next aria-label={nextLabel} />
           </div>
         </Pagination.Root>
