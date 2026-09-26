@@ -1,6 +1,8 @@
 import MyEntriesPage from '../src/client/entry/MyEntriesPage.tsx'
 import { WorkspaceSkeleton } from '../src/client/entry/workspace/WorkspaceSkeleton.tsx'
+import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router'
+import { ScreenFillScope, useScreenFillClaimed } from '@qualy/web-runtime'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { commands, page, userEvent } from 'vitest/browser'
 import { Effect, Stream } from 'effect'
@@ -181,6 +183,7 @@ const workspace = ({
   stubs = {},
   locale = 'zh-CN',
   storage = {},
+  around = (screen) => screen,
 }: {
   route: string
   items?: readonly unknown[]
@@ -193,6 +196,8 @@ const workspace = ({
   locale?: 'zh-CN' | 'en-US'
   /** what this browser already keeps from an earlier visit */
   storage?: Record<string, string>
+  /** what the shell puts around the page, where a case is about the two */
+  around?: (screen: ReactNode) => ReactNode
 }) =>
   renderScreen({
     client: fakeClient({
@@ -279,7 +284,7 @@ const workspace = ({
                 overflowY: 'auto',
               }}
             >
-              <MyEntriesPage />
+              {around(<MyEntriesPage />)}
             </main>
             <BackKey />
           </div>
@@ -1189,6 +1194,36 @@ describe('a question arriving', () => {
     } finally {
       await commands.emulateMedia({ reducedMotion: 'reduce' })
     }
+  })
+})
+
+/** what a shell reads of the screen inside it: whether it fills the room */
+function FillProbe() {
+  return <span hidden data-testid="fill-probe" data-claimed={useScreenFillClaimed()} />
+}
+
+describe('the room the page asks of the shell', () => {
+  // From a tablet up the workspace scrolls each column in its own place and
+  // the window never, so the page tells the shell it fills the room - the
+  // shell keeps no gutter then for a scroll bar that never comes. A phone's
+  // is a page that scrolls, and asks nothing.
+  it.each([
+    [1440, 900, 'true'],
+    [834, 1112, 'true'],
+    [390, 844, 'false'],
+  ] as const)('fills the room at %ipx: %s', async (width, height, claimed) => {
+    await page.viewport(width, height)
+    await workspace({
+      route: `${base}?open=${itemId(1)}`,
+      around: (screen) => (
+        <ScreenFillScope>
+          {screen}
+          <FillProbe />
+        </ScreenFillScope>
+      ),
+    })
+    await expect.element(page.getByTestId('entries-workspace')).toBeInTheDocument()
+    await expect.element(page.getByTestId('fill-probe')).toHaveAttribute('data-claimed', claimed)
   })
 })
 

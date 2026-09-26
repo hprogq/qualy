@@ -4,6 +4,7 @@ import * as stylex from '@stylexjs/stylex'
 import {
   useApi,
   useApiQuery,
+  useClaimScreenFill,
   usePageQueryState,
   usePageQueryUpdate,
   useRunApi,
@@ -55,6 +56,11 @@ const styles = stylex.create({
 
 export default function MyEntriesPage() {
   const { format } = useI18n()
+  // From a tablet up the page is a workbench: its columns scroll each in
+  // their own place and the window never does, so it says so to the shell,
+  // which then keeps no room for a scroll bar that never comes. On a phone
+  // it is a page like any other.
+  useClaimScreenFill(useWorkspaceMode() !== 'phone')
   return (
     // no band: the rail carries the page's own name and numbers, and the
     // workspace fills whatever the shell gives it
