@@ -641,7 +641,7 @@ export default {
   'assessment/items/stuck-count': '{count} 条等待',
   'assessment/items/stuck-nowhere': '上级单位中无人担任',
   'assessment/items/stuck-conflict': '现有审核人员均需回避',
-  'assessment/items/stuck-seat': '合议席位待人接手',
+  'assessment/items/stuck-seat': '全员共同审核还有席位空缺',
   'assessment/items/stuck-hint': '在对应单位任命所列任一角色后，这些申报会自动继续审核',
   'assessment/items/outline-add-item': '新增项目',
   'assessment/items/outline-add-group': '新增子分组',

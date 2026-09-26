@@ -2706,7 +2706,7 @@ const i18n = definePluginMessages({
     },
     itemsStuckSeat: {
       id: 'assessment/items/stuck-seat',
-      defaultMessage: 'Panel seats are waiting for reviewers',
+      defaultMessage: 'A seat for everyone-together review is empty',
     },
     itemsStuckHint: {
       id: 'assessment/items/stuck-hint',
