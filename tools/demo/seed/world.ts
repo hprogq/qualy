@@ -124,6 +124,9 @@ export const buildWorld = (input: {
     }
     const root = (yield* org.readForest(tenantId, undefined, admin)).roots[0]!
     yield* story.step(org.updateNode(tenantId, root, { name: '示例大学' }, admin))
+    // the bootstrap's placeholder name for the kind of unit at the top,
+    // renamed the way an administrator would, on the types page
+    yield* story.step(org.updateType(tenantId, rootType, { name: '学校' }, admin))
 
     const node = (parentId: string, type: string, name: string, sortOrder?: number) =>
       story.step(
