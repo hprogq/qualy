@@ -1,5 +1,4 @@
 import * as stylex from '@stylexjs/stylex'
-import type { StyleXStyles } from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
@@ -195,17 +194,15 @@ export interface PersonFact {
 export function PersonFacts({
   facts,
   wrap = false,
-  xstyle,
 }: {
   facts: readonly PersonFact[]
   /** onto further lines when the width runs out, rather than cutting the last */
   wrap?: boolean
-  xstyle?: StyleXStyles
 }) {
   return (
     <div
       data-testid="person-facts"
-      {...stylex.props(styles.facts, wrap ? styles.factsWrap : styles.factsLine, xstyle)}
+      {...stylex.props(styles.facts, wrap ? styles.factsWrap : styles.factsLine)}
     >
       {facts.map((fact, index) => (
         <span

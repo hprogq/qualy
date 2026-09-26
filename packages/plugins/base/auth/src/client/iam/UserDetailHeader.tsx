@@ -124,6 +124,7 @@ const styles = stylex.create({
   // what is true of them at a glance: on a phone, the row under the portrait
   // and the name, the whole width
   factsSeat: {
+    minWidth: 0,
     gridColumn: { default: null, [breakpoints.phone]: '1 / -1' },
     gridRow: { default: null, [breakpoints.phone]: 2 },
   },
@@ -356,7 +357,9 @@ export default function UserDetailHeader() {
                   {format(record.status === 'disabled' ? m.disabledBadge : m.statusActive)}
                 </Status>
               </div>
-              <PersonFacts facts={facts} wrap xstyle={styles.factsSeat} />
+              <div {...stylex.props(styles.factsSeat)}>
+                <PersonFacts facts={facts} wrap />
+              </div>
             </div>
             {manageable && (
               <div {...stylex.props(styles.actions)}>
