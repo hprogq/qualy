@@ -177,12 +177,12 @@ const pickerChosen = defineMessage<{ count: number }>()({
 
 const pickerChosenElsewhere = defineMessage<{ count: number }>()({
   id: 'auth/picker/chosen-elsewhere',
-  defaultMessage: '{count} on other pages',
+  defaultMessage: '{count} of them on other pages',
 })
 
-const pickerRemove = defineMessage<{ name: string }>()({
-  id: 'auth/picker/remove',
-  defaultMessage: 'Remove {name}',
+const pickerTotal = defineMessage<{ count: number }>()({
+  id: 'auth/picker/total',
+  defaultMessage: '{count, plural, one {# person} other {# people}}',
 })
 
 const nodeRemove = defineMessage<{ name: string }>()({
@@ -530,7 +530,10 @@ const i18n = definePluginMessages({
     nodeNoMatch: { id: 'auth/picker/node-no-match', defaultMessage: 'No unit matches.' },
     pickerChosen,
     pickerChosenElsewhere,
-    pickerRemove,
+    pickerTotal,
+    pickerPeople: { id: 'auth/picker/people', defaultMessage: 'People' },
+    pickerTakePage: { id: 'auth/picker/take-page', defaultMessage: 'Choose everyone on this page' },
+    pickerClear: { id: 'auth/picker/clear', defaultMessage: 'Clear' },
     nodeRemove,
     methodsFailedTitle: {
       id: 'auth/login/methods-failed',

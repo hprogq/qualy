@@ -479,6 +479,13 @@ export interface PeoplePickerViewContext {
     displayName: string
     businessNo: string | null
     userTypeName: string | null
+    /**
+     * The unit they stand at, when the caller knows it. The picker spells
+     * the way down to it from `nodes`, from under the unit being looked at.
+     */
+    unitId?: string | null
+    /** its name, for a unit `nodes` does not hold */
+    unitName?: string | null
   }[]
 
   /** where the reader is looking, and how the caller is querying it */
@@ -501,6 +508,20 @@ export interface PeoplePickerViewContext {
   error?: string | null
   hasPrevious: boolean
   hasNext: boolean
+  /** which page of a list walked forwards this is, counted from one */
+  position?: number
+  /**
+   * The page by number, for a caller whose list is counted: the picker then
+   * offers the page numbers and says how many there are. Without it, the
+   * list is walked forwards and back.
+   */
+  paging?: {
+    /** counted from one */
+    page: number
+    pageSize: number
+    total: number
+    onPage: (page: number) => void
+  }
 
   onNodeChange: (nodeId: string) => void
   onScopeChange: (scope: 'self' | 'subtree') => void
@@ -508,6 +529,11 @@ export interface PeoplePickerViewContext {
   /** the caller is told once the typing has settled, not per keystroke */
   onSearchChange: (search: string) => void
   onToggle: (userId: string) => void
+  /**
+   * The whole choice at once, for taking a page in or letting everybody go.
+   * A caller that does not give it gets neither control.
+   */
+  onChange?: (userIds: readonly string[]) => void
   onPrevious: () => void
   onNext: () => void
   onRetry: () => void

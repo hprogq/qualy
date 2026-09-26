@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState, type MouseEvent } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { ChevronsUpDownIcon, XIcon } from 'lucide-react'
+import { ChevronsUpDownIcon } from 'lucide-react'
 import type { PeoplePickerViewContext } from '@qualy/ui-contract'
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
@@ -13,13 +13,15 @@ import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Input } from '@qualy/ui/input'
+import { CursorPager, Pager } from '@qualy/ui/pager'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
-import { PersonCell } from '@qualy/ui/person'
 import { Skeleton } from '@qualy/ui/skeleton'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qualy/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { authMessages as m } from '../i18n.ts'
 import { OrgTree } from './OrgTree.tsx'
+import { UnitPath, type PathStep } from './users/UnitPath.tsx'
 
 // Choosing people: the drawing, without the people.
 //
@@ -28,6 +30,13 @@ import { OrgTree } from './OrgTree.tsx'
 // at a time, because a university is not a list anybody scrolls. What is
 // chosen is people - ticking a unit would be choosing a shape, and the shape
 // changes underneath afterwards.
+//
+// The people are a table with a head, the way the roster of users is: a
+// name, a number, where they stand and what kind of person they are, each in
+// its own column, so a page of them is read down a column rather than name
+// by name. The head holds still while the rows scroll, and the box in it
+// takes the whole page in or out. On a phone a table would be six columns in
+// a third of the width, so each person is a line with their facts under it.
 //
 // Nothing here knows where a row came from. Whoever mounts it has already
 // asked their own server for a page they are allowed to show, so this file
@@ -41,51 +50,59 @@ import { OrgTree } from './OrgTree.tsx'
 
 const ANY = 'any'
 
+const QUIET = `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`
+
 const styles = stylex.create({
-  // the units on one side, the people on the other once there is room
+  // The units on one side, the people on the other once there is room.
+  //
   // A height of its own, so the tree and the list each scroll inside it and
-  // the pager under the list stays where it is: grown to whatever it held, a
-  // long tree made the whole picker screens tall and put "next page" several
-  // scrolls below the people it turns. The tree is the narrower half - it is
-  // a way to narrow the list, and the list is what is being chosen from.
+  // the foot under the list stays where it is - but only as a starting
+  // point: inside a box that hands out more, it grows into all of it, and
+  // inside one that hands out less it gives way down to a floor.
   frame: {
-    display: 'grid',
-    minHeight: 0,
+    display: { default: 'grid', [breakpoints.phone]: 'flex' },
+    flexDirection: 'column',
+    minHeight: '18rem',
+    height: 'min(62vh, 30rem)',
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 'auto',
     gap: 16,
-    // A height at every width. On a phone it had none: the unit tree grew to
-    // whatever it held, the list grew under it, and "next page" ended up
-    // several scrolls below the people it turns - and the panel changed
-    // height under the hand with every filter.
-    height: {
-      default: 'min(72vh, 30rem)',
-      [breakpoints.tablet]: 'min(62vh, 30rem)',
-      [breakpoints.desktop]: 'min(62vh, 30rem)',
-    },
-    // stacked, the unit takes the line it needs and the people take the rest
-    gridTemplateRows: {
-      default: 'auto minmax(0, 1fr)',
-      [breakpoints.tablet]: null,
-      [breakpoints.desktop]: null,
-    },
-    gridTemplateColumns: {
-      default: null,
-      [breakpoints.tablet]: 'minmax(0, 15rem) minmax(0, 1fr)',
-      [breakpoints.desktop]: 'minmax(0, 17rem) minmax(0, 1fr)',
-    },
+    gridTemplateRows: 'minmax(0, 1fr)',
   },
+  // the tree is the narrower half: it is a way to narrow the list, and the
+  // list is what is being chosen from
+  frameSplit: {
+    gridTemplateColumns: 'minmax(0, 16rem) minmax(0, 1fr)',
+  },
+  frameFolded: { gridTemplateColumns: 'minmax(0, 1fr)' },
   // the unit as a field that opens the tree, where a tree of its own would
-  // take half the panel to show four rows of it
-  unitField: { width: '100%', justifyContent: 'space-between', fontWeight: 400 },
+  // take a third of the panel from the table
+  unitField: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: { default: '12rem', [breakpoints.phone]: '8rem' },
+    minWidth: 0,
+    justifyContent: 'space-between',
+    fontWeight: 400,
+  },
   unitWord: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   chevron: { flexShrink: 0, opacity: 0.5 },
   treeSeat: { display: 'flex', minHeight: 0, height: '22rem', flexDirection: 'column' },
   side: { display: 'flex', minHeight: 0, minWidth: 0, flexDirection: 'column', gap: 8 },
-  sideWide: { display: 'flex', minHeight: 0, minWidth: 0, flexDirection: 'column', gap: 12 },
-  heading: { fontSize: 14, lineHeight: '1.25rem', fontWeight: 500 },
+  people: {
+    display: 'flex',
+    minHeight: 0,
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 'auto',
+    flexDirection: 'column',
+    gap: 10,
+  },
+  heading: { margin: 0, fontSize: 13, lineHeight: '1.25rem', fontWeight: 600 },
   tree: {
     minHeight: '10rem',
-    // stacked on a phone there is no frame to fill, so it keeps to a share
-    maxHeight: { default: '14rem', [breakpoints.tablet]: 'none', [breakpoints.desktop]: 'none' },
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: '0%',
@@ -98,9 +115,26 @@ const styles = stylex.create({
   },
   aside: { fontSize: 12, lineHeight: '1rem', color: tokens.mutedForeground },
   controls: { display: 'flex', flexShrink: 0, flexWrap: 'wrap', alignItems: 'center', gap: 8 },
-  search: { height: 32, minWidth: 160, flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  search: { height: 32, minWidth: 0, flexGrow: 1, flexShrink: 1, flexBasis: '10rem' },
   typeField: { width: 'auto' },
-  results: {
+  // The list's own box: a hairline card whose inside is the one part that
+  // scrolls. Its height is what the frame leaves after the controls and the
+  // foot, which is why a long page never pushes the foot out of reach.
+  listBox: {
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    borderRadius: tokens.radiusMd,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: tokens.surface,
+  },
+  listFill: {
     display: 'flex',
     minHeight: 0,
     flexGrow: 1,
@@ -108,93 +142,187 @@ const styles = stylex.create({
     flexBasis: '0%',
     flexDirection: 'column',
   },
-  // the rows it becomes, not a rectangle the size of them: a person is a
-  // box, a name and a number, and that is what a reader is waiting for
-  waiting: {
+  // ---- the table ---------------------------------------------------------
+  // the head is a strip of small grey words on the page's inset ground, as
+  // the roster of users heads its columns
+  headCell: {
+    height: 32,
+    paddingInlineStart: 10,
+    paddingInlineEnd: 10,
+    backgroundColor: tokens.surfaceInset,
+    fontSize: 12,
+    fontWeight: 500,
+    color: tokens.mutedForeground,
+  },
+  tickCell: { width: '1%', paddingInlineStart: 12 },
+  row: { cursor: 'pointer' },
+  rowStill: { cursor: 'default' },
+  cell: {
+    paddingBlock: 9,
+    paddingInlineStart: 10,
+    paddingInlineEnd: 10,
+    fontSize: 12.5,
+    color: tokens.mutedForeground,
+  },
+  nameCell: { fontSize: 13.5, color: tokens.foreground },
+  // what is left of the width after every other column took what its words
+  // need: the way down to where somebody stands, which gives way from the
+  // front when it has to
+  unitCell: { width: '100%', maxWidth: 0 },
+  numeric: { fontVariantNumeric: 'tabular-nums' },
+  quietWord: { color: QUIET },
+  // as wide as the name and whatever is said beside it: the column is sized
+  // by the widest of its cells, and a mark that could shrink to nothing
+  // left the column a pill's padding short of it
+  nameLine: { display: 'inline-flex', minWidth: 'max-content', alignItems: 'center', gap: 8 },
+  blockedName: { color: tokens.mutedForeground },
+  badge: { fontWeight: 400 },
+  // ---- the phone's lines -------------------------------------------------
+  lines: {
     display: 'flex',
-    minHeight: '10rem',
-    width: '100%',
+    minHeight: 0,
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: '0%',
     flexDirection: 'column',
-    gap: 2,
+    margin: 0,
+    padding: 0,
+    overflowY: 'auto',
+    overscrollBehavior: 'contain',
+    listStyle: 'none',
+  },
+  // the whole page in or out, standing over the lines as a head would
+  pageBarTotal: { marginInlineStart: 'auto', fontVariantNumeric: 'tabular-nums' },
+  pageBar: {
+    display: 'flex',
+    cursor: 'pointer',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 36,
+    paddingInline: 12,
+    backgroundColor: tokens.surfaceInset,
+    boxShadow: `inset 0 -1px 0 ${tokens.divider}`,
+    fontSize: 12.5,
+    color: tokens.mutedForeground,
+  },
+  line: {
+    display: 'grid',
+    flexShrink: 0,
+    gridTemplateColumns: 'auto minmax(0, 1fr)',
+    columnGap: 12,
+    alignItems: 'center',
+    minHeight: 52,
+    paddingInline: 12,
+    paddingBlock: 8,
+    borderBottomWidth: { default: 1, ':last-child': 0 },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+    cursor: 'pointer',
+  },
+  lineChosen: { backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)` },
+  lineWords: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 2 },
+  lineName: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 14,
+    color: tokens.foreground,
+  },
+  lineNameWord: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  lineKind: {
+    flexShrink: 0,
+    marginInlineStart: 'auto',
+    fontSize: 12.5,
+    color: tokens.mutedForeground,
+    whiteSpace: 'nowrap',
+  },
+  lineFacts: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 12.5,
+    color: tokens.mutedForeground,
+  },
+  factHeld: { flexShrink: 0, whiteSpace: 'nowrap' },
+  factGives: { display: 'flex', minWidth: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  // one fact from the next: a hairline, drawn by whoever knows there are two
+  factRule: {
+    alignSelf: 'center',
+    flexShrink: 0,
+    width: 1,
+    height: 11,
+    backgroundColor: `color-mix(in oklab, ${QUIET} 40%, transparent)`,
+  },
+  // ---- waiting and nobody ------------------------------------------------
+  waiting: {
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexDirection: 'column',
   },
   waitingRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: 10,
-    paddingInline: 10,
-    paddingBlock: 9,
+    gap: 12,
+    minHeight: 42,
+    paddingInline: 12,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
   },
   waitingBox: { height: 16, width: 16, borderRadius: 4, flexShrink: 0 },
-  waitingBone: { height: 13, borderRadius: 4 },
+  waitingBone: { height: 12, borderRadius: 4 },
   nobody: {
     display: 'flex',
-    minHeight: '10rem',
+    minHeight: '8rem',
     flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: tokens.radiusMd,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
-    fontSize: 14,
-    lineHeight: '1.25rem',
+    margin: 0,
+    padding: 16,
+    fontSize: 13,
     color: tokens.mutedForeground,
   },
-  list: {
-    minHeight: '10rem',
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
-    overflow: 'auto',
-    borderRadius: tokens.radiusMd,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
-  },
-  row: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    paddingInline: 12,
-    paddingBlock: 8,
-    borderTopWidth: { default: 1, ':first-child': 0 },
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.border,
-  },
-  rowName: { minWidth: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
-  // the list is what scrolls; how many are chosen and the way to the next
-  // page stay where they were put
+  // ---- the foot ----------------------------------------------------------
+  // how many are chosen and the way through the pages stay where they were
+  // put; the list above is what scrolls
   foot: {
     display: 'flex',
     flexShrink: 0,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  pager: { display: 'flex', alignItems: 'center', gap: 4 },
-  chips: {
-    display: 'flex',
-    maxHeight: '4.5rem',
-    flexShrink: 0,
     flexWrap: 'wrap',
-    gap: 6,
-    overflowY: 'auto',
+    alignItems: 'center',
+    columnGap: 12,
+    rowGap: 6,
+    minHeight: 32,
   },
-  chip: { gap: 4, fontWeight: 400 },
-  chipDrop: { width: 12, height: 12 },
-  quiet: { fontWeight: 400 },
+  chosen: {
+    display: 'flex',
+    minWidth: 0,
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+    columnGap: 8,
+    fontSize: 13,
+    color: tokens.foreground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  chosenNone: { color: tokens.mutedForeground },
+  clear: { height: 24, paddingInline: 6, fontSize: 12.5 },
+  pages: { display: 'flex', minWidth: 0, flexGrow: 1, flexBasis: '14rem' },
 })
+
+type Row = PeoplePickerViewContext['rows'][number]
 
 export default function PeoplePickerView({ context }: { context: PeoplePickerViewContext }) {
   const { format } = useI18n()
   const businessNo = useTerm(authTerms.businessNumber)
   const [typed, setTyped] = useState(context.search)
-  // where a tree beside the list would take half the panel to show four rows
+  // Below a desk's width the tree is a field that opens it, and the table
+  // takes the whole width; below a phone's, a row is a line with its facts
+  // under it rather than a table squeezed into a third of the width.
+  const folded = useIsBelow(1024)
   const phone = useIsBelow(768)
   const [pickingUnit, setPickingUnit] = useState(false)
   const unitName = context.nodes.find((node) => node.id === context.nodeId)?.name
@@ -210,7 +338,62 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
 
   const chosen = new Set(context.value)
   const blocked = new Set(context.disabled ?? [])
-  const named = context.rows.filter((row) => chosen.has(row.id))
+  const many = context.single !== true
+  const replace = many ? context.onChange : undefined
+
+  // Where somebody stands, said from under the unit being looked at: the
+  // list is already about that unit, and everything above it on every row
+  // only pushes the part that differs off the end of the cell. Somebody at
+  // the unit itself is said to stand there; with nothing chosen in the
+  // tree, the top of it is left off, since it is the same for everybody.
+  const byId = useMemo(() => new Map(context.nodes.map((node) => [node.id, node])), [context.nodes])
+  const stepsOf = (row: Row): readonly PathStep[] => {
+    const steps: PathStep[] = []
+    const start = row.unitId ?? null
+    for (
+      let at = start === null ? undefined : byId.get(start);
+      at !== undefined;
+      at = at.parentId === null ? undefined : byId.get(at.parentId)
+    ) {
+      if (at.id === context.nodeId && steps.length > 0) break
+      if (context.nodeId === null && at.parentId === null && steps.length > 0) break
+      steps.unshift({ id: at.id, name: at.name })
+      if (at.id === context.nodeId) break
+    }
+    if (steps.length === 0 && row.unitName !== undefined && row.unitName !== null) {
+      steps.push({ id: start ?? row.id, name: row.unitName })
+    }
+    return steps
+  }
+  const withUnits = context.rows.some(
+    (row) => (row.unitId ?? null) !== null || (row.unitName ?? null) !== null,
+  )
+  const withKinds = context.rows.some((row) => row.userTypeName !== null)
+
+  // the page in or out as a whole: only the people who may be chosen, and
+  // nobody chosen on another page is let go by it
+  const open = context.rows.filter((row) => !blocked.has(row.id))
+  const taken = open.filter((row) => chosen.has(row.id)).length
+  const pageState: boolean | 'indeterminate' =
+    taken === 0 ? false : taken === open.length ? true : 'indeterminate'
+  const takePage = (take: boolean) => {
+    if (replace === undefined) return
+    const ids = new Set(open.map((row) => row.id))
+    replace(
+      take
+        ? [...context.value, ...open.map((row) => row.id).filter((id) => !chosen.has(id))]
+        : context.value.filter((id) => !ids.has(id)),
+    )
+  }
+  const pageBox = replace !== undefined && open.length > 0
+  const offPage = context.value.filter((id) => !context.rows.some((row) => row.id === id)).length
+
+  // a press anywhere on a row is a press on its box; the box answers for
+  // itself, and a row that may not be chosen answers nothing
+  const pressRow = (row: Row) => (event: MouseEvent) => {
+    if ((event.target as HTMLElement).closest('input, button, a, label') !== null) return
+    if (!blocked.has(row.id)) context.onToggle(row.id)
+  }
 
   const tree = (
     <OrgTree
@@ -225,24 +408,243 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
     />
   )
 
-  return (
-    <div {...stylex.props(styles.frame)} data-testid="people-picker">
-      {phone ? (
-        <Button
-          type="button"
-          variant="outline"
-          justify="space-between"
-          data-testid="people-picker-unit"
-          className={stylex.props(styles.unitField).className}
-          onClick={() => setPickingUnit(true)}
-        >
-          <span {...stylex.props(styles.unitWord)}>{unitName ?? format(m.pickerUnits)}</span>
-          <ChevronsUpDownIcon
-            className={stylex.props(styles.chevron).className}
-            data-icon="inline-end"
+  const number = (row: Row) => row.businessNo ?? format(m.personNoBusinessNo, { businessNo })
+
+  const table = (
+    <Table fill aria-label={format(m.pickerPeople)}>
+      <TableHeader sticky>
+        <TableRow>
+          <TableHead scope="col" xstyle={[styles.headCell, styles.tickCell]}>
+            {pageBox && (
+              <Checkbox
+                checked={pageState}
+                aria-label={format(m.pickerTakePage)}
+                data-testid="people-picker-page"
+                onCheckedChange={(next) => takePage(next)}
+              />
+            )}
+          </TableHead>
+          <TableHead scope="col" xstyle={styles.headCell}>
+            {format(m.columnName)}
+          </TableHead>
+          <TableHead scope="col" xstyle={styles.headCell}>
+            {businessNo}
+          </TableHead>
+          {withUnits && (
+            <TableHead scope="col" xstyle={styles.headCell}>
+              {format(m.columnUnit)}
+            </TableHead>
+          )}
+          {withKinds && (
+            <TableHead scope="col" xstyle={styles.headCell}>
+              {format(m.columnType)}
+            </TableHead>
+          )}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {context.rows.map((row) => {
+          const isBlocked = blocked.has(row.id)
+          const isChosen = chosen.has(row.id)
+          const steps = withUnits ? stepsOf(row) : []
+          return (
+            <TableRow
+              key={row.id}
+              data-testid="people-picker-row"
+              data-chosen={isChosen}
+              data-blocked={isBlocked}
+              {...(isChosen ? { 'data-state': 'selected' } : {})}
+              xstyle={isBlocked ? styles.rowStill : styles.row}
+              onClick={pressRow(row)}
+            >
+              <TableCell xstyle={[styles.cell, styles.tickCell]}>
+                <Checkbox
+                  checked={isChosen}
+                  disabled={isBlocked}
+                  aria-label={row.displayName}
+                  onCheckedChange={() => context.onToggle(row.id)}
+                />
+              </TableCell>
+              <TableCell xstyle={[styles.cell, styles.nameCell]}>
+                <span {...stylex.props(styles.nameLine)}>
+                  <span {...stylex.props(isBlocked && styles.blockedName)}>{row.displayName}</span>
+                  {isBlocked && context.disabledLabel !== undefined && (
+                    <Badge variant="secondary" className={stylex.props(styles.badge).className}>
+                      {context.disabledLabel}
+                    </Badge>
+                  )}
+                </span>
+              </TableCell>
+              <TableCell
+                xstyle={[styles.cell, styles.numeric, row.businessNo === null && styles.quietWord]}
+              >
+                {number(row)}
+              </TableCell>
+              {withUnits && (
+                <TableCell xstyle={[styles.cell, styles.unitCell]}>
+                  {steps.length > 0 && (
+                    <UnitPath steps={steps} plain pickLabel="" onPick={() => {}} />
+                  )}
+                </TableCell>
+              )}
+              {withKinds && <TableCell xstyle={styles.cell}>{row.userTypeName ?? ''}</TableCell>}
+            </TableRow>
+          )
+        })}
+      </TableBody>
+    </Table>
+  )
+
+  const lines = (
+    <>
+      {pageBox && (
+        <label {...stylex.props(styles.pageBar)}>
+          <Checkbox
+            checked={pageState}
+            aria-label={format(m.pickerTakePage)}
+            data-testid="people-picker-page"
+            onCheckedChange={(next) => takePage(next)}
           />
-        </Button>
-      ) : (
+          <span>{format(m.pickerTakePage)}</span>
+          {context.paging !== undefined && (
+            <span {...stylex.props(styles.pageBarTotal)}>
+              {format(m.pickerTotal, { count: context.paging.total })}
+            </span>
+          )}
+        </label>
+      )}
+      <ul {...stylex.props(styles.lines)} aria-label={format(m.pickerPeople)}>
+        {context.rows.map((row) => {
+          const isBlocked = blocked.has(row.id)
+          const isChosen = chosen.has(row.id)
+          const steps = withUnits ? stepsOf(row) : []
+          // the unit comes last on its line, because it is the one that
+          // gives way: the number keeps its digits and the unit keeps as much
+          // of its end as fits
+          const facts = [
+            <span
+              key="number"
+              {...stylex.props(
+                styles.factHeld,
+                styles.numeric,
+                row.businessNo === null && styles.quietWord,
+              )}
+            >
+              {number(row)}
+            </span>,
+            ...(steps.length > 0
+              ? [
+                  <span key="unit" {...stylex.props(styles.factGives)}>
+                    <UnitPath steps={steps} plain pickLabel="" onPick={() => {}} />
+                  </span>,
+                ]
+              : []),
+          ]
+          return (
+            <li
+              key={row.id}
+              data-testid="people-picker-row"
+              data-chosen={isChosen}
+              data-blocked={isBlocked}
+              {...stylex.props(
+                styles.line,
+                isChosen && styles.lineChosen,
+                isBlocked && styles.rowStill,
+              )}
+              onClick={pressRow(row)}
+            >
+              <Checkbox
+                checked={isChosen}
+                disabled={isBlocked}
+                aria-label={row.displayName}
+                onCheckedChange={() => context.onToggle(row.id)}
+              />
+              <span {...stylex.props(styles.lineWords)}>
+                <span {...stylex.props(styles.lineName)}>
+                  <span {...stylex.props(styles.lineNameWord, isBlocked && styles.blockedName)}>
+                    {row.displayName}
+                  </span>
+                  {isBlocked && context.disabledLabel !== undefined && (
+                    <Badge variant="secondary" className={stylex.props(styles.badge).className}>
+                      {context.disabledLabel}
+                    </Badge>
+                  )}
+                  {/* the kind stands at the end of the name's line, where
+                      a column of them reads straight down */}
+                  {row.userTypeName !== null && row.userTypeName !== '' && (
+                    <span {...stylex.props(styles.lineKind)}>{row.userTypeName}</span>
+                  )}
+                </span>
+                <span {...stylex.props(styles.lineFacts)}>
+                  {facts.flatMap((fact, index) =>
+                    index === 0
+                      ? [fact]
+                      : [
+                          <span
+                            key={`rule-${index}`}
+                            aria-hidden
+                            {...stylex.props(styles.factRule)}
+                          />,
+                          fact,
+                        ],
+                  )}
+                </span>
+              </span>
+            </li>
+          )
+        })}
+      </ul>
+    </>
+  )
+
+  const scopeToggle = (
+    <ToggleGroup
+      value={context.scope}
+      onValueChange={(next) => next && context.onScopeChange(next as 'self' | 'subtree')}
+    >
+      <ToggleGroupItem value="self">{format(m.pickerScopeSelf)}</ToggleGroupItem>
+      <ToggleGroupItem value="subtree">{format(m.pickerScopeSubtree)}</ToggleGroupItem>
+    </ToggleGroup>
+  )
+
+  const paging = context.paging
+  const pager =
+    paging !== undefined ? (
+      <Pager
+        testId="people-picker-pager"
+        label={format(m.pagerLabel)}
+        previousLabel={format(m.pickerPrevious)}
+        nextLabel={format(m.pickerNext)}
+        page={paging.page}
+        pageSize={paging.pageSize}
+        total={paging.total}
+        // the first, the last and the one being read: the strip shares
+        // its line with how many are chosen
+        compact
+        disabled={context.pending}
+        {...(phone ? {} : { summary: format(m.pickerTotal, { count: paging.total }) })}
+        onPage={paging.onPage}
+      />
+    ) : (
+      <CursorPager
+        testId="people-picker-pager"
+        label={format(m.pagerLabel)}
+        previousLabel={format(m.pickerPrevious)}
+        nextLabel={format(m.pickerNext)}
+        page={context.position ?? (context.hasPrevious ? 2 : 1)}
+        hasNext={context.hasNext}
+        disabled={context.pending}
+        onPrevious={context.onPrevious}
+        onNext={context.onNext}
+      />
+    )
+
+  return (
+    <div
+      {...stylex.props(styles.frame, folded ? styles.frameFolded : styles.frameSplit)}
+      data-testid="people-picker"
+    >
+      {!folded && (
         <div {...stylex.props(styles.side)}>
           <p {...stylex.props(styles.heading)}>{format(m.pickerUnits)}</p>
           <div {...stylex.props(styles.tree)}>{tree}</div>
@@ -252,131 +654,119 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
         </div>
       )}
 
-      <div {...stylex.props(styles.sideWide)}>
+      <div {...stylex.props(styles.people)}>
         <div {...stylex.props(styles.controls)}>
+          {folded && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              justify="space-between"
+              data-testid="people-picker-unit"
+              aria-label={format(m.pickerUnits)}
+              className={stylex.props(styles.unitField).className}
+              onClick={() => setPickingUnit(true)}
+            >
+              <span {...stylex.props(styles.unitWord)}>{unitName ?? format(m.pickerUnits)}</span>
+              <ChevronsUpDownIcon
+                className={stylex.props(styles.chevron).className}
+                data-icon="inline-end"
+              />
+            </Button>
+          )}
+          {/* where to look, then whom: folded, the unit and how far under it
+              share the first line */}
+          {folded && scopeToggle}
           <Input
             value={typed}
             onChange={(event) => setTyped(event.target.value)}
             placeholder={format(m.pickerSearch, { businessNo })}
+            aria-label={format(m.pickerSearch, { businessNo })}
             className={stylex.props(styles.search).className}
           />
-          <Select
-            value={context.userTypeId === '' ? ANY : context.userTypeId}
-            onValueChange={(next) => context.onUserTypeChange(next === ANY ? '' : next)}
-          >
-            <SelectTrigger
-              size="sm"
-              xstyle={styles.typeField}
-              aria-label={format(m.personUserType)}
+          {context.userTypes.length > 0 && (
+            <Select
+              value={context.userTypeId === '' ? ANY : context.userTypeId}
+              onValueChange={(next) => context.onUserTypeChange(next === ANY ? '' : next)}
             >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ANY}>{format(m.pickerAnyType)}</SelectItem>
-              {context.userTypes.map((type) => (
-                <SelectItem key={type.id} value={type.id}>
-                  {type.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <ToggleGroup
-            value={context.scope}
-            onValueChange={(next) => next && context.onScopeChange(next as 'self' | 'subtree')}
-          >
-            <ToggleGroupItem value="self">{format(m.pickerScopeSelf)}</ToggleGroupItem>
-            <ToggleGroupItem value="subtree">{format(m.pickerScopeSubtree)}</ToggleGroupItem>
-          </ToggleGroup>
+              <SelectTrigger
+                size="sm"
+                xstyle={styles.typeField}
+                aria-label={format(m.personUserType)}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ANY}>{format(m.pickerAnyType)}</SelectItem>
+                {context.userTypes.map((type) => (
+                  <SelectItem key={type.id} value={type.id}>
+                    {type.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {!folded && scopeToggle}
         </div>
 
-        <AsyncSection
-          xstyle={styles.results}
-          pending={context.pending}
-          error={context.error ?? null}
-          loadingLabel={format(commonMessages.loading)}
-          retryLabel={format(commonMessages.retry)}
-          onRetry={context.onRetry}
-          skeleton={
-            <div {...stylex.props(styles.waiting)}>
-              {['46%', '62%', '38%', '55%', '43%', '59%'].map((width, index) => (
-                <div key={index} {...stylex.props(styles.waitingRow)}>
-                  <Skeleton className={stylex.props(styles.waitingBox).className} />
-                  <Skeleton className={stylex.props(styles.waitingBone).className} width={width} />
-                </div>
-              ))}
-            </div>
-          }
-        >
-          {context.rows.length === 0 ? (
-            <p {...stylex.props(styles.nobody)}>{format(m.pickerNobody)}</p>
-          ) : (
-            <ul {...stylex.props(styles.list)}>
-              {context.rows.map((row) => (
-                <li key={row.id} {...stylex.props(styles.row)} data-testid="people-picker-row">
-                  <Checkbox
-                    checked={chosen.has(row.id)}
-                    disabled={blocked.has(row.id)}
-                    aria-label={row.displayName}
-                    onCheckedChange={() => context.onToggle(row.id)}
-                  />
-                  <span {...stylex.props(styles.rowName)}>
-                    <PersonCell
-                      name={row.displayName}
-                      secondary={row.businessNo ?? format(m.personNoBusinessNo, { businessNo })}
+        <div {...stylex.props(styles.listBox)} data-testid="people-picker-list">
+          <AsyncSection
+            xstyle={styles.listFill}
+            pending={context.pending}
+            error={context.error ?? null}
+            loadingLabel={format(commonMessages.loading)}
+            retryLabel={format(commonMessages.retry)}
+            onRetry={context.onRetry}
+            skeleton={
+              <div {...stylex.props(styles.waiting)}>
+                {['34%', '46%', '28%', '41%', '31%', '44%'].map((width, index) => (
+                  <div key={index} {...stylex.props(styles.waitingRow)}>
+                    <Skeleton className={stylex.props(styles.waitingBox).className} />
+                    <Skeleton
+                      className={stylex.props(styles.waitingBone).className}
+                      width={width}
                     />
-                  </span>
-                  {blocked.has(row.id) && context.disabledLabel !== undefined ? (
-                    <Badge variant="secondary">{context.disabledLabel}</Badge>
-                  ) : (
-                    <span {...stylex.props(styles.aside)}>{row.userTypeName ?? ''}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </AsyncSection>
+                  </div>
+                ))}
+              </div>
+            }
+          >
+            {context.rows.length === 0 ? (
+              <p {...stylex.props(styles.nobody)}>{format(m.pickerNobody)}</p>
+            ) : phone ? (
+              lines
+            ) : (
+              table
+            )}
+          </AsyncSection>
+        </div>
 
         <div {...stylex.props(styles.foot)}>
-          <span {...stylex.props(styles.aside)} data-testid="people-picker-count">
+          <span
+            {...stylex.props(styles.chosen, context.value.length === 0 && styles.chosenNone)}
+            data-testid="people-picker-count"
+            data-count={context.value.length}
+          >
             {format(m.pickerChosen, { count: context.value.length })}
-          </span>
-          <div {...stylex.props(styles.pager)}>
-            <Button disabled={!context.hasPrevious} onClick={context.onPrevious}>
-              {format(m.pickerPrevious)}
-            </Button>
-            <Button disabled={!context.hasNext} onClick={context.onNext}>
-              {format(m.pickerNext)}
-            </Button>
-          </div>
-        </div>
-
-        {context.value.length > 0 && context.single !== true && (
-          <div {...stylex.props(styles.chips)}>
-            {named.map((row) => (
-              <Badge
-                key={row.id}
-                variant="secondary"
-                className={stylex.props(styles.chip).className}
-              >
-                {row.displayName}
-                <button
-                  type="button"
-                  aria-label={format(m.pickerRemove, { name: row.displayName })}
-                  onClick={() => context.onToggle(row.id)}
-                >
-                  <XIcon {...stylex.props(styles.chipDrop)} />
-                </button>
-              </Badge>
-            ))}
-            {/* whoever was chosen on another page is counted, not named: the
-                list only holds what this page was given */}
-            {context.value.length > named.length && (
-              <Badge variant="outline" className={stylex.props(styles.quiet).className}>
-                {format(m.pickerChosenElsewhere, { count: context.value.length - named.length })}
-              </Badge>
+            {offPage > 0 && many && (
+              <span {...stylex.props(styles.aside)}>
+                {format(m.pickerChosenElsewhere, { count: offPage })}
+              </span>
             )}
-          </div>
-        )}
+          </span>
+          {replace !== undefined && context.value.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className={stylex.props(styles.clear).className}
+              data-testid="people-picker-clear"
+              onClick={() => replace([])}
+            >
+              {format(m.pickerClear)}
+            </Button>
+          )}
+          <span {...stylex.props(styles.pages)}>{pager}</span>
+        </div>
       </div>
 
       {/* one at a time: the tree takes the panel's place rather than standing

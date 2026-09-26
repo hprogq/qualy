@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type { PeoplePickerContext } from '@qualy/ui-contract'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -19,8 +19,12 @@ import PeoplePickerView from './PeoplePickerView.tsx'
 // different authorization, and it needs this drawing without this directory.
 // The view is a slot of its own for that reason; this one stays behind
 // `auth.user.read`, because reading the directory is exactly what it does.
+//
+// The people are asked for by page number, as the roster of users asks for
+// them: somebody choosing among a few hundred goes to page four and back,
+// and wants to know how many pages there are before they start.
 
-const PAGE = 25
+const PAGE = 20
 
 export default function PeoplePicker({ context }: { context: PeoplePickerContext }) {
   const query = useApiQuery(authApi)
@@ -30,22 +34,16 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
   const [scope, setScope] = useState<'self' | 'subtree'>('subtree')
   const [userTypeId, setUserTypeId] = useState('')
   const [search, setSearch] = useState('')
-  // the cursor stack carries the question it belongs to, so a filter change
-  // cannot send the previous question's cursor: the server refuses one that
-  // did not come from the question being asked, and rightly
-  const [paging, setPaging] = useState<{
-    question: string
-    cursors: readonly (string | undefined)[]
-    at: number
-  }>({ question: '', cursors: [undefined], at: 0 })
+  // the page carries the question it belongs to, so a filter change starts
+  // the new question at its first page
+  const [paging, setPaging] = useState({ question: '', page: 1 })
 
   const options = useQuery(query.identity.getUserOptions.queryOptions({ query: {} }))
   const nodes = options.data?.nodes ?? []
   const here = nodeId ?? nodes[0]?.orgNodeId ?? null
 
   const question = `${here ?? ''}:${scope}:${search}:${userTypeId}`
-  const page = paging.question === question ? paging : { question, cursors: [undefined], at: 0 }
-  const { cursors, at } = page
+  const page = paging.question === question ? paging.page : 1
 
   const people = useQuery({
     ...query.identity.listUsers.queryOptions({
@@ -54,18 +52,20 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
         scope,
         ...(search !== '' ? { search } : {}),
         ...(userTypeId !== '' ? { userTypeId } : {}),
-        ...(cursors[at] !== undefined ? { cursor: cursors[at] } : {}),
+        page: String(page),
         limit: String(PAGE),
       },
     }),
     enabled: here !== null,
+    // the page being left stays up until the next one arrives, so turning a
+    // page does not blank the table under the pointer
+    placeholderData: keepPreviousData,
   })
 
-  const nextCursor = people.data?.nextCursor ?? null
-  useEffect(() => {
-    if (nextCursor === null || cursors[at + 1] === nextCursor) return
-    setPaging({ question, cursors: [...cursors.slice(0, at + 1), nextCursor], at })
-  }, [nextCursor, at, cursors, question])
+  const total = people.data?.total ?? 0
+  const current = people.data?.page ?? page
+  const pages = Math.max(1, Math.ceil(total / PAGE))
+  const goTo = (next: number) => setPaging({ question, page: Math.min(Math.max(1, next), pages) })
 
   const chosen = new Set(context.value)
   const blocked = new Set(context.disabled ?? [])
@@ -81,6 +81,8 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
           displayName: row.displayName,
           businessNo: row.businessNo ?? null,
           userTypeName: row.userType?.name ?? null,
+          unitId: row.primaryOrgNode.id,
+          unitName: row.primaryOrgNode.name,
         })),
         nodeId: here,
         scope,
@@ -93,8 +95,9 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
           : { disabled: context.disabled, disabledLabel: format(m.pickerAlreadyIn) }),
         pending: people.isPending && here !== null,
         error: people.isError ? formatError(people.error) : null,
-        hasPrevious: at > 0,
-        hasNext: nextCursor !== null,
+        hasPrevious: current > 1,
+        hasNext: current < pages,
+        paging: { page: current, pageSize: PAGE, total, onPage: goTo },
         onNodeChange: setNodeId,
         onScopeChange: setScope,
         onUserTypeChange: setUserTypeId,
@@ -110,8 +113,9 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
           else next.add(userId)
           context.onChange([...next])
         },
-        onPrevious: () => setPaging({ question, cursors, at: Math.max(0, at - 1) }),
-        onNext: () => setPaging({ question, cursors, at: at + 1 }),
+        onChange: (userIds) => context.onChange(userIds.filter((id) => !blocked.has(id))),
+        onPrevious: () => goTo(current - 1),
+        onNext: () => goTo(current + 1),
         onRetry: () => void people.refetch(),
       }}
     />
