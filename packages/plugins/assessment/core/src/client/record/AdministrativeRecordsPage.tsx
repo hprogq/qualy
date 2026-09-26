@@ -127,20 +127,14 @@ const styles = stylex.create({
     gap: 8,
   },
   icon: { width: 15, height: 15 },
-  // tall enough to hold a form without the panel growing past the window,
-  // and scrolling inside rather than out
-  // As tall as it needs up to a ceiling, and no taller. A fixed height left
-  // a short first step floating in the middle of an empty panel; an
-  // unbounded one moved the footer every time the form grew. The body
-  // scrolls when it reaches the ceiling, and its content starts at the top
-  // rather than being centred in whatever is left.
-  // the errand's own bands carry the side padding, so the rule above its
-  // keys can run the full width of the panel
-  // A floor as well as a ceiling. The first step cannot draw until the
-  // questions arrive, and a panel sized to nothing folds shut and reopens
-  // the moment they do - so it holds a spinner at the size it is about to
-  // be. The floor sits under every step's natural height, so nothing
-  // rattles around in it once there is something to show.
+  // The errand's panel, as tall as the step it shows between a floor and a
+  // ceiling. Unbounded, it moved its keys every time the form grew. With no
+  // floor, the first step - which cannot draw until its questions arrive -
+  // folded the panel shut and reopened it the moment they did; the floor
+  // sits under every step's natural height, so nothing rattles around in
+  // it once there is something to show. The panel is a column whose head
+  // keeps its size and whose body takes what is left, sized by what it
+  // holds and scrolling inside from the top.
   errandPanel: {
     // A floor is a desk's luxury. On a phone twenty-six rem is taller than
     // the room a modal has, so the panel outgrew its own window and the
@@ -148,15 +142,12 @@ const styles = stylex.create({
     // went up the screen with the form.
     minHeight: { default: 'min(70vh, 26rem)', [phone]: 0 },
     maxHeight: { default: 'min(86vh, 52rem)', [phone]: 'calc(100dvh - 2rem)' },
-    // Head, body, close: the middle row is the one that gives, and it is
-    // sized by what it holds rather than by a share of the panel - given a
-    // share, a short errand left a field of nothing between its last words
-    // and its own two keys.
-    gridTemplateRows: 'auto minmax(0, auto)',
     // The panel's own gap and foot belong to a dialog whose body is a form;
     // this one's body is an errand that draws its own bands, ends in its own
     // two keys, and pads itself - so the panel's 24 below them was a field
-    // of nothing, and the 24 between head and body was said twice.
+    // of nothing, and the 24 between head and body was said twice. Its bands
+    // carry the side padding, so the rule above its keys runs the full
+    // width of the panel.
     gap: 0,
     paddingInline: 0,
     paddingBottom: 0,
