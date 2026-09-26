@@ -5909,7 +5909,15 @@ const i18n = definePluginMessages({
       id: 'assessment/placement/keep-selected',
       defaultMessage: 'Keep selected',
     },
-    placementSelectPage: { id: 'assessment/placement/select-page', defaultMessage: 'Select page' },
+    placementSelectPage: {
+      id: 'assessment/placement/select-page',
+      defaultMessage: 'Select this page',
+    },
+    placementTotal: {
+      id: 'assessment/placement/total',
+      defaultMessage: '{count, plural, one {# person} other {# people}}',
+    },
+    placementClear: { id: 'assessment/placement/clear', defaultMessage: 'Clear' },
     placementSelected: {
       id: 'assessment/placement/selected',
       defaultMessage: '{count, plural, other {# selected}}',

@@ -1767,6 +1767,8 @@ export default {
   'assessment/placement/sync-selected': '同步所选',
   'assessment/placement/keep-selected': '保留所选',
   'assessment/placement/select-page': '全选本页',
+  'assessment/placement/total': '共 {count} 人',
+  'assessment/placement/clear': '清空',
   'assessment/placement/selected': '已选 {count} 人',
   'assessment/placement/select-one': '选择{name}',
   'assessment/placement/reason': '备注（可选）',

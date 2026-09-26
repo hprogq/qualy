@@ -107,10 +107,13 @@ const open = (children: React.ReactNode) =>
           Effect.succeed({ userTypes: [{ id: 'type', code: 'student', name: '本科生' }] }),
         listParticipantCandidates: candidates,
         previewImport: () => Effect.succeed({ candidates: 12 }),
-        listParticipantPlacements: () =>
+        // forty differences, twenty to a page
+        listParticipantPlacements: (request: Request) =>
           Effect.succeed({
-            items: Array.from({ length: 20 }, (_, n) => difference(n)),
-            nextCursor: 'more',
+            items: Array.from({ length: 20 }, (_, n) =>
+              difference(n + (request.query?.['cursor'] === 'more' ? 20 : 0)),
+            ),
+            nextCursor: request.query?.['cursor'] === 'more' ? null : 'more',
             changedTotal: 40,
             unavailableTotal: 0,
           }),
@@ -260,7 +263,7 @@ describe('adding people to the roster', () => {
 })
 
 describe('a roster dialog that outgrows the window', () => {
-  it('keeps the placement check’s title and keys in view while its list scrolls', async () => {
+  it('keeps the placement check’s title, pages and keys in view while its list scrolls', async () => {
     await open(
       <PlacementDialog
         batchId={BATCH_ID}
@@ -276,12 +279,73 @@ describe('a roster dialog that outgrows the window', () => {
       .toBe(20)
     const panel = one('[data-slot="dialog-content"]')
     const body = one('[data-slot="dialog-body"]')
-    expect(body.scrollHeight).toBeGreaterThan(body.clientHeight)
-    body.scrollTop = body.scrollHeight
-    await expect.poll(() => body.scrollTop).toBeGreaterThan(0)
+    const list = one('[data-testid="placement-list"]')
+    // the differences are what scroll, inside a body that has nothing of
+    // its own to scroll
+    expect(list.scrollHeight).toBeGreaterThan(list.clientHeight)
+    list.scrollTop = list.scrollHeight
+    await expect.poll(() => list.scrollTop).toBeGreaterThan(0)
+    expect(body.scrollHeight).toBeLessThanOrEqual(body.clientHeight + 1)
     expect(panel.scrollTop).toBe(0)
     expect(inView(one('[data-slot="dialog-title"]'))).toBe(true)
+    expect(inView(one('[data-testid="placement-page"]'))).toBe(true)
+    expect(inView(one('[data-testid="placement-pager"]'))).toBe(true)
     expect(inView(one('[data-slot="dialog-footer"]'))).toBe(true)
+  })
+
+  // The same way through a page and a choice as the people pickers: a box
+  // over the list takes the page in and lets it go, the pages are walked
+  // with the numbered strip's own controls, and what was chosen on one
+  // page is still chosen from the next.
+  it('takes a page of differences in from a box over the list and walks the pages', async () => {
+    const decided = vi.fn()
+    await open(
+      <PlacementDialog
+        batchId={BATCH_ID}
+        open
+        pending={false}
+        onDecide={decided}
+        onClose={() => {}}
+      />,
+    )
+    await expect
+      .poll(() => document.querySelectorAll('[data-testid="placement-difference"]').length)
+      .toBe(20)
+    const whole = page.getByTestId('placement-page')
+    const count = page.getByTestId('placement-selected')
+
+    await whole.click()
+    await expect.element(count).toHaveAttribute('data-count', '20')
+    await expect.element(whole).toBeChecked()
+    // one let go leaves the box neither ticked nor clear
+    await page.getByRole('checkbox', { name: '选择同学3' }).click()
+    await expect.element(count).toHaveAttribute('data-count', '19')
+    await expect.poll(() => (whole.element() as HTMLInputElement).indeterminate).toBe(true)
+    await whole.click()
+    await expect.element(count).toHaveAttribute('data-count', '20')
+
+    const pager = page.getByTestId('placement-pager')
+    await expect.element(pager).toHaveAttribute('data-page', '1')
+    await pager.getByRole('button', { name: '下一页' }).click()
+    await expect.element(pager).toHaveAttribute('data-page', '2')
+    await expect.element(pager).toHaveAttribute('data-has-next', 'false')
+    await expect
+      .poll(() =>
+        document
+          .querySelector('[data-testid="placement-difference"]')
+          ?.getAttribute('data-participant'),
+      )
+      .toBe(person(20))
+    // the new page is not taken in by the old one's choice
+    await expect.element(whole).not.toBeChecked()
+    await expect.element(count).toHaveAttribute('data-count', '20')
+
+    await page.getByRole('button', { name: '同步所选' }).click()
+    expect(decided).toHaveBeenCalledTimes(1)
+    expect((decided.mock.calls[0]![0] as readonly unknown[]).length).toBe(20)
+
+    await pager.getByRole('button', { name: '上一页' }).click()
+    await expect.element(pager).toHaveAttribute('data-page', '1')
   })
 
   it('keeps the import’s title and keys in view on a phone', async () => {
