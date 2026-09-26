@@ -105,6 +105,12 @@ function Select(props: {
       // a closed list leaves the document entirely - a hidden copy of every
       // option is a phantom for tests and assistive tech alike
       keepMounted={false}
+      // The list is at least as wide as its widest option, and a trigger
+      // narrower than that - an icon at the end of a toolbar - centres it
+      // past the window's edge. The widget turns sideways shifting off for
+      // a list the width of its trigger; this one is not always that, so it
+      // may slide back inside the window, still under its trigger.
+      middlewares={{ flip: true, shift: { mainAxis: true, padding: 8 } }}
       transitionProps={{ transition: 'pop', duration: 130 }}
       disabled={disabled}
       onOptionSubmit={(next) => {
@@ -338,6 +344,10 @@ function SelectItem({
     <Combobox.Option
       value={value}
       {...(disabled === undefined ? {} : { disabled })}
+      // the tick is drawn for the eye only; the choice in force is said to
+      // assistive technology here, as the widget's own select says it
+      aria-selected={selected}
+      active={selected}
       data-slot="select-item"
       {...props}
       {...seatOf(stylex.props(styles.item), className)}
