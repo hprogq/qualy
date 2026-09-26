@@ -7,6 +7,7 @@ import clsx from 'clsx'
 import * as stylex from '@stylexjs/stylex'
 
 import { tokens } from '../theme/tokens.stylex.ts'
+import { panel } from '../lib/panel.ts'
 import { seatOf } from '../lib/xstyle.ts'
 import { CheckIcon, ChevronRightIcon } from 'lucide-react'
 
@@ -143,15 +144,20 @@ function DropdownMenuContent({
         if (event.key === 'Escape' && opened) event.stopPropagation()
       }}
       {...rest}
-      {...seatOf(stylex.props(styles.content), className)}
+      {...seatOf(stylex.props(panel.material, styles.content), className)}
     >
       {children}
     </MMenu.Dropdown>
   )
 }
 
-// The widget marks the active row with data-hovered, whether it got there by
-// pointer or by arrow keys; the product accent follows that mark.
+// Which row is active is the widget's to say: it grounds a row under the
+// pointer, under keyboard focus and under its own data-menu-active mark, and
+// it reads that ground from --menu-item-hover. The product states the
+// colour through that variable and leaves the states to the widget. (The
+// rows used to answer to a data-hovered mark the widget stopped writing, so
+// they wore the widget's own grey ramp instead, and a row that removes
+// something never took its own tint.)
 //
 // The row's own look is stated here. What a caller puts INSIDE a row - an
 // icon, a second line of muted text - is reached by relation in theme.css,
@@ -161,13 +167,11 @@ const styles = stylex.create({
     minWidth: '12rem',
     overflowX: 'hidden',
     overflowY: 'auto',
-    borderRadius: tokens.radiusLg,
     padding: 4,
   },
   subContent: {
     minWidth: '9rem',
     overflow: 'hidden',
-    borderRadius: tokens.radiusLg,
     padding: 4,
   },
   // What a caller writes inside a row - an icon and its words - is wrapped by
@@ -189,16 +193,15 @@ const styles = stylex.create({
     lineHeight: '1.25rem',
     outlineStyle: 'none',
     userSelect: 'none',
-    backgroundColor: { default: null, '[data-hovered]': tokens.surfaceMuted },
-    color: { default: null, '[data-hovered]': tokens.surfaceMutedForeground },
+    '--menu-item-hover': tokens.hoverSurface,
     pointerEvents: { default: null, '[data-disabled]': 'none' },
     opacity: { default: null, '[data-disabled]': 0.5 },
   },
   // a row that removes something says so in its own ink, and answers the
-  // pointer in it rather than in the accent
+  // pointer in its own tint rather than in the wash
   itemDestructive: {
-    color: { default: tokens.danger, '[data-hovered]': tokens.danger },
-    backgroundColor: { default: null, '[data-hovered]': tokens.dangerSurface },
+    color: tokens.danger,
+    '--menu-item-hover': tokens.dangerSurface,
   },
   // room for the indicator column, kept whether or not this row has one
   // Restating the resting value rather than leaving it null: styles compose
@@ -450,7 +453,7 @@ function DropdownMenuSubContent({ className, ...props }: React.ComponentProps<'d
     <MMenu.Sub.Dropdown
       data-slot="dropdown-menu-sub-content"
       {...props}
-      className={clsx(stylex.props(styles.subContent).className, className)}
+      className={clsx(stylex.props(panel.material, styles.subContent).className, className)}
     />
   )
 }

@@ -5,6 +5,7 @@ import * as stylex from '@stylexjs/stylex'
 import { Popover as MPopover, type PopoverProps as MPopoverProps } from '@mantine/core'
 
 import { tokens } from '../theme/tokens.stylex.ts'
+import { panel } from '../lib/panel.ts'
 import { seatOf } from '../lib/xstyle.ts'
 
 // The Qualy popover keeps its compound shape over the widget library's own
@@ -24,22 +25,15 @@ import { seatOf } from '../lib/xstyle.ts'
 // element. A width stated in a caller's xstyle was silently dropped and the
 // panel shrank to whatever it happened to contain.
 const styles = stylex.create({
-  // The product's panel material, a step lighter than a dialog's: the
-  // raised surface, a hairline edge, a soft shadow that says it stands over
-  // the page, and the card radius. The widget's own border, radius and
-  // shadow are stated away here rather than left to show through.
+  // The anchored panels' material (lib/panel.ts), a step lighter than a
+  // dialog's, laid out as a column of blocks. The widget's own border,
+  // radius and shadow are stated away by the material rather than left to
+  // show through.
   content: {
     display: 'flex',
     flexDirection: 'column',
     gap: 12,
     padding: 14,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: `color-mix(in oklch, ${tokens.foreground} 8%, transparent)`,
-    borderRadius: tokens.radiusLg,
-    backgroundColor: tokens.surfaceElevated,
-    boxShadow: `0 2px 6px -2px oklch(0 0 0 / 0.06), 0 18px 36px -14px oklch(0 0 0 / 0.22), inset 0 1px 0 color-mix(in oklch, ${tokens.surface} 35%, transparent)`,
-    color: tokens.foreground,
     // size and leading travel together, as the utility this replaces did
     fontSize: 13,
     lineHeight: '1.25rem',
@@ -208,7 +202,7 @@ function PopoverContent({
       // needs a focusable dropdown for Escape to fire from inside it
       role="dialog"
       tabIndex={-1}
-      {...seatOf(stylex.props(styles.content, xstyle), className)}
+      {...seatOf(stylex.props(panel.material, styles.content, xstyle), className)}
     >
       {children}
     </MPopover.Dropdown>

@@ -1,6 +1,7 @@
 import * as stylex from '@stylexjs/stylex'
 
 import { tokens } from '../theme/tokens.stylex.ts'
+import { panel } from './panel.ts'
 
 /**
  * How a calendar day is drawn.
@@ -149,5 +150,9 @@ export const calendarLook = {
     day: stylex.props(styles.day).className,
     calendarHeaderLevel: stylex.props(styles.monthLabel).className,
     weekday: stylex.props(styles.weekday).className,
+  },
+  // the panel a calendar opens in is the anchored panels' own
+  popoverProps: {
+    classNames: { dropdown: stylex.props(panel.material).className ?? '' },
   },
 } as const

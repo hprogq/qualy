@@ -8,6 +8,7 @@ import type { StyleXStyles } from '@stylexjs/stylex'
 import { clsx } from 'clsx'
 
 import { tokens } from '../theme/tokens.stylex.ts'
+import { panel } from '../lib/panel.ts'
 import { seatOf } from '../lib/xstyle.ts'
 import { CheckIcon } from 'lucide-react'
 
@@ -163,15 +164,20 @@ const styles = stylex.create({
     overflow: 'hidden',
     whiteSpace: 'nowrap',
   },
-  // structure only; the surface is the widget's own under the theme
+  // the list's measure; its surface is the anchored panels' material
   content: {
     maxHeight: '18rem',
     minWidth: '9rem',
     overflowX: 'hidden',
     overflowY: 'auto',
   },
-  // structure only - the reserved indicator seat and the row's shape; hover,
-  // active and disabled looks are the widget's own
+  // The reserved indicator seat and the row's shape, and how it answers.
+  //
+  // The widget marks the option the keyboard is on with
+  // data-combobox-selected and fills it with the primary behind a hard-coded
+  // white - a black bar in the light scheme and white on near-white in the
+  // dark - while its pointer hover stepped DOWN the dark ramp. Both now wear
+  // the same wash as a menu row. Disabled is the widget's own.
   item: {
     position: 'relative',
     display: 'flex',
@@ -179,6 +185,13 @@ const styles = stylex.create({
     alignItems: 'center',
     gap: 10,
     paddingRight: 32,
+    borderRadius: tokens.radiusMd,
+    backgroundColor: {
+      default: null,
+      ':hover:not([data-combobox-disabled])': tokens.hoverSurface,
+      '[data-combobox-selected]': tokens.hoverSurface,
+    },
+    color: { default: null, '[data-combobox-selected]': tokens.foreground },
   },
   // the indicator seat is always reserved, so choosing never reflows the row
   tick: {
@@ -291,7 +304,12 @@ function SelectTrigger({
               variant: 'unstyled',
               classNames: { input: stylex.props(triggerStyles.quiet).className ?? '' },
             }
-          : { rightSection: <Combobox.Chevron />, rightSectionPointerEvents: 'none' as const })}
+          : {
+              // the widget's chevron grey carries a blue cast; it speaks in
+              // the secondary text grey like every other quiet glyph here
+              rightSection: <Combobox.Chevron color="var(--q-muted-foreground)" />,
+              rightSectionPointerEvents: 'none' as const,
+            })}
         disabled={disabled}
         onClick={toggle}
         onKeyDown={(event) => {
@@ -336,7 +354,7 @@ function SelectContent({
       // unmounted everything under the cursor before the click could land
       onMouseDown={(event) => event.stopPropagation()}
       onTouchStart={(event) => event.stopPropagation()}
-      {...seatOf(stylex.props(styles.content), className)}
+      {...seatOf(stylex.props(panel.material, styles.content), className)}
     >
       <Combobox.Options>{children}</Combobox.Options>
     </Combobox.Dropdown>

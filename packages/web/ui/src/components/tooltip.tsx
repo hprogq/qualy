@@ -6,6 +6,8 @@ import { Tooltip as MTooltip } from '@mantine/core'
 import { clsx } from 'clsx'
 import * as stylex from '@stylexjs/stylex'
 
+import { tokens } from '../theme/tokens.stylex.ts'
+
 // The Qualy tooltip keeps its compound shape (Provider/Root/Trigger/Content)
 // over the widget library's single-component model: the root collects the
 // trigger element and the content label from its children and hands both to
@@ -13,10 +15,16 @@ import * as stylex from '@stylexjs/stylex'
 // wiring. Opens on keyboard focus as well as hover - a hint only pointer
 // users can read is not a hint.
 
+// The widget draws a tip from its own grey ramp - a bluish near-black in
+// the light scheme, a bluish near-white under pure black in the dark. The
+// product's inverse is its primary and the primary's own foreground: ink
+// with paper on it, and paper with ink on it. The arrow inherits the ground.
 const surfaceStyles = stylex.create({
   tip: {
     maxWidth: 320,
     fontSize: 12,
+    '--tooltip-bg': tokens.primary,
+    '--tooltip-color': tokens.primaryForeground,
   },
 })
 const DelayContext = React.createContext(0)
@@ -92,7 +100,6 @@ function Tooltip({
       {...(defaultOpen === undefined ? {} : { defaultOpened: defaultOpen })}
       {...(open === undefined ? {} : { opened: open })}
       {...(onOpenChange === undefined ? {} : { onDismiss: () => onOpenChange(false) })}
-      // structure only; the surface is the widget's own under the theme
       classNames={{ tooltip: clsx(stylex.props(surfaceStyles.tip).className, className) }}
     >
       {target}

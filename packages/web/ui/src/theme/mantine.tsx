@@ -211,6 +211,15 @@ export const qualyMantineTheme = createTheme({
 // stock controls use for borders and the skeleton shimmer are pointed at the
 // product border grey - the stock values carry a blue cast the product's
 // zero-chroma palette forbids.
+//
+// The stock stylesheets also reach past the semantic variables into the raw
+// ramps for their grounds, and those steps are redirected too, each at the
+// product surface that plays the same part. In the dark the widgets drew a
+// field, a select, a menu, a calendar, a checkbox and a page number on the
+// ramp's neutral #2e2e2e, a step lighter than every warm surface around them,
+// so an open list read as though it came from another product. In the light
+// the hover grounds and panel hairlines came from the bluish grey steps.
+// White and black are left alone: the dark scheme uses them for its text.
 const cssVariables: CSSVariablesResolver = () => ({
   variables: {
     '--mantine-color-body': 'var(--q-background)',
@@ -232,11 +241,23 @@ const cssVariables: CSSVariablesResolver = () => ({
     '--mantine-color-disabled-border': 'var(--q-border)',
   },
   light: {
+    // the hover and filled grounds
+    '--mantine-color-gray-0': 'var(--q-surface-muted)',
+    '--mantine-color-gray-1': 'var(--q-surface-muted)',
+    // the hairlines of panels and separators
+    '--mantine-color-gray-2': 'var(--q-border)',
     '--mantine-color-gray-3': 'var(--q-border)',
     '--mantine-color-gray-4': 'var(--q-border)',
   },
   dark: {
     '--mantine-color-dark-4': 'var(--q-border)',
+    // a ground one step above the raised one, where the widget hovers
+    '--mantine-color-dark-5':
+      'color-mix(in oklch, var(--q-surface-elevated), var(--q-foreground) 6%)',
+    // the widget's raised ground: fields, panels, boxes and page numbers
+    '--mantine-color-dark-6': 'var(--q-surface-elevated)',
+    // the widget's own page, one step below its raised ground
+    '--mantine-color-dark-7': 'var(--q-surface)',
   },
 })
 

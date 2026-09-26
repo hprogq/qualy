@@ -212,6 +212,20 @@
     width: 0.75rem;
     height: 0.75rem;
   }
+  /* The time boxes and time lists answer focus and choice with the primary
+     filled behind a hard-coded white. The primary is ink in the light scheme
+     and paper in the dark, so in the dark that was white on near-white and
+     the hour being typed could not be read. The product pairs the primary
+     with its own foreground. */
+  .mantine-TimePicker-field:focus,
+  .mantine-TimePicker-control[data-active],
+  .mantine-TimePicker-presetControl[data-active],
+  .mantine-TimeGrid-control[data-active] {
+    color: var(--q-primary-foreground);
+  }
+  .mantine-TimePicker-field:focus::placeholder {
+    color: color-mix(in oklab, var(--q-primary-foreground) 60%, transparent);
+  }
 }
 
 /* Overlay entrances as CSS insertion animations. The widget library's own
@@ -328,13 +342,22 @@
   [data-slot='dropdown-menu-item'][data-variant='destructive'] svg {
     color: var(--q-danger);
   }
-  /* the whole row answers the pointer in one ink, including anything the
-     caller coloured differently */
-  [data-slot='dropdown-menu-item'][data-hovered]:not([data-variant='destructive']) *,
-  [data-slot='dropdown-menu-checkbox-item'][data-hovered] *,
-  [data-slot='dropdown-menu-radio-item'][data-hovered] *,
-  [data-slot='dropdown-menu-sub-trigger'][data-hovered] * {
-    color: var(--q-surface-muted-foreground);
+  /* the whole row answers the pointer and the keyboard in one ink, including
+     anything the caller coloured differently; the states are the widget's
+     own, the ones its row ground answers to */
+  [data-slot='dropdown-menu-item']:is(:hover, :focus, [data-menu-active]):not(
+      [data-variant='destructive'],
+      [data-disabled]
+    )
+    *,
+  [data-slot='dropdown-menu-checkbox-item']:is(:hover, :focus, [data-menu-active]):not(
+      [data-disabled]
+    )
+    *,
+  [data-slot='dropdown-menu-radio-item']:is(:hover, :focus, [data-menu-active]):not([data-disabled])
+    *,
+  [data-slot='dropdown-menu-sub-trigger']:is(:hover, :focus, [data-menu-active]) * {
+    color: var(--q-foreground);
   }
 
   /* an ornament the caller hands an alert dialog: the icon inside it is
