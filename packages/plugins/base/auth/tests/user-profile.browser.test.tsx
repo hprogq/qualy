@@ -110,6 +110,23 @@ describe("a person's profile", () => {
     })
   })
 
+  it('changes a number already on file from its own line', async () => {
+    const update = vi.fn(() => Effect.succeed({ ok: true as const }))
+    await open(person(), { updateUser: update })
+    const line = page.getByTestId('profile-business-no')
+    await expect.element(line).toHaveAttribute('data-state', 'set')
+    await line.getByRole('button', { name: '更改' }).click()
+    const field = page.getByRole('dialog').getByRole('textbox')
+    await expect.element(field).toHaveValue('20230001')
+    await field.fill('20230002')
+    await page.getByRole('dialog').getByRole('button', { name: '保存', exact: true }).click()
+    await vi.waitFor(() => expect(update).toHaveBeenCalledTimes(1))
+    expect(update).toHaveBeenCalledWith({
+      params: { userId: USER_ID },
+      payload: { version: 4, businessNo: '20230002' },
+    })
+  })
+
   it('offers nothing on an account beyond the reader', async () => {
     await open(person({ businessNo: null }, { accountManageable: false }))
     await expect.element(emailLine()).toHaveAttribute('data-email-state', 'none')

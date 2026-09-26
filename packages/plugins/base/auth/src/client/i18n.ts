@@ -1120,6 +1120,8 @@ const i18n = definePluginMessages({
       defaultMessage: 'The new address needs verifying, and they may have to sign in again',
     },
     fieldUnset: { id: 'auth/person/field-unset', defaultMessage: 'Not set' },
+    fieldSetAction: { id: 'auth/person/field-set', defaultMessage: 'Set' },
+    fieldChangeAction: { id: 'auth/person/field-change', defaultMessage: 'Change' },
     emailSystemShort: { id: 'auth/person/email-system', defaultMessage: 'Set by the deployment' },
     personVerificationSent: personVerificationSentMessage,
     personSessionsEndAll: {

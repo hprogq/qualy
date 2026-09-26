@@ -172,14 +172,16 @@ export default function UserProfilePage() {
                       ) : (
                         record.businessNo
                       )}
-                      {record.businessNo === null && accountFields && (
+                      {accountFields && (
                         <span {...stylex.props(styles.lineActions)}>
                           <Button
                             size="xs"
                             variant="ghost"
                             onClick={() => setSetting('businessNo')}
                           >
-                            {format(m.emailSetAction)}
+                            {format(
+                              record.businessNo === null ? m.fieldSetAction : m.fieldChangeAction,
+                            )}
                           </Button>
                         </span>
                       )}
@@ -220,7 +222,7 @@ export default function UserProfilePage() {
                             </Button>
                           )}
                           <Button size="xs" variant="ghost" onClick={() => setSetting('email')}>
-                            {format(record.email === null ? m.emailSetAction : m.emailChangeAction)}
+                            {format(record.email === null ? m.fieldSetAction : m.fieldChangeAction)}
                           </Button>
                         </span>
                       ) : (

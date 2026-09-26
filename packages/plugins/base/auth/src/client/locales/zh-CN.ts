@@ -380,6 +380,8 @@ export default {
   'auth/person/business-no-change-consequence': '按{businessNo}登录时将改用新值',
   'auth/person/email-change-consequence': '更改后需重新验证，该用户可能需要重新登录',
   'auth/person/field-unset': '未设置',
+  'auth/person/field-set': '设置',
+  'auth/person/field-change': '更改',
   'auth/person/email-system': '由部署配置',
   'auth/person/verification-sent': '验证邮件已发送至 {email}',
   'auth/person/already-verified': '该邮箱已通过验证',
