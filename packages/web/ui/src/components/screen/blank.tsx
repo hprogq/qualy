@@ -31,6 +31,14 @@ const styles = stylex.create({
  * than a stray sentence floating at the top of a column. The copy names the
  * action that fills the space, because a reader arriving here has not done
  * anything wrong - there is simply nothing chosen yet.
+ *
+ * `size="compact"` is the same answer inside a dialog that has nothing to act
+ * on - no one to adjust, nothing left to sync, no permission to look: the
+ * title says what happened, the description why and what to do, the action
+ * is the way out. It drops the screen's frame and height and keeps the
+ * dialog's measure. A dialog showing it keeps one button in its footer, the
+ * one that closes it; a primary action that can never be pressed is not
+ * left standing beside it.
  */
 export function Blank({
   icon,
@@ -38,6 +46,7 @@ export function Blank({
   description,
   action,
   fill = false,
+  size = 'screen',
   xstyle,
 }: {
   icon?: ReactNode
@@ -46,10 +55,16 @@ export function Blank({
   action?: ReactNode
   /** take the full height of the row, for a panel that sits beside a rail */
   fill?: boolean
+  /** `compact` inside a dialog or a small panel, `screen` everywhere else */
+  size?: 'screen' | 'compact'
   xstyle?: StyleXStyles
 }) {
+  const screen = size === 'screen'
   return (
-    <Empty xstyle={[styles.shape, fill && styles.filling, xstyle]}>
+    <Empty
+      size={screen ? 'default' : 'compact'}
+      xstyle={[screen && styles.shape, screen && fill && styles.filling, xstyle]}
+    >
       <EmptyHeader>
         {icon !== undefined && <EmptyMedia variant="icon">{icon}</EmptyMedia>}
         <EmptyTitle>{title}</EmptyTitle>
