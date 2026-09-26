@@ -18,7 +18,7 @@ import { EntrySheet } from '../entry/EntrySheet.tsx'
 import { AppealDialog } from '../entry/AppealDialog.tsx'
 import { SupplementAnswerDialog } from '../entry/SupplementAnswerDialog.tsx'
 import { useMarkItemRead, useOwnClaimActs } from '../entry/own-acts.ts'
-import { entryLineOf } from '../entry/workspace/model.ts'
+import { entryLineOf, filingOf } from '../entry/workspace/model.ts'
 import { useLineWords } from '../entry/workspace/calc.ts'
 import { useWorkspaceMode } from '../entry/workspace/layout.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
@@ -248,12 +248,28 @@ function Standing({
   )
   const stages = plan.data?.timeline
   const shut = useMemo(() => filingShutOf(gates, stages), [gates, stages])
-  // the questions another claim can be filed on right now, on the filing page
-  const addable = useMemo(
-    () =>
-      new Set(gates.filter((gate) => gate.create.state === 'available').map((gate) => gate.itemId)),
-    [gates],
-  )
+  // The questions another claim can be filed on right now, by the filing
+  // page's own reckoning: the gate answers only for the stage and the round's
+  // allowance, and the question's own limit and who files it are the
+  // screen's to add, as the filing page adds them to its own key. A question
+  // the server said nothing about is not offered from here.
+  const addable = useMemo(() => {
+    const gateOf = new Map(gates.map((gate) => [gate.itemId, gate]))
+    return new Set(
+      questions
+        .filter((question) => {
+          const gate = gateOf.get(question.id)
+          if (gate === undefined) return false
+          const filing = filingOf(
+            question,
+            entries.filter((entry) => entry.itemId === question.id),
+            gate,
+          )
+          return filing.mayAdd && !filing.shut
+        })
+        .map((question) => question.id),
+    )
+  }, [questions, entries, gates])
 
   // The claim the drawer holds, resolved from the address, so a reload
   // keeps it and a link carries it. One that is gone opens nothing.

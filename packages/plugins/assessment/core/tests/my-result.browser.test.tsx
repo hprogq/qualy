@@ -1063,6 +1063,10 @@ describe('the way to file another claim', () => {
     await userEvent.click(itemRow('q3').querySelector('button[aria-expanded]') as HTMLElement)
     // a question already full offers no way to add to it
     expect(addOf('q8')).toBeNull()
+    // nor does one the office records, whatever the stage allows: its one
+    // record still opens straight from the row
+    expect(itemRow('q14').querySelector('[aria-expanded]')).toBeNull()
+    expect(addOf('q14')).toBeNull()
     await userEvent.click(addOf('q3')!)
     await expect.element(page.getByTestId('entries-page')).toBeInTheDocument()
     expect(addressNow()).toContain('open=q3')
