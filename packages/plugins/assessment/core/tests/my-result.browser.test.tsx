@@ -541,6 +541,25 @@ describe('the score page at a desk', () => {
     await expect.element(page.getByTestId('result-moving')).toHaveAttribute('data-trimmed', '70.00')
   })
 
+  it('marks how far each group has got under its figure, not across the row', async () => {
+    await page.viewport(1440, 900)
+    await screen(normal())
+    await expect.poll(() => page.getByTestId('outline-group').elements().length).toBe(5)
+    let meters = 0
+    for (const entry of page.getByTestId('outline-group').elements()) {
+      const meter = entry.querySelector(':scope > [aria-hidden]')
+      // a group with no limit has nothing to fill
+      if (meter === null) continue
+      meters += 1
+      const mark = meter.getBoundingClientRect()
+      const row = entry.getBoundingClientRect()
+      // a full group's mark drawn across the row reads as a rule between rows
+      expect(mark.width).toBeLessThan(row.width / 3)
+      expect(row.right - mark.right).toBeLessThan(16)
+    }
+    expect(meters).toBe(4)
+  })
+
   it('says in the head what is still moving', async () => {
     await page.viewport(1440, 900)
     await screen(normal())

@@ -295,19 +295,22 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
     fontVariantNumeric: 'tabular-nums',
   },
+  // how far a group has got, a short mark under its figure: drawn across
+  // the whole row in ink, a full group read as a rule between the rows
   meter: {
     display: 'block',
-    width: '100%',
+    alignSelf: 'flex-end',
+    width: 48,
     height: 3,
     overflow: 'hidden',
     borderRadius: 2,
-    backgroundColor: tokens.surfaceMuted,
+    backgroundColor: `color-mix(in oklab, ${tokens.foreground} 8%, transparent)`,
   },
   meterFill: {
     display: 'block',
     height: '100%',
     borderRadius: 2,
-    backgroundColor: tokens.foreground,
+    backgroundColor: `color-mix(in oklab, ${tokens.foreground} 45%, transparent)`,
   },
   meterFull: { backgroundColor: tokens.success },
   // the statement itself; no clipping, or the bands could not hold
