@@ -2073,6 +2073,26 @@ describe('the structure', () => {
     expect(shown()[2]!.name).toContain('学生干部任职')
   })
 
+  // A row used to be a link with the row's own buttons inside it: a control
+  // holding controls, whose spoken name ran every button's name together.
+  it("opens a row from its name, a button of its own beside the row's other buttons", async () => {
+    await withSections([
+      question('66666666-6666-4666-8666-6666666666d1', '学生干部任职', CLASSWORK),
+    ])
+    await vi.waitFor(() => expect(shown()).toHaveLength(3))
+    for (const row of document.querySelectorAll('[data-testid="structure-row"]')) {
+      expect(row.getAttribute('role')).toBeNull()
+      expect(row.hasAttribute('tabindex')).toBe(false)
+      expect(row.querySelectorAll('button button, button a, a button').length).toBe(0)
+      expect(row.querySelectorAll('[data-testid="structure-open"]')).toHaveLength(1)
+    }
+    const open = page.getByRole('button', { name: '学生干部任职', exact: true })
+    ;(open.element() as HTMLElement).focus()
+    await userEvent.keyboard('{Enter}')
+    await expect.element(editor()).toBeVisible()
+    expect(addressNow()).toContain('question=66666666-6666-4666-8666-6666666666d1')
+  })
+
   // Found by its own name, a section came alone: its questions out of reach,
   // and no way to unfold it while the search stood.
   it('finds a section by its name with everything in it, still held to the state chosen', async () => {

@@ -190,6 +190,25 @@ const styles = stylex.create({
     whiteSpace: 'nowrap',
     fontSize: 13.5,
   },
+  // The name is the way into the row: a real button, so the row's other
+  // buttons stand beside it rather than inside something that is itself a
+  // control. The rest of the row still answers a pointer.
+  open: {
+    display: 'block',
+    minWidth: 0,
+    margin: 0,
+    padding: 0,
+    borderWidth: 0,
+    borderRadius: 4,
+    backgroundColor: 'transparent',
+    fontFamily: 'inherit',
+    lineHeight: 'inherit',
+    textAlign: 'start',
+    color: 'inherit',
+    cursor: 'pointer',
+    outline: 'none',
+    boxShadow: { default: 'none', ':focus-visible': `0 0 0 2px ${tokens.focusRing}` },
+  },
   groupName: { flexShrink: 1, fontWeight: 600 },
   nameVoided: { color: tokens.mutedForeground, textDecorationLine: 'line-through' },
   nameComposing: { color: tokens.mutedForeground },
@@ -398,9 +417,6 @@ export function StructureTable({
       if ((event.target as HTMLElement).closest('button, [role="menu"]') !== null) return
       onOpen(row)
     },
-    onKeyDown: (event: React.KeyboardEvent) => {
-      if (event.key === 'Enter' && event.target === event.currentTarget) onOpen(row)
-    },
   })
 
   const markOf = (row: StructureRow) => {
@@ -548,7 +564,6 @@ interface RowHandlers {
   onDragLeave: () => void
   onDrop: (event: React.DragEvent) => void
   onClick: (event: React.MouseEvent) => void
-  onKeyDown: (event: React.KeyboardEvent) => void
 }
 
 /** a section: its number and name, what it is worth, and what it can gain */
@@ -592,9 +607,6 @@ function GroupRow({
   return (
     <div
       {...handlers}
-      role="link"
-      tabIndex={0}
-      aria-current={selected || undefined}
       data-testid="structure-row"
       data-kind="group"
       data-depth={row.depth}
@@ -634,9 +646,16 @@ function GroupRow({
           <span aria-hidden {...stylex.props(styles.seat)} />
         )}
         <span {...stylex.props(styles.ordinal)}>{row.ordinal}</span>
-        <span {...stylex.props(styles.name, styles.groupName)} title={label}>
+        <button
+          type="button"
+          aria-current={selected || undefined}
+          data-testid="structure-open"
+          {...stylex.props(styles.open, styles.name, styles.groupName)}
+          title={label}
+          onClick={onOpen}
+        >
           {row.name.trim() === '' ? label : name}
-        </span>
+        </button>
         <span {...stylex.props(styles.groupFacts)}>
           <FactRun facts={facts} />
         </span>
@@ -791,9 +810,6 @@ function ItemRow({
   return (
     <div
       {...handlers}
-      role="link"
-      tabIndex={0}
-      aria-current={selected || undefined}
       data-testid="structure-row"
       data-kind={row.kind}
       data-depth={row.depth}
@@ -805,16 +821,21 @@ function ItemRow({
         <span aria-hidden {...stylex.props(styles.seat)}>
           {!composing && <GripVerticalIcon {...stylex.props(styles.grip)} />}
         </span>
-        <span
+        <button
+          type="button"
+          aria-current={selected || undefined}
+          data-testid="structure-open"
           {...stylex.props(
+            styles.open,
             styles.name,
             row.status === 'voided' && styles.nameVoided,
             composing && styles.nameComposing,
           )}
           title={label}
+          onClick={onOpen}
         >
           {row.name.trim() === '' ? label : name}
-        </span>
+        </button>
       </span>
       <span
         {...stylex.props(styles.cell, styles.figure, row.byRule === true && styles.none)}
