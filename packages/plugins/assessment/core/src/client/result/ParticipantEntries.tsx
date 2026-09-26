@@ -104,6 +104,7 @@ export function ParticipantEntries({
   entryId,
   may,
   live,
+  closed,
   onEntry,
 }: {
   batchId: string
@@ -118,6 +119,8 @@ export function ParticipantEntries({
   }
   /** whether the round's wake-ups are arriving; without them the queue polls */
   live: boolean
+  /** the round is archived or this person is off it: nothing here moves any more */
+  closed: boolean
   onEntry: (entryId: string) => void
 }) {
   const api = useApi(assessmentApi)
@@ -338,6 +341,7 @@ export function ParticipantEntries({
             open={openItem}
             // the workspace says which moves the back key undoes, as on the owner's page
             onOpen={(id, how) => address({ open: id }, { history: how })}
+            live={closed ? null : live}
             busy={intervene.isPending || reopen.isPending || redetermine.isPending}
             refreshing={entries.isFetching || result.isFetching}
             onRefresh={() => {

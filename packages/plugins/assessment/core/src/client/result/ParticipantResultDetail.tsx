@@ -846,6 +846,7 @@ export function ParticipantResultDetail({
                 record: writable && mayRecord,
               }}
               live={live}
+              closed={!writable || participant?.status === 'excluded'}
               onEntry={onEntry}
             />
           ) : (

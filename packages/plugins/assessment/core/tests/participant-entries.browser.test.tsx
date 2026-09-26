@@ -321,6 +321,10 @@ function BackKey() {
 const pressBack = () =>
   (document.querySelector('[data-testid="history-back"]') as HTMLButtonElement).click()
 
+/** a wake-up channel that opens at once and stays open */
+const openLine = () =>
+  Effect.succeed(Stream.concat(Stream.make({ kind: 'sync' as const }), Stream.never))
+
 describe('reading somebody’s entries', () => {
   // Up to a section from a question's requirements is somewhere the back key
   // returns from, on a desk as on the participant's own page.
@@ -371,6 +375,28 @@ describe('reading somebody’s entries', () => {
     await expect.poll(() => addressNow()).toContain(`open=${GROUP_ID}`)
     pressBack()
     await expect.poll(() => addressNow()).toContain(`open=${OWN_ITEM}`)
+  })
+
+  // The account follows the round while the line is open, and the head says
+  // so; one that no longer moves says nothing of the kind.
+  it('says the account is kept live while the round runs', async () => {
+    await page.viewport(1440, 900)
+    await screen({ route: `${base}&view=entries`, stubs: { watchBatch: openLine } })
+    await expect.element(page.getByTestId('entries-live')).toHaveAttribute('data-state', 'live')
+  })
+
+  it('says nothing about keeping current once the round is archived', async () => {
+    await page.viewport(1440, 900)
+    await screen({
+      route: `${base}&view=entries`,
+      stubs: {
+        watchBatch: openLine,
+        getBatch: () => Effect.succeed({ batch: { ...batch(), status: 'archived' } }),
+      },
+    })
+    await expect.poll(() => rows().length).toBeGreaterThan(0)
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    expect(page.getByTestId('entries-live').elements()).toHaveLength(0)
   })
 
   it('says who the person is and where they stand, above their account', async () => {
