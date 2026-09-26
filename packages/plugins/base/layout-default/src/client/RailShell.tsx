@@ -78,6 +78,30 @@ import { layoutMessages as m } from './i18n.ts'
 const SHELL_BREAKPOINT = 1024
 
 /**
+ * Whether the reader keeps the workspace rail folded, remembered by this
+ * browser: somebody who folds it to give a wide table the room means it for
+ * the next page and the next visit too, not only until they navigate away.
+ */
+const RAIL_FOLDED_KEY = 'qualy:workspace-rail-folded'
+
+const railFolded = (): boolean => {
+  try {
+    return window.localStorage.getItem(RAIL_FOLDED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+const keepRailFolded = (folded: boolean) => {
+  try {
+    if (folded) window.localStorage.setItem(RAIL_FOLDED_KEY, '1')
+    else window.localStorage.removeItem(RAIL_FOLDED_KEY)
+  } catch {
+    // a browser that cannot remember starts with the rail open again
+  }
+}
+
+/**
  * Where the shell's own head gives way to the open workspace's.
  *
  * On a phone inside a batch the top of the screen is worth more to the batch
@@ -978,8 +1002,8 @@ function CapableRailShell({
   // a screen that has something to stand beside its work has asked for the
   // rail's column, and draws there instead of the rail
   const lent = useScreenAsideSeat()
-  const [railOpen, setRailOpen] = useState(!narrow)
-  useEffect(() => setRailOpen(!narrow), [narrow])
+  const [railOpen, setRailOpen] = useState(() => !narrow && !railFolded())
+  useEffect(() => setRailOpen(!narrow && !railFolded()), [narrow])
 
   // an entry carrying a capability token waits for the open workspace to
   // publish its set, and renders only while the set holds it; a gated entry
@@ -1039,7 +1063,10 @@ function CapableRailShell({
       aria-label={label}
       aria-expanded={railOpen}
       {...stylex.props(styles.toggleButton)}
-      onClick={() => setRailOpen((open) => !open)}
+      onClick={() => {
+        keepRailFolded(railOpen)
+        setRailOpen(!railOpen)
+      }}
     >
       <PanelLeftIcon aria-hidden {...stylex.props(styles.toggleGlyph)} />
     </button>
