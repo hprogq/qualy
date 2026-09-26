@@ -809,8 +809,8 @@ describe('reading somebody’s entries', () => {
       },
     })
     const listed = page.getByTestId('participant-unit')
-    await expect.element(listed).toHaveAttribute('title', '软件学院 / 软件2301班')
-    const onList = listed.element().getAttribute('title')
+    await expect.element(listed).toHaveAttribute('data-path', '软件学院 / 软件2301班')
+    const onList = listed.element().getAttribute('data-path')
     await page.getByTestId('participant-row').click()
     await expect.poll(() => addressNow()).toContain(`participant=${PARTICIPANT_ID}`)
     await expect.poll(() => unitSaid()).toBe(onList)

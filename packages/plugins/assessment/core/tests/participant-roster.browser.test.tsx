@@ -620,7 +620,7 @@ describe('the roster on the results page', () => {
     // and where they stand, by the round's own record of it
     await expect
       .element(page.getByTestId('participant-unit').first())
-      .toHaveAttribute('title', '软件 2301 班')
+      .toHaveAttribute('data-path', '软件 2301 班')
   })
 
   it('narrows and orders the list through the server, and starts again at page one', async () => {
@@ -1185,13 +1185,12 @@ describe('the room the roster gives its rows', () => {
       1280 - 224 - 17,
     )
     const unit = page.getByTestId('participant-unit').first()
-    await expect
-      .element(unit)
-      .toHaveAttribute(
-        'title',
-        '计算机与软件学院 / 2023级 / 计算机科学与技术 / 计算机科学与技术2023级1班',
-      )
+    const whole = '计算机与软件学院 / 2023级 / 计算机科学与技术 / 计算机科学与技术2023级1班'
+    await expect.element(unit).toHaveAttribute('data-path', whole)
+    // one hint for the whole of it, on the line itself, and none around it
     const path = unit.getByTestId('unit-path')
+    await expect.element(path).toHaveAttribute('title', whole)
+    expect(unit.element().hasAttribute('title')).toBe(false)
     await expect.element(path).toHaveAttribute('data-clipped', 'true')
     // the class is on the line; the college, first on the path, is what gave way
     const line = path.element().getBoundingClientRect()

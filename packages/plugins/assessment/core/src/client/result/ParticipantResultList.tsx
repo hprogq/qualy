@@ -916,7 +916,9 @@ export function ParticipantResultList({
                       <span
                         data-testid="participant-unit"
                         data-unknown={unknown}
-                        title={path}
+                        // the whole path as the row says it; the hint on
+                        // hover is the line's own
+                        data-path={path}
                         {...stylex.props(styles.unitLine)}
                       >
                         <UnitPath steps={steps} title={path} />
