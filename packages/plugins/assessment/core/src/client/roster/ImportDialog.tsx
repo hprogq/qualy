@@ -3,7 +3,7 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useQuery } from '@tanstack/react-query'
-import { Building2Icon, UserRoundXIcon } from 'lucide-react'
+import { Building2Icon, TriangleAlertIcon, UserRoundXIcon } from 'lucide-react'
 import { orgNodePickerView } from '@qualy/ui-contract'
 import { UiSlot, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -24,6 +24,7 @@ import { TreeSelect } from '@qualy/ui/tree-select'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { DialogBlank } from '../DialogBlank.tsx'
+import { AdmissionOutcome, type AdmissionOutcomeFacts } from './AdmissionOutcome.tsx'
 
 // Running the organization query again, once.
 //
@@ -63,6 +64,23 @@ const styles = stylex.create({
     },
   },
   footSide: { display: 'flex', alignItems: 'center', gap: 8 },
+  // what the people counted would leave the roster with, in the colour of
+  // something to look at rather than something wrong
+  warnings: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    margin: 0,
+    borderRadius: tokens.radiusMd,
+    paddingInline: 12,
+    paddingBlock: 10,
+    backgroundColor: `color-mix(in oklab, ${tokens.warning} 9%, transparent)`,
+    listStyleType: 'none',
+    fontSize: 13,
+    lineHeight: '1.25rem',
+  },
+  warning: { display: 'flex', alignItems: 'flex-start', gap: 8 },
+  warningMark: { width: 16, height: 16, flexShrink: 0, marginTop: 2, color: tokens.warning },
 })
 
 const EMPTY: Selection = { orgNodeIds: [], userTypeIds: [] }
@@ -71,13 +89,19 @@ export function ImportDialog({
   batchId,
   open,
   pending,
+  outcome = null,
   onImport,
+  onReview,
   onClose,
 }: {
   batchId: string
   open: boolean
   pending: boolean
+  /** what the import left the roster with, said in place of the choices where worth saying */
+  outcome?: AdmissionOutcomeFacts | null
   onImport: (selection: Selection) => void
+  /** open the questions some of the people imported cannot file */
+  onReview?: () => void
   onClose: () => void
 }) {
   const query = useApiQuery(assessmentApi)
@@ -118,6 +142,33 @@ export function ImportDialog({
       : userTypes.data !== undefined && userTypes.data.userTypes.length === 0
         ? 'no-types'
         : null
+  // what the people it would add would leave the roster with, said before
+  // anybody agrees to it; it stops nothing
+  const counted = ready ? candidates.data : undefined
+  const warned =
+    counted !== undefined &&
+    counted.candidates > 0 &&
+    (counted.cannotSubmit > 0 || counted.systemAccounts > 0)
+      ? counted
+      : null
+
+  if (outcome !== null) {
+    return (
+      <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+        <DialogContent size="32rem" data-testid="import-outcome">
+          <DialogHeader>
+            <DialogTitle>{format(m.importTitle)}</DialogTitle>
+          </DialogHeader>
+          <DialogBody>
+            <AdmissionOutcome facts={outcome} {...(onReview === undefined ? {} : { onReview })} />
+          </DialogBody>
+          <DialogFooter>
+            <Button onClick={onClose}>{format(m.admittedDone)}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )
+  }
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
@@ -194,6 +245,27 @@ export function ImportDialog({
                   onChange={(userTypeIds) => setSelection((now) => ({ ...now, userTypeIds }))}
                   emptyLabel={format(m.userTypesEmpty)}
                 />
+                {warned !== null && (
+                  <ul
+                    data-testid="import-warnings"
+                    data-cannot-submit={warned.cannotSubmit}
+                    data-system-accounts={warned.systemAccounts}
+                    {...stylex.props(styles.warnings)}
+                  >
+                    {warned.cannotSubmit > 0 && (
+                      <li {...stylex.props(styles.warning)}>
+                        <TriangleAlertIcon aria-hidden {...stylex.props(styles.warningMark)} />
+                        {format(m.importWarnCannotSubmit, { count: warned.cannotSubmit })}
+                      </li>
+                    )}
+                    {warned.systemAccounts > 0 && (
+                      <li {...stylex.props(styles.warning)}>
+                        <TriangleAlertIcon aria-hidden {...stylex.props(styles.warningMark)} />
+                        {format(m.importWarnSystem, { count: warned.systemAccounts })}
+                      </li>
+                    )}
+                  </ul>
+                )}
               </FieldGroup>
             )}
           </AsyncSection>

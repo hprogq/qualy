@@ -499,7 +499,9 @@ export function RosterWalkList({
           </Button>
         </p>
       )}
-      {walk.off && (
+      {/* nobody to name when the person cannot be read at all: the account
+          says why, and a blank line here would only echo it */}
+      {walk.off && who.data !== undefined && (
         <div data-testid="roster-walk-off" {...stylex.props(styles.off)}>
           <span {...stylex.props(styles.name)}>{who.data?.participant.displayName ?? ''}</span>
           <span {...stylex.props(styles.offNote)}>{format(m.rosterWalkOff)}</span>

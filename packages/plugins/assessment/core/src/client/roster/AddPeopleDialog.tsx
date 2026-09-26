@@ -19,6 +19,7 @@ import {
 } from '@qualy/ui/dialog'
 import { assessmentMessages as m } from '../i18n.ts'
 import { DialogBlank } from '../DialogBlank.tsx'
+import { AdmissionOutcome, type AdmissionOutcomeFacts } from './AdmissionOutcome.tsx'
 import { useCandidates } from './candidates.ts'
 
 // Adding people to the roster one at a time, or a dozen at a time.
@@ -41,13 +42,23 @@ export function AddPeopleDialog({
   batchId,
   open,
   pending,
+  outcome = null,
   onAdd,
+  onReview,
   onClose,
 }: {
   batchId: string
   open: boolean
   pending: boolean
+  /**
+   * What the people just added left the roster with, where that is worth
+   * saying: the dialog then says it in place of the picker, and closes on
+   * the reader's word.
+   */
+  outcome?: AdmissionOutcomeFacts | null
   onAdd: (userIds: readonly string[]) => void
+  /** open the questions some of the people added cannot file */
+  onReview?: () => void
   onClose: () => void
 }) {
   const { format } = useI18n()
@@ -57,6 +68,24 @@ export function AddPeopleDialog({
     if (open) setChosen([])
   }, [open])
   const candidates = useCandidates(batchId, open)
+
+  if (outcome !== null) {
+    return (
+      <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+        <DialogContent size="32rem" data-testid="add-people-outcome">
+          <DialogHeader>
+            <DialogTitle>{format(m.addPeopleTitle)}</DialogTitle>
+          </DialogHeader>
+          <DialogBody>
+            <AdmissionOutcome facts={outcome} {...(onReview === undefined ? {} : { onReview })} />
+          </DialogBody>
+          <DialogFooter>
+            <Button onClick={onClose}>{format(m.admittedDone)}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )
+  }
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>

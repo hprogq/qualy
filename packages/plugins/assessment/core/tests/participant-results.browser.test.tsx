@@ -194,6 +194,11 @@ const screen = (
         setParticipantStatus: () => Effect.succeed({ ok: true }),
         listParticipantPlacements: () =>
           Effect.succeed({ items: [], nextCursor: null, changedTotal: 0, unavailableTotal: 0 }),
+        reviewAlerts: () =>
+          Effect.succeed({
+            groups: [],
+            unreachable: { routes: [], cannotSubmit: 0, cannotAppeal: 0 },
+          }),
         listParticipantAccounts: () =>
           rosterPage([participant(), participant({ id: OTHER_ID, displayName: '王君惠' })]),
         listParticipantScores: (request: { query?: { participantIds?: string | string[] } }) =>
@@ -338,6 +343,11 @@ describe('the participant results screen', () => {
         ]),
       listParticipantPlacements: () =>
         Effect.succeed({ items: [moved], nextCursor: null, changedTotal: 1, unavailableTotal: 0 }),
+      reviewAlerts: () =>
+        Effect.succeed({
+          groups: [],
+          unreachable: { routes: [], cannotSubmit: 0, cannotAppeal: 0 },
+        }),
       reconcileParticipantPlacements: decided,
     })
     // the roster marks who moved, and only them
@@ -1004,6 +1014,11 @@ describe('one account beside its person', () => {
           previewImport: () => Effect.succeed({ candidates: 0 }),
           listParticipantPlacements: () =>
             Effect.succeed({ items: [], nextCursor: null, changedTotal: 0, unavailableTotal: 0 }),
+          reviewAlerts: () =>
+            Effect.succeed({
+              groups: [],
+              unreachable: { routes: [], cannotSubmit: 0, cannotAppeal: 0 },
+            }),
           getParticipant: () =>
             Effect.succeed({ participant: participant({ anchorLineage: lineage }) }),
           getParticipantResult: () => Effect.succeed(account),
@@ -1400,6 +1415,11 @@ describe('the list beside an open account', () => {
           previewImport: () => Effect.succeed({ candidates: 0 }),
           listParticipantPlacements: () =>
             Effect.succeed({ items: [], nextCursor: null, changedTotal: 0, unavailableTotal: 0 }),
+          reviewAlerts: () =>
+            Effect.succeed({
+              groups: [],
+              unreachable: { routes: [], cannotSubmit: 0, cannotAppeal: 0 },
+            }),
           getParticipant: (request: Request) =>
             Effect.succeed({
               participant:
@@ -1874,6 +1894,9 @@ describe('working the list beside an open account', () => {
     // the way back and the list itself stay, so the next person is a press away
     await expect.element(panel.getByRole('button', { name: '返回参评名单' })).toBeVisible()
     await expect.element(panel.getByTestId('roster-walk')).toHaveAttribute('data-total', '45')
+    // with no name to pin over it, rather than a blank line saying so again
+    await expect.element(page.getByTestId('roster-neighbors')).toHaveAttribute('data-off', 'true')
+    expect(panel.getByTestId('roster-walk-off').elements()).toHaveLength(0)
     // and the state stands once, in the room the work would have had
     const main = page.getByRole('main')
     await expect.element(main.getByTestId('participant-absent')).toBeVisible()

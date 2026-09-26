@@ -6195,6 +6195,12 @@ const i18n = definePluginMessages({
       id: 'assessment/placement/beyond-hint',
       defaultMessage: 'Syncing needs someone who manages both units.',
     },
+    /** what taking in where the organization has somebody would cost them */
+    placementUnfileable: defineMessage<{ count: number }>()({
+      id: 'assessment/placement/unfileable',
+      defaultMessage:
+        'After syncing, {count, plural, one {# question} other {# questions}} can no longer be filed',
+    }),
     placementGone: {
       id: 'assessment/placement/gone',
       defaultMessage: 'Deleted from the organization',
@@ -6407,6 +6413,74 @@ const i18n = definePluginMessages({
       id: 'assessment/roster/add-on-roster',
       defaultMessage: 'On the roster',
     },
+    // people on the roster some question's review steps find nowhere, so
+    // they cannot file it, said on the roster and when they are put on it
+    rosterUnreachablePrompt: defineMessage<{ count: number }>()({
+      id: 'assessment/roster/unreachable-prompt',
+      defaultMessage:
+        '{count, plural, one {# person cannot} other {# people cannot}} file some questions',
+    }),
+    rosterUnreachableOpen: { id: 'assessment/roster/unreachable-open', defaultMessage: 'View' },
+    unreachableTitle: {
+      id: 'assessment/roster/unreachable-title',
+      defaultMessage: 'Questions some people cannot file',
+    },
+    unreachableHint: {
+      id: 'assessment/roster/unreachable-hint',
+      defaultMessage: "Adjust a question's review steps, or remove these people from the list",
+    },
+    unreachableLevels: defineMessage<{ levels: string }>()({
+      id: 'assessment/roster/unreachable-levels',
+      defaultMessage: 'Reviewed at {levels}',
+    }),
+    unreachableCount: defineMessage<{ count: number }>()({
+      id: 'assessment/roster/unreachable-count',
+      defaultMessage: '{count, plural, one {# person} other {# people}}',
+    }),
+    unreachableShowPeople: {
+      id: 'assessment/roster/unreachable-show-people',
+      defaultMessage: 'Show people',
+    },
+    unreachableHidePeople: {
+      id: 'assessment/roster/unreachable-hide-people',
+      defaultMessage: 'Hide people',
+    },
+    unreachableEditQuestion: {
+      id: 'assessment/roster/unreachable-edit-question',
+      defaultMessage: 'Edit review steps',
+    },
+    unreachablePeoplePager: {
+      id: 'assessment/roster/unreachable-people-pager',
+      defaultMessage: 'Pages of people',
+    },
+    unreachableQuiet: {
+      id: 'assessment/roster/unreachable-quiet',
+      defaultMessage: 'Everyone can file every question now',
+    },
+    admittedTitle: defineMessage<{ count: number }>()({
+      id: 'assessment/roster/admitted-title',
+      defaultMessage: '{count, plural, one {# person} other {# people}} added to the list',
+    }),
+    admittedCannotSubmit: defineMessage<{ count: number }>()({
+      id: 'assessment/roster/admitted-cannot-submit',
+      defaultMessage:
+        "{count} of them cannot file some questions. Adjust a question's review steps, or remove them from the list",
+    }),
+    admittedSystem: defineMessage<{ count: number }>()({
+      id: 'assessment/roster/admitted-system',
+      defaultMessage:
+        '{count, plural, one {# of them is a system account} other {# of them are system accounts}}. Remove them if they are not taking part',
+    }),
+    admittedDone: { id: 'assessment/roster/admitted-done', defaultMessage: 'Done' },
+    importWarnCannotSubmit: defineMessage<{ count: number }>()({
+      id: 'assessment/roster/import-warn-cannot-submit',
+      defaultMessage: '{count} of them will not be able to file some questions',
+    }),
+    importWarnSystem: defineMessage<{ count: number }>()({
+      id: 'assessment/roster/import-warn-system',
+      defaultMessage:
+        '{count, plural, one {# of them is a system account} other {# of them are system accounts}}',
+    }),
 
     // ------------------------------------------------------------------
     // who may work on the round, and what this round accepted of it

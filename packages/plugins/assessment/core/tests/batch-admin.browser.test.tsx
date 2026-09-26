@@ -219,6 +219,8 @@ const assessmentStubs = (over: Stubs = {}): Stubs => ({
   listParticipantCandidates: () => Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }),
   listParticipantPlacements: () =>
     Effect.succeed({ items: [], nextCursor: null, changedTotal: 0, unavailableTotal: 0 }),
+  reviewAlerts: () =>
+    Effect.succeed({ groups: [], unreachable: { routes: [], cannotSubmit: 0, cannotAppeal: 0 } }),
   previewImport: () => Effect.succeed({ candidates: 0 }),
   staffOptions: () => Effect.succeed({ nodes: [], roles: [] }),
   listAccess: () => Effect.succeed(staffPage([subject()])),

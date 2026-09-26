@@ -240,6 +240,11 @@ const screen = ({
         listParticipants: () => Effect.succeed({ items: [who], nextCursor: null }),
         listParticipantPlacements: () =>
           Effect.succeed({ items: [], nextCursor: null, changedTotal: 0, unavailableTotal: 0 }),
+        reviewAlerts: () =>
+          Effect.succeed({
+            groups: [],
+            unreachable: { routes: [], cannotSubmit: 0, cannotAppeal: 0 },
+          }),
         getParticipant: () => Effect.succeed({ participant: who }),
         getParticipantResult: () => Effect.succeed(account()),
         // the list the page was opened from; nobody on it unless a case says

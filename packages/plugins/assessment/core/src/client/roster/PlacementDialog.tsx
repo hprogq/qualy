@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useQuery } from '@tanstack/react-query'
-import { CircleCheckIcon } from 'lucide-react'
+import { CircleCheckIcon, TriangleAlertIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { useI18n } from '@qualy/web-i18n'
@@ -72,6 +72,16 @@ const styles = stylex.create({
   waiting: { display: 'flex', flexDirection: 'column', gap: 8 },
   waitingRow: { height: 88, width: '100%' },
   aside: { fontSize: 12, lineHeight: '1rem', color: tokens.mutedForeground },
+  // a cost of the sync, in the colour of something to weigh
+  cost: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 6,
+    fontSize: 12.5,
+    lineHeight: '1.125rem',
+    color: tokens.warningForeground,
+  },
+  costMark: { width: 14, height: 14, flexShrink: 0, marginTop: 2, color: tokens.warning },
   // The differences' own box, laid out as the people pickers lay theirs: a
   // bar that takes the whole page in or out over the rows, and the rows
   // the one part that scrolls, so the bar and the way through the pages
@@ -503,6 +513,17 @@ function DifferenceRow({
         )}
         {row.currentBeyondReach && (
           <span {...stylex.props(styles.aside)}>{format(m.placementBeyondHint)}</span>
+        )}
+        {/* what syncing would cost them, said before anybody presses it */}
+        {row.canSync && row.unfileableAfterSync !== null && row.unfileableAfterSync > 0 && (
+          <span
+            data-testid="placement-unfileable"
+            data-count={row.unfileableAfterSync}
+            {...stylex.props(styles.cost)}
+          >
+            <TriangleAlertIcon aria-hidden {...stylex.props(styles.costMark)} />
+            {format(m.placementUnfileable, { count: row.unfileableAfterSync })}
+          </span>
         )}
         {decidable && (
           <div {...stylex.props(styles.actions)}>

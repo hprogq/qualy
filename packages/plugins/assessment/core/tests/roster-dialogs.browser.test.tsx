@@ -374,6 +374,52 @@ describe('a roster dialog that outgrows the window', () => {
 // A dialog with nothing left to act on answers as an answer: what is so and
 // why, and the way out - not a line of grey text over buttons that do
 // nothing.
+describe('what a sync would cost', () => {
+  // Taking in where the organization has somebody now can leave them under
+  // no unit a question's review steps ask for: the row says so before
+  // anybody presses sync, and only where it is so.
+  it('says how many questions somebody could no longer file once synced', async () => {
+    await open(
+      <PlacementDialog
+        batchId={BATCH_ID}
+        open
+        pending={false}
+        onDecide={() => {}}
+        onClose={() => {}}
+      />,
+      {
+        listParticipantPlacements: () =>
+          Effect.succeed({
+            items: [
+              { ...difference(1), unfileableAfterSync: 2 },
+              { ...difference(2), unfileableAfterSync: 0 },
+              // nothing shown to take in, so nothing to count
+              {
+                ...difference(3),
+                current: null,
+                currentBeyondReach: true,
+                canSync: false,
+                unfileableAfterSync: null,
+              },
+            ],
+            nextCursor: null,
+            changedTotal: 3,
+            unavailableTotal: 0,
+          }),
+      },
+    )
+    await expect
+      .poll(() => document.querySelectorAll('[data-testid="placement-difference"]').length)
+      .toBe(3)
+    const costs = [...document.querySelectorAll('[data-testid="placement-unfileable"]')]
+    expect(costs).toHaveLength(1)
+    expect(costs[0]!.getAttribute('data-count')).toBe('2')
+    expect(
+      costs[0]!.closest('[data-testid="placement-difference"]')!.getAttribute('data-participant'),
+    ).toBe(person(1))
+  })
+})
+
 describe('a roster dialog with nothing to act on', () => {
   it('says the roster is in step with the organization, and offers only the way out', async () => {
     const onClose = vi.fn()

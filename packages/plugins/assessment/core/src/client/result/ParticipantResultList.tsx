@@ -58,6 +58,9 @@ import { AddPeopleDialog } from '../roster/AddPeopleDialog.tsx'
 import { ImportDialog } from '../roster/ImportDialog.tsx'
 import { PlacementDialog, type PlacementDecision } from '../roster/PlacementDialog.tsx'
 import { PlacementNotice } from '../roster/PlacementNotice.tsx'
+import { UnreachableNotice } from '../roster/UnreachableNotice.tsx'
+import { UnreachableDialog } from '../roster/UnreachableDialog.tsx'
+import type { AdmissionOutcomeFacts } from '../roster/AdmissionOutcome.tsx'
 import { RosterFilings } from '../roster/RosterFilings.tsx'
 import { useWaitingColumn, waitsOnAnything } from '../roster/filings.ts'
 import { RosterScore } from '../roster/RosterScore.tsx'
@@ -493,6 +496,12 @@ export function ParticipantResultList({
       if (totals || behind(latestRows.current)) live.wake(totals)
       return
     }
+    // a question's review steps changed: who they find nowhere may have too
+    if (kind === 'item-changed') {
+      void queryClient.invalidateQueries({
+        queryKey: query.assessment.reviewAlerts.key({ params: { batchId } }),
+      })
+    }
     live.wake(MOVES_TOTALS.has(kind))
   })
 
@@ -544,10 +553,23 @@ export function ParticipantResultList({
     }),
     enabled: manageable,
   })
+  // whether some question's review steps find anybody on the roster nowhere,
+  // read off the roster and the questions as they are now (§32.93)
+  const reach = useQuery({
+    ...query.assessment.reviewAlerts.queryOptions({ params: { batchId } }),
+    enabled: manageable,
+  })
+  const [unreachableOpen, setUnreachableOpen] = useState(false)
 
   // targeted invalidation: only this plugin's reads, never the whole cache
   const invalidate = () => queryClient.invalidateQueries({ queryKey: query.assessment.key() })
   const onError = (error: unknown) => setFailure(formatError(error))
+  // What people put on the roster leave it with, where there is something
+  // to say, stays in the dialog that put them there until the reader is done
+  // with it; otherwise the dialog closes on a toast, as it always has.
+  const [added, setAdded] = useState<AdmissionOutcomeFacts | null>(null)
+  const [imported, setImported] = useState<AdmissionOutcomeFacts | null>(null)
+  const warns = (facts: AdmissionOutcomeFacts) => facts.cannotSubmit > 0 || facts.systemAccounts > 0
   const addPeople = useMutation({
     mutationFn: (userIds: readonly string[]) =>
       run(
@@ -557,9 +579,12 @@ export function ParticipantResultList({
         }),
       ),
     onMutate: () => setFailure(null),
-    onSuccess: (result: { added: number }) => {
-      setAdding(false)
-      toast.success(format(m.toastAdded, { count: result.added }))
+    onSuccess: (result: AdmissionOutcomeFacts) => {
+      if (warns(result)) setAdded(result)
+      else {
+        setAdding(false)
+        toast.success(format(m.toastAdded, { count: result.added }))
+      }
       void invalidate()
     },
     onError,
@@ -576,13 +601,30 @@ export function ParticipantResultList({
         }),
       ),
     onMutate: () => setFailure(null),
-    onSuccess: (result: { added: number }) => {
-      setImporting(false)
-      toast.success(format(m.toastImported, { count: result.added }))
+    onSuccess: (result: AdmissionOutcomeFacts) => {
+      if (warns(result)) setImported(result)
+      else {
+        setImporting(false)
+        toast.success(format(m.toastImported, { count: result.added }))
+      }
       void invalidate()
     },
     onError,
   })
+  const closeAdding = () => {
+    setAdding(false)
+    setAdded(null)
+  }
+  const closeImporting = () => {
+    setImporting(false)
+    setImported(null)
+  }
+  // from what a write just said to the questions and people concerned
+  const review = () => {
+    closeAdding()
+    closeImporting()
+    setUnreachableOpen(true)
+  }
 
   const setStatus = useMutation({
     mutationFn: (input: { participantId: string; status: 'active' | 'excluded' }) =>
@@ -1115,6 +1157,12 @@ export function ParticipantResultList({
           onOpen={() => setReconciling(true)}
         />
       )}
+      {manageable && reach.data !== undefined && (
+        <UnreachableNotice
+          cannotSubmit={reach.data.unreachable.cannotSubmit}
+          onOpen={() => setUnreachableOpen(true)}
+        />
+      )}
       {treeBeside ? (
         <ResizableSplit
           storageKey="qualy:assessment-roster-tree"
@@ -1180,15 +1228,28 @@ export function ParticipantResultList({
             batchId={batchId}
             open={adding}
             pending={addPeople.isPending}
+            outcome={added}
             onAdd={(userIds) => addPeople.mutate(userIds)}
-            onClose={() => setAdding(false)}
+            onReview={review}
+            onClose={closeAdding}
           />
           <ImportDialog
             batchId={batchId}
             open={importing}
             pending={importPeople.isPending}
+            outcome={imported}
             onImport={(selection) => importPeople.mutate(selection)}
-            onClose={() => setImporting(false)}
+            onReview={review}
+            onClose={closeImporting}
+          />
+          <UnreachableDialog
+            batchId={batchId}
+            open={unreachableOpen}
+            onClose={() => setUnreachableOpen(false)}
+            onOpenPerson={(participantId) => {
+              setUnreachableOpen(false)
+              onOpen(participantId)
+            }}
           />
         </>
       )}

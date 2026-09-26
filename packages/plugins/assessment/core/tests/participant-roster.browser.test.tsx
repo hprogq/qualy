@@ -137,6 +137,11 @@ const open = (
           }),
         listParticipantPlacements: () =>
           Effect.succeed({ items: [], nextCursor: null, changedTotal: 0, unavailableTotal: 0 }),
+        reviewAlerts: () =>
+          Effect.succeed({
+            groups: [],
+            unreachable: { routes: [], cannotSubmit: 0, cannotAppeal: 0 },
+          }),
         listScopeOptions: () =>
           Effect.succeed({
             nodes: [
@@ -1315,5 +1320,170 @@ describe('the room the roster gives its rows', () => {
     } finally {
       await page.viewport(1280, 800)
     }
+  })
+})
+
+// Some question's review steps can find somebody on the roster nowhere - they
+// sit under no unit a step asks for - so they cannot file it. Nothing about
+// the roster or the questions is refused for it (§32.93); the roster says so
+// for as long as it is true, shows which questions and whom, and says it to
+// whoever puts such people on it, at the moment they do.
+describe('people the review steps find nowhere', () => {
+  const QUESTION = '55555555-5555-4555-8555-555555555555'
+  const alerts = (cannotSubmit: number) => () =>
+    Effect.succeed({
+      groups: [],
+      unreachable: {
+        routes:
+          cannotSubmit === 0
+            ? []
+            : [
+                {
+                  itemId: QUESTION,
+                  itemTitle: '班级荣誉',
+                  route: 'normal' as const,
+                  participants: cannotSubmit,
+                  levelNames: ['班级'],
+                },
+                {
+                  itemId: '66666666-6666-4666-8666-666666666666',
+                  itemTitle: '申诉走复核',
+                  route: 'escalation' as const,
+                  participants: 1,
+                  levelNames: ['学院'],
+                },
+              ],
+        cannotSubmit,
+        cannotAppeal: cannotSubmit === 0 ? 0 : 1,
+      },
+    })
+  const unreachable = vi.fn((request: Request) => {
+    const at = Number(request.query?.['page'] ?? 1)
+    return Effect.succeed({
+      items: Array.from({ length: at === 1 ? 10 : 2 }, (_, index) => ({
+        participantId: id((at - 1) * 10 + index + 1),
+        userId: `u-${index}`,
+        displayName: `参评人${(at - 1) * 10 + index + 1}`,
+        businessNo: `2023${String(index).padStart(4, '0')}`,
+        unitPath: ['示例大学', '软件学院'],
+      })),
+      total: 12,
+      page: at,
+      pageSize: 10,
+    })
+  })
+
+  it('says how many cannot file, and shows the questions and people behind it', async () => {
+    await open({ reviewAlerts: alerts(12), listUnreachableParticipants: unreachable })
+    const notice = page.getByTestId('unreachable-notice')
+    await expect.element(notice).toHaveAttribute('data-count', '12')
+    await notice.getByRole('button').click()
+    const dialog = page.getByTestId('unreachable-dialog')
+    await expect.element(dialog).toBeVisible()
+    // the questions people cannot file; an appeal's route is another matter
+    const questions = dialog.getByTestId('unreachable-question')
+    await expect.element(questions).toHaveAttribute('data-item', QUESTION)
+    expect(questions.elements()).toHaveLength(1)
+    // whom, a page at a time and only on request
+    expect(dialog.getByTestId('unreachable-people').elements()).toHaveLength(0)
+    await questions.getByRole('button', { name: '查看人员' }).click()
+    const people = dialog.getByTestId('unreachable-people')
+    await expect.element(people).toHaveAttribute('data-total', '12')
+    expect(unreachable.mock.calls.at(-1)![0].query).toMatchObject({
+      itemId: QUESTION,
+      route: 'normal',
+      page: '1',
+    })
+    await dialog.getByTestId('unreachable-pager').getByRole('button', { name: '2' }).click()
+    await expect.poll(() => unreachable.mock.calls.at(-1)![0].query?.['page']).toBe('2')
+    // a person opens on a press, and the dialog goes with the list
+    await dialog.getByRole('button', { name: /参评人11/ }).click()
+    await expect.poll(() => addressNow()).toContain(`participant=${id(11)}`)
+    await expect.element(dialog).not.toBeInTheDocument()
+  })
+
+  it('says nothing while everybody can file', async () => {
+    await open({ reviewAlerts: alerts(0) })
+    await expect.element(rows().first()).toBeVisible()
+    expect(page.getByTestId('unreachable-notice').elements()).toHaveLength(0)
+  })
+
+  it('asks nothing of a reader who only re-determines', async () => {
+    const asked = vi.fn(alerts(3))
+    await open({
+      reviewAlerts: asked,
+      getBatch: () =>
+        Effect.succeed({
+          batch: batch({
+            manageable: false,
+            capabilities: {
+              personal: false,
+              review: false,
+              record: false,
+              manage: false,
+              redetermine: true,
+            },
+          }),
+        }),
+    })
+    await expect.element(rows().first()).toBeVisible()
+    expect(asked).not.toHaveBeenCalled()
+    expect(page.getByTestId('unreachable-notice').elements()).toHaveLength(0)
+  })
+
+  it('keeps the add dialog open to say what the people added leave the roster with', async () => {
+    await open({
+      reviewAlerts: alerts(1),
+      listUnreachableParticipants: unreachable,
+      listParticipantCandidates: () =>
+        Effect.succeed({
+          items: [
+            {
+              userId: 'u-system',
+              displayName: '系统管理员',
+              businessNo: null,
+              userTypeName: '系统账户',
+              roster: null,
+            },
+          ],
+          total: 1,
+          page: 1,
+          pageSize: 20,
+        }),
+      addParticipants: () =>
+        Effect.succeed({ added: 1, skipped: 0, cannotSubmit: 1, systemAccounts: 1 }),
+    })
+    await page.getByRole('button', { name: '添加人员' }).click()
+    await page.getByRole('checkbox', { name: '系统管理员' }).click()
+    await page.getByRole('button', { name: '添加 1 人' }).click()
+    const outcome = page.getByTestId('admission-outcome')
+    await expect.element(outcome).toHaveAttribute('data-added', '1')
+    await expect.element(outcome).toHaveAttribute('data-cannot-submit', '1')
+    await expect.element(outcome).toHaveAttribute('data-system-accounts', '1')
+    // the way on is the questions and the people concerned
+    await outcome.getByRole('button', { name: '查看' }).click()
+    await expect.element(page.getByTestId('unreachable-dialog')).toBeVisible()
+    expect(page.getByTestId('admission-outcome').elements()).toHaveLength(0)
+  })
+
+  it('warns before an import what it would leave the roster with, and says it after', async () => {
+    const imported = vi.fn(() => Effect.succeed({ added: 7, cannotSubmit: 2, systemAccounts: 0 }))
+    await open({
+      previewImport: () => Effect.succeed({ candidates: 7, cannotSubmit: 2, systemAccounts: 1 }),
+      importParticipants: imported,
+    })
+    await page.getByRole('button', { name: '从组织导入' }).click()
+    await page.getByTestId('import-units').getByRole('checkbox', { name: '软件学院' }).click()
+    await page.getByRole('checkbox', { name: '学生' }).click()
+    const warnings = page.getByTestId('import-warnings')
+    await expect.element(warnings).toHaveAttribute('data-cannot-submit', '2')
+    await expect.element(warnings).toHaveAttribute('data-system-accounts', '1')
+    // said, and the import goes ahead all the same
+    await page.getByRole('button', { name: '导入' }).click()
+    await expect.poll(() => imported.mock.calls.length).toBe(1)
+    const outcome = page.getByTestId('admission-outcome')
+    await expect.element(outcome).toHaveAttribute('data-cannot-submit', '2')
+    await page.getByRole('button', { name: '完成' }).click()
+    await expect.element(outcome).not.toBeInTheDocument()
   })
 })
