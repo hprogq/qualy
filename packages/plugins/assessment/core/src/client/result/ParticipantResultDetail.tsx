@@ -295,10 +295,16 @@ const styles = stylex.create({
     flexBasis: '0%',
     flexDirection: 'column',
   },
+  // The account keeps its own reading measure - its outline, the gap and
+  // the ledger at their widest, 1076, inside this padding - and a window
+  // wider than that stands it in the middle of the room beside the column,
+  // rather than against the column with all that is left over on the far
+  // side. Whatever stands in for it while it loads keeps the same measure.
   ledger: {
     display: 'flex',
     width: '100%',
-    maxWidth: 1180,
+    maxWidth: 1132,
+    marginInline: 'auto',
     flexDirection: 'column',
     gap: 12,
     paddingInline: { default: 28, [breakpoints.phone]: 16 },

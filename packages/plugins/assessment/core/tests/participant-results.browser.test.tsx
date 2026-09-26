@@ -1069,6 +1069,24 @@ describe('one account beside its person', () => {
     await page.viewport(1280, 800)
   })
 
+  it('stands the account in the middle of a wide window, not against the column', async () => {
+    await page.viewport(1920, 1000)
+    try {
+      await shelled(`${open}&view=score`)
+      const ledger = page.getByTestId('result-ledger')
+      await expect.element(ledger).toBeVisible()
+      const main = page.getByRole('main').element().getBoundingClientRect()
+      const drawn = ledger.element().getBoundingClientRect()
+      const before = drawn.left - main.left
+      const after = main.right - drawn.right
+      // room to spare on both sides, and the same on each
+      expect(before).toBeGreaterThan(100)
+      expect(Math.abs(before - after)).toBeLessThanOrEqual(2)
+    } finally {
+      await page.viewport(1280, 800)
+    }
+  })
+
   it('opens the whole chain of where they stand, from the school down', async () => {
     await page.viewport(1280, 800)
     await shelled(open)
