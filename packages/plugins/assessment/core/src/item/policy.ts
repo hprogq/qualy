@@ -1,3 +1,4 @@
+import { MAX_STAGES_PER_ROUTE } from '../api.ts'
 import { isUuid } from './uuid.ts'
 // The review policy an item revision may store: the frozen policy language
 // of assessment-design §14, and nothing outside it.
@@ -43,12 +44,10 @@ const unknownKeys = (
 }
 
 /**
- * The longest route a policy may describe, and the most roles one step may
- * name. Every round frozen from a policy carries its steps, and every
- * reviewer lookup walks a step's roles: both are read far more often than
- * they are written.
+ * The most roles one step may name. Every reviewer lookup walks a step's
+ * roles, and they are read far more often than they are written. The
+ * longest route is `MAX_STAGES_PER_ROUTE`, shared with the editor.
  */
-const STAGES_MOST = 10
 const ROLES_MOST = 20
 
 const checkSelector = (issues: PolicyIssue[], stage: Record<string, unknown>, at: string) => {
@@ -154,7 +153,7 @@ const checkRoute = (
     issues.push({ path: `reviewPolicy.${route}.stages`, reason: 'policy-stages-required' })
     return
   }
-  if (stages.length > STAGES_MOST) {
+  if (stages.length > MAX_STAGES_PER_ROUTE) {
     issues.push({ path: `reviewPolicy.${route}.stages`, reason: 'policy-stages-too-many' })
     return
   }

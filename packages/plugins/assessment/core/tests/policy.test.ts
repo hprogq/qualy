@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
+import { MAX_STAGES_PER_ROUTE } from '../src/api.ts'
 import { validateReviewPolicy } from '../src/item/policy.ts'
 
 // The policy validator on its own: the frozen grammar of §14 accepted whole,
@@ -166,6 +167,8 @@ describe('the review policy shape', () => {
 describe('how much one policy may say', () => {
   it('takes a route of ten steps and refuses an eleventh', () => {
     const route = (count: number) => Array.from({ length: count }, () => stage())
+    // the editor stops offering a step at the same number the server refuses past
+    expect(MAX_STAGES_PER_ROUTE).toBe(10)
     expect(reasons(policy(route(10)))).toEqual([])
     expect(reasons(policy(route(11)))).toEqual(['policy-stages-too-many'])
     expect(reasons(policy([stage()], route(11)))).toEqual(['policy-stages-too-many'])

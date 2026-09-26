@@ -360,6 +360,14 @@ export const MAX_PARTICIPANT_ENTRIES_PER_ACCOUNT = 200
 export const MAX_ADMINISTRATIVE_ENTRIES_PER_ACCOUNT = 100
 
 /**
+ * The most steps one review route may hold, the ordinary route and the
+ * escalation route each. Every round frozen from a policy carries its steps
+ * and every reviewer lookup walks them, so a policy past it is refused; the
+ * editor stops offering another step once a route is full.
+ */
+export const MAX_STAGES_PER_ROUTE = 10
+
+/**
  * The two allowances together: the most live claims one participant's
  * account can hold. It is what keeps an account readable: one reading
  * evaluates at most one amount per granted question and one per approved
