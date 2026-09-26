@@ -9,7 +9,7 @@ import {
   usePageQueryUpdate,
   useRunApi,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { useI18n, useList } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
@@ -31,7 +31,7 @@ import { EntriesWorkspace } from './workspace/EntriesWorkspace.tsx'
 import { WorkspaceSkeleton } from './workspace/WorkspaceSkeleton.tsx'
 import { StandingNotice } from './workspace/StandingNotice.tsx'
 import { useLineWords } from './workspace/calc.ts'
-import { entryLineOf, type RoundState } from './workspace/model.ts'
+import { entryLineOf, type FilingRound, type RoundState } from './workspace/model.ts'
 import { useWorkspaceMode } from './workspace/layout.ts'
 
 // One's own filings: the round's structure, one question of it opened, and
@@ -41,6 +41,9 @@ import { useWorkspaceMode } from './workspace/layout.ts'
 // same account also reads. What this page adds is the owner's own: the
 // filing form, the drawer's acts on one's own claim, the appeal and the
 // answer to a reviewer's ask, and the unread marks only the owner has.
+
+/** how many questions a stage that opens only some is said to open by name */
+const NAMED = 3
 
 const styles = stylex.create({
   fill: {
@@ -149,6 +152,40 @@ function Body({
     ...useMyEntriesQuery(batchId),
     refetchInterval: live ? 60_000 : 30_000,
   })
+  // The timetable, which the live wake-ups read already under the same key,
+  // says which questions a stage that opens only some of them opens: where
+  // it holds filing on another, the reader is told where filing is open. A
+  // harness without it leaves it unasked.
+  const timed = typeof api.assessment.getTimeline === 'function'
+  const plan = useQuery(
+    timed
+      ? {
+          ...query.assessment.getTimeline.queryOptions({ params: { batchId } }),
+          staleTime: 30_000,
+        }
+      : // hooks are unconditional, so a harness without the timetable gets a
+        // query that never runs rather than none
+        {
+          queryKey: ['assessment', 'entries-timeline-idle', batchId],
+          queryFn: () => Promise.resolve({ timeline: [] }),
+          enabled: false,
+        },
+  )
+  const list = useList()
+  const stageOpens = plan.data?.timeline.find((stage) => stage.status === 'current')?.scope.items
+  const filingRound = useMemo((): FilingRound => {
+    if (stageOpens === null || stageOpens === undefined) return round
+    const names = stageOpens.map((one) => one.title)
+    // a few by name, and how many more past them
+    const said = names.length > NAMED ? names.slice(0, NAMED) : names
+    return {
+      ...round,
+      opens: {
+        items: said.length === 0 ? '' : list(said),
+        more: names.length - said.length,
+      },
+    }
+  }, [round, stageOpens, list])
   const [appealing, setAppealing] = useState<EntryDto | null>(null)
   const lingeringAppeal = useLingering(appealing)
   const [answering, setAnswering] = useState<EntryDto | null>(null)
@@ -371,7 +408,7 @@ function Body({
           // a phone's step into a question, and going up to a section
           onOpen={(id, how) => updateQuery({ open: id }, { history: how })}
           gates={gates}
-          round={round}
+          round={filingRound}
           busy={acts.isPending || declare.isPending}
           refreshing={anyFetching}
           onRefresh={refetchAll}

@@ -579,6 +579,12 @@ const entryHeldMessage = defineMessage<{ why: string; phase: string; acts: strin
   defaultMessage:
     '{why, select, phase {You can’t {acts} during {phase}} archived {The round is archived, so you can’t {acts}} unstarted {The round hasn’t started, so you can’t {acts} yet} idle {No stage is under way, so you can’t {acts}} item {The current stage doesn’t let you {acts} entries for this item} people {The current stage lets only some participants {acts}} other {You can’t {acts} in the current stage}}',
 })
+// a stage that opens some questions only, named, where it holds filing on another
+const entriesHeldItemScopeOnlyMessage = defineMessage<{ items: string; more: number }>()({
+  id: 'assessment/entries/held-item-scope-only',
+  defaultMessage:
+    '{more, plural, =0 {This stage is only open for {items}} one {This stage is only open for {items} and one other item} other {This stage is only open for {items} and # other items}}',
+})
 const entryHeldActMessage = defineMessage<{ act: string }>()({
   id: 'assessment/entry/held-act',
   defaultMessage:
@@ -4320,6 +4326,11 @@ const i18n = definePluginMessages({
     entriesHeldItemScope: {
       id: 'assessment/entries/held-item-scope',
       defaultMessage: 'The current stage doesn’t take new entries for this item',
+    },
+    entriesHeldItemScopeOnly: entriesHeldItemScopeOnlyMessage,
+    entriesHeldItemScopeSome: {
+      id: 'assessment/entries/held-item-scope-some',
+      defaultMessage: 'This stage is only open for some items',
     },
     entriesHeldParticipantScope: {
       id: 'assessment/entries/held-participant-scope',

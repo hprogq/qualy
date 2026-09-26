@@ -1083,6 +1083,9 @@ export default {
   'assessment/entries/held-archived': '批次已归档，不能新增申报',
   'assessment/entries/held-not-started': '批次尚未开始，暂不能新增申报',
   'assessment/entries/held-item-scope': '当前阶段不接受本项目的新增申报',
+  'assessment/entries/held-item-scope-only':
+    '{more, plural, =0 {本阶段仅开放：{items}} other {本阶段仅开放：{items}及另外 # 个项目}}',
+  'assessment/entries/held-item-scope-some': '本阶段仅开放部分项目',
   'assessment/entries/held-participant-scope': '当前阶段只对部分参评人员开放新增申报',
   'assessment/entries/held-round-full': '你本批次的申报条数已达上限',
   'assessment/entries/room-left': '还可申报 {count} 条',

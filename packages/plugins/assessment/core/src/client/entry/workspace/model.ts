@@ -624,6 +624,38 @@ export const totalsOf = (
 // beside every other refusal, and the workspace reads it from there.
 export { filingHeldOf, type RoundState, type Said }
 
+/**
+ * Where the round stands, as starting a claim needs it said: the stage under
+ * way, and - where that stage opens only some questions - which ones, as the
+ * reader's list names them, with how many more it leaves unnamed. `items` is
+ * '' where the stage opens questions none of which can be named to this
+ * reader (still being composed).
+ */
+export interface FilingRound extends RoundState {
+  readonly opens?: { readonly items: string; readonly more: number } | null
+}
+
+/** why a new claim cannot start on a question, with whatever fills the sentence */
+export interface FilingHeld {
+  readonly message: MessageDescriptor
+  readonly values?: Readonly<Record<string, string | number>>
+}
+
+/**
+ * Why a new claim cannot start, said about starting one. A stage that opens
+ * only some questions names them, so the reader knows where filing is open
+ * rather than only that it is shut here.
+ */
+const filingHeldIn = (reason: string | null, round: FilingRound | null): FilingHeld => {
+  const opens = round?.opens
+  if (reason === 'item-out-of-scope' && opens !== null && opens !== undefined) {
+    return opens.items === ''
+      ? { message: m.entriesHeldItemScopeSome }
+      : { message: m.entriesHeldItemScopeOnly, values: { items: opens.items, more: opens.more } }
+  }
+  return filingHeldOf(reason, round)
+}
+
 /** what the owner may put into one question now, and what to say where they may not */
 export interface Filing {
   /** filing belongs on this question at all, and the gate did not hide it */
@@ -631,7 +663,7 @@ export interface Filing {
   /** ...but the phase has shut it for now */
   readonly shut: boolean
   /** why it is shut, said about starting a claim */
-  readonly why: Said | null
+  readonly why: FilingHeld | null
   /** the gate's reason code, for the data hook beside the sentence */
   readonly reason: string | null
   /** the gate's own state, for the key's data hook */
@@ -653,7 +685,7 @@ export const filingOf = (
   entries: readonly EntryDto[],
   gate: FilingGateDto | undefined,
   /** the round's stage, for saying which one shut filing */
-  round: RoundState | null = null,
+  round: FilingRound | null = null,
 ): Filing => {
   const live = entries.filter((entry) => entry.status !== 'voided')
   const granted = item.itemType === 'constant'
@@ -674,7 +706,7 @@ export const filingOf = (
   return {
     mayAdd,
     shut,
-    why: shut ? filingHeldOf(gate.create.reason, round) : null,
+    why: shut ? filingHeldIn(gate.create.reason, round) : null,
     reason: shut ? gate.create.reason : null,
     gate: gate?.create.state ?? 'available',
     full,

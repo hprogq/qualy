@@ -2067,6 +2067,75 @@ describe('where filing is shut', () => {
     expect(tray.element().querySelector('[data-testid="file-claim"]')).toBeNull()
   })
 
+  // A stage that opens only some questions says which, where it holds filing
+  // on another: the reader learns where filing is open, not only that it is
+  // shut here. A few by name, and how many past them.
+  it('names the questions a stage opens where it holds filing on another', async () => {
+    await page.viewport(1440, 900)
+    const stage = (items: readonly { id: string; title: string }[]) => ({
+      getTimeline: () =>
+        Effect.succeed({
+          timeline: [
+            {
+              phaseId: 'p1',
+              displayName: '集中填报',
+              entryNote: '',
+              status: 'ended',
+              description: '',
+              entry: { kind: 'entered', at: '2026-03-01T00:00:00.000Z' },
+              scope: { items: null, participantsLimited: false },
+            },
+            {
+              phaseId: 'p2',
+              displayName: '补充提交',
+              entryNote: '',
+              status: 'current',
+              description: '',
+              entry: { kind: 'entered', at: '2026-04-01T00:00:00.000Z' },
+              scope: { items, participantsLimited: false },
+            },
+          ],
+        }),
+    })
+    const named = (n: number) => ({ id: itemId(n), title: `品德题目 ${String(n)}` })
+    const held = page.getByTestId('filing-held')
+
+    const two = await workspace({
+      route: `${base}?open=${itemId(1)}`,
+      stubs: { ...filing('item-out-of-scope'), ...stage([named(3), named(4)]) },
+    })
+    await expect
+      .element(held)
+      .toHaveAttribute('data-said', 'assessment/entries/held-item-scope-only')
+    expect(held.element().textContent).toContain('品德题目 3')
+    expect(held.element().textContent).toContain('品德题目 4')
+    await two.unmount()
+
+    // five of them: three by name, the rest counted
+    const five = await workspace({
+      route: `${base}?open=${itemId(1)}`,
+      stubs: {
+        ...filing('item-out-of-scope'),
+        ...stage([3, 4, 5, 6, 7].map(named)),
+      },
+    })
+    await expect
+      .element(held)
+      .toHaveAttribute('data-said', 'assessment/entries/held-item-scope-only')
+    expect(held.element().textContent).toContain('品德题目 5')
+    expect(held.element().textContent).not.toContain('品德题目 6')
+    await five.unmount()
+
+    // none that can be named: said as some
+    await workspace({
+      route: `${base}?open=${itemId(1)}`,
+      stubs: { ...filing('item-out-of-scope'), ...stage([]) },
+    })
+    await expect
+      .element(held)
+      .toHaveAttribute('data-said', 'assessment/entries/held-item-scope-some')
+  })
+
   // A route with nowhere to stand for the reader is no stage's doing: the
   // key's place says so from the first look, not after a filled-in form.
   it('says a route with nowhere to stand for the reader, in place of its key', async () => {

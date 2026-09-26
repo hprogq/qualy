@@ -33,7 +33,7 @@ import {
   movingOn,
   outlineOf,
   totalsOf,
-  type RoundState,
+  type FilingRound,
   type Viewer,
 } from './model.ts'
 
@@ -337,8 +337,8 @@ export interface WorkspaceProps {
   onOpen: (id: string, history: 'push' | 'replace') => void
   /** the owner's filing gates, per question */
   gates?: ReadonlyMap<string, FilingGateDto>
-  /** where the round stands, for saying which stage shut filing */
-  round?: RoundState
+  /** where the round stands, for saying which stage shut filing and what it opens */
+  round?: FilingRound
   busy: boolean
   refreshing: boolean
   onRefresh: () => void
