@@ -163,6 +163,7 @@ function Results({ batch, participantId }: { batch: BatchDto; participantId: str
           }
           roster={beside ? list('column') : undefined}
           listed={walk.here}
+          onListMoved={walk.refresh}
           onView={(next) => address({ view: next === 'entries' ? '' : next })}
           onEntry={(id) => address({ entry: id }, { history: 'push' })}
           // a number leads to the claim behind it: the tab, its question

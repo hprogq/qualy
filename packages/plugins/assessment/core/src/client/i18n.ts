@@ -6370,10 +6370,15 @@ const i18n = definePluginMessages({
       defaultMessage: '{total} on the list',
     }),
     // the list beside an open account, walked from one person to the next
-    rosterWalkHeading: { id: 'assessment/roster/walk-heading', defaultMessage: 'Roster' },
+    rosterWalkHeading: { id: 'assessment/roster/walk-heading', defaultMessage: 'Participants' },
     rosterWalkOpen: defineMessage<{ place: string }>()({
       id: 'assessment/roster/walk-open',
-      defaultMessage: 'Roster, {place}',
+      defaultMessage: 'Participants, {place}',
+    }),
+    /** what to type in the list's search, short enough for the column it stands in */
+    rosterWalkSearch: defineMessage<{ businessNo: string }>()({
+      id: 'assessment/roster/walk-search',
+      defaultMessage: 'Name or {businessNo}',
     }),
     rosterWalkOff: { id: 'assessment/roster/walk-off', defaultMessage: 'Not on this list' },
     rosterWalkFiltered: { id: 'assessment/roster/walk-filtered', defaultMessage: 'Filtered' },

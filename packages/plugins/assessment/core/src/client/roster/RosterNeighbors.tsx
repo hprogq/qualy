@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState, type CSSProperties, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
@@ -61,6 +61,17 @@ const styles = stylex.create({
   glyph: { width: 16, height: 16 },
 })
 
+/**
+ * A key with nowhere to step keeps a ghost's clear ground and only fades.
+ * The widget library grounds a disabled icon key in the muted grey, which
+ * on a ghost reads as the key being hovered or held - and these two can
+ * stand disabled for as long as the list is loading, or the person is off it.
+ */
+const RESTING = {
+  '--mantine-color-disabled': 'transparent',
+  '--mantine-color-disabled-border': 'transparent',
+} as CSSProperties
+
 export function RosterNeighbors({
   walk,
   onOpen,
@@ -104,6 +115,7 @@ export function RosterNeighbors({
         aria-label={format(m.rosterPrevious)}
         title={format(m.rosterPrevious)}
         disabled={previous === null}
+        style={RESTING}
         onClick={() => previous !== null && onOpen(previous.id, previous.page)}
       >
         <ChevronLeftIcon aria-hidden {...stylex.props(styles.glyph)} />
@@ -116,7 +128,10 @@ export function RosterNeighbors({
           data-testid="roster-walk-open"
           aria-haspopup="dialog"
           aria-expanded={listing}
-          aria-label={format(m.rosterWalkOpen, { place })}
+          // the place, once there is one to say
+          aria-label={
+            place === '' ? format(m.rosterWalkHeading) : format(m.rosterWalkOpen, { place })
+          }
           onClick={() => setListing(true)}
           {...stylex.props(styles.opener)}
         >
@@ -130,6 +145,7 @@ export function RosterNeighbors({
         aria-label={format(m.rosterNext)}
         title={format(m.rosterNext)}
         disabled={next === null}
+        style={RESTING}
         onClick={() => next !== null && onOpen(next.id, next.page)}
       >
         <ChevronRightIcon aria-hidden {...stylex.props(styles.glyph)} />

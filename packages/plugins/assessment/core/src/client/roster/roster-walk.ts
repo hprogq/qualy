@@ -56,10 +56,18 @@ export interface RosterWalk {
   readonly rows: readonly WalkRow[]
   /** how many the question holds; null until it is answered */
   readonly total: number | null
+  /** how many the rows on screen answered, stale or not, so a count is not blanked by typing */
+  readonly lastTotal: number | null
   /** the open person, where the rows hold them */
   readonly here: WalkRow | null
   /** the list does not hold the open person: filtered out, or taken off it */
   readonly off: boolean
+  /** whether the list has settled where the open person stands, or that it cannot say */
+  readonly placed: boolean
+  /** the first person this question holds, from its first page however far the rows read are from it */
+  readonly first: () => Promise<WalkRow | null>
+  /** the rows may have moved under a live round: read what is near again, the rest when it is near */
+  readonly refresh: () => void
   /**
    * The people either side of the open person; where the list let go of
    * them while they were open, either side of the place they left.
@@ -251,6 +259,7 @@ export function useRosterWalk({
   const latest = useRef({ optionsOf, onPage, page: view.page })
   latest.current = { optionsOf, onPage, page: view.page }
   const [missing, setMissing] = useState<string | null>(null)
+  const [unasked, setUnasked] = useState<string | null>(null)
   const locate =
     active && answered !== undefined && !stale && !anchor.isFetching && here === null
       ? `${person}|${String(anchor.dataUpdatedAt)}`
@@ -272,7 +281,9 @@ export function useRosterWalk({
       },
       // not knowing where they stand is not their being off the list: the
       // keys stay put and the next answer asks again
-      () => {},
+      () => {
+        if (!gone) setUnasked(locate)
+      },
     )
     return () => {
       gone = true
@@ -288,6 +299,21 @@ export function useRosterWalk({
   }, [herePage])
 
   const off = here === null && missing !== null && missing.startsWith(`${person}|`)
+  // settled either way: held, off, or asked about without an answer
+  const placed = here !== null || off || (locate !== null && unasked === locate)
+
+  // Coming to a page the live round has moved since it was read - stepping
+  // down the list reads on around the next person - reads the pages either
+  // side of it again, which a wake-up left for later (see `refresh`).
+  useEffect(() => {
+    if (!active) return
+    for (const page of [view.page - 1, view.page + 1]) {
+      if (page < 1) continue
+      const key = latest.current.optionsOf(page).queryKey
+      if (queryClient.getQueryState(key)?.isInvalidated !== true) continue
+      void queryClient.refetchQueries({ queryKey: key, exact: true, type: 'active' })
+    }
+  }, [active, view.page, queryClient])
 
   /** a page asked for beside the address's that did not come back, asked again */
   const again = (page: number) => {
@@ -303,8 +329,33 @@ export function useRosterWalk({
     stale,
     rows,
     total,
+    lastTotal: answered?.total ?? null,
     here,
     off,
+    placed,
+    first: () =>
+      queryClient
+        .fetchQuery({ ...latest.current.optionsOf(1), staleTime: FRESH })
+        .then((answer) => rowsOf(answer)[0] ?? null),
+    refresh: () => {
+      // Every page read goes stale; only the address's and the pages either
+      // side of it are read again now. A reader deep in a long list would
+      // otherwise send a request per page read on every burst of wake-ups;
+      // the rest are read again once they are near whoever is open.
+      void queryClient.invalidateQueries({
+        queryKey: query.assessment.listParticipantAccounts.key(),
+        refetchType: 'none',
+      })
+      const { optionsOf: ask, page } = latest.current
+      for (const near of [page - 1, page, page + 1]) {
+        if (near < 1) continue
+        void queryClient.refetchQueries({
+          queryKey: ask(near).queryKey,
+          exact: true,
+          type: 'active',
+        })
+      }
+    },
     previous,
     next,
     narrowed: view.q.trim() !== '' || rosterFiltered(view),

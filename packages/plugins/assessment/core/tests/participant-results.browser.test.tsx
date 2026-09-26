@@ -1253,14 +1253,20 @@ describe('the list beside an open account', () => {
    * test has since dealt with.
    */
   const paged =
-    (asked: Request[], dealtWith: ReadonlySet<string> = new Set()) =>
+    (
+      asked: Request[],
+      dealtWith: ReadonlySet<string> = new Set(),
+      people: readonly ReturnType<typeof participant>[] = PEOPLE,
+    ) =>
     (request: Request) => {
       asked.push(request)
       const words = request.query?.['q'] ?? ''
       const waiting = request.query?.['attention'] !== undefined
-      const matched = PEOPLE.filter(
+      const standing = request.query?.['status']
+      const matched = people.filter(
         (one) =>
           (words === '' || one.displayName.includes(words) || one.businessNo.includes(words)) &&
+          (standing === undefined || one.status === standing) &&
           !(waiting && dealtWith.has(one.id)),
       )
       const size = Number(request.query?.['limit'] ?? 20)
@@ -1293,10 +1299,19 @@ describe('the list beside an open account', () => {
   const shelled = (
     route: string,
     stubs: Record<string, unknown> = {},
-    dealtWith: ReadonlySet<string> = new Set(),
+    {
+      dealtWith = new Set<string>(),
+      people = PEOPLE,
+      locale = 'zh-CN',
+    }: {
+      dealtWith?: ReadonlySet<string>
+      people?: readonly ReturnType<typeof participant>[]
+      locale?: 'zh-CN' | 'en-US'
+    } = {},
   ) => {
     const asked: Request[] = []
     const rendered = renderScreen({
+      locale,
       client: fakeClient({
         app: {
           getManifest: () =>
@@ -1312,7 +1327,7 @@ describe('the list beside an open account', () => {
         },
         assessment: {
           getBatch: () => Effect.succeed({ batch }),
-          listParticipantAccounts: paged(asked, dealtWith),
+          listParticipantAccounts: paged(asked, dealtWith, people),
           listParticipantScores: () => Effect.succeed({ scores: [] }),
           // the reader's own desk, which a decided round is read again for
           getMyOverview: () => Effect.never,
@@ -1395,7 +1410,7 @@ describe('the list beside an open account', () => {
     expect(list.element().getBoundingClientRect().top).toBeGreaterThanOrEqual(halves.bottom)
     await expect.poll(offCentre).toBeLessThanOrEqual(rowHeight())
     // named, so a reader moving by landmarks finds it
-    await expect.element(column.getByRole('navigation', { name: '参评人员' })).toBeInTheDocument()
+    await expect.element(column.getByRole('navigation', { name: '参评名单' })).toBeInTheDocument()
   })
 
   it('keeps room for a handful of rows on a short window, the column scrolling whole', async () => {
@@ -1621,7 +1636,7 @@ describe('the list beside an open account', () => {
     await page.viewport(1280, 800)
     const { said, watchBatch } = line()
     const dealtWith = new Set<string>()
-    const { rendered } = shelled(at(8, '&list-waiting=any'), { watchBatch }, dealtWith)
+    const { rendered } = shelled(at(8, '&list-waiting=any'), { watchBatch }, { dealtWith })
     await rendered
     await expect.poll(() => current()?.dataset['participant']).toBe(personId(8))
     await expect.poll(() => watchBatch.mock.calls.length).toBeGreaterThan(0)
@@ -1647,10 +1662,387 @@ describe('the list beside an open account', () => {
   it('does not step from somebody the list never held', async () => {
     await page.viewport(1280, 800)
     const dealtWith = new Set([personId(8)])
-    await shelled(at(8, '&list-waiting=any'), {}, dealtWith).rendered
+    await shelled(at(8, '&list-waiting=any'), {}, { dealtWith }).rendered
     const strip = page.getByTestId('roster-neighbors')
     await expect.element(strip).toHaveAttribute('data-off', 'true')
     await expect.element(strip.getByRole('button', { name: '下一位' })).toBeDisabled()
     await expect.element(strip.getByRole('button', { name: '上一位' })).toBeDisabled()
+  })
+})
+
+// The list beside an account as a reader works it: the open person told
+// apart from a row under the pointer, keys that say plainly there is nowhere
+// to step, Enter that answers the words it was pressed on, keys along the
+// rows, and a list that can say it failed or found nobody - and that reads
+// again only what is near when the round moves.
+describe('working the list beside an open account', () => {
+  const personId = (n: number) => `22222222-2222-4222-8222-${String(n).padStart(12, '0')}`
+  const NONE_WAITING = { inReview: 0, toSupplement: 0, reconsidering: 0, toRevise: 0, blocked: 0 }
+  const peopleOf = (count: number) =>
+    Array.from({ length: count }, (_, index) =>
+      participant({
+        id: personId(index + 1),
+        displayName: `参评人${String(index + 1).padStart(2, '0')}`,
+        businessNo: `2023${String(100_000 + index + 1)}`,
+      }),
+    )
+  const PEOPLE = peopleOf(45)
+  const paged =
+    (asked: Request[], people: readonly ReturnType<typeof participant>[] = PEOPLE) =>
+    (request: Request) => {
+      asked.push(request)
+      const words = request.query?.['q'] ?? ''
+      const standing = request.query?.['status']
+      const matched = people.filter(
+        (one) =>
+          (words === '' || one.displayName.includes(words) || one.businessNo.includes(words)) &&
+          (standing === undefined || one.status === standing) &&
+          !(request.query?.['attention'] !== undefined && one.id === personId(8)),
+      )
+      const size = Number(request.query?.['limit'] ?? 20)
+      const last = Math.max(1, Math.ceil(matched.length / size))
+      let at = Math.min(Math.max(1, Number(request.query?.['page'] ?? 1)), last)
+      const around = matched.findIndex((one) => one.id === request.query?.['around'])
+      if (around >= 0) at = Math.floor(around / size) + 1
+      return Effect.succeed({
+        items: matched
+          .slice((at - 1) * size, at * size)
+          .map((one) => ({ ...one, filings: NONE_WAITING })),
+        total: matched.length,
+        page: at,
+        pageSize: size,
+      })
+    }
+  const rail = [
+    {
+      id: 'assessment/batch-results/rail',
+      label: { kind: 'literal' as const, value: '参评名单' },
+      target: {
+        kind: 'page',
+        pageId: 'assessment/batch-results',
+        path: '/assessment/batches/:batchId/results',
+      },
+      order: 10,
+    },
+  ]
+  const shelled = (
+    route: string,
+    stubs: Record<string, unknown> = {},
+    {
+      people = PEOPLE,
+      locale = 'zh-CN',
+    }: { people?: readonly ReturnType<typeof participant>[]; locale?: 'zh-CN' | 'en-US' } = {},
+  ) => {
+    const asked: Request[] = []
+    const rendered = renderScreen({
+      locale,
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              pages: PAGES,
+              collections: {
+                'app-shell/navigation-groups': [],
+                'app-shell/navigation-primary': [],
+                'workspace-shell/navigation': rail,
+              },
+            }),
+        },
+        assessment: {
+          getBatch: () => Effect.succeed({ batch }),
+          listParticipantAccounts: paged(asked, people),
+          listParticipantScores: () => Effect.succeed({ scores: [] }),
+          getMyOverview: () => Effect.never,
+          getParticipant: (request: Request) =>
+            Effect.succeed({
+              participant:
+                people.find((one) => one.id === request.params?.['participantId']) ?? people[0],
+            }),
+          getParticipantResult: () => Effect.succeed(account),
+          listRosterUnits: () => Effect.succeed({ units: [] }),
+          listUserTypeOptions: () => Effect.succeed({ userTypes: [] }),
+          listReviewInbox: () =>
+            Effect.succeed({ items: [], nextCursor: null, handledToday: 0, judging: false }),
+          listParticipantEntries: () =>
+            Effect.succeed({ participantId: PARTICIPANT_ID, entries: [], nextCursor: null }),
+          listItems: () => Effect.succeed({ items: [item], version: 1 }),
+          listScoreGroups: () => Effect.succeed({ groups: [], version: 1 }),
+          ...stubs,
+        },
+      }),
+      route,
+      children: (
+        <Routes>
+          <Route element={<WorkspaceShell />}>
+            <Route
+              path="/assessment/batches/:batchId/results"
+              element={<ParticipantResultsPage />}
+            />
+          </Route>
+        </Routes>
+      ),
+    })
+    return { asked, rendered }
+  }
+  const at = (n: number, rest = '') =>
+    `/assessment/batches/${BATCH_ID}/results?participant=${personId(n)}${rest}`
+  const current = () =>
+    document.querySelector<HTMLElement>('[data-testid="roster-walk-row"][aria-current="true"]')
+  const rowOf = (n: number) =>
+    document.querySelector<HTMLElement>(
+      `[data-testid="roster-walk-row"][data-participant="${personId(n)}"]`,
+    )!
+  const walkList = () => page.getByTestId('roster-walk')
+
+  it('tells the open person apart from a row under the pointer', async () => {
+    await page.viewport(1280, 800)
+    await shelled(at(23, '&list-page=2')).rendered
+    await expect.poll(() => current()?.dataset['participant']).toBe(personId(23))
+    // a bar at the open row's edge, on no other
+    expect(getComputedStyle(current()!, '::before').width).toBe('2px')
+    expect(getComputedStyle(rowOf(24), '::before').content).toBe('none')
+    // and the ground a hovered row takes is lighter than the open row's
+    await userEvent.hover(rowOf(24))
+    await expect
+      .poll(() => getComputedStyle(rowOf(24)).backgroundColor)
+      .not.toBe('rgba(0, 0, 0, 0)')
+    expect(getComputedStyle(rowOf(24)).backgroundColor).not.toBe(
+      getComputedStyle(current()!).backgroundColor,
+    )
+    // the open row does not change under the pointer
+    const resting = getComputedStyle(current()!).backgroundColor
+    await userEvent.hover(current()!)
+    await new Promise((settle) => setTimeout(settle, 200))
+    expect(getComputedStyle(current()!).backgroundColor).toBe(resting)
+  })
+
+  it('leaves a key with nowhere to step on a clear ground, only faded', async () => {
+    await page.viewport(1280, 800)
+    await shelled(at(8, '&list-waiting=any')).rendered
+    const strip = page.getByTestId('roster-neighbors')
+    await expect.element(strip).toHaveAttribute('data-off', 'true')
+    for (const name of ['上一位', '下一位']) {
+      const key = strip.getByRole('button', { name })
+      await expect.element(key).toBeDisabled()
+      expect(getComputedStyle(key.element()).backgroundColor).toBe('rgba(0, 0, 0, 0)')
+    }
+  })
+
+  it('names the way to the list by the place, and says only the list before it knows one', async () => {
+    await page.viewport(834, 1112)
+    try {
+      await shelled(at(23, '&list-page=2'), {
+        listParticipantAccounts: () => Effect.never,
+      }).rendered
+      const opener = page.getByTestId('roster-walk-open')
+      await expect.element(opener).toBeVisible()
+      // a name, not a name trailing off into a comma
+      const name = opener.element().getAttribute('aria-label') ?? ''
+      expect(name).not.toBe('')
+      expect(name).not.toMatch(/[,，、]\s*$/)
+    } finally {
+      await page.viewport(1280, 800)
+    }
+  })
+
+  it('keeps the count up while new words are answered', async () => {
+    await page.viewport(1280, 800)
+    const pages = paged([])
+    await shelled(at(23, '&list-page=2'), {
+      listParticipantAccounts: (request: Request) =>
+        request.query?.['q'] === undefined ? pages(request) : Effect.never,
+    }).rendered
+    await expect.element(walkList()).toHaveAttribute('data-total', '45')
+    const count = () => walkList().element().querySelector('[data-slot="count"]')
+    expect(count()?.textContent).toBe('45')
+    await walkList().getByRole('searchbox').fill('参评人0')
+    await expect.poll(() => addressNow()).toContain('list-q=')
+    await expect
+      .element(walkList().getByTestId('roster-walk-scroller'))
+      .toHaveAttribute('aria-busy', 'true')
+    expect(count()?.textContent).toBe('45')
+  })
+
+  it('says what to type in a search that fits the column, in English too', async () => {
+    await page.viewport(1280, 800)
+    await shelled(at(23, '&list-page=2'), {}, { locale: 'en-US' }).rendered
+    await expect.element(walkList().getByRole('searchbox')).toBeVisible()
+    const field = walkList().getByRole('searchbox').element() as HTMLInputElement
+    await expect.poll(() => field.placeholder).not.toBe('')
+    const style = getComputedStyle(field)
+    const ruler = document.createElement('canvas').getContext('2d')!
+    ruler.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
+    const room = field.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+    expect(ruler.measureText(field.placeholder).width).toBeLessThanOrEqual(room)
+  })
+
+  it('opens the first on Enter only for the words it was pressed on', async () => {
+    await page.viewport(1440, 900)
+    const pages = paged([])
+    await shelled(at(23, '&list-page=2'), {
+      // where the open person stands cannot be asked for these words
+      listParticipantAccounts: (request: Request) =>
+        request.query?.['around'] !== undefined && request.query?.['q'] === '参评人1'
+          ? Effect.fail(apiError('BAD'))
+          : pages(request),
+    }).rendered
+    await expect.poll(() => current()?.dataset['participant']).toBe(personId(23))
+    const search = walkList().getByRole('searchbox')
+    await search.fill('参评人1')
+    await search.click()
+    await userEvent.keyboard('{Enter}')
+    await expect.poll(() => addressNow()).toContain('list-q=')
+    await new Promise((settle) => setTimeout(settle, 500))
+    // nobody could say whether they were found: nobody is opened
+    expect(addressNow()).toContain(`participant=${personId(23)}`)
+    // other words, answered later, open nobody without a press of their own
+    await search.fill('参评人0')
+    await expect.element(page.getByTestId('roster-walk-off')).toBeVisible()
+    await new Promise((settle) => setTimeout(settle, 500))
+    expect(addressNow()).toContain(`participant=${personId(23)}`)
+    await search.click()
+    await userEvent.keyboard('{Enter}')
+    await expect.poll(() => addressNow()).toContain(`participant=${personId(1)}`)
+  })
+
+  it('opens the first on Enter however far the rows read are from it', async () => {
+    await page.viewport(1440, 900)
+    // Somebody the list of the waiting does not hold, with a page far down it
+    // open, and the page before it slow to come: the rows read stay where
+    // they started.
+    const people = peopleOf(100)
+    const pages = paged([], people)
+    await shelled(
+      at(8, '&list-waiting=any&list-page=4'),
+      {
+        listParticipantAccounts: (request: Request) =>
+          request.query?.['page'] === '3' && request.query?.['around'] === undefined
+            ? Effect.never
+            : pages(request),
+      },
+      { people },
+    ).rendered
+    await expect.element(page.getByTestId('roster-walk-off')).toBeVisible()
+    await expect
+      .poll(() => document.querySelectorAll('[data-testid="roster-walk-row"]').length)
+      .toBeGreaterThan(0)
+    await new Promise((settle) => setTimeout(settle, 300))
+    // the rows read do not start at the first
+    const top = document.querySelector('[data-testid="roster-walk-row"]')!
+    expect(Number(top.getAttribute('data-position'))).toBeGreaterThan(1)
+    await walkList().getByRole('searchbox').click()
+    await userEvent.keyboard('{Enter}')
+    await expect.poll(() => addressNow()).toContain(`participant=${personId(1)}`)
+  })
+
+  it('says the list could not be read, and reads it again on a press', async () => {
+    await page.viewport(1280, 800)
+    const pages = paged([])
+    const answer = { fail: true }
+    await shelled(at(23, '&list-page=2'), {
+      listParticipantAccounts: (request: Request) =>
+        answer.fail ? Effect.fail(apiError('BAD')) : pages(request),
+    }).rendered
+    await expect.element(walkList()).toHaveAttribute('data-state', 'failed')
+    answer.fail = false
+    await walkList().getByRole('button', { name: '重试' }).click()
+    await expect.poll(() => current()?.dataset['participant']).toBe(personId(23))
+    await expect.element(walkList()).toHaveAttribute('data-state', 'ready')
+  })
+
+  it('offers to clear what narrows a list that finds nobody', async () => {
+    await page.viewport(1280, 800)
+    await shelled(at(23, '&list-page=2&list-status=excluded')).rendered
+    await expect.element(walkList()).toHaveAttribute('data-state', 'empty')
+    await expect.element(page.getByTestId('roster-walk-filtered')).toBeVisible()
+    await page.getByTestId('roster-walk-empty').getByRole('button', { name: '清除筛选' }).click()
+    await expect.poll(() => addressNow()).not.toContain('list-status=')
+    await expect.poll(() => current()?.dataset['participant']).toBe(personId(23))
+    // words that find nobody, and the way back from them
+    await walkList().getByRole('searchbox').fill('无此人')
+    await expect.element(walkList()).toHaveAttribute('data-state', 'empty')
+    await page.getByTestId('roster-walk-empty').getByRole('button', { name: '清除搜索' }).click()
+    await expect.poll(() => addressNow()).not.toContain('list-q=')
+    await expect.element(walkList().getByRole('searchbox')).toHaveValue('')
+    await expect.poll(() => current()?.dataset['participant']).toBe(personId(23))
+  })
+
+  it('moves along the rows by keys, with one stop on the tab order', async () => {
+    await page.viewport(1280, 800)
+    await shelled(at(23, '&list-page=2')).rendered
+    await expect.poll(() => current()?.dataset['participant']).toBe(personId(23))
+    const stops = () =>
+      [...document.querySelectorAll<HTMLElement>('[data-testid="roster-walk-row"]')]
+        .filter((row) => row.tabIndex === 0)
+        .map((row) => row.dataset['participant'])
+    const focused = () => (document.activeElement as HTMLElement | null)?.dataset['participant']
+    // the list is one stop, at the open person
+    expect(stops()).toEqual([personId(23)])
+    const search = walkList().getByRole('searchbox')
+    await search.click()
+    await userEvent.keyboard('{ArrowDown}')
+    expect(focused()).toBe(personId(23))
+    await userEvent.keyboard('{ArrowDown}')
+    expect(focused()).toBe(personId(24))
+    // the stop goes where the focus went
+    expect(stops()).toEqual([personId(24)])
+    await userEvent.keyboard('{Home}')
+    const top = [...document.querySelectorAll<HTMLElement>('[data-testid="roster-walk-row"]')][0]!
+    expect(document.activeElement).toBe(top)
+    // up from the first row is back in the search
+    await userEvent.keyboard('{ArrowUp}')
+    expect(document.activeElement).toBe(search.element())
+    // Escape takes the words away before anything else
+    await search.fill('参评人2')
+    await expect.poll(() => addressNow()).toContain('list-q=')
+    await userEvent.keyboard('{Escape}')
+    await expect.poll(() => addressNow()).not.toContain('list-q=')
+    await expect.element(search).toHaveValue('')
+  })
+
+  it('reads again only the pages near the open person when the round moves', async () => {
+    await page.viewport(1280, 800)
+    const said = { wake: (_kind: string) => {} }
+    const watchBatch = vi.fn(() =>
+      Effect.succeed(
+        Stream.callback<{ kind: string }>((queue) =>
+          Effect.sync(() => {
+            said.wake = (kind) => void Queue.offerUnsafe(queue, { kind })
+          }),
+        ),
+      ),
+    )
+    const { asked, rendered } = shelled(
+      at(23, '&list-page=2'),
+      { watchBatch },
+      { people: peopleOf(160) },
+    )
+    await rendered
+    await expect.poll(() => current()?.dataset['participant']).toBe(personId(23))
+    const scroller = page.getByTestId('roster-walk-scroller').element()
+    const furthest = () => Math.max(...asked.map((one) => Number(one.query?.['page'] ?? 1)))
+    // the reader scrolls a long way down the list
+    await expect
+      .poll(
+        () => {
+          scroller.scrollTop = scroller.scrollHeight
+          return furthest()
+        },
+        { timeout: 10_000 },
+      )
+      .toBeGreaterThanOrEqual(6)
+    await new Promise((settle) => setTimeout(settle, 300))
+    const before = asked.length
+    said.wake('entries-changed')
+    await expect.poll(() => asked.length, { timeout: 4_000 }).toBeGreaterThan(before)
+    await new Promise((settle) => setTimeout(settle, 600))
+    const again = new Set(
+      asked
+        .slice(before)
+        .filter((one) => one.query?.['around'] === undefined)
+        .map((one) => Number(one.query?.['page'] ?? 1)),
+    )
+    expect([...again].sort()).toEqual([1, 2, 3])
   })
 })

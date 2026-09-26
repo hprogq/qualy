@@ -106,6 +106,7 @@ const styles = stylex.create({
     listStyleType: 'none',
   },
   row: {
+    position: 'relative',
     display: 'flex',
     width: '100%',
     height: 34,
@@ -114,10 +115,7 @@ const styles = stylex.create({
     borderWidth: 0,
     borderRadius: tokens.radiusMd,
     paddingInline: 8,
-    backgroundColor: {
-      default: 'transparent',
-      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
-    },
+    backgroundColor: 'transparent',
     fontFamily: 'inherit',
     fontSize: 14,
     textAlign: 'start',
@@ -128,10 +126,30 @@ const styles = stylex.create({
     transitionProperty: 'background-color',
     transitionDuration: '150ms',
   },
+  // a row somebody could open answers the pointer, lighter than the open one
+  rowOther: {
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 45%, transparent)`,
+    },
+  },
+  // The open person, told apart by more than a shade: the ground a hovered
+  // row only borrows, their name in weight, and a bar at the row's edge,
+  // which holds in either scheme and in a sheet as well as the column.
   rowOn: {
     fontWeight: 600,
-    backgroundColor: { default: tokens.surfaceMuted, ':hover': tokens.surfaceMuted },
+    backgroundColor: tokens.surfaceMuted,
     cursor: 'default',
+    '::before': {
+      content: '""',
+      position: 'absolute',
+      insetInlineStart: 0,
+      top: 7,
+      bottom: 7,
+      width: 2,
+      borderRadius: 2,
+      backgroundColor: tokens.foreground,
+    },
   },
   // a mark before the name where something of theirs waits on somebody,
   // in the warning colour where nobody can take it; its place is kept on
@@ -377,25 +395,41 @@ export function RosterWalkList({
 
   // Enter in the search opens the first person it finds, once the list
   // answers the words typed; somebody already open who is found stays open.
-  const [opening, setOpening] = useState(false)
+  // It answers the one press, for the words it was pressed on: words typed
+  // after it, the box left, or a list that cannot answer, and it is dropped
+  // rather than left waiting to open somebody nobody asked for.
+  const [opening, setOpening] = useState<string | null>(null)
+  const asking = useRef(walk.question)
+  asking.current = walk.question
   useEffect(() => {
-    if (!opening || walk.stale || walk.state !== 'ready') return
-    if (search.draft.trim() !== view.q.trim()) return
-    if (walk.here !== null) {
-      setOpening(false)
+    if (opening === null) return
+    if (search.draft.trim() !== opening) {
+      setOpening(null)
       return
     }
-    if (!walk.off && walk.rows.length > 0) return
-    setOpening(false)
-    const first = walk.rows[0]
-    if (first !== undefined && first.position === 1) onOpen(first.id, first.page)
+    if (view.q.trim() !== opening || walk.stale) return
+    if (walk.state === 'failed') {
+      setOpening(null)
+      return
+    }
+    if (walk.state !== 'ready' || !walk.placed) return
+    setOpening(null)
+    // found, nobody to open, or nobody could say whether they were found
+    if (walk.here !== null || !walk.off || walk.total === 0) return
+    const question = walk.question
+    void walk.first().then(
+      (first) => {
+        if (first !== null && asking.current === question) onOpen(first.id, first.page)
+      },
+      () => {},
+    )
   }, [opening, walk, search.draft, view.q, onOpen])
 
   const onFieldKey = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') {
       event.preventDefault()
       search.flush()
-      setOpening(true)
+      setOpening(search.draft.trim())
     } else if (event.key === 'ArrowDown') {
       const rows = rowButtons()
       const target = rows.find((row) => row.dataset['participant'] === stop) ?? rows[0]
@@ -429,7 +463,13 @@ export function RosterWalkList({
           <h2 id={headingId} {...stylex.props(styles.heading)}>
             {heading}
           </h2>
-          {walk.total !== null && <Count xstyle={styles.count}>{String(walk.total)}</Count>}
+          {/* the last count stays up, faded, while new words are answered,
+              rather than blinking out under every keystroke */}
+          {walk.lastTotal !== null && (
+            <Count xstyle={[styles.count, walk.stale && styles.dim]}>
+              {String(walk.lastTotal)}
+            </Count>
+          )}
         </div>
       )}
       <Input
@@ -437,7 +477,8 @@ export function RosterWalkList({
         type="search"
         name="roster-walk-search"
         value={search.draft}
-        placeholder={format(m.rosterSearch, { businessNo })}
+        // the column is narrow: what to type, with the full words for a reader
+        placeholder={format(m.rosterWalkSearch, { businessNo })}
         aria-label={format(m.rosterSearch, { businessNo })}
         // it looks for somebody else, so nothing of the reader's own belongs in it
         autoComplete="off"
@@ -446,6 +487,7 @@ export function RosterWalkList({
         data-form-type="other"
         onChange={(event) => search.setDraft(event.target.value)}
         onKeyDown={onFieldKey}
+        onBlur={() => setOpening(null)}
         lead={<SearchIcon aria-hidden {...stylex.props(styles.glass)} />}
         tail={walk.stale ? <Spinner aria-label={format(commonMessages.loading)} /> : undefined}
       />
@@ -574,7 +616,7 @@ function WalkEntry({
       title={said.length > 0 ? said.join(' ') : undefined}
       onFocus={onFocus}
       onClick={onOpen}
-      {...stylex.props(styles.row, current && styles.rowOn)}
+      {...stylex.props(styles.row, current ? styles.rowOn : styles.rowOther)}
     >
       <span
         aria-hidden

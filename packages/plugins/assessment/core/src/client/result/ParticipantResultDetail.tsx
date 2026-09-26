@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { ArrowLeftIcon, ChevronDownIcon } from 'lucide-react'
@@ -402,6 +402,7 @@ export function ParticipantResultDetail({
   neighbors,
   roster,
   listed,
+  onListMoved,
   onView,
   onEntry,
   onFollow,
@@ -427,6 +428,8 @@ export function ParticipantResultDetail({
   roster?: ReactNode
   /** who this is as that list read them, said until they are read themselves */
   listed?: ParticipantDto | null
+  /** somebody's claims moved under the live round: the list may say something else now */
+  onListMoved?: () => void
   onView: (next: 'score' | 'entries') => void
   onEntry: (entryId: string) => void
   /** open a claim, its question AND the half it lives on, in one move */
@@ -460,20 +463,20 @@ export function ParticipantResultDetail({
   const refreshQueue = useQueueRefresh(batchId)
 
   // What somebody's claims wait on moves with every claim and round in the
-  // round, and the list beside the account says it on each row: its pages
-  // are read again once a burst of wake-ups has gone quiet, and at the
-  // latest a few seconds after it began, never once per wake-up.
+  // round, and the list beside the account says it on each row: it is read
+  // again once a burst of wake-ups has gone quiet, and at the latest a few
+  // seconds after it began, never once per wake-up. The list itself says
+  // which of its pages are worth reading now.
+  const listMoved = useRef(onListMoved)
+  listMoved.current = onListMoved
   const rosterStirred = useMemo(
     () =>
       settler<null>({
         settle: ROSTER_SETTLE,
         maxWait: ROSTER_MAX_WAIT,
-        fire: () =>
-          void queryClient.invalidateQueries({
-            queryKey: query.assessment.listParticipantAccounts.key(),
-          }),
+        fire: () => listMoved.current?.(),
       }),
-    [queryClient, query],
+    [],
   )
   useEffect(() => () => rosterStirred.cancel(), [rosterStirred])
 
