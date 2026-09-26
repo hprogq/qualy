@@ -593,6 +593,9 @@ describe('reading one question’s claims', () => {
     // names the order in force, and in force only once chosen
     const sort = page.getByRole('combobox', { name: '排序方式' })
     await expect.element(sort).toHaveAttribute('data-order', 'newest')
+    // at a desk too it is a quiet key rather than a field: no box, no chevron
+    expect(getComputedStyle(sort.element()).borderTopColor).toBe('rgba(0, 0, 0, 0)')
+    expect(sort.element().parentElement!.querySelector('[data-position="right"]')).toBeNull()
     await sort.click()
     await expect.element(page.getByRole('option', { name: '最近更新在前' })).toBeVisible()
     // opening the list changes nothing by itself

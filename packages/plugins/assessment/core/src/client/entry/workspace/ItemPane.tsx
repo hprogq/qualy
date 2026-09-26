@@ -337,6 +337,8 @@ const styles = stylex.create({
     alignItems: 'center',
     gap: 6,
     verticalAlign: 'middle',
+    // the filters' size, beside them in the same row
+    fontSize: 13,
     color: tokens.surfaceMutedForeground,
   },
   // positioned, so a row on its way out can leave the flow and still be drawn
@@ -744,9 +746,9 @@ export function ItemPane({
       <Select value={order} onValueChange={(next) => setOrder(next as Order)}>
         <SelectTrigger
           size="sm"
-          // narrower, a quiet key like the search beside it, still saying
-          // the order in force
-          quiet={!wide}
+          // a quiet key at every width: the order is a way of reading the
+          // list, not a field of it, and it still says the order in force
+          quiet
           aria-label={format(m.entriesSortLabel)}
           data-testid="entries-sort"
           data-order={order}
