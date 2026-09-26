@@ -18,8 +18,9 @@ import type { BatchLiveEvent } from '../api.ts'
 // and the alarm is the reader's own copy of the diary.
 //
 // `live` is the degrade signal - false means the screen should fall back to
-// its own polling cadence; `lost` says the channel is down for real, for a
-// screen that tells its reader so.
+// its own polling cadence. For a screen that tells its reader how the line
+// stands, the whole answer goes to `liveStateOf` (@qualy/ui/live-mark): the
+// one rule every such screen shares.
 
 /** past this horizon no timer is set; a screen open for days re-reads anyway */
 const ALARM_HORIZON = 24 * 60 * 60 * 1000

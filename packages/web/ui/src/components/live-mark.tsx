@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, type ComponentProps, type ReactNode } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 
 import { tokens } from '../theme/tokens.stylex.ts'
@@ -18,31 +18,36 @@ import { tokens } from '../theme/tokens.stylex.ts'
 
 export type LiveState = 'live' | 'reconnecting'
 
-/** how long a line may be down before the mark says so */
-const GRACE_MS = 5_000
+/**
+ * What a screen that follows a stream knows of its line, in the shape the
+ * web runtime's `useApiStream` answers with.
+ */
+export interface LiveLine {
+  /** a word has arrived on the connection open now */
+  readonly live: boolean
+  /**
+   * the line is down for real, rather than between a connection that lasted
+   * and its planned re-dial
+   */
+  readonly lost: boolean
+  /** the line has carried a word since the screen opened it */
+  readonly heard: boolean
+}
 
 /**
- * The state to show for a connection flag that may flap.
+ * The state to show for a screen's line.
  *
- * `null` in, nothing out: the screen does not follow, or no longer needs
- * to. Until the line has carried anything there is nothing to say either -
- * a mark that starts on "reconnecting" has never been live. After that,
- * "reconnecting" only once the line has been down past a grace longer than
- * a planned redial and its handshake take: a stream a proxy recycles every
- * minute comes straight back, and saying so each time would be noise.
+ * Every rule is the stream's, since only it knows when it dialled, how long
+ * a connection lived and whether anything ever arrived: a connection that
+ * failed or ended before it proved steady, or a dial left unanswered past
+ * its allowance, is lost; the planned re-dial after one that lasted is not;
+ * and a line that has never carried a word is not reconnecting, it was
+ * never live. `null` in, nothing out: the screen does not follow, or its
+ * subject no longer moves.
  */
-export function useLiveState(live: boolean | null): LiveState | null {
-  const [heard, setHeard] = useState(false)
-  const [lost, setLost] = useState(false)
-  if (live === true && !heard) setHeard(true)
-  if (live === true && lost) setLost(false)
-  useEffect(() => {
-    if (live !== false || !heard) return
-    const timer = setTimeout(() => setLost(true), GRACE_MS)
-    return () => clearTimeout(timer)
-  }, [live, heard])
-  if (live === null || !heard) return null
-  return live || !lost ? 'live' : 'reconnecting'
+export function liveStateOf(line: LiveLine | null): LiveState | null {
+  if (line === null || !line.heard) return null
+  return line.live || !line.lost ? 'live' : 'reconnecting'
 }
 
 const breathe = stylex.keyframes({

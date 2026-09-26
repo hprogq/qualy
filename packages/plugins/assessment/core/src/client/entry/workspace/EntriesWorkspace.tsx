@@ -13,7 +13,7 @@ import { useClaimScreenFoot } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Button } from '@qualy/ui/button'
-import { useLiveState } from '@qualy/ui/live-mark'
+import { liveStateOf, type LiveLine } from '@qualy/ui/live-mark'
 import { Drill } from '@qualy/ui/reveal'
 import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -300,12 +300,12 @@ export interface WorkspaceProps {
   /** what the big figure at its head is */
   totalLabel: string
   /**
-   * Whether the round's wake-ups are arriving, for the mark that says the
-   * account is kept current. Null, or left out, where the page does not keep
-   * it current or it no longer moves - an archived round, a participant
-   * taken off the roster - and no mark is drawn.
+   * The round's wake-up line, for the mark that says the account is kept
+   * current. Null, or left out, where the page does not keep it current or
+   * it no longer moves - an archived round, a participant taken off the
+   * roster - and no mark is drawn.
    */
-  live?: boolean | null
+  live?: LiveLine | null
   rows: readonly StructureRow[]
   entriesByItem: ReadonlyMap<string, readonly EntryDto[]>
   /** every claim this reader may see, for the counts at the head */
@@ -385,7 +385,7 @@ function Workspace({
   mode,
 }: WorkspaceProps & { mode: WorkspaceMode }) {
   const { format } = useI18n()
-  const stream = useLiveState(live)
+  const stream = liveStateOf(live)
   const outline = useMemo(() => outlineOf(rows), [rows])
   const [todoOnly, setTodoOnly] = useState(false)
   // which question's requirements are up in a sheet; leaving the question

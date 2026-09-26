@@ -12,6 +12,7 @@ import * as stylex from '@stylexjs/stylex'
 import { Portion } from '@qualy/ui/reveal'
 import { Button } from '@qualy/ui/button'
 import { Ticker } from '@qualy/ui/ticker'
+import { LiveMark, type LiveState } from '@qualy/ui/live-mark'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AlignLeftIcon, BarChart3Icon, ChevronDownIcon, ChevronRightIcon } from 'lucide-react'
@@ -79,11 +80,6 @@ const LINES_SHOWN = 6
 const INDENT = 14
 const REDUCE = '@media (prefers-reduced-motion: reduce)'
 
-const breathe = stylex.keyframes({
-  '0%': { opacity: 0.7, transform: 'scale(0.6)' },
-  '70%, 100%': { opacity: 0, transform: 'scale(1.6)' },
-})
-
 /** a reader the stages keep out of nothing, one stable value across renders */
 const NONE_SHUT: ReadonlyMap<string, FilingShut> = new Map()
 /** a reader who files on nothing */
@@ -127,46 +123,6 @@ const styles = stylex.create({
     letterSpacing: '-0.02em',
   },
   totalLabel: { margin: 0, fontSize: 13, fontWeight: 500, color: tokens.mutedForeground },
-  // the account keeping time with the round, and the way back when it lost it
-  live: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 6,
-    height: 22,
-    paddingInline: 8,
-    borderRadius: 6,
-    backgroundColor: `color-mix(in oklab, ${tokens.success} 12%, transparent)`,
-    fontSize: 12,
-    fontWeight: 500,
-    whiteSpace: 'nowrap',
-    color: tokens.successForeground,
-  },
-  liveLost: { backgroundColor: tokens.surfaceMuted, color: tokens.surfaceMutedForeground },
-  liveDot: {
-    position: 'relative',
-    width: 6,
-    height: 6,
-    flexShrink: 0,
-    borderRadius: 9999,
-    backgroundColor: tokens.success,
-    // a slow ring that says the line is open; still where motion is not wanted
-    '::after': {
-      content: '""',
-      position: 'absolute',
-      inset: -3,
-      borderRadius: 9999,
-      backgroundColor: `color-mix(in oklab, ${tokens.success} 45%, transparent)`,
-      opacity: 0,
-      animationName: { default: breathe, [REDUCE]: 'none' },
-      animationDuration: '2.4s',
-      animationTimingFunction: 'cubic-bezier(0.4, 0, 0.6, 1)',
-      animationIterationCount: 'infinite',
-    },
-  },
-  liveDotLost: {
-    backgroundColor: tokens.warning,
-    '::after': { animationName: 'none' },
-  },
   totalRow: {
     display: 'flex',
     alignItems: 'baseline',
@@ -994,7 +950,7 @@ export function ResultLedger({
   /** what a question opens to: its lines on the account, or every claim read in place */
   fold?: 'account' | 'claims'
   /** whether the page is keeping the account current as the round moves */
-  stream?: 'live' | 'reconnecting' | null
+  stream?: LiveState | null
   /** the questions the reader may file another claim on right now */
   addable?: ReadonlySet<string>
   /** where another claim is filed on a question; the button says where that is */
@@ -1220,7 +1176,7 @@ function Head({
   heading: ReactNode | undefined
   reader: 'owner' | 'staff'
   closed: 'archived' | 'excluded' | null
-  stream: 'live' | 'reconnecting' | null
+  stream: LiveState | null
 }) {
   const { format } = useI18n()
   return (
@@ -1235,18 +1191,9 @@ function Head({
           {/* the account follows the round as it moves; a closed one no
               longer moves, which the note under the total says */}
           {stream !== null && (
-            <span
-              role="status"
-              data-testid="result-live"
-              data-state={stream}
-              {...stylex.props(styles.live, stream === 'reconnecting' && styles.liveLost)}
-            >
-              <span
-                aria-hidden
-                {...stylex.props(styles.liveDot, stream === 'reconnecting' && styles.liveDotLost)}
-              />
+            <LiveMark state={stream} data-testid="result-live">
               {format(m.resultLive, { state: stream })}
-            </span>
+            </LiveMark>
           )}
         </div>
         <div {...stylex.props(styles.totalRow)}>

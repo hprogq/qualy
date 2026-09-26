@@ -11,6 +11,7 @@ import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { useLingering } from '@qualy/ui/use-lingering'
+import { liveStateOf } from '@qualy/ui/live-mark'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import type { EntryDto, FilingGateDto, ItemDto } from '../entry/model.ts'
@@ -176,11 +177,7 @@ function Standing({
   // Wake-ups say "read again" and name what moved: a decision moves the
   // account, a filing moves the counts beside it, and a change to the paper
   // moves how the account is laid out.
-  // every connection opens with a catch-up signal, which the page's own
-  // alarm clock never sends: the first one says the line has carried
-  const [heard, setHeard] = useState(false)
-  const { live, lost } = useBatchLive(batchId, (kind) => {
-    if (kind === 'sync') setHeard(true)
+  const line = useBatchLive(batchId, (kind) => {
     const stale = (key: readonly unknown[]) => void queryClient.invalidateQueries({ queryKey: key })
     switch (kind) {
       case 'sync':
@@ -208,7 +205,7 @@ function Standing({
   // tells the claims or the paper that the round moved, and an account read
   // afresh beside claims read long ago counts one claim twice: approved on
   // its line and still under review beside it.
-  const cadence = live ? 120_000 : 30_000
+  const cadence = line.live ? 120_000 : 30_000
   const result = useQuery({
     ...query.assessment.getMyResult.queryOptions({ params: { batchId } }),
     refetchInterval: cadence,
@@ -361,12 +358,10 @@ function Standing({
     if (items.error !== null) void items.refetch()
     if (mine.error !== null) void mine.refetch()
   }
-  // Whether the page is keeping time with the round. Until the line has
-  // carried anything nothing is said; a connection the server ends after
-  // serving a while is followed by a planned re-dial, which the stream does
-  // not count as lost. A read beside the account that failed has already
-  // said the page may be behind, which "live" would contradict.
-  const stream = !heard || stale !== null ? null : lost ? 'reconnecting' : 'live'
+  // What the mark by the heading says, by the rule the filing page's mark
+  // keeps. A read beside the account that failed has already said the page
+  // may be behind, which "live" would contradict.
+  const stream = stale === null ? liveStateOf(line) : null
   const readFailedAgain = () => {
     if (result.error !== null) void result.refetch()
     readsAgain()

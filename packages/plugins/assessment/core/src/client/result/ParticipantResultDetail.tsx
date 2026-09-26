@@ -411,7 +411,7 @@ export function ParticipantResultDetail({
   // exactly what it could have changed. Invalidating everything on every
   // event would throw away the roster, the paper and the batch on a wake-up
   // about one claim, which is a page that flickers for no reason.
-  const { live } = useBatchLive(batchId, (kind) => {
+  const line = useBatchLive(batchId, (kind) => {
     const stale = (key: readonly unknown[]) => void queryClient.invalidateQueries({ queryKey: key })
     const account = () => {
       stale(
@@ -845,7 +845,7 @@ export function ParticipantResultDetail({
                 withdraw: writable && mayRecord,
                 record: writable && mayRecord,
               }}
-              live={live}
+              line={line}
               closed={!writable || participant?.status === 'excluded'}
               onEntry={onEntry}
             />

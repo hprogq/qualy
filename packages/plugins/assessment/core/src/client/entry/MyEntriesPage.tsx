@@ -131,7 +131,7 @@ function Body({
   // Wake-ups from the server, mapped to the exact reads they stale. The
   // workspace redraws itself from fresh answers; nothing here touches the
   // form a person may be filling - the open dialog holds its own snapshot.
-  const { live } = useBatchLive(batchId, (kind) => {
+  const { live, lost, heard } = useBatchLive(batchId, (kind) => {
     const stale = (key: readonly unknown[]) => void queryClient.invalidateQueries({ queryKey: key })
     switch (kind) {
       // a phase switch may have flipped every capability on this screen, so
@@ -392,7 +392,7 @@ function Body({
           viewer="owner"
           heading={format(m.myEntriesTab)}
           totalLabel={format(m.entriesCountedTotal)}
-          live={closed ? null : live}
+          live={closed ? null : { live, lost, heard }}
           rows={rows}
           entriesByItem={entriesByItem}
           entries={entries}

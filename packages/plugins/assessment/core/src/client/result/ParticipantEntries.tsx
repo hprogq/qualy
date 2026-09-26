@@ -17,6 +17,7 @@ import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { toast } from '@qualy/ui/toast'
 import { useLingering } from '@qualy/ui/use-lingering'
+import type { LiveLine } from '@qualy/ui/live-mark'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentApi } from '../api.ts'
@@ -103,7 +104,7 @@ export function ParticipantEntries({
   participantId,
   entryId,
   may,
-  live,
+  line,
   closed,
   onEntry,
 }: {
@@ -117,8 +118,8 @@ export function ParticipantEntries({
     /** recording a finding into a question the office records */
     readonly record: boolean
   }
-  /** whether the round's wake-ups are arriving; without them the queue polls */
-  live: boolean
+  /** the round's wake-up line; while no word arrives on it the queue polls */
+  line: LiveLine
   /** the round is archived or this person is off it: nothing here moves any more */
   closed: boolean
   onEntry: (entryId: string) => void
@@ -144,7 +145,7 @@ export function ParticipantEntries({
   const queue = useQuery({
     ...useReviewQueueQuery(batchId),
     enabled: reviews,
-    refetchInterval: live ? 60_000 : 30_000,
+    refetchInterval: line.live ? 60_000 : 30_000,
   })
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
   const groups = useQuery(query.assessment.listScoreGroups.queryOptions({ params: { batchId } }))
@@ -341,7 +342,7 @@ export function ParticipantEntries({
             open={openItem}
             // the workspace says which moves the back key undoes, as on the owner's page
             onOpen={(id, how) => address({ open: id }, { history: how })}
-            live={closed ? null : live}
+            live={closed ? null : line}
             busy={intervene.isPending || reopen.isPending || redetermine.isPending}
             refreshing={entries.isFetching || result.isFetching}
             onRefresh={() => {

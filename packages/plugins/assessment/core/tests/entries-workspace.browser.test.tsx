@@ -919,6 +919,42 @@ describe('the head of the structure', () => {
     await expect.element(live()).toHaveAttribute('data-state', 'live')
   })
 
+  // The same rule as the score page's mark, which is the stream's own: a
+  // line that drops before it proved steady is lost the moment it drops,
+  // not after a grace of the page's own.
+  it('says it is reconnecting as soon as a line drops before it proved steady', async () => {
+    await page.viewport(1440, 900)
+    // The first connection to speak says hello and drops; the ones after it
+    // stay silent. It speaks a moment after it is dialled, so the dial a
+    // remount abandons at once never does.
+    let dropped = 0
+    await workspace({
+      route: `${base}?open=${itemId(1)}`,
+      stubs: {
+        watchBatch: () =>
+          Effect.succeed(
+            dropped > 0
+              ? Stream.never
+              : Stream.fromEffect(
+                  Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 50))).pipe(
+                    Effect.map(() => {
+                      dropped = Date.now()
+                      return { kind: 'sync' as const }
+                    }),
+                  ),
+                ),
+          ),
+      },
+    })
+    await expect.element(page.getByRole('heading', { name: '品德题目 1' })).toBeVisible()
+    await expect.poll(() => dropped, { timeout: 3_000 }).toBeGreaterThan(0)
+    await expect
+      .poll(() => live().element().getAttribute('data-state'), { timeout: 2_500 })
+      .toBe('reconnecting')
+    // well inside the five seconds a grace of the page's own would have waited
+    expect(Date.now() - dropped).toBeLessThan(4_000)
+  })
+
   // An account that no longer moves is not said to be kept current.
   it('says nothing about keeping current once the round is archived', async () => {
     await page.viewport(1440, 900)

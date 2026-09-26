@@ -1843,15 +1843,27 @@ describe('a round that moves while the page is open', () => {
 
   it('says it is reconnecting when the line cannot be held open', async () => {
     const paper = normal()
-    let dials = 0
-    // the first connection says hello and drops at once; the next ones stay silent
-    const watchBatch = () => {
-      dials += 1
-      return Effect.succeed(dials === 1 ? Stream.make({ kind: 'sync' as const }) : Stream.never)
-    }
+    // The first connection to speak says hello and drops at once; the ones
+    // after it stay silent. It speaks a moment after it is dialled, so the
+    // dial a remount abandons at once never does: what that one carried
+    // was never the page's line.
+    let spoke = false
+    const watchBatch = () =>
+      Effect.succeed(
+        spoke
+          ? Stream.never
+          : Stream.fromEffect(
+              Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 50))).pipe(
+                Effect.map(() => {
+                  spoke = true
+                  return { kind: 'sync' as const }
+                }),
+              ),
+            ),
+      )
     await screen(paper, { watchBatch })
+    await expect.poll(() => spoke).toBe(true)
     const live = page.getByTestId('result-live')
-    await expect.element(live).toBeInTheDocument()
     await expect
       .poll(() => live.element().getAttribute('data-state'), { timeout: 8_000 })
       .toBe('reconnecting')
