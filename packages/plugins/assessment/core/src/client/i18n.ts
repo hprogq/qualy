@@ -134,6 +134,22 @@ const openStage = defineMessage<{ name: string }>()({
   defaultMessage: 'Stage details: {name}',
 })
 
+// what a stage narrows filing to: the plan's rows, the stage panel, the flow
+const scopeItemsTag = defineMessage<{ count: number }>()({
+  id: 'assessment/plan/scope-items-tag',
+  defaultMessage: '{count, plural, one {Only # item} other {Only # items}}',
+})
+
+const scopePeopleKept = defineMessage<{ count: number }>()({
+  id: 'assessment/phase/scope-people-kept',
+  defaultMessage: '{count, plural, one {Only # person} other {Only # people}}',
+})
+
+const scopePicked = defineMessage<{ count: number; total: number }>()({
+  id: 'assessment/phase/scope-picked',
+  defaultMessage: '{count} of {total}',
+})
+
 // what a batch is, in one line: who it assesses and which materials count
 const batchSummary = defineMessage<{ count: number; from: string; until: string }>()({
   id: 'assessment/batch/summary',
@@ -5734,8 +5750,7 @@ const i18n = definePluginMessages({
     },
     phasesHint: {
       id: 'assessment/phase/hint',
-      defaultMessage:
-        'Configure stage order, start times, and the actions available during each stage.',
+      defaultMessage: 'Arrange the stages and when each begins, and choose what each one opens',
     },
     phasesEmpty: {
       id: 'assessment/phase/empty',
@@ -5877,6 +5892,36 @@ const i18n = definePluginMessages({
       id: 'assessment/profile/hint',
       defaultMessage: 'Applies only during this stage and does not change global role permissions.',
     },
+
+    // which items and people a stage is for
+    scopeItemsTag,
+    scopePeopleTag: { id: 'assessment/plan/scope-people-tag', defaultMessage: 'Some participants' },
+    stageScopeLegend: { id: 'assessment/phase/scope-legend', defaultMessage: 'Open to' },
+    scopeHint: {
+      id: 'assessment/phase/scope-hint',
+      defaultMessage:
+        'Items left out cannot be filed or changed during this stage. Reviews go on as usual',
+    },
+    scopeItemsLabel: { id: 'assessment/phase/scope-items', defaultMessage: 'Items' },
+    scopeItemsAll: { id: 'assessment/phase/scope-items-all', defaultMessage: 'All items' },
+    scopeItemsSome: { id: 'assessment/phase/scope-items-some', defaultMessage: 'Selected items' },
+    scopeItemsPick: {
+      id: 'assessment/phase/scope-items-pick',
+      defaultMessage: 'Select at least one item',
+    },
+    scopeItemsIdle: {
+      id: 'assessment/phase/scope-items-idle',
+      defaultMessage: 'Open a filing action above to limit items',
+    },
+    scopeItemsNone: { id: 'assessment/phase/scope-items-none', defaultMessage: 'No items yet' },
+    scopePicked,
+    scopeSelectAll: { id: 'assessment/phase/scope-select-all', defaultMessage: 'Select all' },
+    scopePeopleLabel: { id: 'assessment/phase/scope-people', defaultMessage: 'Participants' },
+    scopePeopleAll: {
+      id: 'assessment/phase/scope-people-all',
+      defaultMessage: 'All participants',
+    },
+    scopePeopleKept,
 
     // ------------------------------------------------------------------
     // participants

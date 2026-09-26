@@ -10,9 +10,9 @@ import {
 } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { useI18n } from '@qualy/web-i18n'
+import { useI18n, useList } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
-import { Cell, Status, TableRow } from '@qualy/ui/screen'
+import { Cell, Status, Tag, TableRow } from '@qualy/ui/screen'
 import { assessmentMessages as m } from '../i18n.ts'
 import type { PlanRefusalLike } from '../refusals.ts'
 import type { PhaseDraft, PhaseDto, PlanShape } from './model.ts'
@@ -63,6 +63,13 @@ const styles = stylex.create({
     flexDirection: 'column',
     gap: 2,
   },
+  nameLine: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 6,
+    margin: 0,
+  },
   name: {
     minWidth: 0,
     overflow: 'hidden',
@@ -77,6 +84,12 @@ const styles = stylex.create({
     fontWeight: 400,
     fontStyle: 'italic',
     color: tokens.mutedForeground,
+  },
+  tags: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 4,
   },
   descriptionLine: {
     margin: 0,
@@ -317,6 +330,8 @@ export interface PhaseRowProps {
   readOnly: boolean
   /** the row says something the server does not hold yet */
   unsaved: boolean
+  /** the titles of the items the row alone opens, in paper order */
+  scopeTitles: readonly string[]
   refusals: readonly PlanRefusalLike[]
   sentenceOf: (refusal: PlanRefusalLike) => string
   onDetails: () => void
@@ -329,6 +344,7 @@ export interface PhaseRowProps {
 /** the parts a row and a card both show, so neither can drift from the other */
 function useParts(props: PhaseRowProps) {
   const { format, locale } = useI18n()
+  const listOf = useList()
   const zone = useBatchZone()
   const { draft, phase, index, shape, total, editing, readOnly } = props
   const entered = phase?.actualEntryAt ?? null
@@ -362,6 +378,23 @@ function useParts(props: PhaseRowProps) {
     return parts.format(Math.round(delta / size), unit)
   }
 
+  const itemsLimited = draft.itemScope.length > 0
+  const peopleLimited = draft.participantScope.length > 0
+  const scope = (itemsLimited || peopleLimited) && (
+    <span
+      // what the stage narrows filing to, said as facts: how many items, and
+      // whether it admits only some of the roster
+      data-testid="phase-scope"
+      data-items={String(draft.itemScope.length)}
+      data-people={peopleLimited ? 'limited' : 'all'}
+      title={props.scopeTitles.length > 0 ? listOf(props.scopeTitles) : undefined}
+      {...stylex.props(styles.tags)}
+    >
+      {itemsLimited && <Tag>{format(m.scopeItemsTag, { count: draft.itemScope.length })}</Tag>}
+      {peopleLimited && <Tag>{format(m.scopePeopleTag)}</Tag>}
+    </span>
+  )
+
   const stage = (
     <span {...stylex.props(styles.nameRow)}>
       <span {...stylex.props(styles.ordinal, current && styles.ordinalCurrent)}>{index + 1}</span>
@@ -369,8 +402,15 @@ function useParts(props: PhaseRowProps) {
         <span {...stylex.props(styles.name, draft.displayName === '' && styles.nameAbsent)}>
           {name}
         </span>
-        {draft.description !== '' && (
-          <span {...stylex.props(styles.descriptionLine)}>{draft.description}</span>
+        {/* the name has its line to itself; what the stage is limited to
+            leads the line under it, ahead of the prose that gives way first */}
+        {(scope || draft.description !== '') && (
+          <span {...stylex.props(styles.nameLine)}>
+            {scope}
+            {draft.description !== '' && (
+              <span {...stylex.props(styles.descriptionLine)}>{draft.description}</span>
+            )}
+          </span>
         )}
       </span>
     </span>

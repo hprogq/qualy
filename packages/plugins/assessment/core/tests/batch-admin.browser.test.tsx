@@ -199,6 +199,10 @@ const assessmentStubs = (over: Stubs = {}): Stubs => ({
   listMyStanding: () => Effect.succeed({ items: [] }),
   listMyActivity: () => Effect.succeed({ items: [], nextCursor: null }),
   listTemplates: templates,
+  // the paper a stage's item allowance is chosen from
+  listItems: () => Effect.succeed({ items: [], capabilities: { canManage: true } }),
+  listScoreGroups: () =>
+    Effect.succeed({ groups: [], version: 1, capabilities: { canManage: true } }),
   listScopeOptions: () =>
     Effect.succeed({
       nodes: [{ id: NODE_ID, name: '软件学院', path: 'r.se', depth: 1, orgTypeId: NODE_ID }],
@@ -1453,6 +1457,199 @@ describe('the stage plan', () => {
     await page.getByRole('alertdialog').getByRole('button', { name: '放弃修改' }).click()
     await vi.waitFor(() => expect(unsaved()).toEqual(['false', 'false']))
     expect(held()).toBe(false)
+  })
+
+  describe('a stage that opens only some items', () => {
+    const PAPER_ID = 'c0000000-0000-4000-8000-000000000000'
+    const GROUP_ID = 'c1111111-1111-4111-8111-111111111111'
+    const LANGUAGE_ID = 'c2222222-2222-4222-8222-222222222222'
+    const CONTEST_ID = 'c3333333-3333-4333-8333-333333333333'
+    const item = (id: string, title: string, sortOrder: number) => ({
+      id,
+      batchId: BATCH_ID,
+      itemType: 'evidence',
+      title,
+      scoreGroupId: GROUP_ID,
+      maxEntries: null,
+      sortOrder,
+      status: 'active',
+      voidReason: null,
+      currentRevision: null,
+      createdAt: '2026-03-01T00:00:00.000Z',
+    })
+    const paper = {
+      listItems: () =>
+        Effect.succeed({
+          items: [item(LANGUAGE_ID, '语言技能证书', 0), item(CONTEST_ID, '学科竞赛获奖', 1)],
+          capabilities: { canManage: true },
+        }),
+      listScoreGroups: () =>
+        Effect.succeed({
+          groups: [
+            {
+              id: PAPER_ID,
+              parentGroupId: null,
+              name: '综合素质',
+              cap: null,
+              floor: null,
+              sortOrder: 0,
+              itemCount: 0,
+            },
+            {
+              id: GROUP_ID,
+              parentGroupId: PAPER_ID,
+              name: '创新实践',
+              cap: null,
+              floor: null,
+              sortOrder: 0,
+              itemCount: 2,
+            },
+          ],
+          version: 1,
+          capabilities: { canManage: true },
+        }),
+    }
+    /** a filing stage, then a supplementary one as the test states it */
+    const plan = (supplement: Partial<PhaseDto> = {}) => ({
+      phases: [
+        phase({
+          id: ENTRY_PHASE_ID,
+          phaseKey: 'entry',
+          displayName: '正式填报',
+          permissionProfile: ['assessment.entry.create', 'assessment.entry.submit'],
+        }),
+        phase({
+          id: REVIEW_PHASE_ID,
+          phaseKey: 'supplement',
+          ordinal: 1,
+          displayName: '补充提交',
+          permissionProfile: ['assessment.entry.create', 'assessment.entry.submit'],
+          ...supplement,
+        }),
+      ],
+      planFingerprint: 'plan-scoped',
+    })
+    const sent = (putPhases: { mock: { calls: [Request][] } }) =>
+      putPhases.mock.calls[0]![0].payload!['phases'] as readonly Record<string, unknown>[]
+
+    it('limits a stage to the items ticked, and sends only the allowance it changed', async () => {
+      const putPhases = vi.fn((_request: Request) => Effect.succeed({ phases: [], warnings: [] }))
+      await screen({ ...paper, putPhases, getPhases: () => Effect.succeed(plan()) })
+
+      await page.getByTestId('phase-row').nth(1).getByText('补充提交').click()
+      const panel = page.getByRole('dialog')
+      await panel.getByRole('radio', { name: '仅部分项目' }).click()
+      // chosen, and nothing ticked yet: the stage would still open everything
+      await expect.element(panel.getByTestId('phase-scope-unpicked')).toBeVisible()
+      await panel.getByRole('checkbox', { name: '语言技能证书' }).click()
+      await panel.getByRole('button', { name: '完成' }).click()
+
+      // the row says it is limited, and to how many
+      await expect
+        .element(page.getByTestId('phase-row').nth(1).getByTestId('phase-scope'))
+        .toHaveAttribute('data-items', '1')
+
+      await page.getByRole('button', { name: '保存', exact: false }).click()
+      await vi.waitFor(() => expect(putPhases).toHaveBeenCalledTimes(1))
+      const phases = sent(putPhases)
+      expect(phases[1]).toMatchObject({ itemScope: [LANGUAGE_ID] })
+      // a stage nobody limited says nothing about it, so its stored
+      // allowance is left alone rather than restated
+      expect(phases[0]).not.toHaveProperty('itemScope')
+      expect(phases[0]).not.toHaveProperty('participantScope')
+      expect(phases[1]).not.toHaveProperty('participantScope')
+    })
+
+    it('opens every item again when the limit is taken off', async () => {
+      const putPhases = vi.fn((_request: Request) => Effect.succeed({ phases: [], warnings: [] }))
+      await screen({
+        ...paper,
+        putPhases,
+        getPhases: () => Effect.succeed(plan({ itemScope: [LANGUAGE_ID] })),
+      })
+
+      await expect
+        .element(page.getByTestId('phase-row').nth(1).getByTestId('phase-scope'))
+        .toHaveAttribute('data-items', '1')
+      await page.getByTestId('phase-row').nth(1).getByText('补充提交').click()
+      const panel = page.getByRole('dialog')
+      await expect.element(panel.getByRole('checkbox', { name: '语言技能证书' })).toBeChecked()
+      await panel.getByRole('radio', { name: '全部项目' }).click()
+      await panel.getByRole('button', { name: '完成' }).click()
+      expect(page.getByTestId('phase-scope').elements()).toHaveLength(0)
+
+      await page.getByRole('button', { name: '保存', exact: false }).click()
+      await vi.waitFor(() => expect(putPhases).toHaveBeenCalledTimes(1))
+      // cleared is said out loud: an absent allowance would keep the old one
+      expect(sent(putPhases)[1]).toMatchObject({ itemScope: [] })
+    })
+
+    it('offers no item limit to a stage that opens no filing', async () => {
+      await screen({
+        ...paper,
+        getPhases: () => Effect.succeed(plan({ permissionProfile: ['assessment.review.process'] })),
+      })
+
+      await page.getByTestId('phase-row').nth(1).getByText('补充提交').click()
+      const panel = page.getByRole('dialog')
+      await expect.element(panel.getByRole('radio', { name: '仅部分项目' })).toBeDisabled()
+    })
+
+    it('holds still the allowance a stage that has ended ran under', async () => {
+      await screen({
+        ...paper,
+        getBatch: () =>
+          Effect.succeed({ batch: batch({ status: 'active', currentPhaseId: REVIEW_PHASE_ID }) }),
+        getPhases: () =>
+          Effect.succeed({
+            phases: [
+              phase({
+                id: ENTRY_PHASE_ID,
+                phaseKey: 'entry',
+                displayName: '正式填报',
+                actualEntryAt: '2026-03-01T00:00:00.000Z',
+                permissionProfile: ['assessment.entry.create'],
+                itemScope: [CONTEST_ID],
+              }),
+              phase({
+                id: REVIEW_PHASE_ID,
+                phaseKey: 'review',
+                ordinal: 1,
+                displayName: '审核整理',
+                actualEntryAt: '2026-03-08T00:00:00.000Z',
+              }),
+            ],
+            planFingerprint: 'plan-ended',
+          }),
+      })
+
+      await page.getByTestId('phase-row').first().getByText('正式填报').click()
+      const panel = page.getByRole('dialog')
+      await expect.element(panel.getByRole('radio', { name: '全部项目' })).toBeDisabled()
+      await expect.element(panel.getByRole('checkbox', { name: '学科竞赛获奖' })).toBeDisabled()
+    })
+
+    it('opens a stage kept to some people to everybody again', async () => {
+      const putPhases = vi.fn((_request: Request) => Effect.succeed({ phases: [], warnings: [] }))
+      await screen({
+        ...paper,
+        putPhases,
+        getPhases: () => Effect.succeed(plan({ participantScope: [PARTICIPANT_ID] })),
+      })
+
+      await expect
+        .element(page.getByTestId('phase-row').nth(1).getByTestId('phase-scope'))
+        .toHaveAttribute('data-people', 'limited')
+      await page.getByTestId('phase-row').nth(1).getByText('补充提交').click()
+      const panel = page.getByRole('dialog')
+      await panel.getByRole('radio', { name: '全部参评人' }).click()
+      await panel.getByRole('button', { name: '完成' }).click()
+
+      await page.getByRole('button', { name: '保存', exact: false }).click()
+      await vi.waitFor(() => expect(putPhases).toHaveBeenCalledTimes(1))
+      expect(sent(putPhases)[1]).toMatchObject({ participantScope: [] })
+      expect(sent(putPhases)[1]).not.toHaveProperty('itemScope')
+    })
   })
 
   // A round's times are the school's times. The suite's device keeps

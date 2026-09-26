@@ -22,10 +22,12 @@ import {
   draftOf,
   edits,
   freshDraft,
+  scopesToSend,
   shapeOf,
   type BatchDto,
   type PhaseDraft,
 } from './phase/model.ts'
+import { scopeSections, titlesOf } from './phase/scope.ts'
 import { PhaseCard, PhaseRow, type PhaseRowProps } from './phase/PhaseRow.tsx'
 import { PhaseDetailsPanel } from './phase/PhaseDetailsPanel.tsx'
 import { ScheduleDialog, TemplateDialog, UnscheduleDialog } from './phase/PhaseDialogs.tsx'
@@ -257,6 +259,15 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
   const presets = useQuery(
     query.assessment.listTemplates.queryOptions({ query: { kind: 'phase' } }),
   )
+  // the paper an item allowance is chosen from, and the names a row's
+  // allowance is said in
+  const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId: batch.id } }))
+  const groups = useQuery(
+    query.assessment.listScoreGroups.queryOptions({ params: { batchId: batch.id } }),
+  )
+  const titles = useMemo(() => titlesOf(items.data?.items ?? []), [items.data])
+  const paperOrder = useMemo(() => (items.data?.items ?? []).map((item) => item.id), [items.data])
+
   const rows = useMemo(() => phases.data?.phases ?? [], [phases.data])
   const serverDrafts = useMemo(() => rows.map(draftOf), [rows])
   const storedById = useMemo(
@@ -352,6 +363,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
               description: row.description,
               entryNote: row.entryNote,
               permissionProfile: row.permissionProfile,
+              ...scopesToSend(row, row.id !== undefined ? storedById.get(row.id) : undefined),
             })),
           },
         }),
@@ -497,6 +509,9 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
     readOnly,
     unsaved:
       edited !== null && edits(row, row.id !== undefined ? storedById.get(row.id) : undefined),
+    scopeTitles: paperOrder
+      .filter((id) => row.itemScope.includes(id))
+      .flatMap((id) => titles.get(id) ?? []),
     refusals: refusalsFor(row, index),
     sentenceOf,
     onDetails: () => setActionsAt(index),
@@ -698,7 +713,14 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
 
       <PhaseDetailsPanel
         draft={opened}
+        stored={opened?.id !== undefined ? storedById.get(opened.id) : undefined}
         presets={presets.data?.items ?? []}
+        sections={scopeSections(
+          groups.data?.groups ?? [],
+          items.data?.items ?? [],
+          opened?.itemScope ?? [],
+        )}
+        itemsPending={items.isPending || groups.isPending}
         readOnly={readOnly}
         frozen={actionsAt !== null && actionsAt < shape.currentIndex}
         onDraft={(next) => {

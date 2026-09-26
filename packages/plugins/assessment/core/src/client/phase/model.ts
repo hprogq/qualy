@@ -22,6 +22,10 @@ export interface PhaseDraft {
   /** what the phase waits on; read only while it has no time of its own */
   entryNote: string
   permissionProfile: readonly string[]
+  /** the items it alone opens for filing; empty opens every item */
+  itemScope: readonly string[]
+  /** the roster rows it alone admits; empty admits everybody */
+  participantScope: readonly string[]
 }
 
 export const draftOf = (phase: PhaseDto): PhaseDraft => ({
@@ -31,6 +35,8 @@ export const draftOf = (phase: PhaseDto): PhaseDraft => ({
   description: phase.description,
   entryNote: phase.entryNote,
   permissionProfile: phase.permissionProfile,
+  itemScope: phase.itemScope,
+  participantScope: phase.participantScope,
 })
 
 /** a key no other phase in the plan uses yet */
@@ -47,11 +53,41 @@ export const freshDraft = (taken: readonly { phaseKey: string }[]): PhaseDraft =
   description: '',
   entryNote: '',
   permissionProfile: [],
+  itemScope: [],
+  participantScope: [],
 })
 
-/** a list as a set, so the order things were ticked in is not a change */
+/** one allowance as a set, so the order ids were ticked in is not a change */
 const sameSet = (a: readonly string[], b: readonly string[]) =>
   a.length === b.length && a.every((id) => b.includes(id))
+
+/**
+ * What a save says about the two allowances of one row.
+ *
+ * Only what changed is sent. The server reads an absent allowance as "leave
+ * it", so a row whose allowance nobody touched cannot be refused for it - an
+ * ended stage keeps the allowance it ran under, and restating it, even
+ * unchanged, is a write about a stage that is over.
+ */
+export const scopesToSend = (
+  draft: PhaseDraft,
+  stored: PhaseDraft | undefined,
+): { itemScope?: readonly string[]; participantScope?: readonly string[] } => ({
+  ...(stored === undefined
+    ? draft.itemScope.length > 0
+      ? { itemScope: draft.itemScope }
+      : {}
+    : sameSet(draft.itemScope, stored.itemScope)
+      ? {}
+      : { itemScope: draft.itemScope }),
+  ...(stored === undefined
+    ? draft.participantScope.length > 0
+      ? { participantScope: draft.participantScope }
+      : {}
+    : sameSet(draft.participantScope, stored.participantScope)
+      ? {}
+      : { participantScope: draft.participantScope }),
+})
 
 export interface PlanShape {
   /** how many phases have actually begun */
@@ -113,4 +149,6 @@ export const edits = (row: PhaseDraft, stored: PhaseDraft | undefined): boolean 
   row.displayName !== stored.displayName ||
   row.description !== stored.description ||
   row.entryNote !== stored.entryNote ||
-  !sameSet(row.permissionProfile, stored.permissionProfile)
+  !sameSet(row.permissionProfile, stored.permissionProfile) ||
+  !sameSet(row.itemScope, stored.itemScope) ||
+  !sameSet(row.participantScope, stored.participantScope)

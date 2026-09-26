@@ -1,19 +1,24 @@
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { Field, SidePanel } from '@qualy/ui/admin'
+import { ModeChoice, PickList } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { NativeSelect } from '@qualy/ui/native-select'
+import { Skeleton } from '@qualy/ui/skeleton'
 import { Textarea } from '@qualy/ui/textarea'
 import { assessmentMessages as m } from '../i18n.ts'
 import { PermissionProfileEditor } from '../PermissionProfileEditor.tsx'
 import type { PhaseDraft } from './model.ts'
+import { narrowsByItem, type ScopeSection } from './scope.ts'
 
-// Everything a phase is, in one panel: its name, what it is for, and what it
-// opens. None of it is time, and none of it belongs in a table cell - a name
-// wants room to be read, prose wants room to be written, and eleven
-// permissions with their explanations want more room than a row has.
+// Everything a phase is, in one panel: its name, what it is for, what it
+// opens, and which items and people it opens them for. None of it is time,
+// and none of it belongs in a table cell - a name wants room to be read,
+// prose wants room to be written, and eleven permissions with their
+// explanations want more room than a row has.
 //
 // The table keeps what a table is good at: the order of the phases and where
 // each one stands.
@@ -35,20 +40,181 @@ const styles = stylex.create({
     flexShrink: 1,
     flexBasis: '0%',
   },
+  scope: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.divider,
+  },
+  scopeHead: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+  },
+  legend: {
+    margin: 0,
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  hint: {
+    margin: 0,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  warn: {
+    margin: 0,
+    fontSize: 12,
+    color: tokens.warningForeground,
+  },
+  lists: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  bone: {
+    height: 88,
+    width: '100%',
+    borderRadius: 10,
+  },
 })
+
+/**
+ * Which items and people a stage opens its actions for.
+ *
+ * Kept per row: choosing "selected items" before ticking any is a moment of
+ * this panel, not something the plan can hold - an empty allowance is every
+ * item - so it resets when another stage is opened.
+ */
+function ScopeFields({
+  draft,
+  stored,
+  sections,
+  pending,
+  locked,
+  onDraft,
+}: {
+  draft: PhaseDraft
+  stored: PhaseDraft | undefined
+  sections: readonly ScopeSection[]
+  pending: boolean
+  locked: boolean
+  onDraft: (next: PhaseDraft) => void
+}) {
+  const { format } = useI18n()
+  const [picking, setPicking] = useState(false)
+  const some = picking || draft.itemScope.length > 0
+  // nothing to narrow: the stage opens no filing action, and an allowance
+  // over it would change nothing anybody can do
+  const idle = !narrowsByItem(draft.permissionProfile) && draft.itemScope.length === 0
+  const empty = !pending && sections.length === 0
+  const kept = stored?.participantScope ?? []
+
+  return (
+    <section
+      aria-label={format(m.stageScopeLegend)}
+      data-testid="phase-scope-editor"
+      {...stylex.props(styles.scope)}
+    >
+      <div {...stylex.props(styles.scopeHead)}>
+        <h3 {...stylex.props(styles.legend)}>{format(m.stageScopeLegend)}</h3>
+        <p {...stylex.props(styles.hint)}>{format(m.scopeHint)}</p>
+      </div>
+
+      <ModeChoice
+        legend={format(m.scopeItemsLabel)}
+        value={some ? 'some' : 'all'}
+        disabled={locked || (!some && (idle || empty))}
+        options={[
+          { value: 'all', label: format(m.scopeItemsAll) },
+          { value: 'some', label: format(m.scopeItemsSome) },
+        ]}
+        onChange={(next) => {
+          setPicking(next === 'some')
+          if (next === 'all' && draft.itemScope.length > 0) onDraft({ ...draft, itemScope: [] })
+        }}
+      />
+      {!locked && !some && idle && <p {...stylex.props(styles.hint)}>{format(m.scopeItemsIdle)}</p>}
+      {!locked && !some && !idle && empty && (
+        <p {...stylex.props(styles.hint)}>{format(m.scopeItemsNone)}</p>
+      )}
+      {some && (
+        <div {...stylex.props(styles.lists)}>
+          {pending ? (
+            <Skeleton className={stylex.props(styles.bone).className} />
+          ) : (
+            sections.map((section) => (
+              <PickList
+                key={section.id}
+                title={section.title}
+                count={format(m.scopePicked, {
+                  count: section.items.filter((item) => draft.itemScope.includes(item.id)).length,
+                  total: section.items.length,
+                })}
+                options={section.items.map((item) => ({
+                  value: item.id,
+                  label: item.title,
+                  ...(item.status === 'draft'
+                    ? { note: format(m.itemsStatusDraft) }
+                    : item.status === 'voided'
+                      ? { note: format(m.itemsStatusVoided) }
+                      : {}),
+                }))}
+                selected={draft.itemScope}
+                onChange={(next) => onDraft({ ...draft, itemScope: next })}
+                toggleAllLabel={format(m.scopeSelectAll)}
+                disabled={locked}
+              />
+            ))
+          )}
+          {!locked && draft.itemScope.length === 0 && (
+            <p data-testid="phase-scope-unpicked" {...stylex.props(styles.warn)}>
+              {format(m.scopeItemsPick)}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* the people a stage admits are chosen elsewhere; what can be done here
+          is to open it to everybody again, or keep the list it has */}
+      {kept.length > 0 && (
+        <ModeChoice
+          legend={format(m.scopePeopleLabel)}
+          value={draft.participantScope.length > 0 ? 'kept' : 'all'}
+          disabled={locked}
+          options={[
+            { value: 'all', label: format(m.scopePeopleAll) },
+            { value: 'kept', label: format(m.scopePeopleKept, { count: kept.length }) },
+          ]}
+          onChange={(next) => onDraft({ ...draft, participantScope: next === 'kept' ? kept : [] })}
+        />
+      )}
+    </section>
+  )
+}
 
 export function PhaseDetailsPanel({
   draft,
+  stored,
   presets,
+  sections,
+  itemsPending,
   readOnly,
   frozen,
   onDraft,
   onClose,
 }: {
   draft: PhaseDraft | undefined
+  /** the row as the server holds it, absent for a stage not saved yet */
+  stored: PhaseDraft | undefined
   presets: readonly { id: string; name: string; phases: readonly PresetPhase[] }[]
+  /** the paper an item allowance is chosen from */
+  sections: readonly ScopeSection[]
+  itemsPending: boolean
   readOnly: boolean
-  /** an ended phase keeps its profile as the record of what it allowed */
+  /** an ended phase keeps its profile and allowance as the record of what it allowed */
   frozen: boolean
   onDraft: (next: PhaseDraft) => void
   onClose: () => void
@@ -158,6 +324,16 @@ export function PhaseDetailsPanel({
             profile={draft.permissionProfile}
             disabled={readOnly || frozen}
             onChange={(next) => onDraft({ ...draft, permissionProfile: next })}
+          />
+
+          <ScopeFields
+            key={draft.id ?? draft.phaseKey}
+            draft={draft}
+            stored={stored}
+            sections={sections}
+            pending={itemsPending}
+            locked={readOnly || frozen}
+            onDraft={onDraft}
           />
         </>
       )}
