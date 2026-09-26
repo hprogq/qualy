@@ -20,6 +20,8 @@ export default {
   'auth/picker/units': '组织架构',
   'auth/picker/all-units': '全部组织',
   'auth/picker/no-units': '暂无可用组织',
+  'auth/picker/no-units-hint': '如需在其他组织操作，请联系管理员开通',
+  'auth/picker/no-match-hint': '换个名称或类型再试',
   'auth/picker/expand': '展开或收起',
   'auth/picker/search': '姓名或{businessNo}',
   'auth/picker/any-type': '全部类型',

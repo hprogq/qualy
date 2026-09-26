@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from 'react'
-import { ChevronRightIcon } from 'lucide-react'
+import { ChevronRightIcon, NetworkIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import type { StyleXStyles } from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { Blank } from '@qualy/ui/screen'
 
 // The organization as somebody browsing it sees it: a tree of names.
 //
@@ -12,12 +13,6 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 // same tree serves both, and will serve the organization screen itself.
 
 const styles = stylex.create({
-  emptyNote: {
-    padding: 8,
-    fontSize: '0.875rem',
-    lineHeight: '1.25rem',
-    color: tokens.mutedForeground,
-  },
   list: {
     display: 'flex',
     width: 'max-content',
@@ -170,6 +165,7 @@ const shapeOf = (nodes: readonly OrgTreeNode[]): Shape => {
 export function OrgTree({
   nodes,
   emptyLabel,
+  emptyHint,
   expandLabel,
   selected,
   onSelect,
@@ -200,7 +196,10 @@ export function OrgTree({
   /** rows that are shown and may not be chosen */
   barred?: ReadonlySet<string>
   nodes: readonly OrgTreeNode[]
+  /** what an empty tree says, as the heading of its empty state */
   emptyLabel: string
+  /** what to do about it, under the heading */
+  emptyHint?: string
   expandLabel: string
   selected?: string | null
   onSelect: (node: OrgTreeNode) => void
@@ -211,7 +210,14 @@ export function OrgTree({
 }) {
   const shape = shapeOf(nodes)
   if (nodes.length === 0) {
-    return <p {...stylex.props(styles.emptyNote)}>{emptyLabel}</p>
+    return (
+      <Blank
+        size="compact"
+        icon={<NetworkIcon aria-hidden />}
+        title={emptyLabel}
+        {...(emptyHint === undefined ? {} : { description: emptyHint })}
+      />
+    )
   }
   if (flat === true) {
     return (

@@ -68,6 +68,24 @@ describe('the unit picker', () => {
     )
   })
 
+  // A reader who may browse no unit is told so as a state with what to do,
+  // not a line of grey text at the top of an empty box.
+  it('says there is no unit to choose as a state of its own', async () => {
+    await renderScreen({
+      client: fakeClient({
+        ...world(),
+        identity: {
+          getUserOptions: () =>
+            Effect.succeed({ truncated: false, nodes: [], orgTypes: [], userTypes: [] }),
+        },
+      }),
+      children: <Harness single radio />,
+    })
+    await expect.poll(() => document.querySelector('[data-slot="empty"]')).not.toBeNull()
+    expect(document.querySelector('[data-slot="empty"]')?.getAttribute('data-size')).toBe('compact')
+    expect(page.getByRole('radio').elements()).toHaveLength(0)
+  })
+
   it('points at one unit without marks when nothing asks for them', async () => {
     await renderScreen({ client: fakeClient(world()), children: <Harness single /> })
     await expect

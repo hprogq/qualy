@@ -362,6 +362,7 @@ export function OrgNodeChooser({
           <OrgTree
             nodes={filtering ? matches : nodes}
             emptyLabel={format(filtering ? m.nodeNoMatch : m.pickerNoUnits)}
+            emptyHint={format(filtering ? m.nodeNoMatchHint : m.pickerNoUnitsHint)}
             expandLabel={format(m.pickerExpand)}
             selected={context.value[0] ?? null}
             flat={filtering}

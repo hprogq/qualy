@@ -549,7 +549,15 @@ const i18n = definePluginMessages({
     // choosing people, and choosing a slice of the organization instead
     pickerUnits: { id: 'auth/picker/units', defaultMessage: 'Organization' },
     pickerAllUnits: { id: 'auth/picker/all-units', defaultMessage: 'All units' },
-    pickerNoUnits: { id: 'auth/picker/no-units', defaultMessage: 'No units you can browse.' },
+    pickerNoUnits: { id: 'auth/picker/no-units', defaultMessage: 'No units you can browse' },
+    pickerNoUnitsHint: {
+      id: 'auth/picker/no-units-hint',
+      defaultMessage: 'Ask an administrator for access to the unit you need',
+    },
+    nodeNoMatchHint: {
+      id: 'auth/picker/no-match-hint',
+      defaultMessage: 'Try another name or kind',
+    },
     // the twistie's spoken name; the unit's own name is appended to it
     pickerExpand: { id: 'auth/picker/expand', defaultMessage: 'Fold or unfold' },
     pickerSearch: pickerSearchMessage,
@@ -568,7 +576,7 @@ const i18n = definePluginMessages({
     nodeSearch: { id: 'auth/picker/node-search', defaultMessage: 'Search units' },
     nodeKind: { id: 'auth/picker/node-kind', defaultMessage: 'Kind of unit' },
     nodeAnyKind: { id: 'auth/picker/node-any-kind', defaultMessage: 'Any kind' },
-    nodeNoMatch: { id: 'auth/picker/node-no-match', defaultMessage: 'No unit matches.' },
+    nodeNoMatch: { id: 'auth/picker/node-no-match', defaultMessage: 'No unit matches' },
     pickerChosen,
     pickerChosenElsewhere,
     pickerTotal,
