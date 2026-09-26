@@ -69,6 +69,19 @@ const i18n = definePluginMessages({
       defaultMessage: '{count, plural, one {# event listed} other {# events listed}}',
     },
     loadMore: { id: 'audit/events/load-more', defaultMessage: 'Load more' },
+    // one person's part of the trail, as a section of their record
+    userEvents: { id: 'audit/user-events/title', defaultMessage: 'Audit events' },
+    userEventsAbout: { id: 'audit/user-events/about', defaultMessage: 'Done to them' },
+    userEventsBy: { id: 'audit/user-events/by', defaultMessage: 'Done by them' },
+    userEventsView: { id: 'audit/user-events/view', defaultMessage: 'Which events' },
+    userEventsEmptyAbout: {
+      id: 'audit/user-events/empty-about',
+      defaultMessage: 'Nothing has been done to this account yet',
+    },
+    userEventsEmptyBy: {
+      id: 'audit/user-events/empty-by',
+      defaultMessage: 'This user has not done anything recorded yet',
+    },
     detailRequest: { id: 'audit/events/detail-request', defaultMessage: 'Request' },
     detailTrace: { id: 'audit/events/detail-trace', defaultMessage: 'Trace' },
     detailSource: { id: 'audit/events/detail-source', defaultMessage: 'Source' },

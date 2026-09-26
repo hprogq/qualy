@@ -9,6 +9,7 @@
     ".": "./src/index.ts",
     "./api": "./src/api.ts",
     "./client/AuditEventsPage": "./src/client/AuditEventsPage.tsx",
+    "./client/UserAuditPage": "./src/client/UserAuditPage.tsx",
     "./client/api": "./src/client/api.ts",
     "./client/i18n": "./src/client/i18n.ts",
     "./db": "./src/db/entities.ts",
@@ -42,6 +43,7 @@
     "lucide-react": "^0.552.0"
   },
   "devDependencies": {
+    "@qualy/testkit": "workspace:*",
     "@qualy/tsconfig": "workspace:*",
     "@types/react": "catalog:"
   }

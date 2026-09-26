@@ -1219,6 +1219,9 @@ importers:
         specifier: 'catalog:'
         version: 19.2.8
     devDependencies:
+      '@qualy/testkit':
+        specifier: workspace:*
+        version: link:../../../testkit/browser
       '@qualy/tsconfig':
         specifier: workspace:*
         version: link:../../../build/tsconfig

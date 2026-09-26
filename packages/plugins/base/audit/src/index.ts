@@ -5,7 +5,14 @@ import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
 import { Audit } from '@qualy/audit-contract/plugin'
 import { message } from '@qualy/i18n-contract'
-import { APP_SHELL, PUBLIC, navigationGroups, permissionOf } from '@qualy/ui-contract'
+import {
+  APP_SHELL,
+  PUBLIC,
+  USER_DETAIL_SHELL,
+  navigationGroups,
+  permissionOf,
+  userDetailNavigation,
+} from '@qualy/ui-contract'
 import { auditApiGroup } from './api.ts'
 import { entities } from './db/entities.ts'
 import { permissions } from './permissions.ts'
@@ -40,11 +47,35 @@ const plugin = Plugin.define(
       group: 'audit/records',
     },
   }),
+  // One person's part of the trail, as a section of their record: filed
+  // into the user-detail shell the way any plugin that keeps something per
+  // person files one, for whoever may read the trail
+  Ui.page({
+    id: 'audit/user-events',
+    path: '/organization/users/:userId/audit',
+    component: Ui.react('./client/UserAuditPage'),
+    layout: USER_DETAIL_SHELL,
+    title: message('audit/user-events/title', 'Audit events'),
+    visibility: permissionOf('audit.event.read'),
+  }),
   // A heading of its own inside the organization application: reading what
   // was done is a different errand from arranging who may do it. The parent
   // is named by id - a group nobody registered leaves this one top-level.
   Ui.surfaces({
     collections: [
+      {
+        collection: userDetailNavigation,
+        id: 'audit/user-detail/events',
+        value: {
+          id: 'audit/user-detail/events',
+          label: message('audit/user-events/title', 'Audit events'),
+          target: { kind: 'page', pageId: 'audit/user-events' },
+          icon: 'clipboard-list',
+          // after every section about who the person is and what they hold
+          order: 40,
+        },
+        visibility: permissionOf('audit.event.read'),
+      },
       {
         collection: navigationGroups,
         id: 'audit/records',
