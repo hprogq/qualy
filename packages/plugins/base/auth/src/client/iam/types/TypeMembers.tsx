@@ -1,6 +1,12 @@
 import { useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { useApiQuery, usePageHref, usePageNavigate } from '@qualy/web-runtime'
+import {
+  loadFailureKind,
+  useApiQuery,
+  useLoadFailure,
+  usePageHref,
+  usePageNavigate,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
@@ -26,14 +32,17 @@ import { authApi } from '../../api.ts'
 // The type's page said how many there are and nothing about who, and "860
 // people hold this type, so it cannot be disabled" left the reader to find
 // them through the roster's filter. Reading people is a grant of its own: a
-// reader without it gets no card rather than an empty one.
+// reader without it gets no card rather than an empty one. A reading that
+// failed for any other reason is said in the card, with another try, rather
+// than taking the card away as though the reader had no such grant.
 
 const PER_PAGE = 20
 
 export function TypeMembers({ userTypeId }: { userTypeId: string }) {
   const query = useApiQuery(authApi)
   const navigate = usePageNavigate()
-  const { format, formatError } = useI18n()
+  const { format } = useI18n()
+  const describe = useLoadFailure()
   const businessNo = useTerm(authTerms.businessNumber)
   const [page, setPage] = useState(1)
   const personReachable = usePageHref('auth/user-detail', { params: { userId: '0' } }) !== undefined
@@ -57,18 +66,25 @@ export function TypeMembers({ userTypeId }: { userTypeId: string }) {
     enabled: root !== undefined,
     placeholderData: keepPreviousData,
   })
-  if (options.isError || (options.isSuccess && root === undefined)) return null
+  const withheld = options.isError && loadFailureKind(options.error) === 'denied'
+  if (withheld || (options.isSuccess && root === undefined)) return null
   const items = people.data?.items ?? []
+  const failure = options.isError
+    ? describe.of(options.error)
+    : people.isError
+      ? describe.of(people.error)
+      : null
 
   return (
     <Card data-testid="type-members" data-total={people.data?.total ?? 0}>
       <CardHead title={format(m.typeMembersTitle)} />
       <AsyncSection
-        pending={options.isPending || people.isPending}
-        error={people.isError ? formatError(people.error) : null}
+        pending={failure === null && (options.isPending || people.isPending)}
+        error={failure}
+        retrying={options.isFetching || people.isFetching}
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
-        onRetry={() => void people.refetch()}
+        onRetry={() => void (options.isError ? options.refetch() : people.refetch())}
       >
         {items.length === 0 ? (
           <CardEmpty>{format(m.usersEmpty)}</CardEmpty>

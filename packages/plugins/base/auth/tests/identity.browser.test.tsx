@@ -214,6 +214,36 @@ describe('user types screen', () => {
       .toHaveAttribute('href', '/admin/user-types')
   })
 
+  // The people of a type: a reader without the grant to read people gets no
+  // card, and a reading that failed otherwise is said in the card instead of
+  // passing for that.
+  it('says in the card that its people could not be read, and hides it only from those who may not', async () => {
+    const mountWith = (getUserOptions: () => unknown) =>
+      renderScreen({
+        client: fakeClient(
+          stubs({
+            identity: {
+              listUserTypes: () =>
+                Effect.succeed({ userTypes: [userType()], capabilities: { canManage: false } }),
+              getUserOptions,
+            },
+          }),
+        ),
+        route: `/admin/user-types/${USER_TYPE_ID}`,
+        path: '/admin/user-types/:typeId',
+        children: <UserTypePage />,
+      })
+    await mountWith(() => Effect.fail(apiError('INTERNAL_FAILURE')))
+    const card = page.getByTestId('type-members')
+    await expect.element(card).toBeInTheDocument()
+    await expect
+      .poll(() =>
+        card.element().querySelector('[data-slot="resource-state"]')?.getAttribute('data-state'),
+      )
+      .toBe('failed')
+    await expect.element(card.getByRole('button', { name: '重试' })).toBeVisible()
+  })
+
   it('shows no management controls to a reader who may not manage', async () => {
     await renderScreen({
       client: fakeClient(
