@@ -165,4 +165,40 @@ describe('choosing who a finding is about by unit', () => {
     await expect.element(units.getByRole('checkbox', { name: '软件学院' })).toBeVisible()
     expect(units.getByRole('checkbox', { name: '本科生' }).elements()).toHaveLength(0)
   })
+
+  // Stacked on a phone, the tree, the kinds and the people it comes to are
+  // one column the dialog's body scrolls through, each below the last -
+  // squeezed to the body's height, they were drawn over one another.
+  it('stacks the units, the kinds and the people without laying one over another', async () => {
+    await page.viewport(390, 700)
+    try {
+      const many = Array.from({ length: 20 }, (_, n) => ({
+        id: `p-${n}`,
+        userId: `u-${n}`,
+        displayName: `同学${n}`,
+        businessNo: `2023${String(n).padStart(4, '0')}`,
+        userTypeId: UNDERGRADUATE,
+        anchorNodeId: CLASS_A,
+        anchorPath: 'r.a.a1',
+        status: 'active',
+      }))
+      await open({
+        listParticipants: () => Effect.succeed({ items: many, nextCursor: 'more' }),
+      })
+      await page.getByRole('button', { name: '按组织选择' }).click()
+      await page.getByTestId('record-units').getByRole('checkbox', { name: '软件 2301 班' }).click()
+      await expect.element(page.getByTestId('unit-roster')).toBeVisible()
+
+      // where each one's drawing ends, which is past its own box when the
+      // box was squeezed smaller than what it holds
+      const end = (element: Element) => element.getBoundingClientRect().top + element.scrollHeight
+      const tree = page.getByRole('region', { name: '组织单位' }).element()
+      const kinds = page.getByRole('group', { name: '人员类型' }).element()
+      const people = page.getByTestId('unit-roster').element()
+      expect(kinds.getBoundingClientRect().top).toBeGreaterThanOrEqual(end(tree) - 1)
+      expect(people.getBoundingClientRect().top).toBeGreaterThanOrEqual(end(kinds) - 1)
+    } finally {
+      await page.viewport(1280, 800)
+    }
+  })
 })

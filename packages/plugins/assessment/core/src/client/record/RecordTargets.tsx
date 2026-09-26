@@ -52,6 +52,11 @@ const styles = stylex.create({
     display: 'grid',
     minHeight: 0,
     flexGrow: 1,
+    // Side by side, the two halves share the body's height and scroll each
+    // inside itself. Stacked, they are one column the body scrolls through,
+    // and a column squeezed to the body's height laid the tree, the kinds
+    // and the people over one another.
+    flexShrink: { default: 0, [breakpoints.desktop]: 1 },
     gap: 16,
     gridTemplateColumns: { default: null, [breakpoints.desktop]: 'minmax(0, 1fr) minmax(0, 1fr)' },
   },
