@@ -6,7 +6,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { recordedOnly, trimAmount, type EntryDto, type ItemDto } from '../model.ts'
 import { useCalcLine } from './calc.ts'
-import { meterStyles } from './marks.tsx'
+import { meterStyles, SectionMeter } from './marks.tsx'
 import { chainNamesOf, type StructureRow } from '../standing.ts'
 import { chainOf, short, two, type Outline } from './model.ts'
 
@@ -62,7 +62,6 @@ const styles = stylex.create({
     borderRadius: 2,
     backgroundColor: tokens.surfaceMuted,
   },
-  barThin: { height: 3 },
   barFill: { display: 'block', borderRadius: 2 },
   chain: { display: 'flex', flexDirection: 'column', gap: 12 },
   section: {
@@ -79,7 +78,7 @@ const styles = stylex.create({
   sectionLine: {
     display: 'flex',
     minWidth: 0,
-    alignItems: 'baseline',
+    alignItems: 'center',
     gap: 8,
     fontSize: 13,
     fontVariantNumeric: 'tabular-nums',
@@ -260,6 +259,9 @@ export function Requirements({
                         {format(m.entriesSectionFull)}
                       </span>
                     )}
+                    {/* how full it is, beside its figure as the structure
+                        draws it: a bar under each line read as rules */}
+                    {scored && cap !== null && cap > 0 && <SectionMeter got={got} cap={cap} />}
                     <span {...stylex.props(styles.keep)} data-scored={scored}>
                       <b>{scored ? short(section.right === '' ? '0' : section.right) : '–'}</b>
                       <span {...stylex.props(styles.muted)}>
@@ -269,17 +271,6 @@ export function Requirements({
                       </span>
                     </span>
                   </span>
-                  {cap !== null && cap > 0 && (
-                    <span {...stylex.props(styles.bar, styles.barThin)}>
-                      <Portion
-                        share={scored ? Math.max(0, Math.min(100, (got / cap) * 100)) : 0}
-                        className={
-                          stylex.props(styles.barFill, full ? meterStyles.full : meterStyles.fill)
-                            .className
-                        }
-                      />
-                    </span>
-                  )}
                 </button>
               )
             })}

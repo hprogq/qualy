@@ -1,13 +1,12 @@
 import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
-import { Portion } from '@qualy/ui/reveal'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { trimAmount, type EntryDto } from '../model.ts'
 import type { StructureRow } from '../standing.ts'
 import { useCalcLine } from './calc.ts'
-import { meterStyles, SectionMeter, UnreadMark } from './marks.tsx'
+import { SectionMeter, UnreadMark } from './marks.tsx'
 import {
   chainOf,
   dotOf,
@@ -74,6 +73,8 @@ const styles = stylex.create({
     letterSpacing: '-0.015em',
     overflowWrap: 'anywhere',
   },
+  // the pie and the figure it draws, side by side
+  ledgerSeat: { display: 'inline-flex', flexShrink: 0, alignItems: 'center', gap: 8 },
   ledger: {
     display: 'flex',
     flexShrink: 0,
@@ -85,18 +86,6 @@ const styles = stylex.create({
   ledgerGot: { fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em' },
   ledgerZero: { color: tokens.mutedForeground },
   ledgerCap: { fontSize: 13, color: tokens.mutedForeground },
-  bar: {
-    display: 'block',
-    height: 4,
-    overflow: 'hidden',
-    borderRadius: 2,
-    backgroundColor: tokens.surfaceMuted,
-  },
-  barFill: {
-    display: 'block',
-    height: '100%',
-    borderRadius: 2,
-  },
   facts: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -325,27 +314,24 @@ export function GroupPane({
               {row.name}
             </h2>
           </div>
-          <span {...stylex.props(styles.ledger)} data-scored={scored}>
-            <span {...stylex.props(styles.ledgerGot, (!scored || got === 0) && styles.ledgerZero)}>
-              {scored ? short(row.right === '' ? '0' : row.right) : '–'}
-            </span>
-            <span {...stylex.props(styles.ledgerCap)}>
-              {cap === null
-                ? format(m.myEntriesPaperUnit)
-                : `/ ${format(m.entriesPoints, { value: trimAmount(String(cap)) })}`}
+          {/* how full it is, drawn beside its figure as the structure draws
+              it: a bar across the whole pane read as a rule under the title */}
+          <span {...stylex.props(styles.ledgerSeat)}>
+            {scored && cap !== null && cap > 0 && <SectionMeter got={got} cap={cap} large />}
+            <span {...stylex.props(styles.ledger)} data-scored={scored}>
+              <span
+                {...stylex.props(styles.ledgerGot, (!scored || got === 0) && styles.ledgerZero)}
+              >
+                {scored ? short(row.right === '' ? '0' : row.right) : '–'}
+              </span>
+              <span {...stylex.props(styles.ledgerCap)}>
+                {cap === null
+                  ? format(m.myEntriesPaperUnit)
+                  : `/ ${format(m.entriesPoints, { value: trimAmount(String(cap)) })}`}
+              </span>
             </span>
           </span>
         </div>
-        {cap !== null && cap > 0 && (
-          <span {...stylex.props(styles.bar)} data-testid="section-bar" data-full={full}>
-            <Portion
-              share={scored ? Math.max(0, Math.min(100, (got / cap) * 100)) : 0}
-              className={
-                stylex.props(styles.barFill, full ? meterStyles.full : meterStyles.fill).className
-              }
-            />
-          </span>
-        )}
         <div {...stylex.props(styles.facts)}>
           {facts.map((fact, index) => (
             <span

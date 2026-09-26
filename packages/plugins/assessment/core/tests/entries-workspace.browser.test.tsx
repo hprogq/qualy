@@ -1020,6 +1020,66 @@ describe('what a question’s row says at a glance', () => {
     })
     expect(lines).toHaveLength(0)
   })
+
+  // The same pie wherever a section's figure stands: the sections a
+  // question's requirements list, and a section's own page. A line across
+  // either reads as a rule, full or not.
+  it('draws a section’s fill as the same pie in the requirements and on its own page', async () => {
+    await page.viewport(1440, 900)
+    const finals: Record<string, string> = {
+      [BAND_A]: '20.00',
+      [BAND_B]: '20.00',
+      [SUB_B]: '12.00',
+    }
+    await workspace({
+      route: `${base}?open=${TAIL}`,
+      stubs: {
+        getMyResult: () =>
+          Effect.succeed({
+            mode: 'provisional',
+            total: '40.00',
+            groups: Object.entries(finals).map(([groupId, final]) => ({
+              groupId,
+              cap: '20.00',
+              final,
+              parentGroupId: null,
+              depth: 0,
+              name: groupId,
+              itemsTotal: final,
+              childrenTotal: '0.00',
+              raw: final,
+              floor: null,
+            })),
+            lines: [],
+          }),
+      },
+    })
+    /** anything drawn as a line: wide and a few pixels tall */
+    const rules = (within: Element) =>
+      [...within.querySelectorAll('span')].filter((span) => {
+        const box = span.getBoundingClientRect()
+        return box.width > 60 && box.height > 0 && box.height <= 4
+      })
+    const aside = page.getByRole('complementary', { name: '填报要求' })
+    const meter = (id: string) =>
+      aside.element().querySelector(`[data-section="${id}"] [data-testid="section-meter"]`)
+    await expect.poll(() => meter(BAND_B)?.getAttribute('data-full')).toBe('true')
+    expect(meter(SUB_B)?.getAttribute('data-full')).toBe('false')
+    expect(meter(SUB_B)?.getAttribute('data-share')).toBe('60')
+    // a section with no limit has nothing to fill
+    expect(meter(DEEP_B)).toBeNull()
+    const sections = aside.element().querySelector(`[data-section="${BAND_B}"]`)!.parentElement!
+    expect(rules(sections)).toHaveLength(0)
+
+    await userEvent.click(document.querySelector(`[data-rail-row="${BAND_A}"]`)!)
+    const pane = page.getByTestId('group-pane')
+    await expect.element(pane).toHaveAttribute('data-group', BAND_A)
+    const head = pane.element().querySelector('[data-pane-title]')!.closest('div')!.parentElement!
+    expect(head.querySelector('[data-testid="section-meter"]')?.getAttribute('data-full')).toBe(
+      'true',
+    )
+    expect(rules(pane.element())).toHaveLength(0)
+  })
 })
 
 describe('where filing is shut', () => {

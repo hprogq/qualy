@@ -15,7 +15,10 @@ import { assessmentMessages as m } from '../../i18n.ts'
 // A section's fill is a small pie beside its figure rather than a line under
 // its row: a line along the foot of a row reads as the rule between two
 // rows, and a full one reads as nothing else. A pie rather than a ring,
-// because a part-drawn ring is what a screen shows while it is loading.
+// because a part-drawn ring is what a screen shows while it is loading. The
+// same pie wherever a section's figure stands - the structure, a section's
+// own page and the sections a question's requirements list - so a section
+// looks the same wherever it is met.
 
 /** the wedge is drawn as a stroke as wide as its own radius, twice over */
 const WEDGE = 2.5
@@ -37,6 +40,8 @@ const styles = stylex.create({
     color: tokens.danger,
   },
   pie: { width: 14, height: 14, flexShrink: 0 },
+  // beside a section's own heading figure, which is set larger
+  pieLarge: { width: 20, height: 20 },
   rim: { stroke: `color-mix(in oklab, ${tokens.foreground} 45%, ${tokens.background})` },
   wedge: { stroke: `color-mix(in oklab, ${tokens.foreground} 45%, ${tokens.background})` },
   full: { stroke: tokens.success },
@@ -64,7 +69,16 @@ export const meterStyles = stylex.create({
  * The figure itself is said in words next to it; the pie is that figure
  * drawn, so it is hidden from assistive technology.
  */
-export function SectionMeter({ got, cap }: { got: number; cap: number }) {
+export function SectionMeter({
+  got,
+  cap,
+  large = false,
+}: {
+  got: number
+  cap: number
+  /** beside a heading's figure rather than a row's */
+  large?: boolean
+}) {
   const reduced = useReducedMotion() === true
   const share = cap <= 0 ? 0 : Math.max(0, Math.min(1, got / cap))
   const full = got >= cap
@@ -75,7 +89,7 @@ export function SectionMeter({ got, cap }: { got: number; cap: number }) {
       data-testid="section-meter"
       data-share={Math.round(share * 100)}
       data-full={full}
-      {...stylex.props(styles.pie)}
+      {...stylex.props(styles.pie, large && styles.pieLarge)}
     >
       <circle
         cx="7"
