@@ -533,7 +533,7 @@ const i18n = definePluginMessages({
     pickerChosenElsewhere,
     pickerTotal,
     pickerPeople: { id: 'auth/picker/people', defaultMessage: 'People' },
-    pickerTakePage: { id: 'auth/picker/take-page', defaultMessage: 'Choose everyone on this page' },
+    pickerTakePage: { id: 'auth/picker/take-page', defaultMessage: 'Select this page' },
     pickerClear: { id: 'auth/picker/clear', defaultMessage: 'Clear' },
     nodeRemove,
     methodsFailedTitle: {

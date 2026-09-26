@@ -209,8 +209,15 @@ const styles = stylex.create({
     overscrollBehavior: 'contain',
     listStyle: 'none',
   },
-  // the whole page in or out, standing over the lines as a head would
-  pageBarTotal: { marginInlineStart: 'auto', fontVariantNumeric: 'tabular-nums' },
+  // the whole page in or out, standing over the lines as a head would: one
+  // line, where the count keeps its words and the label gives way
+  pageBarWord: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  pageBarTotal: {
+    flexShrink: 0,
+    marginInlineStart: 'auto',
+    whiteSpace: 'nowrap',
+    fontVariantNumeric: 'tabular-nums',
+  },
   pageBar: {
     display: 'flex',
     cursor: 'pointer',
@@ -564,7 +571,7 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
             data-testid="people-picker-page"
             onCheckedChange={(next) => takePage(next)}
           />
-          <span>{format(m.pickerTakePage)}</span>
+          <span {...stylex.props(styles.pageBarWord)}>{format(m.pickerTakePage)}</span>
           {context.paging !== undefined && counted && (
             <span {...stylex.props(styles.pageBarTotal)}>
               {format(m.pickerTotal, { count: context.paging.total })}

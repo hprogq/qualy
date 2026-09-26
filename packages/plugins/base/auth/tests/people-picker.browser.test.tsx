@@ -376,6 +376,32 @@ describe('the people picker over long words', () => {
   })
 })
 
+describe('the people picker on a phone in English', () => {
+  // the bar over the lines is one line, whatever language its words are in
+  it('keeps the whole-page bar to one line', async () => {
+    await page.viewport(390, 844)
+    // a count long enough to need its room
+    const list = (request: Request) =>
+      Effect.succeed(pageOf(Number(request.query?.['page'] ?? '1'), 1234))
+    // as wide as a dialog on a phone hands the list
+    await renderScreen({
+      client: world(list),
+      children: (
+        <div style={{ width: 300 }}>
+          <Harness />
+        </div>
+      ),
+      locale: 'en-US',
+    })
+    await expect.poll(() => rows().length).toBe(20)
+    const bar = page.getByTestId('people-picker-page').element().closest('label')!
+    expect(bar.getBoundingClientRect().height).toBeLessThanOrEqual(40)
+    for (const word of bar.querySelectorAll('span')) {
+      expect(word.getBoundingClientRect().height).toBeLessThanOrEqual(22)
+    }
+  })
+})
+
 describe('the people picker over a list read forwards', () => {
   const view = (over: Partial<PeoplePickerViewContext> = {}): PeoplePickerViewContext => ({
     nodes: [],
