@@ -165,7 +165,8 @@ describe('the people picker', () => {
     await renderScreen({ client: world(), children: <Harness /> })
     await expect.poll(() => rows().length).toBe(20)
     const scroller = document.querySelector<HTMLElement>('[data-slot="table-container"]')!
-    const head = document.querySelector<HTMLElement>('[data-slot="table-header"]')!
+    // the head's cells are what hold still
+    const head = document.querySelector<HTMLElement>('[data-slot="table-head"]')!
     expect(scroller.scrollHeight).toBeGreaterThan(scroller.clientHeight)
     scroller.scrollTop = scroller.scrollHeight
     await expect.poll(() => scroller.scrollTop).toBeGreaterThan(0)

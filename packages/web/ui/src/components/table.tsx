@@ -32,10 +32,14 @@ const styles = stylex.create({
     overflowY: 'auto',
     overscrollBehavior: 'contain',
   },
-  // A head that stays at the top of a scrolling table. The rule under it is
-  // drawn as a shadow: a collapsed table draws its borders on the grid, and
-  // a border there stays behind while the head it belonged to holds still.
-  headerSticky: {
+  // A head that stays at the top of a scrolling table, held by its cells.
+  //
+  // The rule under it is an inset shadow, because a collapsed table draws
+  // its borders on the grid and a border there stays behind while the head
+  // holds still. It is on the cells rather than on the row group: Chrome
+  // paints no shadow on a thead at all, so a rule written there left the
+  // rows sliding under the head with nothing between them.
+  headSticky: {
     position: 'sticky',
     insetBlockStart: 0,
     zIndex: 1,
@@ -135,27 +139,27 @@ function Table({
   )
 }
 
+/** whether the rows below are the table's own run of records */
+const InBody = React.createContext(false)
+
+/** whether the head cells below hold still at the top of a scrolling table */
+const StickyHead = React.createContext(false)
+
 function TableHeader({
   className,
   sticky = false,
+  children,
   ...props
 }: React.ComponentProps<'thead'> & {
   /** held at the top of a table that scrolls; see `fill` */
   sticky?: boolean
 }) {
-  const sx = stylex.props(sticky && styles.headerSticky)
   return (
-    <thead
-      data-slot="table-header"
-      {...sx}
-      {...props}
-      className={clsx(sx.className, className) || undefined}
-    />
+    <thead data-slot="table-header" {...props} className={className}>
+      <StickyHead value={sticky}>{children}</StickyHead>
+    </thead>
   )
 }
-
-/** whether the rows below are the table's own run of records */
-const InBody = React.createContext(false)
 
 function TableBody({ className, children, ...props }: React.ComponentProps<'tbody'>) {
   return (
@@ -178,7 +182,7 @@ function TableRow({ className, xstyle, ...props }: React.ComponentProps<'tr'> & 
 }
 
 function TableHead({ className, xstyle, ...props }: React.ComponentProps<'th'> & Extendable) {
-  const sx = stylex.props(styles.head, xstyle)
+  const sx = stylex.props(styles.head, React.use(StickyHead) && styles.headSticky, xstyle)
   return <th data-slot="table-head" {...sx} {...props} className={clsx(sx.className, className)} />
 }
 
