@@ -90,10 +90,35 @@
 
 ## 六个历史批次
 
+组织：根节点「示例大学」→ 软件学院 → 2023级 → 五个专业 → 班级。根节点的类型是「学校」：平台给新租户预置的根类型名
+「租户根」只是默认值（2026-08-22 裁决保留），生成时由管理员在类型页改名，走的是产品的改类型服务，同样记审计。
+
 每学期按真实时间线：D-3 建批次；D 开始填报；D+1 辅导员导入学业、全科优秀、不及格、青年大学习、寝室、
 学生干部；D+2 另一位辅导员录入早晚自习缺勤与通报；D..D+4 学生晚间提交；班级负责人随交随审，
 约 7% 驳回（多半在截止前重交）、约 2.5% 上提到三位专业负责人会签、不到 1% 要求补充材料（只在有专属补件的题目上）；D+5 截止；
 D+9 开放申诉（条数取真实各学期），D+11 截止；D+13 归档（归档前断言没有未结束的审核轮）。
+
+**每个学期的阶段各不相同**（`tools/demo/seed/stages.ts`），每个阶段建计划时就写了说明（已结束的阶段只能改名，事后补不上），
+批次说明也按学期各写一段，显示在概览顶部。推进按阶段 key 找阶段，不按序号：中途插入的阶段会让后面的序号整体后移。
+阶段怎么排不改变上面的故事时刻，`tools/demo/tests/phases.test.ts` 逐份计划核对：填报时刻开着新增与提交、截止后关上，
+导入与录入时刻开着行政录入，每天的审核时刻开着审核，申诉时刻开着申诉，归档阶段什么都不开；每份计划都与其他学期不同。
+
+| 学期    | 阶段（括号内为进入时刻，未注明的同上文）                                                | 看得出的安排                             |
+| ------- | --------------------------------------------------------------------------------------- | ---------------------------------------- |
+| 23-24-1 | 材料填报 → 审核整理 → 结果申诉 → 申诉处理 → 归档                                        | 第一次在系统内填报，基准的五段           |
+| 23-24-2 | 材料填报 → 班级审核 → 复核与补件（D+7 18:00）→ 结果申诉 → 申诉处理 → 归档               | 审核拆成两段                             |
+| 24-25-1 | 材料填报 → 审核整理 → 结果申诉 → 申诉处理（D+12 12:00）→ 归档                           | 申诉截止顺延到次日中午，阶段说明写明原因 |
+| 24-25-2 | 细则公示（D-3 16:30，不开放任何操作）→ 材料填报 → 审核整理 → 结果申诉 → 申诉处理 → 归档 | 开放填报前先公示细则                     |
+| 25-26-1 | 材料填报 → 审核整理 → 结果公示与申诉 → 归档                                             | 申诉在公示期内处理完，不单设申诉处理     |
+| 25-26-2 | 材料填报 → 审核整理 → 语言技能证书补充提交（D+6 09:00）→ 结果申诉 → 申诉处理 → 归档     | 审核期间插入只开放一道题的补充阶段       |
+
+**只开放一道题的补充阶段**：25-26-2 把「职业技能证书」换成「语言技能证书」，六月的四、六级成绩单在填报截止后才发。
+综测负责人在「审核整理」期间（D+5 15:20）在它之后插入「语言技能证书补充提交」，阶段的题目范围只含这一题（产品已有的
+阶段题目范围，设计见 docs/assessment-design.md §11、§32.37），D+6 09:00 进入，D+9 09:00 进入结果申诉。它开放新增、修改、
+提交、撤回、放弃与审核、上提、复查，**不开放行政录入**：题目范围同样收窄工作人员的录入与撤回，开着也只能录这一题。
+也因此它不能放在有撤回行政记录的 24-25-1，也不能放在第一个学期（`QUALY_DEMO_EPISODES=first` 把那次撤回压进第一个学期），
+测试守住这两点。原本报了四、六级的申报约一半改在 D+6 至 D+8 的这一阶段里提交，照常由班级负责人审核；演示学生在 D+6 20:30
+补报一张六级成绩单，次日通过。阶段题目范围表的 `created_at` 列在 `tools/demo/timeline.ts` 的搬移清单里。
 
 审核链：班级综测负责人（每班两位）→ 上提与申诉走「三位专业负责人会签 → 年级负责人 → 辅导员终审」。
 年级负责人本身是专业负责人之一，他在会签时表过态的轮次，到年级负责人一级会被独立性规则跳过。
@@ -101,8 +126,9 @@ D+9 开放申诉（条数取真实各学期），D+11 截止；D+13 归档（归
 学期之间按真实计数：离开（停用账号）、复学（重新启用）、往届回流（新建用户）、24-25-1 前三人转专业、
 25-26-2 前一人降到 2025 级（新建 2025 级节点）；大二、大三开学前班级负责人换届。
 
-两类批次开放复查（`assessment.review.reopen`）的口径相同：**审核期与申诉期开放，处理申诉的阶段不再新开**。
-综测批次是「审核整理」与「结果申诉」，推免批次是「材料审核」与「结果公示与申诉」；辅导员可在其中替学生对已定结论发起复查。
+两类批次开放复查（`assessment.review.reopen`）的口径相同：**填报截止后的审核期与申诉期开放，处理申诉的阶段不再新开**。
+综测批次是「审核整理」（23-24-2 的「班级审核」与「复核与补件」、25-26-2 的补充阶段同属审核期）与「结果申诉」
+（25-26-1 的「结果公示与申诉」），推免批次是「材料审核」与「结果公示与申诉」；辅导员可在其中替学生对已定结论发起复查。
 学院另设「综测督查」角色（`assessment.entry.redetermine`，学院节点、覆盖下级），授给综测负责人：重新认定按裁决
 不从终审人推导、系统管理员也不天然拥有，所以单独成一个角色；它在第一个批次建立前授出，每个批次建立时随接纳基线带入。
 
@@ -120,17 +146,27 @@ D+9 开放申诉（条数取真实各学期），D+11 截止；D+13 归档（归
 经历用的每张图都与申报一致：团体获奖附参赛队证书，个人获奖附个人证书，时长记录与服务证明的日期都在该学期的材料期内。
 
 `QUALY_DEMO_EPISODES=first` 把全部经历压进第一个学期，配合 `QUALY_DEMO_TERMS=1` 约 20 分钟跑完，用来改这些经历。
+`QUALY_DEMO_TERMS` 也可以点名学期（`QUALY_DEMO_TERMS=25-26-1,25-26-2`），只生成这几个学期再接推免批次，用来改后面学期的阶段；
+这样的短生成没有写其他学期的经历，`demo:check` 会把它们列为缺失，只看与改动有关的几项。
 
-生成后抽样（2026-09-26 基线，完整生成约 120 分钟）：六个学期总分中位数 71.4–75.3（真实年级 71–75），品德 9.8–10.8、学业 57.2–60.9、文体 3–3.6。
+生成后抽样（2026-09-27 基线，完整生成约 130 分钟）：六个学期总分中位数 70.5–74.9（真实年级 71–75），品德 9.8–10.8、学业 56.4–62.1、文体 3–3.6。
 
 ## 推免批次（进行中）
 
 自定规则，逐人可算：学业成绩 80（平均学分绩 × 0.8，导入）+ 素质拓展 20（竞赛与科研封顶 10；品德与文体封顶
 10，取本系统六个归档批次算出的均值之和 × 0.4，导入）+ 资格材料（申请表、考核表、成绩单、四级，不计分）。
-名单是全年级，72 人报名提交材料。不做「第一名赋 20 分」的归一化，那需要排名。
+不做「第一名赋 20 分」的归一化，那需要排名。
 
-时间相对于生成当天：报名与材料提交从 16 天前开始，默认停在「材料审核」（`--stage=entry|review|appeal`）。
-「材料审核」阶段同时开放申诉与复查：单项审核结论一出，申请人即可申诉，辅导员也可替其复查。
+**名单只含报名的 72 人**（2026-09-26 用户裁决）：推免是报名制，没报名的人不是这次评价的对象，放进名单只会让名单页、
+排名与统计满是 0 分。批次以 2023 级为管理范围建立，但不按人员类型导入任何人（接口接受空的人员类型；管理锚点与工作人员
+接纳照样取自 2023 级），材料提交开放前一天由综测负责人按各班报名汇总逐人加入名单（记入名单事件）。按裁决，界面上的
+新建批次不为此增加「暂不导入参评人」。导入的「专业排名 / 专业人数」按全年级在读学生计算，不按名单：名单只有报名者，
+按名单算专业人数会从约 200 人变成十几人。
+
+时间相对于生成当天：材料提交从 16 天前开始，默认停在「材料审核」（`--stage=entry|review|appeal`）。
+「材料审核」阶段同时开放申诉与复查：单项审核结论一出，申请人即可申诉，辅导员也可替其复查。每个阶段都写了说明；
+后面三个阶段（结果公示与申诉、申诉处理、归档）不定时间，只写「等什么」的未定时说明：演示实例的阶段调度器会按时自动推进，
+定了时间的计划在快照还原几周后一启动就会跳出剧本停着的「材料审核」。
 开放第 10 天综测负责人给竞赛与科研加了一级「专业负责人初审」并把在审条目迁到新一轮（`reroute-all`、从头审）。
 大数据专业没有任命专业负责人：一名大数据专业申请人在调整前两天提交的一条竞赛还在辅导员处，迁移后停在专业负责人初审、
 无人可审，综测负责人的告警面板列出它（`demo:check` 经产品的告警接口计数）；`--migration-state=before` 把这一步留给现场演示。
@@ -150,8 +186,8 @@ D+9 开放申诉（条数取真实各学期），D+11 截止；D+13 归档（归
 
 另一种安排供裁决时比较：普通链由辅导员审，复核链只设辅导员复核与推免工作组；班级合议只留在综测批次的活动类申报上。
 
-报名名单取成绩靠前的 72 人，其中必有演示学生与其同班 5 人，以及一名大数据专业学生；另取 6 名外班申请人
-（不含大数据专业）。`tools/demo/seed/selection.ts` 的「what the demonstration accounts open onto」一节按固定时刻写出：
+报名名单取全年级在读学生中成绩靠前的 72 人，其中必有演示学生与其同班 5 人、班级负责人账号本人，以及一名大数据专业学生；
+另取 6 名外班申请人（不含大数据专业）。`tools/demo/seed/selection.ts` 的「what the demonstration accounts open onto」一节按固定时刻写出：
 
 - **演示学生**：申请表、四级已通过；两条竞赛一条附参赛队证书、却按个人申报，通过后被督查按团体项目重新认定（本批次里的
   纠错经历），一条附的是赛区选拔赛证书，被辅导员以「与申报的省部级不符」驳回后申诉，推免工作组在申诉中要求上传组委会
@@ -159,7 +195,8 @@ D+9 开放申诉（条数取真实各学期），D+11 截止；D+13 归档（归
   学生上传后随流程调整迁到专业负责人初审再通过，一条因成果名称与登记号和登记证书不一致被综测负责人退回修改，按证书
   改正后重交通过；思想品德考核表被班级负责人以模板为由驳回，申诉后在班级合议中；成绩单没有教务处盖章，被要求上传
   盖章页，待答复；一条竞赛存为草稿未提交；截止前一晚补交的一条竞赛在辅导员处待审。
-- **班级负责人**（演示学生所在班）：本班 6 份考核表（演示学生与 5 名同学）都在其审核范围。演示学生那份在申诉合议中，
+- **班级负责人**（演示学生所在班）：本人也是申请人，交齐四份资格材料，至少两条竞赛、一条科研，学业成绩与品德文体照常导入；
+  自己的考核表由同班另一位负责人审（引擎不许本人审自己）。本班其余 6 份考核表（演示学生与 5 名同学）都在其审核范围。演示学生那份在申诉合议中，
   另一席已投票，只差其本人一票（合议票在形成意见前对所有人保密，界面上看到的只是合议中）；一份未经任何人审；
   一份另一位负责人要求上传班主任签字页、学生已上传，回到待审；一份被其本人驳回（缺签字页）后申诉，另一席在申诉中
   要求上传签字页、学生已上传，合议重新组成；一份被另一位负责人驳回后申诉，两席意见分歧，经辅导员复核后停在推免
@@ -179,13 +216,20 @@ D+9 开放申诉（条数取真实各学期），D+11 截止；D+13 归档（归
 部署设置 `QUALY_DEMO_ACCOUNTS` 后，登录页列出它们，并冻结其密码、邮箱与登录方式（见 docs/deployment.md）；
 展示实例不设，只留给将来开放受限演示。系统管理员的密码只由 `QUALY_DEMO_ADMIN_PASSWORD` 在生成时给出。
 
-`pnpm demo:check` 在分数分布之后逐项清点上面每个账号应当看到的情况（`tools/demo/situations.ts`）：待审一律经产品自己的
+两个学生账号在建组织时同时选定（`choosePersonaStudents`）：演示学生是成绩前 30 里最活跃的一位；班级负责人账号是其同班、
+成绩班内前三里最活跃的一位，从第一个学期起就任，两次换届都连任，换届也从不选任何演示账号。按裁决（2026-09-26），
+只保证演示账号每个批次都有本人申报且分数各异，其余学生仍按真实分布（真实年级里一个学期没有自主申报的人很多）：
+班级负责人每个学期至少三条、至少两类题目的自主申报，推免时是申请人。辅导员与综测负责人是教职工，不在任何名单上。
+
+`pnpm demo:check` 在分数分布之后先核对两件事：名单上没有「成绩单上什么都没有」的人（任何批次）；两个学生账号在每个
+批次都在名单上、都有本人提交的申报、总分不为 0 且两人不同，并逐批次打印。然后逐项清点上面每个账号应当看到的情况
+（`tools/demo/situations.ts`）：待审一律经产品自己的
 收件箱接口数（逐页读完），工作人员做过的事按做事的人计数（复查按发起人、撤回按撤回人、补件按提出人），其余读库；
 任何一项为 0 就列出并以非零退出。在这之前它先核对整库：申报与所站的轮一致、没有落后于最新认定的申报、没有无人指向的
 在途轮、没有只要文字的补件、没有不带文件的答复、没有与原件逐字节相同的答复、没有 23:00 至 08:00 的工作人员动作，
-任何一项不为 0 同样失败。它接受与 `demo:seed` 相同的 `--stage` 与 `--migration-state`：停在「报名与材料提交」
-的基线没有申诉、复查与流程调整，把流程调整留给现场演示的基线没有迁移过的条目，这些项照常打印、标注 `not seeded at this stage`，
-不算缺失。
+任何一项不为 0 同样失败。它接受与 `demo:seed` 相同的 `--stage` 与 `--migration-state`：停在「材料提交」
+的基线没有申诉、复查与流程调整，把流程调整留给现场演示的基线没有迁移过的条目，这些项照常打印、标注 `not seeded by this run`，
+不算缺失；没有生成到最后一个学期的短生成（`QUALY_DEMO_TERMS`）同样不要求补充阶段里的那条申报。
 
 辅导员一项另问产品能否从名单打开演示学生。名单与参评人详情现在只对名册管理与重新认定开放，辅导员只有录入与审核
 权限，这一项是 0；录入权限的持有者是否读成绩账页待用户裁决（docs/assessment-design.md §30 第 12 条），所以它单列为
@@ -193,63 +237,74 @@ D+9 开放申诉（条数取真实各学期），D+11 截止；D+13 归档（归
 
 ## 核对：当前基线的 `demo:check`
 
-2026-09-26 早晨的基线（`pnpm demo:reset-db` → `pnpm demo:seed`，默认 `--stage=review`、做了流程调整，生成 7189 秒，
+2026-09-27 凌晨的基线（`pnpm demo:reset-db` → `pnpm demo:seed`，默认 `--stage=review`、做了流程调整，生成 7905 秒，
 退出码 0 → `pnpm demo:check`，退出码 0 → `pnpm demo:snapshot --clear-runtime`）。`demo:check` 的输出原样如下
 （只去掉了开头一行开发用主密钥的告警）：
 
 ```text
 2023-2024学年第一学期综合素质测评 [archived] 1009 people, sampled 85
-  total     p10 65.22 · median 75.32 · p90 82.62
-  品德行为表现   p10 10.00 · median 10.80 · p90 11.80
-  学业表现     p10 51.58 · median 60.72 · p90 68.19
-  文体表现     p10 3.00 · median 3.40 · p90 5.00
+  total     p10 66.95 · median 74.91 · p90 80.88
+  品德行为表现   p10 9.90 · median 10.80 · p90 11.50
+  学业表现     p10 54.45 · median 60.78 · p90 66.43
+  文体表现     p10 3.00 · median 3.40 · p90 4.50
 2023-2024学年第二学期综合素质测评 [archived] 1007 people, sampled 84
-  total     p10 65.83 · median 72.49 · p90 78.57
+  total     p10 63.15 · median 70.86 · p90 78.32
   品德行为表现   p10 10.00 · median 10.80 · p90 11.30
-  学业表现     p10 50.30 · median 57.87 · p90 64.29
-  文体表现     p10 3.00 · median 3.60 · p90 5.20
+  学业表现     p10 49.08 · median 56.43 · p90 63.20
+  文体表现     p10 3.00 · median 3.60 · p90 5.70
 2024-2025学年第一学期综合素质测评 [archived] 1002 people, sampled 84
-  total     p10 62.99 · median 73.86 · p90 80.81
+  total     p10 61.53 · median 72.71 · p90 79.34
   品德行为表现   p10 10.00 · median 10.80 · p90 11.80
-  学业表现     p10 48.42 · median 59.60 · p90 65.35
-  文体表现     p10 3.00 · median 3.20 · p90 5.60
-2024-2025学年第二学期综合素质测评 [archived] 998 people, sampled 84
-  total     p10 63.61 · median 71.41 · p90 76.71
-  品德行为表现   p10 10.00 · median 10.80 · p90 11.80
-  学业表现     p10 49.61 · median 57.20 · p90 62.74
-  文体表现     p10 3.00 · median 3.20 · p90 6.30
-2025-2026学年第一学期综合素质测评 [archived] 982 people, sampled 82
-  total     p10 62.73 · median 71.72 · p90 79.83
-  品德行为表现   p10 10.00 · median 10.80 · p90 11.80
-  学业表现     p10 48.19 · median 57.22 · p90 65.83
+  学业表现     p10 47.45 · median 58.51 · p90 64.62
   文体表现     p10 3.00 · median 3.00 · p90 4.60
+2024-2025学年第二学期综合素质测评 [archived] 998 people, sampled 84
+  total     p10 64.47 · median 70.49 · p90 77.51
+  品德行为表现   p10 10.00 · median 10.80 · p90 11.50
+  学业表现     p10 50.47 · median 56.57 · p90 62.97
+  文体表现     p10 3.00 · median 3.00 · p90 4.70
+2025-2026学年第一学期综合素质测评 [archived] 982 people, sampled 82
+  total     p10 62.91 · median 72.26 · p90 78.84
+  品德行为表现   p10 10.00 · median 10.80 · p90 11.80
+  学业表现     p10 47.54 · median 58.35 · p90 63.28
+  文体表现     p10 3.00 · median 3.00 · p90 6.30
 2025-2026学年第二学期综合素质测评 [archived] 984 people, sampled 82
-  total     p10 61.29 · median 73.61 · p90 80.27
+  total     p10 63.41 · median 74.20 · p90 80.04
   品德行为表现   p10 9.00 · median 9.80 · p90 10.00
-  学业表现     p10 48.74 · median 60.85 · p90 67.76
-  文体表现     p10 3.00 · median 3.00 · p90 4.50
-2027届推荐优秀应届本科毕业生免试攻读硕士学位研究生综合评价 [active] 984 people, sampled 82
-  total     p10 0.00 · median 0.00 · p90 0.00
-  学业成绩     p10 0.00 · median 0.00 · p90 0.00
-  素质拓展     p10 0.00 · median 0.00 · p90 0.00
+  学业表现     p10 50.61 · median 62.07 · p90 67.44
+  文体表现     p10 3.00 · median 3.00 · p90 4.00
+2027届推荐优秀应届本科毕业生免试攻读硕士学位研究生综合评价 [active] 72 people, sampled 72
+  total     p10 83.21 · median 85.16 · p90 90.22
+  学业成绩     p10 77.18 · median 77.84 · p90 78.44
+  素质拓展     p10 5.45 · median 7.71 · p90 11.98
   资格材料     p10 0.00 · median 0.00 · p90 0.00
 claims off their verdict 0 · behind their determination 0 · open rounds nobody stands on 0
 asks for no file 0 · answers without the file 0 · answers repeating the filed picture 0
 staff decisions between 23:00 and 08:00 0
+people on a roster with nothing on their result 0
+
+the demonstration students, batch by batch (claims of their own, total):
+  2023-2024学年第一学期综合素质测评: student 7, 86.49; class-lead 4, 79.90
+  2023-2024学年第二学期综合素质测评: student 6, 88.64; class-lead 6, 79.51
+  2024-2025学年第一学期综合素质测评: student 14, 86.79; class-lead 7, 80.51
+  2024-2025学年第二学期综合素质测评: student 9, 87.25; class-lead 9, 83.81
+  2025-2026学年第一学期综合素质测评: student 11, 87.09; class-lead 6, 83.59
+  2025-2026学年第二学期综合素质测评: student 9, 91.49; class-lead 12, 87.20
+  2027届推荐优秀应届本科毕业生免试攻读硕士学位研究生综合评价: student 9, 90.43; class-lead 8, 93.10
 
 what the demonstration accounts open onto (selection at review):
-  student       3  past: an ask for more material, answered with the file
-  student       4  past: refused, revised, filed again and approved
+  student       4  past: an ask for more material, answered with the file
+  student       3  past: refused, revised, filed again and approved
   student       1  past: three rounds or more
-  student      13  past: judged by a panel
-  student       4  past: appeal against a refusal, granted
-  student       1  past: appeal against a refusal, not granted
+  student       8  past: judged by a panel
+  student       2  past: appeal against a refusal, granted
+  student       2  past: appeal against a refusal, not granted
   student       2  past: an ask for material inside an appeal or a re-examination
   student       1  past: re-examined by staff
   student       1  past: re-determined upwards
   student       1  past: approval revoked by re-determination
   student       1  past: recorded fact taken back
   student       1  past: claim on a voided question
+  student       1  past: filed in a stage reopened for some questions
   student       1  past: a revoked line on their own result
   student       1  past: a voided question on their own result
   student       1  past: returned for revision by staff
@@ -270,6 +325,8 @@ what the demonstration accounts open onto (selection at review):
   class-lead    2  running: back after an answered ask
   class-lead    2  running: appeal at the class panel
   class-lead    2  running: rounds concluded
+  class-lead   43  past: claims of their own approved
+  class-lead    8  running: claims of their own sent in
   lead          4  running: waiting in the inbox
   lead          2  running: appeal waiting
   lead          1  running: re-examination waiting
@@ -278,13 +335,13 @@ what the demonstration accounts open onto (selection at review):
   lead          1  running: waiting after a split panel
   lead          2  running: own ask still out
   lead          1  running: rounds nobody can review, in the alerts
-  lead         11  running: rounds concluded
+  lead         13  running: rounds concluded
   lead          1  running: determinations corrected outside any round
-  counsellor   38  running: waiting in the inbox
-  counsellor    7  running: back after an answered ask
-  counsellor   12  running: own ask still out
-  counsellor   18  running: refusals
-  counsellor   14  running: escalations
+  counsellor   22  running: waiting in the inbox
+  counsellor    2  running: back after an answered ask
+  counsellor    9  running: own ask still out
+  counsellor   32  running: refusals
+  counsellor   16  running: escalations
   counsellor    1  running: re-examinations opened
   counsellor    2  running: facts recorded by hand
   counsellor    1  running: recorded facts taken back
@@ -294,9 +351,9 @@ awaiting a ruling (docs/assessment-design.md §30, item 12: whether the recordin
   counsellor: running: opens a participant from the roster = 0
 ```
 
-同一套代码另跑过两次短生成（`QUALY_DEMO_TERMS=1 QUALY_DEMO_EPISODES=first`），`demo:check` 均以 0 退出：默认阶段一次，
-各项都不为 0；`--stage=entry` 一次，申诉、复查、班级合议、流程调整与无人可审告警这些项标为 `not seeded at this stage`，
-没有缺失项。
+改动过程中另跑过一次点名学期的短生成（`QUALY_DEMO_TERMS=25-26-1,25-26-2`，当时还没有修正末学期里「上提后的申报
+被当作驳回再交」的问题）：补充阶段、班级负责人的申报、只含申请人的推免名单和两名学生的逐批次核对都通过，缺失的只是
+没生成的那几个学期里演示学生的经历。`--stage=entry` 与 `QUALY_DEMO_EPISODES=first` 的短生成这一轮没有重跑。
 
 ## 本地预览
 
