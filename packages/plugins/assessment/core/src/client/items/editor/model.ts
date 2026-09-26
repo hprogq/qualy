@@ -808,6 +808,32 @@ export const itemTypeOf = (draft: Draft, item: ItemDto | null): string => {
 export const stagesOn = (draft: Draft, chain: 'normal' | 'escalation'): readonly StageDraft[] =>
   draft.stages.filter((one) => one.chain === chain)
 
+/**
+ * The unit kinds a route being composed asks the roster for, once each in
+ * its order - or null where the route cannot miss anybody and there is
+ * nothing to ask (§32.93): a question nobody reviews, a route nobody's claim
+ * walks (the ordinary one without participants filing, an empty escalation
+ * one or a question with no way in at all), or a step that finds its person
+ * wherever they sit. The server's own reading of a saved question counts the
+ * same routes the same way.
+ */
+export const levelsAsked = (
+  draft: Draft,
+  chain: 'normal' | 'escalation',
+): readonly string[] | null => {
+  if (draft.mode !== 'review') return null
+  const channels = channelsOf(draft)
+  const stages = stagesOn(draft, chain)
+  if (chain === 'normal' ? !channels.includes('participant') : channels.length === 0) return null
+  if (stages.length === 0) return null
+  const levels: string[] = []
+  for (const stage of stages) {
+    if (stage.kind !== 'roleAt' || stage.nodeTypeId === '') return null
+    if (!levels.includes(stage.nodeTypeId)) levels.push(stage.nodeTypeId)
+  }
+  return levels
+}
+
 // A panel is written as it was chosen, wherever it stands. One left as the
 // last escalation step is a step the chain still owes a successor, said as
 // such on the chain and holding the save (see `problemsOf`); writing it as

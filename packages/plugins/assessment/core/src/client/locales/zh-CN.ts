@@ -648,6 +648,14 @@ export default {
   'assessment/items/stuck-conflict': '现有审核人员均需回避',
   'assessment/items/stuck-seat': '全员共同审核还有席位空缺',
   'assessment/items/stuck-hint': '在对应单位任命所列任一角色后，这些申报会自动继续审核',
+  'assessment/items/reach-normal': '{count} 名参评人员所在组织没有以上任一层级，将无法提交该项目',
+  'assessment/items/reach-escalation':
+    '{count} 名参评人员所在组织没有以上任一层级，将无法对该项目申诉',
+  'assessment/items/reach-view': '查看人员',
+  'assessment/items/reach-title-normal': '无法提交该项目的参评人员',
+  'assessment/items/reach-title-escalation': '无法对该项目申诉的参评人员',
+  'assessment/items/reach-hint':
+    '为流程添加他们所在层级的步骤或「向上查找最近负责人」步骤，或调整参评名单',
   'assessment/items/outline-add-item': '新增项目',
   'assessment/items/outline-add-group': '新增子分组',
   'assessment/items/cap-chip': '上限 {value} 分',

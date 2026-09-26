@@ -374,6 +374,8 @@ const open = (
     /** whether the reader may give out the round's roles */
     manage?: boolean
     locale?: 'zh-CN' | 'en-US'
+    /** who a route being composed finds nowhere, by the unit kinds it asks for */
+    unreachable?: (query: { nodeTypeIds?: unknown; page?: string }) => unknown
   } = {},
 ) => {
   // what the server holds, so a save is read back as it was stored
@@ -415,6 +417,10 @@ const open = (
           }),
         reviewAlerts: () => Effect.succeed({ groups: had.alerts ?? [] }),
         reviewCoverage: () => Effect.succeed({ nodes: [] }),
+        listUnreachableParticipants: (call: { query: { nodeTypeIds?: unknown; page?: string } }) =>
+          had.unreachable === undefined
+            ? Effect.succeed({ items: [], total: 0, page: 1, pageSize: 10 })
+            : had.unreachable(call.query),
         createItem: (call: { payload: { config?: unknown; itemType?: unknown } }) => {
           const refusal = had.refuse?.shift()
           if (refusal !== undefined) return Effect.fail(refusal)
@@ -1363,6 +1369,109 @@ describe('composing the two routes', () => {
       ).not.toBeNull(),
     )
     expect(document.querySelector('[data-testid="review-chain"] [data-tone="error"]')).toBeNull()
+  })
+})
+
+// A route every step of which asks for a kind of unit some people sit under
+// none of finds them nowhere: they cannot submit, or cannot appeal, and no
+// appointment mends it (§32.93). The editor says so under the route while
+// it is composed, and never holds the save for it.
+describe('a route that finds some of the roster nowhere', () => {
+  const person = (index: number) => ({
+    participantId: `p-${index}`,
+    userId: `u-${index}`,
+    displayName: `参评人${index}`,
+    businessNo: `2023${String(index).padStart(4, '0')}`,
+    unitPath: ['示例大学', '管理学院'],
+  })
+  const everyone = Array.from({ length: 12 }, (_unused, index) => person(index + 1))
+  const answering =
+    (asked: { nodeTypeIds?: unknown; page?: string }[]) =>
+    (query: { nodeTypeIds?: unknown; page?: string }) => {
+      asked.push(query)
+      const page = Number(query.page ?? '1')
+      return Effect.succeed({
+        items: everyone.slice((page - 1) * 10, page * 10),
+        total: everyone.length,
+        page,
+        pageSize: 10,
+      })
+    }
+
+  it('says how many under the route, lists them a page at a time, and leaves the save alone', async () => {
+    const asked: { nodeTypeIds?: unknown; page?: string }[] = []
+    await open({
+      items: [officerItem()],
+      question: ITEM_ID,
+      panel: 'rules',
+      unreachable: answering(asked),
+    })
+    const normal = page.getByTestId('review-chain').getByTestId('route-reach')
+    await expect.element(normal).toHaveAttribute('data-count', '12')
+    await expect.element(normal).toHaveAttribute('data-route', 'normal')
+    // asked by the unit kinds the route being composed asks for
+    expect(asked[0]!.nodeTypeIds).toEqual([ORG_TYPE_ID])
+    // the escalation route is empty, so nobody is asked about it
+    expect(page.getByTestId('escalation-chain').getByTestId('route-reach').elements()).toHaveLength(
+      0,
+    )
+    await expect.element(page.getByTestId('item-save')).toHaveAttribute('data-blocked', 'false')
+
+    await normal.getByRole('button', { name: '查看人员' }).click()
+    const dialog = page.getByTestId('route-reach-dialog')
+    await expect.element(dialog).toBeVisible()
+    await vi.waitFor(() =>
+      expect(dialog.getByTestId('route-reach-person').elements()).toHaveLength(10),
+    )
+    await dialog.getByRole('button', { name: '2', exact: true }).click()
+    await vi.waitFor(() =>
+      expect(dialog.getByTestId('route-reach-person').elements()).toHaveLength(2),
+    )
+    expect(
+      dialog
+        .getByTestId('route-reach-person')
+        .elements()
+        .map((row) => row.getAttribute('data-participant')),
+    ).toEqual(['p-11', 'p-12'])
+    await dialog.getByRole('button', { name: '关闭' }).click()
+    await vi.waitFor(() =>
+      expect(document.querySelector('[data-testid="route-reach-dialog"]')).toBeNull(),
+    )
+  })
+
+  it('asks nothing of a route with a step that finds its person wherever they sit', async () => {
+    const asked: { nodeTypeIds?: unknown; page?: string }[] = []
+    const item = officerItem()
+    item.currentRevision.reviewPolicy = {
+      normal: {
+        stages: [
+          {
+            id: 's-first',
+            label: '辅导员审核',
+            selector: { kind: 'nearestRole', roleId: ROLE_ID } as never,
+            quorum: { type: 'any' },
+          },
+        ],
+      },
+      escalation: { stages: [] },
+    }
+    await open({ items: [item], question: ITEM_ID, panel: 'rules', unreachable: answering(asked) })
+    await vi.waitFor(() => expect(page.getByTestId('chain-step').elements()).toHaveLength(1))
+    await new Promise((settle) => setTimeout(settle, 300))
+    expect(asked).toHaveLength(0)
+    expect(document.querySelector('[data-testid="route-reach"]')).toBeNull()
+  })
+
+  it('says nothing to a reader who may not read the roster', async () => {
+    await open({
+      items: [officerItem()],
+      question: ITEM_ID,
+      panel: 'rules',
+      unreachable: () => Effect.fail(apiError('ACCESS_DENIED')),
+    })
+    await vi.waitFor(() => expect(page.getByTestId('chain-step').elements()).toHaveLength(1))
+    await new Promise((settle) => setTimeout(settle, 300))
+    expect(document.querySelector('[data-testid="route-reach"]')).toBeNull()
   })
 })
 

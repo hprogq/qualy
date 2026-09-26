@@ -18,7 +18,15 @@ import type { Placement } from '../paper.ts'
 import type { StageDraft } from '../StageSheet.tsx'
 import { countedEntries } from '../structure.ts'
 import { EditorSection, SectionCount, Tag } from './Rows.tsx'
-import { channelsOf, foldingOf, stageSettled, type Draft, type EditorProblem } from './model.ts'
+import {
+  channelsOf,
+  foldingOf,
+  levelsAsked,
+  stageSettled,
+  type Draft,
+  type EditorProblem,
+} from './model.ts'
+import { RouteReach } from './RouteReach.tsx'
 import { problemWords, sentences } from './words.ts'
 
 // How many records one person may hold and how they fold into a score, then
@@ -404,6 +412,7 @@ export function RulesTab({
             steps={normal}
             options={options}
             problems={problems}
+            reach={levelsAsked(draft, 'normal')}
             onOpen={onOpenStage}
             onAdd={(at) => onAddStage('normal', at)}
           />
@@ -413,6 +422,7 @@ export function RulesTab({
             steps={escalation}
             options={options}
             problems={problems}
+            reach={levelsAsked(draft, 'escalation')}
             onOpen={onOpenStage}
             onAdd={(at) => onAddStage('escalation', at)}
             note={noAppeal}
@@ -646,6 +656,7 @@ function StepChain({
   steps,
   options,
   problems,
+  reach,
   onOpen,
   onAdd,
   note,
@@ -655,6 +666,8 @@ function StepChain({
   steps: readonly StageDraft[]
   options: ItemOptions
   problems: readonly EditorProblem[]
+  /** the unit kinds the route asks the roster for, where it can miss anybody */
+  reach: readonly string[] | null
   onOpen: (key: string) => void
   /** a new step at this place in the route; the end when none is said */
   onAdd: (at?: number) => void
@@ -919,6 +932,7 @@ function StepChain({
           </div>
         </div>
       </div>
+      {reach !== null && <RouteReach batchId={batchId} chain={chain} levels={reach} />}
     </EditorSection>
   )
 }

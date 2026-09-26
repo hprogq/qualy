@@ -2758,6 +2758,30 @@ const i18n = definePluginMessages({
       defaultMessage:
         'Once any listed role is filled in its unit, these submissions go on to review by themselves',
     },
+    itemsReachNormal: {
+      id: 'assessment/items/reach-normal',
+      defaultMessage:
+        '{count, plural, one {# participant sits} other {# participants sit}} under none of these levels and cannot submit this item',
+    },
+    itemsReachEscalation: {
+      id: 'assessment/items/reach-escalation',
+      defaultMessage:
+        '{count, plural, one {# participant sits} other {# participants sit}} under none of these levels and cannot appeal on this item',
+    },
+    itemsReachView: { id: 'assessment/items/reach-view', defaultMessage: 'View people' },
+    itemsReachTitleNormal: {
+      id: 'assessment/items/reach-title-normal',
+      defaultMessage: 'Participants who cannot submit this item',
+    },
+    itemsReachTitleEscalation: {
+      id: 'assessment/items/reach-title-escalation',
+      defaultMessage: 'Participants who cannot appeal on this item',
+    },
+    itemsReachHint: {
+      id: 'assessment/items/reach-hint',
+      defaultMessage:
+        'Add a step at a level they sit under, or one that looks up the nearest holder, or change the roster',
+    },
     itemsOutlineAddItem: {
       id: 'assessment/items/outline-add-item',
       defaultMessage: 'Add item',
