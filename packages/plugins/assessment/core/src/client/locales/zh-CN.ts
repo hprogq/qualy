@@ -1542,6 +1542,8 @@ export default {
   'assessment/batch/new': '新建批次',
   'assessment/batch/new-no-units': '你还没有可管理的组织单位',
   'assessment/batch/new-no-units-hint': '请联系组织管理员为你分配管理范围',
+  'assessment/batch/new-no-types': '暂无可参加批次的人员类型',
+  'assessment/batch/new-no-types-hint': '请联系系统管理员启用用户类型',
   'assessment/batch/new-options-failed': '单位列表加载失败',
   'assessment/batch/empty-hint': '当前没有与你相关的测评批次',
   'assessment/batch/empty-filtered': '没有符合条件的批次',

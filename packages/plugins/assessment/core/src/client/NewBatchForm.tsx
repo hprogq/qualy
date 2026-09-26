@@ -2,7 +2,7 @@ import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Building2Icon, NetworkIcon } from 'lucide-react'
+import { Building2Icon, NetworkIcon, UserRoundXIcon } from 'lucide-react'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useIsMobile } from '@qualy/ui/use-mobile'
 import { useI18n, useLocale } from '@qualy/web-i18n'
@@ -108,11 +108,17 @@ export function NewBatchDialog({
     onError: (error: unknown) => setFailure(formatError(error)),
   })
 
-  // A batch is created with the people it covers, and they are chosen from
-  // the units this reader manages. With none, nothing typed here can come to
-  // a batch, so the dialog says so before the first field rather than after
-  // the second step.
-  const nowhere = nodes.data !== undefined && nodes.data.nodes.length === 0
+  // A batch is created with the people it covers, chosen from the units this
+  // reader manages and the kinds of people enabled. With no unit, or no kind,
+  // nothing typed here can come to a batch, so the dialog says which before
+  // the first field rather than after the second step.
+  const stuck =
+    nodes.data !== undefined && nodes.data.nodes.length === 0
+      ? 'no-units'
+      : userTypes.data !== undefined && userTypes.data.userTypes.length === 0
+        ? 'no-types'
+        : null
+  const nowhere = stuck !== null
   const optionsFailed = nodes.isError || userTypes.isError
 
   const basicsReady = name.trim() !== '' && range.start !== '' && range.end !== ''
@@ -152,95 +158,104 @@ export function NewBatchDialog({
     </>
   )
 
-  const body = nowhere ? (
-    <DialogBlank
-      testId="new-batch-stuck"
-      kind="no-units"
-      icon={<Building2Icon />}
-      title={format(m.newBatchNoUnits)}
-      description={format(m.newBatchNoUnitsHint)}
-    />
-  ) : (
-    <>
-      <Steps steps={[format(m.stepBasics), format(m.stepScope)]} current={step} />
-      <Feedback message={failure} />
+  const body =
+    stuck === 'no-units' ? (
+      <DialogBlank
+        testId="new-batch-stuck"
+        kind={stuck}
+        icon={<Building2Icon />}
+        title={format(m.newBatchNoUnits)}
+        description={format(m.newBatchNoUnitsHint)}
+      />
+    ) : stuck === 'no-types' ? (
+      <DialogBlank
+        testId="new-batch-stuck"
+        kind={stuck}
+        icon={<UserRoundXIcon />}
+        title={format(m.newBatchNoTypes)}
+        description={format(m.newBatchNoTypesHint)}
+      />
+    ) : (
+      <>
+        <Steps steps={[format(m.stepBasics), format(m.stepScope)]} current={step} />
+        <Feedback message={failure} />
 
-      {step === 1 && optionsFailed ? (
-        // the units or the kinds of people could not be read: said, with the
-        // way to ask again, rather than an empty tree that reads as "none"
-        <DialogBlank
-          testId="new-batch-stuck"
-          kind="failed"
-          icon={<NetworkIcon />}
-          title={format(m.newBatchOptionsFailed)}
-          description={formatError(nodes.error ?? userTypes.error)}
-          action={
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                void nodes.refetch()
-                void userTypes.refetch()
-              }}
-            >
-              {format(commonMessages.retry)}
-            </Button>
-          }
-        />
-      ) : step === 0 ? (
-        <FieldGroup>
-          <Field label={format(m.nameLabel)}>
-            {(id) => (
-              <Input
-                id={id}
-                value={name}
-                placeholder={format(m.namePlaceholder)}
-                onChange={(event) => setName(event.target.value)}
-              />
-            )}
-          </Field>
-          <Field label={format(m.materialRange)}>
-            {(id) => (
-              <DateRangePicker
-                id={id}
-                value={range}
-                onChange={setRange}
-                placeholder={format(m.pickDateRange)}
-                localeTag={locale}
-                monthLabel={format(commonMessages.calendarMonth)}
-                yearLabel={format(commonMessages.calendarYear)}
-              />
-            )}
-          </Field>
-        </FieldGroup>
-      ) : (
-        <FieldGroup>
-          <Field label={format(m.scopeLegend)}>
-            {() => (
-              <div {...stylex.props(styles.scopeTreeFrame)}>
-                <TreeSelect
-                  value={scopeNodeIds}
-                  onChange={setScopeNodeIds}
-                  nodes={nodes.data?.nodes ?? []}
-                  emptyLabel={format(m.scopeEmpty)}
-                />
-              </div>
-            )}
-          </Field>
-          <CheckboxGroup
-            legend={format(m.userTypesLegend)}
-            options={(userTypes.data?.userTypes ?? []).map((type) => ({
-              value: type.id,
-              label: type.name,
-            }))}
-            selected={userTypeIds}
-            onChange={setUserTypeIds}
-            emptyLabel={format(m.userTypesEmpty)}
+        {step === 1 && optionsFailed ? (
+          // the units or the kinds of people could not be read: said, with the
+          // way to ask again, rather than an empty tree that reads as "none"
+          <DialogBlank
+            testId="new-batch-stuck"
+            kind="failed"
+            icon={<NetworkIcon />}
+            title={format(m.newBatchOptionsFailed)}
+            description={formatError(nodes.error ?? userTypes.error)}
+            action={
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  void nodes.refetch()
+                  void userTypes.refetch()
+                }}
+              >
+                {format(commonMessages.retry)}
+              </Button>
+            }
           />
-        </FieldGroup>
-      )}
-    </>
-  )
+        ) : step === 0 ? (
+          <FieldGroup>
+            <Field label={format(m.nameLabel)}>
+              {(id) => (
+                <Input
+                  id={id}
+                  value={name}
+                  placeholder={format(m.namePlaceholder)}
+                  onChange={(event) => setName(event.target.value)}
+                />
+              )}
+            </Field>
+            <Field label={format(m.materialRange)}>
+              {(id) => (
+                <DateRangePicker
+                  id={id}
+                  value={range}
+                  onChange={setRange}
+                  placeholder={format(m.pickDateRange)}
+                  localeTag={locale}
+                  monthLabel={format(commonMessages.calendarMonth)}
+                  yearLabel={format(commonMessages.calendarYear)}
+                />
+              )}
+            </Field>
+          </FieldGroup>
+        ) : (
+          <FieldGroup>
+            <Field label={format(m.scopeLegend)}>
+              {() => (
+                <div {...stylex.props(styles.scopeTreeFrame)}>
+                  <TreeSelect
+                    value={scopeNodeIds}
+                    onChange={setScopeNodeIds}
+                    nodes={nodes.data?.nodes ?? []}
+                    emptyLabel={format(m.scopeEmpty)}
+                  />
+                </div>
+              )}
+            </Field>
+            <CheckboxGroup
+              legend={format(m.userTypesLegend)}
+              options={(userTypes.data?.userTypes ?? []).map((type) => ({
+                value: type.id,
+                label: type.name,
+              }))}
+              selected={userTypeIds}
+              onChange={setUserTypeIds}
+              emptyLabel={format(m.userTypesEmpty)}
+            />
+          </FieldGroup>
+        )}
+      </>
+    )
 
   return narrow ? (
     <SidePanel open={open} title={format(m.newBatch)} onClose={close} footer={footer}>

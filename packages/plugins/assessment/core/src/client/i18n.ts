@@ -751,6 +751,14 @@ const i18n = definePluginMessages({
       id: 'assessment/batch/new-no-units-hint',
       defaultMessage: 'Ask an organization administrator to give you a unit to manage',
     },
+    newBatchNoTypes: {
+      id: 'assessment/batch/new-no-types',
+      defaultMessage: 'No kind of person can take part in a batch yet',
+    },
+    newBatchNoTypesHint: {
+      id: 'assessment/batch/new-no-types-hint',
+      defaultMessage: 'Ask a system administrator to enable a user type',
+    },
     newBatchOptionsFailed: {
       id: 'assessment/batch/new-options-failed',
       defaultMessage: 'The units could not be loaded',
