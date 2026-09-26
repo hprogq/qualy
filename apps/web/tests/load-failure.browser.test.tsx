@@ -133,7 +133,8 @@ describe('a section whose reading failed', () => {
         document.querySelector('[data-slot="resource-state"]')?.getAttribute('data-state'),
       ).toBe('denied'),
     )
-    await expect.element(page.getByRole('heading', { level: 2 })).toBeVisible()
+    // a pane in the card or dialog around it, ranked under that one's title
+    await expect.element(page.getByRole('heading', { level: 3 })).toBeVisible()
     expect(page.getByRole('button', { name: 'retry' }).elements()).toHaveLength(0)
   })
 })
