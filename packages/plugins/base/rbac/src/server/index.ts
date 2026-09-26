@@ -801,7 +801,13 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
         return {
           roles: considered
             .filter((role) => role.refusal === null)
-            .map(({ id, code, name, kind }) => ({ id, code, name, kind })),
+            .map(({ id, code, name, kind, administrator }) => ({
+              id,
+              code,
+              name,
+              kind,
+              administrator,
+            })),
           // the offices the reader could fill, that do not fit this person
           // or this place, each with why, and the ones the reader holds
           // without being the one to fill them; an office neither held nor

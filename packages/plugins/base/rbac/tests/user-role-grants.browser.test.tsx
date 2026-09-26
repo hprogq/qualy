@@ -61,7 +61,9 @@ const confined = (over: Partial<GrantDto> = {}): GrantDto =>
     ...over,
   })
 
-const roleOptions = [{ id: ROLE_ID, code: 'counsellor', name: '辅导员', kind: 'org' as const }]
+const roleOptions = [
+  { id: ROLE_ID, code: 'counsellor', name: '辅导员', kind: 'org' as const, administrator: false },
+]
 
 // a reader who may give roles across the tenant and in the tree
 const everywhere = { tenant: true, organization: true }
@@ -198,6 +200,44 @@ describe('the grants of one person', () => {
     await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1))
     expect(create).toHaveBeenCalledWith({
       payload: { userId: USER_ID, roleId: ROLE_ID, target: { kind: 'tenant' } },
+    })
+  })
+
+  // The administrator role carries everything: it is never chosen for the
+  // reader, and giving it is asked once more.
+  it('never chooses the administrator role for the reader, and asks before giving it', async () => {
+    const create = vi.fn(() => Effect.succeed({ id: 'created-grant' }))
+    await open({
+      getRoleGrantOptions: () =>
+        Effect.succeed({
+          roles: [
+            {
+              id: OTHER_ROLE_ID,
+              code: 'admin',
+              name: '系统管理员',
+              kind: 'tenant' as const,
+              administrator: true,
+            },
+          ],
+          refused: [],
+        }),
+      createRoleGrant: create,
+    })
+    await page.getByRole('button', { name: '授予角色' }).click()
+    await page.getByRole('radio', { name: '整个租户' }).click()
+    const role = page.getByRole('combobox', { name: '角色' })
+    await expect.element(role).toBeEnabled()
+    await expect.element(page.getByRole('button', { name: '授予', exact: true })).toBeDisabled()
+    await role.click()
+    await page.getByRole('option', { name: /系统管理员/ }).click()
+    await page.getByRole('button', { name: '授予', exact: true }).click()
+    const asked = page.getByRole('alertdialog')
+    await expect.element(asked).toBeVisible()
+    expect(create).not.toHaveBeenCalled()
+    await asked.getByTestId('confirm-accept').click()
+    await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+    expect(create).toHaveBeenCalledWith({
+      payload: { userId: USER_ID, roleId: OTHER_ROLE_ID, target: { kind: 'tenant' } },
     })
   })
 
@@ -375,7 +415,13 @@ describe('the grants of one person', () => {
           Effect.succeed({
             roles: [
               ...roleOptions,
-              { id: OTHER_ROLE_ID, code: 'head', name: '班主任', kind: 'org' as const },
+              {
+                id: OTHER_ROLE_ID,
+                code: 'head',
+                name: '班主任',
+                kind: 'org' as const,
+                administrator: false,
+              },
             ],
             refused: [{ ...refusedRole('monitor', '班长'), refusal: 'org-type' as const }],
           }),

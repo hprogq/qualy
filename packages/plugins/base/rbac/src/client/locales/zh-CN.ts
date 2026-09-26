@@ -57,6 +57,8 @@ export default {
   'rbac/grants/none-tenant': '你没有可在整个租户范围授予的角色',
   'rbac/grants/none-unit': '你在该组织没有可授予的角色，可改选其他组织',
   'rbac/grants/done': '已授予{role}',
+  'rbac/grants/administrator-title': '授予{role}？',
+  'rbac/grants/administrator-body': '获得后可使用全部功能，并能授予和撤销任何角色',
   'rbac/action/grant': '授予',
   'rbac/error/grant-resource-bound':
     '该授权只在特定业务对象（{namespace} {type}）内生效，请到该对象所在的页面撤销。',

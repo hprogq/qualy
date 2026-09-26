@@ -1017,6 +1017,8 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
       kind: 'tenant' | 'org'
       refusal: RoleRefusal | null
       held: boolean
+      /** the canonical administrator: everything the tenant can grant, at once */
+      administrator: boolean
     }[],
     GrantUserNotFound | GrantNodeNotFound,
     Orm
@@ -1047,6 +1049,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
       name: role.name,
       kind: role.kind,
       held: mine.has(role.id),
+      administrator: isCanonicalTenantAdmin(role),
     })
     // Asked once, because it does not depend on the role: administering
     // grants of this reach at this place is the same question for every
@@ -1065,6 +1068,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
       kind: 'tenant' | 'org'
       refusal: RoleRefusal | null
       held: boolean
+      administrator: boolean
     }[] = []
     for (const role of candidates) {
       const verdict = yield* transaction(

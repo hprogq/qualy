@@ -14,6 +14,11 @@ const permissionCountMessage = defineMessage<{ count: number }>()({
   defaultMessage: '{count, plural, one {# permission} other {# permissions}}',
 })
 
+const grantAdministratorTitleMessage = defineMessage<{ role: string }>()({
+  id: 'rbac/grants/administrator-title',
+  defaultMessage: 'Grant {role}?',
+})
+
 const grantDoneMessage = defineMessage<{ role: string }>()({
   id: 'rbac/grants/done',
   defaultMessage: 'Granted {role}',
@@ -263,6 +268,12 @@ const i18n = definePluginMessages({
       defaultMessage: 'You have no role to grant at this unit; try another',
     },
     grantDone: grantDoneMessage,
+    grantAdministratorTitle: grantAdministratorTitleMessage,
+    grantAdministratorBody: {
+      id: 'rbac/grants/administrator-body',
+      defaultMessage:
+        'They will be able to do everything, including granting and revoking any role',
+    },
     grantSubmit: { id: 'rbac/action/grant', defaultMessage: 'Grant' },
     'permission.iam.role.manage': {
       id: 'rbac/permission/role-manage',

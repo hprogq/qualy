@@ -8,7 +8,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { Feedback, Field, FormDialog } from '@qualy/ui/admin'
+import { ConfirmDialog, Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Blank } from '@qualy/ui/screen'
 import {
@@ -164,13 +164,18 @@ export function GrantRoleDialog({
   })
   const roles = options.data?.roles ?? []
   const refused = options.data?.refused ?? []
-  // one office on offer is the answer already; among several, the reader
-  // says which, and nothing is given until they do
+  // One office on offer is the answer already; among several, the reader
+  // says which, and nothing is given until they do. The administrator role
+  // is never the answer on the reader's behalf: it is everything at once,
+  // and two presses were enough to hand it over.
   const selected = roles.some((role) => role.id === roleId)
     ? roleId
-    : roles.length === 1
+    : roles.length === 1 && !roles[0]!.administrator
       ? roles[0]!.id
       : ''
+  const chosen = roles.find((role) => role.id === selected)
+  // asked once more before the administrator role is given
+  const [confirming, setConfirming] = useState(false)
   const loaded = targeted && options.data !== undefined
 
   const grant = useMutation({
@@ -189,7 +194,7 @@ export function GrantRoleDialog({
       ),
     onMutate: () => setFeedback(null),
     onSuccess: async () => {
-      const name = roles.find((role) => role.id === selected)?.name ?? ''
+      const name = chosen?.name ?? ''
       await queryClient.invalidateQueries({ queryKey: query.access.key() })
       toast.success(format(m.grantDone, { role: name }))
       onClose()
@@ -244,171 +249,190 @@ export function GrantRoleDialog({
   }[summary]
 
   return (
-    <FormDialog
-      open={open}
-      title={format(m.grantOpen)}
-      onClose={onClose}
-      footer={
-        stuck ? (
-          <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.close)}
-          </Button>
-        ) : (
-          <>
+    <>
+      <FormDialog
+        open={open}
+        title={format(m.grantOpen)}
+        onClose={onClose}
+        footer={
+          stuck ? (
             <Button variant="outline" onClick={onClose}>
-              {format(commonMessages.cancel)}
+              {format(commonMessages.close)}
             </Button>
-            <Button type="submit" form={formId} disabled={grant.isPending || selected === ''}>
-              {format(m.grantSubmit)}
-            </Button>
-          </>
-        )
-      }
-    >
-      <form
-        id={formId}
-        data-testid="grant-form"
-        data-scope={scope}
-        {...stylex.props(styles.form)}
-        onSubmit={(event) => {
-          event.preventDefault()
-          if (selected !== '' && !grant.isPending) grant.mutate()
-        }}
+          ) : (
+            <>
+              <Button variant="outline" onClick={onClose}>
+                {format(commonMessages.cancel)}
+              </Button>
+              <Button type="submit" form={formId} disabled={grant.isPending || selected === ''}>
+                {format(m.grantSubmit)}
+              </Button>
+            </>
+          )
+        }
       >
-        <Feedback message={feedback} />
-        {grantable.tenant && grantable.organization && (
-          <Field label={format(m.grantScope)}>
-            {() => (
-              <ToggleGroup
-                fill
-                aria-label={format(m.grantScope)}
-                value={scope}
-                onValueChange={(next) => {
-                  if (next === '') return
-                  setScope(next as Scope)
-                  setRoleId('')
-                  setFeedback(null)
-                }}
-              >
-                <ToggleGroupItem value="org-node">{format(m.grantScopeNode)}</ToggleGroupItem>
-                <ToggleGroupItem value="tenant">{format(m.grantScopeTenant)}</ToggleGroupItem>
-              </ToggleGroup>
-            )}
-          </Field>
-        )}
-
-        {scope === 'org-node' && (
-          <>
-            <Field label={format(m.grantAnchor)}>
-              {() => (
-                <div data-testid="grant-anchor" {...stylex.props(styles.pickerSeat)}>
-                  <UiSlot
-                    token={orgNodePicker}
-                    context={picker}
-                    fallback={
-                      <p {...stylex.props(styles.quietNote)}>{format(m.grantAnchorUnavailable)}</p>
-                    }
-                  />
-                </div>
-              )}
-            </Field>
-            <Field label={format(m.grantCoverage)}>
+        <form
+          id={formId}
+          data-testid="grant-form"
+          data-scope={scope}
+          {...stylex.props(styles.form)}
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (selected === '' || grant.isPending) return
+            if (chosen?.administrator === true) setConfirming(true)
+            else grant.mutate()
+          }}
+        >
+          <Feedback message={feedback} />
+          {grantable.tenant && grantable.organization && (
+            <Field label={format(m.grantScope)}>
               {() => (
                 <ToggleGroup
                   fill
-                  aria-label={format(m.grantCoverage)}
-                  value={coverage}
+                  aria-label={format(m.grantScope)}
+                  value={scope}
                   onValueChange={(next) => {
                     if (next === '') return
-                    setCoverage(next as Coverage)
+                    setScope(next as Scope)
+                    setRoleId('')
+                    setFeedback(null)
                   }}
                 >
-                  <ToggleGroupItem value="self">{format(m.grantCoverageSelf)}</ToggleGroupItem>
-                  <ToggleGroupItem value="subtree">
-                    {format(m.grantCoverageSubtree)}
-                  </ToggleGroupItem>
+                  <ToggleGroupItem value="org-node">{format(m.grantScopeNode)}</ToggleGroupItem>
+                  <ToggleGroupItem value="tenant">{format(m.grantScopeTenant)}</ToggleGroupItem>
                 </ToggleGroup>
               )}
             </Field>
-          </>
-        )}
+          )}
 
-        {loaded && roles.length === 0 ? (
-          // Nothing to choose is an answer, not a missing one: said where the
-          // role would be chosen, with the offices that do not fit and why,
-          // so the reader knows whether to pick another unit or look elsewhere.
-          <div
-            data-testid="grant-nothing-offered"
-            data-refused={refused.length}
-            data-summary={summary}
-          >
-            <Blank
-              size="compact"
-              icon={<ShieldOffIcon aria-hidden />}
-              title={format(m.grantRolesNone)}
-              description={format(said)}
-              xstyle={styles.nothing}
-              action={
-                summary !== 'person-disabled' &&
-                refused.length > 0 && (
-                  <ul {...stylex.props(styles.refusals)}>
-                    {refused.map((role) => (
-                      <li
-                        key={role.id}
-                        data-testid="grant-refused"
-                        data-refusal={role.refusal}
-                        {...stylex.props(styles.refusal)}
-                      >
-                        <span {...stylex.props(styles.refusalName)}>{role.name}</span>
-                        <span {...stylex.props(styles.refusalWhy)}>{why(role.refusal)}</span>
-                      </li>
+          {scope === 'org-node' && (
+            <>
+              <Field label={format(m.grantAnchor)}>
+                {() => (
+                  <div data-testid="grant-anchor" {...stylex.props(styles.pickerSeat)}>
+                    <UiSlot
+                      token={orgNodePicker}
+                      context={picker}
+                      fallback={
+                        <p {...stylex.props(styles.quietNote)}>
+                          {format(m.grantAnchorUnavailable)}
+                        </p>
+                      }
+                    />
+                  </div>
+                )}
+              </Field>
+              <Field label={format(m.grantCoverage)}>
+                {() => (
+                  <ToggleGroup
+                    fill
+                    aria-label={format(m.grantCoverage)}
+                    value={coverage}
+                    onValueChange={(next) => {
+                      if (next === '') return
+                      setCoverage(next as Coverage)
+                    }}
+                  >
+                    <ToggleGroupItem value="self">{format(m.grantCoverageSelf)}</ToggleGroupItem>
+                    <ToggleGroupItem value="subtree">
+                      {format(m.grantCoverageSubtree)}
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+                )}
+              </Field>
+            </>
+          )}
+
+          {loaded && roles.length === 0 ? (
+            // Nothing to choose is an answer, not a missing one: said where the
+            // role would be chosen, with the offices that do not fit and why,
+            // so the reader knows whether to pick another unit or look elsewhere.
+            <div
+              data-testid="grant-nothing-offered"
+              data-refused={refused.length}
+              data-summary={summary}
+            >
+              <Blank
+                size="compact"
+                icon={<ShieldOffIcon aria-hidden />}
+                title={format(m.grantRolesNone)}
+                description={format(said)}
+                xstyle={styles.nothing}
+                action={
+                  summary !== 'person-disabled' &&
+                  refused.length > 0 && (
+                    <ul {...stylex.props(styles.refusals)}>
+                      {refused.map((role) => (
+                        <li
+                          key={role.id}
+                          data-testid="grant-refused"
+                          data-refusal={role.refusal}
+                          {...stylex.props(styles.refusal)}
+                        >
+                          <span {...stylex.props(styles.refusalName)}>{role.name}</span>
+                          <span {...stylex.props(styles.refusalWhy)}>{why(role.refusal)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )
+                }
+              />
+            </div>
+          ) : (
+            <Field label={format(m.grantRole)}>
+              {(id) => (
+                <Select
+                  value={selected}
+                  disabled={!loaded || roles.length === 0}
+                  onValueChange={(next) => setRoleId(next)}
+                >
+                  <SelectTrigger id={id} xstyle={styles.field}>
+                    <SelectValue placeholder={placeholder} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {roles.map((role) => (
+                      <SelectItem key={role.id} value={role.id}>
+                        {role.name}
+                      </SelectItem>
                     ))}
-                  </ul>
-                )
-              }
-            />
-          </div>
-        ) : (
-          <Field label={format(m.grantRole)}>
-            {(id) => (
-              <Select
-                value={selected}
-                disabled={!loaded || roles.length === 0}
-                onValueChange={(next) => setRoleId(next)}
-              >
-                <SelectTrigger id={id} xstyle={styles.field}>
-                  <SelectValue placeholder={placeholder} />
-                </SelectTrigger>
-                <SelectContent>
-                  {roles.map((role) => (
-                    <SelectItem key={role.id} value={role.id}>
-                      {role.name}
-                    </SelectItem>
-                  ))}
-                  {refused.length > 0 && (
-                    <>
-                      <SelectSeparator />
-                      <SelectGroup>
-                        <SelectLabel>{format(m.grantRefusedGroup)}</SelectLabel>
-                        {refused.map((role) => (
-                          <SelectItem
-                            key={role.id}
-                            value={role.id}
-                            disabled
-                            description={why(role.refusal)}
-                          >
-                            {role.name}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </>
-                  )}
-                </SelectContent>
-              </Select>
-            )}
-          </Field>
-        )}
-      </form>
-    </FormDialog>
+                    {refused.length > 0 && (
+                      <>
+                        <SelectSeparator />
+                        <SelectGroup>
+                          <SelectLabel>{format(m.grantRefusedGroup)}</SelectLabel>
+                          {refused.map((role) => (
+                            <SelectItem
+                              key={role.id}
+                              value={role.id}
+                              disabled
+                              description={why(role.refusal)}
+                            >
+                              {role.name}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
+              )}
+            </Field>
+          )}
+        </form>
+      </FormDialog>
+      <ConfirmDialog
+        open={confirming}
+        title={format(m.grantAdministratorTitle, { role: chosen?.name ?? '' })}
+        description={format(m.grantAdministratorBody)}
+        confirmLabel={format(m.grantSubmit)}
+        cancelLabel={format(commonMessages.cancel)}
+        pending={grant.isPending}
+        onCancel={() => setConfirming(false)}
+        onConfirm={() => {
+          setConfirming(false)
+          grant.mutate()
+        }}
+      />
+    </>
   )
 }

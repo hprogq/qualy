@@ -156,6 +156,19 @@ const seed = (url: string) =>
       yield* runSql(sql`
         insert into role_grant_rules (tenant_id, granter_role_id, target_role_id)
         values (${tenant}, ${collegeAdmin}, ${counsellor})`)
+      // the tenant's administrator role, which only its holders may give
+      const administrator = one<{ id: string }>(
+        yield* runSql(sql`
+          insert into roles (tenant_id, code, name, kind, status, permission_mode, system_key,
+                             eligibility_mode)
+          values (${tenant}, 'admin', 'Admin', 'tenant', 'active', 'all-active', 'tenant-admin',
+                  'unrestricted')
+          returning id`),
+      ).id
+      const head = yield* person('Head')
+      yield* runSql(sql`
+        insert into role_grants (tenant_id, user_id, role_id)
+        values (${tenant}, ${head}, ${administrator})`)
       const dean = yield* person('Dean')
       const desk = yield* person('Desk')
       const li = yield* person('Li')
@@ -165,7 +178,7 @@ const seed = (url: string) =>
       yield* runSql(sql`
         insert into role_grants (tenant_id, user_id, role_id)
         values (${tenant}, ${desk}, ${tenantDesk})`)
-      return { tenant, child, dean, desk, li }
+      return { tenant, child, head, dean, desk, li }
     }).pipe(Effect.provide(databaseFor(url, { entities: closure }))),
   )
 
@@ -219,6 +232,24 @@ describe.runIf(postgresAvailable)('the grant form, as served', () => {
       expect(body.refused).toEqual([
         expect.objectContaining({ code: 'college-admin', refusal: 'authority' }),
       ])
+    } finally {
+      await letGo()
+      await db.dispose()
+    }
+  })
+
+  it('marks the administrator role among the roles on offer', async () => {
+    const db = await createTestContext('rbac-grant-administrator-http')
+    try {
+      const f = ok(await seed(db.url))
+      const ask = serve(db.url, f.tenant)
+      const answer = await ask(`/iam/role-grant-options?userId=${f.li}&target=tenant`, f.head)
+      expect(answer.status).toBe(200)
+      const roles = (answer.body as { roles: { code: string; administrator: boolean }[] }).roles
+      expect(Object.fromEntries(roles.map((role) => [role.code, role.administrator]))).toEqual({
+        admin: true,
+        'tenant-desk': false,
+      })
     } finally {
       await letGo()
       await db.dispose()

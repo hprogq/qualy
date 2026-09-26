@@ -449,6 +449,12 @@ export const accessApiGroup = HttpApiGroup.make('access')
             code: Schema.String,
             name: Schema.String,
             kind: roleKind,
+            /**
+             * The tenant's administrator role, which carries everything: a
+             * form does not choose it on the reader's behalf, and asks again
+             * before giving it.
+             */
+            administrator: Schema.Boolean,
           }),
         ),
         /**

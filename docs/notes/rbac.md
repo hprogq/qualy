@@ -57,6 +57,8 @@
   既不持有、任命权也不在读者手里的角色不列：那不是读者的问题，全列出来只会让整个角色目录出现在每个人面前。
   草稿、停用、不可授予的角色也不列（候选本来就只取同 kind、active、assignable 的角色）。处理器层的这条过滤与 `grantable` 由
   `packages/plugins/base/rbac/tests/grant-handlers.test.ts` 经真实路由守住。
+- `roles` 每项带 `administrator`（canonical tenant-admin）：表单只在唯一可授角色**不是**管理员角色时代选，授予管理员角色前再确认一次
+  （此前「整个租户」下常常只剩系统管理员一个可授角色，打开、切换、点「授予」两下就交出了租户里最大的权力）。
 - **探测与写入同序**：逐角色先问任命权（`mayAdministerRole`、`mayAppointRole`），再问资格（`eligible`），最后是自授扩权，与 `grantRole`
   的 `mayConfer` → `eligible` → 自授检查一致。此前先问资格，一个读者本来就不能任命的角色会以「用户类型不适用」出现，读起来像是换个人就能授。
   `GRANT_NOT_ELIGIBLE` 按 reason 区分 `org-type` / `user-type` / `person-disabled`，不再一律说成用户类型。
