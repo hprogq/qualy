@@ -129,6 +129,11 @@ const pendingShort = defineMessage<{ count: number }>()({
   defaultMessage: '{count} unsaved',
 })
 
+const openStage = defineMessage<{ name: string }>()({
+  id: 'assessment/plan/open-stage',
+  defaultMessage: 'Stage details: {name}',
+})
+
 // what a batch is, in one line: who it assesses and which materials count
 const batchSummary = defineMessage<{ count: number; from: string; until: string }>()({
   id: 'assessment/batch/summary',
@@ -5734,7 +5739,7 @@ const i18n = definePluginMessages({
     },
     phasesEmpty: {
       id: 'assessment/phase/empty',
-      defaultMessage: 'No stages have been added. Add stages manually or from a template.',
+      defaultMessage: 'No stages yet. Add them one by one, or from a template',
     },
     addPhase: { id: 'assessment/phase/add', defaultMessage: 'Add stage' },
     colStage: { id: 'assessment/plan/col-stage', defaultMessage: 'Stage' },
@@ -5756,22 +5761,16 @@ const i18n = definePluginMessages({
       defaultMessage: 'Describe the main work performed during this stage',
     },
     notScheduled: { id: 'assessment/plan/not-scheduled', defaultMessage: 'Not scheduled' },
-    awaitingEarlier: {
-      id: 'assessment/plan/awaiting-earlier',
-      defaultMessage: 'Schedule the previous stage first',
-    },
-    lockedBySchedule: { id: 'assessment/plan/locked', defaultMessage: 'Scheduled' },
-    upNextBadge: { id: 'assessment/plan/up-next', defaultMessage: 'Ready to schedule' },
     enterEditing: {
       id: 'assessment/plan/enter-editing',
-      defaultMessage: 'Add or edit stages',
+      defaultMessage: 'Edit stages',
     },
     unscheduledFrom: {
       id: 'assessment/plan/unscheduled-from',
       defaultMessage: 'The following stages are not yet scheduled',
     },
     insertHere: { id: 'assessment/plan/insert-here', defaultMessage: 'Add stage here' },
-    editDetails: { id: 'assessment/phase/edit-details', defaultMessage: 'Edit details' },
+    openStage,
     saveShort: { id: 'assessment/plan/save-short', defaultMessage: 'Save' },
     moveUp: { id: 'assessment/plan/move-up', defaultMessage: 'Move up' },
     moveDown: { id: 'assessment/plan/move-down', defaultMessage: 'Move down' },
@@ -5838,8 +5837,6 @@ const i18n = definePluginMessages({
       defaultMessage: 'Select a start time',
     },
     clearTime: { id: 'assessment/phase/clear-time', defaultMessage: 'Clear' },
-    currentBadge: { id: 'assessment/phase/current', defaultMessage: 'In progress' },
-    endedBadge: { id: 'assessment/phase/ended', defaultMessage: 'Ended' },
     opensCount,
 
     // starting a stage by hand

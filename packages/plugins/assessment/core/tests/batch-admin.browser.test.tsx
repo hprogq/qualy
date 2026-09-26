@@ -1206,7 +1206,7 @@ describe('the stage plan', () => {
 
     await page.getByRole('button', { name: '新增阶段', exact: true }).click()
     // a phase is named where a name has room to be read
-    await page.getByRole('button', { name: '编辑详情' }).click()
+    await page.getByTestId('phase-row').click()
     const details = page.getByRole('dialog')
     await details.getByLabelText('阶段名称').fill('正式填报')
     await details.getByRole('button', { name: '完成' }).click()
@@ -1305,7 +1305,7 @@ describe('the stage plan', () => {
   it('offers only the permissions a stage may govern', async () => {
     await screen({ getPhases: () => Effect.succeed(twoPhases()) })
 
-    await page.getByRole('button', { name: '编辑详情' }).first().click()
+    await page.getByTestId('phase-row').first().click()
     const panel = page.getByRole('dialog')
 
     // the gate's own registry, and nothing else: the actions themselves,
@@ -1334,7 +1334,7 @@ describe('the stage plan', () => {
     const putPhases = vi.fn((_request: Request) => Effect.succeed({ phases: [], warnings: [] }))
     await screen({ putPhases, getPhases: () => Effect.succeed(twoPhases()) })
 
-    await page.getByRole('button', { name: '编辑详情' }).first().click()
+    await page.getByTestId('phase-row').first().click()
     const panel = page.getByRole('dialog')
     await panel.getByLabelText('应用时间线模板').selectOptions('填报阶段预设')
     await panel.getByRole('button', { name: '应用' }).click()
@@ -1386,7 +1386,7 @@ describe('the stage plan', () => {
     )
     await screen({ putPhases, getPhases: () => Effect.succeed(twoPhases()) })
 
-    await page.getByRole('button', { name: '编辑详情' }).nth(1).click()
+    await page.getByTestId('phase-row').nth(1).click()
     const panel = page.getByRole('dialog')
     await panel.getByLabelText('阶段名称').fill('审核整理期')
     await panel.getByRole('button', { name: '完成' }).click()
@@ -1412,7 +1412,7 @@ describe('the stage plan', () => {
         ),
     })
 
-    await page.getByRole('button', { name: '编辑详情' }).nth(1).click()
+    await page.getByTestId('phase-row').nth(1).click()
     const panel = page.getByRole('dialog')
     await panel.getByLabelText('阶段名称').fill('审核整理期')
     await panel.getByRole('button', { name: '完成' }).click()
@@ -1420,6 +1420,39 @@ describe('the stage plan', () => {
     await expect
       .element(page.getByTestId('phase-refusal'))
       .toHaveAttribute('data-reason', 'scheduled-phase-immutable')
+  })
+
+  it('marks the rows an edit changed, and holds the tab until they are saved', async () => {
+    await screen({ getPhases: () => Effect.succeed(twoPhases()) })
+    await vi.waitFor(() => expect(page.getByTestId('phase-row').elements()).toHaveLength(2))
+
+    // whether the browser would ask before the tab went, as the page answers it
+    const held = () => {
+      const leaving = new Event('beforeunload', { cancelable: true })
+      window.dispatchEvent(leaving)
+      return leaving.defaultPrevented
+    }
+    expect(held()).toBe(false)
+
+    await page.getByTestId('phase-row').nth(1).getByText('审核整理').click()
+    const panel = page.getByRole('dialog')
+    await panel.getByLabelText('阶段名称').fill('审核整理期')
+    await panel.getByRole('button', { name: '完成' }).click()
+
+    // the row that changed says so, and the one that did not stays quiet
+    const unsaved = () =>
+      page
+        .getByTestId('phase-standing')
+        .elements()
+        .map((node) => node.getAttribute('data-unsaved'))
+    await vi.waitFor(() => expect(unsaved()).toEqual(['false', 'true']))
+    expect(held()).toBe(true)
+
+    // discarded, there is nothing left to lose
+    await page.getByRole('button', { name: '取消', exact: true }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '放弃修改' }).click()
+    await vi.waitFor(() => expect(unsaved()).toEqual(['false', 'false']))
+    expect(held()).toBe(false)
   })
 
   // A round's times are the school's times. The suite's device keeps

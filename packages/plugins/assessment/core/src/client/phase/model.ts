@@ -49,6 +49,10 @@ export const freshDraft = (taken: readonly { phaseKey: string }[]): PhaseDraft =
   permissionProfile: [],
 })
 
+/** a list as a set, so the order things were ticked in is not a change */
+const sameSet = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && a.every((id) => b.includes(id))
+
 export interface PlanShape {
   /** how many phases have actually begun */
   readonly entered: number
@@ -97,8 +101,16 @@ export const countChanges = (
   if (edited === null) return 0
   const before = new Map(server.map((row) => [row.id!, row]))
   const changed = edited.filter(
-    (row) => row.id === undefined || JSON.stringify(row) !== JSON.stringify(before.get(row.id)),
+    (row) => row.id === undefined || edits(row, before.get(row.id)),
   ).length
   const kept = new Set(edited.flatMap((row) => (row.id !== undefined ? [row.id] : [])))
   return changed + server.filter((row) => !kept.has(row.id!)).length
 }
+
+/** whether a row says something other than what is stored for it */
+export const edits = (row: PhaseDraft, stored: PhaseDraft | undefined): boolean =>
+  stored === undefined ||
+  row.displayName !== stored.displayName ||
+  row.description !== stored.description ||
+  row.entryNote !== stored.entryNote ||
+  !sameSet(row.permissionProfile, stored.permissionProfile)

@@ -1,15 +1,14 @@
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ListOrderedIcon, PlusIcon } from 'lucide-react'
+import { PencilLineIcon, PlusIcon } from 'lucide-react'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qualy/ui/table'
+import { Card, Table, TableHead, TableSkeleton, UnsavedMark } from '@qualy/ui/screen'
 import { useIsMobile } from '@qualy/ui/use-mobile'
 import { Button } from '@qualy/ui/button'
 import { toast } from '@qualy/ui/toast'
-import { Skeleton } from '@qualy/ui/skeleton'
 import * as stylex from '@stylexjs/stylex'
 import { Appear } from '@qualy/ui/reveal'
 import { Ticker } from '@qualy/ui/ticker'
@@ -21,6 +20,7 @@ import { planRefusalWords, refusalsOf, type PlanRefusalLike } from './refusals.t
 import {
   countChanges,
   draftOf,
+  edits,
   freshDraft,
   shapeOf,
   type BatchDto,
@@ -41,6 +41,12 @@ import { ZoneNote } from './batch/BatchZone.tsx'
 // root: queries, mutations and the modes; the row, the panel and the dialogs
 // live next to it.
 
+// The columns a stage is read in, and the one more an edit needs for the
+// controls that move and remove it. The head and every row take the same
+// template, so a column cannot drift out of line with its heading.
+const COLUMNS = 'minmax(0, 1.9fr) minmax(0, 0.95fr) minmax(0, 1.4fr) 5.5rem'
+const EDITING_COLUMNS = `${COLUMNS} 6rem`
+
 const styles = stylex.create({
   stack: {
     display: 'flex',
@@ -49,10 +55,21 @@ const styles = stylex.create({
   },
   controlsRow: {
     display: 'flex',
+    minHeight: 32,
     flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'flex-end',
     gap: 8,
+  },
+  // while a plan is being edited its save stays in reach, however long the
+  // plan is: the row holds to the top of the scroll as the rows go past
+  controlsHeld: {
+    position: 'sticky',
+    top: 0,
+    zIndex: 20,
+    marginBlock: -8,
+    paddingBlock: 8,
+    backgroundColor: tokens.background,
   },
   // the plan's clock, at the far end from the controls
   zoneNote: {
@@ -61,110 +78,60 @@ const styles = stylex.create({
   controlsSeat: {
     display: 'flex',
     flexShrink: 0,
+    flexWrap: 'wrap',
     alignItems: 'center',
+    justifyContent: 'flex-end',
     gap: 8,
-  },
-  pendingNote: {
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
-    color: tokens.mutedForeground,
-  },
-  boneStack: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
-  },
-  bone: {
-    height: 48,
-    width: '100%',
   },
   emptyPlan: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 16,
-    borderRadius: tokens.radiusLg,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: tokens.border,
-    padding: 32,
+    alignItems: 'center',
+    gap: 14,
+    paddingInline: 24,
+    paddingBlock: 36,
     textAlign: 'center',
   },
   emptyNote: {
-    fontSize: '0.875rem',
-    lineHeight: '1.25rem',
+    margin: 0,
+    fontSize: 13,
     color: tokens.mutedForeground,
   },
   emptyActions: {
     display: 'flex',
+    flexWrap: 'wrap',
     justifyContent: 'center',
     gap: 8,
   },
-  planStack: {
+  // where the plan stops having times: a strip in the head's own grey, so
+  // it reads as a second heading over the rows under it rather than a row
+  boundary: {
     display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
-  },
-  tableShell: {
-    overflow: 'hidden',
-    borderRadius: tokens.radiusLg,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
-  },
-  // fixed tracks, so a long stage name cannot take the width the other
-  // columns need
-  fixedTable: {
-    tableLayout: 'fixed',
-  },
-  stillRow: {
-    backgroundColor: {
-      default: null,
-      ':hover': null,
-    },
-  },
-  colStage: { width: '26%' },
-  colOpens: { width: '26%' },
-  colStart: { width: '26%' },
-  colStatus: { width: '22%', textAlign: 'right' },
-  boundaryCell: {
-    borderBottomWidth: 0,
-    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 30%, transparent)`,
-    paddingBlock: 4,
-    textAlign: 'center',
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
+    alignItems: 'center',
+    height: 28,
+    paddingInline: 16,
+    backgroundColor: tokens.surfaceInset,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+    fontSize: 11,
+    fontWeight: 500,
     color: tokens.mutedForeground,
   },
-  seamRow: {
-    height: 0,
-    borderBottomWidth: 0,
-    backgroundColor: {
-      default: null,
-      ':hover': null,
-    },
-  },
-  seamCell: {
+  seam: {
     position: 'relative',
     height: 0,
-    borderBottomWidth: 0,
-    // longhands, because the cell writes its padding as longhands: a `padding`
-    // shorthand here is a different property key, so both survive and the
-    // shorthand does not win. The seam would keep the cell's 12px and render
-    // as a blank band where its own height says zero.
-    paddingBlock: 0,
-    paddingInlineStart: 0,
-    paddingInlineEnd: 0,
   },
   seamStrip: {
     position: 'absolute',
     insetInline: 0,
-    top: -6,
+    top: -12,
     zIndex: 10,
     display: 'flex',
-    height: 12,
+    height: 24,
     alignItems: 'center',
     gap: 8,
-    paddingInline: 12,
+    paddingInline: 16,
     transitionProperty: 'opacity',
     transitionDuration: '150ms',
     transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
@@ -186,19 +153,18 @@ const styles = stylex.create({
   seamButton: {
     height: 24,
     gap: 4,
-    backgroundColor: tokens.background,
+    backgroundColor: tokens.surface,
     paddingInline: 8,
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
+    fontSize: 12,
   },
   seamGlyph: {
     width: 12,
     height: 12,
   },
-  addCell: {
-    paddingBlock: 8,
-    paddingInlineStart: 8,
-    paddingInlineEnd: 8,
+  addRow: {
+    display: 'flex',
+    paddingInline: 8,
+    paddingBlock: 6,
   },
   wideGhost: {
     width: '100%',
@@ -207,22 +173,23 @@ const styles = stylex.create({
   cardList: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 8,
+    gap: 10,
+    margin: 0,
+    paddingInlineStart: 0,
+    listStyleType: 'none',
   },
   cardBoundary: {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
     paddingTop: 4,
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
+    fontSize: 11.5,
     color: tokens.mutedForeground,
   },
   cardSeamButton: {
     height: 28,
     width: '100%',
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
+    fontSize: 12,
     color: tokens.mutedForeground,
   },
   fullGhost: {
@@ -231,7 +198,7 @@ const styles = stylex.create({
 })
 
 /** the gap between two rows, which offers to become a stage when pointed at */
-function SeamRow({
+function Seam({
   label,
   shown,
   onPoint,
@@ -243,36 +210,34 @@ function SeamRow({
   onInsert: () => void
 }) {
   return (
-    <TableRow xstyle={styles.seamRow}>
-      {/* the strip takes no height of its own: it straddles the seam the two
+    <div {...stylex.props(styles.seam)}>
+      {/* the strip takes no height of its own: it straddles the rule the two
           neighbouring rows already draw, so revealing it moves nothing.
           movement decides what is shown, not :hover - inserting a row moves
           the strip under a pointer that has not moved, and css would leave it
           lit until the pointer did */}
-      <TableCell colSpan={4} xstyle={styles.seamCell}>
-        <div
-          onMouseMove={() => onPoint(true)}
-          onMouseLeave={() => onPoint(false)}
-          {...stylex.props(styles.seamStrip, shown && styles.seamShown)}
+      <div
+        onMouseMove={() => onPoint(true)}
+        onMouseLeave={() => onPoint(false)}
+        {...stylex.props(styles.seamStrip, shown && styles.seamShown)}
+      >
+        <span aria-hidden {...stylex.props(styles.seamLine)} />
+        <Button
+          variant="outline"
+          className={stylex.props(styles.seamButton).className}
+          onClick={(event) => {
+            // the strip is also held open by focus, and the row it just
+            // added has moved it out from under the pointer
+            event.currentTarget.blur()
+            onInsert()
+          }}
         >
-          <span aria-hidden {...stylex.props(styles.seamLine)} />
-          <Button
-            variant="outline"
-            className={stylex.props(styles.seamButton).className}
-            onClick={(event) => {
-              // the strip is also held open by focus, and the row it just
-              // added has moved it out from under the pointer
-              event.currentTarget.blur()
-              onInsert()
-            }}
-          >
-            <PlusIcon aria-hidden className={stylex.props(styles.seamGlyph).className} />
-            {label}
-          </Button>
-          <span aria-hidden {...stylex.props(styles.seamLine)} />
-        </div>
-      </TableCell>
-    </TableRow>
+          <PlusIcon aria-hidden className={stylex.props(styles.seamGlyph).className} />
+          {label}
+        </Button>
+        <span aria-hidden {...stylex.props(styles.seamLine)} />
+      </div>
+    </div>
   )
 }
 
@@ -292,9 +257,12 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
   const presets = useQuery(
     query.assessment.listTemplates.queryOptions({ query: { kind: 'phase' } }),
   )
-
   const rows = useMemo(() => phases.data?.phases ?? [], [phases.data])
   const serverDrafts = useMemo(() => rows.map(draftOf), [rows])
+  const storedById = useMemo(
+    () => new Map(serverDrafts.map((row) => [row.id!, row])),
+    [serverDrafts],
+  )
   const shape = useMemo(() => shapeOf(rows, batch.currentPhaseId), [rows, batch.currentPhaseId])
 
   const [edited, setEdited] = useState<readonly PhaseDraft[] | null>(null)
@@ -336,6 +304,15 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
   const isMobile = useIsMobile()
   const readOnly = batch.status === 'archived'
   const dirty = useMemo(() => countChanges(edited, serverDrafts), [edited, serverDrafts])
+
+  // closing the tab or reloading it takes an unsaved plan with it; the
+  // browser asks first, in its own words
+  useEffect(() => {
+    if (dirty === 0) return
+    const hold = (event: BeforeUnloadEvent) => event.preventDefault()
+    window.addEventListener('beforeunload', hold)
+    return () => window.removeEventListener('beforeunload', hold)
+  }, [dirty])
 
   const clear = () => {
     setFailure(null)
@@ -507,6 +484,9 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
   )
   const named = (row: PhaseDraft) => row.displayName || format(m.unnamedSegment)
 
+  /** the stage whose details are open, if any */
+  const opened = actionsAt !== null ? drafts[actionsAt] : undefined
+
   const rowProps = (row: PhaseDraft, index: number): PhaseRowProps => ({
     draft: row,
     phase: row.id !== undefined ? rows.find((r) => r.id === row.id) : undefined,
@@ -515,9 +495,10 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
     total: drafts.length,
     editing,
     readOnly,
+    unsaved:
+      edited !== null && edits(row, row.id !== undefined ? storedById.get(row.id) : undefined),
     refusals: refusalsFor(row, index),
     sentenceOf,
-    onOpens: () => setActionsAt(index),
     onDetails: () => setActionsAt(index),
     onSchedule: () => {
       setPlannedAt(null)
@@ -543,16 +524,16 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
     <div {...stylex.props(styles.stack)}>
       {/* the page header says what a stage plan is; this row is only the
           controls that act on it */}
-      <div {...stylex.props(styles.controlsRow)}>
+      <div {...stylex.props(styles.controlsRow, editing && styles.controlsHeld)}>
         <ZoneNote xstyle={styles.zoneNote} />
         <div {...stylex.props(styles.controlsSeat)}>
           {/* how much is unsaved belongs to a moment that ends, and the
               count moves while somebody edits: the digit that changed is
               what ticks, and the words beside it stay still */}
           <Appear show={editing && dirty > 0}>
-            <span {...stylex.props(styles.pendingNote)}>
+            <UnsavedMark>
               <Ticker value={format(m.pendingShort, { count: dirty })} />
-            </span>
+            </UnsavedMark>
           </Appear>
           {!readOnly && editing && (
             <>
@@ -561,7 +542,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
               </Button>
               <Button
                 size="sm"
-                variant="ghost"
+                variant="outline"
                 disabled={savePlan.isPending}
                 onClick={() => (dirty > 0 ? setDiscarding(true) : setEditing(false))}
               >
@@ -572,7 +553,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
               </Button>
             </>
           )}
-          {!readOnly && !editing && (
+          {!readOnly && !editing && drafts.length > 0 && (
             <Button
               size="sm"
               variant="outline"
@@ -581,7 +562,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
                 setEditing(true)
               }}
             >
-              <ListOrderedIcon aria-hidden />
+              <PencilLineIcon aria-hidden />
               {format(m.enterEditing)}
             </Button>
           )}
@@ -602,137 +583,121 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void phases.refetch()}
         skeleton={
-          <div {...stylex.props(styles.boneStack)}>
-            <Skeleton className={stylex.props(styles.bone).className} />
-            <Skeleton className={stylex.props(styles.bone).className} />
-            <Skeleton className={stylex.props(styles.bone).className} />
-          </div>
+          <Card>
+            <TableSkeleton rows={4} />
+          </Card>
         }
       >
         {drafts.length === 0 ? (
-          <div data-testid="phase-plan-empty" {...stylex.props(styles.emptyPlan)}>
-            <p {...stylex.props(styles.emptyNote)}>{format(m.phasesEmpty)}</p>
-            {!readOnly && (
-              <div {...stylex.props(styles.emptyActions)}>
-                <Button size="sm" onClick={addPhase}>
-                  {format(m.addPhase)}
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => setTemplateOpen(true)}>
-                  {format(m.templateAdd)}
-                </Button>
-              </div>
-            )}
-          </div>
+          <Card data-testid="phase-plan-empty">
+            <div {...stylex.props(styles.emptyPlan)}>
+              <p {...stylex.props(styles.emptyNote)}>{format(m.phasesEmpty)}</p>
+              {!readOnly && (
+                <div {...stylex.props(styles.emptyActions)}>
+                  <Button size="sm" onClick={addPhase}>
+                    {format(m.addPhase)}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setTemplateOpen(true)}>
+                    {format(m.templateAdd)}
+                  </Button>
+                </div>
+              )}
+            </div>
+          </Card>
+        ) : !isMobile ? (
+          // a table where there are columns to be had, stacked cards where
+          // there are not - the same facts either way
+          <Card data-testid="phase-plan">
+            <Table columns={editing && !readOnly ? EDITING_COLUMNS : COLUMNS} openable>
+              <TableHead>
+                <span>{format(m.colStage)}</span>
+                <span>{format(m.colOpens)}</span>
+                <span>{format(m.colPlannedStart)}</span>
+                <span>{format(m.colStatus)}</span>
+                {editing && !readOnly && <span />}
+              </TableHead>
+              {drafts.map((row, index) => (
+                <Fragment key={row.id ?? `new-${row.phaseKey}`}>
+                  {index === shape.scheduled && index > 0 && (
+                    <div data-testid="phase-boundary" {...stylex.props(styles.boundary)}>
+                      {format(m.unscheduledFrom)}
+                    </div>
+                  )}
+                  {editing && !readOnly && index > shape.scheduled && (
+                    <Seam
+                      label={format(m.insertHere)}
+                      shown={seamAt === index}
+                      onPoint={(over) => setSeamAt(over ? index : null)}
+                      onInsert={() => {
+                        setSeamAt(null)
+                        insertAt(index)
+                      }}
+                    />
+                  )}
+                  <PhaseRow {...rowProps(row, index)} />
+                </Fragment>
+              ))}
+              {editing && !readOnly && (
+                <div {...stylex.props(styles.addRow)}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={stylex.props(styles.wideGhost).className}
+                    onClick={addPhase}
+                  >
+                    <PlusIcon aria-hidden />
+                    {format(m.addPhase)}
+                  </Button>
+                </div>
+              )}
+            </Table>
+          </Card>
         ) : (
-          <div {...stylex.props(styles.planStack)}>
-            {/* a table where there are columns to be had, stacked cards where
-                there are not - the same four facts either way */}
-            {!isMobile && (
-              <div {...stylex.props(styles.tableShell)}>
-                <Table xstyle={styles.fixedTable}>
-                  <TableHeader>
-                    <TableRow xstyle={styles.stillRow}>
-                      <TableHead xstyle={styles.colStage}>{format(m.colStage)}</TableHead>
-                      <TableHead xstyle={styles.colOpens}>{format(m.colOpens)}</TableHead>
-                      <TableHead xstyle={styles.colStart}>{format(m.colPlannedStart)}</TableHead>
-                      <TableHead xstyle={styles.colStatus}>{format(m.colStatus)}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {drafts.map((row, index) => (
-                      <Fragment key={row.id ?? `new-${row.phaseKey}`}>
-                        {index === shape.scheduled && index > 0 && (
-                          <TableRow xstyle={styles.stillRow}>
-                            <TableCell colSpan={4} xstyle={styles.boundaryCell}>
-                              {format(m.unscheduledFrom)}
-                            </TableCell>
-                          </TableRow>
-                        )}
-                        {editing && !readOnly && index > shape.scheduled && (
-                          <SeamRow
-                            label={format(m.insertHere)}
-                            shown={seamAt === index}
-                            onPoint={(over) => setSeamAt(over ? index : null)}
-                            onInsert={() => {
-                              setSeamAt(null)
-                              insertAt(index)
-                            }}
-                          />
-                        )}
-                        <PhaseRow {...rowProps(row, index)} />
-                      </Fragment>
-                    ))}
-                    {editing && !readOnly && (
-                      <TableRow xstyle={styles.stillRow}>
-                        <TableCell colSpan={4} xstyle={styles.addCell}>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className={stylex.props(styles.wideGhost).className}
-                            onClick={addPhase}
-                          >
-                            <PlusIcon aria-hidden />
-                            {format(m.addPhase)}
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-
-            {isMobile && (
-              <ol {...stylex.props(styles.cardList)}>
-                {drafts.map((row, index) => (
-                  <Fragment key={row.id ?? `new-${row.phaseKey}`}>
-                    {index === shape.scheduled && index > 0 && (
-                      <li {...stylex.props(styles.cardBoundary)}>
-                        <span aria-hidden {...stylex.props(styles.seamLine)} />
-                        {format(m.unscheduledFrom)}
-                        <span aria-hidden {...stylex.props(styles.seamLine)} />
-                      </li>
-                    )}
-                    <PhaseCard {...rowProps(row, index)} />
-                    {editing && !readOnly && index >= shape.scheduled && (
-                      <li>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className={stylex.props(styles.cardSeamButton).className}
-                          onClick={() => insertAt(index + 1)}
-                        >
-                          <PlusIcon
-                            aria-hidden
-                            className={stylex.props(styles.seamGlyph).className}
-                          />
-                          {format(m.insertHere)}
-                        </Button>
-                      </li>
-                    )}
-                  </Fragment>
-                ))}
-                {editing && !readOnly && (
+          <ol data-testid="phase-plan" {...stylex.props(styles.cardList)}>
+            {drafts.map((row, index) => (
+              <Fragment key={row.id ?? `new-${row.phaseKey}`}>
+                {index === shape.scheduled && index > 0 && (
+                  <li data-testid="phase-boundary" {...stylex.props(styles.cardBoundary)}>
+                    <span aria-hidden {...stylex.props(styles.seamLine)} />
+                    {format(m.unscheduledFrom)}
+                    <span aria-hidden {...stylex.props(styles.seamLine)} />
+                  </li>
+                )}
+                <PhaseCard {...rowProps(row, index)} />
+                {editing && !readOnly && index >= shape.scheduled && index < drafts.length - 1 && (
                   <li>
                     <Button
                       size="sm"
-                      variant="outline"
-                      className={stylex.props(styles.fullGhost).className}
-                      onClick={addPhase}
+                      variant="ghost"
+                      className={stylex.props(styles.cardSeamButton).className}
+                      onClick={() => insertAt(index + 1)}
                     >
-                      <PlusIcon aria-hidden />
-                      {format(m.addPhase)}
+                      <PlusIcon aria-hidden className={stylex.props(styles.seamGlyph).className} />
+                      {format(m.insertHere)}
                     </Button>
                   </li>
                 )}
-              </ol>
+              </Fragment>
+            ))}
+            {editing && !readOnly && (
+              <li>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={stylex.props(styles.fullGhost).className}
+                  onClick={addPhase}
+                >
+                  <PlusIcon aria-hidden />
+                  {format(m.addPhase)}
+                </Button>
+              </li>
             )}
-          </div>
+          </ol>
         )}
       </AsyncSection>
 
       <PhaseDetailsPanel
-        draft={actionsAt !== null ? drafts[actionsAt] : undefined}
+        draft={opened}
         presets={presets.data?.items ?? []}
         readOnly={readOnly}
         frozen={actionsAt !== null && actionsAt < shape.currentIndex}

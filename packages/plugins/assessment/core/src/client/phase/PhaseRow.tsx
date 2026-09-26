@@ -1,18 +1,18 @@
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import {
+  ArrowDownIcon,
+  ArrowUpIcon,
   CalendarClockIcon,
   ChevronRightIcon,
   CircleCheckIcon,
   CircleDashedIcon,
-  PencilIcon,
   Trash2Icon,
 } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useI18n } from '@qualy/web-i18n'
-import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
-import { TableCell, TableRow } from '@qualy/ui/table'
+import { Cell, Status, TableRow } from '@qualy/ui/screen'
 import { assessmentMessages as m } from '../i18n.ts'
 import type { PlanRefusalLike } from '../refusals.ts'
 import type { PhaseDraft, PhaseDto, PlanShape } from './model.ts'
@@ -20,29 +20,31 @@ import { inZone, useBatchZone } from '../batch/zone.ts'
 
 // One phase, as a table row on a desktop and as a stacked card on a phone.
 //
-// Both render the same four facts - what the phase is, what it opens, when it
-// begins, where it stands - and offer the same actions, which the plan's
-// shape decides: only the first unscheduled phase may take a time, only the
-// last scheduled one may give it back, and only the unscheduled suffix may
-// still be reordered.
+// Both render the same facts - what the phase is and what it is for, what it
+// opens, when it begins, where it stands - and offer the same actions, which
+// the plan's shape decides: only the first unscheduled phase may take a time,
+// only the last scheduled one may give it back, and only the unscheduled
+// suffix may still be reordered. The whole row opens the phase's details.
+
+const QUIET = `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`
 
 const styles = stylex.create({
   nameRow: {
     display: 'flex',
     minWidth: 0,
+    flexGrow: 1,
     alignItems: 'center',
     gap: 10,
   },
   ordinal: {
     display: 'flex',
-    width: 24,
-    height: 24,
+    width: 22,
+    height: 22,
     flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: '9999px',
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
+    fontSize: 11.5,
     fontWeight: 500,
     fontVariantNumeric: 'tabular-nums',
     backgroundColor: tokens.surfaceMuted,
@@ -53,105 +55,82 @@ const styles = stylex.create({
     color: tokens.primaryForeground,
   },
   nameCol: {
+    display: 'flex',
     minWidth: 0,
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: '0%',
-  },
-  nameLine: {
-    display: 'flex',
-    minWidth: 0,
-    alignItems: 'center',
+    flexDirection: 'column',
     gap: 2,
   },
   name: {
+    minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    fontSize: '0.875rem',
-    lineHeight: '1.25rem',
+    fontSize: 13.5,
+    lineHeight: 1.45,
     fontWeight: 500,
+    color: tokens.foreground,
   },
   nameAbsent: {
     fontWeight: 400,
     fontStyle: 'italic',
     color: tokens.mutedForeground,
   },
-  // faint until the name is pointed at, never far: the row tracks its own
-  // hover as state instead of a group-hover selector
-  pencil: {
-    width: 24,
-    height: 24,
-    flexShrink: 0,
-    color: {
-      default: `color-mix(in oklab, ${tokens.mutedForeground} 50%, transparent)`,
-      ':hover': tokens.foreground,
-    },
-  },
-  pencilNear: {
-    color: {
-      default: tokens.mutedForeground,
-      ':hover': tokens.foreground,
-    },
-  },
-  pencilGlyph: {
-    width: 14,
-    height: 14,
-  },
   descriptionLine: {
+    margin: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
-    color: tokens.mutedForeground,
+    fontSize: 12,
+    lineHeight: 1.45,
+    color: QUIET,
   },
   refusals: {
-    marginTop: 4,
     display: 'flex',
     flexDirection: 'column',
     gap: 2,
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
+    margin: 0,
+    marginTop: 2,
+    paddingInlineStart: 0,
+    listStyleType: 'none',
+    whiteSpace: 'normal',
+    fontSize: 12,
+    lineHeight: 1.45,
     color: tokens.danger,
   },
-  opensLink: {
-    height: 'auto',
-    justifyContent: 'flex-start',
-    gap: 4,
-    padding: 0,
-    fontSize: '0.875rem',
-    lineHeight: '1.25rem',
-    fontWeight: 400,
-    color: {
-      default: tokens.mutedForeground,
-      ':hover': tokens.foreground,
-    },
+  opens: {
+    fontVariantNumeric: 'tabular-nums',
   },
-  chevron: {
-    width: 14,
-    height: 14,
+  whenRow: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 8,
   },
   whenCol: {
     display: 'flex',
     minWidth: 0,
     flexDirection: 'column',
+    gap: 1,
   },
   whenLine: {
     display: 'flex',
+    minWidth: 0,
     alignItems: 'center',
     gap: 6,
-    fontSize: '0.875rem',
-    lineHeight: '1.25rem',
+    fontSize: 12.5,
+    color: tokens.foreground,
   },
   whenQuiet: {
     color: tokens.mutedForeground,
   },
   whenGlyph: {
-    width: 14,
-    height: 14,
+    width: 13,
+    height: 13,
     flexShrink: 0,
-    color: tokens.mutedForeground,
+    color: QUIET,
   },
   whenGlyphCurrent: {
     color: tokens.primary,
@@ -160,32 +139,51 @@ const styles = stylex.create({
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    fontWeight: 500,
+    fontVariantNumeric: 'tabular-nums',
   },
   whenRelative: {
-    paddingLeft: 20,
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
-    color: tokens.mutedForeground,
+    paddingInlineStart: 19,
+    fontSize: 11.5,
+    color: QUIET,
   },
-  whenWrap: {
+  whenNote: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  whenRelativeRow: {
     display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 8,
+    alignItems: 'baseline',
+    gap: 10,
   },
-  scheduleButton: {
-    height: 28,
+  inlineAction: {
+    flexShrink: 0,
+    margin: 0,
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    fontFamily: 'inherit',
+    fontSize: 11.5,
+    color: {
+      default: tokens.mutedForeground,
+      ':hover': tokens.foreground,
+    },
+    textDecorationLine: 'underline',
+    textDecorationColor: `color-mix(in oklab, ${tokens.mutedForeground} 40%, transparent)`,
+    textUnderlineOffset: 2,
+    cursor: 'pointer',
   },
-  statusRow: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 6,
+  rowAction: {
+    height: 26,
+    flexShrink: 0,
+    paddingInline: 8,
+    fontSize: 12,
   },
   quietAction: {
-    color: tokens.mutedForeground,
+    color: {
+      default: tokens.mutedForeground,
+      ':hover': tokens.foreground,
+    },
   },
   removeAction: {
     color: {
@@ -193,43 +191,77 @@ const styles = stylex.create({
       ':hover': tokens.danger,
     },
   },
-  quietNote: {
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
-    color: tokens.mutedForeground,
+  actions: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 2,
   },
-  rowCell: {
-    height: 64,
-    paddingBlock: 8,
+  glyph: {
+    width: 15,
+    height: 15,
+  },
+  row: {
+    paddingBlock: 10,
+  },
+  leadStack: {
+    display: 'flex',
+    minWidth: 0,
+    flexGrow: 1,
+    flexDirection: 'column',
+    gap: 2,
+  },
+  cardRefusals: {
+    paddingInline: 14,
+    paddingBottom: 10,
   },
   rowEnded: {
     backgroundColor: {
-      default: `color-mix(in oklab, ${tokens.surfaceMuted} 30%, transparent)`,
-      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+      default: `color-mix(in oklab, ${tokens.surfaceMuted} 28%, transparent)`,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 55%, transparent)`,
     },
   },
   rowWrong: {
     backgroundColor: {
       default: `color-mix(in oklab, ${tokens.danger} 5%, transparent)`,
-      ':hover': `color-mix(in oklab, ${tokens.danger} 5%, transparent)`,
+      ':hover': `color-mix(in oklab, ${tokens.danger} 8%, transparent)`,
     },
   },
   card: {
-    borderRadius: tokens.radiusLg,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
-    backgroundColor: tokens.background,
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    borderRadius: 14,
+    backgroundColor: tokens.surface,
+    boxShadow: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
   },
   cardEnded: {
-    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 30%, transparent)`,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 28%, ${tokens.surface})`,
   },
   cardWrong: {
-    borderColor: tokens.danger,
-    backgroundColor: `color-mix(in oklab, ${tokens.danger} 5%, transparent)`,
+    boxShadow: `0 0 0 1px ${tokens.danger}, 0 1px 2px rgb(0 0 0 / 0.04)`,
   },
   cardHead: {
-    padding: 12,
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
+    margin: 0,
+    paddingInline: 14,
+    paddingBlock: 12,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    fontFamily: 'inherit',
+    textAlign: 'start',
+    color: 'inherit',
+    cursor: 'pointer',
+  },
+  cardChevron: {
+    width: 14,
+    height: 14,
+    flexShrink: 0,
+    color: QUIET,
   },
   cardFacts: {
     display: 'flex',
@@ -237,32 +269,40 @@ const styles = stylex.create({
     gap: 8,
     borderTopWidth: 1,
     borderTopStyle: 'solid',
-    borderTopColor: tokens.border,
-    padding: 12,
-  },
-  cardFoot: {
-    borderTopWidth: 1,
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.border,
-    paddingInline: 12,
-    paddingBlock: 8,
+    borderTopColor: tokens.divider,
+    paddingInline: 14,
+    paddingBlock: 10,
   },
   cardLine: {
     display: 'flex',
-    alignItems: 'flex-start',
+    minWidth: 0,
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+    fontSize: 12.5,
   },
   cardLineLabel: {
     flexShrink: 0,
-    paddingTop: 1,
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
-    color: tokens.mutedForeground,
+    fontSize: 12,
+    color: QUIET,
   },
   cardLineBody: {
+    display: 'flex',
     minWidth: 0,
-    textAlign: 'right',
+    justifyContent: 'flex-end',
+    color: tokens.mutedForeground,
+  },
+  cardFoot: {
+    display: 'flex',
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.divider,
+    paddingInline: 14,
+    paddingBlock: 4,
   },
 })
 
@@ -275,9 +315,10 @@ export interface PhaseRowProps {
   total: number
   editing: boolean
   readOnly: boolean
+  /** the row says something the server does not hold yet */
+  unsaved: boolean
   refusals: readonly PlanRefusalLike[]
   sentenceOf: (refusal: PlanRefusalLike) => string
-  onOpens: () => void
   onDetails: () => void
   onSchedule: () => void
   onUnschedule: () => void
@@ -290,7 +331,6 @@ function useParts(props: PhaseRowProps) {
   const { format, locale } = useI18n()
   const zone = useBatchZone()
   const { draft, phase, index, shape, total, editing, readOnly } = props
-  const [nameNear, setNameNear] = useState(false)
   const entered = phase?.actualEntryAt ?? null
   const planned = phase?.plannedEntryAt ?? null
   const current = index === shape.currentIndex
@@ -323,58 +363,43 @@ function useParts(props: PhaseRowProps) {
   }
 
   const stage = (
-    <div {...stylex.props(styles.nameRow)}>
+    <span {...stylex.props(styles.nameRow)}>
       <span {...stylex.props(styles.ordinal, current && styles.ordinalCurrent)}>{index + 1}</span>
-      <div {...stylex.props(styles.nameCol)}>
-        <p
-          {...stylex.props(styles.nameLine)}
-          onMouseEnter={() => setNameNear(true)}
-          onMouseLeave={() => setNameNear(false)}
-        >
-          <span {...stylex.props(styles.name)}>
-            {draft.displayName || <span {...stylex.props(styles.nameAbsent)}>{name}</span>}
-          </span>
-          {/* right where the name ends: faint until wanted, never far */}
-          {!readOnly && (
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label={format(m.editDetails)}
-              title={format(m.editDetails)}
-              className={stylex.props(styles.pencil, nameNear && styles.pencilNear).className}
-              onClick={props.onDetails}
-            >
-              <PencilIcon aria-hidden className={stylex.props(styles.pencilGlyph).className} />
-            </Button>
-          )}
-        </p>
+      <span {...stylex.props(styles.nameCol)}>
+        <span {...stylex.props(styles.name, draft.displayName === '' && styles.nameAbsent)}>
+          {name}
+        </span>
         {draft.description !== '' && (
-          <p {...stylex.props(styles.descriptionLine)}>{draft.description}</p>
+          <span {...stylex.props(styles.descriptionLine)}>{draft.description}</span>
         )}
-        {props.refusals.length > 0 && (
-          <ul {...stylex.props(styles.refusals)}>
-            {props.refusals.map((refusal, at) => (
-              // the ground it was refused on, beside the sentence that says
-              // it: which refusal landed on which stage is the fact
-              <li key={at} data-testid="phase-refusal" data-reason={refusal.reason}>
-                {props.sentenceOf(refusal)}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </div>
+      </span>
+    </span>
+  )
+
+  const refused = props.refusals.length > 0 && (
+    <ul {...stylex.props(styles.refusals)}>
+      {props.refusals.map((refusal, at) => (
+        // the ground it was refused on, beside the sentence that says it:
+        // which refusal landed on which stage is the fact
+        <li key={at} data-testid="phase-refusal" data-reason={refusal.reason}>
+          {props.sentenceOf(refusal)}
+        </li>
+      ))}
+    </ul>
   )
 
   const opens = (
-    <Button
-      variant="link"
-      className={stylex.props(styles.opensLink).className}
-      onClick={props.onOpens}
-    >
+    <span {...stylex.props(styles.opens)}>
       {format(m.opensCount, { count: draft.permissionProfile.length })}
-      <ChevronRightIcon aria-hidden className={stylex.props(styles.chevron).className} />
-    </Button>
+    </span>
+  )
+
+  // under the time it takes back, on the line that says how far off it is:
+  // beside the time it cut the time short wherever the column was narrow
+  const unschedule = !readOnly && !editing && index === shape.tail && (
+    <button type="button" onClick={props.onUnschedule} {...stylex.props(styles.inlineAction)}>
+      {format(m.unschedule)}
+    </button>
   )
 
   const when =
@@ -399,20 +424,31 @@ function useParts(props: PhaseRowProps) {
             {timeOf(planned)}
           </span>
         </span>
-        <span {...stylex.props(styles.whenRelative)}>{relative(planned)}</span>
+        <span {...stylex.props(styles.whenRelative, styles.whenRelativeRow)}>
+          {relative(planned)}
+          {unschedule}
+        </span>
       </span>
     ) : (
-      <span data-testid="phase-when" data-when="unscheduled" {...stylex.props(styles.whenWrap)}>
-        <span {...stylex.props(styles.whenLine, styles.whenQuiet)}>
-          <CircleDashedIcon aria-hidden {...stylex.props(styles.whenGlyph)} />
-          {format(m.notScheduled)}
+      <span {...stylex.props(styles.whenRow)}>
+        <span data-testid="phase-when" data-when="unscheduled" {...stylex.props(styles.whenCol)}>
+          <span {...stylex.props(styles.whenLine, styles.whenQuiet)}>
+            <CircleDashedIcon aria-hidden {...stylex.props(styles.whenGlyph)} />
+            {format(m.notScheduled)}
+          </span>
+          {/* what participants are told it waits on, where its time will be */}
+          {draft.entryNote !== '' && (
+            <span title={draft.entryNote} {...stylex.props(styles.whenRelative, styles.whenNote)}>
+              {draft.entryNote}
+            </span>
+          )}
         </span>
         {!readOnly && !editing && index === shape.frontier && (
           <Button
             data-testid="phase-schedule"
             size="sm"
             variant="outline"
-            className={stylex.props(styles.scheduleButton).className}
+            className={stylex.props(styles.rowAction).className}
             onClick={props.onSchedule}
           >
             {format(m.goSchedule)}
@@ -421,89 +457,105 @@ function useParts(props: PhaseRowProps) {
       </span>
     )
 
+  const standing = current
+    ? 'current'
+    : ended
+      ? 'ended'
+      : isNew
+        ? 'new'
+        : structural
+          ? 'open'
+          : 'locked'
   const status = (
-    <div
-      // which standing this stage is in, said as a fact: the badges' words
-      // are copy, "this stage is the current one" is not
+    <span
+      // which standing this stage is in, said as a fact: the word beside the
+      // dot is copy, "this stage is the current one" is not
       data-testid="phase-standing"
-      data-standing={
-        current ? 'current' : ended ? 'ended' : isNew ? 'new' : structural ? 'open' : 'locked'
-      }
-      {...stylex.props(styles.statusRow)}
+      data-standing={standing}
+      data-unsaved={props.unsaved}
     >
-      {current ? (
-        <Badge>{format(m.currentBadge)}</Badge>
-      ) : ended ? (
-        <Badge variant="secondary">{format(m.endedBadge)}</Badge>
-      ) : isNew ? (
-        <Badge variant="outline">{format(m.newBadge)}</Badge>
-      ) : !structural ? (
-        <Badge variant="outline">{format(m.lockedBySchedule)}</Badge>
-      ) : null}
-
-      {!readOnly && !editing && index === shape.tail && (
-        <Button
-          size="sm"
-          variant="ghost"
-          className={stylex.props(styles.quietAction).className}
-          onClick={props.onUnschedule}
-        >
-          {format(m.unschedule)}
-        </Button>
+      {props.unsaved ? (
+        <Status tone="warn">{format(m.newBadge)}</Status>
+      ) : current ? (
+        <Status tone="ok">{format(m.flowStatusCurrent)}</Status>
+      ) : (
+        <Status>{format(ended ? m.flowStatusEnded : m.flowStatusFuture)}</Status>
       )}
-      {!readOnly && !editing && structural && (
-        <span {...stylex.props(styles.quietNote)}>
-          {format(index === shape.frontier ? m.upNextBadge : m.awaitingEarlier)}
-        </span>
-      )}
-
-      {editing && structural && (
-        <>
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label={format(m.moveUp)}
-            className={stylex.props(styles.quietAction).className}
-            disabled={index === shape.scheduled}
-            onClick={() => props.onMove(-1)}
-          >
-            ↑
-          </Button>
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label={format(m.moveDown)}
-            className={stylex.props(styles.quietAction).className}
-            disabled={index === total - 1}
-            onClick={() => props.onMove(1)}
-          >
-            ↓
-          </Button>
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label={format(m.removePhase)}
-            className={stylex.props(styles.removeAction).className}
-            onClick={props.onRemove}
-          >
-            <Trash2Icon aria-hidden />
-          </Button>
-        </>
-      )}
-    </div>
+    </span>
   )
 
-  return { stage, opens, when, status, ended, wrong: props.refusals.length > 0 }
+  const actions = editing && structural && !readOnly && (
+    <span {...stylex.props(styles.actions)}>
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        aria-label={format(m.moveUp)}
+        title={format(m.moveUp)}
+        className={stylex.props(styles.quietAction).className}
+        disabled={index === shape.scheduled}
+        onClick={() => props.onMove(-1)}
+      >
+        <ArrowUpIcon aria-hidden {...stylex.props(styles.glyph)} />
+      </Button>
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        aria-label={format(m.moveDown)}
+        title={format(m.moveDown)}
+        className={stylex.props(styles.quietAction).className}
+        disabled={index === total - 1}
+        onClick={() => props.onMove(1)}
+      >
+        <ArrowDownIcon aria-hidden {...stylex.props(styles.glyph)} />
+      </Button>
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        aria-label={format(m.removePhase)}
+        title={format(m.removePhase)}
+        className={stylex.props(styles.removeAction).className}
+        onClick={props.onRemove}
+      >
+        <Trash2Icon aria-hidden {...stylex.props(styles.glyph)} />
+      </Button>
+    </span>
+  )
+
+  return {
+    name,
+    stage,
+    refused,
+    opens,
+    when,
+    status,
+    actions,
+    ended,
+    wrong: props.refusals.length > 0,
+  }
 }
 
 export function PhaseRow(props: PhaseRowProps) {
-  const { stage, opens, when, status, ended, wrong } = useParts(props)
+  const { format } = useI18n()
+  const { name, stage, refused, opens, when, status, actions, ended, wrong } = useParts(props)
   return (
-    <TableRow xstyle={[ended && styles.rowEnded, wrong && styles.rowWrong]}>
-      <TableCell xstyle={styles.rowCell}>{stage}</TableCell>
-      <TableCell xstyle={styles.rowCell}>{opens}</TableCell>
-      <TableCell xstyle={styles.rowCell}>{when}</TableCell>
-      <TableCell xstyle={styles.rowCell}>{status}</TableCell>
+    <TableRow
+      nested
+      onOpen={props.onDetails}
+      aria-label={format(m.openStage, { name })}
+      data-testid="phase-row"
+      data-phase-key={props.draft.phaseKey}
+      xstyle={[styles.row, ended && styles.rowEnded, wrong && styles.rowWrong]}
+    >
+      <Cell lead>
+        <span {...stylex.props(styles.leadStack)}>
+          {stage}
+          {refused}
+        </span>
+      </Cell>
+      <Cell>{opens}</Cell>
+      <Cell>{when}</Cell>
+      <Cell>{status}</Cell>
+      {props.editing && <Cell end>{actions}</Cell>}
     </TableRow>
   )
 }
@@ -511,7 +563,7 @@ export function PhaseRow(props: PhaseRowProps) {
 /** the same row where there is no room for columns */
 export function PhaseCard(props: PhaseRowProps) {
   const { format } = useI18n()
-  const { stage, opens, when, status, ended, wrong } = useParts(props)
+  const { name, stage, refused, opens, when, status, actions, ended, wrong } = useParts(props)
   const line = (label: string, body: ReactNode) => (
     <div {...stylex.props(styles.cardLine)}>
       <span {...stylex.props(styles.cardLineLabel)}>{label}</span>
@@ -519,13 +571,29 @@ export function PhaseCard(props: PhaseRowProps) {
     </div>
   )
   return (
-    <li {...stylex.props(styles.card, ended && styles.cardEnded, wrong && styles.cardWrong)}>
-      <div {...stylex.props(styles.cardHead)}>{stage}</div>
+    <li
+      data-testid="phase-row"
+      data-phase-key={props.draft.phaseKey}
+      {...stylex.props(styles.card, ended && styles.cardEnded, wrong && styles.cardWrong)}
+    >
+      <button
+        type="button"
+        aria-label={format(m.openStage, { name })}
+        onClick={props.onDetails}
+        {...stylex.props(styles.cardHead)}
+      >
+        {stage}
+        <ChevronRightIcon aria-hidden {...stylex.props(styles.cardChevron)} />
+      </button>
+      {refused && <div {...stylex.props(styles.cardRefusals)}>{refused}</div>}
       <div {...stylex.props(styles.cardFacts)}>
         {line(format(m.colPlannedStart), when)}
         {line(format(m.colOpens), opens)}
       </div>
-      <div {...stylex.props(styles.cardFoot)}>{status}</div>
+      <div {...stylex.props(styles.cardFoot)}>
+        {status}
+        {actions}
+      </div>
     </li>
   )
 }
