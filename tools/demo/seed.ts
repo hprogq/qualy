@@ -223,6 +223,7 @@ const program = Effect.gen(function* () {
     options: { stage, migrationBefore },
     now: new Date(startedAt),
     personas,
+    away: new Set(away.map((one) => one.student.id)),
   })
   console.log(
     `selection (${stage}${migrationBefore ? ', route change left for the demo' : ''}): ${selection.applicants.length} applicants, ${[

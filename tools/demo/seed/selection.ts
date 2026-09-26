@@ -359,6 +359,8 @@ export const runSelection = (input: {
   now: Date
   /** who the demonstration signs in as, by account */
   personas: Readonly<Record<'student' | 'class-lead' | 'counsellor' | 'lead', string>>
+  /** the students away on leave or gone, by id */
+  away: ReadonlySet<string>
 }) =>
   Effect.gen(function* () {
     const { world, versions, story, random, options, now } = input
@@ -408,6 +410,10 @@ export const runSelection = (input: {
 
     // --- the batch ---------------------------------------------------------
 
+    // The selection is applied for: the roster is the students who signed
+    // up with their class, not the grade. The batch is run from the grade,
+    // which is where its staff come from, and holds nobody until the lead
+    // enters the sign-up list.
     story.set(ago(20, '14:30'))
     const batch = yield* story.step(
       assessment.createBatch(
@@ -415,9 +421,9 @@ export const runSelection = (input: {
         {
           name: '2027届推荐优秀应届本科毕业生免试攻读硕士学位研究生综合评价',
           descriptionMd:
-            '申请人须前三学年无补考重修、平均学分绩位列本专业前 20%、通过大学英语四级。请在材料提交期内上传申请表、思想品德考核表、成绩单与四级成绩，并申报学科竞赛与科研成果。学业成绩与品德文体由学院统一导入。',
+            '申请人须前三学年无补考重修、平均学分绩位列本专业前20%、通过大学英语四级。\n名单按各班报名汇总录入。请在材料提交期内上传申请表、思想品德考核表、成绩单与四级成绩，并申报学科竞赛与科研成果；学业成绩与品德文体由学院统一导入。',
           materialRange: { start: '2023-09-01', end: '2026-09-01' },
-          import: { orgNodeIds: [world.grade], userTypeIds: [world.userTypes.student] },
+          import: { orgNodeIds: [world.grade], userTypeIds: [] },
         },
         lead,
       ),
@@ -547,28 +553,20 @@ export const runSelection = (input: {
       items.set(spec.key, { id: created.id, spec })
     }
     const phases = yield* assessment.getPlan(t, batch.id, lead)
-    const participants = new Map<string, string>()
-    for (const row of (
-      (yield* runSql(
-        sql`select id, user_id from batch_participants where batch_id = ${batch.id}`,
-      )) as {
-        rows: { id: string; user_id: string }[]
-      }
-    ).rows) {
-      participants.set(row.user_id, row.id)
-    }
 
-    // the applicants: the strongest students, as far as grades go, with the
-    // cohort's major shares
-    const present = world.students.filter((student) => participants.has(student.id))
-    const persona = present.find((student) => student.id === input.personas.student)
+    // the applicants: the strongest students of the grade as it stands now,
+    // as far as grades go, with the cohort's major shares
+    const cohort = world.students.filter(
+      (student) => student.classKey.startsWith('2023-') && !input.away.has(student.id),
+    )
+    const persona = cohort.find((student) => student.id === input.personas.student)
     const leading = new Set([...world.classLeads.values()].flat().concat(world.majorLeads))
     // the student a visitor signs in as always applies, and so do five of
     // their classmates, whose conduct forms their class leads sit on
     const classmates =
       persona === undefined
         ? []
-        : present
+        : cohort
             .filter(
               (student) =>
                 student.classKey === persona.classKey &&
@@ -580,18 +578,22 @@ export const runSelection = (input: {
             .slice(0, 5)
     // and one big data student, whose award the route change leaves with
     // nobody appointed to review it
-    const bigData = present
+    const bigData = cohort
       .filter(
         (student) =>
           student.major === 'bd' && !leading.has(student.id) && !world.personas.has(student.id),
       )
       .sort((a, b) => b.standing - a.standing)[0]
+    // and the class lead a visitor signs in as, who applies like any other
+    // student and whose own conduct form the other lead of the class judges
+    const classLead = cohort.find((student) => student.id === input.personas['class-lead'])
     const first = new Set([
       ...(persona === undefined ? [] : [persona.id]),
       ...classmates.map((one) => one.id),
       ...(bigData === undefined ? [] : [bigData.id]),
+      ...(classLead === undefined ? [] : [classLead.id]),
     ])
-    const byStanding = [...present].sort(
+    const byStanding = [...cohort].sort(
       (a, b) => Number(first.has(b.id)) - Number(first.has(a.id)) || b.standing - a.standing,
     )
     const applicants = byStanding.slice(0, 72)
@@ -610,6 +612,28 @@ export const runSelection = (input: {
             )
             .slice(0, 6)
     const cast = new Set([...first, ...others.map((one) => one.id)])
+
+    // the lead enters the sign-up list the day before material opens
+    story.set(ago(17, '16:00'))
+    yield* story.step(
+      assessment.addParticipants(
+        t,
+        batch.id,
+        applicants.map((one) => one.id),
+        lead,
+      ),
+      60,
+    )
+    const participants = new Map<string, string>()
+    for (const row of (
+      (yield* runSql(
+        sql`select id, user_id from batch_participants where batch_id = ${batch.id}`,
+      )) as {
+        rows: { id: string; user_id: string }[]
+      }
+    ).rows) {
+      participants.set(row.user_id, row.id)
+    }
 
     const queue = new EventQueue(story)
     queue.at(ago(16, '09:00'), 'phase', () =>
@@ -887,7 +911,9 @@ export const runSelection = (input: {
           ),
         )
       }
-      const competitions = Math.min(random.int(0, 6), Math.round(student.activity * 6))
+      // the class lead a visitor signs in as has an award or two to show
+      const drawn = Math.min(random.int(0, 6), Math.round(student.activity * 6))
+      const competitions = student === classLead ? Math.max(2, drawn) : drawn
       for (let i = 0; i < competitions; i++) {
         const competition = random.weighted(COMPETITIONS)
         const level = competition.levels[random.int(0, competition.levels.length - 1)]!
@@ -908,7 +934,7 @@ export const runSelection = (input: {
           ),
         )
       }
-      const research = random.chance(0.45) ? random.int(1, 2) : 0
+      const research = random.chance(0.45) || student === classLead ? random.int(1, 2) : 0
       for (let i = 0; i < research; i++) {
         const kind = random.weighted(RESEARCH_KINDS)
         queue.at(at(10 + i), 'file', () =>
@@ -1576,11 +1602,13 @@ export const runSelection = (input: {
     queue.at(ago(15, '16:20'), 'import', () =>
       Effect.gen(function* () {
         const importer = counsellors[0]!
+        // a place in the major and the major's size, over the whole grade,
+        // applicants or not
         const bySize = new Map<MajorKey, number>()
-        for (const student of present)
+        for (const student of cohort)
           bySize.set(student.major, (bySize.get(student.major) ?? 0) + 1)
         const ranked = new Map<MajorKey, Student[]>()
-        for (const student of [...present].sort((a, b) => b.standing - a.standing)) {
+        for (const student of [...cohort].sort((a, b) => b.standing - a.standing)) {
           const list = ranked.get(student.major) ?? []
           list.push(student)
           ranked.set(student.major, list)
