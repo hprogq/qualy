@@ -7,6 +7,25 @@
 // steadily never goes quiet, and a page that read only after quiet would then
 // never read at all.
 
+/** how long a roster waits for a burst of wake-ups to end before reading again */
+export const ROSTER_SETTLE = 1_000
+
+/** how long after a burst began a roster reads again, whether or not the burst has ended */
+export const ROSTER_MAX_WAIT = 5_000
+
+/**
+ * How recent a read is for a line that has just opened to leave it alone.
+ *
+ * Every connection opens with a `sync`, which means "whatever was read before
+ * this may have moved while nobody was listening". A read that is under way,
+ * or landed this long ago or less, was made while the line was opening - the
+ * page arriving, the next person stepped to - and reading it again only
+ * reads the page twice. Kept by time rather than by counting connections:
+ * a screen mounted twice over in development dials twice, and the first
+ * line's word lands on a connection already being dropped.
+ */
+export const SYNC_FRESH = 2_000
+
 export interface Settler<T> {
   /** one wake-up, and what it was about */
   readonly wake: (about: T) => void

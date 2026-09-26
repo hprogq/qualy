@@ -40,7 +40,7 @@ import { ResultLedger, ResultUnavailable } from './ResultLedger.tsx'
 import { ParticipantEntries } from './ParticipantEntries.tsx'
 import { useParticipantEntries } from './participant-entries.ts'
 import { unitChainOf, unitPathOf } from '../roster/unit-path.ts'
-import { settler } from '../roster/live-settle.ts'
+import { ROSTER_MAX_WAIT, ROSTER_SETTLE, settler, SYNC_FRESH } from '../roster/live-settle.ts'
 
 // One participant's whole account, in the page the list came from.
 //
@@ -393,15 +393,6 @@ const styles = stylex.create({
 })
 
 type ParticipantDto = ApiResult<typeof assessmentApi, 'assessment', 'getParticipant'>['participant']
-
-/** how long the list beside the account waits for a burst of wake-ups to end before reading again */
-const ROSTER_SETTLE = 1_000
-
-/** how long after a burst began it reads again, whether or not the burst has ended */
-const ROSTER_MAX_WAIT = 5_000
-
-/** a read this recent is not read again when a line opens */
-const SYNC_FRESH = 2_000
 
 /** the code that says the person this page is about is not there */
 const PARTICIPANT_MISSING = 'ASSESSMENT_PARTICIPANT_NOT_FOUND'

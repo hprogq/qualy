@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryKey,
+} from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import {
   ChevronRightIcon,
@@ -61,13 +67,14 @@ import {
   ROSTER_PAGE_SIZE,
   ROSTER_WAITING,
   rosterQueryOf,
+  useRosterSearch,
   type RosterView,
   type RosterWaiting,
 } from '../roster/roster-view.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { assessmentApi } from '../api.ts'
 import { useBatchLive } from '../live.ts'
-import { settler } from '../roster/live-settle.ts'
+import { ROSTER_MAX_WAIT, ROSTER_SETTLE, settler, SYNC_FRESH } from '../roster/live-settle.ts'
 import { ScoresNotice } from '../roster/ScoresNotice.tsx'
 import type { BatchLiveEvent } from '../../api.ts'
 
@@ -158,19 +165,11 @@ const keepTreeOpen = (open: boolean) => {
  */
 const ALL = 'all'
 
-/** how long the page waits for a burst of live wake-ups to end before reading again */
-const LIVE_SETTLE = 1_000
-
-/** how long after a burst began the page reads again, whether or not it has ended */
-const LIVE_MAX_WAIT = 5_000
-
 /**
  * The wake-ups that can move somebody's total, rather than only what they
- * wait on. A `sync` opens every connection and means "read everything
- * again": after a reconnect, whatever moved while the stream was down.
+ * wait on. A `sync`, which opens every connection, is weighed on its own.
  */
 const MOVES_TOTALS: ReadonlySet<BatchLiveEvent['kind']> = new Set([
-  'sync',
   'entries-changed',
   'review-instance-changed',
   'item-changed',
@@ -401,31 +400,15 @@ export function ParticipantResultList({
   }
   const treeBeside = !narrow && treeOpen
 
-  // Typing does not fire a request per keystroke. What the box last asked
-  // the address for is remembered, so an address that moves by itself - the
-  // back button, a link - moves the box, rather than the box writing its
-  // old words back over it.
-  const [draft, setDraft] = useState(view.q)
-  const asked = useRef(view.q)
-  useEffect(() => {
-    if (view.q === asked.current) return
-    asked.current = view.q
-    setDraft(view.q)
-  }, [view.q])
-  useEffect(() => {
-    if (draft === asked.current) return
-    const timer = setTimeout(() => {
-      asked.current = draft
-      onView({ q: draft })
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [draft, onView])
+  // the same words, asked the same way, as the list beside an open account
+  const search = useRosterSearch(view.q, onView)
 
+  const pageRows = query.assessment.listParticipantAccounts.queryOptions({
+    params: { batchId },
+    query: rosterQueryOf(view),
+  })
   const participants = useQuery({
-    ...query.assessment.listParticipantAccounts.queryOptions({
-      params: { batchId },
-      query: rosterQueryOf(view),
-    }),
+    ...pageRows,
     // the rows of the page being left stay up until the next one arrives,
     // so turning a page does not blank the table
     placeholderData: keepPreviousData,
@@ -465,12 +448,14 @@ export function ParticipantResultList({
   // gathered as whether it may move a total.
   const latestScores = useRef(pageScores.queryKey)
   latestScores.current = pageScores.queryKey
+  const latestRows = useRef(pageRows.queryKey)
+  latestRows.current = pageRows.queryKey
   const [movedAt, setMovedAt] = useState(0)
   const live = useMemo(
     () =>
       settler<boolean>({
-        settle: LIVE_SETTLE,
-        maxWait: LIVE_MAX_WAIT,
+        settle: ROSTER_SETTLE,
+        maxWait: ROSTER_MAX_WAIT,
         fire: (moves) => {
           void queryClient.invalidateQueries({
             queryKey: query.assessment.listParticipantAccounts.key(),
@@ -484,15 +469,28 @@ export function ParticipantResultList({
     [queryClient, query],
   )
   useEffect(() => () => live.cancel(), [live])
-  // The first sync after the page opens finds totals the page has only just
-  // asked for, and asking again would work out the whole page twice; every
-  // later one follows a reconnect, and reads them again.
-  const connected = useRef(false)
+  // A line that has just opened finds whatever was read before it may have
+  // moved while nobody was listening - after a reconnect, the rows and their
+  // totals both. What is being read right now, or was read a moment ago,
+  // has not: the page has only just asked for its rows and totals, and
+  // asking again would work out the whole page twice.
   useBatchLive(batchId, (kind) => {
     if (kind === 'heartbeat' || kind === 'plan-changed' || kind === 'review-inbox-changed') return
-    if (kind === 'sync' && !connected.current) {
-      connected.current = true
-      live.wake(false)
+    if (kind === 'sync') {
+      const lately = Date.now() - SYNC_FRESH
+      // read at some point, not being read now, and not a moment ago; what
+      // has never been read is read when it is first asked for
+      const behind = (key: QueryKey) => {
+        const read = queryClient.getQueryState(key)
+        return (
+          read !== undefined &&
+          read.dataUpdatedAt > 0 &&
+          read.fetchStatus !== 'fetching' &&
+          read.dataUpdatedAt < lately
+        )
+      }
+      const totals = behind(latestScores.current)
+      if (totals || behind(latestRows.current)) live.wake(totals)
       return
     }
     live.wake(MOVES_TOTALS.has(kind))
@@ -748,8 +746,8 @@ export function ParticipantResultList({
         )}
         <SearchField
           name="roster-search"
-          value={draft}
-          onChange={setDraft}
+          value={search.draft}
+          onChange={search.setDraft}
           label={format(m.rosterSearch, { businessNo })}
           xstyle={styles.search}
         />

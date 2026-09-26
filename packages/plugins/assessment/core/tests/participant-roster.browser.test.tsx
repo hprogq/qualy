@@ -558,10 +558,10 @@ describe('the roster on the results page', () => {
   })
 
   // Every connection opens with a sync, which means "read everything again".
-  // The first one finds totals the page has only just asked for; a later one
-  // follows a reconnect, and whatever moved while the stream was down moved
-  // the totals as well as the rows.
-  it('reads the totals again after a reconnect, but not when the page first connects', async () => {
+  // The first one finds rows and totals the page has only just asked for,
+  // and reads neither again; a later one follows a reconnect, and whatever
+  // moved while the stream was down moved the totals as well as the rows.
+  it('reads the page again after a reconnect, but not when the page first connects', async () => {
     let reconnect = () => {}
     const second = new Promise<void>((resolve) => {
       reconnect = resolve
@@ -593,13 +593,31 @@ describe('the roster on the results page', () => {
     await expect
       .element(page.getByTestId('participant-score').first())
       .toHaveAttribute('data-score', '80.00')
-    // the first sync, once its burst has settled: the rows are read again,
-    // the totals are not
-    await expect.poll(() => rows.mock.calls.length, { timeout: 5_000 }).toBeGreaterThan(1)
+    // the first sync, well past the time its burst would have settled in:
+    // nothing the page has just read is read again
+    const readRows = rows.mock.calls.length
+    await new Promise((settle) => setTimeout(settle, 2_300))
+    expect(rows.mock.calls.length).toBe(readRows)
     expect(pages).toHaveBeenCalledTimes(1)
 
+    // a line that opens again later finds both behind
     reconnect()
     await expect.poll(() => pages.mock.calls.length, { timeout: 5_000 }).toBe(2)
+    expect(rows.mock.calls.length).toBeGreaterThan(readRows)
+  })
+
+  it('searches as the list beside an open account does, once the words are still', async () => {
+    const rows = vi.fn((request: Request) => pageOf(request))
+    await open({ listParticipantAccounts: rows })
+    await expect.element(page.getByTestId('participant-row').first()).toBeVisible()
+    const box = page.getByRole('searchbox')
+    await userEvent.type(box, '参评人4')
+    // one question for the words, not one per keystroke
+    await expect.poll(() => addressNow()).toContain('list-q=')
+    await expect
+      .poll(() => rows.mock.calls.filter((call) => call[0].query?.['q'] !== undefined).length)
+      .toBe(1)
+    expect(rows.mock.calls.at(-1)![0].query?.['q']).toBe('参评人4')
   })
 
   it('says what each person’s claims are waiting on', async () => {
