@@ -18,6 +18,7 @@ import { GlideAcross } from '@qualy/ui/reveal'
 import { Ticker } from '@qualy/ui/ticker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
+import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { recordedOnly, type EntryDto, type ItemDto } from '../model.ts'
@@ -744,6 +745,9 @@ export function ItemPane({
       <Select value={order} onValueChange={(next) => setOrder(next as Order)}>
         <SelectTrigger
           size="sm"
+          // narrower, a quiet key like the search beside it, still saying
+          // the order in force
+          quiet={!roomy}
           aria-label={format(m.entriesSortLabel)}
           data-testid="entries-sort"
           data-order={order}
@@ -751,8 +755,19 @@ export function ItemPane({
         >
           <span {...stylex.props(styles.sortFace)}>
             <ArrowDownUpIcon aria-hidden {...stylex.props(styles.sortIcon)} />
-            {/* narrower, the list names the order in force when it opens */}
-            {roomy && <SelectValue />}
+            {roomy ? (
+              <SelectValue />
+            ) : (
+              <>
+                {/* in a word for the eye, and in full for a screen reader */}
+                <span aria-hidden data-testid="entries-sort-word">
+                  {format(order === 'oldest' ? m.entriesSortOldestShort : m.entriesSortNewestShort)}
+                </span>
+                <VisuallyHidden>
+                  <SelectValue />
+                </VisuallyHidden>
+              </>
+            )}
           </span>
         </SelectTrigger>
         <SelectContent>

@@ -598,6 +598,35 @@ describe('reading one question’s claims', () => {
     await expect.poll(() => rows()[0]!.getAttribute('data-entry')).toBe(entryId(1))
   })
 
+  // Narrower, the order is a quiet key beside the search: a word for the
+  // eye and the full order for a screen reader, with a list that opens
+  // inside the window and marks the order in force.
+  it('says the order in force on a phone, and opens its list where it can be read', async () => {
+    await page.viewport(390, 844)
+    await workspace({ route: `${base}?open=${TAIL}`, entries: lot.slice(0, 3) })
+    const sort = page.getByRole('combobox', { name: '排序方式' })
+    await expect.element(sort).toHaveAttribute('data-order', 'newest')
+    const said = () =>
+      sort.element().querySelector('[data-slot="select-value"]')?.textContent?.trim() ?? ''
+    expect(said()).not.toBe('')
+
+    await sort.click()
+    const chosen = page.getByRole('option', { selected: true })
+    await expect.element(chosen).toBeVisible()
+    // the key says what the list marks
+    expect(said()).toBe(chosen.element().textContent?.trim())
+    const inside = (box: DOMRect) => box.left >= 0 && box.right <= window.innerWidth
+    expect(inside(page.getByRole('listbox').element().getBoundingClientRect())).toBe(true)
+    expect(inside(chosen.element().querySelector('svg')!.getBoundingClientRect())).toBe(true)
+
+    const other = page.getByRole('option', { selected: false })
+    const next = other.element().textContent?.trim()
+    await other.click()
+    await expect.element(sort).toHaveAttribute('data-order', 'oldest')
+    expect(said()).toBe(next)
+    await expect.poll(() => rows()[0]!.getAttribute('data-entry')).toBe(entryId(1))
+  })
+
   it('filters the claims by where they stand, and finds one by what it says', async () => {
     await page.viewport(1440, 900)
     await workspace({ route: `${base}?open=${TAIL}`, entries: lot })

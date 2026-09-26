@@ -4170,6 +4170,15 @@ const i18n = definePluginMessages({
       id: 'assessment/entries/sort-oldest',
       defaultMessage: 'Oldest first',
     },
+    // the order in force, said in a word where the toolbar has no room for the phrase
+    entriesSortNewestShort: {
+      id: 'assessment/entries/sort-newest-short',
+      defaultMessage: 'Latest',
+    },
+    entriesSortOldestShort: {
+      id: 'assessment/entries/sort-oldest-short',
+      defaultMessage: 'Oldest',
+    },
     entriesHeldPhase: {
       id: 'assessment/entries/held-phase',
       defaultMessage: 'New entries can’t be started during {phase}',

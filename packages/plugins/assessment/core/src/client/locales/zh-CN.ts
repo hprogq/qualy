@@ -1046,6 +1046,8 @@ export default {
   'assessment/entries/sort-label': '排序方式',
   'assessment/entries/sort-newest': '最近更新在前',
   'assessment/entries/sort-oldest': '最早在前',
+  'assessment/entries/sort-newest-short': '最新',
+  'assessment/entries/sort-oldest-short': '最早',
   'assessment/entries/held-phase': '当前阶段「{phase}」不能新增申报',
   'assessment/entries/held-now': '当前阶段不能新增申报',
   'assessment/entries/held-no-phase': '当前没有进行中的阶段，不能新增申报',
