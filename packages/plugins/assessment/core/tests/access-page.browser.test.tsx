@@ -2,6 +2,7 @@ import BatchAccessPage from '../src/client/BatchAccessPage.tsx'
 import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
+import { AccessAdjustDialog } from '../src/client/access/AccessAdjustDialog.tsx'
 import { AccessSyncDialog } from '../src/client/access/AccessSyncDialog.tsx'
 import zh from '../src/client/locales/zh-CN.ts'
 import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
@@ -293,6 +294,42 @@ describe('the grid of capabilities', () => {
     const confirm = page.getByRole('alertdialog')
     await expect.element(confirm).toBeVisible()
     await expect.element(confirm.getByText(CLASS_B, { exact: false })).toBeVisible()
+  })
+})
+
+describe('adjusting somebody with nothing left', () => {
+  const dialog = (sources: readonly unknown[]) =>
+    renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
+      children: (
+        <AccessAdjustDialog
+          subject={subject({ displayName: '离任的老师', sources, effective: [] })}
+          archived={false}
+          open
+          pending={false}
+          onSave={() => {}}
+          onReview={() => {}}
+          onClose={() => {}}
+        />
+      ),
+    })
+
+  it('says why in the one way it lapsed, without naming them twice', async () => {
+    await dialog([source({ active: false, lapse: 'expired', current: [] })])
+    const blank = page.getByTestId('access-adjust-nothing')
+    await expect.element(blank).toHaveAttribute('data-lapse', 'expired')
+    // the dialog's own title already says whose permissions these are
+    expect(blank.element().textContent).not.toContain('离任的老师')
+  })
+
+  it('says the several ways together when they differ', async () => {
+    await dialog([
+      source({ active: false, lapse: 'revoked', current: [] }),
+      source({ active: false, lapse: 'inapplicable', current: [] }),
+    ])
+    await expect
+      .element(page.getByTestId('access-adjust-nothing'))
+      .toHaveAttribute('data-lapse', 'several')
   })
 })
 

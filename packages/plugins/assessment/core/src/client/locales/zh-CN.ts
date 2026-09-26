@@ -1950,9 +1950,9 @@ export default {
   'assessment/access/adjust-title': '调整 {name} 的批次权限',
   'assessment/access/adjust-hint': '权限调整仅在本批次内生效，不会修改用户在组织中的角色',
   'assessment/access/adjust-archived-hint': '批次已结束，权限只能停用，不能恢复',
-  'assessment/access/adjust-nothing': '{name} 在本批次暂无可调整的权限',
-  'assessment/access/adjust-nothing-lapsed':
-    '其授权已撤销、到期或不再适用，可在「查看变更」中清除失效记录',
+  'assessment/access/adjust-nothing': '暂无可调整的权限',
+  'assessment/access/adjust-nothing-lapse':
+    '{lapse, select, revoked {其角色已被组织撤销} expired {其角色已到期} inapplicable {其角色已不适用于本批次} other {其角色已撤销、到期或不再适用}}',
   'assessment/access/adjust-nothing-idle': '其当前角色不含本批次可用的权限',
   'assessment/access/adjust-stale': '已停用，组织也不再授予：{names}',
   'assessment/access/remove': '撤销授权',

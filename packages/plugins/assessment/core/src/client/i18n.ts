@@ -6477,15 +6477,16 @@ const i18n = definePluginMessages({
       id: 'assessment/access/adjust-title',
       defaultMessage: 'Adjust {name}\u2019s batch permissions',
     },
-    accessAdjustNothing: defineMessage<{ name: string }>()({
+    accessAdjustNothing: {
       id: 'assessment/access/adjust-nothing',
-      defaultMessage: '{name} has nothing to adjust in this batch',
-    }),
-    accessAdjustNothingLapsed: {
-      id: 'assessment/access/adjust-nothing-lapsed',
-      defaultMessage:
-        'Their role was revoked, ran out or no longer applies. Clear the lapsed record under Review changes',
+      defaultMessage: 'Nothing to adjust',
     },
+    /** why a person's sources grant nothing: one reason, or the several */
+    accessAdjustNothingLapse: defineMessage<{ lapse: string }>()({
+      id: 'assessment/access/adjust-nothing-lapse',
+      defaultMessage:
+        '{lapse, select, revoked {Their role was revoked by the organization} expired {Their role has run out} inapplicable {Their role no longer applies to this batch} other {Their roles were revoked, ran out or no longer apply}}',
+    }),
     accessAdjustNothingIdle: {
       id: 'assessment/access/adjust-nothing-idle',
       defaultMessage: 'Their current roles grant nothing this batch uses',

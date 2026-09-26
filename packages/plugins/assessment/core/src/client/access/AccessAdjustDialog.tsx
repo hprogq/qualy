@@ -128,8 +128,15 @@ export function AccessAdjustDialog({
     person !== null &&
     (denied.length !== person.denied.length || denied.some((code) => !person.denied.includes(code)))
   const name = person?.displayName ?? ''
-  // why there is nothing, which decides where the reader goes next
-  const lapsed = (person?.sources ?? []).some((source) => !source.active)
+  // Why there is nothing, which decides where the reader goes next: one
+  // reason when every lapsed source lapsed the same way, the three together
+  // when they did not, and none when nothing lapsed at all.
+  const lapses = [
+    ...new Set(
+      (person?.sources ?? []).flatMap((source) => (source.lapse === null ? [] : [source.lapse])),
+    ),
+  ]
+  const lapsed = lapses.length > 0
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
@@ -151,9 +158,16 @@ export function AccessAdjustDialog({
             <DialogBlank
               testId="access-adjust-nothing"
               kind={lapsed ? 'lapsed' : 'idle'}
+              data-lapse={lapses.length === 1 ? lapses[0] : lapsed ? 'several' : undefined}
               icon={<ShieldOffIcon />}
-              title={format(m.accessAdjustNothing, { name })}
-              description={format(lapsed ? m.accessAdjustNothingLapsed : m.accessAdjustNothingIdle)}
+              title={format(m.accessAdjustNothing)}
+              description={
+                lapsed
+                  ? format(m.accessAdjustNothingLapse, {
+                      lapse: lapses.length === 1 ? lapses[0]! : 'several',
+                    })
+                  : format(m.accessAdjustNothingIdle)
+              }
               {...(onReview !== undefined && lapsed
                 ? {
                     action: (
