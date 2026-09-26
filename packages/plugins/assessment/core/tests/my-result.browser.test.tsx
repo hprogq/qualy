@@ -644,6 +644,32 @@ describe('the rows of the account', () => {
     await expect.element(page.getByTestId('result-total')).toBeVisible()
   })
 
+  it('puts the reader back on the claim they opened once its drawer closes', async () => {
+    await page.viewport(1440, 900)
+    await screen(normal())
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
+    const row = itemRow('q8')
+    await userEvent.click(row.querySelector('button[aria-expanded]') as HTMLElement)
+    const claim = row.querySelector<HTMLElement>('[data-testid="ledger-line"][data-entry="q8-c"]')!
+    claim.focus()
+    await userEvent.keyboard('{Enter}')
+    await expect.element(page.getByRole('dialog')).toBeVisible()
+    await userEvent.keyboard('{Escape}')
+    await expect.poll(() => addressNow().includes('detail=')).toBe(false)
+    await expect
+      .poll(() => (document.activeElement as HTMLElement | null)?.dataset['entry'])
+      .toBe('q8-c')
+    // and again from a question's only claim, the second time the drawer opens
+    const only = itemRow('q6').querySelector<HTMLElement>('[data-testid="ledger-line"]')!
+    only.focus()
+    await userEvent.keyboard('{Enter}')
+    await expect.element(page.getByRole('dialog')).toBeVisible()
+    await userEvent.keyboard('{Escape}')
+    await expect
+      .poll(() => (document.activeElement as HTMLElement | null)?.dataset['entry'])
+      .toBe('q6-a')
+  })
+
   it('opens and folds a question from the keyboard', async () => {
     await page.viewport(1440, 900)
     await screen(normal())

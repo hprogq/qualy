@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -111,6 +111,45 @@ const styles = stylex.create({
   },
   staleWhy: { flexBasis: '100%', color: tokens.mutedForeground },
 })
+
+/**
+ * The claim a drawer was opened from, taken back to when the drawer closes.
+ *
+ * The drawer returns focus itself only to what held it when it opened, and
+ * the first time it opens here it mounts already open, with nothing
+ * recorded; a keyboard reader would land at the top of the page, far from
+ * the line they were on. So once the drawer has let go of focus - it holds
+ * it while it leaves - and nothing else has taken it, the line of the claim
+ * takes it back.
+ */
+function useFocusBack(open: boolean) {
+  const opener = useRef<string | null>(null)
+  useEffect(() => {
+    if (open) return
+    const entryId = opener.current
+    if (entryId === null) return
+    opener.current = null
+    const until = performance.now() + 1_000
+    let frame = 0
+    const back = () => {
+      const here = document.activeElement
+      const released = here === null || here === document.body
+      // still inside the drawer on its way out: wait for it to go
+      if (!released && here.closest('[role="dialog"]') !== null && performance.now() < until) {
+        frame = requestAnimationFrame(back)
+        return
+      }
+      if (!released) return
+      const line = [
+        ...document.querySelectorAll<HTMLElement>('[data-testid="ledger-line"][data-entry]'),
+      ].find((one) => one.dataset['entry'] === entryId && one.closest('[inert]') === null)
+      line?.focus({ preventScroll: true })
+    }
+    frame = requestAnimationFrame(back)
+    return () => cancelAnimationFrame(frame)
+  }, [open])
+  return opener
+}
 
 function Standing({
   batchId,
@@ -228,6 +267,7 @@ function Standing({
       : { entry, item, trail: trailOf(groups ?? [], item.scoreGroupId) }
   }, [detail, entries, questions, groups])
   const lingering = useLingering(detailed)
+  const opener = useFocusBack(detailed !== null)
   // A claim read in its drawer is its question looked at, as the filing page
   // counts a question shown: what changed on it is no longer news there.
   const markRead = useMarkItemRead(batchId).mutate
@@ -415,7 +455,11 @@ function Standing({
             // every claim of a question is read where it stands, and its
             // drawer opens over the account rather than on another page
             fold="claims"
-            onEntryOpen={setDetail}
+            onEntryOpen={(entryId) => {
+              // the claim the reader goes back to when the drawer closes
+              opener.current = entryId
+              setDetail(entryId)
+            }}
             addable={addable}
             onItemAdd={(itemId) => toEntries({ open: itemId })}
           />
