@@ -5,6 +5,7 @@ import { Effect } from 'effect'
 import type { PeoplePickerViewContext } from '@qualy/ui-contract'
 import PeoplePicker from '../src/client/iam/PeoplePicker.tsx'
 import PeoplePickerView from '../src/client/iam/PeoplePickerView.tsx'
+import zhCN from '../src/client/locales/zh-CN.ts'
 import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // Choosing people, as a table with a head.
@@ -446,6 +447,29 @@ describe('the people picker over a list read forwards', () => {
     await expect.element(count).toHaveAttribute('data-elsewhere', '0')
     await page.getByRole('button', { name: 'on', exact: true }).click()
     await expect.element(count).toHaveAttribute('data-elsewhere', '1')
+  })
+
+  // Folded into a field, the tree says what the list is narrowed to: with
+  // no unit chosen that is everywhere the reader may look, not the name of
+  // the field.
+  it('names the unit looked in, or all of them, in the folded field', async () => {
+    await page.viewport(834, 1112)
+    const tree = nodes.map((node) => ({
+      id: node.orgNodeId,
+      name: node.name,
+      parentId: node.parentId,
+    }))
+    function Field() {
+      const [nodeId, setNodeId] = useState<string | null>(null)
+      return <PeoplePickerView context={view({ nodes: tree, nodeId, onNodeChange: setNodeId })} />
+    }
+    await renderScreen({ client: world(), children: <Field /> })
+    const field = page.getByTestId('people-picker-unit')
+    await expect.element(field).toHaveTextContent(zhCN['auth/picker/all-units']!)
+
+    await field.click()
+    await page.getByTestId('people-picker-tree').getByText('软件学院').click()
+    await expect.element(field).toHaveTextContent('软件学院')
   })
 
   it('offers no whole-page choice to a caller that cannot take one', async () => {

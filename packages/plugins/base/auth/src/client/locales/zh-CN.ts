@@ -18,6 +18,7 @@ export default {
   'auth/person/role-subtree': '{node} 及下级组织',
   'auth/person/role-here': '{node}',
   'auth/picker/units': '组织架构',
+  'auth/picker/all-units': '全部组织',
   'auth/picker/no-units': '暂无可用组织',
   'auth/picker/expand': '展开或收起',
   'auth/picker/search': '姓名或{businessNo}',

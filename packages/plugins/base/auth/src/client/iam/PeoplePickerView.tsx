@@ -348,7 +348,12 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
   const folded = useIsBelow(1024)
   const phone = useIsBelow(768)
   const [pickingUnit, setPickingUnit] = useState(false)
-  const unitName = context.nodes.find((node) => node.id === context.nodeId)?.name
+  // the unit being looked in, or everywhere the reader may look when none
+  // is: the field says what the list is narrowed to, never what it is for
+  const unitName =
+    context.nodeId === null
+      ? format(m.pickerAllUnits)
+      : (context.nodes.find((node) => node.id === context.nodeId)?.name ?? format(m.pickerUnits))
 
   // the caller hears about the search once it has stopped moving; it is the
   // one that has to go and fetch on the strength of it
@@ -726,7 +731,7 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
               className={stylex.props(styles.unitField).className}
               onClick={() => setPickingUnit(true)}
             >
-              <span {...stylex.props(styles.unitWord)}>{unitName ?? format(m.pickerUnits)}</span>
+              <span {...stylex.props(styles.unitWord)}>{unitName}</span>
               <ChevronsUpDownIcon
                 className={stylex.props(styles.chevron).className}
                 data-icon="inline-end"
