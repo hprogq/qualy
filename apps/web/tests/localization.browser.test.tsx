@@ -276,6 +276,31 @@ describe('the words themselves', () => {
     await expect.element(page.getByText('Not scored', { exact: true }).first()).toBeVisible()
     expect(page.getByText(/excluded/i).elements()).toHaveLength(0)
   })
+
+  it('counts one field and one version in the singular, in English', async () => {
+    await screen(
+      {
+        listMyEntries: () =>
+          Effect.succeed({ participantId: PARTICIPANT_ID, entries: [entry()], nextCursor: null }),
+        getEntryHistory: () =>
+          Effect.succeed({
+            entry: entry(),
+            revisions: [entry().currentRevision],
+            events: [],
+            rounds: [],
+          }),
+      },
+      <MyEntriesPage />,
+      '/assessment/batches/:batchId/my-entries',
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}&detail=${ENTRY_ID}`,
+      'en-US',
+    )
+
+    const drawer = page.getByRole('dialog')
+    await expect.element(drawer.getByText('1 field', { exact: true })).toBeVisible()
+    await expect.element(drawer.getByText('1 version', { exact: true })).toBeVisible()
+    expect(drawer.getByText(/1 fields|1 versions/).elements()).toHaveLength(0)
+  })
 })
 
 describe('one claim in one word', () => {

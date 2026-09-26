@@ -4449,11 +4449,11 @@ const i18n = definePluginMessages({
     },
     entrySheetContentCount: {
       id: 'assessment/entry-sheet/content-count',
-      defaultMessage: '{count, plural, other {# fields}}',
+      defaultMessage: '{count, plural, one {# field} other {# fields}}',
     },
     entrySheetTrailCount: {
       id: 'assessment/entry-sheet/trail-count',
-      defaultMessage: '{count, plural, other {# versions}}',
+      defaultMessage: '{count, plural, one {# version} other {# versions}}',
     },
     entrySheetOwn: {
       id: 'assessment/entry-sheet/own',
