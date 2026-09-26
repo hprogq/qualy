@@ -1,8 +1,9 @@
 import { StrictMode, type ReactNode } from 'react'
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
+import { Route, Routes, useLocation } from 'react-router'
 import { render } from 'vitest-browser-react'
 import { I18nProvider } from '@qualy/web-i18n'
 import {
+  GuardedMemoryRouter,
   ThemeProvider,
   RuntimeProvider,
   emptyComponentRegistry,
@@ -165,7 +166,9 @@ export function renderScreen({
               clientFor={() => client}
               registry={{ ...emptyComponentRegistry(), ...registry }}
             >
-              <MemoryRouter initialEntries={[route]}>
+              {/* the app's own router over a history in memory: a page that
+                  asks before it is left asks here too */}
+              <GuardedMemoryRouter initialEntries={[route]}>
                 <Address />
                 {routes ? (
                   <Routes>
@@ -178,7 +181,7 @@ export function renderScreen({
                 ) : (
                   children
                 )}
-              </MemoryRouter>
+              </GuardedMemoryRouter>
             </RuntimeProvider>
           </WidgetBridge>
         </ThemeProvider>

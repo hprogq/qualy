@@ -81,4 +81,9 @@ export default {
   'common/load/unavailable-hint': '请稍后重试',
   'common/load/failed-title': '内容加载失败',
   'common/load/failed-hint': '请重试，问题持续时请联系管理员',
+  'common/leave/title': '离开此页？',
+  'common/leave/hint': '有尚未保存的修改',
+  'common/leave/save': '保存后离开',
+  'common/leave/discard': '放弃修改',
+  'common/leave/stay': '继续编辑',
 } satisfies CatalogFor<typeof runtimeMessages>

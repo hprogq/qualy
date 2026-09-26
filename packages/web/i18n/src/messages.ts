@@ -157,4 +157,12 @@ export const commonMessages = {
     id: 'common/load/failed-hint',
     defaultMessage: 'Try again, or contact an administrator if it keeps happening',
   },
+  // Leaving a page with changes on it. Three answers, the safe one under
+  // the reader's hand: keep editing, save and then go, or go and let the
+  // changes drop.
+  leaveTitle: { id: 'common/leave/title', defaultMessage: 'Leave this page?' },
+  leaveHint: { id: 'common/leave/hint', defaultMessage: 'Some changes have not been saved' },
+  leaveSave: { id: 'common/leave/save', defaultMessage: 'Save and leave' },
+  leaveDiscard: { id: 'common/leave/discard', defaultMessage: 'Discard changes' },
+  leaveStay: { id: 'common/leave/stay', defaultMessage: 'Keep editing' },
 } as const satisfies Record<string, MessageDescriptor>

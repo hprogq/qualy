@@ -1,9 +1,10 @@
 import { useEffect, useMemo, type ComponentType, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { BrowserRouter, Link } from 'react-router'
+import { Link } from 'react-router'
 import { primaryNavigation, surfaceLabel, type BrowserSurface } from '@qualy/ui-contract'
 import {
   Failure,
+  GuardedBrowserRouter,
   ManifestRoutes,
   preloadable,
   RuntimeProvider,
@@ -82,9 +83,9 @@ export default function App() {
               clientIdentity={webRelease}
               onClientUnsupported={(reason) => releases.notifyClientUnsupported(reason)}
             >
-              <BrowserRouter>
+              <GuardedBrowserRouter>
                 <ManifestRouter />
-              </BrowserRouter>
+              </GuardedBrowserRouter>
             </RuntimeProvider>
           </WidgetBridge>
         </ThemeProvider>

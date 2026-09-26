@@ -58,6 +58,7 @@ import {
 import { PluginComponent, type PluginComponentProps } from './component-boundary.tsx'
 import { Failure } from './failure.tsx'
 import { useLoadFailure } from './load-failure.tsx'
+import { useUnguardedMove } from './leave-guard.tsx'
 
 export { Failure } from './failure.tsx'
 export {
@@ -385,6 +386,10 @@ export function useSessionTransition() {
   const navigate = useNavigate()
   const manifest = useManifest()
   const runtime = useRuntime()
+  // A change of identity is not the reader leaving a page they were editing:
+  // every answer the page stands on is about to be dropped, and whatever was
+  // unsaved belonged to the identity going away.
+  const unguarded = useUnguardedMove()
   return useCallback(
     async (options: { destination: SessionDestination; replace?: boolean }) => {
       // Leaving somebody who was signed in: whatever a plugin kept in this
@@ -395,9 +400,12 @@ export function useSessionTransition() {
         runtime.utilsFor(appApi) as QueryUtils<ClientOf<typeof appApi>>
       ).app.getManifest.queryOptions().queryKey
       const go = (pages: typeof manifest.pages) =>
-        void navigate(sessionDestinationHref(options.destination, pages), {
-          replace: options.replace ?? true,
-        })
+        unguarded(
+          () =>
+            void navigate(sessionDestinationHref(options.destination, pages), {
+              replace: options.replace ?? true,
+            }),
+        )
       // Where the change of identity leads decides the order.
       //
       // Leaving - signing out, to a page this manifest already has - the
@@ -451,7 +459,7 @@ export function useSessionTransition() {
       queryClient.removeQueries({ type: 'inactive' })
     },
     // manifest identity ties the callback to the active session
-    [queryClient, navigate, manifest, runtime],
+    [queryClient, navigate, manifest, runtime, unguarded],
   )
 }
 
@@ -690,4 +698,11 @@ export {
 } from './screen-aside.tsx'
 export { ScreenFillScope, useScreenFillClaimed, useClaimScreenFill } from './screen-fill.tsx'
 export { SubjectAbsence, SubjectScope, useSubjectAbsenceSeat } from './subject.tsx'
+export {
+  GuardedBrowserRouter,
+  GuardedMemoryRouter,
+  useLeaveGuard,
+  useUnguardedMove,
+  type LeaveGuardOptions,
+} from './leave-guard.tsx'
 export { PageTitleScope, usePageTitle, usePageTitleClaim } from './page-title.tsx'

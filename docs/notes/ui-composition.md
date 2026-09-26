@@ -194,3 +194,15 @@ RailShell 挂 `ScreenFillScope`,页面用
 `useClaimScreenFill(宽度条件)` 声明自己在内部滚动(我的申报、审核详情在各自页面加这一行,骨架阶段也要声明),
 壳即把 main 的 `scrollbar-gutter` 回到 auto(只改槽位不改 overflow,极矮窗口仍可滚动);AppShell 的满屏声明同样放弃槽位。
 普通页面照旧保留槽位,居中量度在页面之间不跳。
+
+## 增补裁决:应用内离开拦截归平台(2026-09-26)
+
+用户反馈:编辑态(如阶段安排)下点侧栏去别的页面,未保存的修改静默丢失,应当先询问是否保存。
+声明式 `BrowserRouter` 没有拦截点(react-router 的 `useBlocker` 只在 data router 里可用),各页面各自拦截又必然漏掉某条路。
+宿主路由因此换成 `GuardedBrowserRouter`(react-router 8.3 的
+`unstable_HistoryRouter` + `UNSAFE_createBrowserHistory`,与 `BrowserRouter` 同一实现、只是 history 由外部给出;
+升级 react-router 时先跑 leave-gate / leave-guard 两套用例),所有 push / replace / 后退都经同一个闸门。页面只写
+`useLeaveGuard({ when: 有未保存修改, onSave? })`:默认只拦「换了路径」的移动(同页 query 变化照常,
+项目配置页按 query 的「按住」逻辑不受影响),弹框三选一「保存后离开 / 放弃修改 / 继续编辑」(不给 `onSave`
+时只有后两者),同时注册 `beforeunload`;保存后自己要跳转的页面用返回的 `bypass` 包住那次跳转,
+身份切换(`useSessionTransition`)不受拦截。测试 harness 用同一闸门的内存版,插件测试里同样会弹出询问。
