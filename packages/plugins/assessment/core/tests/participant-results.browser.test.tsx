@@ -1,6 +1,7 @@
 import ParticipantResultsPage from '../src/client/result/ParticipantResultsPage.tsx'
 import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
-import { Route, Routes } from 'react-router'
+import { useEffect } from 'react'
+import { Route, Routes, useNavigate } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect, Queue, Stream } from 'effect'
@@ -157,6 +158,19 @@ const rosterPage = (rows: readonly ReturnType<typeof participant>[]) =>
 const PAGES = [
   { id: 'assessment/batch-results', path: '/assessment/batches/:batchId/results', layout: 'admin' },
 ]
+
+/**
+ * The browser's own back and forward, which a modal question on the page
+ * does not hold: the router's history, stepped from outside the screen.
+ */
+const travel = { go: (_delta: number) => {} }
+function Travel() {
+  const navigate = useNavigate()
+  useEffect(() => {
+    travel.go = (delta) => void navigate(delta)
+  }, [navigate])
+  return null
+}
 
 interface Request {
   params?: Record<string, string>
@@ -1311,14 +1325,17 @@ describe('the list beside an open account', () => {
       }),
       route,
       children: (
-        <Routes>
-          <Route element={<WorkspaceShell />}>
-            <Route
-              path="/assessment/batches/:batchId/results"
-              element={<ParticipantResultsPage />}
-            />
-          </Route>
-        </Routes>
+        <>
+          <Travel />
+          <Routes>
+            <Route element={<WorkspaceShell />}>
+              <Route
+                path="/assessment/batches/:batchId/results"
+                element={<ParticipantResultsPage />}
+              />
+            </Route>
+          </Routes>
+        </>
       ),
     })
     return { asked, rendered }
@@ -1512,5 +1529,45 @@ describe('the list beside an open account', () => {
     wake('entries-changed')
     wake('review-instance-changed')
     await expect.poll(() => asked.length, { timeout: 4_000 }).toBeGreaterThan(reads)
+  })
+
+  it('asks about taking off only the person it was opened for', async () => {
+    await page.viewport(1280, 800)
+    const setParticipantStatus = vi.fn((_request: Request) =>
+      Effect.succeed({ participant: PEOPLE[0] }),
+    )
+    await shelled(at(23, '&list-page=2'), { setParticipantStatus }).rendered
+    await expect.poll(() => current()?.dataset['participant']).toBe(personId(23))
+    await page.getByRole('button', { name: '下一位' }).click()
+    await expect.poll(() => current()?.dataset['participant']).toBe(personId(24))
+    await page.getByTestId('participant-panel').getByTestId('participant-standing').click()
+    const question = page.getByRole('alertdialog')
+    await expect.element(question).toBeVisible()
+    // back to the one before, which a question on the screen does not stop
+    travel.go(-1)
+    await expect.poll(() => current()?.dataset['participant']).toBe(personId(23))
+    await expect.element(question).not.toBeInTheDocument()
+    // and forward again, where nobody has been asked anything yet
+    travel.go(1)
+    await expect.poll(() => current()?.dataset['participant']).toBe(personId(24))
+    await new Promise((settle) => setTimeout(settle, 200))
+    expect(page.getByRole('alertdialog').elements()).toHaveLength(0)
+    expect(setParticipantStatus).not.toHaveBeenCalled()
+  })
+
+  it('folds the facts again for the next person on a phone', async () => {
+    await page.viewport(390, 844)
+    try {
+      await shelled(at(23, '&list-page=2')).rendered
+      const fold = page.getByTestId('participant-fold')
+      await expect.element(fold).toHaveAttribute('aria-expanded', 'false')
+      await fold.click()
+      await expect.element(fold).toHaveAttribute('aria-expanded', 'true')
+      await page.getByRole('button', { name: '下一位' }).click()
+      await expect.poll(() => addressNow()).toContain(`participant=${personId(24)}`)
+      await expect.element(fold).toHaveAttribute('aria-expanded', 'false')
+    } finally {
+      await page.viewport(1280, 800)
+    }
   })
 })

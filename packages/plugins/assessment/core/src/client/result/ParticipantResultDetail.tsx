@@ -439,8 +439,16 @@ export function ParticipantResultDetail({
   const api = useApi(assessmentApi)
   const run = useRunApi()
   const queryClient = useQueryClient()
-  const [excluding, setExcluding] = useState(false)
-  const [unfolded, setUnfolded] = useState(false)
+  // Both belong to one person. The page stays as the reader steps from one
+  // person to the next - back and forward included, which a modal question
+  // does not stop - so each remembers whom it was opened for: a question
+  // asked about one person is never answered about the next, and the facts
+  // unfolded for one are folded again for whoever comes after.
+  const [excluding, setExcluding] = useState<string | null>(null)
+  const [unfoldedFor, setUnfoldedFor] = useState<string | null>(null)
+  if (excluding !== null && excluding !== participantId) setExcluding(null)
+  if (unfoldedFor !== null && unfoldedFor !== participantId) setUnfoldedFor(null)
+  const unfolded = unfoldedFor === participantId
   const { format, formatError, locale } = useI18n()
   const zone = useBatchZone()
   const phone = useIsMobile()
@@ -624,7 +632,7 @@ export function ParticipantResultDetail({
         }),
       ).then((answer) => ({ ...answer, status })),
     onSuccess: (answer: { status: 'active' | 'excluded' }) => {
-      setExcluding(false)
+      setExcluding(null)
       toast.success(format(answer.status === 'excluded' ? m.toastExcluded : m.toastRestored))
       void queryClient.invalidateQueries({ queryKey: query.assessment.key() })
     },
@@ -645,7 +653,7 @@ export function ParticipantResultDetail({
             ? setStatus.mutate({ status: 'active', participantId })
             : // taking somebody off is worth a question, because what it
               // keeps is not obvious
-              setExcluding(true)
+              setExcluding(participantId)
         }
       >
         {format(excluded ? m.restore : m.exclude)}
@@ -844,7 +852,7 @@ export function ParticipantResultDetail({
               aria-label={format(m.participantDetails)}
               aria-expanded={unfolded}
               data-testid="participant-fold"
-              onClick={() => setUnfolded((open) => !open)}
+              onClick={() => setUnfoldedFor(unfolded ? null : participantId)}
             >
               <ChevronDownIcon
                 aria-hidden
@@ -1056,15 +1064,17 @@ export function ParticipantResultDetail({
         </Swap>
       </Drill>
       <ConfirmDialog
-        open={excluding}
+        open={excluding !== null && excluding === participantId}
         title={format(m.excludeTitle, { name: participant?.displayName ?? '' })}
         description={format(m.excludeBody)}
         confirmLabel={format(m.exclude)}
         cancelLabel={format(commonMessages.cancel)}
         pending={changing}
         tone="destructive"
-        onConfirm={() => setStatus.mutate({ status: 'excluded', participantId })}
-        onCancel={() => setExcluding(false)}
+        onConfirm={() => {
+          if (excluding !== null) setStatus.mutate({ status: 'excluded', participantId: excluding })
+        }}
+        onCancel={() => setExcluding(null)}
       />
     </div>
   )
