@@ -848,6 +848,50 @@ describe('the head of the structure', () => {
     unread = [itemId(2)]
     release()
     await vi.waitFor(() => expect(looked).toHaveBeenCalledOnce())
-    await expect.poll(() => page.getByTestId('unread-dot').elements().length).toBe(0)
+    await expect.poll(() => page.getByTestId('unread-mark').elements().length).toBe(0)
+    expect(railRow(2).getAttribute('data-unread')).toBe('false')
+  })
+})
+
+describe('what a question’s row says at a glance', () => {
+  // The dot says where a question stands and only that; news the reader has
+  // not looked at is a mark of its own, so looking takes the news away and
+  // leaves the standing exactly where it was.
+  it('marks news apart from the dot, and looking clears the news alone', async () => {
+    await page.viewport(1440, 900)
+    const looked = vi.fn(() => Effect.succeed({ ok: true as const }))
+    const filed = [claim(1, itemId(3), 'needs_revision'), claim(2, itemId(4), 'approved')]
+    await workspace({
+      route: `${base}?open=${itemId(1)}`,
+      entries: filed,
+      stubs: {
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: filed,
+            nextCursor: null,
+            attention: { unreadItemIds: [itemId(3), itemId(4)] },
+          }),
+        markMyEntryRead: looked,
+      },
+    })
+    await expect.element(page.getByRole('heading', { name: '品德题目 1' })).toBeVisible()
+    const dot = (n: number) => railRow(n).querySelector('[data-dot]')?.getAttribute('data-dot')
+    const news = (n: number) => railRow(n).querySelector('[data-testid="unread-mark"]')
+    // unread, each still wears its own standing: amber for the one sent
+    // back, green for the one that counts - never one colour for both
+    await expect.poll(() => railRow(3).getAttribute('data-unread')).toBe('true')
+    expect(news(3)).not.toBeNull()
+    expect(dot(3)).toBe('waits')
+    expect(news(4)).not.toBeNull()
+    expect(dot(4)).toBe('approved')
+
+    await userEvent.click(railRow(3))
+    await vi.waitFor(() => expect(looked).toHaveBeenCalledOnce())
+    await expect.poll(() => news(3)).toBeNull()
+    expect(railRow(3).getAttribute('data-unread')).toBe('false')
+    expect(dot(3)).toBe('waits')
+    // the one not looked at keeps its news
+    expect(news(4)).not.toBeNull()
   })
 })

@@ -1378,6 +1378,10 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/row-unread',
       defaultMessage: 'New change you have not seen',
     },
+    rowUnreadMark: {
+      id: 'assessment/entry/row-unread-mark',
+      defaultMessage: 'New',
+    },
     entryStatusRejected: { id: 'assessment/entry/status-rejected', defaultMessage: 'Not approved' },
     entryStatusVoided: { id: 'assessment/entry/status-voided', defaultMessage: 'Voided' },
     entryFileUploading: { id: 'assessment/entry/file-uploading', defaultMessage: 'Uploading…' },

@@ -988,21 +988,26 @@ describe('filing a claim', () => {
     )
 
     await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
-    // The dot means one thing: an unseen change - the row's word carries
-    // the status separately. Presence, not visibility: this suite runs
-    // without the stylesheet, where a 7px dot has no box to be visible in.
-    await expect.poll(() => page.getByTestId('unread-dot').elements().length).toBe(1)
-    expect(page.getByTestId('unread-dot').element().getAttribute('aria-label')).toBe('有未读变化')
+    // An unseen change is a mark of its own after the question's name; the
+    // dot beside the name stays the question's standing, news or not.
+    await expect.poll(() => page.getByTestId('unread-mark').elements().length).toBe(1)
+    const row = () =>
+      page.getByTestId('unread-mark').elements().length === 0
+        ? document.querySelector(`[data-rail-row="${ITEM2_ID}"]`)
+        : page.getByTestId('unread-mark').element().closest('[data-rail-row]')
+    expect(row()?.getAttribute('data-rail-row')).toBe(ITEM2_ID)
+    const standing = row()?.querySelector('[data-dot]')?.getAttribute('data-dot')
+    expect(standing).toBe('open')
 
-    // opening the question is a look: the server hears it once, the dot goes
-    // stylesheet-less, both breakpoint variants of the rail are in the
-    // tree; either row opens the same question
+    // opening the question is a look: the server hears it once, and the
+    // mark goes while the dot stays what it was
     await page
       .getByRole('button', { name: /献血加分/ })
       .first()
       .click()
     await vi.waitFor(() => expect(looked).toHaveBeenCalledOnce())
-    await expect.poll(() => page.getByTestId('unread-dot').elements().length).toBe(0)
+    await expect.poll(() => page.getByTestId('unread-mark').elements().length).toBe(0)
+    expect(row()?.querySelector('[data-dot]')?.getAttribute('data-dot')).toBe(standing)
     await page.viewport(414, 896)
   })
 

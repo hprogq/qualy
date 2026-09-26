@@ -3,6 +3,7 @@ import type { EntryDto, ItemDto } from '../src/client/entry/model.ts'
 import type { Standing, StructureRow } from '../src/client/entry/standing.ts'
 import {
   chipsFor,
+  dotOf,
   entryLineOf,
   headStatsOf,
   outlineOf,
@@ -160,5 +161,14 @@ describe('a claim’s identity line', () => {
     )
     expect(line.lead).toBe('National')
     expect(line.sub).toBe('First|GPA=3.9')
+  })
+})
+
+describe('the dot beside a question', () => {
+  it('says where it stands whether or not there is news on it', () => {
+    for (const tag of ['needs_revision', 'approved', 'in_review', 'rejected', null] as const) {
+      const quiet = row({ id: 'q', kind: 'item', tag })
+      expect(dotOf({ ...quiet, unread: true })).toBe(dotOf(quiet))
+    }
   })
 })

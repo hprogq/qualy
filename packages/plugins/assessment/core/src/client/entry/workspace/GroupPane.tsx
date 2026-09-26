@@ -6,6 +6,7 @@ import { assessmentMessages as m } from '../../i18n.ts'
 import { trimAmount, type EntryDto } from '../model.ts'
 import type { StructureRow } from '../standing.ts'
 import { useCalcLine } from './calc.ts'
+import { UnreadMark } from './marks.tsx'
 import {
   chainOf,
   dotOf,
@@ -223,7 +224,6 @@ const styles = stylex.create({
 })
 
 const dots = stylex.create({
-  unread: { backgroundColor: tokens.danger },
   waits: { backgroundColor: tokens.warning },
   approved: { backgroundColor: tokens.success },
   moving: { backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 80%, transparent)` },
@@ -399,18 +399,24 @@ export function GroupPane({
               <button
                 type="button"
                 data-group-item={one.id}
+                data-unread={one.unread}
                 onClick={() => onGoto(one.id)}
                 {...stylex.props(styles.item)}
                 style={{ paddingLeft: `${pad + 12}px` }}
               >
                 <span {...stylex.props(styles.itemWords)}>
                   <span {...stylex.props(styles.itemTop)}>
-                    <span aria-hidden {...stylex.props(styles.dot, dots[dotOf(one)])} />
+                    <span
+                      aria-hidden
+                      data-dot={dotOf(one)}
+                      {...stylex.props(styles.dot, dots[dotOf(one)])}
+                    />
                     <span
                       {...stylex.props(styles.itemName, one.tag === 'voided' && styles.itemGone)}
                     >
                       {outline.numbers.get(one.id)}. {one.name}
                     </span>
+                    {one.unread && <UnreadMark />}
                   </span>
                   <span {...stylex.props(styles.itemFacts)}>
                     {word !== null && (

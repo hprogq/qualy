@@ -1376,6 +1376,7 @@ export default {
   'assessment/entry/refresh': '刷新',
   'assessment/entry/row-partial': '部分未通过',
   'assessment/entry/row-unread': '有未读变化',
+  'assessment/entry/row-unread-mark': '新',
   'assessment/overview/actions-title': '需要你处理',
   'assessment/overview/actions-none': '暂时没有需要你处理的事项。',
   'assessment/overview/action-supplement': '{who} 要求你补充材料',

@@ -10,6 +10,7 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { trimAmount } from '../model.ts'
 import type { StructureRow } from '../standing.ts'
+import { UnreadMark } from './marks.tsx'
 import {
   dotOf,
   rowWordOf,
@@ -367,11 +368,10 @@ const styles = stylex.create({
 /**
  * The dot beside a question (§32.72, amended): amber where the round waits
  * on the reader, dark green for what counts, grey for what is moving or
- * kept, hollow where it ended without counting or nothing is claimed yet,
- * and red only for news the reader has not seen.
+ * kept, hollow where it ended without counting or nothing is claimed yet.
+ * News the reader has not seen is the mark after the name, not a colour here.
  */
 const dotStyles = stylex.create({
-  unread: { backgroundColor: tokens.danger },
   waits: { backgroundColor: tokens.warning },
   approved: { backgroundColor: tokens.success },
   moving: { backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 80%, transparent)` },
@@ -601,6 +601,7 @@ export function StructureRail({
                 data-rail-row={row.id}
                 data-kind="item"
                 data-tag={row.tag ?? ''}
+                data-unread={row.unread}
                 aria-current={on ? 'true' : undefined}
                 onClick={() => onSelect(row.id)}
                 {...stylex.props(
@@ -612,19 +613,15 @@ export function StructureRail({
                 style={{ paddingLeft: `${indent}px` }}
               >
                 {guides(row.depth)}
-                {row.unread ? (
-                  <span
-                    role="status"
-                    data-testid="unread-dot"
-                    aria-label={format(m.rowUnread)}
-                    {...stylex.props(styles.dot, dotStyles.unread)}
-                  />
-                ) : (
-                  <span aria-hidden {...stylex.props(styles.dot, DOT[dotOf(row)])} />
-                )}
+                <span
+                  aria-hidden
+                  data-dot={dotOf(row)}
+                  {...stylex.props(styles.dot, DOT[dotOf(row)])}
+                />
                 <span {...stylex.props(styles.name, on && styles.nameOn, gone && styles.nameGone)}>
                   {row.name}
                 </span>
+                {row.unread && <UnreadMark />}
                 <span {...stylex.props(styles.spacer)} />
                 {word !== null && row.tag !== 'approved' && row.tag !== 'granted' && (
                   <span {...stylex.props(styles.word, urgentTag(row) && styles.wordUrgent)}>

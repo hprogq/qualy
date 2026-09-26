@@ -113,11 +113,15 @@ export const insideOf = (outline: Outline, group: StructureRow): readonly Struct
   return inside
 }
 
-/** the dot beside a question: amber waits on the reader, red is news they have not seen */
-export type Dot = 'unread' | 'waits' | 'approved' | 'moving' | 'draft' | 'ring' | 'open' | 'quiet'
+/**
+ * The dot beside a question, which says where it stands and nothing else:
+ * amber waits on the reader, green counts, grey is moving or kept, a ring
+ * ended without counting, and an outline has nothing claimed yet. News the
+ * reader has not looked at is a mark of its own, never this dot.
+ */
+export type Dot = 'waits' | 'approved' | 'moving' | 'draft' | 'ring' | 'open' | 'quiet'
 
 export const dotOf = (row: StructureRow): Dot => {
-  if (row.unread) return 'unread'
   switch (row.tag) {
     case 'supplement':
     case 'needs_revision':

@@ -21,6 +21,7 @@ import { BatchScreen } from './batch/BatchScreen.tsx'
 import { BatchFlow } from './batch/BatchFlow.tsx'
 import { calendarDaysBetween, inZone, useBatchZone, yearOf } from './batch/zone.ts'
 import { assessmentMessages as m } from './i18n.ts'
+import { UnreadMark } from './entry/workspace/marks.tsx'
 
 // The batch's front page as one desk (§32.73, laid out to design 2a/2b):
 // the page description says what stands on the desk, the body starts
@@ -456,13 +457,6 @@ const styles = stylex.create({
     minWidth: 0,
     alignItems: 'center',
     gap: 6,
-  },
-  unreadDot: {
-    width: 7,
-    height: 7,
-    flexShrink: 0,
-    borderRadius: '9999px',
-    backgroundColor: tokens.danger,
   },
   feedTitle: {
     minWidth: 0,
@@ -989,14 +983,9 @@ function MyDesk({
                       <span {...stylex.props(styles.feedBody)}>
                         <span {...stylex.props(styles.feedTitleLine)}>
                           <span {...stylex.props(styles.feedTitleSeat)}>
-                            {freshRowIds.has(row.id + row.kind) && (
-                              <span
-                                role="status"
-                                aria-label={format(m.rowUnread)}
-                                {...stylex.props(styles.unreadDot)}
-                              />
-                            )}
                             <span {...stylex.props(styles.feedTitle)}>{row.itemTitle}</span>
+                            {/* the same mark of news as on the paper itself */}
+                            {freshRowIds.has(row.id + row.kind) && <UnreadMark />}
                           </span>
                           {mixed && (
                             <span {...stylex.props(styles.feedLaneWord)}>

@@ -83,7 +83,7 @@ export interface StructureRow {
    * is not on anybody's plate and deliberately does not count (§32.72).
    */
   todo: boolean
-  /** a change the reader has not looked at yet - the dot, and only the dot */
+  /** a change the reader has not looked at yet, marked apart from where the row stands */
   unread: boolean
   /** the groups above it, outermost first, for a breadcrumb */
   trail: readonly string[]
