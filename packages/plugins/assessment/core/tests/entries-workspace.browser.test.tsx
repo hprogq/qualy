@@ -1085,3 +1085,32 @@ describe('going up to a section and back', () => {
     await expect.poll(() => addressNow()).toBe('/elsewhere')
   })
 })
+
+describe('the page’s own words', () => {
+  // The owner's rule for this page: no interpunct anywhere in what it says.
+  it('never separates anything with a middle dot', async () => {
+    await page.viewport(1440, 900)
+    await workspace({
+      route: `${base}?open=${itemId(1)}`,
+      entries: [
+        claim(1, itemId(1), 'needs_revision', {
+          refusal: {
+            kind: 'returned',
+            reason: null,
+            comment: '证书扫描件不清晰',
+            suggestedPayload: null,
+            actorName: null,
+            at: '2026-04-02T00:00:00.000Z',
+          },
+        }),
+        claim(2, itemId(1), 'approved'),
+        claim(3, itemId(1), 'in_review'),
+      ],
+    })
+    await expect.poll(() => rows().length).toBe(3)
+    expect(document.body.textContent).not.toContain('·')
+    await userEvent.click(rows()[0]!)
+    await expect.element(page.getByRole('dialog')).toBeVisible()
+    expect(document.body.textContent).not.toContain('·')
+  })
+})
