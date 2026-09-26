@@ -731,8 +731,9 @@ export const identityApiGroup = HttpApiGroup.make('identity')
         search: Schema.optional(Schema.String.check(Schema.isMaxLength(100))),
         userTypeId: Schema.optional(uuidInput),
         ...pageQuery,
-        // A picker reads forwards by cursor; the roster is walked by page
-        // number. Naming a page switches the answer to a counted one.
+        // Without a page, the answer is read forwards by cursor; naming a
+        // page switches it to a counted one, which is how the roster and
+        // the people picker walk it - by page number, knowing how many.
         page: Schema.optional(Schema.String),
       }),
       success: Schema.Struct({
