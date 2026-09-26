@@ -100,4 +100,34 @@ describe('the page being read, in the dark', () => {
     const another = page.getByTestId('numbered').getByRole('button', { name: '4', exact: true })
     expect(getComputedStyle(another.element()).backgroundColor).toBe('rgba(0, 0, 0, 0)')
   })
+
+  // A number under the pointer answers in its ink and nothing more: with a
+  // ground of its own, a step away from the tint, it read as a second page
+  // being read.
+  for (const mode of ['light', 'dark'] as const) {
+    it(`keeps the pointer’s number off the ground in the ${mode}`, async () => {
+      setScheme(mode)
+      await render(
+        <UiProvider scheme={mode}>
+          <Pager
+            testId="numbered"
+            label="pages"
+            page={3}
+            pageSize={10}
+            total={120}
+            onPage={() => {}}
+          />
+        </UiProvider>,
+      )
+      const strip = page.getByTestId('numbered')
+      const hovered = strip.getByRole('button', { name: '4', exact: true })
+      await hovered.hover()
+      await expect
+        .poll(() => getComputedStyle(hovered.element()).color)
+        .toBe(probe('var(--q-foreground)', 'color'))
+      expect(getComputedStyle(hovered.element()).backgroundColor).toBe('rgba(0, 0, 0, 0)')
+      const here = strip.element().querySelector('[aria-current="page"]')!
+      expect(getComputedStyle(here).backgroundColor).toBe(probe('var(--q-selected-surface)'))
+    })
+  }
 })

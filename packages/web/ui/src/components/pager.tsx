@@ -35,6 +35,11 @@ const styles = stylex.create({
   // the primary filled behind a hard-coded white: a black block at the foot
   // of every list in the light scheme, and white on near-white in the dark,
   // where the primary is paper. Secondary navigation should be neither.
+  //
+  // So the page being read is the one number standing on a ground of its
+  // own. A number under the pointer answers in its ink alone: grounded as
+  // well, a wash a step away from the tint, it read as a second current
+  // page beside the first.
   control: {
     borderColor: {
       default: 'transparent',
@@ -42,7 +47,6 @@ const styles = stylex.create({
     },
     backgroundColor: {
       default: 'transparent',
-      ':hover:not([data-active]):not(:disabled):not([data-disabled])': tokens.hoverSurface,
       '[data-active]': tokens.selectedSurface,
     },
     color: {
