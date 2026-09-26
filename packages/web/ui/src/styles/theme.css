@@ -235,10 +235,11 @@
  * declared here once and behaves identically for first mounts and reopens.
  * Exits stay with the library's transitions. */
 @layer components {
-  /* a panel rises a little and fades in; it is never scaled, because a
-     scaled panel is a texture on the compositor for the length of the
-     animation, and WebKit draws its text and edges soft until the frame
-     it ends - the panel would appear to sharpen as it settled */
+  /* a modal panel rises a little and fades in, and an anchored one travels
+     a little out of its trigger (lib/overlay-motion.ts); neither is ever
+     scaled, because a scaled panel is a texture on the compositor for the
+     length of the animation, and WebKit draws its text and edges soft until
+     the frame it ends - the panel would appear to sharpen as it settled */
   /* the veil's dimming, a plain colour above the blur, fades in on its
      own; the blur itself never animates */
   @keyframes q-tint-in {
@@ -278,6 +279,29 @@
     from {
       transform: translateY(100%);
     }
+  }
+  /* The side an anchored panel landed on, as the offset it travels in from.
+     The widget marks the side after placement - flips included - and only
+     the anchored panels' transition reads these, so a panel below its
+     trigger comes down out of it and one flipped above comes up. Every side
+     states both axes: custom properties inherit, and a list opening below
+     inside a panel that had flipped above must not travel the parent's
+     way. */
+  [data-position^='bottom'] {
+    --q-drop-x: 0px;
+    --q-drop-y: -4px;
+  }
+  [data-position^='top'] {
+    --q-drop-x: 0px;
+    --q-drop-y: 4px;
+  }
+  [data-position^='left'] {
+    --q-drop-x: 4px;
+    --q-drop-y: 0px;
+  }
+  [data-position^='right'] {
+    --q-drop-x: -4px;
+    --q-drop-y: 0px;
   }
 }
 

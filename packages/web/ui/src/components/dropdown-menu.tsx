@@ -7,6 +7,7 @@ import clsx from 'clsx'
 import * as stylex from '@stylexjs/stylex'
 
 import { tokens } from '../theme/tokens.stylex.ts'
+import { dropIn } from '../lib/overlay-motion.ts'
 import { panel } from '../lib/panel.ts'
 import { seatOf } from '../lib/xstyle.ts'
 import { CheckIcon, ChevronRightIcon } from 'lucide-react'
@@ -70,7 +71,7 @@ function DropdownMenu({
       // parity with the previous substrate: the dropdown stays visible even
       // if the trigger leaves the viewport (hideDetached would blank it)
       hideDetached={false}
-      transitionProps={{ transition: 'pop', duration: 130 }}
+      transitionProps={dropIn}
       opened={opened}
       onOpen={() => change(true)}
       onClose={() => change(false)}

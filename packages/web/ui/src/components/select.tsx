@@ -8,6 +8,7 @@ import type { StyleXStyles } from '@stylexjs/stylex'
 import { clsx } from 'clsx'
 
 import { tokens } from '../theme/tokens.stylex.ts'
+import { dropIn } from '../lib/overlay-motion.ts'
 import { panel } from '../lib/panel.ts'
 import { seatOf } from '../lib/xstyle.ts'
 import { CheckIcon } from 'lucide-react'
@@ -112,7 +113,7 @@ function Select(props: {
       // a list the width of its trigger; this one is not always that, so it
       // may slide back inside the window, still under its trigger.
       middlewares={{ flip: true, shift: { mainAxis: true, padding: 8 } }}
-      transitionProps={{ transition: 'pop', duration: 130 }}
+      transitionProps={dropIn}
       disabled={disabled}
       onOptionSubmit={(next) => {
         // an uncontrolled select keeps its own answer; a controlled one is

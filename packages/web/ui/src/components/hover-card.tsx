@@ -5,6 +5,7 @@ import * as stylex from '@stylexjs/stylex'
 import { HoverCard as MHoverCard, type HoverCardProps as MHoverCardProps } from '@mantine/core'
 
 import { tokens } from '../theme/tokens.stylex.ts'
+import { dropIn } from '../lib/overlay-motion.ts'
 import { seatOf } from '../lib/xstyle.ts'
 
 // A card that opens on hover. The behaviour - open and close delays, the
@@ -13,9 +14,10 @@ import { seatOf } from '../lib/xstyle.ts'
 // surface drawn a size larger.
 //
 // The compound shape is kept over the library's Target/Dropdown model, the
-// same rename the popover does. Its entrance is the family's pop, and a
-// reader who asked for less motion is answered by the theme's
-// respectReducedMotion rather than by a rule in the stylesheet.
+// same rename the popover does. Its entrance is the anchored family's
+// (lib/overlay-motion.ts), and a reader who asked for less motion is
+// answered by the theme's respectReducedMotion rather than by a rule in the
+// stylesheet.
 
 // the card's own measure, 288px, is stated on the root as `width` rather
 // than here: the widget writes the dropdown's width as an inline style, and
@@ -85,7 +87,7 @@ function HoverCard({
       width={288}
       position={positionOf(decl.side ?? 'bottom', decl.align ?? 'center')}
       offset={decl.sideOffset ?? 4}
-      transitionProps={{ transition: 'pop', duration: 100 }}
+      transitionProps={dropIn}
       {...(disabled === undefined ? {} : { disabled })}
       {...(openDelay === undefined ? {} : { openDelay })}
       {...(closeDelay === undefined ? {} : { closeDelay })}

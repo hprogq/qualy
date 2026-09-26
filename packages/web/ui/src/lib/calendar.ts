@@ -1,6 +1,7 @@
 import * as stylex from '@stylexjs/stylex'
 
 import { tokens } from '../theme/tokens.stylex.ts'
+import { dropIn } from './overlay-motion.ts'
 import { panel } from './panel.ts'
 
 /**
@@ -151,8 +152,10 @@ export const calendarLook = {
     calendarHeaderLevel: stylex.props(styles.monthLabel).className,
     weekday: stylex.props(styles.weekday).className,
   },
-  // the panel a calendar opens in is the anchored panels' own
+  // the panel a calendar opens in is the anchored panels' own, and arrives
+  // the way they do
   popoverProps: {
     classNames: { dropdown: stylex.props(panel.material).className ?? '' },
+    transitionProps: dropIn,
   },
 } as const

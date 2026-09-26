@@ -5,6 +5,7 @@ import * as stylex from '@stylexjs/stylex'
 import { Popover as MPopover, type PopoverProps as MPopoverProps } from '@mantine/core'
 
 import { tokens } from '../theme/tokens.stylex.ts'
+import { dropIn } from '../lib/overlay-motion.ts'
 import { panel } from '../lib/panel.ts'
 import { seatOf } from '../lib/xstyle.ts'
 
@@ -134,9 +135,9 @@ function Popover({
       position={positionOf(side, align)}
       width={decl.width ?? 288}
       offset={decl.sideOffset ?? 4}
-      // an anchored surface pops: opacity with a whisper of scale, which
-      // reads the same whichever side the placement flipped to
-      transitionProps={{ transition: 'pop', duration: 130 }}
+      // an anchored surface travels a little out of its trigger, on
+      // whichever side the placement landed (lib/overlay-motion.ts)
+      transitionProps={dropIn}
       {...(defaultOpen === undefined ? {} : { defaultOpened: defaultOpen })}
       {...(controlled ? { opened: open } : {})}
       onChange={observe}
