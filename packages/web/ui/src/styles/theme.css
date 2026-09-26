@@ -260,6 +260,15 @@
       transform: translateY(0);
     }
   }
+  /* an anchored panel travelling out of its trigger, for the one that
+     mounts already open (lib/overlay-motion.ts): the side it landed on
+     below sets the offset */
+  @keyframes q-drop-in {
+    from {
+      opacity: 0;
+      transform: translate(var(--q-drop-x, 0px), var(--q-drop-y, -4px));
+    }
+  }
   @keyframes q-slide-in-right {
     from {
       transform: translateX(100%);

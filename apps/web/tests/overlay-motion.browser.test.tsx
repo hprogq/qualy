@@ -49,6 +49,28 @@ const watchTransforms = (selector: string) => {
   return { seen, stop: () => observer.disconnect() }
 }
 
+/**
+ * the first frame of every insertion animation a panel matching `selector`
+ * starts with from now on, caught as the panel is put on the page
+ */
+const watchEntrances = (selector: string) => {
+  const seen: { from: string; opacity: string }[] = []
+  const record = (node: Node) => {
+    if (!(node instanceof HTMLElement)) return
+    const panel = node.matches(selector) ? node : node.querySelector<HTMLElement>(selector)
+    if (panel === null) return
+    for (const animation of panel.getAnimations()) {
+      const [first] = (animation.effect as KeyframeEffect).getKeyframes()
+      seen.push({ from: String(first?.['transform'] ?? ''), opacity: String(first?.['opacity']) })
+    }
+  }
+  const observer = new MutationObserver((records) => {
+    for (const change of records) change.addedNodes.forEach(record)
+  })
+  observer.observe(document.body, { subtree: true, childList: true })
+  return { seen, stop: () => observer.disconnect() }
+}
+
 const mount = (ui: React.ReactNode) => render(<UiProvider scheme="light">{ui}</UiProvider>)
 
 /** the entrance ran, travelling rather than growing, and settled in place */
@@ -80,7 +102,11 @@ describe('an anchored panel’s entrance', () => {
     await userEvent.keyboard('{Escape}')
   })
 
-  it('a menu travels out of its trigger', async () => {
+  // A menu mounts on its first press already open, which the widget's
+  // transition treats as already entered - so the first opening, for a
+  // row's menu usually the only one, had no entrance. It enters by an
+  // insertion keyframe, the first time and every time after.
+  it('a menu travels out of its trigger, on its first opening too', async () => {
     await mount(
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -91,18 +117,23 @@ describe('an anchored panel’s entrance', () => {
         </DropdownMenuContent>
       </DropdownMenu>,
     )
-    // the first press mounts the menu already open, which the widget
-    // treats as already entered; every opening after it enters
     const more = page.getByRole('button', { name: 'more' })
-    await more.click()
-    await expect.element(page.getByRole('menuitem', { name: 'adjust' })).toBeVisible()
-    await userEvent.keyboard('{Escape}')
-    await expect.element(page.getByRole('menuitem', { name: 'adjust' })).not.toBeInTheDocument()
-    const watch = watchTransforms('[data-slot="dropdown-menu-content"]')
-    await more.click()
-    await expectTravelled('[data-slot="dropdown-menu-content"]', watch.seen)
-    watch.stop()
-    await userEvent.keyboard('{Escape}')
+    for (const opening of ['first', 'again']) {
+      const watch = watchEntrances('[data-slot="dropdown-menu-content"]')
+      await more.click()
+      await expect.element(page.getByRole('menuitem', { name: 'adjust' })).toBeVisible()
+      watch.stop()
+      expect(watch.seen, opening).toHaveLength(1)
+      const [entrance] = watch.seen
+      expect(entrance!.from, opening).toMatch(/^translate\(/)
+      expect(entrance!.from, opening).not.toContain('scale')
+      expect(entrance!.opacity, opening).toBe('0')
+      // below its trigger, it comes down out of it
+      const panel = document.querySelector<HTMLElement>('[data-slot="dropdown-menu-content"]')!
+      expect(getComputedStyle(panel).getPropertyValue('--q-drop-y').trim(), opening).toBe('-4px')
+      await userEvent.keyboard('{Escape}')
+      await expect.element(page.getByRole('menuitem', { name: 'adjust' })).not.toBeInTheDocument()
+    }
   })
 
   it('a popover travels out of its trigger', async () => {

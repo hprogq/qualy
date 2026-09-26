@@ -1,4 +1,5 @@
 import type { MantineTransition } from '@mantine/core'
+import * as stylex from '@stylexjs/stylex'
 
 // How a panel anchored to a trigger arrives and leaves: a select's list, a
 // menu, a popover, a hover card, a calendar.
@@ -39,3 +40,25 @@ export const dropIn = {
   exitDuration: 80,
   timingFunction: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
 } as const
+
+const REDUCE = '@media (prefers-reduced-motion: reduce)'
+
+/**
+ * The same entrance for a panel whose first mount is already open: a menu
+ * mounts on its first press. The widget's transition machine treats a panel
+ * mounted open as already entered, so a menu's first opening - for a row's
+ * menu, usually its only one - arrived with no entrance at all. Such a panel
+ * enters by the stylesheet's insertion keyframe instead (`q-drop-in` in
+ * theme.css: the same travel, time and curve), which plays on every
+ * insertion, first or not; the widget is handed this transition, which
+ * keeps only the exit.
+ */
+export const dropOutOnly = { ...dropIn, duration: 0 } as const
+
+export const dropInOnInsert = stylex.create({
+  entrance: {
+    animationName: { default: 'q-drop-in', [REDUCE]: 'none' },
+    animationDuration: { default: '120ms', [REDUCE]: '0s' },
+    animationTimingFunction: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
+  },
+})
