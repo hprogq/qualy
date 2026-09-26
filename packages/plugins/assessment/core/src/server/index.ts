@@ -49,6 +49,7 @@ import { makeItemMethods, type ItemMethods, type ItemView } from '../item/servic
 import {
   activeItemChannelsOf,
   currentBatchConfigs,
+  groupsOf as groupRowsOf,
   itemsOf as itemRowsOf,
   liveBatchPayloads,
   liveBatchRecognitions,
@@ -325,6 +326,37 @@ export interface TimelineStage extends TimelineEntry {
     readonly items: readonly { readonly id: string; readonly title: string }[] | null
     readonly participantsLimited: boolean
   }
+}
+
+/**
+ * A batch's questions in the order its paper reads: down the section tree,
+ * each section's own questions before the sections inside it, which is the
+ * order the item structure draws them in. The rows come ordered within each
+ * section only, so two sections' first questions would otherwise come
+ * before either's second.
+ */
+const inPaperOrder = <I extends { readonly id: string; readonly scoreGroupId: string }>(
+  groups: readonly { readonly id: string; readonly parentGroupId: string | null }[],
+  items: readonly I[],
+): readonly I[] => {
+  const inside = new Map<string | null, string[]>()
+  for (const group of groups) {
+    const held = inside.get(group.parentGroupId)
+    if (held === undefined) inside.set(group.parentGroupId, [group.id])
+    else held.push(group.id)
+  }
+  const ordered: I[] = []
+  const walked = new Set<string>()
+  const walk = (groupId: string) => {
+    if (walked.has(groupId)) return
+    walked.add(groupId)
+    for (const item of items) if (item.scoreGroupId === groupId) ordered.push(item)
+    for (const child of inside.get(groupId) ?? []) walk(child)
+  }
+  for (const root of inside.get(null) ?? []) walk(root)
+  // a question under no section the tree reaches still has its place, last
+  const placed = new Set(ordered.map((item) => item.id))
+  return [...ordered, ...items.filter((item) => !placed.has(item.id))]
 }
 
 /** a batch as a list shows it: the row, plus where the batch has got to */
@@ -5061,9 +5093,10 @@ export const make = Effect.fn('Assessment.make')(function* () {
       const paper =
         scopes.items.length === 0
           ? []
-          : (yield* dieQuery(withDb(itemRowsOf(tenantId, batchId)))).filter(
-              (item) => item.status !== 'draft',
-            )
+          : inPaperOrder(
+              yield* dieQuery(withDb(groupRowsOf(tenantId, batchId))),
+              yield* dieQuery(withDb(itemRowsOf(tenantId, batchId))),
+            ).filter((item) => item.status !== 'draft')
       return stages.map((stage): TimelineStage => {
         const named = itemsOfPhase.get(stage.phaseId)
         return {

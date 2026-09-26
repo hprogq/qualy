@@ -57,6 +57,26 @@ export const scopeSections = (
   return sections
 }
 
+/**
+ * Every question's id in the order the paper reads: section by section down
+ * the tree, as the picker lists them. The list the server hands out is in
+ * each section's own order, so two sections' first questions come before
+ * either's second.
+ */
+export const paperOrderOf = (
+  groups: readonly TreeGroup[],
+  items: readonly ItemDto[],
+): readonly string[] => {
+  const walked = scopeSections(
+    groups,
+    items,
+    items.map((item) => item.id),
+  ).flatMap((section) => section.items.map((item) => item.id))
+  const seen = new Set(walked)
+  // a question under no section the tree reaches still has a name to give
+  return [...walked, ...items.flatMap((item) => (seen.has(item.id) ? [] : [item.id]))]
+}
+
 /** every question's title by id, for a row that only holds ids */
 export const titlesOf = (items: readonly ItemDto[]): ReadonlyMap<string, string> =>
   new Map(items.map((item) => [item.id, item.title]))

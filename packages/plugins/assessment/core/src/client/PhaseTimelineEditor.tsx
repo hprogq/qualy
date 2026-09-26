@@ -28,7 +28,7 @@ import {
   type BatchDto,
   type PhaseDraft,
 } from './phase/model.ts'
-import { scopeSections, titlesOf } from './phase/scope.ts'
+import { paperOrderOf, scopeSections, titlesOf } from './phase/scope.ts'
 import { PhaseCard, PhaseRow, type PhaseRowProps } from './phase/PhaseRow.tsx'
 import { PhaseDetailsPanel } from './phase/PhaseDetailsPanel.tsx'
 import { ScheduleDialog, TemplateDialog, UnscheduleDialog } from './phase/PhaseDialogs.tsx'
@@ -271,7 +271,10 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
     query.assessment.listScoreGroups.queryOptions({ params: { batchId: batch.id } }),
   )
   const titles = useMemo(() => titlesOf(items.data?.items ?? []), [items.data])
-  const paperOrder = useMemo(() => (items.data?.items ?? []).map((item) => item.id), [items.data])
+  const paperOrder = useMemo(
+    () => paperOrderOf(groups.data?.groups ?? [], items.data?.items ?? []),
+    [groups.data, items.data],
+  )
   // the timeline templates a plan may be added from; with none, nothing
   // offers to add from one
   const hasTimelines = (timelines.data?.items.length ?? 0) > 0
