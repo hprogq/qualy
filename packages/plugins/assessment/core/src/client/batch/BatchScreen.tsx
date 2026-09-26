@@ -168,6 +168,7 @@ export function BatchScreen({
   size = 'default',
   chrome = 'band',
   banner,
+  notes,
   children,
 }: {
   /** which of the batch's pages this is; the bar above says which batch */
@@ -192,6 +193,14 @@ export function BatchScreen({
    * expected to keep the band's own shape, so the swap moves nothing.
    */
   banner?: 'section' | 'open'
+  /**
+   * Whether what the band's body says about the round - a draft, another
+   * clock - stands above the section. By default it follows the band. A
+   * section whose address already names something inside it says so here,
+   * so the notes are not drawn over its outline and then taken away from
+   * under the thing when it arrives.
+   */
+  notes?: boolean
   /** rendered once the batch is loaded, because a section without one is blank */
   children: (batch: BatchDto) => ReactNode
 }) {
@@ -201,6 +210,7 @@ export function BatchScreen({
   const [slot, setSlot] = useState<HTMLDivElement | null>(null)
   // the section's own name is what shows unless it says otherwise
   const showing = banner ?? 'section'
+  const noting = notes ?? showing === 'section'
 
   const detail = useQuery({
     ...query.assessment.getBatch.queryOptions({ params: { batchId } }),
@@ -328,13 +338,13 @@ export function BatchScreen({
             <Reveal className={stylex.props(styles.sectionStack).className}>
               {/* said on the section, not over a question being composed:
                   the band has handed over, and the body is the question's */}
-              {batch.status === 'draft' && showing === 'section' && (
+              {batch.status === 'draft' && noting && (
                 <p {...stylex.props(styles.draftNote)}>{format(m.draftBanner)}</p>
               )}
               <BatchZone zone={batch.timezone}>
                 {/* only to a reader whose device keeps another zone: every
                     time below is read on the batch's clock, not theirs */}
-                {showing === 'section' && <ZoneAwayNotice />}
+                {noting && <ZoneAwayNotice />}
                 {children(batch)}
               </BatchZone>
             </Reveal>

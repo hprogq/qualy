@@ -1639,11 +1639,21 @@ describe('the band', () => {
     await expect.element(band).toHaveAttribute('data-banner', 'section')
     const waiting = band.element().getBoundingClientRect().height
     expect(waiting).toBeGreaterThan(60)
+    // The round is a draft, and the structure says so above itself. Said
+    // over the outline too, the line went when the question came, and the
+    // whole question jumped up by its height.
+    await new Promise((settle) => setTimeout(settle, 300))
+    const outlined = page
+      .getByTestId('question-skeleton')
+      .element()
+      .firstElementChild!.getBoundingClientRect().top
     release?.()
     await expect.element(band).toHaveAttribute('data-banner', 'open')
     await expect.element(editor()).toBeVisible()
     await new Promise((settle) => setTimeout(settle, 400))
     expect(Math.abs(band.element().getBoundingClientRect().height - waiting)).toBeLessThanOrEqual(1)
+    const arrived = page.getByTestId('item-tabs').element().getBoundingClientRect().top
+    expect(Math.abs(arrived - outlined)).toBeLessThanOrEqual(1)
   })
 })
 

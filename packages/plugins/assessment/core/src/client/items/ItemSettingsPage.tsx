@@ -398,6 +398,10 @@ export default function ItemSettingsPage() {
       title={format(m.itemsTab)}
       description={format(m.itemsHint)}
       banner={shown !== '' && questionUp ? 'open' : 'section'}
+      // the round's notes belong to the structure: an address naming a
+      // question drops them at once, so the outline of the question stands
+      // where the question will
+      notes={shown === ''}
     >
       {(batch) => (
         <Editor
