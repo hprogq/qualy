@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 import { InboxIcon } from 'lucide-react'
+import { CheckboxGroup } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { UiProvider } from '@qualy/ui/provider'
 import { Blank } from '@qualy/ui/screen'
+import { TreeSelect } from '@qualy/ui/tree-select'
 import '../src/app.css'
 
 // The empty state in its two sizes. A screen's is tall and framed, the
@@ -71,5 +73,64 @@ describe('an empty state inside a dialog', () => {
     expect(compact.contains(action)).toBe(true)
     const said = compact.querySelector('[data-slot="empty-description"]')!
     expect(action.getBoundingClientRect().top).toBeGreaterThan(said.getBoundingClientRect().bottom)
+  })
+})
+
+// A field that picks from a set, with nothing in the set: it answers where
+// its choices would have stood, in a box of the field's measure, with what
+// is missing in the field's own type, why underneath, and the way out. It
+// used to leave a line of small grey type under the label.
+describe('a picker with nothing to pick from', () => {
+  it('answers in the field’s own place, not in a stray note', async () => {
+    await render(
+      <UiProvider scheme="light">
+        <div style={{ display: 'grid', gap: 24, width: 440 }}>
+          <div data-testid="tree">
+            <TreeSelect
+              value={[]}
+              onChange={() => {}}
+              nodes={[]}
+              emptyLabel="no units"
+              emptyHint="ask for a scope"
+              emptyAction={<Button variant="outline">open units</Button>}
+            />
+          </div>
+          <div data-testid="boxes">
+            <CheckboxGroup
+              legend="kinds"
+              options={[]}
+              selected={[]}
+              onChange={() => {}}
+              emptyLabel="no kinds"
+              emptyHint="turn one on first"
+            />
+          </div>
+        </div>
+      </UiProvider>,
+    )
+    await expect.element(page.getByRole('button', { name: 'open units' })).toBeVisible()
+    for (const host of ['tree', 'boxes']) {
+      const field = page
+        .getByTestId(host)
+        .element()
+        .querySelector<HTMLElement>('[data-slot="empty-field"]')
+      expect(field, host).not.toBeNull()
+      const box = field!.getBoundingClientRect()
+      // the field's own measure, drawn as a box of its own
+      expect(box.width, host).toBe(440)
+      expect(box.height, host).toBeGreaterThanOrEqual(44)
+      const style = getComputedStyle(field!)
+      expect(style.borderTopWidth, host).toBe('1px')
+      expect(style.borderTopColor, host).not.toBe('rgba(0, 0, 0, 0)')
+      expect(field!.querySelector('[data-slot="empty-field-icon"] svg'), host).not.toBeNull()
+      // what is missing in the field's own type, the why a step under it
+      const size = (slot: string) =>
+        parseFloat(getComputedStyle(field!.querySelector(`[data-slot="${slot}"]`)!).fontSize)
+      expect(size('empty-field-title'), host).toBeGreaterThanOrEqual(14)
+      expect(size('empty-field-hint'), host).toBeLessThan(size('empty-field-title'))
+    }
+    // the way out sits inside the answer
+    const tree = page.getByTestId('tree').element().querySelector('[data-slot="empty-field"]')!
+    expect(tree.contains(page.getByRole('button', { name: 'open units' }).element())).toBe(true)
   })
 })

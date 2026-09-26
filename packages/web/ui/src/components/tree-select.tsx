@@ -15,6 +15,7 @@ import {
 import { Button } from './button.tsx'
 import { Checkbox } from './checkbox.tsx'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './collapsible.tsx'
+import { EmptyField } from './empty-field.tsx'
 
 // A picker over a node hierarchy whose result is a minimal non-nested set:
 // ticking a node covers its whole subtree, and unticking one child of a
@@ -25,11 +26,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './collapsib
 export type TreeSelectNode = TreeSelectionNode
 
 const styles = stylex.create({
-  empty: {
-    fontSize: 14,
-    lineHeight: '1.25rem',
-    color: tokens.mutedForeground,
-  },
   row: {
     display: 'flex',
     alignItems: 'center',
@@ -99,13 +95,20 @@ export function TreeSelect({
   onChange,
   nodes,
   emptyLabel,
+  emptyHint,
+  emptyAction,
   meta,
   className,
 }: {
   value: readonly string[]
   onChange: (next: string[]) => void
   nodes: readonly TreeSelectNode[]
+  /** what the tree says in place of its rows when it has none */
   emptyLabel: string
+  /** why there are none, and what to do about it */
+  emptyHint?: ReactNode
+  /** the way to where the units are made or given */
+  emptyAction?: ReactNode
   /** something to show at the end of a row - what kind of thing it is, say */
   meta?: (node: TreeSelectNode) => ReactNode
   className?: string
@@ -113,7 +116,13 @@ export function TreeSelect({
   const shape = shapeOf(nodes)
   const selection = new Set(value)
   if (shape.roots.length === 0) {
-    return <p {...stylex.props(styles.empty)}>{emptyLabel}</p>
+    return (
+      <EmptyField
+        title={emptyLabel}
+        {...(emptyHint === undefined ? {} : { hint: emptyHint })}
+        {...(emptyAction === undefined ? {} : { action: emptyAction })}
+      />
+    )
   }
   return (
     // wider than its box when the tree is deep, so the box scrolls sideways

@@ -5,6 +5,7 @@ import { tokens } from '../../theme/tokens.stylex.ts'
 import { breakpoints } from '../../theme/breakpoints.stylex.ts'
 import { a11yStyles } from '../../lib/visually-hidden.tsx'
 import { Checkbox } from '../checkbox.tsx'
+import { EmptyField } from '../empty-field.tsx'
 import {
   Field as FormField,
   FieldDescription as FormFieldDescription,
@@ -66,11 +67,6 @@ const styles = stylex.create({
   // a legend is not part of the flow box, so its spacing is its own
   legendSpaced: {
     marginBottom: 8,
-  },
-  emptyNote: {
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
-    color: tokens.mutedForeground,
   },
   optionGrid: {
     display: 'grid',
@@ -262,6 +258,8 @@ export function CheckboxGroup({
   onChange,
   disabled,
   emptyLabel,
+  emptyHint,
+  emptyAction,
   hideLegend = false,
 }: {
   legend: string
@@ -269,7 +267,12 @@ export function CheckboxGroup({
   selected: readonly string[]
   onChange: (next: string[]) => void
   disabled?: boolean
+  /** what the group says in place of its boxes when it has none */
   emptyLabel: string
+  /** why there are none, and what to do about it */
+  emptyHint?: ReactNode
+  /** the way to where the choices are made */
+  emptyAction?: ReactNode
   /**
    * Keep the legend spoken but not drawn.
    *
@@ -292,7 +295,11 @@ export function CheckboxGroup({
         {legend}
       </legend>
       {options.length === 0 ? (
-        <p {...stylex.props(styles.emptyNote)}>{emptyLabel}</p>
+        <EmptyField
+          title={emptyLabel}
+          {...(emptyHint === undefined ? {} : { hint: emptyHint })}
+          {...(emptyAction === undefined ? {} : { action: emptyAction })}
+        />
       ) : (
         <div {...stylex.props(styles.optionGrid)}>
           {options.map((option) => {
