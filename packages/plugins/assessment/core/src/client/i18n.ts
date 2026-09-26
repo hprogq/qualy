@@ -1032,7 +1032,7 @@ const i18n = definePluginMessages({
     },
     itemVoided: {
       id: 'assessment/entry/item-voided',
-      defaultMessage: 'The item has been disabled and no longer counts.',
+      defaultMessage: 'The item has been disabled and no longer counts',
     },
     entryNew: { id: 'assessment/entry/new', defaultMessage: 'New entry' },
     entryEdit: { id: 'assessment/entry/edit', defaultMessage: 'Edit' },

@@ -65,7 +65,7 @@ export default {
   'assessment/nav-group/work': '工作',
   'assessment/entry/tab': '我的申报',
   'assessment/entry/empty': '暂无可申报的项目，开放后显示在本页',
-  'assessment/entry/item-voided': '项目已停用，不再计分。',
+  'assessment/entry/item-voided': '项目已停用，不再计分',
   'assessment/entry/new': '申报',
   'assessment/entry/edit': '修改',
   'assessment/entry/submit': '提交审核',
