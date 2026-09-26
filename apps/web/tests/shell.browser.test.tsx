@@ -1,5 +1,5 @@
-import { lazy, Suspense, useState, type ReactNode } from 'react'
-import { Outlet, Route, Routes } from 'react-router'
+import { lazy, Suspense, useLayoutEffect, useState, type ReactNode } from 'react'
+import { Link, Outlet, Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
@@ -11,6 +11,7 @@ import {
   ScreenAside,
   SubjectAbsence,
   useClaimScreenFill,
+  useClaimScreenFoot,
   useLoadFailure,
   usePageRouteParams,
   usePageTitle,
@@ -1190,6 +1191,84 @@ describe('a screen that fills the room', () => {
     await expect.poll(gutterOf).toBe(0)
     await page.getByRole('button', { name: 'let go' }).click()
     await expect.poll(gutterOf).toBeGreaterThan(0)
+  })
+
+  it('has the strip gone before the first frame a workbench is opened in can be drawn', async () => {
+    // Opened the way a reader opens it - a link, a route change the router
+    // makes in a transition - and measured as soon as the commit that
+    // brings it has finished, which is as early as the browser may paint
+    // it. A claim made later than that, in a passive effect, lands after a
+    // frame the browser was free to draw: the whole screen stepping
+    // sideways by a scrollbar's width.
+    const frames: number[] = []
+    function Arriving() {
+      useClaimScreenFill(true)
+      useLayoutEffect(() => {
+        queueMicrotask(() => frames.push(gutterOf()))
+      }, [])
+      return <div data-testid="arrived" />
+    }
+    await page.viewport(1280, 800)
+    await renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(settledManifest()) } }),
+      route: `/assessment/batches/${BATCH_ID}/phases`,
+      children: (
+        <Routes>
+          <Route element={<WorkspaceShell />}>
+            <Route
+              path="/assessment/batches/:batchId/phases"
+              element={<Link to={`/assessment/batches/${BATCH_ID}/entries`}>open the bench</Link>}
+            />
+            <Route path="/assessment/batches/:batchId/entries" element={<Arriving />} />
+          </Route>
+        </Routes>
+      ),
+    })
+    await expect.poll(gutterOf).toBeGreaterThan(0)
+    await page.getByRole('link', { name: 'open the bench' }).click()
+    await expect.element(page.getByTestId('arrived')).toBeInTheDocument()
+    await expect.poll(() => frames.length).toBeGreaterThan(0)
+    expect(frames[0]).toBe(0)
+  })
+
+  it('stands the shell’s foot down before the first frame of a screen with its own bar', async () => {
+    // The same timing for the foot of a phone: a screen that ends in a bar
+    // of its own must never be drawn, even once, under the shell's.
+    const frames: boolean[] = []
+    function Footed() {
+      useClaimScreenFoot(true)
+      useLayoutEffect(() => {
+        queueMicrotask(() =>
+          frames.push(document.querySelector('[data-testid="bottom-bar"]') !== null),
+        )
+      }, [])
+      return <div data-testid="footed" />
+    }
+    await page.viewport(390, 844)
+    try {
+      await renderScreen({
+        client: fakeClient({ app: { getManifest: () => Effect.succeed(settledManifest()) } }),
+        route: `/assessment/batches/${BATCH_ID}/phases`,
+        children: (
+          <Routes>
+            <Route element={<WorkspaceShell />}>
+              <Route
+                path="/assessment/batches/:batchId/phases"
+                element={<Link to={`/assessment/batches/${BATCH_ID}/entries`}>open the bench</Link>}
+              />
+              <Route path="/assessment/batches/:batchId/entries" element={<Footed />} />
+            </Route>
+          </Routes>
+        ),
+      })
+      await expect.element(page.getByTestId('bottom-bar')).toBeInTheDocument()
+      await page.getByRole('link', { name: 'open the bench' }).click()
+      await expect.element(page.getByTestId('footed')).toBeInTheDocument()
+      await expect.poll(() => frames.length).toBeGreaterThan(0)
+      expect(frames[0]).toBe(false)
+    } finally {
+      await page.viewport(1280, 800)
+    }
   })
 })
 

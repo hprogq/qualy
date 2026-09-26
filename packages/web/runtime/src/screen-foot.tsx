@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useContext, useLayoutEffect, useMemo, useState, type ReactNode } from 'react'
 import { sharedContext } from './shared-context.ts'
 
 // Whether the screen currently open has taken the foot of the window for
@@ -46,7 +46,9 @@ export function useScreenFootClaimed(): boolean {
  */
 export function useClaimScreenFoot(holding: boolean): void {
   const claim = useContext(Scope)?.claim
-  useEffect(() => {
+  // before the browser may paint the screen, so the shell's own control is
+  // never drawn for a frame on top of the bar that claims its place
+  useLayoutEffect(() => {
     if (claim === undefined || !holding) return
     claim(true)
     return () => claim(false)

@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useContext, useLayoutEffect, useMemo, useState, type ReactNode } from 'react'
 import { sharedContext } from './shared-context.ts'
 
 // Whether the screen currently open fills the room under the shell's bars.
@@ -60,7 +60,10 @@ export function useScreenFillClaimed(): boolean {
  */
 export function useClaimScreenFill(holding: boolean): void {
   const claim = useContext(Scope)?.claim
-  useEffect(() => {
+  // before the browser may paint the screen: a route change is committed in
+  // a transition, whose passive effects can run after the first frame is
+  // drawn, and that frame would still hold the strip
+  useLayoutEffect(() => {
     if (claim === undefined || !holding) return
     claim(true)
     return () => claim(false)
