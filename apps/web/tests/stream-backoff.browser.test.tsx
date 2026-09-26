@@ -91,7 +91,7 @@ describe('a connection that was replaced', () => {
  */
 function Scripted({ connections }: { connections: (() => Stream.Stream<string, Error>)[] }) {
   const dials = useRef(0)
-  const { live, lost } = useApiStream<string>(
+  const { live, lost, heard } = useApiStream<string>(
     () => {
       const next = connections[Math.min(dials.current, connections.length - 1)]!
       dials.current += 1
@@ -100,7 +100,14 @@ function Scripted({ connections }: { connections: (() => Stream.Stream<string, E
     () => {},
     { key: 'probe' },
   )
-  return <p data-testid="probe" data-live={String(live)} data-lost={String(lost)} />
+  return (
+    <p
+      data-testid="probe"
+      data-live={String(live)}
+      data-lost={String(lost)}
+      data-heard={String(heard)}
+    />
+  )
 }
 
 /** every value an attribute takes from here on, the one it has now first */
@@ -161,7 +168,20 @@ describe('telling a planned re-dial from a lost channel', () => {
         ]}
       />,
     )
-    await expect.element(page.getByTestId('probe')).toHaveAttribute('data-lost', 'true')
+    const probe = page.getByTestId('probe')
+    await expect.element(probe).toHaveAttribute('data-lost', 'true')
+    // it said hello before it dropped, which a screen may never have drawn:
+    // the channel is one that was heard and lost, not one never opened
+    expect(probe.element().getAttribute('data-live')).toBe('false')
+    expect(probe.element().getAttribute('data-heard')).toBe('true')
+  })
+
+  it('does not count a channel that never answered as heard', async () => {
+    await render(<Scripted connections={[() => Stream.never]} />)
+    const probe = page.getByTestId('probe')
+    // the dial's allowance runs out: lost, but never heard
+    await expect.element(probe, { timeout: 7_000 }).toHaveAttribute('data-lost', 'true')
+    expect(probe.element().getAttribute('data-heard')).toBe('false')
   })
 
   it('counts a planned re-dial that fails as lost', async () => {

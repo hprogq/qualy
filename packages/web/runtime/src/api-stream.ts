@@ -27,6 +27,12 @@ import { browserRuntime } from './api-query.ts'
 // for that would flash on every open tab each time. The channel counts as
 // lost only when a connection fails or ends before it has proved steady, or
 // when a dial has gone unanswered for its allowance.
+//
+// Before the first word there is no channel to speak of, lost or not: a
+// dial that was never answered is not a line that dropped. `heard` says the
+// channel has carried a word since it was opened under this key, which a
+// caller cannot read off `live` - a connection that says hello and drops
+// at once may raise and lower it before the screen has drawn it once.
 
 const REDIAL_MS = 3_000
 const REDIAL_MOST_MS = 60_000
@@ -57,6 +63,8 @@ export interface ApiStreamState {
    * and its planned re-dial - the one a reader may be told about
    */
   readonly lost: boolean
+  /** a word has arrived on some connection since the stream was opened under this key */
+  readonly heard: boolean
 }
 
 export function useApiStream<A>(
@@ -72,6 +80,7 @@ export function useApiStream<A>(
   const enabled = options.enabled ?? true
   const [live, setLive] = useState(false)
   const [lost, setLost] = useState(false)
+  const [heard, setHeard] = useState(false)
   // the freshest closures, without making them re-dial dependencies
   const handler = useRef(onEvent)
   handler.current = onEvent
@@ -106,6 +115,7 @@ export function useApiStream<A>(
                 // caller; whether it is worth dialling back at full speed is
                 // settled at the end, by how long the connection lived
                 setLive(true)
+                setHeard(true)
                 settle(false)
                 handler.current(event)
               }),
@@ -143,8 +153,9 @@ export function useApiStream<A>(
       if (answer !== undefined) clearTimeout(answer)
       setLive(false)
       setLost(false)
+      setHeard(false)
     }
   }, [enabled, absent, options.key])
 
-  return { live, lost }
+  return { live, lost, heard }
 }
