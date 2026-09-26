@@ -4,7 +4,7 @@ import { page } from 'vitest/browser'
 import { Effect } from 'effect'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import type { accessApi } from '../src/client/api.ts'
-import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // One role's own page, and the one way out of it: a role nobody was ever
 // granted may be deleted; one that was, even if nobody holds it now, only
@@ -82,5 +82,45 @@ describe('removing a role', () => {
     await expect
       .element(page.getByTestId('role-removal-why'))
       .toHaveAttribute('data-suggests', 'nothing')
+  })
+})
+
+// A role that is not there is the page, not a heading of a role over an
+// error: said once, with the way back and no retry that cannot help.
+describe('a role that cannot be shown', () => {
+  const mount = (listRoles: () => unknown) =>
+    renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              pages: [{ id: 'rbac/roles', path: '/admin/roles', layout: 'admin' }],
+            }),
+        },
+        access: { listRoles },
+      }),
+      path: '/admin/roles/:roleId',
+      route: `/admin/roles/${ROLE_ID}`,
+      children: <RolePage />,
+    })
+  const state = () => document.querySelector('[data-slot="resource-state"]')
+
+  it('says it is not there, with the way back to the list', async () => {
+    await mount(() =>
+      Effect.succeed({ roles: [], capabilities: { canManage: true, canEscalate: false } }),
+    )
+    await expect.poll(() => state()?.getAttribute('data-state')).toBe('missing')
+    expect(state()?.getAttribute('data-size')).toBe('page')
+    expect(page.getByRole('button', { name: '重试' }).query()).toBeNull()
+    await expect
+      .element(page.getByRole('link', { name: '返回角色' }))
+      .toHaveAttribute('href', '/admin/roles')
+  })
+
+  it('offers another try when the list could not be read', async () => {
+    await mount(() => Effect.fail(apiError('INTERNAL_FAILURE')))
+    await expect.poll(() => state()?.getAttribute('data-state')).toBe('failed')
+    await expect.element(page.getByRole('button', { name: '重试' })).toBeVisible()
   })
 })

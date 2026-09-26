@@ -123,7 +123,7 @@ export default {
   'rbac/roles/permission-count': '{count} 项权限',
   'rbac/roles/tenant-group': '租户级',
   'rbac/roles/back': '返回角色',
-  'rbac/roles/gone': '该角色已不存在',
+  'rbac/roles/gone': '找不到该角色',
   'rbac/roles/standing-meaning':
     '停用后不再生效，但保留配置与授权记录；不可被授予表示不能再新增授权，已有授权不受影响',
   'rbac/roles/delete': '删除角色',

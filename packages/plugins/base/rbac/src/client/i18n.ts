@@ -346,7 +346,7 @@ const i18n = definePluginMessages({
     },
     roleGone: {
       id: 'rbac/roles/gone',
-      defaultMessage: 'This role no longer exists',
+      defaultMessage: 'This role can’t be found',
     },
     standingMeaning: {
       id: 'rbac/roles/standing-meaning',
