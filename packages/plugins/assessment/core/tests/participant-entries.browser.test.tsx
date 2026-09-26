@@ -293,6 +293,8 @@ const base = `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_
 const rows = () => [...document.querySelectorAll('[data-testid="claim-row"]')]
 /** where the heading says the person stands */
 const unitFact = () => document.querySelector('[data-fact="unit"]')
+/** that place as the path it is said by, from the top down */
+const unitSaid = () => unitFact()?.getAttribute('data-path') ?? ''
 
 /** nothing waiting on anybody's claims, as a roster row counts them */
 const NO_FILINGS = { inReview: 0, toSupplement: 0, reconsidering: 0, toRevise: 0, blocked: 0 }
@@ -311,7 +313,7 @@ describe('reading somebody’s entries', () => {
     await expect.element(page.getByText('郭航旗')).toBeVisible()
     const fact = (key: string) =>
       document.querySelector(`[data-fact="${key}"]`)?.textContent?.trim() ?? ''
-    await expect.poll(() => fact('unit')).toBe('软件学院 / 软件2301班')
+    await expect.poll(() => unitSaid()).toBe('软件学院 / 软件2301班')
     await expect.poll(() => fact('kind')).toBe('学生')
     expect(fact('number')).toBe('2023123456')
     await expect
@@ -455,9 +457,8 @@ describe('reading somebody’s entries', () => {
     await page.getByRole('button', { name: /科研成果/ }).click()
     await expect.poll(() => addressNow()).toContain(`open=${OWN_ITEM}`)
     await expect.poll(() => rows().length).toBe(2)
-    // opened with nobody either side on the list, no row is kept for them
-    await expect.element(page.getByTestId('neighbors-row')).toBeInTheDocument()
-    expect(getComputedStyle(page.getByTestId('neighbors-row').element()).display).toBe('none')
+    // opened with nobody either side on the list, no keys are drawn for them
+    expect(page.getByTestId('roster-neighbors').elements()).toHaveLength(0)
   })
 
   // Opened from the list, somebody's claims are what the page is for; the
@@ -768,7 +769,7 @@ describe('reading somebody’s entries', () => {
       }),
     })
     await expect.poll(() => unitFact()?.getAttribute('data-unknown')).toBe('1')
-    expect(unitFact()?.textContent?.trim()).toBe('软件学院 / …')
+    expect(unitSaid()).toBe('软件学院 / …')
   })
 
   // Nobody left on the round may stand in the class somebody taken off it
@@ -786,7 +787,7 @@ describe('reading somebody’s entries', () => {
       who: participant({ status: 'excluded', excludedAt: '2026-03-10T00:00:00.000Z' }),
       stubs: { listRosterUnits: asked },
     })
-    await expect.poll(() => unitFact()?.textContent?.trim()).toBe('软件学院 / 软件2301班')
+    await expect.poll(() => unitSaid()).toBe('软件学院 / 软件2301班')
     expect(unitFact()?.getAttribute('data-unknown')).toBe('0')
     // through the door the list it was opened from reads its units by
     expect(asked.mock.calls.at(-1)![0].query).toEqual({ reading: 'accounts', status: 'all' })
@@ -812,6 +813,6 @@ describe('reading somebody’s entries', () => {
     const onList = listed.element().getAttribute('title')
     await page.getByTestId('participant-row').click()
     await expect.poll(() => addressNow()).toContain(`participant=${PARTICIPANT_ID}`)
-    await expect.poll(() => unitFact()?.textContent?.trim()).toBe(onList)
+    await expect.poll(() => unitSaid()).toBe(onList)
   })
 })

@@ -16,8 +16,8 @@ import { ParticipantResultDetail } from './ParticipantResultDetail.tsx'
 // One page, not two. Opening a participant is a level down inside this
 // screen - the list it was opened from is the same page, and going back
 // lands on the row that was pressed - so the content travels sideways and
-// says so, the rail stays on this section, and the browser's own back button
-// is the way out. Which person is open lives in the address, and so does
+// says so, the rail gives its column to the person for as long as they are
+// open, and the browser's own back button is the way out. Which person is open lives in the address, and so does
 // where the reader was in the list (roster-view): a reload and a shared link
 // both land where the reader was, and an open account can walk to the
 // person before or after it in the list it was opened from.
@@ -64,11 +64,10 @@ export default function ParticipantResultsPage() {
   return (
     <BatchScreen
       title={format(m.participantResultsTab)}
-      // A data-dense list takes the whole content area and says its own
-      // name in a line over it. An open account speaks through the band at
-      // the top, the way an open question does on the questions page.
-      chrome={participantId === '' ? 'bare' : 'band'}
-      banner={participantId === '' ? 'section' : 'open'}
+      // A data-dense page takes the whole content area: the list says its
+      // own name in a line over it, and an open account stands who it is
+      // beside the work, in the column the rail gives up for it.
+      chrome={participantId === '' ? 'bare' : 'none'}
     >
       {(batch) => (
         <Drill
@@ -98,7 +97,7 @@ export default function ParticipantResultsPage() {
               // the claims unless the address asks for the total
               view={view === 'score' ? 'score' : 'entries'}
               entryId={entryId}
-              aside={
+              neighbors={
                 <RosterNeighbors
                   batchId={batch.id}
                   participantId={participantId}

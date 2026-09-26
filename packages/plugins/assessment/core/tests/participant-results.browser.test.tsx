@@ -1,4 +1,6 @@
 import ParticipantResultsPage from '../src/client/result/ParticipantResultsPage.tsx'
+import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
+import { Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
@@ -838,5 +840,175 @@ describe('the participant results screen', () => {
       `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}&view=score`,
     )
     await expect.element(page.getByTestId('result-unavailable')).toBeVisible()
+  })
+})
+
+// Opened, a person stands beside their account rather than above it: in the
+// column the round's rail gives up for them while the window has one, and
+// in a head over the work where it has not - folded on a phone. Where they
+// stand is said from the unit's own end, with the whole chain a press away.
+describe('one account beside its person', () => {
+  const SCHOOL = 'n0'
+  const lineage = [
+    { nodeId: 'n2', nodeTypeId: 'class' },
+    { nodeId: 'n1', nodeTypeId: 'college' },
+    { nodeId: SCHOOL, nodeTypeId: 'school' },
+  ]
+  const text = (value: string) => ({ kind: 'literal' as const, value })
+  const rail = [
+    {
+      id: 'assessment/batch-results/rail',
+      label: text('参评名单'),
+      target: {
+        kind: 'page',
+        pageId: 'assessment/batch-results',
+        path: '/assessment/batches/:batchId/results',
+      },
+      order: 10,
+    },
+  ]
+  const shelled = (route: string) =>
+    renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              pages: PAGES,
+              collections: {
+                'app-shell/navigation-groups': [],
+                'app-shell/navigation-primary': [],
+                'workspace-shell/navigation': rail,
+              },
+            }),
+        },
+        assessment: {
+          getBatch: () => Effect.succeed({ batch }),
+          listParticipantAccounts: () =>
+            rosterPage([
+              participant({ anchorLineage: lineage }),
+              participant({ id: OTHER_ID, displayName: '王君惠' }),
+            ]),
+          listParticipantScores: () => Effect.succeed({ scores: [] }),
+          // the list's own doors, which the way back lands among
+          listScopeOptions: () => Effect.succeed({ nodes: [] }),
+          listParticipantCandidates: () =>
+            Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }),
+          previewImport: () => Effect.succeed({ candidates: 0 }),
+          listParticipantPlacements: () =>
+            Effect.succeed({ items: [], nextCursor: null, changedTotal: 0, unavailableTotal: 0 }),
+          getParticipant: () =>
+            Effect.succeed({ participant: participant({ anchorLineage: lineage }) }),
+          getParticipantResult: () => Effect.succeed(account),
+          listRosterUnits: () =>
+            Effect.succeed({
+              units: [
+                { id: SCHOOL, name: '示例大学', parentId: null },
+                { id: 'n1', name: '软件学院', parentId: SCHOOL },
+                { id: 'n2', name: '软件2301班', parentId: 'n1' },
+              ],
+            }),
+          listUserTypeOptions: () =>
+            Effect.succeed({
+              userTypes: [
+                { id: '99999999-9999-4999-8999-999999999999', code: 'student', name: '学生' },
+              ],
+            }),
+          listReviewInbox: () =>
+            Effect.succeed({ items: [], nextCursor: null, handledToday: 0, judging: false }),
+          listParticipantEntries: () =>
+            Effect.succeed({ participantId: PARTICIPANT_ID, entries: [], nextCursor: null }),
+          listItems: () => Effect.succeed({ items: [item], version: 1 }),
+          listScoreGroups: () => Effect.succeed({ groups: [], version: 1 }),
+        },
+      }),
+      route,
+      children: (
+        <Routes>
+          <Route element={<WorkspaceShell />}>
+            <Route
+              path="/assessment/batches/:batchId/results"
+              element={<ParticipantResultsPage />}
+            />
+          </Route>
+        </Routes>
+      ),
+    })
+  const open = `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}`
+
+  it('stands the person in the rail’s column, and gives the rail back on the way out', async () => {
+    await page.viewport(1280, 800)
+    await shelled(open)
+    const column = page.getByTestId('workspace-rail')
+    await expect.element(column).toHaveAttribute('data-lent', 'true')
+    const panel = column.getByTestId('participant-panel')
+    await expect.element(panel.getByRole('heading', { level: 1 })).toHaveTextContent('郭航旗')
+    // the halves of the account are the column's entries now, not a row
+    // over the work, and there is no head over it at all
+    await expect
+      .element(panel.getByTestId('participant-tab-entries'))
+      .toHaveAttribute('aria-current', 'true')
+    await expect
+      .element(page.getByTestId('participant-account'))
+      .toHaveAttribute('data-beside', 'true')
+    expect(page.getByTestId('participant-head').elements()).toHaveLength(0)
+    expect(column.getByRole('link', { name: '参评名单' }).elements()).toHaveLength(0)
+    // the score half carries the total beside its name
+    await expect.element(panel.getByTestId('participant-total')).toHaveTextContent('1.00')
+
+    await panel.getByRole('button', { name: '返回参评人员' }).click()
+    await expect.poll(() => addressNow()).not.toContain('participant=')
+    await expect.element(column).not.toHaveAttribute('data-lent')
+    await expect.element(column.getByRole('link', { name: '参评名单' })).toBeVisible()
+  })
+
+  it('opens the whole chain of where they stand, from the school down', async () => {
+    await page.viewport(1280, 800)
+    await shelled(open)
+    const fact = page.getByTestId('participant-panel').getByTestId('unit-chain-open')
+    await expect.element(fact).toBeVisible()
+    await fact.click()
+    const chain = page.getByTestId('unit-chain')
+    await expect.element(chain).toBeVisible()
+    const levels = [...chain.element().querySelectorAll('li')]
+    expect(levels.map((level) => level.textContent)).toEqual(['示例大学', '软件学院', '软件2301班'])
+    expect(levels.at(-1)!.getAttribute('aria-current')).toBe('true')
+    await userEvent.keyboard('{Escape}')
+  })
+
+  it('stands the person over the work where the window lends no column', async () => {
+    await page.viewport(834, 1112)
+    try {
+      await shelled(open)
+      await expect.element(page.getByTestId('participant-head')).toBeVisible()
+      await expect
+        .element(page.getByTestId('participant-account'))
+        .toHaveAttribute('data-beside', 'false')
+      expect(page.getByTestId('participant-panel').elements()).toHaveLength(0)
+    } finally {
+      await page.viewport(1280, 800)
+    }
+  })
+
+  it('folds the facts behind the name on a phone, and brings them out on a press', async () => {
+    await page.viewport(390, 844)
+    try {
+      await shelled(open)
+      const head = page.getByTestId('participant-head')
+      await expect.element(head).toBeVisible()
+      await expect.element(head.getByRole('heading', { level: 1 })).toHaveTextContent('郭航旗')
+      // the number and where they stand stay; the rest waits behind the fold
+      await expect.poll(() => document.querySelector('[data-fact="number"]')).not.toBeNull()
+      expect(document.querySelector('[data-fact="kind"]')).toBeNull()
+      expect(head.getByTestId('participant-standing').elements()).toHaveLength(0)
+      const fold = head.getByTestId('participant-fold')
+      await expect.element(fold).toHaveAttribute('aria-expanded', 'false')
+      await fold.click()
+      await expect.element(fold).toHaveAttribute('aria-expanded', 'true')
+      await expect.poll(() => document.querySelector('[data-fact="kind"]')).not.toBeNull()
+      await expect.element(head.getByTestId('participant-standing')).toBeVisible()
+    } finally {
+      await page.viewport(1280, 800)
+    }
   })
 })

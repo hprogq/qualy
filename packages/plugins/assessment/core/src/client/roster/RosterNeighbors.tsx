@@ -18,22 +18,27 @@ import { ROSTER_PAGE_SIZE, rosterQueryOf, type RosterView } from './roster-view.
 // row of whoever was open last. Opened from a link rather than from the
 // list, the person may not be on the page at all, and then there is nothing
 // to walk.
+//
+// Two small keys and where this person stands between them: it sits beside
+// the way back to the list, in the column beside the account or at the top
+// of the head over it, and a pair of worded buttons would crowd both.
 
 const styles = stylex.create({
   strip: {
     display: 'flex',
+    flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'flex-end',
-    gap: 4,
+    gap: 2,
   },
   place: {
-    paddingInline: 6,
+    paddingInline: 2,
     fontSize: 12,
     fontVariantNumeric: 'tabular-nums',
     color: tokens.mutedForeground,
     whiteSpace: 'nowrap',
   },
-  glyph: { width: 14, height: 14 },
+  glyph: { width: 16, height: 16 },
 })
 
 export function RosterNeighbors({
@@ -95,22 +100,24 @@ export function RosterNeighbors({
       {...stylex.props(styles.strip)}
     >
       <Button
-        size="sm"
+        size="icon-sm"
         variant="ghost"
+        aria-label={format(m.rosterPrevious)}
+        title={format(m.rosterPrevious)}
         disabled={previous === null}
         onClick={() => previous !== null && onOpen(previous.id, previous.page)}
       >
         <ChevronLeftIcon aria-hidden {...stylex.props(styles.glyph)} />
-        {format(m.rosterPrevious)}
       </Button>
       <span {...stylex.props(styles.place)}>{format(m.rosterPosition, { position, total })}</span>
       <Button
-        size="sm"
+        size="icon-sm"
         variant="ghost"
+        aria-label={format(m.rosterNext)}
+        title={format(m.rosterNext)}
         disabled={next === null}
         onClick={() => next !== null && onOpen(next.id, next.page)}
       >
-        {format(m.rosterNext)}
         <ChevronRightIcon aria-hidden {...stylex.props(styles.glyph)} />
       </Button>
     </nav>

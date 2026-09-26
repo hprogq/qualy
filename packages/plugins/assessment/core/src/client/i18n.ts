@@ -1692,6 +1692,23 @@ const i18n = definePluginMessages({
       id: 'assessment/participant-results/back',
       defaultMessage: 'Back to participants',
     },
+    /** the two halves of one account, as the way between them is named */
+    participantResultsViews: {
+      id: 'assessment/participant-results/views',
+      defaultMessage: 'Entries and score',
+    },
+    /** the facts about one participant, each by its own name */
+    participantFactKind: { id: 'assessment/participant/fact-kind', defaultMessage: 'Kind' },
+    participantFactIncluded: {
+      id: 'assessment/participant/fact-included',
+      defaultMessage: 'Joined',
+    },
+    participantFactExcluded: {
+      id: 'assessment/participant/fact-excluded',
+      defaultMessage: 'Removed',
+    },
+    /** on a phone, the facts folded behind the name, and the way to see them */
+    participantDetails: { id: 'assessment/participant/details', defaultMessage: 'Details' },
     // where a claim came from, in the product's words rather than the wire's
     entrySourceSelf: { id: 'assessment/entry/source-self', defaultMessage: 'Filed by participant' },
     entrySourceProxy: {

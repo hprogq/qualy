@@ -372,7 +372,7 @@ export function ParticipantEntries({
                 )}
               </>
             }
-            fit="window"
+            fit="parent"
           />
         )}
       </AsyncSection>
