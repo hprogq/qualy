@@ -689,4 +689,5 @@ export {
   useScreenAsideSeat,
 } from './screen-aside.tsx'
 export { ScreenFillScope, useScreenFillClaimed, useClaimScreenFill } from './screen-fill.tsx'
+export { SubjectAbsence, SubjectScope, useSubjectAbsenceSeat } from './subject.tsx'
 export { PageTitleScope, usePageTitle, usePageTitleClaim } from './page-title.tsx'

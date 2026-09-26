@@ -4,15 +4,21 @@ import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
 import { layoutComponents, slotComponents } from 'virtual:qualy/plugins'
+import { useQuery } from '@tanstack/react-query'
 import {
+  isRecordId,
+  LoadFailure,
   ScreenAside,
+  SubjectAbsence,
   useClaimScreenFill,
+  useLoadFailure,
+  usePageRouteParams,
   usePageTitle,
   useScreenAsideOffered,
 } from '@qualy/web-runtime'
 import { Screen } from '@qualy/ui/screen'
 import { PageLoading } from '@qualy/ui/spinner'
-import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
+import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 // The two shells, against a manifest rather than against props: what the top
 // bar shows, which application counts as open, and what the workspace rail
@@ -1184,5 +1190,176 @@ describe('a screen that fills the room', () => {
     await expect.poll(gutterOf).toBe(0)
     await page.getByRole('button', { name: 'let go' }).click()
     await expect.poll(gutterOf).toBeGreaterThan(0)
+  })
+})
+
+describe('a shell whose record is gone', () => {
+  // Whoever fills the band reads the record and says when it is not there,
+  // handing over what to show instead; the shell folds away everything
+  // bound to the record and keeps the product's own bar as the way out.
+  // The probe below does what the owner of people does with the answer to
+  // "who is this" - the shell knows nothing about people.
+  const answers = { record: (): Promise<{ name: string }> => Promise.resolve({ name: '郭航旗' }) }
+  const asked = vi.fn()
+
+  function Owner({ missing }: { missing: string }) {
+    const { recordId } = usePageRouteParams('recordId')
+    const describe = useLoadFailure()
+    const addressable = isRecordId(recordId)
+    const record = useQuery({
+      queryKey: ['shell-subject', recordId],
+      queryFn: () => {
+        asked()
+        return answers.record()
+      },
+      enabled: addressable,
+      retry: false,
+    })
+    const failure = addressable
+      ? describe.subject(record, { missing: [missing] })
+      : describe.missing()
+    return (
+      <div data-testid="subject-owner">
+        {record.data?.name}
+        {failure !== null && (
+          <SubjectAbsence>
+            <LoadFailure
+              failure={failure}
+              onRetry={() => void record.refetch()}
+              retrying={record.isFetching}
+              back={{ page: 'auth/users', label: '回到名单' }}
+            />
+          </SubjectAbsence>
+        )}
+      </div>
+    )
+  }
+  const OwnerOfPeople = lazy(() =>
+    Promise.resolve({ default: () => <Owner missing="USER_NOT_FOUND" /> }),
+  )
+  const OwnerOfBatches = lazy(() =>
+    Promise.resolve({ default: () => <Owner missing="BATCH_NOT_FOUND" /> }),
+  )
+  const mountAt = (route: string, slot: string, shellElement: ReactNode, path: string) =>
+    renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...settledManifest(),
+              pages: [{ id: 'auth/users', path: '/organization/users', layout: 'app-shell/v1' }],
+              slots: { [slot]: [{ id: 'probe/owner', order: 0 }] },
+            }),
+        },
+      }),
+      registry: {
+        slots: {
+          [slot]: { 'probe/owner': slot.startsWith('iam') ? OwnerOfPeople : OwnerOfBatches },
+        },
+      },
+      route,
+      children: (
+        <Routes>
+          <Route element={shellElement}>
+            <Route path={path} element={<div data-testid="section-page">section</div>} />
+          </Route>
+        </Routes>
+      ),
+    })
+  const personAt = (route: string) =>
+    mountAt(
+      route,
+      'iam/user-detail-header',
+      <UserDetailShell />,
+      '/organization/users/:recordId/identities',
+    )
+  const batchAt = (route: string) =>
+    mountAt(
+      route,
+      'workspace-shell/context',
+      <WorkspaceShell />,
+      '/assessment/batches/:recordId/phases',
+    )
+  const stateOf = () =>
+    page
+      .getByTestId('subject-absence')
+      .element()
+      .querySelector('[data-state]')
+      ?.getAttribute('data-state')
+
+  it('folds a person’s banner and sections away, and says so where the page would be', async () => {
+    await page.viewport(1280, 800)
+    answers.record = () => Promise.reject(apiError('USER_NOT_FOUND'))
+    await personAt(`/organization/users/${USER_ID}/identities`)
+    await expect.element(page.getByTestId('subject-absence')).toBeVisible()
+    expect(stateOf()).toBe('missing')
+    // the product's own bar is the way out; nothing bound to the person stays
+    await expect.element(page.getByRole('link', { name: 'Qualy' })).toBeVisible()
+    expect(page.getByTestId('person-sections').elements()).toHaveLength(0)
+    expect(page.getByTestId('section-page').elements()).toHaveLength(0)
+    // the band is folded rather than taken down: its owner is still there
+    const band = page.getByTestId('shell-context')
+    await expect.element(band).toHaveAttribute('data-folded', 'true')
+    expect(band.element().checkVisibility()).toBe(false)
+    expect(page.getByTestId('subject-owner').elements()).toHaveLength(1)
+    // what another try cannot change offers none, and the way back instead
+    expect(page.getByRole('button', { name: '重试' }).elements()).toHaveLength(0)
+    await expect
+      .element(page.getByRole('link', { name: '回到名单' }))
+      .toHaveAttribute('href', '/organization/users')
+    // and a reader who cannot see it is taken to what happened
+    const heading = page.getByRole('heading', { level: 1 })
+    await vi.waitFor(() => expect(document.activeElement).toBe(heading.element()))
+  })
+
+  it('knows an address that names nobody without asking the server', async () => {
+    await page.viewport(1280, 800)
+    asked.mockClear()
+    await personAt('/organization/users/not-an-id/identities')
+    await expect.element(page.getByTestId('subject-absence')).toBeVisible()
+    expect(stateOf()).toBe('missing')
+    expect(asked).not.toHaveBeenCalled()
+  })
+
+  it('unfolds once another try finds the record', async () => {
+    await page.viewport(1280, 800)
+    answers.record = () => Promise.reject(apiError('SERVICE_UNAVAILABLE'))
+    await personAt(`/organization/users/${USER_ID}/identities`)
+    await expect.element(page.getByTestId('subject-absence')).toBeVisible()
+    expect(stateOf()).toBe('unavailable')
+    answers.record = () => Promise.resolve({ name: '郭航旗' })
+    await page.getByRole('button', { name: '重试' }).click()
+    await expect.element(page.getByTestId('section-page')).toBeVisible()
+    await expect.element(page.getByTestId('person-sections')).toBeVisible()
+    await expect.element(page.getByTestId('shell-context')).not.toHaveAttribute('data-folded')
+    expect(page.getByTestId('subject-absence').elements()).toHaveLength(0)
+  })
+
+  it('takes a workspace’s rail away on a desk, with no outline left waiting for it', async () => {
+    await page.viewport(1280, 800)
+    answers.record = () => Promise.reject(apiError('BATCH_NOT_FOUND'))
+    await batchAt(`/assessment/batches/${BATCH_ID}/phases`)
+    await expect.element(page.getByTestId('subject-absence')).toBeVisible()
+    expect(page.getByTestId('workspace-rail').elements()).toHaveLength(0)
+    expect(page.getByTestId('rail-bones').elements()).toHaveLength(0)
+    expect(page.getByTestId('section-page').elements()).toHaveLength(0)
+    await expect.element(page.getByRole('link', { name: 'Qualy' })).toBeVisible()
+  })
+
+  it('gives a phone the product’s bars back, top and foot, in place of the workspace’s own', async () => {
+    await page.viewport(390, 844)
+    try {
+      answers.record = () => Promise.reject(apiError('BATCH_NOT_FOUND'))
+      await batchAt(`/assessment/batches/${BATCH_ID}/phases`)
+      await expect.element(page.getByTestId('subject-absence')).toBeVisible()
+      // the head the batch owned on a phone gives way to the product's
+      await expect.element(page.getByRole('link', { name: 'Qualy' })).toBeVisible()
+      // and the foot carries the applications, not the sections of nothing
+      const foot = page.getByTestId('bottom-bar')
+      await expect.element(foot.getByRole('link', { name: '组织与权限' })).toBeVisible()
+      expect(foot.getByRole('link', { name: '阶段安排' }).elements()).toHaveLength(0)
+    } finally {
+      await page.viewport(1280, 800)
+    }
   })
 })

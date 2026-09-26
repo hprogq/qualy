@@ -27,6 +27,7 @@ import {
   ScreenAsideScope,
   ScreenFillScope,
   ScreenFootScope,
+  SubjectScope,
   UiSlot,
   useIdlePagePrefetch,
   usePagePrefetch,
@@ -35,6 +36,7 @@ import {
   useScreenAsideSeat,
   useScreenFillClaimed,
   useScreenFootClaimed,
+  useSubjectAbsenceSeat,
   WorkspaceCapabilityScope,
   useWorkspaceCapabilities,
 } from '@qualy/web-runtime'
@@ -414,6 +416,34 @@ const styles = stylex.create({
   // the screen's own floor still scrolls.
   mainEdge: {
     scrollbarGutter: 'auto',
+  },
+  // the applications' bar at the foot of a phone, held clear of the last row
+  mainApps: {
+    paddingBottom: {
+      default: null,
+      [breakpoints.phone]: `calc(${shell.bottomBarHeight} + env(safe-area-inset-bottom))`,
+    },
+  },
+  // Folded away, never unmounted: the band holds whoever said the record is
+  // absent, and taking them off the screen would take back what they said.
+  folded: {
+    display: 'none',
+  },
+  // the column a person's sections stand in, holding no inset of its own
+  // once they have gone: what stands there instead keeps its own
+  personMainBare: {
+    paddingInline: 0,
+  },
+  // where the record's pages would have been, for what its owner shows
+  // instead: the whole of the room under the product's own bar
+  absence: {
+    display: 'flex',
+    minHeight: 0,
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 'auto',
+    flexDirection: 'column',
   },
   // exactly the bar's own height, so the last row of a page ends above it
   // rather than behind it
@@ -984,13 +1014,15 @@ export function RailShell(props: RailShellProps) {
   const lends = !useIsBelow(SHELL_BREAKPOINT) && props.banner !== true
   return (
     <WorkspaceCapabilityScope>
-      <ScreenFillScope>
-        <ScreenFootScope>
-          <ScreenAsideScope offered={lends}>
-            <CapableRailShell {...props} />
-          </ScreenAsideScope>
-        </ScreenFootScope>
-      </ScreenFillScope>
+      <SubjectScope>
+        <ScreenFillScope>
+          <ScreenFootScope>
+            <ScreenAsideScope offered={lends}>
+              <CapableRailShell {...props} />
+            </ScreenAsideScope>
+          </ScreenFootScope>
+        </ScreenFillScope>
+      </SubjectScope>
     </WorkspaceCapabilityScope>
   )
 }
@@ -1022,6 +1054,12 @@ function CapableRailShell({
   // a screen that fills the room scrolls inside itself, and gives up the
   // strip the shell holds for a scrollbar that will never come
   const filled = useScreenFillClaimed()
+  // The record the shell is drawn around, gone: its owner said so from the
+  // band, and handed over what to show instead. Everything bound to the
+  // record folds away - the band, the rail, the sections at the foot - and
+  // the product's own bar stays as the way out, whatever the width.
+  const subject = useSubjectAbsenceSeat()
+  const absent = subject.absent
   const [railOpen, setRailOpen] = useState(() => !narrow && !railFolded())
   useEffect(() => setRailOpen(!narrow && !railFolded()), [narrow])
 
@@ -1071,7 +1109,7 @@ function CapableRailShell({
   // product disappears from. A screen that has claimed the foot for its own
   // decision bar gets it: two bars stacked there is one too many, and that
   // screen is a task with a way back of its own.
-  const sectionsAtFoot = narrow && !banner && !footTaken
+  const sectionsAtFoot = narrow && !banner && !footTaken && !absent
   const cells = useCellsAcross(5)
   const across = run.length <= cells ? run : run.slice(0, cells - 1)
   const spilled = run.length > across.length
@@ -1172,8 +1210,9 @@ function CapableRailShell({
           no mark above it reads as a different site. Inside a workspace on
           a phone it goes: the band below already names what is open and
           carries the account, and two bars would leave the page a third of
-          the screen. */}
-      {!owned && (
+          the screen - unless the band has folded away with the record it
+          named, and the bar is the only way out left. */}
+      {(!owned || absent) && (
         <div {...stylex.props(styles.topFold)}>
           {/* Ruled, because here the bar can never earn its line. The one it
               draws at rest is earned by the page passing underneath, and in
@@ -1187,10 +1226,13 @@ function CapableRailShell({
           the shell does, and a bar that grows from empty to filled moves every
           page below it just as the reader starts reading */}
       <div
+        data-testid="shell-context"
+        data-folded={absent || undefined}
         {...stylex.props(
           styles.contextBar,
           banner ? styles.contextBanner : owned ? styles.contextHead : styles.contextLine,
           banner && filled && styles.contextBannerEdge,
+          absent && styles.folded,
         )}
       >
         {banner && <span aria-hidden {...stylex.props(styles.hairlines)} />}
@@ -1264,89 +1306,108 @@ function CapableRailShell({
         )}
       </div>
       {banner ? (
-        <main {...stylex.props(styles.personMain, filled && styles.mainEdge)}>
-          <div {...stylex.props(styles.personSeat)}>
-            {!narrow && (
-              <nav
-                aria-label={format(m.personSections)}
-                data-testid="person-sections"
-                {...stylex.props(styles.personNav)}
-              >
-                {[
-                  // what nobody filed under a heading is the record itself
-                  ...(loose.length > 0 ? [{ id: 'account', label: undefined, items: loose }] : []),
-                  ...sections.map((section) => ({
-                    id: section.id,
-                    label: section.label,
-                    items: section.items,
-                  })),
-                ].map((group) => (
-                  <section key={group.id} {...stylex.props(styles.personGroup)}>
-                    <p {...stylex.props(styles.personHeading)}>
-                      {group.label === undefined ? (
-                        format(m.personAccount)
-                      ) : (
-                        <LocalizedText value={group.label} />
-                      )}
-                    </p>
-                    <ul {...stylex.props(styles.personList)}>
-                      {group.items.map((item) => (
-                        <PersonEntry
-                          key={item.id}
-                          label={item.label}
-                          to={item.to}
-                          page={item.target.kind === 'page' ? item.target.pageId : undefined}
-                          exact={hasEntriesBelow(item.to, paths)}
-                        />
-                      ))}
-                    </ul>
-                  </section>
-                ))}
-              </nav>
-            )}
-            {/* each section arrives as its own page would */}
-            <Reveal key={pathname} className={stylex.props(styles.personContent).className}>
-              <Outlet />
-            </Reveal>
-          </div>
+        <main
+          {...stylex.props(
+            styles.personMain,
+            filled && styles.mainEdge,
+            absent && styles.personMainBare,
+            absent && styles.mainApps,
+          )}
+        >
+          {absent ? (
+            <div
+              ref={subject.seat}
+              data-testid="subject-absence"
+              {...stylex.props(styles.absence)}
+            />
+          ) : (
+            <div {...stylex.props(styles.personSeat)}>
+              {!narrow && (
+                <nav
+                  aria-label={format(m.personSections)}
+                  data-testid="person-sections"
+                  {...stylex.props(styles.personNav)}
+                >
+                  {[
+                    // what nobody filed under a heading is the record itself
+                    ...(loose.length > 0
+                      ? [{ id: 'account', label: undefined, items: loose }]
+                      : []),
+                    ...sections.map((section) => ({
+                      id: section.id,
+                      label: section.label,
+                      items: section.items,
+                    })),
+                  ].map((group) => (
+                    <section key={group.id} {...stylex.props(styles.personGroup)}>
+                      <p {...stylex.props(styles.personHeading)}>
+                        {group.label === undefined ? (
+                          format(m.personAccount)
+                        ) : (
+                          <LocalizedText value={group.label} />
+                        )}
+                      </p>
+                      <ul {...stylex.props(styles.personList)}>
+                        {group.items.map((item) => (
+                          <PersonEntry
+                            key={item.id}
+                            label={item.label}
+                            to={item.to}
+                            page={item.target.kind === 'page' ? item.target.pageId : undefined}
+                            exact={hasEntriesBelow(item.to, paths)}
+                          />
+                        ))}
+                      </ul>
+                    </section>
+                  ))}
+                </nav>
+              )}
+              {/* each section arrives as its own page would */}
+              <Reveal key={pathname} className={stylex.props(styles.personContent).className}>
+                <Outlet />
+              </Reveal>
+            </div>
+          )}
         </main>
       ) : (
         <div {...stylex.props(styles.body)}>
           {/* Collapsed to a strip rather than to nothing, so the control that
             brings it back stays where it was taken from; on a narrow screen
             collapsed all the way, because the drawer has taken over. */}
-          <aside
-            data-testid="workspace-rail"
-            data-lent={lent.claimed || undefined}
-            // named after what the screen holding it put there
-            aria-label={lent.label}
-            // fully out of reach while folded: clipped is not gone, and the
-            // keyboard would still walk into the toggle behind the fold
-            {...(narrow ? { inert: true, 'aria-hidden': true } : {})}
-            {...stylex.props(
-              styles.aside,
-              narrow
-                ? styles.asideGone
-                : lent.claimed
-                  ? styles.asideLent
-                  : railOpen
-                    ? styles.asideOpen
-                    : styles.asideClosed,
-            )}
-          >
-            {/* The open screen's own column, while it holds it: the way back
+          {!absent && (
+            <aside
+              data-testid="workspace-rail"
+              data-lent={lent.claimed || undefined}
+              // named after what the screen holding it put there
+              aria-label={lent.label}
+              // fully out of reach while folded: clipped is not gone, and the
+              // keyboard would still walk into the toggle behind the fold
+              {...(narrow ? { inert: true, 'aria-hidden': true } : {})}
+              {...stylex.props(
+                styles.aside,
+                narrow
+                  ? styles.asideGone
+                  : lent.claimed
+                    ? styles.asideLent
+                    : railOpen
+                      ? styles.asideOpen
+                      : styles.asideClosed,
+              )}
+            >
+              {/* The open screen's own column, while it holds it: the way back
                 to the sections is that screen's way out, so the rail is not
                 drawn behind it as well. */}
-            {lent.claimed ? (
-              <div
-                ref={lent.seat}
-                data-testid="workspace-aside"
-                {...stylex.props(styles.lentSeat)}
-              />
-            ) : (
-              rail
-            )}
-          </aside>
+              {lent.claimed ? (
+                <div
+                  ref={lent.seat}
+                  data-testid="workspace-aside"
+                  {...stylex.props(styles.lentSeat)}
+                />
+              ) : (
+                rail
+              )}
+            </aside>
+          )}
           {/* auto, not scroll: the screens that fill the viewport - the review
             workbench, my filings - then carry a scrollbar that can never
             move, which reads as a page with somewhere to go. */}
@@ -1354,17 +1415,28 @@ function CapableRailShell({
             {...stylex.props(
               styles.main,
               (lent.claimed || filled) && styles.mainEdge,
+              // one bar or the other at the foot, never both
+              absent && styles.mainApps,
               sectionsAtFoot && styles.mainFoot,
             )}
           >
-            <Outlet />
+            {absent ? (
+              <div
+                ref={subject.seat}
+                data-testid="subject-absence"
+                {...stylex.props(styles.absence)}
+              />
+            ) : (
+              <Outlet />
+            )}
           </main>
         </div>
       )}
 
       {/* One bar at the foot, and which one it is depends on what the shell
-          is around: a workspace's own sections, or the modules. */}
-      {banner ? (
+          is around: a workspace's own sections, or the modules - which are
+          also all a workspace has left once what it was around is gone. */}
+      {banner || absent ? (
         <AppsBar apps={apps} activeApp={activeApp} />
       ) : (
         sectionsAtFoot && (
@@ -1418,7 +1490,7 @@ function CapableRailShell({
       )}
 
       <Sheet
-        open={!banner && narrow && drawer.open}
+        open={!banner && !absent && narrow && drawer.open}
         onOpenChange={(next) => {
           if (!next) drawer.hide()
         }}

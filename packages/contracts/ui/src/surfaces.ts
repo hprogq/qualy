@@ -293,6 +293,10 @@ export const drawerSignOut = defineUiSlot({
  * What is being worked on, said by whoever knows: the workspace shell renders
  * this above its rail and knows nothing about batches, courses or whatever
  * else a workspace turns out to be about.
+ *
+ * Whoever says it is also the one who knows when it is not there: the
+ * contribution speaks for the record's absence (web-runtime's
+ * `SubjectAbsence`), and the shell folds what is bound to the record away.
  */
 export const workspaceContext = defineUiSlot({
   key: 'workspace-shell/context',
@@ -338,6 +342,9 @@ export interface NavigationBadgeContext {
  * the same way the pages beside it do. Nothing else is handed down - the one
  * thing every section shares is the id in the address, and a richer context
  * would be a second, unwritten contract about what a person is.
+ *
+ * A person who is not there, or not the reader's to see, is said here too
+ * (web-runtime's `SubjectAbsence`), once, rather than by every section.
  */
 export const userDetailHeader = defineUiSlot({
   key: 'iam/user-detail-header',
