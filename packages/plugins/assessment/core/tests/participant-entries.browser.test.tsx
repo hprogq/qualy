@@ -462,7 +462,7 @@ describe('reading somebody’s entries', () => {
       .toEqual([entryId(5)])
     const chip = rows()[0]!.querySelector('[data-testid="entry-standing"]')!
     expect(chip.getAttribute('data-entry-standing')).toBe('voided')
-    expect(givenUp()!.textContent).toContain(chip.textContent!)
+    expect(givenUp()!.textContent).toContain(chip.textContent)
   })
 
   it('reads a question left with only a withdrawn record as empty, the record a filter away', async () => {

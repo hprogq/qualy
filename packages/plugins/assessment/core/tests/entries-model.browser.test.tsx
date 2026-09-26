@@ -197,12 +197,12 @@ describe('a claim’s identity line', () => {
       requestedAt: '2026-04-05T00:00:00.000Z',
     })
     const claims = [
-      claim('given-up', { status: 'voided', currentRevision: filed } as Partial<EntryDto>),
+      claim('given-up', { status: 'voided', currentRevision: filed }),
       claim('revoked', { status: 'voided', source: 'record' }),
       claim('asked', {
         supplement: ask('  a stamped copy  '),
         currentRevision: filed,
-      } as Partial<EntryDto>),
+      }),
       claim('blank-ask', { supplement: ask('   ') }),
       claim('returned', {
         status: 'needs_revision',
