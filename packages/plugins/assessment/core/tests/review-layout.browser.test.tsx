@@ -1022,6 +1022,41 @@ describe('where the person being judged stands', () => {
     await expect.element(page.getByTestId('unit-chain')).not.toBeInTheDocument()
   })
 
+  // On a phone the header has no room beside the name for a unit: it takes a
+  // line of its own, and the unit itself - the last step - is said whole,
+  // while nothing on the name's line runs under the key to the queue.
+  for (const width of [360, 390]) {
+    for (const name of ['周予安', '阿卜杜热合曼·买买提江·艾力']) {
+      it(`gives the unit a line of its own at ${String(width)}, clear of the queue key (${name})`, async () => {
+        await page.viewport(width, 844)
+        await open({
+          getReviewInstance: () => Effect.succeed({ review: { ...review, participantName: name } }),
+        })
+        const unit = page.getByTestId('review-unit')
+        await expect.element(unit).toBeVisible()
+        const path = unit.getByTestId('unit-path').element()
+        const last = path.querySelector(`[data-path-step="${String(review.unitPath.length - 2)}"]`)!
+        const box = last.getBoundingClientRect()
+        const line = path.getBoundingClientRect()
+        // on the line that shows, and all of it
+        expect(box.width).toBeGreaterThan(0)
+        expect(box.top).toBeLessThan(line.bottom - 1)
+        const words = last.lastElementChild as HTMLElement
+        expect(words.scrollWidth).toBeLessThanOrEqual(words.clientWidth)
+        // a line of its own: under the name, not beside it
+        const heading = page.getByRole('heading', { level: 2, name }).element()
+        expect(box.top).toBeGreaterThanOrEqual(heading.getBoundingClientRect().bottom - 1)
+        // and nothing of the person runs under the key to the queue
+        const key = page.getByTestId('queue-key').element().getBoundingClientRect()
+        const number = heading.nextElementSibling!
+        expect(number.textContent).toBe(review.businessNo)
+        for (const part of [heading, number, last]) {
+          expect(part.getBoundingClientRect().right).toBeLessThanOrEqual(key.left)
+        }
+      })
+    }
+  }
+
   it('keeps the unit in reach on a phone, and raises the chain from the foot', async () => {
     await page.viewport(390, 844)
     await open()

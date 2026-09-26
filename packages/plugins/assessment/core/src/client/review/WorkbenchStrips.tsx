@@ -20,6 +20,7 @@ import { GlideAcross } from '@qualy/ui/reveal'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { UnitPath } from '@qualy/ui/unit-path'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
 import { UNNAMED } from '../roster/unit-path.ts'
 import { useBeside, useFinePointer } from './pointer.ts'
@@ -83,9 +84,13 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
   },
   // ---- the person bar ----
+  // One line of who across a desk. Narrower, where they stand takes a line
+  // of its own under the name, so the bar grows by that line rather than
+  // squeezing the unit to a mark between the number and the queue key.
   personBar: {
     display: 'flex',
-    height: 56,
+    height: { default: 'auto', [lg]: 56 },
+    minHeight: 56,
     flexShrink: 0,
     alignItems: 'center',
     gap: {
@@ -99,6 +104,7 @@ const styles = stylex.create({
       default: 8,
       [lg]: 16,
     },
+    paddingBlock: { default: 6, [lg]: 0 },
   },
   queueKey: {
     display: 'inline-flex',
@@ -120,7 +126,10 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
     fontVariantNumeric: 'tabular-nums',
   },
+  // the initial is a face for the bar, and on a phone the name's own room
+  // is worth more than a face: the name and the number keep the line
   avatar: {
+    display: { default: null, [breakpoints.phone]: 'none' },
     width: {
       default: 32,
       [lg]: 36,
@@ -134,21 +143,39 @@ const styles = stylex.create({
     fontSize: 14,
     fontWeight: 600,
   },
+  // Who, where and what. Across a desk the unit stands on the name's line,
+  // taking what the name leaves it, and the question runs under both;
+  // narrower, each takes a line of its own. The words take whatever the
+  // bar's keys leave them.
   personWords: {
     display: 'flex',
     minWidth: 0,
-    flexDirection: 'column',
-    gap: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: { default: 'column', [lg]: 'row' },
+    flexWrap: { default: 'nowrap', [lg]: 'wrap' },
+    alignItems: { default: 'stretch', [lg]: 'baseline' },
+    columnGap: 10,
+    rowGap: 1,
   },
   personLine: {
     display: 'flex',
+    minWidth: 0,
+    maxWidth: '100%',
     alignItems: 'baseline',
     gap: {
       default: 8,
       [lg]: 10,
     },
   },
+  // a name longer than the bar ends in an ellipsis rather than running
+  // under the keys beside it; the number after it stays whole
   personName: {
+    minWidth: 0,
+    maxWidth: { default: 'none', [lg]: '16rem' },
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
     fontSize: {
       default: 15,
       [lg]: 16,
@@ -164,39 +191,36 @@ const styles = stylex.create({
     whiteSpace: 'nowrap',
   },
   unitName: {
-    display: {
-      default: 'none',
-      [lg]: 'block',
-    },
     minWidth: 0,
+    flexGrow: { default: 0, [lg]: 1 },
+    flexShrink: 1,
+    flexBasis: { default: 'auto', [lg]: '0%' },
+    maxWidth: { default: '100%', [lg]: '22rem' },
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     fontSize: 12,
     color: tokens.mutedForeground,
   },
-  // where they stand, said from its own end in whatever the line has left,
+  // where they stand, said from its own end in whatever its line has left,
   // and the whole chain a press away; at every width, since a phone has the
   // sheet the chain rises in
   unitSeat: {
     display: 'flex',
     minWidth: 0,
-    maxWidth: { default: '100%', [lg]: '22rem' },
+    flexGrow: { default: 0, [lg]: 1 },
     flexShrink: 1,
-    alignSelf: 'center',
+    flexBasis: { default: 'auto', [lg]: '0%' },
+    maxWidth: { default: '100%', [lg]: '22rem' },
   },
   itemLine: {
+    flexBasis: { default: 'auto', [lg]: '100%' },
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     fontSize: 12,
     color: tokens.mutedForeground,
-  },
-  spacer: {
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
   },
   escalationLight: {
     flexShrink: 0,
@@ -417,36 +441,37 @@ export function PersonStrip({
       </Avatar>
       <div {...stylex.props(styles.personWords)}>
         <div {...stylex.props(styles.personLine)}>
-          <h2 {...stylex.props(styles.personName)}>{review.participantName}</h2>
+          <h2 title={review.participantName} {...stylex.props(styles.personName)}>
+            {review.participantName}
+          </h2>
           {review.businessNo !== null && (
             <span {...stylex.props(styles.businessNo)}>{review.businessNo}</span>
           )}
-          {review.unitPath.length > 0 ? (
-            <span data-testid="review-unit" {...stylex.props(styles.unitSeat)}>
-              <UnitPath
-                // the root everybody on the round shares is left off the
-                // line, and kept on the chain
-                steps={levels.length > 1 ? levels.slice(1) : levels}
-                chain={{
-                  label: format(m.rosterUnits),
-                  closeLabel: format(commonMessages.close),
-                  levels,
-                }}
-              />
-            </span>
-          ) : (
-            review.unitName !== null && (
-              <span {...stylex.props(styles.unitName)}>{review.unitName}</span>
-            )
-          )}
         </div>
+        {review.unitPath.length > 0 ? (
+          <span data-testid="review-unit" {...stylex.props(styles.unitSeat)}>
+            <UnitPath
+              // the root everybody on the round shares is left off the
+              // line, and kept on the chain
+              steps={levels.length > 1 ? levels.slice(1) : levels}
+              chain={{
+                label: format(m.rosterUnits),
+                closeLabel: format(commonMessages.close),
+                levels,
+              }}
+            />
+          </span>
+        ) : (
+          review.unitName !== null && (
+            <span {...stylex.props(styles.unitName)}>{review.unitName}</span>
+          )
+        )}
         <p {...stylex.props(styles.itemLine)}>
           {round !== null && round !== undefined
             ? `${round} › ${review.itemTitle}`
             : review.itemTitle}
         </p>
       </div>
-      <span {...stylex.props(styles.spacer)} />
       {review.chain.route === 'escalation' && (
         // at every width: the mode must survive the narrowest header. In the
         // theme's own ink rather than a borrowed hue - the workbench is
