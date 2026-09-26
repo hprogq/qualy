@@ -5,13 +5,14 @@ import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { ConfirmDialog, Feedback, Field, FormDialog } from '@qualy/ui/admin'
-import { RefreshCwIcon } from 'lucide-react'
+import { ClockIcon, RefreshCwIcon } from 'lucide-react'
 import { Button } from '@qualy/ui/button'
 import { Textarea } from '@qualy/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
-import { entryRefusalMessage, entryRefusalReason } from './refusals.ts'
+import { sayBlocked, sayOwnRefusal } from './refusals.ts'
+import { useRound } from './own-acts.ts'
 import { issueSentence } from './issues.ts'
 import { toast } from '@qualy/ui/toast'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -54,6 +55,18 @@ const styles = stylex.create({
     fontSize: 12,
     color: tokens.mutedForeground,
   },
+  // why handing it on is shut, where the shut key is: a hint on the key
+  // itself cannot be reached on a phone, so this one is never put away
+  heldNote: {
+    display: 'flex',
+    // on a phone it takes a row of its own, and the two keys the next one
+    flexBasis: { default: 'auto', '@media (max-width: 767.98px)': '100%' },
+    alignItems: 'flex-start',
+    gap: 6,
+    margin: 0,
+    lineHeight: 1.5,
+  },
+  heldIcon: { width: 13, height: 13, flexShrink: 0, marginTop: 2 },
   // on a phone the two keys need the whole row: the standing reminder
   // gives way, a file still uploading does not
   quietIdle: {
@@ -363,7 +376,9 @@ function EntryDialogBody({
 }: EntryDialogProps) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
-  const { format, formatError } = useI18n()
+  const { format, formatError, locale } = useI18n()
+  // the stage the round is in, for saying which one holds handing it on
+  const round = useRound(batchId)
   const [payload, setPayload] = useState<EvidencePayload>(
     () => (entry?.currentRevision?.payload as EvidencePayload | null) ?? {},
   )
@@ -426,7 +441,9 @@ function EntryDialogBody({
 
   // an absent word from the server is not a shut gate; only a spoken refusal is
   const submitShut = submitGate !== undefined && submitGate.state !== 'available'
-  const submitWhy = submitGate?.reason == null ? null : entryRefusalReason(submitGate.reason)
+  const submitWhy = submitShut
+    ? sayBlocked('submit', submitGate.reason, round, { format, locale })
+    : null
 
   const doors = {
     prepare: (input: {
@@ -541,14 +558,12 @@ function EntryDialogBody({
       ) {
         onChangedElsewhere?.()
       }
-      const refusal = entryRefusalMessage(error)
-      const said = refusal === null ? formatError(error) : format(refusal)
+      // a stage holding the act says which act and which stage
+      const said = sayOwnRefusal(error, round, { format, locale }) ?? formatError(error)
       // the write went through and the handing on did not: say so, or the
       // screen reads as though nothing was kept
       setProblem(
-        entry === null && created !== null
-          ? `${said} ${format(m.entrySubmitFailedDraftKept)}`
-          : said,
+        entry === null && created !== null ? format(m.entrySubmitFailedDraftKept, { said }) : said,
       )
     },
   })
@@ -599,12 +614,24 @@ function EntryDialogBody({
       onClose={onClose}
       footer={
         <div {...stylex.props(styles.footer)}>
-          <p
-            {...stylex.props(styles.quietNote, !uploading && styles.quietIdle)}
-            data-uploading={uploading || undefined}
-          >
-            {format(uploading ? m.entrySaveAfterUpload : m.entryDraftKept)}
-          </p>
+          {submitShut && !uploading ? (
+            <p
+              data-testid="entry-held"
+              data-acts="submit"
+              data-reason={submitGate.reason ?? ''}
+              {...stylex.props(styles.quietNote, styles.heldNote)}
+            >
+              <ClockIcon aria-hidden {...stylex.props(styles.heldIcon)} />
+              {submitWhy}
+            </p>
+          ) : (
+            <p
+              {...stylex.props(styles.quietNote, !uploading && styles.quietIdle)}
+              data-uploading={uploading || undefined}
+            >
+              {format(uploading ? m.entrySaveAfterUpload : m.entryDraftKept)}
+            </p>
+          )}
           <span {...stylex.props(styles.spacer)} />
           {/* while the question is out of date both ways out are shut: either
               would file an answer under rules its author has not seen */}
@@ -616,7 +643,8 @@ function EntryDialogBody({
             {format(m.entrySaveDraft)}
           </Button>
           {/* a phase may take drafts without taking submissions; then this
-              half is shut with its reason on hover, and the draft half works */}
+              half is shut with its reason beside it and on hover, and the
+              draft half works */}
           {submitShut ? (
             <TooltipProvider>
               <Tooltip>
@@ -624,7 +652,7 @@ function EntryDialogBody({
                   <span tabIndex={0}>
                     <Button
                       data-testid="save-and-submit"
-                      data-gate={submitGate?.state}
+                      data-gate={submitGate.state}
                       disabled
                       className={stylex.props(styles.noPointer).className}
                     >
@@ -632,7 +660,7 @@ function EntryDialogBody({
                     </Button>
                   </span>
                 </TooltipTrigger>
-                <TooltipContent>{format(submitWhy ?? m.entryBlockedNow)}</TooltipContent>
+                <TooltipContent>{submitWhy}</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           ) : (

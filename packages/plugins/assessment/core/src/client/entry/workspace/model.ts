@@ -12,6 +12,7 @@ import {
   type ItemDto,
 } from '../model.ts'
 import { eachWorth, mayFile, roomLeft, type Standing, type StructureRow } from '../standing.ts'
+import { filingHeldOf, type RoundState, type Said } from '../refusals.ts'
 
 // What the entries workspace draws, worked out away from the drawing.
 //
@@ -569,50 +570,9 @@ export const totalsOf = (
   return { got: standing?.total ?? null, cap: summed }
 }
 
-/** a sentence, with whatever fills it */
-export interface Said {
-  readonly message: MessageDescriptor
-  readonly values?: Readonly<Record<string, string>>
-}
-
-/** where the round stands, as far as starting a claim in it goes */
-export interface RoundState {
-  readonly status: string
-  /** the stage under way, by the name the round gave it */
-  readonly phaseName: string | null
-}
-
-/**
- * Why a new claim cannot be started on a question, said about starting one.
- *
- * The phase gate answers for every act with the same few reasons, and the
- * refusal sentences built on them stay general ("not open in this stage")
- * because they are shown after a press, beside the act that was pressed.
- * Here nothing was pressed: the sentence stands in place of the way in, so
- * it names the act and, where the round says, the stage that shut it.
- */
-export const filingHeldOf = (reason: string | null, round: RoundState | null): Said => {
-  switch (reason) {
-    case 'phase-closed':
-      return round?.phaseName != null && round.phaseName.trim() !== ''
-        ? { message: m.entriesHeldPhase, values: { phase: round.phaseName.trim() } }
-        : { message: m.entriesHeldNow }
-    case 'no-active-phase':
-      return round?.status === 'archived'
-        ? { message: m.entriesHeldArchived }
-        : round?.status === 'draft'
-          ? { message: m.entriesHeldNotStarted }
-          : { message: m.entriesHeldNoPhase }
-    case 'item-out-of-scope':
-      return { message: m.entriesHeldItemScope }
-    case 'participant-out-of-scope':
-      return { message: m.entriesHeldParticipantScope }
-    case 'account-ceiling-reached':
-      return { message: m.entriesHeldRoundFull }
-    default:
-      return { message: m.entriesHeldNow }
-  }
-}
+// Why a stage holds an act - starting a claim among them - is said once,
+// beside every other refusal, and the workspace reads it from there.
+export { filingHeldOf, type RoundState, type Said }
 
 /** what the owner may put into one question now, and what to say where they may not */
 export interface Filing {

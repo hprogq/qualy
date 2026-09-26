@@ -140,6 +140,10 @@ export default {
   'assessment/entry/refuse-no-permission': '你没有在本批次执行该操作的权限。',
   'assessment/entry/refuse-not-reviewer': '你不是该申报的审核人。',
   'assessment/entry/refuse-phase-closed': '当前阶段未开放该操作。',
+  'assessment/entry/held':
+    '{why, select, phase {当前阶段「{phase}」不能{acts}} archived {批次已归档，不能{acts}} unstarted {批次尚未开始，暂不能{acts}} idle {当前没有进行中的阶段，不能{acts}} item {当前阶段本项目的申报不能{acts}} people {当前阶段只对部分参评人员开放{acts}} other {当前阶段不能{acts}}}',
+  'assessment/entry/held-act':
+    '{act, select, edit {修改} submit {提交} withdraw {撤回} abandon {放弃} appeal {申诉} other {操作}}',
   'assessment/entry/refuse-out-of-scope': '当前阶段不包含该项目或该参评人员。',
   'assessment/entry/refuse-not-fileable': '该项目自动计分，无需申报。',
   'assessment/entry/refuse-not-returnable': '仅审核中或已通过的参评人员申报可以退回修改。',
@@ -808,7 +812,7 @@ export default {
   'assessment/time/yesterday': '昨天',
   'assessment/entry/submitted-toast': '已提交审核。',
   'assessment/entry/draft-saved-toast': '草稿已保存。',
-  'assessment/entry/submit-failed-draft-kept': '草稿已保存，只是这次没有提交成功。',
+  'assessment/entry/submit-failed-draft-kept': '草稿已保存，但未能提交：{said}',
   'assessment/entry/withdrawn-toast': '已撤回，该条目已恢复为草稿状态。',
   'assessment/entry/abandoned-toast': '已放弃申报。',
   'assessment/review/tip-approve-mid': '通过当前审核环节，交由下一复核节点处理',

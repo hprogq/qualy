@@ -81,6 +81,159 @@ const SENTENCES: Record<string, MessageDescriptor> = {
 export const entryRefusalReason = (reason: string): MessageDescriptor | null =>
   SENTENCES[reason] ?? null
 
+/** where the round stands, as far as saying which stage holds an act goes */
+export interface RoundState {
+  readonly status: string
+  /** the stage under way, by the name the round gave it */
+  readonly phaseName: string | null
+}
+
+/** a sentence, with whatever fills it */
+export interface Said {
+  readonly message: MessageDescriptor
+  readonly values?: Readonly<Record<string, string>>
+}
+
+/**
+ * Why the phase gate holds an act, read against where the round stands: a
+ * stage named or unnamed, a round archived or not started, a gap between
+ * stages, or a stage open to some questions or some people only.
+ */
+export type Hold =
+  | { readonly why: 'phase'; readonly phase: string }
+  | { readonly why: 'stage' | 'archived' | 'unstarted' | 'idle' | 'item' | 'people' }
+
+/** the gate's reason as a hold, or null for a reason that is not the gate's */
+export const holdOf = (reason: string | null, round: RoundState | null): Hold | null => {
+  switch (reason) {
+    case 'phase-closed': {
+      const phase = round?.phaseName?.trim() ?? ''
+      return phase === '' ? { why: 'stage' } : { why: 'phase', phase }
+    }
+    case 'no-active-phase':
+      return {
+        why:
+          round?.status === 'archived'
+            ? 'archived'
+            : round?.status === 'draft'
+              ? 'unstarted'
+              : 'idle',
+      }
+    case 'item-out-of-scope':
+      return { why: 'item' }
+    case 'participant-out-of-scope':
+      return { why: 'people' }
+    default:
+      return null
+  }
+}
+
+const FILING_HELD: Record<Exclude<Hold['why'], 'phase'>, MessageDescriptor> = {
+  stage: m.entriesHeldNow,
+  archived: m.entriesHeldArchived,
+  unstarted: m.entriesHeldNotStarted,
+  idle: m.entriesHeldNoPhase,
+  item: m.entriesHeldItemScope,
+  people: m.entriesHeldParticipantScope,
+}
+
+/**
+ * Why a new claim cannot be started on a question, said about starting one.
+ *
+ * It stands in place of the way in, so it names the act and, where the round
+ * says, the stage that shut it. The round's own limit on claims is the one
+ * reason here that is not the phase gate's.
+ */
+export const filingHeldOf = (reason: string | null, round: RoundState | null): Said => {
+  const hold = holdOf(reason, round)
+  if (hold?.why === 'phase') return { message: m.entriesHeldPhase, values: { phase: hold.phase } }
+  if (hold !== null) return { message: FILING_HELD[hold.why] }
+  return reason === 'account-ceiling-reached'
+    ? { message: m.entriesHeldRoundFull }
+    : { message: m.entriesHeldNow }
+}
+
+/** the owner's acts on a claim of theirs that a stage may hold */
+export type HeldAct = 'edit' | 'submit' | 'withdraw' | 'abandon' | 'appeal'
+
+const HELD_ACTS: ReadonlySet<string> = new Set<HeldAct>([
+  'edit',
+  'submit',
+  'withdraw',
+  'abandon',
+  'appeal',
+])
+
+/** how the sentences below are put into words */
+export interface HeldWords {
+  readonly format: (descriptor: MessageDescriptor, values?: Record<string, string>) => string
+  readonly locale: string
+}
+
+/**
+ * Why the stage holds some of the owner's acts on a claim, naming them.
+ *
+ * The general refusal says the stage "does not allow this action" and leaves
+ * the reader to guess which; here the acts are known, so they are named -
+ * several at once where one stage holds several - and so is the stage, where
+ * the round gives it a name.
+ */
+export const sayHeld = (hold: Hold, acts: readonly HeldAct[], words: HeldWords): string =>
+  words.format(m.entryHeld, {
+    why: hold.why,
+    phase: hold.why === 'phase' ? hold.phase : '',
+    acts: new Intl.ListFormat(words.locale, { type: 'disjunction' }).format(
+      acts.map((act) => words.format(m.entryHeldAct, { act })),
+    ),
+  })
+
+/** why one of the owner's acts is not open now, for the hint on its key */
+export const sayBlocked = (
+  act: HeldAct,
+  reason: string | null,
+  round: RoundState | null,
+  words: HeldWords,
+): string => {
+  const hold = holdOf(reason, round)
+  if (hold !== null) return sayHeld(hold, [act], words)
+  return words.format((reason === null ? null : entryRefusalReason(reason)) ?? m.entryBlockedNow)
+}
+
+/** the act and the reason of a refused entry act, or null when this is not one */
+export const refusalOf = (error: unknown): { action: string; reason: string } | null => {
+  const refusal = error as { _tag?: string; action?: unknown; reason?: unknown } | null
+  if (refusal?._tag !== 'ASSESSMENT_ENTRY_ACTION_REFUSED') return null
+  return {
+    action: typeof refusal.action === 'string' ? refusal.action : '',
+    reason: typeof refusal.reason === 'string' ? refusal.reason : '',
+  }
+}
+
+/**
+ * A refusal of one of the owner's own acts, or null when this is not one.
+ *
+ * Where the stage is what said no, the sentence names the act the server
+ * refused and the stage that holds it - starting a claim in the words its
+ * question uses for it. Anything else is the refusal's own sentence.
+ */
+export const sayOwnRefusal = (
+  error: unknown,
+  round: RoundState | null,
+  words: HeldWords,
+): string | null => {
+  const refusal = refusalOf(error)
+  if (refusal === null) return null
+  const hold = holdOf(refusal.reason, round)
+  if (hold !== null && refusal.action === 'create') {
+    const said = filingHeldOf(refusal.reason, round)
+    return words.format(said.message, said.values === undefined ? undefined : { ...said.values })
+  }
+  if (hold !== null && HELD_ACTS.has(refusal.action)) {
+    return sayHeld(hold, [refusal.action as HeldAct], words)
+  }
+  return words.format(SENTENCES[refusal.reason] ?? m.refuseOther)
+}
+
 /** the sentence for a refusal, or null when this is not one */
 export const entryRefusalMessage = (error: unknown): MessageDescriptor | null => {
   const refusal = error as { _tag?: string; reason?: string }

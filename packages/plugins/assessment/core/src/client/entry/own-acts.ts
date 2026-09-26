@@ -1,11 +1,12 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMemo } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n, useList } from '@qualy/web-i18n'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { issueSentence, payloadIssuesOf } from './issues.ts'
-import { entryRefusalMessage } from './refusals.ts'
+import { sayOwnRefusal, type RoundState } from './refusals.ts'
 import { answerOf, fieldsOf, type EntryDto, type ItemDto } from './model.ts'
 
 // The owner's three acts on a claim of their own - handing it on, taking it
@@ -26,16 +27,40 @@ interface OwnClaims {
 }
 
 /**
+ * Where a round stands, as its batch was last read: whether it runs, and
+ * the name of the stage under way, for saying which stage holds an act.
+ * The batch screen has read it already; this asks the same entry of the
+ * cache, and a batch not read yet names no stage.
+ */
+export function useRound(batchId: string | undefined): RoundState | null {
+  const query = useApiQuery(assessmentApi)
+  const read = useQuery({
+    ...query.assessment.getBatch.queryOptions({ params: { batchId: batchId ?? '' } }),
+    enabled: batchId !== undefined,
+    // the batch screen's own freshness, so opening a drawer asks nothing again
+    staleTime: 30_000,
+  })
+  const batch = read.data?.batch
+  return useMemo(
+    () =>
+      batch === undefined ? null : { status: batch.status, phaseName: batch.currentPhaseName },
+    [batch],
+  )
+}
+
+/**
  * What to tell the owner about an act of theirs that failed.
  *
  * No form is open where these acts are pressed, so a refusal over the
  * claim's fields names those fields and what is wrong with each, rather
  * than reporting a save nobody made. The claim is named where the press was
- * about one; a claim not written yet carried nothing to name.
+ * about one; a claim not written yet carried nothing to name. A stage that
+ * holds the act is said with the act and the stage named.
  */
 export function useOwnFailure({ items, entries, materialRange }: OwnClaims) {
-  const { format, formatError } = useI18n()
+  const { format, formatError, locale } = useI18n()
   const listJoin = useList()
+  const round = useRound(entries[0]?.batchId ?? items[0]?.batchId)
   return (error: unknown, itemId: string, entryId?: string): string => {
     const issues = payloadIssuesOf(error)
     if (issues !== null) {
@@ -52,8 +77,7 @@ export function useOwnFailure({ items, entries, materialRange }: OwnClaims) {
       })
       return format(m.entryListIssues, { issues: listJoin(said) })
     }
-    const refusal = entryRefusalMessage(error)
-    return refusal === null ? formatError(error) : format(refusal)
+    return sayOwnRefusal(error, round, { format, locale }) ?? formatError(error)
   }
 }
 

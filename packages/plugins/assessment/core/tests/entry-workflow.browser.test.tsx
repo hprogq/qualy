@@ -646,6 +646,8 @@ describe('filing a claim', () => {
     await press()
     await vi.waitFor(() => expect(created).toHaveBeenCalledOnce())
     await vi.waitFor(() => expect(submitted).toHaveBeenCalledOnce())
+    // what was refused is said by its act and its stage, beside the draft kept
+    await expect.element(page.getByTestId('feedback')).toMatchTextContent(batch().currentPhaseName!)
 
     // pressing again writes to the claim that already exists: a second
     // create would be a second claim, or a refusal for using up the places
@@ -2724,6 +2726,13 @@ describe('the phase gate on the paper', () => {
     await expect.element(handOn).toBeDisabled()
     await expect.element(handOn).toHaveAttribute('data-gate', 'blocked')
     await expect.element(page.getByRole('button', { name: '保存为草稿' })).toBeEnabled()
+    // why, beside the shut key and on a phone too: handing on, held by the
+    // stage the round names
+    const held = page.getByTestId('entry-held')
+    await expect.element(held).toBeVisible()
+    await expect.element(held).toHaveAttribute('data-acts', 'submit')
+    await expect.element(held).toHaveAttribute('data-reason', 'phase-closed')
+    await expect.element(held).toMatchTextContent(batch().currentPhaseName!)
   })
 
   it('asks the one-way withdraw in the destructive register', async () => {
@@ -2827,6 +2836,124 @@ describe('the phase gate on the paper', () => {
     await drawer.getByRole('button', { name: '撤回提交' }).click()
     await expect.element(page.getByRole('alertdialog')).toBeVisible()
     await expect.element(page.getByTestId('confirm-accept')).toHaveAttribute('data-tone', 'default')
+  })
+
+  // A key the stage has greyed says which act it holds and in which stage:
+  // on the key for a pointer, and above the keys where a phone can read it.
+  // One stage holding several acts is said once, naming them all.
+  const hidden = { state: 'hidden' as const, reason: null }
+  const phase = batch().currentPhaseName!
+
+  it('names the acts a stage holds on a claim, and the stage', async () => {
+    await screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [
+              entry({
+                capabilities: {
+                  edit: shut,
+                  submit: shut,
+                  withdraw: hidden,
+                  appeal: hidden,
+                  abandon: shut,
+                },
+              }),
+            ],
+            filing: [{ itemId: ITEM_ID, create: shut, submit: shut }],
+            nextCursor: null,
+            attention: { unreadItemIds: [] },
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}&detail=${ENTRY_ID}`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    const drawer = page.getByRole('dialog')
+    const held = drawer.getByTestId('entry-held')
+    await expect.element(held).toBeVisible()
+    expect(drawer.getByTestId('entry-held').elements()).toHaveLength(1)
+    await expect.element(held).toHaveAttribute('data-acts', 'edit submit abandon')
+    await expect.element(held).toHaveAttribute('data-why', 'phase')
+    await expect.element(held).toMatchTextContent(phase)
+    // and on the shut key itself, said about that key's own act
+    const key = drawer.getByRole('button', { name: '提交审核' })
+    await expect.element(key).toBeDisabled()
+    await expect.element(key).toHaveAttribute('data-act', 'submit')
+    await userEvent.hover(document.querySelector('[data-blocked="submit"]')!)
+    await expect.element(page.getByRole('tooltip')).toMatchTextContent(phase)
+  })
+
+  it('says which act a stage refused after the press, and the stage', async () => {
+    const refused = vi.fn(() =>
+      Effect.fail(
+        Object.assign(new Error('ASSESSMENT_ENTRY_ACTION_REFUSED'), {
+          _tag: 'ASSESSMENT_ENTRY_ACTION_REFUSED',
+          action: 'withdraw',
+          reason: 'phase-closed',
+        }),
+      ),
+    )
+    await screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [withdrawable()],
+            filing: [{ itemId: ITEM_ID, create: openGate, submit: openGate }],
+            nextCursor: null,
+            attention: { unreadItemIds: [] },
+          }),
+        setEntryStatus: refused,
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}&detail=${ENTRY_ID}`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    await page.getByRole('dialog').getByRole('button', { name: '撤回提交' }).click()
+    await page.getByTestId('confirm-accept').click()
+    await vi.waitFor(() => expect(refused).toHaveBeenCalledOnce())
+    const toast = () => document.querySelector('[data-sonner-toast]')?.textContent ?? ''
+    await expect.poll(toast).toContain(phase)
+    expect(toast()).not.toContain(zhCN['assessment/entry/refuse-phase-closed'])
+  })
+
+  // the account opens the same drawer, and a stage holds the same acts there
+  it('names what a stage holds in the drawer the account opens', async () => {
+    await screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [
+              entry({
+                status: 'approved',
+                capabilities: {
+                  edit: hidden,
+                  submit: hidden,
+                  withdraw: hidden,
+                  appeal: shut,
+                  abandon: shut,
+                },
+              }),
+            ],
+            filing: [{ itemId: ITEM_ID, create: shut, submit: shut }],
+            nextCursor: null,
+            attention: { unreadItemIds: [] },
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/my-result?detail=${ENTRY_ID}`,
+      [{ path: '/assessment/batches/:batchId/my-result', element: <MyResultPage /> }],
+    )
+
+    const held = page.getByRole('dialog').getByTestId('entry-held')
+    await expect.element(held).toHaveAttribute('data-acts', 'abandon appeal')
+    await expect.element(held).toHaveAttribute('data-why', 'phase')
+    await expect.element(held).toMatchTextContent(phase)
   })
 })
 

@@ -561,9 +561,28 @@ const reviewLinkedToMessage = defineMessage<{ names: string }>()({
   id: 'assessment/review/linked-to',
   defaultMessage: 'Filled into: {names}',
 })
+// Why a stage holds some of the owner's acts on a claim: `acts` is a list of
+// `entryHeldAct` words the screen has already joined in the reader's language
+const entryHeldMessage = defineMessage<{ why: string; phase: string; acts: string }>()({
+  id: 'assessment/entry/held',
+  defaultMessage:
+    '{why, select, phase {You can’t {acts} during {phase}} archived {The round is archived, so you can’t {acts}} unstarted {The round hasn’t started, so you can’t {acts} yet} idle {No stage is under way, so you can’t {acts}} item {The current stage doesn’t let you {acts} entries for this item} people {The current stage lets only some participants {acts}} other {You can’t {acts} in the current stage}}',
+})
+const entryHeldActMessage = defineMessage<{ act: string }>()({
+  id: 'assessment/entry/held-act',
+  defaultMessage:
+    '{act, select, edit {edit} submit {submit} withdraw {withdraw} abandon {abandon} appeal {appeal} other {do this}}',
+})
+// a new claim was kept as a draft, and handing it on was refused
+const entrySubmitFailedDraftKeptMessage = defineMessage<{ said: string }>()({
+  id: 'assessment/entry/submit-failed-draft-kept',
+  defaultMessage: 'Your draft was saved but not submitted: {said}',
+})
 const i18n = definePluginMessages({
   namespace: 'assessment',
   messages: {
+    entryHeld: entryHeldMessage,
+    entryHeldAct: entryHeldActMessage,
     personBatchColumn: { id: 'assessment/person/batch-column', defaultMessage: 'Round' },
     personAnchorColumn: { id: 'assessment/person/anchor-column', defaultMessage: 'Recorded at' },
     personMembershipColumn: {
@@ -3220,10 +3239,7 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/draft-saved-toast',
       defaultMessage: 'Draft saved.',
     },
-    entrySubmitFailedDraftKept: {
-      id: 'assessment/entry/submit-failed-draft-kept',
-      defaultMessage: 'Your draft was saved; only handing it on did not go through.',
-    },
+    entrySubmitFailedDraftKept: entrySubmitFailedDraftKeptMessage,
     entryWithdrawnToast: {
       id: 'assessment/entry/withdrawn-toast',
       defaultMessage: 'Submission withdrawn; it is a draft again.',

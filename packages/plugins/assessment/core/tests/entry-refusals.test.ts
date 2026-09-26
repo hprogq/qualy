@@ -3,7 +3,14 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ReservationInvalidReason, UploadRefusedReason } from '@qualy/plugin-storage/errors'
 import { describe, expect, it } from 'vitest'
-import { entryRefusalReason, sayEntryFailure } from '../src/client/entry/refusals.ts'
+import {
+  entryRefusalReason,
+  holdOf,
+  sayBlocked,
+  sayEntryFailure,
+  sayHeld,
+  sayOwnRefusal,
+} from '../src/client/entry/refusals.ts'
 import { assessmentMessages as m } from '../src/client/i18n.ts'
 import type { GateDecision } from '../src/phase/gate.ts'
 
@@ -149,5 +156,104 @@ describe('why an entry act was refused', () => {
       ),
     ).toBe(m.refuseNotReturnable.id)
     expect(sayEntryFailure({ _tag: 'ASSESSMENT_BATCH_READ_ONLY' }, words)).toBe('general')
+  })
+})
+
+// A stage holding one of the owner's acts is said with the act named - and
+// the stage, where the round names it. The words are the catalog's; what is
+// held here is which sentence is chosen and what fills it, read through a
+// format that writes those down instead of any language.
+describe('why a stage holds the owner’s act', () => {
+  const words = {
+    format: (descriptor: { id: string }, values?: Record<string, string>) =>
+      descriptor.id === m.entryHeldAct.id
+        ? `<${values?.['act'] ?? ''}>`
+        : JSON.stringify({ id: descriptor.id, ...values }),
+    locale: 'en-US',
+  }
+  const read = (said: string | null) => JSON.parse(said ?? 'null') as Record<string, string>
+  const during = { status: 'active', phaseName: ' 材料审核 ' }
+  const refused = (action: string, reason: string) => ({
+    _tag: 'ASSESSMENT_ENTRY_ACTION_REFUSED',
+    action,
+    reason,
+  })
+
+  it('reads the gate’s reason against where the round stands', () => {
+    expect(holdOf('phase-closed', during)).toEqual({ why: 'phase', phase: '材料审核' })
+    expect(holdOf('phase-closed', { status: 'active', phaseName: null })).toEqual({ why: 'stage' })
+    expect(holdOf('phase-closed', null)).toEqual({ why: 'stage' })
+    expect(holdOf('no-active-phase', { status: 'archived', phaseName: null })).toEqual({
+      why: 'archived',
+    })
+    expect(holdOf('no-active-phase', { status: 'draft', phaseName: null })).toEqual({
+      why: 'unstarted',
+    })
+    expect(holdOf('no-active-phase', { status: 'active', phaseName: null })).toEqual({
+      why: 'idle',
+    })
+    expect(holdOf('item-out-of-scope', during)).toEqual({ why: 'item' })
+    expect(holdOf('participant-out-of-scope', during)).toEqual({ why: 'people' })
+    // a reason that is not the stage's is no hold
+    expect(holdOf('review-under-way', during)).toBeNull()
+    expect(holdOf(null, during)).toBeNull()
+  })
+
+  it('names every act one stage holds, once, in the reader’s own list', () => {
+    const said = read(sayHeld({ why: 'phase', phase: '材料审核' }, ['edit', 'submit'], words))
+    expect(said).toEqual({
+      id: m.entryHeld.id,
+      why: 'phase',
+      phase: '材料审核',
+      acts: '<edit> or <submit>',
+    })
+    expect(read(sayHeld({ why: 'archived' }, ['abandon'], words))).toMatchObject({
+      why: 'archived',
+      phase: '',
+      acts: '<abandon>',
+    })
+  })
+
+  it('says a refused press by the act the server refused and the stage that holds it', () => {
+    expect(read(sayOwnRefusal(refused('withdraw', 'phase-closed'), during, words))).toEqual({
+      id: m.entryHeld.id,
+      why: 'phase',
+      phase: '材料审核',
+      acts: '<withdraw>',
+    })
+    expect(
+      read(
+        sayOwnRefusal(
+          refused('appeal', 'no-active-phase'),
+          { ...during, status: 'archived' },
+          words,
+        ),
+      ),
+    ).toMatchObject({ why: 'archived', acts: '<appeal>' })
+    // starting a claim is said the way its question says it
+    expect(read(sayOwnRefusal(refused('create', 'phase-closed'), during, words))).toEqual({
+      id: m.entriesHeldPhase.id,
+      phase: '材料审核',
+    })
+    // a refusal that is not the stage's keeps its own sentence
+    expect(read(sayOwnRefusal(refused('withdraw', 'review-under-way'), during, words))).toEqual({
+      id: m.refuseReviewUnderWay.id,
+    })
+    // an act that is not the owner's keeps the general sentence
+    expect(read(sayOwnRefusal(refused('return', 'phase-closed'), during, words))).toEqual({
+      id: m.refusePhaseClosed.id,
+    })
+    expect(sayOwnRefusal({ _tag: 'ASSESSMENT_BATCH_READ_ONLY' }, during, words)).toBeNull()
+  })
+
+  it('hints at a shut key with its act, or with the refusal it carries', () => {
+    expect(read(sayBlocked('submit', 'phase-closed', during, words))).toMatchObject({
+      id: m.entryHeld.id,
+      acts: '<submit>',
+    })
+    expect(read(sayBlocked('submit', 'must-revise-first', during, words))).toEqual({
+      id: m.refuseNeedsRevision.id,
+    })
+    expect(read(sayBlocked('edit', null, during, words))).toEqual({ id: m.entryBlockedNow.id })
   })
 })
