@@ -1970,6 +1970,28 @@ describe('a round that moves while the page is open', () => {
     expect(page.getByTestId('result-live').elements()).toHaveLength(0)
   })
 
+  // the filing page draws no mark for its owner off the roster either
+  it('says nothing about keeping current once the owner is off the roster', async () => {
+    const paper = normal()
+    await screen(paper, {
+      listMyEntries: () =>
+        Effect.succeed({
+          participantId: PARTICIPANT_ID,
+          entries: paper.entries,
+          filing: paper.items.map((one) => ({ itemId: one.id, create: hidden, submit: hidden })),
+          nextCursor: null,
+          attention: { unreadItemIds: [] },
+        }),
+      watchBatch: () =>
+        Effect.succeed(Stream.concat(Stream.make({ kind: 'sync' as const }), Stream.never)),
+    })
+    await expect
+      .element(page.getByTestId('result-moving'))
+      .toHaveAttribute('data-closed', 'excluded')
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    expect(page.getByTestId('result-live').elements()).toHaveLength(0)
+  })
+
   it('keeps what it read when a later read fails, and says it may be behind', async () => {
     const paper = normal()
     let down = false
