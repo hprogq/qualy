@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
+import { useApiQuery, useLoadFailure, usePageRouteParams } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -33,7 +33,9 @@ const styles = stylex.create({
 export default function UserActivityPage() {
   const { userId } = usePageRouteParams('userId')
   const query = useApiQuery(authApi)
-  const { format, formatError } = useI18n()
+  const { format } = useI18n()
+  // a reading of this section that failed; the person not being there is the banner's to say
+  const describe = useLoadFailure()
   const user = useQuery(query.identity.getUser.queryOptions({ params: { userId } }))
   const record = user.data?.user
   // the same gate the records are read behind: the account, not the record
@@ -44,7 +46,7 @@ export default function UserActivityPage() {
       <SectionHead title={format(m.activityTitle)} />
       <AsyncSection
         pending={user.isPending}
-        error={user.isError ? formatError(user.error) : null}
+        error={user.isError ? describe.of(user.error) : null}
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void user.refetch()}

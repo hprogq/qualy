@@ -9,6 +9,7 @@ import {
   usePageHref,
   usePageRouteParams,
   useRunApi,
+  useLoadFailure,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -77,6 +78,8 @@ export default function UserIdentitiesPage() {
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const { format, formatError, locale } = useI18n()
+  // a reading of this section that failed; the person not being there is the banner's to say
+  const describe = useLoadFailure()
   const entrancesHref = usePageHref('auth/login-methods')
   const [editing, setEditing] = useState<Entrance | null>(null)
   const [revoking, setRevoking] = useState<Entrance | null>(null)
@@ -128,9 +131,9 @@ export default function UserIdentitiesPage() {
         pending={found.isPending || person.isPending}
         error={
           found.isError
-            ? formatError(found.error)
+            ? describe.of(found.error)
             : person.isError
-              ? formatError(person.error)
+              ? describe.of(person.error)
               : null
         }
         loadingLabel={format(commonMessages.loading)}

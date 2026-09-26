@@ -1,7 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { orgNodePicker, type OrgNodePickerContext } from '@qualy/ui-contract'
-import { UiSlot, useApi, useApiQuery, usePageRouteParams, useRunApi } from '@qualy/web-runtime'
+import {
+  UiSlot,
+  useApi,
+  useApiQuery,
+  useLoadFailure,
+  usePageRouteParams,
+  useRunApi,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
@@ -59,6 +66,8 @@ export default function UserOrganizationPage() {
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
+  // a reading of this section that failed; the person not being there is the banner's to say
+  const describe = useLoadFailure()
   const [picking, setPicking] = useState(false)
   const [destination, setDestination] = useState('')
   const [confirming, setConfirming] = useState('')
@@ -136,7 +145,7 @@ export default function UserOrganizationPage() {
     <div {...stylex.props(styles.page)}>
       <AsyncSection
         pending={user.isPending}
-        error={user.isError ? formatError(user.error) : null}
+        error={user.isError ? describe.of(user.error) : null}
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void user.refetch()}
