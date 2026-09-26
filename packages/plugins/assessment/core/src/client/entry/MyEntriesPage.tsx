@@ -12,7 +12,6 @@ import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
-import { Skeleton } from '@qualy/ui/skeleton'
 import { toast } from '@qualy/ui/toast'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { assessmentApi } from '../api.ts'
@@ -28,6 +27,7 @@ import { useMarkEntryRead, useOwnClaimActs, useOwnFailure } from './own-acts.ts'
 import { standingRows } from './standing.ts'
 import type { EntryDto, FilingGateDto, ItemDto } from './model.ts'
 import { EntriesWorkspace } from './workspace/EntriesWorkspace.tsx'
+import { WorkspaceSkeleton } from './workspace/WorkspaceSkeleton.tsx'
 import { StandingNotice } from './workspace/StandingNotice.tsx'
 import { useLineWords } from './workspace/calc.ts'
 import { entryLineOf, type RoundState } from './workspace/model.ts'
@@ -51,37 +51,6 @@ const styles = stylex.create({
     flexDirection: 'column',
   },
   empty: { padding: 24, fontSize: 14, color: tokens.mutedForeground },
-  // the page it is about to become, greyed
-  skeleton: {
-    display: 'grid',
-    minHeight: 0,
-    flexGrow: 1,
-    gridTemplateColumns: { default: '300px minmax(0, 1fr)', '@media (max-width: 767.98px)': '1fr' },
-  },
-  skRail: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 14,
-    borderRightWidth: 1,
-    borderRightStyle: 'solid',
-    borderRightColor: tokens.border,
-    padding: 20,
-  },
-  skMain: {
-    display: { default: 'flex', '@media (max-width: 767.98px)': 'none' },
-    flexDirection: 'column',
-    gap: 14,
-    padding: 28,
-  },
-  skTitle: { height: 20, width: 96 },
-  skTotal: { height: 34, width: 120 },
-  skBar: { height: 6, width: '100%', borderRadius: 3 },
-  skStats: { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 },
-  skStat: { height: 52, borderRadius: tokens.radiusMd },
-  skRow: { height: 16 },
-  skHeading: { height: 24, width: '40%' },
-  skLine: { height: 14, width: '60%' },
-  skClaim: { height: 56, width: '100%', borderRadius: tokens.radiusMd },
 })
 
 export default function MyEntriesPage() {
@@ -366,34 +335,8 @@ function Body({
         void mine.refetch()
         void standing.refetch()
       }}
-      skeleton={
-        <div {...stylex.props(styles.skeleton)}>
-          <div {...stylex.props(styles.skRail)}>
-            <Skeleton className={stylex.props(styles.skTitle).className} />
-            <Skeleton className={stylex.props(styles.skTotal).className} />
-            <Skeleton className={stylex.props(styles.skBar).className} />
-            <div {...stylex.props(styles.skStats)}>
-              {[0, 1, 2].map((one) => (
-                <Skeleton key={one} className={stylex.props(styles.skStat).className} />
-              ))}
-            </div>
-            {['70%', '55%', '80%', '45%', '65%'].map((width, index) => (
-              <Skeleton
-                key={index}
-                className={stylex.props(styles.skRow).className}
-                style={{ width }}
-              />
-            ))}
-          </div>
-          <div {...stylex.props(styles.skMain)}>
-            <Skeleton className={stylex.props(styles.skLine).className} />
-            <Skeleton className={stylex.props(styles.skHeading).className} />
-            {[0, 1, 2].map((one) => (
-              <Skeleton key={one} className={stylex.props(styles.skClaim).className} />
-            ))}
-          </div>
-        </div>
-      }
+      // the workspace it is about to become, column for column
+      skeleton={<WorkspaceSkeleton viewer="owner" open={open !== ''} />}
       xstyle={styles.fill}
     >
       {rows.length === 0 ? (

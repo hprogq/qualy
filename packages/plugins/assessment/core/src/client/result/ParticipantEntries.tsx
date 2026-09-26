@@ -14,7 +14,6 @@ import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
-import { Skeleton } from '@qualy/ui/skeleton'
 import { toast } from '@qualy/ui/toast'
 import { useLingering } from '@qualy/ui/use-lingering'
 import type { LiveLine } from '@qualy/ui/live-mark'
@@ -28,6 +27,7 @@ import { sayEntryFailure } from '../entry/refusals.ts'
 import { standingRows, type Standing } from '../entry/standing.ts'
 import { opensTo, type EntryDto, type ItemDto } from '../entry/model.ts'
 import { EntriesWorkspace } from '../entry/workspace/EntriesWorkspace.tsx'
+import { WorkspaceSkeleton } from '../entry/workspace/WorkspaceSkeleton.tsx'
 import { StandingNotice } from '../entry/workspace/StandingNotice.tsx'
 import { useLineWords } from '../entry/workspace/calc.ts'
 import { useParticipantEntries } from './participant-entries.ts'
@@ -58,10 +58,11 @@ const styles = stylex.create({
     paddingBlock: 8,
   },
   waitingWords: { flexGrow: 1, fontSize: 13, color: tokens.surfaceMutedForeground },
-  // The workspace runs to the edges of the room it is given; what stands in
-  // for it - its outline while it loads, why it could not be read, a paper
-  // with no questions - is set in from them the way a page is, or it reads
-  // as the layout having broken against the column beside it.
+  // The workspace runs to the edges of the room it is given, and so does its
+  // outline while it loads; what stands in for it otherwise - why it could
+  // not be read, a paper with no questions - is set in from them the way a
+  // page is, or it reads as the layout having broken against the column
+  // beside it.
   seat: {
     display: 'flex',
     minWidth: 0,
@@ -76,15 +77,6 @@ const styles = stylex.create({
     paddingTop: { default: 20, [breakpoints.phone]: 16 },
     paddingBottom: 24,
   },
-  skeleton: {
-    display: 'grid',
-    gap: 16,
-    gridTemplateColumns: { default: '300px minmax(0, 1fr)', '@media (max-width: 767.98px)': '1fr' },
-    paddingBlock: 12,
-  },
-  skColumn: { display: 'flex', flexDirection: 'column', gap: 12 },
-  skBone: { height: 14, borderRadius: 4 },
-  skBlock: { height: 56, borderRadius: tokens.radiusMd },
   empty: {
     marginInline: { default: 24, [breakpoints.phone]: 16 },
     marginTop: { default: 20, [breakpoints.phone]: 16 },
@@ -296,7 +288,7 @@ export function ParticipantEntries({
     <div
       data-testid="participant-entries"
       data-state={pending ? 'loading' : failure !== null ? 'failed' : 'ready'}
-      {...stylex.props(styles.seat, (pending || failure !== null) && styles.inset)}
+      {...stylex.props(styles.seat, !pending && failure !== null && styles.inset)}
     >
       <AsyncSection
         pending={pending}
@@ -308,24 +300,8 @@ export function ParticipantEntries({
           void items.refetch()
           void groups.refetch()
         }}
-        skeleton={
-          <div {...stylex.props(styles.skeleton)}>
-            <div {...stylex.props(styles.skColumn)}>
-              {['60%', '80%', '45%', '70%', '55%'].map((width, index) => (
-                <Skeleton
-                  key={index}
-                  className={stylex.props(styles.skBone).className}
-                  width={width}
-                />
-              ))}
-            </div>
-            <div {...stylex.props(styles.skColumn)}>
-              {[0, 1, 2].map((one) => (
-                <Skeleton key={one} className={stylex.props(styles.skBlock).className} />
-              ))}
-            </div>
-          </div>
-        }
+        // the workspace it is about to become, edge to edge like it
+        skeleton={<WorkspaceSkeleton viewer="staff" open={openItem !== ''} />}
       >
         {rows.length === 0 ? (
           <p {...stylex.props(styles.empty)}>{format(m.entriesNoItems)}</p>

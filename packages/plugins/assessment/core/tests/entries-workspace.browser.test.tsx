@@ -1,4 +1,5 @@
 import MyEntriesPage from '../src/client/entry/MyEntriesPage.tsx'
+import { WorkspaceSkeleton } from '../src/client/entry/workspace/WorkspaceSkeleton.tsx'
 import { useNavigate } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { commands, page, userEvent } from 'vitest/browser'
@@ -1188,6 +1189,91 @@ describe('a question arriving', () => {
     } finally {
       await commands.emulateMedia({ reducedMotion: 'reduce' })
     }
+  })
+})
+
+describe('the workspace while it loads', () => {
+  const bones = () => document.querySelector('[data-testid="workspace-skeleton"]')
+  const widths = () =>
+    [...bones()!.children].map((part) => [
+      part.getAttribute('data-bone'),
+      Math.round(part.getBoundingClientRect().width),
+    ])
+
+  // It stands in the columns the workspace is about to fill, at the widths
+  // it will fill them, so nothing moves when the reads come back.
+  it.each([
+    [1440, 900, 'desk', 340, 300],
+    [1920, 1080, 'desk', 380, 360],
+    [834, 1112, 'tablet', 300, null],
+  ] as const)(
+    'stands in the workspace’s own columns at %ipx',
+    async (width, height, mode, structure, requirements) => {
+      await page.viewport(width, height)
+      await workspace({
+        route: `${base}?open=${itemId(1)}`,
+        stubs: { listItems: () => Effect.never },
+      })
+      await expect.poll(() => bones()?.getAttribute('data-mode')).toBe(mode)
+      const parts = widths()
+      expect(parts[0]).toEqual(['structure', structure])
+      expect(parts[1]![0]).toBe('question')
+      expect(parts[2] ?? null).toEqual(
+        requirements === null ? null : ['requirements', requirements],
+      )
+      // as many figures under the total as the owner keeps out
+      expect(bones()!.querySelector('[data-bone="stats"]')?.children.length).toBe(3)
+    },
+  )
+
+  it('stands in a phone’s structure, or the question the address opens', async () => {
+    await page.viewport(390, 844)
+    await workspace({ route: base, stubs: { listItems: () => Effect.never } })
+    await expect.poll(() => bones()?.getAttribute('data-mode')).toBe('phone')
+    expect(widths().map(([part]) => part)).toEqual(['structure'])
+  })
+
+  it('stands in the question a phone’s address opens', async () => {
+    await page.viewport(390, 844)
+    await workspace({
+      route: `${base}?open=${itemId(1)}`,
+      stubs: { listItems: () => Effect.never },
+    })
+    await expect.poll(() => bones()?.getAttribute('data-mode')).toBe('phone')
+    expect(widths().map(([part]) => part)).toEqual(['question'])
+  })
+
+  // The figures a reader has put away do not come back while the page loads,
+  // and a staff reader's head holds six.
+  it('draws the figures the reader keeps out, and none they put away', async () => {
+    await page.viewport(1440, 900)
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed(emptyManifest()) },
+        assessment: {},
+      }),
+      storage: { 'qualy:assessment-entries-stats:owner': '0' },
+      routes: [
+        {
+          path: '/',
+          element: (
+            <div style={{ display: 'flex', height: '100dvh', flexDirection: 'column' }}>
+              <div data-testid="owner" style={{ display: 'flex', flex: '1 1 0%', minHeight: 0 }}>
+                <WorkspaceSkeleton viewer="owner" open={false} />
+              </div>
+              <div data-testid="staff" style={{ display: 'flex', flex: '1 1 0%', minHeight: 0 }}>
+                <WorkspaceSkeleton viewer="staff" open={false} />
+              </div>
+            </div>
+          ),
+        },
+      ] as never,
+    })
+    await expect.element(page.getByTestId('staff')).toBeInTheDocument()
+    const stats = (who: string) =>
+      document.querySelector(`[data-testid="${who}"] [data-bone="stats"]`)
+    expect(stats('owner')).toBeNull()
+    expect(stats('staff')?.children.length).toBe(6)
   })
 })
 

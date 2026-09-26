@@ -1045,7 +1045,6 @@ describe('one account beside its person', () => {
   it('sets what stands in for the claims in from the column and the window’s edge', async () => {
     await page.viewport(1280, 800)
     const cases = [
-      { state: 'loading', stubs: { listParticipantEntries: () => Effect.never } },
       {
         state: 'failed',
         stubs: { listItems: () => Effect.fail(apiError('ASSESSMENT_BATCH_NOT_FOUND')) },
@@ -1068,6 +1067,22 @@ describe('one account beside its person', () => {
       expect(drawn.top - main.top).toBeGreaterThanOrEqual(16)
       await unmount()
     }
+  })
+
+  // While it loads, the outline of the workspace runs to the same edges the
+  // workspace will, so nothing shifts when the claims arrive.
+  it('draws the claims’ outline edge to edge while they load, as the workspace sits', async () => {
+    await page.viewport(1280, 800)
+    await shelled(open, 'zh-CN', { listParticipantEntries: () => Effect.never })
+    const seat = page.getByTestId('participant-entries')
+    await expect.element(seat).toHaveAttribute('data-state', 'loading')
+    const outline = page.getByTestId('workspace-skeleton')
+    await expect.element(outline).toHaveAttribute('data-viewer', 'staff')
+    const box = seat.element().getBoundingClientRect()
+    const drawn = outline.element().getBoundingClientRect()
+    expect(Math.round(drawn.left)).toBe(Math.round(box.left))
+    expect(Math.round(drawn.right)).toBe(Math.round(box.right))
+    expect(Math.round(drawn.top)).toBe(Math.round(box.top))
   })
 
   it('counts the claims only once they are read', async () => {
