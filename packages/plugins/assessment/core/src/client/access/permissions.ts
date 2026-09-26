@@ -29,7 +29,20 @@ const HINTS = {
   'assessment.ranking.view': m['permission-hint.assessment.ranking.view'],
 } as const satisfies Record<StaffCode, MessageDescriptor>
 
+// the same six, short enough to head a column of their own
+const SHORT = {
+  'assessment.entry.record': m['permission-short.assessment.entry.record'],
+  'assessment.entry.redetermine': m['permission-short.assessment.entry.redetermine'],
+  'assessment.review.process': m['permission-short.assessment.review.process'],
+  'assessment.review.reopen': m['permission-short.assessment.review.reopen'],
+  'assessment.result.view-peers': m['permission-short.assessment.result.view-peers'],
+  'assessment.ranking.view': m['permission-short.assessment.ranking.view'],
+} as const satisfies Record<StaffCode, MessageDescriptor>
+
 export const permissionLabel = (code: StaffCode) => LABELS[code]
+
+/** the name a column of the staff grid is headed by */
+export const permissionShort = (code: StaffCode) => SHORT[code]
 
 /** the one line under a label, saying what allowing it lets somebody do */
 export const permissionHint = (code: StaffCode) => HINTS[code]

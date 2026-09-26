@@ -94,24 +94,9 @@ const alsoActiveIn = defineMessage<{ batches: string }>()({
   defaultMessage: 'Also participating in: {batches}',
 })
 
-const accessSourceCount = defineMessage<{ count: number }>()({
-  id: 'assessment/access/source-count',
-  defaultMessage: '{count, plural, =0 {No staff yet} one {# person} other {# people}}',
-})
-
-const accessRoleAt = defineMessage<{ role: string }>()({
-  id: 'assessment/access/role-at',
-  defaultMessage: 'Role: {role}',
-})
-
 const accessSyncSelected = defineMessage<{ count: number }>()({
   id: 'assessment/access/sync-selected',
   defaultMessage: '{count, plural, =0 {Nothing selected} other {# selected}}',
-})
-
-const accessDeniedCount = defineMessage<{ count: number }>()({
-  id: 'assessment/access/denied-count',
-  defaultMessage: '{count, plural, one {# permission disabled} other {# permissions disabled}}',
 })
 
 const discardTitle = defineMessage<{ count: number }>()({
@@ -5940,7 +5925,15 @@ const i18n = definePluginMessages({
     addPeopleConfirm,
     pickerUnavailable: {
       id: 'assessment/roster/picker-unavailable',
-      defaultMessage: 'Your account does not have permission to browse people.',
+      defaultMessage: 'People cannot be chosen here right now',
+    },
+    unitPickerUnavailable: {
+      id: 'assessment/roster/unit-picker-unavailable',
+      defaultMessage: 'Units cannot be chosen here right now',
+    },
+    pickerUnavailableHint: {
+      id: 'assessment/roster/picker-unavailable-hint',
+      defaultMessage: 'Ask your system administrator to turn the people directory on',
     },
     rosterUnitsResize: {
       id: 'assessment/roster/units-resize',
@@ -6203,42 +6196,99 @@ const i18n = definePluginMessages({
     },
     accessEmpty: {
       id: 'assessment/access/empty',
-      defaultMessage: 'No staff members are assigned to this batch.',
+      defaultMessage: 'No staff on this batch yet',
     },
     accessEmptyHint: {
       id: 'assessment/access/empty-hint',
-      defaultMessage: 'Sync organization permissions or add staff members manually.',
+      defaultMessage:
+        'Appoint review or recording roles in the organization, or add staff directly',
+    },
+    accessNoMatch: { id: 'assessment/access/no-match', defaultMessage: 'No staff members match' },
+    accessClearFilters: { id: 'assessment/access/clear-filters', defaultMessage: 'Clear filters' },
+    accessPagerLabel: { id: 'assessment/access/pager', defaultMessage: 'Staff pages' },
+    accessFilterRole: { id: 'assessment/access/filter-role', defaultMessage: 'Role' },
+    accessFilterRoleAny: { id: 'assessment/access/filter-role-any', defaultMessage: 'All roles' },
+    accessFilterPermission: {
+      id: 'assessment/access/filter-permission',
+      defaultMessage: 'Permission',
+    },
+    accessFilterPermissionAny: {
+      id: 'assessment/access/filter-permission-any',
+      defaultMessage: 'All permissions',
+    },
+    accessFilterStanding: { id: 'assessment/access/filter-standing', defaultMessage: 'Status' },
+    accessFilterStandingAny: {
+      id: 'assessment/access/filter-standing-any',
+      defaultMessage: 'All statuses',
+    },
+    accessStandingActive: { id: 'assessment/access/standing-active', defaultMessage: 'In force' },
+    accessStandingLapsed: {
+      id: 'assessment/access/standing-lapsed',
+      defaultMessage: 'Has a lapsed role',
+    },
+    accessStandingWithheld: {
+      id: 'assessment/access/standing-withheld',
+      defaultMessage: 'Has turned-off permissions',
     },
     accessColumnPerson: { id: 'assessment/access/column-person', defaultMessage: 'Person' },
-    accessColumnSources: {
-      id: 'assessment/access/column-sources',
-      defaultMessage: 'Permission source',
-    },
+    accessColumnRoles: { id: 'assessment/access/column-roles', defaultMessage: 'Role and scope' },
     accessColumnPermissions: {
       id: 'assessment/access/column-permissions',
       defaultMessage: 'Batch permissions',
     },
-    accessOriginInherited: {
-      id: 'assessment/access/origin-inherited',
-      defaultMessage: 'Organization role',
-    },
+    /** marks an appointment this batch made itself, as against the organization's */
     accessOriginExplicit: {
       id: 'assessment/access/origin-explicit',
-      defaultMessage: 'Batch-specific assignment',
+      defaultMessage: 'This batch',
     },
-    accessSourceLapsed: {
-      id: 'assessment/access/source-lapsed',
-      defaultMessage: 'Organization permission expired',
+    accessLapseRevoked: { id: 'assessment/access/lapse-revoked', defaultMessage: 'Revoked' },
+    accessLapseExpired: { id: 'assessment/access/lapse-expired', defaultMessage: 'Expired' },
+    accessLapseInapplicable: {
+      id: 'assessment/access/lapse-inapplicable',
+      defaultMessage: 'No longer applies',
     },
-    accessNothing: {
-      id: 'assessment/access/nothing',
-      defaultMessage: 'None',
+    accessRoleUnknown: {
+      id: 'assessment/access/role-unknown',
+      defaultMessage: 'Role no longer exists',
     },
+    accessNoPermission: {
+      id: 'assessment/access/no-permission',
+      defaultMessage: 'No permissions in force',
+    },
+    accessWithheldMark: {
+      id: 'assessment/access/withheld-mark',
+      defaultMessage: 'turned off for this batch',
+    },
+    accessRowActions: defineMessage<{ name: string }>()({
+      id: 'assessment/access/row-actions',
+      defaultMessage: 'More for {name}',
+    }),
+    accessRemoveSource: defineMessage<{ role: string }>()({
+      id: 'assessment/access/remove-source',
+      defaultMessage: 'Revoke the batch assignment as {role}',
+    }),
     accessAdjust: { id: 'assessment/access/adjust', defaultMessage: 'Adjust' },
     accessAdjustTitle: {
       id: 'assessment/access/adjust-title',
       defaultMessage: 'Adjust {name}\u2019s batch permissions',
     },
+    accessAdjustNothing: defineMessage<{ name: string }>()({
+      id: 'assessment/access/adjust-nothing',
+      defaultMessage: '{name} has nothing to adjust in this batch',
+    }),
+    accessAdjustNothingLapsed: {
+      id: 'assessment/access/adjust-nothing-lapsed',
+      defaultMessage:
+        'Their role was revoked, ran out or no longer applies. Clear the lapsed record under Review changes',
+    },
+    accessAdjustNothingIdle: {
+      id: 'assessment/access/adjust-nothing-idle',
+      defaultMessage: 'Their current roles grant nothing this batch uses',
+    },
+    accessAdjustStale: defineMessage<{ names: string }>()({
+      id: 'assessment/access/adjust-stale',
+      defaultMessage: 'Turned off, and no longer granted by the organization: {names}',
+    }),
     accessAdjustHint: {
       id: 'assessment/access/adjust-hint',
       defaultMessage:
@@ -6248,19 +6298,22 @@ const i18n = definePluginMessages({
       id: 'assessment/access/adjust-archived-hint',
       defaultMessage: 'The batch has ended. Permissions can be turned off but not back on',
     },
-    accessRemove: { id: 'assessment/access/remove', defaultMessage: 'Remove from batch' },
-    accessRemoveTitle: {
+    accessRemove: { id: 'assessment/access/remove', defaultMessage: 'Revoke' },
+    accessRemoveTitle: defineMessage<{ name: string; role: string }>()({
       id: 'assessment/access/remove-title',
-      defaultMessage: 'Remove {name} from the batch?',
-    },
-    accessRemoveBody: {
+      defaultMessage: 'Revoke {name}’s batch assignment as {role}?',
+    }),
+    accessRemoveBody: defineMessage<{ name: string }>()({
       id: 'assessment/access/remove-body',
-      defaultMessage:
-        'The user will no longer be able to work on this batch. Existing activity records are retained.',
-    },
+      defaultMessage: '{name} can no longer work on this batch. Their past activity is kept',
+    }),
+    accessRemoveBodyKept: defineMessage<{ name: string }>()({
+      id: 'assessment/access/remove-body-kept',
+      defaultMessage: '{name} keeps working on this batch through their other roles',
+    }),
     accessSyncTitle: {
       id: 'assessment/access/sync-title',
-      defaultMessage: 'Organization permissions changed',
+      defaultMessage: 'Changes from the organization',
     },
     // the bar: what happened, and the one thing to do about it
     accessSyncPrompt: {
@@ -6293,25 +6346,21 @@ const i18n = definePluginMessages({
     },
     accessSyncLapsed: {
       id: 'assessment/access/sync-lapsed',
-      defaultMessage: 'Authorization revoked',
-    },
-    accessSyncLapsedHint: {
-      id: 'assessment/access/sync-lapsed-hint',
-      defaultMessage:
-        'The organization authorization was revoked and the corresponding batch permission is already inactive.',
+      defaultMessage: 'No longer in force',
     },
     accessSyncApply: { id: 'assessment/access/sync-apply', defaultMessage: 'Apply changes' },
     accessSyncClear: {
       id: 'assessment/access/sync-clear',
       defaultMessage: 'Clear expired records',
     },
-    accessSyncQuiet: {
-      id: 'assessment/access/sync-quiet',
-      defaultMessage: 'Batch permissions are consistent with the organization.',
+    accessSyncQuietTitle: {
+      id: 'assessment/access/sync-quiet-title',
+      defaultMessage: 'Up to date with the organization',
     },
-    accessSourceCount,
-    accessRoleAt,
-    accessDeniedCount,
+    accessSyncQuietHint: {
+      id: 'assessment/access/sync-quiet-hint',
+      defaultMessage: 'There are no permission changes to handle',
+    },
     accessSyncSelected,
     addStaff: { id: 'assessment/access/add-staff', defaultMessage: 'Add staff member' },
     addStaffTitle: {
@@ -6356,7 +6405,37 @@ const i18n = definePluginMessages({
     },
     addStaffNoRoles: {
       id: 'assessment/access/add-staff-no-roles',
-      defaultMessage: 'No assignable roles are available',
+      defaultMessage: 'No role can be given at the chosen units',
+    },
+    addStaffNoRolesHint: {
+      id: 'assessment/access/add-staff-no-roles-hint',
+      defaultMessage:
+        'Choose a different unit, or ask an administrator which roles may be appointed there',
+    },
+    addStaffChangeUnit: {
+      id: 'assessment/access/add-staff-change-unit',
+      defaultMessage: 'Choose another unit',
+    },
+    addStaffChangeSelection: {
+      id: 'assessment/access/add-staff-change-selection',
+      defaultMessage: 'Change the selection',
+    },
+    addStaffNowhere: {
+      id: 'assessment/access/add-staff-nowhere',
+      defaultMessage: 'No units to appoint staff at yet',
+    },
+    addStaffNowhereHint: {
+      id: 'assessment/access/add-staff-nowhere-hint',
+      defaultMessage:
+        'Staff are appointed at the units of the people taking part. Add participants first',
+    },
+    addStaffGoRoster: {
+      id: 'assessment/access/add-staff-go-roster',
+      defaultMessage: 'Go to participants',
+    },
+    addStaffUnitsFailed: {
+      id: 'assessment/access/add-staff-units-failed',
+      defaultMessage: 'The units could not be loaded',
     },
     addStaffConfirm: { id: 'assessment/access/add-staff-confirm', defaultMessage: 'Add' },
 
@@ -6512,6 +6591,31 @@ const i18n = definePluginMessages({
     'permission.assessment.ranking.view': {
       id: 'assessment/permission/ranking-view',
       defaultMessage: 'View ranking',
+    },
+    // the capabilities a batch hands out, short enough to head a column
+    'permission-short.assessment.entry.record': {
+      id: 'assessment/permission-short/entry-record',
+      defaultMessage: 'Record',
+    },
+    'permission-short.assessment.entry.redetermine': {
+      id: 'assessment/permission-short/entry-redetermine',
+      defaultMessage: 'Re-determine',
+    },
+    'permission-short.assessment.review.process': {
+      id: 'assessment/permission-short/review-process',
+      defaultMessage: 'Review',
+    },
+    'permission-short.assessment.review.reopen': {
+      id: 'assessment/permission-short/review-reopen',
+      defaultMessage: 'Re-examine',
+    },
+    'permission-short.assessment.result.view-peers': {
+      id: 'assessment/permission-short/result-view-peers',
+      defaultMessage: 'Peer results',
+    },
+    'permission-short.assessment.ranking.view': {
+      id: 'assessment/permission-short/ranking-view',
+      defaultMessage: 'Ranking',
     },
 
     // ------------------------------------------------------------------

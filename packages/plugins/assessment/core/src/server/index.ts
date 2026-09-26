@@ -20,7 +20,7 @@ import { Audit } from '@qualy/audit-contract/effect'
 import { BatchCreated, BatchDeleted } from '../actions.ts'
 import type { AuthorizationScope, Principal } from '@qualy/rbac-contract'
 import type { ApplicableAssignment } from '@qualy/rbac-contract/effect'
-import { assessmentApiGroup, MAX_PLAN_PHASES } from '../api.ts'
+import { ACCESS_LAPSES, ACCESS_STANDINGS, assessmentApiGroup, MAX_PLAN_PHASES } from '../api.ts'
 import {
   applyToPlan,
   reviewInsertion,
@@ -188,7 +188,8 @@ import {
   lastArchivedAt,
   lastArchivedFor,
   accessSources,
-  accessSubjectPage,
+  anchorNames,
+  liveStaffIds,
   acceptAccessSource,
   acceptPermissions,
   accessDenies,
@@ -424,6 +425,8 @@ export interface AccessSourceView {
   readonly roleName: string
   readonly origin: 'inherited' | 'explicit'
   readonly orgNodeId: string | null
+  /** the unit it is anchored at, by name; null for a tenant-wide assignment */
+  readonly orgNodeName: string | null
   readonly coverage: 'self' | 'subtree' | null
   /** the ceiling this batch accepted */
   readonly accepted: readonly string[]
@@ -431,7 +434,12 @@ export interface AccessSourceView {
   readonly current: readonly string[]
   /** whether the assignment itself is still in force */
   readonly active: boolean
+  /** why it grants nothing any more; null while it is active */
+  readonly lapse: AccessLapse | null
 }
+
+/** why an accepted assignment grants nothing any more */
+export type AccessLapse = (typeof ACCESS_LAPSES)[number]
 
 /** what one person may do in this batch, and why */
 export interface AccessSubject {
@@ -468,6 +476,30 @@ export interface BatchAccessView {
   })[]
 }
 
+/** a facet of the staff page: some capability in force, a lapsed source, a withholding */
+export type AccessStanding = (typeof ACCESS_STANDINGS)[number]
+
+/** which of a round's staff to list, and which page of them */
+export interface AccessListQuery {
+  /** counted from one; past the last is the last */
+  readonly page?: number
+  readonly limit?: number
+  /** a name or a business number, anywhere in it */
+  readonly q?: string
+  readonly roleId?: string
+  /** able to do this in the round today */
+  readonly permission?: string
+  readonly standing?: AccessStanding
+}
+
+/** one page of them, how many there are, and the roles to narrow them by */
+export interface BatchAccessPage extends BatchAccessView {
+  readonly total: number
+  readonly page: number
+  readonly pageSize: number
+  readonly roles: readonly { readonly id: string; readonly name: string; readonly count: number }[]
+}
+
 /**
  * One difference between what the organization says and what this batch
  * accepted.
@@ -484,6 +516,7 @@ export interface AccessChange {
   readonly displayName: string
   readonly businessNo: string | null
   readonly roleName: string
+  readonly orgNodeName: string | null
   readonly permissions: readonly string[]
 }
 
@@ -1034,12 +1067,9 @@ export class Assessment extends Context.Service<
     readonly listAccess: (
       tenantId: string,
       batchId: string,
-      page: { cursor?: string; limit?: string },
+      query: AccessListQuery,
       as: Principal,
-    ) => Effect.Effect<
-      BatchAccessView & { nextCursor: string | null },
-      BatchNotFound | AccessDenied | BadRequest
-    >
+    ) => Effect.Effect<BatchAccessPage, BatchNotFound | AccessDenied>
     /** what the organization now offers that this batch has not accepted */
     readonly previewAccessSync: (
       tenantId: string,
@@ -2555,6 +2585,14 @@ export const make = Effect.fn('Assessment.make')(function* () {
     )
 
   /**
+   * Why a source that no longer comes back from rbac grants nothing: its
+   * assignment was withdrawn or ran out, and otherwise it stands but is not
+   * one this batch can take any more.
+   */
+  const lapseOf = (source: { revoked: boolean; expired: boolean }): AccessLapse =>
+    source.revoked ? 'revoked' : source.expired ? 'expired' : 'inapplicable'
+
+  /**
    * Who may work on this batch, and what is left of it.
    *
    *   what the assignment still carries  ∩  what this batch accepted  −  denies
@@ -2585,20 +2623,24 @@ export const make = Effect.fn('Assessment.make')(function* () {
     const bySubject = new Map<string, AccessSourceView[]>()
     for (const source of sources) {
       const assignment = live.get(source.roleAssignmentId)
+      // the role and unit come from the assignment's own record, which
+      // outlives it: a source that lapsed still says what it was
       const view: AccessSourceView = {
         sourceId: source.id,
         assignmentId: source.roleAssignmentId,
         userId: source.subjectId,
         displayName: names.get(source.subjectId)?.displayName ?? '',
         businessNo: names.get(source.subjectId)?.businessNo ?? null,
-        roleId: assignment?.roleId ?? '',
-        roleName: assignment?.roleName ?? '',
+        roleId: assignment?.roleId ?? source.roleId ?? '',
+        roleName: assignment?.roleName ?? source.roleName ?? '',
         origin: source.origin,
-        orgNodeId: assignment?.orgNodeId ?? null,
-        coverage: assignment?.coverage ?? null,
+        orgNodeId: assignment?.orgNodeId ?? source.orgNodeId,
+        orgNodeName: source.orgNodeName,
+        coverage: assignment?.coverage ?? source.coverage,
         accepted: source.accepted,
         current: source.accepted.filter((code) => assignment?.codes.includes(code) === true),
         active: assignment !== undefined,
+        lapse: assignment !== undefined ? null : lapseOf(source),
       }
       bySubject.set(source.subjectId, [...(bySubject.get(source.subjectId) ?? []), view])
     }
@@ -2836,6 +2878,21 @@ export const make = Effect.fn('Assessment.make')(function* () {
     )
     const named = (userId: string) => names.get(userId)?.displayName ?? ''
     const business = (userId: string) => names.get(userId)?.businessNo ?? null
+    // where an assignment not yet accepted is anchored; an accepted one
+    // carries its unit on its own row
+    const anchored = yield* dieQuery(
+      withDb(
+        anchorNames(tenantId, [
+          ...new Set(
+            assignments
+              .filter((assignment) => !accepted.has(assignment.assignmentId))
+              .flatMap((assignment) =>
+                assignment.orgNodeId === null ? [] : [assignment.orgNodeId],
+              ),
+          ),
+        ]),
+      ),
+    )
 
     const newSources = assignments
       .filter((assignment) => !accepted.has(assignment.assignmentId))
@@ -2846,6 +2903,8 @@ export const make = Effect.fn('Assessment.make')(function* () {
         displayName: named(assignment.userId),
         businessNo: business(assignment.userId),
         roleName: assignment.roleName,
+        orgNodeName:
+          assignment.orgNodeId === null ? null : (anchored.get(assignment.orgNodeId) ?? null),
         permissions: assignment.codes,
       }))
 
@@ -2864,6 +2923,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
               displayName: named(source.subjectId),
               businessNo: business(source.subjectId),
               roleName: assignment.roleName,
+              orgNodeName: source.orgNodeName,
               permissions: gained,
             },
           ]
@@ -2889,7 +2949,10 @@ export const make = Effect.fn('Assessment.make')(function* () {
               userId: source.subjectId,
               displayName: named(source.subjectId),
               businessNo: business(source.subjectId),
-              roleName: assignment?.roleName ?? '',
+              // a withdrawn assignment is gone from the live list, but its
+              // own record still names the role and the unit it was
+              roleName: assignment?.roleName ?? source.roleName ?? '',
+              orgNodeName: source.orgNodeName,
               permissions: gone,
             },
           ]
@@ -3970,42 +4033,78 @@ export const make = Effect.fn('Assessment.make')(function* () {
       },
     ),
 
-    listAccess: Effect.fn('Assessment.listAccess')(function* (tenantId, batchId, page, as) {
+    listAccess: Effect.fn('Assessment.listAccess')(function* (tenantId, batchId, query, as) {
       yield* requireBatchAdministration(tenantId, batchId, as)
-      const key = readQueryCursor(page.cursor, `access:${batchId}`, ['text', 'uuid'])
-      if (key === null) return yield* cursorUnusable()
-      const size = pageSize(page.limit, DEFAULT_PAGE_SIZE)
-      // one more than asked for, which is how the page knows there is another
-      const found = yield* dieQuery(
-        withDb(
-          accessSubjectPage(tenantId, batchId, {
-            ...(key !== undefined ? { after: key } : {}),
-            limit: size + 1,
-          }),
-        ),
+      // The whole staff, then the filter. What a filter asks - may this
+      // person review here today, has anything of theirs lapsed - is what
+      // their assignments carry now, which rbac answers and readAccess
+      // already asks it for the whole round; a second copy of that judgement
+      // in sql would agree until the day one of them changed. The reader
+      // administers the round, so nothing here narrows what they may see:
+      // this is only which of it to show. A round's staff is bounded by the
+      // organization that works on it, not by time.
+      const live = yield* dieQuery(withDb(liveStaffIds(tenantId, batchId)))
+      const access = yield* readAccess(tenantId, batchId, live)
+
+      // every role anybody here holds or held, whatever the filter: the
+      // options to narrow by are not narrowed by the choice already made
+      const held = new Map<string, { id: string; name: string; people: Set<string> }>()
+      for (const subject of access.staff) {
+        for (const source of subject.sources) {
+          if (source.roleId === '') continue
+          const role = held.get(source.roleId) ?? {
+            id: source.roleId,
+            name: source.roleName,
+            people: new Set<string>(),
+          }
+          role.people.add(subject.userId)
+          held.set(source.roleId, role)
+        }
+      }
+      const roles = [...held.values()]
+        .map((role) => ({ id: role.id, name: role.name, count: role.people.size }))
+        .sort(
+          (left, right) =>
+            left.name.localeCompare(right.name, 'zh-Hans-CN') ||
+            (left.id < right.id ? -1 : left.id > right.id ? 1 : 0),
+        )
+
+      const needle = (query.q ?? '').trim().toLowerCase()
+      const kept = access.staff.filter(
+        (subject) =>
+          (needle === '' ||
+            subject.displayName.toLowerCase().includes(needle) ||
+            (subject.businessNo ?? '').toLowerCase().includes(needle)) &&
+          (query.roleId === undefined ||
+            subject.sources.some((source) => source.roleId === query.roleId)) &&
+          (query.permission === undefined || subject.effective.includes(query.permission)) &&
+          (query.standing === undefined ||
+            (query.standing === 'active'
+              ? subject.effective.length > 0
+              : query.standing === 'lapsed'
+                ? subject.sources.some((source) => !source.active)
+                : subject.denied.length > 0)),
       )
-      const subjects = found.slice(0, size)
-      const access = yield* readAccess(
-        tenantId,
-        batchId,
-        subjects.map((subject) => subject.userId),
+      // Whoever can still work here first, then by name: somebody whose
+      // authority has all lapsed is a record to clear, not a colleague to
+      // find. Total, so a page cannot shuffle between two requests for it.
+      const ordered = [...kept].sort(
+        (left, right) =>
+          Number(right.effective.length > 0) - Number(left.effective.length > 0) ||
+          left.displayName.localeCompare(right.displayName, 'zh-Hans-CN') ||
+          (left.userId < right.userId ? -1 : left.userId > right.userId ? 1 : 0),
       )
-      const last = subjects.at(-1)
-      // In the order the page was CUT in. The page is chosen by display name
-      // and the cursor is minted from it, while the rows come back in the
-      // order their sources were accepted - so a reader saw one order and
-      // resumed in another, and the boundary between two pages read as rows
-      // going missing.
-      const at = new Map(subjects.map((subject, index) => [subject.userId, index]))
-      const seen = yield* asSeenBy(tenantId, batchId, access, as)
+      const size = query.limit ?? DEFAULT_PAGE_SIZE
+      const window = pageWindow(query.page ?? 1, size, ordered.length)
+      const shown = ordered.slice(window.offset, window.offset + size)
+      // only the page is asked what its reader may take back
+      const seen = yield* asSeenBy(tenantId, batchId, { staff: shown }, as)
       return {
-        staff: [...seen.staff].sort(
-          (one, other) => (at.get(one.userId) ?? 0) - (at.get(other.userId) ?? 0),
-        ),
-        nextCursor:
-          found.length > size && last !== undefined
-            ? encodeQueryCursor(`access:${batchId}`, [last.displayName, last.userId])
-            : null,
+        staff: seen.staff,
+        total: ordered.length,
+        page: window.page,
+        pageSize: size,
+        roles,
       }
     }),
 
@@ -6635,7 +6734,19 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
       Effect.fn('assessment.listAccess.handler')(function* ({ params, query }) {
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
-        return yield* assessment.listAccess(principal.tenantId, params.batchId, query, principal)
+        return yield* assessment.listAccess(
+          principal.tenantId,
+          params.batchId,
+          {
+            page: pageNumber(query.page),
+            limit: pageSize(query.limit, DEFAULT_PAGE_SIZE),
+            ...(query.q !== undefined ? { q: query.q } : {}),
+            ...(query.roleId !== undefined ? { roleId: query.roleId } : {}),
+            ...(query.permission !== undefined ? { permission: query.permission } : {}),
+            ...(query.standing !== undefined ? { standing: query.standing } : {}),
+          },
+          principal,
+        )
       }),
     )
     .handle(

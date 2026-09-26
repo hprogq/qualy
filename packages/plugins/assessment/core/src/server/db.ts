@@ -1091,49 +1091,48 @@ export interface AccessSourceRow {
   acceptedAt: number
   /** the ceiling: what this batch said yes to, whatever the role carries now */
   accepted: readonly string[]
+  /**
+   * The assignment as its own record has it, whether or not it still
+   * stands: the role and unit a lapsed source came from are what a reader
+   * needs to recognise it. Null only where that record is gone.
+   */
+  roleId: string | null
+  roleName: string | null
+  orgNodeId: string | null
+  orgNodeName: string | null
+  coverage: 'self' | 'subtree' | null
+  /** withdrawn by the organization */
+  revoked: boolean
+  /** its validity ran out */
+  expired: boolean
 }
 
-/** what this batch has accepted, with the ceiling each source carries */
 /**
- * One page of the people who may work on this batch, by name.
+ * Everybody this batch has accepted authority for who still exists.
  *
- * The rows behind them are per source and per permission, so the page has to
- * be over subjects: a limit on sources would cut somebody in half and show
- * one of their two roles.
+ * A deleted person's authority fell with them; the access page lists people
+ * who can still act. The whole staff of one round, not a page of it: which
+ * of them a filter keeps depends on what their assignments carry today,
+ * which is rbac's answer rather than a column here.
  */
-export const accessSubjectPage = (
-  tenantId: string,
-  batchId: string,
-  page: { after?: readonly string[]; limit: number },
-) =>
+export const liveStaffIds = (tenantId: string, batchId: string) =>
   db
-    .query((k) => {
-      let query = k
+    .query((k) =>
+      k
         .selectFrom('BatchAccessSource as s')
         .innerJoin('User as u', (join) =>
           join.onRef('u.tenantId', '=', 's.tenantId').onRef('u.id', '=', 's.subjectId'),
         )
-        .select(['s.subjectId as userId', 'u.displayName'])
+        .select('s.subjectId as userId')
         .distinct()
         .where('s.tenantId', '=', tenantId)
         .where('s.batchId', '=', batchId)
-        // a deleted person's authority fell with them; the access page lists
-        // people who can still act
         .where('u.deletedAt', 'is', null)
-        .orderBy('u.displayName')
-        .orderBy('s.subjectId')
-        .limit(page.limit)
-      if (page.after !== undefined) {
-        const [name, id] = [page.after[0] ?? '', page.after[1] ?? '']
-        query = query.where(sql<boolean>`(u.display_name, s.subject_id) > (${name}, ${id}::uuid)`)
-      }
-      return query.execute()
-    })
-    .pipe(
-      Effect.map((rows) =>
-        rows.map((row) => ({ userId: row.userId, displayName: row.displayName })),
-      ),
+        .execute(),
     )
+    .pipe(Effect.map((rows) => rows.map((row) => row.userId)))
+
+/** what this batch has accepted, with the ceiling each source carries */
 
 export const accessSources = (tenantId: string, batchId: string, subjectIds?: readonly string[]) =>
   // a page with nobody on it asks about nobody, and `in ()` is not SQL
@@ -1146,12 +1145,33 @@ const accessSourcesOf = (tenantId: string, batchId: string, subjectIds?: readonl
     .query((k) =>
       k
         .selectFrom('BatchAccessSource as s')
+        // the assignment's own record, standing or not: a revoked one is kept
+        // (rbac withdraws rather than deletes) and so is the role it named
+        // (a role with grant history cannot be deleted)
+        .leftJoin('RoleGrant as rg', (join) =>
+          join.onRef('rg.tenantId', '=', 's.tenantId').onRef('rg.id', '=', 's.roleAssignmentId'),
+        )
+        .leftJoin('Role as r', (join) =>
+          join.onRef('r.tenantId', '=', 'rg.tenantId').onRef('r.id', '=', 'rg.roleId'),
+        )
+        .leftJoin('OrgNode as n', (join) =>
+          join.onRef('n.tenantId', '=', 'rg.tenantId').onRef('n.id', '=', 'rg.orgNodeId'),
+        )
         .select(['s.id', 's.roleAssignmentId', 's.subjectId', 's.origin'])
+        .select([
+          'rg.roleId as roleId',
+          'r.name as roleName',
+          'rg.orgNodeId as orgNodeId',
+          'n.name as orgNodeName',
+          'rg.coverage as coverage',
+        ])
         .select([
           epoch('s.accepted_at').as('acceptedAt'),
           sql<string[]>`coalesce((select array_agg(sp.permission_code order by sp.permission_code)
             from batch_access_source_permissions sp
             where sp.tenant_id = s.tenant_id and sp.source_id = s.id), '{}')`.as('accepted'),
+          sql<boolean>`rg.revoked_at is not null`.as('revoked'),
+          sql<boolean>`coalesce(rg.valid_until <= now(), false)`.as('expired'),
         ])
         .where('s.tenantId', '=', tenantId)
         .where('s.batchId', '=', batchId)
@@ -2074,6 +2094,28 @@ export const batchUnits = (tenantId: string, batchId: string, held: Authorizatio
         }))
       }),
     )
+
+/**
+ * The names of the units these assignments are anchored at.
+ *
+ * Unfiltered by the reader's reach on purpose: it is asked only for
+ * assignments that already work on a batch this reader administers, which
+ * cover the units of its own roster from above or below - the path a roster
+ * row already shows.
+ */
+export const anchorNames = (tenantId: string, nodeIds: readonly string[]) =>
+  nodeIds.length === 0
+    ? Effect.succeed(new Map<string, string>())
+    : db
+        .query((k) =>
+          k
+            .selectFrom('OrgNode')
+            .select(['id', 'name'])
+            .where('tenantId', '=', tenantId)
+            .where('id', 'in', nodeIds as string[])
+            .execute(),
+        )
+        .pipe(Effect.map((rows) => new Map(rows.map((row) => [row.id, row.name]))))
 
 /** the names of these units, leaving out the ones this reader cannot reach */
 export const reachableNodeNames = (

@@ -592,18 +592,38 @@ const placementDifferenceView = Schema.Struct({
  * exactly there. Zero is the number an administrator wants shouted.
  */
 
+/**
+ * Why an accepted assignment no longer grants anything: withdrawn by the
+ * organization, run out, or still standing but no longer one this batch can
+ * take (its role switched off or emptied of batch work, its unit moved away
+ * from the roster).
+ */
+export const ACCESS_LAPSES = ['revoked', 'expired', 'inapplicable'] as const
+
+/**
+ * The staff page's standing filter, each a fact a person either has or not:
+ * some capability still in force here, some source that grants nothing any
+ * more, some capability this round withholds. One person can be all three.
+ */
+export const ACCESS_STANDINGS = ['active', 'lapsed', 'withheld'] as const
+
 /** one accepted assignment, as the access page reads it */
 const accessSourceView = Schema.Struct({
   sourceId: Schema.String,
   assignmentId: Schema.String,
+  /** read from the assignment's own record, so a lapsed one still names its role */
   roleId: Schema.String,
   roleName: Schema.String,
   origin: Schema.Literals(['inherited', 'explicit']),
   orgNodeId: Schema.NullOr(Schema.String),
+  /** the unit it is anchored at; null for a tenant-wide assignment */
+  orgNodeName: Schema.NullOr(Schema.String),
   coverage: Schema.NullOr(Schema.Literals(['self', 'subtree'])),
   accepted: Schema.Array(Schema.String),
   current: Schema.Array(Schema.String),
   active: Schema.Boolean,
+  /** why it grants nothing any more; null while it is active */
+  lapse: Schema.NullOr(Schema.Literals(ACCESS_LAPSES)),
   /** whether this caller may take it off the batch: an appointment of its own they could have made */
   removable: Schema.Boolean,
 })
@@ -634,6 +654,8 @@ const accessChangeView = Schema.Struct({
   displayName: Schema.String,
   businessNo: Schema.NullOr(Schema.String),
   roleName: Schema.String,
+  /** where the assignment is anchored; null for a tenant-wide one */
+  orgNodeName: Schema.NullOr(Schema.String),
   permissions: Schema.Array(Schema.String),
 })
 
@@ -2813,14 +2835,37 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // what somebody generally does, and this is what this batch accepted of it.
     HttpApiEndpoint.get('listAccess', '/assessment/batches/:batchId/access', {
       params: Schema.Struct({ batchId: uuidInput }),
-      query: Schema.Struct(pageQuery),
+      // A roster somebody walks around in, so paged by number: they go to
+      // the last page and want to be told how many there are.
+      query: Schema.Struct({
+        ...numberedPageQuery,
+        /** a name or a business number */
+        q: Schema.optional(boundedText(100)),
+        /** holding this role through any of their sources, standing or not */
+        roleId: Schema.optional(uuidInput),
+        /** able to do this in the round today */
+        permission: Schema.optional(Schema.Literals(BATCH_STAFF_CODES)),
+        standing: Schema.optional(Schema.Literals(ACCESS_STANDINGS)),
+      }),
       // paged over people, not over the rows behind them: a limit on sources
       // would show one of somebody's two roles and call it their standing
       success: Schema.Struct({
         staff: Schema.Array(accessSubjectView),
-        nextCursor: Schema.NullOr(Schema.String),
+        /** how many people match, across every page */
+        total: Schema.Number,
+        /** the page this is, counted from one; clamped to the last */
+        page: Schema.Number,
+        pageSize: Schema.Number,
+        /**
+         * Every role somebody on this round's staff holds or held, and how
+         * many of them: the role filter's options, served here so the page
+         * needs no authority over the tenant's roles.
+         */
+        roles: Schema.Array(
+          Schema.Struct({ id: Schema.String, name: Schema.String, count: Schema.Number }),
+        ),
       }),
-      error: [BatchNotFound, AccessDenied, BadRequest],
+      error: [BatchNotFound, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(

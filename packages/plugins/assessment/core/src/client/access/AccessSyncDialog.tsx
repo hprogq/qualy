@@ -20,7 +20,10 @@ import {
   DialogTitle,
 } from '@qualy/ui/dialog'
 import { Skeleton } from '@qualy/ui/skeleton'
+import { MetaLine } from '@qualy/ui/screen'
+import { CircleCheckIcon } from 'lucide-react'
 import { assessmentApi } from '../api.ts'
+import { DialogBlank } from '../DialogBlank.tsx'
 import { assessmentMessages as m } from '../i18n.ts'
 import { inCatalogOrder, permissionLabel } from './permissions.ts'
 import type { AccessChange, AccessSelection } from './model.ts'
@@ -45,7 +48,6 @@ const styles = stylex.create({
   body: { gap: 36 },
   waiting: { display: 'flex', flexDirection: 'column', gap: 8 },
   waitingRow: { height: 56, width: '100%' },
-  quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
   aside: { fontSize: 12, lineHeight: '1rem', color: tokens.mutedForeground },
   list: {
     borderRadius: tokens.radiusLg,
@@ -133,6 +135,8 @@ export function AccessSyncDialog({
   }, [nextCursor, pageIndex, cursors])
 
   const items = changes.data?.items ?? []
+  // nothing to decide and nothing to clear, once the answer is in
+  const quiet = changes.data !== undefined && items.length === 0
   const decidable = archived ? [] : items.filter((change) => change.kind !== 'lapsed')
   const selectedCount = [...chosen.values()].filter((codes) => codes.length > 0).length
   // Nothing here needs deciding, so the button is not an approval: it puts the
@@ -174,9 +178,11 @@ export function AccessSyncDialog({
       <DialogContent data-testid="access-sync" size="48rem">
         <DialogHeader>
           <DialogTitle>{format(m.accessSyncTitle)}</DialogTitle>
-          <DialogDescription>
-            {format(archived ? m.accessSyncArchivedHint : m.accessSyncHint)}
-          </DialogDescription>
+          {!quiet && (
+            <DialogDescription>
+              {format(archived ? m.accessSyncArchivedHint : m.accessSyncHint)}
+            </DialogDescription>
+          )}
         </DialogHeader>
         <DialogBody xstyle={styles.body}>
           <AsyncSection
@@ -192,8 +198,15 @@ export function AccessSyncDialog({
               </div>
             }
           >
-            {items.length === 0 ? (
-              <p {...stylex.props(styles.quiet)}>{format(m.accessSyncQuiet)}</p>
+            {quiet ? (
+              // Somebody else settled it first, or it was never there: said
+              // as an answer, with nothing below to press but the way out.
+              <DialogBlank
+                testId="access-sync-quiet"
+                icon={<CircleCheckIcon />}
+                title={format(m.accessSyncQuietTitle)}
+                description={format(m.accessSyncQuietHint)}
+              />
             ) : (
               <ul {...stylex.props(styles.list)}>
                 {items.map((change) => (
@@ -210,44 +223,55 @@ export function AccessSyncDialog({
             )}
           </AsyncSection>
         </DialogBody>
-        <DialogFooter className={stylex.props(styles.foot).className}>
-          <div {...stylex.props(styles.footSide)}>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={pageIndex === 0}
-              onClick={() => setPageIndex((at) => Math.max(0, at - 1))}
-            >
-              {format(m.previousPage)}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={nextCursor === null}
-              onClick={() => setPageIndex((at) => at + 1)}
-            >
-              {format(m.nextPage)}
-            </Button>
-            {decidable.length > 0 && (
-              <Button size="sm" variant="ghost" onClick={takeWholePage}>
-                {format(m.accessSyncSelectPage)}
-              </Button>
-            )}
-          </div>
-          <div {...stylex.props(styles.footSide)}>
-            {!onlyWithdrawals && (
-              <span {...stylex.props(styles.aside)}>
-                {format(m.accessSyncSelected, { count: selectedCount })}
-              </span>
-            )}
+        {quiet && pageIndex === 0 ? (
+          <DialogFooter>
             <Button variant="outline" onClick={onClose}>
-              {format(commonMessages.cancel)}
+              {format(commonMessages.close)}
             </Button>
-            <Button disabled={pending || (selectedCount === 0 && !onlyWithdrawals)} onClick={merge}>
-              {format(onlyWithdrawals ? m.accessSyncClear : m.accessSyncApply)}
-            </Button>
-          </div>
-        </DialogFooter>
+          </DialogFooter>
+        ) : (
+          <DialogFooter className={stylex.props(styles.foot).className}>
+            <div {...stylex.props(styles.footSide)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={pageIndex === 0}
+                onClick={() => setPageIndex((at) => Math.max(0, at - 1))}
+              >
+                {format(m.previousPage)}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={nextCursor === null}
+                onClick={() => setPageIndex((at) => at + 1)}
+              >
+                {format(m.nextPage)}
+              </Button>
+              {decidable.length > 0 && (
+                <Button size="sm" variant="ghost" onClick={takeWholePage}>
+                  {format(m.accessSyncSelectPage)}
+                </Button>
+              )}
+            </div>
+            <div {...stylex.props(styles.footSide)}>
+              {!onlyWithdrawals && (
+                <span {...stylex.props(styles.aside)}>
+                  {format(m.accessSyncSelected, { count: selectedCount })}
+                </span>
+              )}
+              <Button variant="outline" onClick={onClose}>
+                {format(commonMessages.cancel)}
+              </Button>
+              <Button
+                disabled={pending || (selectedCount === 0 && !onlyWithdrawals)}
+                onClick={merge}
+              >
+                {format(onlyWithdrawals ? m.accessSyncClear : m.accessSyncApply)}
+              </Button>
+            </div>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   )
@@ -281,19 +305,21 @@ function ChangeRow({
     <li {...stylex.props(styles.row)} data-testid="access-change" data-kind={change.kind}>
       <div {...stylex.props(styles.who)}>
         <span {...stylex.props(styles.name)}>{change.displayName}</span>
-        {change.businessNo !== null && (
-          <span {...stylex.props(styles.aside)}>{change.businessNo}</span>
-        )}
-        {change.roleName !== '' && (
-          <span {...stylex.props(styles.aside)}>
-            {format(m.accessRoleAt, { role: change.roleName })}
-          </span>
-        )}
         <Badge variant={settled ? 'outline' : 'secondary'}>
           {format(KIND_LABELS[change.kind])}
         </Badge>
-        {settled && <span {...stylex.props(styles.aside)}>{format(m.accessSyncLapsedHint)}</span>}
       </div>
+      {/* which appointment it is: the number, the role and where it is held,
+          so two changes to one person in two classes do not read the same */}
+      <span data-testid="access-change-role" data-role={change.roleName}>
+        <MetaLine
+          items={[
+            change.businessNo,
+            change.roleName === '' ? format(m.accessRoleUnknown) : change.roleName,
+            change.orgNodeName,
+          ]}
+        />
+      </span>
       <div {...stylex.props(styles.permissions)}>
         {inCatalogOrder(change.permissions).map((code) =>
           settled || !offered ? (

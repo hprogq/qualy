@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { CheckIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
@@ -20,11 +21,6 @@ export interface RoleCandidate {
 }
 
 const styles = stylex.create({
-  empty: {
-    fontSize: 14,
-    lineHeight: '1.25rem',
-    color: tokens.mutedForeground,
-  },
   list: {
     maxHeight: '16rem',
     overflow: 'auto',
@@ -113,18 +109,17 @@ const REASONS = {
 export function RolePicker({
   roles,
   value,
-  emptyLabel,
+  empty,
   onChange,
 }: {
   roles: readonly RoleCandidate[]
   value: string | null
-  emptyLabel: string
+  /** what stands in for the list when not one role was even considered */
+  empty: ReactNode
   onChange: (roleId: string) => void
 }) {
   const { format } = useI18n()
-  if (roles.length === 0) {
-    return <p {...stylex.props(styles.empty)}>{emptyLabel}</p>
-  }
+  if (roles.length === 0) return empty
   return (
     <ul role="radiogroup" {...stylex.props(styles.list)}>
       {roles.map((role) => {

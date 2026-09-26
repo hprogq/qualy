@@ -15,7 +15,8 @@ import { Effect } from 'effect'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
 import { WorkspaceCapabilityScope, useWorkspaceCapabilities } from '@qualy/web-runtime'
 import type { assessmentApi } from '@qualy/plugin-assessment/client/api'
-import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { AccessAdjustDialog } from '../src/client/access/AccessAdjustDialog.tsx'
+import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 const OrgNodePickerView = lazy(() => import('@qualy/plugin-auth/client/iam/OrgNodePickerView'))
 const PeoplePickerView = lazy(() => import('@qualy/plugin-auth/client/iam/PeoplePickerView'))
@@ -55,6 +56,8 @@ const PRESET_ID = '88888888-8888-4888-8888-888888888888'
 const ENTRY_PHASE_ID = '33333333-3333-4333-8333-333333333333'
 const REVIEW_PHASE_ID = '44444444-4444-4444-8444-444444444444'
 const NODE_ID = '55555555-5555-4555-8555-555555555555'
+/** one unit this round covers, as the staff options serve it */
+const UNIT = { id: NODE_ID, name: '软件学院', parentId: null, orgTypeId: NODE_ID }
 const USER_ID = '66666666-6666-4666-8666-666666666666'
 const PARTICIPANT_ID = '77777777-7777-4777-8777-777777777777'
 const SOURCE_ID = '99999999-9999-4999-8999-999999999999'
@@ -102,10 +105,12 @@ const source = (over: Record<string, unknown> = {}) => ({
   roleName: '学院审核员',
   origin: 'inherited' as const,
   orgNodeId: NODE_ID,
+  orgNodeName: '软件学院',
   coverage: 'subtree' as const,
   accepted: ['assessment.review.process'],
   current: ['assessment.review.process'],
   active: true,
+  lapse: null,
   removable: false,
   ...over,
 })
@@ -118,6 +123,16 @@ const subject = (over: Record<string, unknown> = {}) => ({
   denied: [],
   effective: ['assessment.review.process'],
   manageable: true,
+  ...over,
+})
+
+/** one page of a round's staff, as the access page is answered */
+const staffPage = (staff: readonly unknown[], over: Record<string, unknown> = {}) => ({
+  staff,
+  total: staff.length,
+  page: 1,
+  pageSize: 25,
+  roles: [{ id: ROLE_ID, name: '学院审核员', count: staff.length }],
   ...over,
 })
 
@@ -202,7 +217,7 @@ const assessmentStubs = (over: Stubs = {}): Stubs => ({
     Effect.succeed({ items: [], nextCursor: null, changedTotal: 0, unavailableTotal: 0 }),
   previewImport: () => Effect.succeed({ candidates: 0 }),
   staffOptions: () => Effect.succeed({ nodes: [], roles: [] }),
-  listAccess: () => Effect.succeed({ staff: [subject()] }),
+  listAccess: () => Effect.succeed(staffPage([subject()])),
   previewAccessSync: () => Effect.succeed(emptyPlan),
   ...over,
 })
@@ -1679,8 +1694,8 @@ describe('who may work on a batch', () => {
     )
     await accessScreen({
       listAccess: () =>
-        Effect.succeed({
-          staff: [
+        Effect.succeed(
+          staffPage([
             subject({
               sources: [
                 source({
@@ -1690,17 +1705,17 @@ describe('who may work on a batch', () => {
               ],
               effective: ['assessment.review.process', 'assessment.ranking.view'],
             }),
-          ],
-        }),
+          ]),
+        ),
       setAccessDeny,
     })
 
     await expect.element(page.getByText('王审核')).toBeVisible()
     await expect
-      .element(page.getByTestId('access-origin'))
+      .element(page.getByTestId('access-source'))
       .toHaveAttribute('data-origin', 'inherited')
 
-    await page.getByRole('button', { name: '调整' }).click()
+    await page.getByRole('button', { name: '调整权限' }).click()
     // the dialog offers exactly what this batch holds, by name
     const box = page.getByTestId('access-permission-assessment.review.process')
     await expect.element(box).toBeChecked()
@@ -1719,8 +1734,8 @@ describe('who may work on a batch', () => {
   it('offers nothing on the reader\u2019s own row', async () => {
     await accessScreen({
       listAccess: () =>
-        Effect.succeed({
-          staff: [
+        Effect.succeed(
+          staffPage([
             subject({ displayName: '别人' }),
             subject({
               userId: PARTICIPANT_ID,
@@ -1728,16 +1743,57 @@ describe('who may work on a batch', () => {
               manageable: false,
               sources: [source({ sourceId: PARTICIPANT_ID, origin: 'explicit' })],
             }),
-          ],
-        }),
+          ]),
+        ),
     })
 
     await expect.element(page.getByText('我自己')).toBeVisible()
     // one adjust button for the other person, and none for themselves - an
     // administrator who can withdraw their own authority can lock themselves
     // out of the batch they are responsible for
-    expect(page.getByRole('button', { name: '调整' }).elements()).toHaveLength(1)
-    expect(page.getByRole('button', { name: '移出本批次' }).elements()).toHaveLength(0)
+    expect(page.getByRole('button', { name: '调整权限' }).elements()).toHaveLength(1)
+    expect(page.getByTestId('access-actions').elements()).toHaveLength(0)
+  })
+
+  // Somebody whose every role lapsed stays on the page until the record is
+  // cleared (§32.48), so the row says what it was: the role, the unit, and
+  // why it grants nothing. It carried a provenance badge and a sentence
+  // repeating it, beside no role at all - and an adjust button opening onto
+  // a dialog that said "none" over a save that saved nothing.
+  it('names a lapsed role and its unit, and offers nothing to adjust over it', async () => {
+    await accessScreen({
+      listAccess: () =>
+        Effect.succeed(
+          staffPage([
+            subject({ displayName: '在任的老师' }),
+            subject({
+              userId: PARTICIPANT_ID,
+              displayName: '离任的老师',
+              sources: [
+                source({
+                  sourceId: PARTICIPANT_ID,
+                  roleName: '班级综测负责人',
+                  orgNodeName: '软件2201班',
+                  active: false,
+                  lapse: 'revoked',
+                  current: [],
+                }),
+              ],
+              effective: [],
+            }),
+          ]),
+        ),
+    })
+
+    const lapsed = page.getByTestId('access-source').nth(1)
+    await expect.element(lapsed).toHaveAttribute('data-lapse', 'revoked')
+    await expect.element(lapsed).toHaveAttribute('data-active', 'false')
+    await expect.element(lapsed.getByText('班级综测负责人')).toBeVisible()
+    await expect.element(lapsed.getByText('软件2201班')).toBeVisible()
+    // one way to adjust, on the row that still has something to adjust
+    const rows = page.getByTestId('access-subject')
+    await expect.element(rows.nth(1)).toHaveAttribute('data-adjustable', 'false')
+    expect(page.getByRole('button', { name: '调整权限' }).elements()).toHaveLength(1)
   })
 
   it('merges only what was ticked, and never offers to approve a withdrawal', async () => {
@@ -1804,8 +1860,8 @@ describe('who may work on a batch', () => {
     await accessScreen({
       getBatch: () => Effect.succeed({ batch: batch({ status: 'archived' }) }),
       listAccess: () =>
-        Effect.succeed({
-          staff: [
+        Effect.succeed(
+          staffPage([
             subject({
               sources: [
                 source({
@@ -1816,8 +1872,8 @@ describe('who may work on a batch', () => {
               denied: ['assessment.ranking.view'],
               effective: ['assessment.review.process'],
             }),
-          ],
-        }),
+          ]),
+        ),
       previewAccessSync: () =>
         Effect.succeed({
           items: [
@@ -1862,7 +1918,7 @@ describe('who may work on a batch', () => {
     expect(applyAccessSync.mock.calls[0]![0]).toMatchObject({ payload: { accept: [] } })
 
     // a capability can still be withheld, but a withheld one stays withheld
-    await page.getByRole('button', { name: '调整' }).click()
+    await page.getByRole('button', { name: '调整权限' }).click()
     await expect
       .element(page.getByTestId('access-permission-assessment.ranking.view'))
       .toBeDisabled()
@@ -1905,7 +1961,7 @@ describe('who may work on a batch', () => {
           getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
           staffOptions: (request: Request) =>
             request.query?.['userIds'] === undefined
-              ? Effect.succeed({ nodes: [], roles: [] })
+              ? Effect.succeed({ nodes: [UNIT], roles: [] })
               : Effect.fail(apiError('ASSESSMENT_ACCESS_INVALID', { reason: 'too-many' })),
         }),
       }),
@@ -1933,6 +1989,88 @@ describe('who may work on a batch', () => {
     // the refusal is what the step says, not an empty list of roles
     await expect.element(page.getByTestId('add-staff-refused')).toBeVisible()
     expect(page.getByRole('radiogroup').elements()).toHaveLength(0)
+    // and it offers the way back to a selection the server will answer
+    await page.getByRole('button', { name: '修改选择' }).click()
+    await expect.element(page.getByRole('button', { name: 'pick people' })).toBeVisible()
+  })
+
+  // Not one role could even be considered for this person at this unit: the
+  // step said so in one grey line, and the reader was left to guess that the
+  // unit was the thing to change.
+  it('says no role can be given at the chosen unit, and goes back to choose another', async () => {
+    const PickPeople = ({ context }: { context: { onToggle: (id: string) => void } }) => (
+      <button type="button" onClick={() => context.onToggle(USER_ID)}>
+        pick people
+      </button>
+    )
+    const PickUnits = ({
+      context,
+    }: {
+      context: { onChange: (ids: string[], picked: []) => void }
+    }) => (
+      <button type="button" onClick={() => context.onChange([NODE_ID], [])}>
+        pick units
+      </button>
+    )
+    await renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              pages: PAGES,
+              slots: {
+                'iam/people-picker-view': [{ id: 'test/people', order: 0 }],
+                'iam/org-node-picker-view': [{ id: 'test/units', order: 0 }],
+              },
+            }),
+        },
+        assessment: assessmentStubs({
+          getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
+          staffOptions: () => Effect.succeed({ nodes: [UNIT], roles: [] }),
+        }),
+      }),
+      routes: [
+        { path: '/assessment/batches/:batchId/access', element: workspace(<BatchAccessPage />) },
+      ],
+      route: `/assessment/batches/${BATCH_ID}/access`,
+      registry: {
+        slots: {
+          'iam/people-picker-view': {
+            'test/people': lazy(() => Promise.resolve({ default: PickPeople })),
+          },
+          'iam/org-node-picker-view': {
+            'test/units': lazy(() => Promise.resolve({ default: PickUnits })),
+          },
+        },
+      },
+    })
+
+    await page.getByRole('button', { name: '添加工作人员' }).click()
+    await page.getByRole('button', { name: 'pick people' }).click()
+    await page.getByRole('button', { name: '下一步' }).click()
+    await page.getByRole('button', { name: 'pick units' }).click()
+    await page.getByRole('button', { name: '下一步' }).click()
+    await expect.element(page.getByTestId('add-staff-no-roles')).toBeVisible()
+    await page.getByRole('button', { name: '更换单位' }).click()
+    await expect.element(page.getByRole('button', { name: 'pick units' })).toBeVisible()
+  })
+
+  // Staff are appointed at the units this round's people stand in. With none
+  // in reach the dialog walked the reader through choosing a person and then
+  // offered an empty unit tree; it says so before the first step.
+  it('says there is nowhere to appoint staff before anybody is chosen', async () => {
+    await accessScreen({
+      getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
+      staffOptions: () => Effect.succeed({ nodes: [], roles: [] }),
+    })
+    await page.getByRole('button', { name: '添加工作人员' }).first().click()
+    const nowhere = page.getByTestId('add-staff-nowhere')
+    await expect.element(nowhere).toBeVisible()
+    await expect.element(nowhere.getByRole('link', { name: '前往参评名单' })).toBeVisible()
+    // no steps to walk and nothing to confirm, only the way out
+    expect(page.getByRole('button', { name: '下一步' }).elements()).toHaveLength(0)
+    await expect.element(page.getByRole('button', { name: '关闭' }).first()).toBeVisible()
   })
 
   // A round's administrator need not browse the directory: whom they may
@@ -2095,35 +2233,42 @@ describe('who may work on a batch', () => {
     const removeStaff = vi.fn((_request: Request) => Effect.succeed({ staff: [] }))
     await accessScreen({
       listAccess: () =>
-        Effect.succeed({
-          staff: [
+        Effect.succeed(
+          staffPage([
             subject({ displayName: '组织来的', sources: [source()] }),
             subject({
               userId: PARTICIPANT_ID,
               displayName: '临时来的',
               sources: [source({ sourceId: PARTICIPANT_ID, origin: 'explicit', removable: true })],
             }),
-          ],
-        }),
+          ]),
+        ),
       removeStaff,
     })
 
     // two people, one of them this batch's own doing: only that one may be
     // removed here, which is a fact about where the authority came from
-    await expect.element(page.getByTestId('access-origin').first()).toBeVisible()
+    await expect.element(page.getByTestId('access-source').first()).toBeVisible()
     const origins = page
-      .getByTestId('access-origin')
+      .getByTestId('access-source')
       .elements()
-      .map((badge) => badge.getAttribute('data-origin'))
+      .map((line) => line.getAttribute('data-origin'))
     expect(origins).toEqual(['inherited', 'explicit'])
-    // one control, on the row this batch is responsible for
-    const remove = page.getByRole('button', { name: '移出本批次' })
-    await expect.element(remove).toBeVisible()
+    // one way in, on the row this batch is responsible for, and the
+    // appointment itself a press further: not a cross beside the role name
+    const more = page.getByTestId('access-actions')
+    await expect.element(more).toBeVisible()
+    expect(more.elements()).toHaveLength(1)
+    await more.click()
+    const remove = page.getByTestId('access-remove')
+    await expect.element(remove).toHaveAttribute('data-source', PARTICIPANT_ID)
     await remove.click()
 
     // and it is a question before it is an action
-    await expect.element(page.getByText('确认将 临时来的 移出本批次？')).toBeVisible()
-    await page.getByRole('alertdialog').getByRole('button', { name: '移出本批次' }).click()
+    const confirm = page.getByRole('alertdialog')
+    await expect.element(confirm).toBeVisible()
+    expect(removeStaff).not.toHaveBeenCalled()
+    await confirm.getByRole('button', { name: '撤销授权' }).click()
     await vi.waitFor(() => expect(removeStaff).toHaveBeenCalledTimes(1))
     expect(removeStaff.mock.calls[0]![0]).toMatchObject({ params: { sourceId: PARTICIPANT_ID } })
   })
@@ -2135,8 +2280,8 @@ describe('who may work on a batch', () => {
   it('offers a removal only where the server says the reader may make it', async () => {
     await accessScreen({
       listAccess: () =>
-        Effect.succeed({
-          staff: [
+        Effect.succeed(
+          staffPage([
             subject({
               displayName: '学校任命的',
               sources: [source({ origin: 'explicit', removable: false })],
@@ -2146,21 +2291,218 @@ describe('who may work on a batch', () => {
               displayName: '学院任命的',
               sources: [source({ sourceId: PARTICIPANT_ID, origin: 'explicit', removable: true })],
             }),
-          ],
-        }),
+          ]),
+        ),
     })
 
     await expect.element(page.getByText('学校任命的')).toBeVisible()
     // both are this round's own appointments on somebody else's row
     expect(
       page
-        .getByTestId('access-origin')
+        .getByTestId('access-source')
         .elements()
-        .map((badge) => badge.getAttribute('data-origin')),
+        .map((line) => line.getAttribute('data-origin')),
     ).toEqual(['explicit', 'explicit'])
     // and only the one this reader could have made can be taken back here
-    const presses = page.getByRole('button', { name: '移出本批次' }).elements()
+    const menus = page.getByTestId('access-actions')
+    expect(menus.elements()).toHaveLength(1)
+    await menus.click()
+    const presses = page.getByTestId('access-remove').elements()
     expect(presses.map((press) => press.getAttribute('data-source'))).toEqual([PARTICIPANT_ID])
+  })
+
+  // Who may review here, whose authority lapsed, where something was turned
+  // off: asked of the server, by the address, and answered with a count.
+  // The list used to take nothing but a cursor, and its "N people" counted
+  // only the rows of the page on screen.
+  it('narrows the staff by name, role, capability and standing, and says how many', async () => {
+    const listAccess = vi.fn((request: Request) =>
+      Effect.succeed(
+        staffPage([subject()], {
+          total: 60,
+          page: Number(request.query?.['page'] ?? '1'),
+          roles: [
+            { id: ROLE_ID, name: '学院审核员', count: 40 },
+            { id: NODE_ID, name: '班级综测负责人', count: 20 },
+          ],
+        }),
+      ),
+    )
+    await accessScreen({ listAccess })
+
+    // the whole count, not the page's
+    await expect.element(page.getByTestId('access-pager')).toHaveAttribute('data-total', '60')
+    await expect.element(page.getByTestId('access-pager')).toHaveAttribute('data-pages', '3')
+
+    await page.getByTestId('access-filter-role').click()
+    await page.getByRole('option', { name: '班级综测负责人' }).click()
+    await vi.waitFor(() => expect(listAccess.mock.calls.at(-1)![0].query).toHaveProperty('roleId'))
+    expect(listAccess.mock.calls.at(-1)![0].query).toMatchObject({ roleId: NODE_ID, page: '1' })
+
+    await page.getByTestId('access-filter-permission').click()
+    await page.getByRole('option', { name: '审核申报' }).click()
+    await vi.waitFor(() =>
+      expect(listAccess.mock.calls.at(-1)![0].query).toMatchObject({
+        roleId: NODE_ID,
+        permission: 'assessment.review.process',
+      }),
+    )
+
+    await page.getByTestId('access-filter-standing').click()
+    await page.getByRole('option', { name: '有失效授权' }).click()
+    await vi.waitFor(() =>
+      expect(listAccess.mock.calls.at(-1)![0].query).toMatchObject({ standing: 'lapsed' }),
+    )
+
+    await page.getByRole('searchbox').fill('T0001')
+    await vi.waitFor(() =>
+      expect(listAccess.mock.calls.at(-1)![0].query).toMatchObject({ q: 'T0001' }),
+    )
+    // every narrowing is kept in the address, so a reload asks it again
+    expect(addressNow()).toContain('standing=lapsed')
+    expect(addressNow()).toContain(`role=${NODE_ID}`)
+  })
+
+  it('draws what each person may do as a grid where there is the width for one', async () => {
+    await page.viewport(1600, 900)
+    try {
+      await accessScreen({
+        listAccess: () =>
+          Effect.succeed(
+            staffPage([
+              subject({
+                sources: [
+                  source({
+                    accepted: ['assessment.review.process', 'assessment.ranking.view'],
+                    current: ['assessment.review.process', 'assessment.ranking.view'],
+                  }),
+                ],
+                denied: ['assessment.ranking.view'],
+                effective: ['assessment.review.process'],
+              }),
+            ]),
+          ),
+      })
+      const staff = page.getByTestId('access-staff')
+      await expect.element(staff).toHaveAttribute('data-shape', 'matrix')
+      const cell = (code: string) =>
+        staff
+          .getByTestId('access-grant')
+          .elements()
+          .find((element) => element.getAttribute('data-permission') === code)
+          ?.getAttribute('data-state')
+      expect(cell('assessment.review.process')).toBe('granted')
+      expect(cell('assessment.ranking.view')).toBe('withheld')
+      expect(cell('assessment.entry.record')).toBe('none')
+    } finally {
+      await page.viewport(1280, 800)
+    }
+  })
+
+  it('answers an empty round with the way to staff it, and an empty search with the way back', async () => {
+    await accessScreen({
+      getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
+      listAccess: () => Effect.succeed(staffPage([], { roles: [] })),
+    })
+
+    // nobody at all: the way to bring somebody in, in the answer itself
+    const blank = page.getByTestId('access-blank')
+    await expect.element(blank).toHaveAttribute('data-kind', 'empty')
+    await expect.element(blank.getByRole('button', { name: '添加工作人员' })).toBeVisible()
+
+    // nobody matching: the way back to everybody
+    await page.getByRole('searchbox').fill('nobody')
+    await expect.element(blank).toHaveAttribute('data-kind', 'no-match')
+    await blank.getByRole('button', { name: '清除筛选' }).click()
+    await expect.element(blank).toHaveAttribute('data-kind', 'empty')
+    expect(addressNow()).not.toContain('q=')
+  })
+
+  // Another administrator settled the changes between the notice and the
+  // press: the dialog says there is nothing left, and offers nothing but
+  // the way out - no pages to turn, no count of nothing, no greyed apply.
+  it('says the round is in step with the organization when nothing is left to review', async () => {
+    await accessScreen({
+      previewAccessSync: (request: Request) =>
+        Effect.succeed({
+          items: [],
+          nextCursor: null,
+          pendingTotal: request.query?.['limit'] === '1' ? 2 : 0,
+          lapsedTotal: 0,
+        }),
+    })
+    await page.getByRole('button', { name: '查看变更' }).click()
+    const dialog = page.getByTestId('access-sync')
+    await expect.element(dialog.getByTestId('access-sync-quiet')).toBeVisible()
+    expect(dialog.getByRole('checkbox').elements()).toHaveLength(0)
+    expect(dialog.getByRole('button', { name: '接受变更' }).elements()).toHaveLength(0)
+    await dialog.getByRole('button', { name: '关闭' }).click()
+    await expect.element(dialog).not.toBeInTheDocument()
+  })
+})
+
+describe('adjusting one person', () => {
+  // Opened, or refreshed while open, onto somebody the round no longer hands
+  // anything: it answered "none" over a disabled save.
+  it('says why there is nothing to adjust, and where the lapsed record is cleared', async () => {
+    const onReview = vi.fn()
+    await renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
+      children: (
+        <AccessAdjustDialog
+          subject={
+            subject({
+              sources: [source({ active: false, lapse: 'expired', current: [] })],
+              effective: [],
+            }) as never
+          }
+          archived={false}
+          open
+          pending={false}
+          onSave={() => {}}
+          onReview={onReview}
+          onClose={() => {}}
+        />
+      ),
+    })
+    const dialog = page.getByTestId('access-adjust')
+    await expect.element(dialog).toHaveAttribute('data-empty', 'true')
+    expect(dialog.getByRole('checkbox').elements()).toHaveLength(0)
+    expect(dialog.getByRole('button', { name: '保存' }).elements()).toHaveLength(0)
+    await dialog.getByRole('button', { name: '查看变更' }).click()
+    expect(onReview).toHaveBeenCalledTimes(1)
+  })
+
+  // A capability turned off here that nothing offers any more cannot be
+  // turned back on to any effect, so it is said rather than offered.
+  it('offers only what something still grants', async () => {
+    await renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
+      children: (
+        <AccessAdjustDialog
+          subject={
+            subject({
+              sources: [source()],
+              denied: ['assessment.ranking.view'],
+              effective: ['assessment.review.process'],
+            }) as never
+          }
+          archived={false}
+          open
+          pending={false}
+          onSave={() => {}}
+          onClose={() => {}}
+        />
+      ),
+    })
+    const dialog = page.getByTestId('access-adjust')
+    await expect
+      .element(dialog.getByTestId('access-permission-assessment.review.process'))
+      .toBeVisible()
+    expect(dialog.getByTestId('access-permission-assessment.ranking.view').elements()).toHaveLength(
+      0,
+    )
+    await expect.element(dialog.getByTestId('access-stale')).toBeVisible()
   })
 })
 

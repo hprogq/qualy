@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
+import { ShieldOffIcon } from 'lucide-react'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useI18n } from '@qualy/web-i18n'
@@ -25,6 +26,7 @@ import {
   FieldSet,
 } from '@qualy/ui/field'
 import { assessmentMessages as m } from '../i18n.ts'
+import { DialogBlank } from '../DialogBlank.tsx'
 import {
   familyOf,
   inCatalogOrder,
@@ -32,13 +34,14 @@ import {
   permissionLabel,
   type StaffCode,
 } from './permissions.ts'
-import type { AccessSubject } from './model.ts'
+import { adjustableOf, type AccessSubject } from './model.ts'
 
 // One person, one batch, one checkbox per thing they may do.
 //
-// The list is what this batch accepted for them and still holds, plus
-// anything already withheld - a capability withdrawn in the organization is
-// not offered, because turning it off would suggest it was ever on.
+// The list is what this batch accepted for them and something still offers,
+// withheld or not - a capability withdrawn in the organization is not
+// offered, because turning it off would suggest it was ever on, and turning
+// it back on would give nothing.
 //
 // Nothing is sent until the dialog is confirmed. A checkbox that took effect
 // on click made an experiment indistinguishable from a decision, and left no
@@ -53,7 +56,6 @@ const FAMILIES = [
 ] as const
 
 const styles = stylex.create({
-  quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
   families: { display: 'flex', flexDirection: 'column', gap: 20 },
   family: { display: 'flex', flexDirection: 'column', gap: 12 },
   // two columns where the dialog is wide enough: eight rows in one column
@@ -69,6 +71,13 @@ const styles = stylex.create({
     },
   },
   plainLabel: { fontWeight: 400 },
+  // turned off here, and nothing offers it any more: said, not offered
+  stale: {
+    margin: 0,
+    fontSize: 12.5,
+    lineHeight: 1.6,
+    color: tokens.mutedForeground,
+  },
 })
 
 export function AccessAdjustDialog({
@@ -77,6 +86,7 @@ export function AccessAdjustDialog({
   open,
   pending,
   onSave,
+  onReview,
   onClose,
 }: {
   /** null while closed, which is most of the time it is mounted */
@@ -87,9 +97,11 @@ export function AccessAdjustDialog({
   pending: boolean
   /** the capabilities to withhold from now on, as a whole */
   onSave: (denied: readonly StaffCode[]) => void
+  /** where lapsed records are cleared, when there are any to clear */
+  onReview?: () => void
   onClose: () => void
 }) {
-  const { format } = useI18n()
+  const { format, locale } = useI18n()
   // the person it was opened for, kept while it closes: the panel drops them
   // the moment it is done, and the dialog is still fading out
   const [shown, setShown] = useState<AccessSubject | null>(subject)
@@ -98,12 +110,8 @@ export function AccessAdjustDialog({
   }, [subject])
   const person = subject ?? shown
 
-  const offered = inCatalogOrder([
-    ...new Set([
-      ...(person?.sources ?? []).flatMap((source) => source.current),
-      ...(person?.denied ?? []),
-    ]),
-  ])
+  const offered = inCatalogOrder(person === null ? [] : adjustableOf(person))
+  const stale = inCatalogOrder(person?.denied ?? []).filter((code) => !offered.includes(code))
   const [denied, setDenied] = useState<readonly string[]>(person?.denied ?? [])
 
   // reopening starts from what is true, not from where the last visit left off
@@ -119,21 +127,43 @@ export function AccessAdjustDialog({
   const changed =
     person !== null &&
     (denied.length !== person.denied.length || denied.some((code) => !person.denied.includes(code)))
+  const name = person?.displayName ?? ''
+  // why there is nothing, which decides where the reader goes next
+  const lapsed = (person?.sources ?? []).some((source) => !source.active)
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent size="42rem">
+      <DialogContent size="42rem" data-testid="access-adjust" data-empty={offered.length === 0}>
         <DialogHeader>
-          <DialogTitle>
-            {format(m.accessAdjustTitle, { name: person?.displayName ?? '' })}
-          </DialogTitle>
-          <DialogDescription>
-            {format(archived ? m.accessAdjustArchivedHint : m.accessAdjustHint)}
-          </DialogDescription>
+          <DialogTitle>{format(m.accessAdjustTitle, { name })}</DialogTitle>
+          {offered.length > 0 && (
+            <DialogDescription>
+              {format(archived ? m.accessAdjustArchivedHint : m.accessAdjustHint)}
+            </DialogDescription>
+          )}
         </DialogHeader>
         <DialogBody>
           {offered.length === 0 ? (
-            <p {...stylex.props(styles.quiet)}>{format(m.accessNothing)}</p>
+            // Opened, or refreshed while open, onto somebody the round no
+            // longer hands anything: what happened, why, and the one place
+            // it is dealt with - not a bare "none" over a save that saves
+            // nothing.
+            <DialogBlank
+              testId="access-adjust-nothing"
+              kind={lapsed ? 'lapsed' : 'idle'}
+              icon={<ShieldOffIcon />}
+              title={format(m.accessAdjustNothing, { name })}
+              description={format(lapsed ? m.accessAdjustNothingLapsed : m.accessAdjustNothingIdle)}
+              {...(onReview !== undefined && lapsed
+                ? {
+                    action: (
+                      <Button variant="outline" size="sm" onClick={onReview}>
+                        {format(m.accessSyncOpen)}
+                      </Button>
+                    ),
+                  }
+                : {})}
+            />
           ) : (
             <div {...stylex.props(styles.families)}>
               {FAMILIES.map(({ key, label }, index) => {
@@ -144,8 +174,6 @@ export function AccessAdjustDialog({
                     {index > 0 && <FieldSeparator />}
                     <FieldSet disabled={pending}>
                       <FieldLegend variant="label">{format(label)}</FieldLegend>
-                      {/* two columns where the dialog is wide enough: eight
-                          rows in one column reads as a wall */}
                       <div {...stylex.props(styles.pairs)}>
                         {codes.map((code) => (
                           <PermissionRow
@@ -165,16 +193,33 @@ export function AccessAdjustDialog({
                   </div>
                 )
               })}
+              {stale.length > 0 && (
+                <p {...stylex.props(styles.stale)} data-testid="access-stale">
+                  {format(m.accessAdjustStale, {
+                    names: new Intl.ListFormat(locale, { type: 'conjunction' }).format(
+                      stale.map((code) => format(permissionLabel(code))),
+                    ),
+                  })}
+                </p>
+              )}
             </div>
           )}
         </DialogBody>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.cancel)}
-          </Button>
-          <Button disabled={pending || !changed} onClick={() => onSave(inCatalogOrder(denied))}>
-            {format(m.saveShort)}
-          </Button>
+          {offered.length === 0 ? (
+            <Button variant="outline" onClick={onClose}>
+              {format(commonMessages.close)}
+            </Button>
+          ) : (
+            <>
+              <Button variant="outline" onClick={onClose}>
+                {format(commonMessages.cancel)}
+              </Button>
+              <Button disabled={pending || !changed} onClick={() => onSave(inCatalogOrder(denied))}>
+                {format(m.saveShort)}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

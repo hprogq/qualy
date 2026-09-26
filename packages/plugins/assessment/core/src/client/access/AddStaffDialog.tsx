@@ -3,7 +3,8 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useQuery } from '@tanstack/react-query'
-import { UiSlot, useApiQuery, useManifest } from '@qualy/web-runtime'
+import { CircleAlertIcon, NetworkIcon, ShieldQuestionIcon, UsersIcon } from 'lucide-react'
+import { PageLink, UiSlot, useApiQuery, useManifest } from '@qualy/web-runtime'
 import {
   orgNodePickerView,
   peoplePicker,
@@ -26,6 +27,7 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { Steps } from '@qualy/ui/steps'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
+import { DialogBlank } from '../DialogBlank.tsx'
 import { useCandidates } from '../roster/candidates.ts'
 import { RolePicker } from './RolePicker.tsx'
 
@@ -65,7 +67,6 @@ const styles = stylex.create({
   // the dialog rather than overflow it and raise a second scrollbar
   stepWords: { display: 'flex', minHeight: 0, flexGrow: 1, flexDirection: 'column', gap: 8 },
   quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
-  refused: { fontSize: 14, lineHeight: '1.25rem', color: tokens.danger },
   waitingRoles: { height: '8rem', width: '100%' },
   waitingFill: { minHeight: 0, width: '100%', flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
   waitingTree: { minHeight: '16rem', width: '100%', flexGrow: 1 },
@@ -146,116 +147,202 @@ export function AddStaffDialog({
 
   const answered = [chosen.length > 0, orgNodeIds.length > 0, roleId !== null]
   const ready = chosen.length > 0 && orgNodeIds.length > 0 && roleId !== null
+  // Staff are appointed at the units this round's people stand in. With none
+  // of those in the reader's reach there is nowhere to appoint anybody, and
+  // saying so before the first step beats walking them through choosing a
+  // person for nothing.
+  const nowhere = units.data !== undefined && units.data.nodes.length === 0
+
+  const pickerMissing = (unit: boolean) => (
+    <DialogBlank
+      testId="add-staff-unavailable"
+      icon={<ShieldQuestionIcon />}
+      title={format(unit ? m.unitPickerUnavailable : m.pickerUnavailable)}
+      description={format(m.pickerUnavailableHint)}
+    />
+  )
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent size="68rem" xstyle={styles.panel}>
+      {/* the picker's height only where there is a picker: an answer that
+          there is nowhere to appoint anybody is a dialog's size */}
+      <DialogContent
+        size={nowhere ? '36rem' : '68rem'}
+        {...(nowhere ? {} : { xstyle: styles.panel })}
+      >
         <DialogHeader>
           <DialogTitle>{format(m.addStaffTitle)}</DialogTitle>
-          <DialogDescription>{format(m.addStaffHint)}</DialogDescription>
+          {!nowhere && <DialogDescription>{format(m.addStaffHint)}</DialogDescription>}
         </DialogHeader>
         <DialogBody xstyle={styles.body}>
-          <Steps
-            steps={STEPS.map((label) => format(label))}
-            current={step}
-            // a step already answered is a way back to it
-            onSelect={(at) => at <= step && setStep(at)}
-          />
+          {nowhere ? (
+            <DialogBlank
+              testId="add-staff-nowhere"
+              icon={<UsersIcon />}
+              title={format(m.addStaffNowhere)}
+              description={format(m.addStaffNowhereHint)}
+              action={
+                <Button variant="outline" size="sm" asChild>
+                  <PageLink page="assessment/batch-results" params={{ batchId }}>
+                    {format(m.addStaffGoRoster)}
+                  </PageLink>
+                </Button>
+              }
+            />
+          ) : (
+            <>
+              <Steps
+                steps={STEPS.map((label) => format(label))}
+                current={step}
+                // a step already answered is a way back to it
+                onSelect={(at) => at <= step && setStep(at)}
+              />
 
-          {step === 0 && (
-            <div {...stylex.props(styles.step)}>
-              {directory ? (
-                <UiSlot
-                  token={peoplePicker}
-                  context={{ value: chosen, onChange: setChosen } satisfies PeoplePickerContext}
-                  fallback={<p {...stylex.props(styles.quiet)}>{format(m.pickerUnavailable)}</p>}
-                  loading={<Skeleton className={stylex.props(styles.waitingFill).className} />}
-                />
-              ) : (
-                <UiSlot
-                  token={peoplePickerView}
-                  context={candidates.context({
-                    value: chosen,
-                    onToggle: (userId: string) =>
-                      setChosen((now) =>
-                        now.includes(userId) ? now.filter((id) => id !== userId) : [...now, userId],
-                      ),
-                    onChange: setChosen,
-                  })}
-                  fallback={<p {...stylex.props(styles.quiet)}>{format(m.pickerUnavailable)}</p>}
-                  loading={<Skeleton className={stylex.props(styles.waitingFill).className} />}
+              {step === 0 && (
+                <div {...stylex.props(styles.step)}>
+                  {directory ? (
+                    <UiSlot
+                      token={peoplePicker}
+                      context={{ value: chosen, onChange: setChosen } satisfies PeoplePickerContext}
+                      fallback={pickerMissing(false)}
+                      loading={<Skeleton className={stylex.props(styles.waitingFill).className} />}
+                    />
+                  ) : (
+                    <UiSlot
+                      token={peoplePickerView}
+                      context={candidates.context({
+                        value: chosen,
+                        onToggle: (userId: string) =>
+                          setChosen((now) =>
+                            now.includes(userId)
+                              ? now.filter((id) => id !== userId)
+                              : [...now, userId],
+                          ),
+                        onChange: setChosen,
+                      })}
+                      fallback={pickerMissing(false)}
+                      loading={<Skeleton className={stylex.props(styles.waitingFill).className} />}
+                    />
+                  )}
+                </div>
+              )}
+
+              {step === 1 && units.isError && (
+                // the units could not be read: said, with the way to ask again,
+                // rather than a picker drawn over nothing
+                <DialogBlank
+                  testId="add-staff-units-failed"
+                  icon={<NetworkIcon />}
+                  title={format(m.addStaffUnitsFailed)}
+                  description={formatError(units.error)}
+                  action={
+                    <Button variant="outline" size="sm" onClick={() => void units.refetch()}>
+                      {format(commonMessages.retry)}
+                    </Button>
+                  }
                 />
               )}
-            </div>
-          )}
 
-          {step === 1 && (
-            <div {...stylex.props(styles.stepWords)}>
-              <p {...stylex.props(styles.quiet)}>{format(m.addStaffWhereHint)}</p>
-              <UiSlot
-                token={orgNodePickerView}
-                context={{
-                  value: orgNodeIds,
-                  onChange: setOrgNodeIds,
-                  // the units this round covers, not the whole organization
-                  nodes: units.data?.nodes ?? [],
-                  loading: units.isPending,
-                }}
-                fallback={<p {...stylex.props(styles.quiet)}>{format(m.pickerUnavailable)}</p>}
-                loading={<Skeleton className={stylex.props(styles.waitingTree).className} />}
-              />
-            </div>
-          )}
+              {step === 1 && !units.isError && (
+                <div {...stylex.props(styles.stepWords)}>
+                  <p {...stylex.props(styles.quiet)}>{format(m.addStaffWhereHint)}</p>
+                  <UiSlot
+                    token={orgNodePickerView}
+                    context={{
+                      value: orgNodeIds,
+                      onChange: setOrgNodeIds,
+                      // the units this round covers, not the whole organization
+                      nodes: units.data?.nodes ?? [],
+                      loading: units.isPending,
+                    }}
+                    fallback={pickerMissing(true)}
+                    loading={<Skeleton className={stylex.props(styles.waitingTree).className} />}
+                  />
+                </div>
+              )}
 
-          {step === 2 && (
-            <div {...stylex.props(styles.stepWords)}>
-              <p {...stylex.props(styles.quiet)}>{format(m.addStaffAsHint)}</p>
-              {/* a selection the server will not answer for - too many
+              {step === 2 && (
+                <div {...stylex.props(styles.stepWords)}>
+                  <p {...stylex.props(styles.quiet)}>{format(m.addStaffAsHint)}</p>
+                  {/* a selection the server will not answer for - too many
                   people and units at once - is said as that, not as a
                   list of roles that happens to be empty */}
-              {probes.isError ? (
-                <p {...stylex.props(styles.refused)} data-testid="add-staff-refused" role="alert">
-                  {formatError(probes.error)}
-                </p>
-              ) : probes.isLoading ? (
-                <Skeleton className={stylex.props(styles.waitingRoles).className} />
-              ) : (
-                <RolePicker
-                  roles={roles}
-                  value={roleId}
-                  emptyLabel={format(m.addStaffNoRoles)}
-                  onChange={setRoleId}
-                />
+                  {probes.isError ? (
+                    <div role="alert">
+                      <DialogBlank
+                        testId="add-staff-refused"
+                        icon={<CircleAlertIcon />}
+                        title={formatError(probes.error)}
+                        action={
+                          <Button variant="outline" size="sm" onClick={() => setStep(0)}>
+                            {format(m.addStaffChangeSelection)}
+                          </Button>
+                        }
+                      />
+                    </div>
+                  ) : probes.isLoading ? (
+                    <Skeleton className={stylex.props(styles.waitingRoles).className} />
+                  ) : (
+                    <RolePicker
+                      roles={roles}
+                      value={roleId}
+                      // not one role could even be considered for this person
+                      // at this unit: the unit is what they can change here
+                      empty={
+                        <DialogBlank
+                          testId="add-staff-no-roles"
+                          icon={<ShieldQuestionIcon />}
+                          title={format(m.addStaffNoRoles)}
+                          description={format(m.addStaffNoRolesHint)}
+                          action={
+                            <Button variant="outline" size="sm" onClick={() => setStep(1)}>
+                              {format(m.addStaffChangeUnit)}
+                            </Button>
+                          }
+                        />
+                      }
+                      onChange={setRoleId}
+                    />
+                  )}
+                </div>
               )}
-            </div>
+            </>
           )}
         </DialogBody>
-        <DialogFooter className={stylex.props(styles.foot).className}>
-          <Button
-            variant="ghost"
-            disabled={step === 0}
-            onClick={() => setStep((at) => Math.max(0, at - 1))}
-          >
-            {format(commonMessages.back)}
-          </Button>
-          <div {...stylex.props(styles.footSide)}>
+        {nowhere ? (
+          <DialogFooter>
             <Button variant="outline" onClick={onClose}>
-              {format(commonMessages.cancel)}
+              {format(commonMessages.close)}
             </Button>
-            {step < 2 ? (
-              <Button disabled={!answered[step]} onClick={() => setStep((at) => at + 1)}>
-                {format(m.next)}
+          </DialogFooter>
+        ) : (
+          <DialogFooter className={stylex.props(styles.foot).className}>
+            <Button
+              variant="ghost"
+              disabled={step === 0}
+              onClick={() => setStep((at) => Math.max(0, at - 1))}
+            >
+              {format(commonMessages.back)}
+            </Button>
+            <div {...stylex.props(styles.footSide)}>
+              <Button variant="outline" onClick={onClose}>
+                {format(commonMessages.cancel)}
               </Button>
-            ) : (
-              <Button
-                disabled={pending || !ready}
-                onClick={() => ready && onAdd({ userIds: chosen, orgNodeIds, roleId })}
-              >
-                {format(m.addStaffConfirm)}
-              </Button>
-            )}
-          </div>
-        </DialogFooter>
+              {step < 2 ? (
+                <Button disabled={!answered[step]} onClick={() => setStep((at) => at + 1)}>
+                  {format(m.next)}
+                </Button>
+              ) : (
+                <Button
+                  disabled={pending || !ready}
+                  onClick={() => ready && onAdd({ userIds: chosen, orgNodeIds, roleId })}
+                >
+                  {format(m.addStaffConfirm)}
+                </Button>
+              )}
+            </div>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   )

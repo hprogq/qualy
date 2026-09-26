@@ -21,3 +21,15 @@ export type AccessChange = ApiResult<
 export interface AccessSelection {
   accept: { kind: 'new' | 'widened'; id: string; permissions: readonly string[] }[]
 }
+
+/**
+ * What a person's standing in this round can still be adjusted over: every
+ * capability one of their sources carries today, withheld or not.
+ *
+ * A capability withheld here that nothing offers any more is not in it:
+ * turning it back on would give them nothing, and a box that does nothing
+ * when ticked is a promise the round cannot keep.
+ */
+export const adjustableOf = (subject: Pick<AccessSubject, 'sources'>): string[] => [
+  ...new Set(subject.sources.flatMap((source) => source.current)),
+]
