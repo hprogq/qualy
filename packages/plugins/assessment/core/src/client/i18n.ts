@@ -5988,7 +5988,7 @@ const i18n = definePluginMessages({
     scopeHint: {
       id: 'assessment/phase/scope-hint',
       defaultMessage:
-        'Items left out cannot be filed or changed during this stage. Reviews go on as usual',
+        'Items left out cannot be filed, changed, submitted or recorded by staff during this stage, while reviews go on as usual',
     },
     scopeItemsLabel: { id: 'assessment/phase/scope-items', defaultMessage: 'Items' },
     scopeItemsAll: { id: 'assessment/phase/scope-items-all', defaultMessage: 'All items' },

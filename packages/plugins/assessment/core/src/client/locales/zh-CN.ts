@@ -1722,7 +1722,7 @@ export default {
   'assessment/plan/scope-items-tag': '仅开放 {count} 个项目',
   'assessment/plan/scope-people-tag': '部分参评人',
   'assessment/phase/scope-legend': '开放范围',
-  'assessment/phase/scope-hint': '范围外的项目在本阶段不能新增或修改申报，审核照常',
+  'assessment/phase/scope-hint': '范围外的项目在本阶段不能申报、修改、提交或行政录入，审核照常',
   'assessment/phase/scope-items': '项目',
   'assessment/phase/scope-items-all': '全部项目',
   'assessment/phase/scope-items-some': '仅部分项目',
