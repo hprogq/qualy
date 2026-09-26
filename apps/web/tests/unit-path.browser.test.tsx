@@ -71,6 +71,25 @@ describe('a unit path', () => {
     await expect.element(chain).not.toBeInTheDocument()
   })
 
+  it('lists the chain it is given where it holds more than the line', async () => {
+    await page.viewport(1280, 800)
+    await mount(
+      <UnitPath
+        steps={STEPS.slice(1)}
+        chain={{ label: '所在单位', closeLabel: '关闭', levels: STEPS }}
+      />,
+      900,
+    )
+    // the line leaves off the root everybody shares; the chain does not
+    expect(document.querySelectorAll('[data-path-step]')).toHaveLength(STEPS.length - 1)
+    await page.getByRole('button', { name: `所在单位 ${STEPS.join(' / ')}` }).click()
+    await expect.element(page.getByTestId('unit-chain')).toBeVisible()
+    expect(
+      [...document.querySelectorAll('[data-testid="unit-chain"] li')].map((one) => one.textContent),
+    ).toEqual(STEPS)
+    await userEvent.keyboard('{Escape}')
+  })
+
   it('raises the chain from the foot on a phone, with a way out', async () => {
     await page.viewport(390, 800)
     try {

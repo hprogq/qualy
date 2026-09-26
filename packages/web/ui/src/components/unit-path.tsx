@@ -197,10 +197,12 @@ export interface UnitPathProps {
    * The whole chain, a press away. The path becomes one control that opens
    * every level on a line of its own, the unit itself marked. `label` names
    * the control and heads the panel; `closeLabel` names the way out on a
-   * phone, where the panel rises from the foot. Steps are not pressable
-   * one by one while the whole path is.
+   * phone, where the panel rises from the foot. `levels` is the chain the
+   * panel lists where it holds more than the line says - the root a whole
+   * roster shares, left off the line and not off the chain. Steps are not
+   * pressable one by one while the whole path is.
    */
-  chain?: { label: string; closeLabel: string }
+  chain?: { label: string; closeLabel: string; levels?: readonly string[] }
   /** the formal StyleX extension seat, on the line */
   xstyle?: stylex.StyleXStyles
 }
@@ -218,7 +220,7 @@ export function UnitPath({
 }: UnitPathProps) {
   const whole = steps.join(SEPARATOR)
   if (chain !== undefined) {
-    return <ChainTrigger steps={steps} whole={whole} chain={chain} xstyle={xstyle} />
+    return <ChainTrigger steps={steps} chain={chain} xstyle={xstyle} />
   }
   return (
     <PathLine
@@ -320,16 +322,15 @@ function PathLine({
 
 function ChainTrigger({
   steps,
-  whole,
   chain,
   xstyle,
 }: {
   steps: readonly string[]
-  whole: string
-  chain: { label: string; closeLabel: string }
+  chain: { label: string; closeLabel: string; levels?: readonly string[] }
   xstyle: stylex.StyleXStyles | undefined
 }) {
   const phone = useIsMobile()
+  const levels = chain.levels ?? steps
   const [open, setOpen] = useState(false)
   const line = (
     <span {...stylex.props(styles.triggerPath)}>
@@ -347,7 +348,7 @@ function ChainTrigger({
     <button
       type="button"
       // the words on the line may be cut at the front; the name says all of it
-      aria-label={`${chain.label} ${whole}`}
+      aria-label={`${chain.label} ${levels.join(SEPARATOR)}`}
       data-testid="unit-chain-open"
       {...stylex.props(styles.trigger)}
       {...(phone ? { onClick: () => setOpen(true), 'aria-haspopup': 'dialog' as const } : {})}
@@ -374,7 +375,7 @@ function ChainTrigger({
               </Button>
             </SheetHeader>
             <div {...stylex.props(styles.sheetBody)}>
-              <ChainList steps={steps} />
+              <ChainList steps={levels} />
             </div>
           </SheetContent>
         </Sheet>
@@ -387,7 +388,7 @@ function ChainTrigger({
       <PopoverContent align="start" width={320}>
         <div data-testid="unit-chain" role="group" aria-label={chain.label}>
           <p {...stylex.props(styles.chainHead)}>{chain.label}</p>
-          <ChainList steps={steps} />
+          <ChainList steps={levels} />
         </div>
       </PopoverContent>
     </Popover>
