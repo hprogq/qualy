@@ -2441,6 +2441,50 @@ describe('who may work on a batch', () => {
   })
 })
 
+describe('the notice of organization changes', () => {
+  // The button hung over the notice from a corner, with padding guessed wide
+  // enough to keep the words clear of it: in a language whose button runs
+  // wider than the guess, the words ran underneath it.
+  it('keeps the words clear of the button whatever the language', async () => {
+    await page.viewport(900, 800)
+    try {
+      await renderScreen({
+        locale: 'en-US',
+        client: fakeClient({
+          app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+          assessment: assessmentStubs({
+            previewAccessSync: () =>
+              Effect.succeed({ items: [], nextCursor: null, pendingTotal: 3, lapsedTotal: 0 }),
+          }),
+        }),
+        routes: [
+          { path: '/assessment/batches/:batchId/access', element: workspace(<BatchAccessPage />) },
+        ],
+        route: `/assessment/batches/${BATCH_ID}/access`,
+      })
+      const notice = page.getByTestId('access-sync-notice')
+      await expect.element(notice).toHaveAttribute('data-kind', 'decide')
+      const button = notice.getByRole('button').element().getBoundingClientRect()
+      // the words themselves: the innermost element holding the sentence
+      const words = [...notice.element().querySelectorAll('*')]
+        .find(
+          (element) =>
+            element.closest('button') === null &&
+            element.children.length === 0 &&
+            (element.textContent ?? '').length > 20,
+        )!
+        .getBoundingClientRect()
+      const apart =
+        words.right <= button.left + 0.5 ||
+        words.bottom <= button.top + 0.5 ||
+        button.bottom <= words.top + 0.5
+      expect(apart).toBe(true)
+    } finally {
+      await page.viewport(1280, 800)
+    }
+  })
+})
+
 describe('adjusting one person', () => {
   // Opened, or refreshed while open, onto somebody the round no longer hands
   // anything: it answered "none" over a disabled save.

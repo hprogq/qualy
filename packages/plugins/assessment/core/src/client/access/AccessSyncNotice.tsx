@@ -1,7 +1,8 @@
 import { InfoIcon, TriangleAlertIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useI18n } from '@qualy/web-i18n'
-import { Alert, AlertAction, AlertTitle } from '@qualy/ui/alert'
 import { Button } from '@qualy/ui/button'
 import { assessmentMessages as m } from '../i18n.ts'
 
@@ -11,18 +12,47 @@ import { assessmentMessages as m } from '../i18n.ts'
 // reader meets on arrival: the subject of this page is the people working on
 // the batch, and it has to start at the top of the screen.
 //
-// The icon carries the difference between the two states, not a colour: a
-// standing fact and a decision somebody owes are both worth a line, but only
-// one of them is worth an alarm.
+// A decision somebody owes is amber; a lapse that already took effect is a
+// grey line with an i, worth knowing and nothing to alarm anybody about. The
+// button stands in the line's own flow, at its end - it used to hang over the
+// words from a corner, with padding guessed wide enough to keep them apart.
 
 const styles = stylex.create({
-  // room at the end for the button that sits over it
-  notice: { paddingRight: 112 },
-  prompt: { fontWeight: 400, WebkitLineClamp: 'none' },
-  // centred against the one line this notice is, not hung from the top
-  // corner: the primitive's anchor suits alerts with a body, and against a
-  // single line it reads as a button that slipped
-  action: { insetBlockStart: '50%', transform: 'translateY(-50%)' },
+  bar: {
+    display: 'flex',
+    flexWrap: { default: 'nowrap', [breakpoints.phone]: 'wrap' },
+    alignItems: 'center',
+    columnGap: 12,
+    rowGap: 10,
+    borderRadius: tokens.radiusLg,
+    paddingInlineStart: 14,
+    paddingInlineEnd: 10,
+    paddingBlock: 8,
+    fontSize: 13.5,
+    lineHeight: 1.5,
+  },
+  decide: {
+    backgroundColor: `color-mix(in oklab, ${tokens.warning} 9%, ${tokens.surface})`,
+    boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${tokens.warning} 32%, transparent)`,
+  },
+  lapsed: {
+    backgroundColor: tokens.surface,
+    boxShadow: `inset 0 0 0 1px ${tokens.border}`,
+  },
+  icon: { flexShrink: 0, width: 16, height: 16 },
+  iconDecide: { color: tokens.warning },
+  iconLapsed: { color: tokens.mutedForeground },
+  words: {
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: { default: 'auto', [breakpoints.phone]: 'calc(100% - 28px)' },
+    textWrap: 'pretty',
+  },
+  open: {
+    flexShrink: 0,
+    marginInlineStart: { default: null, [breakpoints.phone]: 28 },
+  },
 })
 
 export function AccessSyncNotice({
@@ -41,22 +71,30 @@ export function AccessSyncNotice({
   return (
     // what the round is being told about its own staffing, as counts: a
     // decision owed, or a lapse to be aware of
-    <Alert
+    <div
+      role="status"
       data-testid="access-sync-notice"
       data-kind={decide ? 'decide' : 'lapsed'}
       data-pending={String(pendingTotal)}
       data-lapsed={String(lapsedTotal)}
-      className={stylex.props(styles.notice).className}
+      {...stylex.props(styles.bar, decide ? styles.decide : styles.lapsed)}
     >
-      {decide ? <TriangleAlertIcon /> : <InfoIcon />}
-      <AlertTitle className={stylex.props(styles.prompt).className}>
+      {decide ? (
+        <TriangleAlertIcon aria-hidden {...stylex.props(styles.icon, styles.iconDecide)} />
+      ) : (
+        <InfoIcon aria-hidden {...stylex.props(styles.icon, styles.iconLapsed)} />
+      )}
+      <span {...stylex.props(styles.words)}>
         {format(decide ? m.accessSyncPrompt : m.accessSyncLapsedPrompt)}
-      </AlertTitle>
-      <AlertAction className={stylex.props(styles.action).className}>
-        <Button size="sm" variant="outline" onClick={onOpen}>
-          {format(m.accessSyncOpen)}
-        </Button>
-      </AlertAction>
-    </Alert>
+      </span>
+      <Button
+        size="sm"
+        variant="outline"
+        className={stylex.props(styles.open).className}
+        onClick={onOpen}
+      >
+        {format(m.accessSyncOpen)}
+      </Button>
+    </div>
   )
 }
