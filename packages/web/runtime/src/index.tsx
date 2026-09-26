@@ -83,7 +83,7 @@ export {
   type RouteSlots,
 } from './route-builder.tsx'
 export { cursorPages } from './api-query.ts'
-export { useApiStream } from './api-stream.ts'
+export { useApiStream, type ApiStreamState } from './api-stream.ts'
 export { PageLink } from './links.tsx'
 export {
   PENDING_INDICATOR_AFTER,

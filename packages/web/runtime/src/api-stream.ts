@@ -19,6 +19,14 @@ import { browserRuntime } from './api-query.ts'
 // the hook. Anything else that fails backs away instead of knocking at a
 // fixed rate - a server that is down should not be dialled twenty times a
 // minute by every open tab.
+//
+// Not every end is a loss, and `lost` is the difference for a caller that
+// tells its reader. A connection that lasted and then ended - the server
+// closes each one after a while, a proxy recycles it - is followed by a
+// planned re-dial that normally answers within seconds; saying "reconnecting"
+// for that would flash on every open tab each time. The channel counts as
+// lost only when a connection fails or ends before it has proved steady, or
+// when a dial has gone unanswered for its allowance.
 
 const REDIAL_MS = 3_000
 const REDIAL_MOST_MS = 60_000
@@ -30,11 +38,25 @@ const REDIAL_MOST_MS = 60_000
 // forever. Fifteen seconds is far past accept-and-drop and far short of the
 // minute at which a middlebox recycles a stream that is working.
 const STEADY_MS = 15_000
+// How long a dial may go unanswered before the channel counts as lost: a
+// server that is there sends its catch-up signal at once.
+const ANSWER_MS = 5_000
 
 /** how long to wait before the next dial, given how long the last one lived */
 export function nextRedialMs(previous: number, aliveMs: number): number {
   if (aliveMs >= STEADY_MS) return REDIAL_MS
   return Math.min(previous * 2, REDIAL_MOST_MS)
+}
+
+/** what a stream's caller is told of the channel */
+export interface ApiStreamState {
+  /** an event has arrived on the connection open now; without it, lean on polling */
+  readonly live: boolean
+  /**
+   * the channel is down for real rather than between a steady connection
+   * and its planned re-dial - the one a reader may be told about
+   */
+  readonly lost: boolean
 }
 
 export function useApiStream<A>(
@@ -46,9 +68,10 @@ export function useApiStream<A>(
     readonly key: string
     readonly enabled?: boolean
   },
-): { live: boolean } {
+): ApiStreamState {
   const enabled = options.enabled ?? true
   const [live, setLive] = useState(false)
+  const [lost, setLost] = useState(false)
   // the freshest closures, without making them re-dial dependencies
   const handler = useRef(onEvent)
   handler.current = onEvent
@@ -60,11 +83,20 @@ export function useApiStream<A>(
     if (!enabled || absent) return
     const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
+    // the allowance the dial in flight has to be answered in
+    let answer: ReturnType<typeof setTimeout> | undefined
+    const settle = (next: boolean) => {
+      if (answer !== undefined) clearTimeout(answer)
+      answer = undefined
+      setLost(next)
+    }
     let backoff = REDIAL_MS
     const dial = () => {
       const making = opener.current
       if (controller.signal.aborted || making === undefined) return
       const openedAt = Date.now()
+      if (answer !== undefined) clearTimeout(answer)
+      answer = setTimeout(() => settle(true), ANSWER_MS)
       void browserRuntime
         .runPromise(
           Effect.flatMap(making(), (stream) =>
@@ -74,6 +106,7 @@ export function useApiStream<A>(
                 // caller; whether it is worth dialling back at full speed is
                 // settled at the end, by how long the connection lived
                 setLive(true)
+                settle(false)
                 handler.current(event)
               }),
             ),
@@ -88,11 +121,18 @@ export function useApiStream<A>(
           // may have heard from its own server by the time this one settles
           if (controller.signal.aborted) return
           setLive(false)
-          if (verdict === 'stop') return
+          if (verdict === 'stop') {
+            settle(true)
+            return
+          }
           // a clean end and a failed one are the same question here: a
           // connection the server closes at once is not one it will serve
           // any better on the next try
-          backoff = nextRedialMs(backoff, Date.now() - openedAt)
+          const aliveMs = Date.now() - openedAt
+          backoff = nextRedialMs(backoff, aliveMs)
+          // a steady connection's end is the planned kind, and the re-dial's
+          // own allowance decides whether anything was lost
+          if (aliveMs < STEADY_MS) settle(true)
           timer = setTimeout(dial, backoff)
         })
     }
@@ -100,9 +140,11 @@ export function useApiStream<A>(
     return () => {
       controller.abort()
       if (timer !== undefined) clearTimeout(timer)
+      if (answer !== undefined) clearTimeout(answer)
       setLive(false)
+      setLost(false)
     }
   }, [enabled, absent, options.key])
 
-  return { live }
+  return { live, lost }
 }

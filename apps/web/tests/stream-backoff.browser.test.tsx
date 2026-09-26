@@ -1,4 +1,4 @@
-import { StrictMode } from 'react'
+import { StrictMode, useRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
@@ -13,12 +13,14 @@ import { useApiStream } from '@qualy/web-runtime'
 // the tab knocked ten times a minute for as long as it stayed open. Waiting
 // those seconds out here would make the test a minute long, so the re-dial
 // timers are recorded and fired at once while every other timer, Effect's
-// scheduler included, keeps its own timing.
+// scheduler and the five seconds a dial has to be answered in included,
+// keeps its own timing.
+const ANSWER_MS = 5_000
 const recordRedials = () => {
   const asked: number[] = []
   const real = globalThis.setTimeout.bind(globalThis)
   vi.stubGlobal('setTimeout', (handler: TimerHandler, ms?: number, ...rest: unknown[]): number => {
-    if (typeof ms === 'number' && ms >= 3_000) {
+    if (typeof ms === 'number' && ms >= 3_000 && ms !== ANSWER_MS) {
       asked.push(ms)
       return real(handler, 0)
     }
@@ -80,5 +82,99 @@ describe('a connection that was replaced', () => {
     await expect.element(probe).toHaveAttribute('data-live', 'true')
     await new Promise((resolve) => setTimeout(resolve, 300))
     expect(probe.element().getAttribute('data-live')).toBe('true')
+  })
+})
+
+/**
+ * A stream whose connections are scripted one by one, and what the hook says
+ * of the channel.
+ */
+function Scripted({ connections }: { connections: (() => Stream.Stream<string, Error>)[] }) {
+  const dials = useRef(0)
+  const { live, lost } = useApiStream<string>(
+    () => {
+      const next = connections[Math.min(dials.current, connections.length - 1)]!
+      dials.current += 1
+      return Effect.succeed(next())
+    },
+    () => {},
+    { key: 'probe' },
+  )
+  return <p data-testid="probe" data-live={String(live)} data-lost={String(lost)} />
+}
+
+/** every value an attribute takes from here on, the one it has now first */
+const watchAttribute = (element: Element, name: string): string[] => {
+  const seen = [element.getAttribute(name) ?? '']
+  new MutationObserver(() => {
+    const now = element.getAttribute(name) ?? ''
+    if (seen.at(-1) !== now) seen.push(now)
+  }).observe(element, { attributes: true, attributeFilter: [name] })
+  return seen
+}
+
+describe('telling a planned re-dial from a lost channel', () => {
+  // how long a connection lived is read off the clock, so a test moves the
+  // clock rather than wait out a quarter of a minute
+  let skew = 0
+  const realNow = Date.now.bind(Date)
+  afterEach(() => {
+    vi.restoreAllMocks()
+    skew = 0
+  })
+  const skewClock = () => vi.spyOn(Date, 'now').mockImplementation(() => realNow() + skew)
+
+  /** a connection that answers and stays open until `end` is called, then ends cleanly */
+  const lasting = () => {
+    let end = () => {}
+    const ended = new Promise<void>((resolve) => {
+      end = resolve
+    })
+    const stream = () =>
+      Stream.concat(Stream.succeed('sync'), Stream.fromEffectDrain(Effect.promise(() => ended)))
+    return { stream, end: () => end() }
+  }
+  const answering = () => Stream.concat(Stream.succeed('sync'), Stream.never)
+
+  it('does not count the end of a steady connection as lost when the re-dial answers', async () => {
+    skewClock()
+    const first = lasting()
+    await render(<Scripted connections={[first.stream, answering]} />)
+    const probe = page.getByTestId('probe')
+    await expect.element(probe).toHaveAttribute('data-live', 'true')
+    const lost = watchAttribute(probe.element(), 'data-lost')
+    const live = watchAttribute(probe.element(), 'data-live')
+    // the server ends a connection that has served for a while
+    skew = 16_000
+    first.end()
+    await expect.poll(() => live.length, { timeout: 6_000 }).toBeGreaterThanOrEqual(3)
+    expect(live).toEqual(['true', 'false', 'true'])
+    expect(lost).toEqual(['false'])
+  })
+
+  it('counts a connection that ends before it proved steady as lost', async () => {
+    await render(
+      <Scripted
+        connections={[
+          () => Stream.concat(Stream.succeed('sync'), Stream.fail(new Error('dropped'))),
+          () => Stream.never,
+        ]}
+      />,
+    )
+    await expect.element(page.getByTestId('probe')).toHaveAttribute('data-lost', 'true')
+  })
+
+  it('counts a planned re-dial that fails as lost', async () => {
+    skewClock()
+    const first = lasting()
+    await render(<Scripted connections={[first.stream, () => Stream.fail(new Error('refused'))]} />)
+    const probe = page.getByTestId('probe')
+    await expect.element(probe).toHaveAttribute('data-live', 'true')
+    skew = 16_000
+    first.end()
+    // nothing is said while the re-dial is still to come
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    expect(probe.element().getAttribute('data-lost')).toBe('false')
+    await expect.element(probe, { timeout: 6_000 }).toHaveAttribute('data-lost', 'true')
   })
 })
