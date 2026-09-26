@@ -54,6 +54,7 @@ import { PlacementNotice } from '../roster/PlacementNotice.tsx'
 import { RosterFilings, useWaitingColumn, waitsOnAnything } from '../roster/RosterFilings.tsx'
 import { RosterScore } from '../roster/RosterScore.tsx'
 import { unitPathOf } from '../roster/unit-path.ts'
+import { pathWidthOf, widthOf } from '../roster/measure.ts'
 import {
   ROSTER_PAGE_SIZE,
   ROSTER_WAITING,
@@ -106,16 +107,29 @@ const TWO_COLUMNS = 1280
 const TREE_MOST = 312
 
 /**
- * The columns around the waiting one, which is as wide as the page's widest
- * answer (RosterFilings). The person takes whatever is left over, so on a
- * wide screen the room goes to the name and its unit rather than to a band
- * of nothing before the total. The total is wide enough for the longest
- * reason there is none beside the button that asks again; a reason longer
- * still, in some language, takes a second line rather than the button.
+ * The columns around the person and what waits on them. The person's column
+ * is as wide as the page's widest name or unit path (measured below) and
+ * is given that before anything else grows; the waiting column is at least
+ * as wide as the page's widest answer (RosterFilings) and takes whatever is
+ * left, so on a wide screen the room goes to the counts beside a name
+ * rather than to a band of nothing between the name and them. The total is
+ * wide enough for the longest reason there is none beside the button that
+ * asks again; a reason longer still, in some language, takes a second line
+ * rather than the button.
  */
 const numberColumn = '6.5rem'
-const personColumn = 'minmax(10rem, 1fr)'
 const tailColumns = '7.5rem 2rem'
+
+/**
+ * The narrowest and widest the person's column is drawn. Past the widest a
+ * unit path folds its front away, which leaves the unit itself said whole.
+ */
+const PERSON_LEAST = 160
+const PERSON_MOST = 480
+
+/** the size a name is said at on a row, and a mark beside it */
+const NAME_SIZE = 12.5
+const MARK_SIZE = 12
 
 /** whether the reader keeps the unit tree open beside the list, remembered per browser */
 const TREE_OPEN_KEY = 'qualy:assessment-roster-tree-open'
@@ -636,7 +650,38 @@ export function ParticipantResultList({
     view.unit === '' ? format(m.rosterUnitsAll) : (unitName ?? format(m.rosterUnitChosen))
   const waitingHead = format(m.rosterColumnWaiting)
   const waitingColumn = useWaitingColumn(rows, waitingHead)
-  const columns = `${numberColumn} ${personColumn} ${waitingColumn} ${tailColumns}`
+  // The person's column, measured from what this page's rows say: the name
+  // with the marks beside it, and the unit path under it on one line.
+  const personWidth = useMemo(() => {
+    let widest = 0
+    for (const row of rows) {
+      const marks = [
+        ...(row.status === 'excluded'
+          ? [widthOf(format(m.excludedBadge), MARK_SIZE, 400) + 12]
+          : []),
+        ...(row.placement === 'current'
+          ? []
+          : [
+              widthOf(
+                format(
+                  row.placement === 'changed' ? m.placementChangedMark : m.placementUnavailableMark,
+                ),
+                MARK_SIZE,
+                600,
+              ) + 22,
+            ]),
+      ]
+      const name =
+        widthOf(row.displayName, NAME_SIZE, 400) + marks.reduce((sum, one) => sum + one + 8, 0)
+      const path =
+        units.data === undefined
+          ? 0
+          : pathWidthOf(unitPathOf(row.anchorLineage, (nodeId) => byUnit.get(nodeId)?.name).steps)
+      widest = Math.max(widest, name, path)
+    }
+    return Math.ceil(Math.min(PERSON_MOST, Math.max(PERSON_LEAST, widest + 8)))
+  }, [rows, units.data, byUnit, format])
+  const columns = `${numberColumn} minmax(${String(PERSON_LEAST)}px, ${String(personWidth)}px) minmax(${waitingColumn}, 1fr) ${tailColumns}`
 
   const listSection = (
     <section aria-label={format(m.participantResultsTab)} {...stylex.props(styles.listColumn)}>

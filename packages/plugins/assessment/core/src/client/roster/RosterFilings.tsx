@@ -5,6 +5,7 @@ import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
 import type { RosterWaiting } from './roster-view.ts'
+import { widthOf } from './measure.ts'
 
 // What one person's claims are waiting on, as short counts: only the kinds
 // that have any, so a row with nothing outstanding is quiet. A round nobody
@@ -12,9 +13,9 @@ import type { RosterWaiting } from './roster-view.ts'
 //
 // In a column a row with nothing waiting says so with a dash, because an
 // empty cell under a heading reads as something that did not load. The
-// column is as wide as the page's longest answer, measured from the words
-// themselves: every row is its own grid, so a track cannot size itself to
-// the rows around it.
+// column is at least as wide as the page's longest answer, measured from
+// the words themselves: every row is its own grid, so a track cannot size
+// itself to the rows around it.
 
 const WORDS = {
   inReview: m.rosterWaitingInReviewCount,
@@ -35,7 +36,11 @@ const ORDER: readonly RosterWaiting[] = [
 /** the space between two counts, as drawn below */
 const GAP = 10
 
-/** the narrowest and widest the column is drawn; past the widest a row wraps */
+/**
+ * The narrowest and widest the column asks for; past the widest a row's
+ * counts wrap, unless the roster has room to spare, which goes to this
+ * column so that its counts can stand side by side.
+ */
 const COLUMN_LEAST = 48
 const COLUMN_MOST = 144
 
@@ -95,23 +100,6 @@ export function RosterFilings({ filings }: { filings: Filings }) {
 /** whether anything of this person's waits on anybody */
 export const waitsOnAnything = (filings: Filings): boolean =>
   ORDER.some((kind) => filings[kind] > 0)
-
-let pen: CanvasRenderingContext2D | null | undefined
-
-/** how wide a line of words is drawn in the page's own face, at a size and weight */
-const widthOf = (words: string, size: number, weight: number): number => {
-  if (pen === undefined) {
-    try {
-      pen = document.createElement('canvas').getContext('2d')
-    } catch {
-      pen = null
-    }
-  }
-  // no canvas to measure with: a generous guess, a full em a character
-  if (pen === null) return words.length * size
-  pen.font = `${String(weight)} ${String(size)}px ${getComputedStyle(document.body).fontFamily}`
-  return pen.measureText(words).width
-}
 
 /**
  * The waiting column's width for a page of rows: the widest row's counts on

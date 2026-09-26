@@ -1063,10 +1063,31 @@ describe('the room the roster gives its rows', () => {
   const waitingWidth = () =>
     page.getByTestId('participant-filings').first().element().parentElement!.getBoundingClientRect()
       .width
+  /**
+   * How far the waiting column starts past the end of the widest thing the
+   * person's column says on the page: a name with its marks, or a unit path.
+   */
+  const bandBeforeWaiting = () => {
+    let said = 0
+    for (const row of rows().elements()) {
+      // the name and the marks beside it, each as wide as its words
+      const line = row.querySelector('[data-testid="participant-name"]')!.parentElement!
+      for (const part of line.children) said = Math.max(said, part.getBoundingClientRect().right)
+      const steps = [...row.querySelectorAll('[data-path-step]')]
+      for (const step of steps) said = Math.max(said, step.getBoundingClientRect().right)
+    }
+    const waiting = page
+      .getByTestId('participant-filings')
+      .first()
+      .element()
+      .parentElement!.getBoundingClientRect().left
+    return waiting - said
+  }
 
-  it('says nothing waits with a dash a reader can hear, in a column only as wide as it needs', async () => {
+  it('says nothing waits with a dash a reader can hear, right after the names', async () => {
     await open({
-      listParticipantAccounts: (request: Request) => pageOf(request, [person(1), person(2)]),
+      listRosterUnits: deepUnits,
+      listParticipantAccounts: (request: Request) => pageOf(request, [deep(1), deep(2)]),
     })
     const quiet = page.getByTestId('participant-filings').first()
     await expect.element(quiet).toHaveAttribute('data-waiting', 'none')
@@ -1076,11 +1097,13 @@ describe('the room the roster gives its rows', () => {
     expect((quiet.element().textContent ?? '').replace(dash.textContent ?? '', '').trim()).not.toBe(
       '',
     )
-    // nobody on the page waits: the column keeps no more than its heading
-    expect(waitingWidth()).toBeLessThanOrEqual(60)
+    // the dashes stand just past the names and their units, not across a
+    // band of nothing the person's column kept for itself
+    await expect.poll(bandBeforeWaiting).toBeLessThanOrEqual(32)
+    expect(bandBeforeWaiting()).toBeGreaterThanOrEqual(0)
   })
 
-  it('widens the waiting column to the page’s longest answer, and no further', async () => {
+  it('widens the waiting column to at least the page’s longest answer', async () => {
     await open({
       listParticipantAccounts: (request: Request) =>
         pageOf(request, [
@@ -1096,7 +1119,34 @@ describe('the room the roster gives its rows', () => {
     const cell = busy.element().parentElement!.getBoundingClientRect()
     expect(counts.at(-1)!.right).toBeLessThanOrEqual(cell.right + 0.5)
     expect(waitingWidth()).toBeGreaterThan(60)
-    expect(waitingWidth()).toBeLessThanOrEqual(144)
+  })
+
+  // A wide window's room goes to what waits on each person, beside their
+  // name, rather than to a band between the name and it: the person's
+  // column is as wide as what the page's rows say in it.
+  it('gives a wide window’s room to what waits, not to a band after the names', async () => {
+    await page.viewport(1920, 1000)
+    try {
+      await open({
+        listRosterUnits: deepUnits,
+        listParticipantAccounts: (request: Request) =>
+          pageOf(request, [
+            deep(1),
+            deep(2, { filings: { ...NONE, reconsidering: 1, inReview: 3, toRevise: 1 } }),
+          ]),
+      })
+      const busy = page.getByTestId('participant-filings').nth(1)
+      await expect.element(busy).toHaveAttribute('data-waiting', 'some')
+      await expect.poll(bandBeforeWaiting).toBeLessThanOrEqual(32)
+      // every count stands on one line when there is room for it
+      const tops = Array.from(busy.element().children).map((one) =>
+        Math.round(one.getBoundingClientRect().top),
+      )
+      expect(tops).toHaveLength(3)
+      expect(new Set(tops).size).toBe(1)
+    } finally {
+      await page.viewport(1280, 800)
+    }
   })
 
   it('names a row’s unit from its own end, folding the parents that do not fit', async () => {
