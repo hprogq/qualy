@@ -50,7 +50,7 @@ const PAGE = 20
 /** the orders the claims can be read in */
 type Order = 'newest' | 'oldest'
 
-/** the pane width from which the toolbar and the rows take their desk shape */
+/** the pane width from which the rows take their desk shape, and the toolbar where its filters fit */
 const ROOMY = 720
 
 const PHONE = '@media (max-width: 767.98px)'
@@ -239,6 +239,9 @@ const styles = stylex.create({
   chipsDesk: {
     position: 'relative',
     flexGrow: 0,
+    // next to nothing: the search beside them gives up its room first, down
+    // to its least; filters that still do not fit take the wrapping toolbar
+    flexShrink: 0.01,
     flexWrap: 'nowrap',
     gap: 2,
     overflowX: 'auto',
@@ -292,7 +295,7 @@ const styles = stylex.create({
     display: 'flex',
     minWidth: 128,
     flexGrow: 0,
-    flexShrink: 4,
+    flexShrink: 1,
     flexBasis: 220,
     alignItems: 'center',
     gap: 6,
@@ -558,10 +561,35 @@ export function ItemPane({
   // widens its filter and moves every one after it.
   const chipRow = useRef<HTMLDivElement | null>(null)
   const [mark, setMark] = useState<{ left: number; width: number } | null>(null)
-  const offeredKey = offered.map((one) => `${one.key}:${String(counts.get(one.key))}`).join()
+  const offeredKey = offered
+    .map((one) => `${format(one.label)}:${String(counts.get(one.key))}`)
+    .join()
+
+  // The toolbar stands in one row - the filters, a search field, the order -
+  // only where the filters fit in it whole. A pane wide enough by its own
+  // measure may still not hold them: a language whose words run long, a
+  // reader with more filters. Then it takes the narrower toolbar, where the
+  // filters wrap, and remembers the width the row needed, so a pane that
+  // widens again gets the row back.
+  const [rowNeeds, setRowNeeds] = useState<{ key: string; width: number } | null>(null)
+  const cramped =
+    rowNeeds !== null &&
+    rowNeeds.key === offeredKey &&
+    paneWidth !== null &&
+    paneWidth < rowNeeds.width
+  const wide = roomy && !cramped
   useLayoutEffect(() => {
     const row = chipRow.current
-    if (row === null || compact) {
+    if (!wide || row === null || paneWidth === null) return
+    // the search has given up its room first, so what is still over is the
+    // filters' own
+    const over = row.scrollWidth - row.clientWidth
+    if (over > 1) setRowNeeds({ key: offeredKey, width: paneWidth + over })
+  }, [wide, offeredKey, paneWidth])
+
+  useLayoutEffect(() => {
+    const row = chipRow.current
+    if (row === null || !wide) {
       setMark(null)
       return
     }
@@ -578,7 +606,7 @@ export function ItemPane({
     const watch = new ResizeObserver(measure)
     watch.observe(row)
     return () => watch.disconnect()
-  }, [active, compact, offeredKey])
+  }, [active, wide, offeredKey])
   const needle = search.trim().toLowerCase()
   const filtered = entries
     .filter(test)
@@ -621,9 +649,11 @@ export function ItemPane({
 
   const toolbar = entries.length > 0 && (
     <div
+      data-testid="entries-toolbar"
+      data-shape={wide ? 'row' : 'wrap'}
       {...stylex.props(
         styles.toolbar,
-        compact ? styles.toolbarCompact : styles.toolbarDesk,
+        wide ? styles.toolbarDesk : styles.toolbarCompact,
         mode === 'phone' && styles.toolbarPhone,
       )}
     >
@@ -631,9 +661,9 @@ export function ItemPane({
         ref={chipRow}
         role="group"
         aria-label={format(m.entriesFilterLabel)}
-        {...stylex.props(styles.chips, !compact && styles.chipsDesk)}
+        {...stylex.props(styles.chips, wide && styles.chipsDesk)}
       >
-        {!compact && mark !== null && (
+        {wide && mark !== null && (
           <GlideAcross
             left={mark.left}
             width={mark.width}
@@ -656,10 +686,10 @@ export function ItemPane({
               }}
               {...stylex.props(
                 styles.chip,
-                !compact && styles.chipDesk,
+                wide && styles.chipDesk,
                 on && styles.chipOn,
-                on && compact && styles.chipOnCompact,
-                on && !compact && mark !== null && styles.chipOnDesk,
+                on && !wide && styles.chipOnCompact,
+                on && wide && mark !== null && styles.chipOnDesk,
               )}
             >
               {format(one.label)}
@@ -670,8 +700,8 @@ export function ItemPane({
           )
         })}
       </div>
-      {!compact && <span {...stylex.props(styles.spacer)} />}
-      {searchOpen || search !== '' || roomy ? (
+      {wide && <span {...stylex.props(styles.spacer)} />}
+      {searchOpen || search !== '' || wide ? (
         <label {...stylex.props(styles.search)}>
           <SearchIcon aria-hidden {...stylex.props(styles.searchIcon)} />
           <input
@@ -685,7 +715,7 @@ export function ItemPane({
             }}
             {...stylex.props(styles.searchInput)}
           />
-          {!roomy && (
+          {!wide && (
             <button
               type="button"
               aria-label={format(m.entriesSearchClose)}
@@ -716,7 +746,7 @@ export function ItemPane({
           size="sm"
           // narrower, a quiet key like the search beside it, still saying
           // the order in force
-          quiet={!roomy}
+          quiet={!wide}
           aria-label={format(m.entriesSortLabel)}
           data-testid="entries-sort"
           data-order={order}
@@ -724,7 +754,7 @@ export function ItemPane({
         >
           <span {...stylex.props(styles.sortFace)}>
             <ArrowDownUpIcon aria-hidden {...stylex.props(styles.sortIcon)} />
-            {roomy ? (
+            {wide ? (
               <SelectValue />
             ) : (
               <>

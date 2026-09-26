@@ -177,6 +177,7 @@ const workspace = ({
     group(DEEP_B, SUB_B, '竞赛奖项', 0),
   ],
   stubs = {},
+  locale = 'zh-CN',
 }: {
   route: string
   items?: readonly unknown[]
@@ -185,6 +186,8 @@ const workspace = ({
   groups?: readonly unknown[]
   /** any read or write the case needs answered its own way */
   stubs?: Record<string, unknown>
+  /** the reader's language, where a case is about how long its words run */
+  locale?: 'zh-CN' | 'en-US'
 }) =>
   renderScreen({
     client: fakeClient({
@@ -245,6 +248,7 @@ const workspace = ({
       },
     }),
     route,
+    locale,
     routes: [
       {
         path: '/assessment/batches/:batchId/my-entries',
@@ -625,6 +629,31 @@ describe('reading one question’s claims', () => {
     await expect.element(sort).toHaveAttribute('data-order', 'oldest')
     expect(said()).toBe(next)
     await expect.poll(() => rows()[0]!.getAttribute('data-entry')).toBe(entryId(1))
+  })
+
+  // At a desk the filters stand in one row beside the search and the order.
+  // Where that row cannot hold them - a tablet's pane, in a language whose
+  // words run long - the search gives up its room first, and then the
+  // filters wrap as a narrower pane's do: none is ever cut off at the edge.
+  it('keeps every filter whole where the row is tight', async () => {
+    await page.viewport(1024, 768)
+    await workspace({ route: `${base}?open=${TAIL}`, entries: lot, locale: 'en-US' })
+    await expect.poll(() => rows().length).toBe(20)
+    const whole = () => {
+      const filters = document.querySelector('[data-chip="all"]')!.parentElement!
+      const edge = filters.getBoundingClientRect()
+      return (
+        filters.scrollWidth <= filters.clientWidth + 1 &&
+        [...filters.querySelectorAll('[data-chip]')].every(
+          (chip) => chip.getBoundingClientRect().right <= edge.right + 1,
+        )
+      )
+    }
+    await expect.poll(whole).toBe(true)
+    // where they fit whole in one row, they keep it
+    await page.viewport(1440, 900)
+    await expect.element(page.getByTestId('entries-toolbar')).toHaveAttribute('data-shape', 'row')
+    expect(whole()).toBe(true)
   })
 
   it('filters the claims by where they stand, and finds one by what it says', async () => {
