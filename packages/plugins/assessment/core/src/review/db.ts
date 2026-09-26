@@ -1161,11 +1161,17 @@ export const blockedGroups = (tenantId: string, batchId: string) =>
       sql<{
         node_id: string | null
         node_name: string | null
+        unit_path: string[] | null
         role_ids: string[]
         reason: string | null
         waiting: string
       }>`
         select ri.current_node_id as node_id, n.name as node_name,
+               -- the unit from the root down, as the organization names it
+               -- today: two classes called 1 are told apart by where they sit
+               (select array_agg(a.name order by a.depth)
+                  from org_nodes a
+                 where a.tenant_id = ${tenantId} and a.path @> n.path) as unit_path,
                ri.current_role_ids as role_ids, ri.blocked_reason as reason,
                count(*)::text as waiting
         from review_instances ri
@@ -1175,7 +1181,7 @@ export const blockedGroups = (tenantId: string, batchId: string) =>
         -- administrator most needs to see: a duty nobody anywhere holds
         left join org_nodes n on n.tenant_id = ri.tenant_id and n.id = ri.current_node_id
         where ri.tenant_id = ${tenantId} and e.batch_id = ${batchId} and ri.state = 'blocked'
-        group by ri.current_node_id, n.name, ri.current_role_ids, ri.blocked_reason
+        group by ri.current_node_id, n.name, n.path, ri.current_role_ids, ri.blocked_reason
         order by n.name nulls first
       `.execute(k),
     )
@@ -1184,6 +1190,7 @@ export const blockedGroups = (tenantId: string, batchId: string) =>
         rows.map((row) => ({
           nodeId: row.node_id === null ? null : String(row.node_id),
           nodeName: row.node_name === null ? null : String(row.node_name),
+          unitPath: (row.unit_path ?? []).map(String),
           roleIds: row.role_ids.map(String),
           // why these wait: a staffing gap and a conflict rule read differently
           reason: (row.reason ?? 'no-assignee') as

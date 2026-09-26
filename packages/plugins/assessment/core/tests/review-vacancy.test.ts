@@ -67,6 +67,69 @@ describe.runIf(postgresAvailable)('a vacant step', () => {
     await db?.dispose()
   })
 
+  // The administrator's summary of where review waits names each unit from
+  // the root down - two classes called 1 are two different places - and the
+  // roles each stopped step asks for, so the way to appoint can be taken. A
+  // step that resolved to no unit has no path to give.
+  it('says where stopped rounds wait, from the root down, and which roles they wait for', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-alert-path')
+          const assessment = yield* Assessment
+          const counsellor = yield* vacantRole(f)
+          const admin = f.principal(f.admin)
+          const s1 = f.principal(f.s1)
+          const stopAt = (stages: readonly unknown[]) =>
+            Effect.gen(function* () {
+              const g = yield* runningBatch(f, { profile: REVIEW_OPEN, stages })
+              const entry = yield* assessment.createEntry(
+                f.t,
+                { itemId: g.item.id, participantId: g.p1, payload: {} },
+                s1,
+              )
+              yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+              return yield* assessment.reviewAlerts(f.t, g.batch.id, admin)
+            })
+          // the class is found, and nobody there holds the role it asks for
+          const atClass = yield* stopAt([
+            {
+              id: 'class',
+              selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [counsellor] },
+              quorum: { type: 'any' },
+            },
+          ])
+          // nobody anywhere above the student holds it
+          const nowhere = yield* stopAt([counsellorStep('counsellor', counsellor)])
+          return { atClass, nowhere, classA: f.classA, counsellor }
+        }),
+      ),
+    )
+    expect(result.atClass.groups).toEqual([
+      {
+        nodeId: result.classA,
+        nodeName: 'Class A1',
+        unitPath: ['Root', 'College A', 'Class A1'],
+        roleIds: [result.counsellor],
+        roleNames: ['Counsellor'],
+        reason: 'no-assignee',
+        waiting: 1,
+      },
+    ])
+    expect(result.nowhere.groups).toEqual([
+      {
+        nodeId: null,
+        nodeName: null,
+        unitPath: [],
+        roleIds: [result.counsellor],
+        roleNames: ['Counsellor'],
+        reason: 'no-assignee',
+        waiting: 1,
+      },
+    ])
+  })
+
   it('takes a submission whose first step nobody holds, and lets it be taken back', async () => {
     const result = ok(
       await run(

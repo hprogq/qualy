@@ -1703,6 +1703,9 @@ export class Assessment extends Context.Service<
           /** nothing when the step resolved to no unit: a duty nobody holds */
           nodeId: string | null
           nodeName: string | null
+          /** the unit from the root down; empty where there is no unit */
+          unitPath: readonly string[]
+          roleIds: readonly string[]
           roleNames: readonly string[]
           reason: 'no-assignee' | 'no-independent-reviewer' | 'panel-seat-unfilled'
           waiting: number
@@ -6073,6 +6076,8 @@ export const make = Effect.fn('Assessment.make')(function* () {
         groups: groups.map((group) => ({
           nodeId: group.nodeId,
           nodeName: group.nodeName,
+          unitPath: group.unitPath,
+          roleIds: group.roleIds,
           roleNames: group.roleIds.map((roleId) => roleNames.roles.get(roleId) ?? roleId),
           reason: group.reason,
           waiting: group.waiting,

@@ -1558,6 +1558,14 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
              */
             nodeId: Schema.NullOr(Schema.String),
             nodeName: Schema.NullOr(Schema.String),
+            /**
+             * The unit from the root down, each as the organization names it
+             * today, so two units of one name are told apart; empty where
+             * the step resolved to no unit.
+             */
+            unitPath: Schema.Array(Schema.String),
+            /** the roles the step asks for, the way to appoint somebody to one */
+            roleIds: Schema.Array(Schema.String),
             roleNames: Schema.Array(Schema.String),
             /** why these wait: a staffing gap and a conflict rule read differently */
             reason: Schema.Literals([
