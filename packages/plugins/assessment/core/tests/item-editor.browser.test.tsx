@@ -1207,6 +1207,33 @@ describe('composing the two routes', () => {
     )
   })
 
+  // The place was 16px tall with a 20px mark in it, so the mark sat on the
+  // cards either side, and the keyboard's ring ran the width of the chain.
+  it('gives the place between two steps room for its mark, and rings only the mark and its words', async () => {
+    await open({
+      items: [routed([stageOf('s-first', '班委初审'), stageOf('s-second', '专业复审')])],
+      question: ITEM_ID,
+      panel: 'rules',
+    })
+    await vi.waitFor(() => expect(steps('normal')).toHaveLength(2))
+    const place = page.getByRole('button', { name: '在第 2 步「专业复审」之前插入审核步骤' })
+    const slot = place.element() as HTMLElement
+    const tag = slot.querySelector<HTMLElement>('[data-testid="insert-tag"]')!
+    const mark = tag.firstElementChild!.getBoundingClientRect()
+    const room = slot.getBoundingClientRect()
+    expect(mark.top).toBeGreaterThanOrEqual(room.top - 0.5)
+    expect(mark.bottom).toBeLessThanOrEqual(room.bottom + 0.5)
+
+    // reached by the keyboard, the ring is the mark's and its words', not the chain's
+    await userEvent.keyboard('{Shift}')
+    slot.focus()
+    expect(slot.matches(':focus-visible')).toBe(true)
+    expect(getComputedStyle(slot).outlineStyle).toBe('none')
+    expect(getComputedStyle(tag).boxShadow).not.toBe('none')
+    const chain = page.getByTestId('chain-normal').element().getBoundingClientRect()
+    expect(tag.getBoundingClientRect().width).toBeLessThan(chain.width / 2)
+  })
+
   it("moves a step by its position in the step's own panel, and cancel takes the move back", async () => {
     await open({
       items: [routed([stageOf('s-first', '班委初审'), stageOf('s-second', '专业复审')])],

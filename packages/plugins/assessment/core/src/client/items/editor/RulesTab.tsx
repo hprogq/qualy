@@ -180,28 +180,43 @@ const styles = stylex.create({
   },
   // ---- a place to insert a step ---------------------------------------
   // The gap between two steps, as a press. It holds its height whether or
-  // not it is showing, so pointing at it moves nothing.
+  // not it is showing, so pointing at it moves nothing, and it is tall
+  // enough for its mark: a mark taller than the gap sat on the cards
+  // either side of it.
   insert: {
     position: 'relative',
     display: 'grid',
     gridTemplateColumns: '28px minmax(0, 1fr)',
     columnGap: 14,
     width: '100%',
-    height: { default: 16, '@media (hover: none)': 32 },
+    height: { default: 24, '@media (hover: none)': 32 },
     padding: 0,
     borderWidth: 0,
-    borderRadius: 6,
     fontFamily: 'inherit',
     color: 'inherit',
     backgroundColor: 'transparent',
     cursor: 'pointer',
-    outlineOffset: 2,
+    // the ring is drawn round the mark and its words, not across the chain
+    outline: 'none',
   },
-  gap: { height: { default: 16, '@media (hover: none)': 32 } },
-  insertMark: {
+  gap: { height: { default: 24, '@media (hover: none)': 32 } },
+  // the mark and its words, one thing to point at and one thing ringed
+  insertTag: {
     position: 'absolute',
     top: '50%',
     left: 4,
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 18,
+    paddingInlineEnd: { default: 8, '@media (hover: none)': 0 },
+    borderRadius: '9999px',
+    transform: 'translateY(-50%)',
+    boxShadow: {
+      default: 'none',
+      [stylex.when.ancestor(':focus-visible')]: `0 0 0 2px ${tokens.focusRing}`,
+    },
+  },
+  insertMark: {
     display: 'inline-flex',
     width: 20,
     height: 20,
@@ -213,7 +228,6 @@ const styles = stylex.create({
     borderColor: `color-mix(in oklab, ${tokens.foreground} 30%, transparent)`,
     backgroundColor: tokens.background,
     color: tokens.mutedForeground,
-    transform: 'translateY(-50%)',
     opacity: {
       default: 0,
       [stylex.when.ancestor(':hover')]: 1,
@@ -224,14 +238,10 @@ const styles = stylex.create({
     transitionDuration: '120ms',
   },
   insertWords: {
-    position: 'absolute',
-    top: '50%',
-    left: 42,
     fontSize: 12,
     fontWeight: 500,
     whiteSpace: 'nowrap',
     color: tokens.mutedForeground,
-    transform: 'translateY(-50%)',
     // a thumb sees the mark and nothing more: words that come and go under
     // it would only be in the way of the step it is reaching for
     display: { default: 'block', '@media (hover: none)': 'none' },
@@ -768,11 +778,13 @@ function StepChain({
                     <span {...stylex.props(styles.rail)}>
                       <span aria-hidden {...stylex.props(styles.line)} />
                     </span>
-                    <span aria-hidden {...stylex.props(styles.insertMark)}>
-                      <PlusIcon {...stylex.props(styles.icon12)} />
-                    </span>
-                    <span aria-hidden {...stylex.props(styles.insertWords)}>
-                      {format(m.itemsStageInsertHere)}
+                    <span aria-hidden {...stylex.props(styles.insertTag)} data-testid="insert-tag">
+                      <span {...stylex.props(styles.insertMark)}>
+                        <PlusIcon {...stylex.props(styles.icon12)} />
+                      </span>
+                      <span {...stylex.props(styles.insertWords)}>
+                        {format(m.itemsStageInsertHere)}
+                      </span>
                     </span>
                   </button>
                 )}
