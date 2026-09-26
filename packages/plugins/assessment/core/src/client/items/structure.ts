@@ -20,7 +20,10 @@ export interface StructureRow {
   most?: string | undefined
   /** the doors open on a question: who files it */
   channels?: readonly ('participant' | 'administrative')[] | undefined
-  steps?: number | undefined
+  /** how a question's records are settled: its two routes' lengths, or no review at all */
+  review?: ReviewShape | undefined
+  /** a question scored by a rule rather than a fixed amount per entry */
+  byRule?: boolean | undefined
   status?: 'draft' | 'active' | 'voided' | 'composing' | undefined
   cap?: string | null
   /** what the questions inside a group add up to at most, for a group */
@@ -36,9 +39,44 @@ const eachOf = (item: ItemDto): string | undefined =>
       | undefined
   )?.calculator?.config?.value
 
-const stepsOf = (item: ItemDto): number | undefined => {
-  const policy = item.currentRevision?.reviewPolicy as { stages?: unknown[] } | undefined
-  return Array.isArray(policy?.stages) ? policy.stages.length : undefined
+/** how a question's records are settled, read off its stored policy */
+export type ReviewShape =
+  | { kind: 'steps'; normal: number; escalation: number }
+  | { kind: 'direct' }
+  | { kind: 'automatic' }
+
+// The stored policy holds two routes. This once read a single list off it,
+// which no policy has had since the routes were split, so the column that
+// says how a question is reviewed stood empty on every row.
+const reviewOf = (item: ItemDto): ReviewShape | undefined => {
+  if (item.itemType === 'constant') return { kind: 'automatic' }
+  const policy = item.currentRevision?.reviewPolicy as
+    | {
+        mode?: string
+        normal?: { stages?: unknown[] }
+        escalation?: { stages?: unknown[] }
+        stages?: unknown[]
+      }
+    | undefined
+  if (policy === undefined || policy === null) return undefined
+  if (policy.mode === 'none') return { kind: 'direct' }
+  if (Array.isArray(policy.normal?.stages) || Array.isArray(policy.escalation?.stages)) {
+    return {
+      kind: 'steps',
+      normal: policy.normal?.stages?.length ?? 0,
+      escalation: policy.escalation?.stages?.length ?? 0,
+    }
+  }
+  // a policy written as one list before the routes were split
+  return Array.isArray(policy.stages)
+    ? { kind: 'steps', normal: policy.stages.length, escalation: 0 }
+    : undefined
+}
+
+const byRuleOf = (item: ItemDto): boolean => {
+  const ref = (item.currentRevision?.scoringConfig as { calculator?: { ref?: string } } | undefined)
+    ?.calculator?.ref
+  return ref !== undefined && ref !== 'fixed@1'
 }
 
 /** which of a person's entries a question's rule can ever count */
@@ -123,9 +161,6 @@ export const structureRows = (
   // Only sections are numbered, so only sections count. A question sharing a
   // level with them used to take a number nothing showed, and the section
   // after it appeared to start at two.
-  // Only sections are numbered, so only sections count. A question sharing a
-  // level with them used to take a number nothing showed, and the section
-  // after it appeared to start at two.
   const walk = (parentId: string, prefix: string, depth: number) => {
     let counter = 0
     for (const item of items.filter((one) => one.scoreGroupId === parentId)) {
@@ -139,7 +174,8 @@ export const structureRows = (
         each: eachOf(item),
         most: item.maxEntries === null ? undefined : String(item.maxEntries),
         channels: item.currentRevision?.entryChannels,
-        steps: stepsOf(item),
+        review: reviewOf(item),
+        byRule: byRuleOf(item),
         status: item.status as StructureRow['status'],
       })
     }
@@ -175,6 +211,74 @@ export const structureRows = (
 
   if (paperId !== null) walk(paperId, '', 0)
   return rows
+}
+
+/** a row as the table shows it, and whether it is there only to hold a match */
+export interface ShownRow {
+  readonly row: StructureRow
+  /** a group shown because something inside it matched, not because it did */
+  readonly context: boolean
+  /** a group whose rows are folded away */
+  readonly folded: boolean
+  /** a group with anything under it, which is what a fold control is for */
+  readonly holds: boolean
+}
+
+/**
+ * The rows the table draws: what matches, every group a match sits in, and
+ * nothing under a folded group.
+ *
+ * A match keeps the groups above it, so a question found by name is still
+ * read where it lives; lifted out of its group it was a name with nothing to
+ * say which section it counts in. A search or a filter shows everything it
+ * found, folded or not.
+ */
+export const shownRows = (
+  rows: readonly StructureRow[],
+  filter: {
+    term: string
+    status: 'all' | 'draft' | 'active' | 'voided'
+    folded: ReadonlySet<string>
+  },
+): readonly ShownRow[] => {
+  const term = filter.term.trim().toLowerCase()
+  const filtering = term !== '' || filter.status !== 'all'
+  const holds = new Set<string>()
+  rows.forEach((row, index) => {
+    const next = rows[index + 1]
+    if (row.kind === 'group' && next !== undefined && next.depth > row.depth) holds.add(row.key)
+  })
+  const matches = (row: StructureRow) => {
+    if (term !== '' && !row.name.toLowerCase().includes(term)) return false
+    if (filter.status === 'all') return true
+    return row.kind === 'item' && row.status === filter.status
+  }
+  const shown: ShownRow[] = []
+  // the groups above the row being read, outermost first
+  const above: { row: StructureRow; placed: boolean }[] = []
+  let foldedAt: number | null = null
+  for (const row of rows) {
+    while (above.length > 0 && above[above.length - 1]!.row.depth >= row.depth) above.pop()
+    if (!filtering) {
+      if (foldedAt !== null && row.depth > foldedAt) continue
+      foldedAt = null
+      const folded = row.kind === 'group' && filter.folded.has(row.id) && holds.has(row.key)
+      if (folded) foldedAt = row.depth
+      shown.push({ row, context: false, folded, holds: holds.has(row.key) })
+      continue
+    }
+    const hit = matches(row)
+    if (hit) {
+      for (const group of above) {
+        if (group.placed) continue
+        group.placed = true
+        shown.push({ row: group.row, context: true, folded: false, holds: true })
+      }
+    }
+    if (row.kind === 'group') above.push({ row, placed: hit })
+    if (hit) shown.push({ row, context: false, folded: false, holds: holds.has(row.key) })
+  }
+  return shown
 }
 
 /**

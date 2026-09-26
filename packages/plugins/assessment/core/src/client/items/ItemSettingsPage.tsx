@@ -111,13 +111,42 @@ const styles = stylex.create({
     gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr)',
     columnGap: 24,
     alignItems: 'center',
-    height: 52,
+    height: 42,
     paddingInline: 16,
     borderBottomWidth: { default: 1, ':last-child': 0 },
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.divider,
   },
   skeletonHeading: { width: 96, height: 14, borderRadius: 4 },
+  skeletonHead: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 52,
+    paddingInline: 16,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+  },
+  skeletonFill: { flexGrow: 1 },
+  skeletonTool: { width: 160, height: 28, borderRadius: 8 },
+  skeletonButton: { width: 72, height: 28, borderRadius: 8 },
+  skeletonShare: {
+    paddingInline: 16,
+    paddingBlock: 14,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+  },
+  skeletonShareBar: { width: '60%', height: 6, borderRadius: 9999 },
+  skeletonStrip: {
+    height: 32,
+    backgroundColor: tokens.surfaceInset,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+  },
+  skeletonLead: { display: 'flex', minWidth: 0 },
   // the question's three views, standing on their rule the way the real row does
   skeletonTabs: {
     display: 'flex',
@@ -134,31 +163,27 @@ const styles = stylex.create({
   skeletonBarLong: { width: '62%' },
   skeletonBarMid: { width: '46%' },
   skeletonBarShort: { width: '30%' },
-  summary: {
+  // The paper's own line inside the structure card: how much of it has been
+  // handed out to sections, and the way to change what it is worth.
+  strip: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 10,
-    borderRadius: tokens.radiusLg,
-    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
+    gap: 8,
     paddingInline: 16,
-    paddingBlock: 12,
+    paddingBlock: 10,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
   },
-  summaryHead: {
+  stripLine: {
     display: 'flex',
     flexWrap: 'wrap',
     alignItems: 'center',
-    columnGap: 12,
-    rowGap: 4,
+    columnGap: 14,
+    rowGap: 6,
   },
-  summaryTitle: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontSize: 14,
-    fontWeight: 600,
-  },
-  summaryMeta: {
+  stripBar: { flexGrow: 1, flexShrink: 1, flexBasis: '12rem', minWidth: 0 },
+  stripMeta: {
     fontSize: 12,
     fontVariantNumeric: 'tabular-nums',
     color: tokens.mutedForeground,
@@ -166,10 +191,12 @@ const styles = stylex.create({
   editButton: {
     color: tokens.mutedForeground,
   },
-  spacer: {
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
+  limits: { display: 'inline-flex', alignItems: 'center', gap: 8 },
+  limitRule: {
+    width: 1,
+    height: 10,
+    flexShrink: 0,
+    backgroundColor: `color-mix(in oklab, ${tokens.foreground} 12%, transparent)`,
   },
   bar: {
     display: 'flex',
@@ -177,7 +204,7 @@ const styles = stylex.create({
     gap: 2,
     overflow: 'hidden',
     borderRadius: '9999px',
-    backgroundColor: tokens.background,
+    backgroundColor: tokens.surfaceMuted,
   },
   // Four steps of one hue, not four unrelated colours: the segments are shares
   // of a single paper's cap, and what a reader compares is their lengths. The
@@ -188,11 +215,13 @@ const styles = stylex.create({
   segment2: { backgroundColor: `color-mix(in oklab, ${tokens.primary} 52%, ${tokens.surface})` },
   segment3: { backgroundColor: `color-mix(in oklab, ${tokens.primary} 30%, ${tokens.surface})` },
   overNote: {
+    margin: 0,
     fontSize: 12,
     fontWeight: 500,
     color: tokens.danger,
   },
   unsetNote: {
+    margin: 0,
     fontSize: 12,
     color: tokens.mutedForeground,
   },
@@ -235,12 +264,33 @@ function SkeletonBlock({ rows }: { rows: number }) {
   )
 }
 
-/** the page in outline while it loads: one heading-and-card per block, with that many rows */
-function StructureSkeleton({ blocks }: { blocks: readonly number[] }) {
+/**
+ * The structure in outline while it loads: the card it will be, its head
+ * and the paper's line, the grey strip of column words, and rows set in by
+ * level the way sections and their questions will be.
+ */
+function StructureSkeleton() {
+  const depths = [0, 1, 1, 0, 1, 2, 2]
   return (
-    <div {...stylex.props(styles.skeletonStack)} aria-hidden data-testid="structure-skeleton">
-      {blocks.map((rows, block) => (
-        <SkeletonBlock key={block} rows={rows} />
+    <div {...stylex.props(styles.skeletonCard)} aria-hidden data-testid="structure-skeleton">
+      <div {...stylex.props(styles.skeletonHead)}>
+        <Skeleton className={stylex.props(styles.skeletonHeading).className} />
+        <span {...stylex.props(styles.skeletonFill)} />
+        <Skeleton className={stylex.props(styles.skeletonTool).className} />
+        <Skeleton className={stylex.props(styles.skeletonButton).className} />
+      </div>
+      <div {...stylex.props(styles.skeletonShare)}>
+        <Skeleton className={stylex.props(styles.skeletonShareBar).className} />
+      </div>
+      <div {...stylex.props(styles.skeletonStrip)} />
+      {depths.map((depth, row) => (
+        <div key={row} {...stylex.props(styles.skeletonRow)}>
+          <span {...stylex.props(styles.skeletonLead)} style={{ paddingLeft: depth * 20 }}>
+            {bar(depth === 0 ? 'mid' : row % 2 === 0 ? 'long' : 'mid')}
+          </span>
+          {bar('short')}
+          {bar('short')}
+        </div>
       ))}
     </div>
   )
@@ -792,12 +842,17 @@ function Editor({
       <PaperStart batchId={batchId} version={groupsVersion ?? 0} onCreated={() => void refresh()} />
     ) : (
       <div {...stylex.props(styles.grow, styles.structureArea)}>
-        <PaperSummary
-          paper={paper}
-          roots={roots}
-          onEdit={() => setGroup({ kind: 'edit', group: paper })}
-        />
         <StructureTable
+          batchId={batchId}
+          title={paper.name.trim() === '' ? format(m.itemsGroupUnnamed) : paper.name}
+          note={<PaperLimits paper={paper} />}
+          summary={
+            <PaperShare
+              paper={paper}
+              roots={roots}
+              onEdit={() => setGroup({ kind: 'edit', group: paper })}
+            />
+          }
           rows={rows}
           selectedKey={null}
           onOpen={openRow}
@@ -831,7 +886,7 @@ function Editor({
         void groups.refetch()
         void items.refetch()
       }}
-      skeleton={question === '' ? <StructureSkeleton blocks={[6]} /> : <QuestionSkeleton />}
+      skeleton={question === '' ? <StructureSkeleton /> : <QuestionSkeleton />}
       xstyle={styles.grow}
     >
       <div {...stylex.props(styles.grow, styles.editorColumn)}>
@@ -976,22 +1031,35 @@ const placementOf = (
   }
 }
 
+/** what the whole paper is worth, and the least it may come to */
+function PaperLimits({ paper }: { paper: TreeGroup }) {
+  const { format } = useI18n()
+  return (
+    <span {...stylex.props(styles.limits)}>
+      <span>
+        {format(m.paperTotal)}{' '}
+        {paper.cap === null ? format(m.structureUncapped) : trimAmount(paper.cap)}
+      </span>
+      <span aria-hidden {...stylex.props(styles.limitRule)} />
+      <span>
+        {paper.floor === null
+          ? format(m.paperFloorNone)
+          : `${format(m.itemsGroupFloor)} ${trimAmount(paper.floor)}`}
+      </span>
+    </span>
+  )
+}
+
 /**
- * The paper itself, above its own structure.
+ * How much of the paper has been handed out to its sections, on the card's
+ * first line under its name.
  *
- * Almost everything this used to say is said again twenty pixels below it:
- * how many questions there are, how many sections, which are unpublished,
- * what each section is worth - that is the table. Repeating it here bought
- * nothing and cost a boxed block of prose at the top of every visit.
- *
- * What is left is what the table cannot answer: what the whole round is
- * worth, and how much of that has been handed out to sections so far. The
- * bar answers the second at a glance and the caption puts a number on it.
- * Anything actually wrong - sections adding up past the total, a section
- * with no limit at all - earns a line of its own, because an exception is
- * worth space and a steady state is not.
+ * What the table cannot answer: the bar says it at a glance and the caption
+ * puts a number on it. Anything actually wrong - sections adding up past the
+ * total, a section with no limit at all - earns a line of its own, because an
+ * exception is worth space and a steady state is not.
  */
-function PaperSummary({
+function PaperShare({
   paper,
   roots,
   onEdit,
@@ -1007,20 +1075,37 @@ function PaperSummary({
   const sum = capped ? amountOf(held) : null
   const over = sum !== null && total !== null && held > total
 
-  const limits = [
-    `${format(m.paperTotal)} ${paper.cap === null ? format(m.structureUncapped) : trimAmount(paper.cap)}`,
-    paper.floor === null
-      ? format(m.paperFloorNone)
-      : `${format(m.itemsGroupFloor)} ${trimAmount(paper.floor)}`,
-  ].join(' 　 ')
-
   return (
-    <section {...stylex.props(styles.summary)}>
-      <div {...stylex.props(styles.summaryHead)}>
-        <h3 {...stylex.props(styles.summaryTitle)}>
-          {paper.name.trim() === '' ? format(m.itemsGroupUnnamed) : paper.name}
-        </h3>
-        <p {...stylex.props(styles.summaryMeta)}>{limits}</p>
+    <div {...stylex.props(styles.strip)} data-testid="paper-share">
+      <div {...stylex.props(styles.stripLine)}>
+        {/* measured against the paper, so the part nobody has handed out yet
+            reads as the part nobody has handed out */}
+        {sum !== null && total !== null && total > 0 ? (
+          <div {...stylex.props(styles.bar, styles.stripBar)} aria-hidden>
+            {roots.map((group, index) => (
+              <div
+                key={group.id}
+                {...stylex.props(segments[index % segments.length])}
+                style={{
+                  width: `${Math.min(100, (unitsOf(group.cap ?? 0) / Math.max(held, total)) * 100)}%`,
+                }}
+              />
+            ))}
+          </div>
+        ) : (
+          <span {...stylex.props(styles.stripBar)}>
+            {sum === null && roots.length > 0 && (
+              <span {...stylex.props(styles.unsetNote)}>{format(m.paperCapUnset)}</span>
+            )}
+          </span>
+        )}
+        {sum !== null && (
+          <span {...stylex.props(styles.stripMeta)}>
+            {total === null
+              ? format(m.paperAllocatedFree, { sum })
+              : format(m.paperAllocated, { sum, total: trimAmount(paper.cap!) })}
+          </span>
+        )}
         <Button
           variant="ghost"
           size="xs"
@@ -1030,41 +1115,13 @@ function PaperSummary({
           <PencilIcon aria-hidden />
           {format(m.paperEdit)}
         </Button>
-        <span {...stylex.props(styles.spacer)} />
-        {sum !== null && (
-          <p {...stylex.props(styles.summaryMeta)}>
-            {total === null
-              ? format(m.paperAllocatedFree, { sum })
-              : format(m.paperAllocated, { sum, total: trimAmount(paper.cap!) })}
-          </p>
-        )}
       </div>
-
-      {/* measured against the paper, so the part nobody has handed out yet
-          reads as the part nobody has handed out */}
-      {sum !== null && total !== null && total > 0 && (
-        <div {...stylex.props(styles.bar)}>
-          {roots.map((group, index) => (
-            <div
-              key={group.id}
-              {...stylex.props(segments[index % segments.length])}
-              style={{
-                width: `${Math.min(100, (unitsOf(group.cap ?? 0) / Math.max(held, total)) * 100)}%`,
-              }}
-            />
-          ))}
-        </div>
-      )}
-
       {over && (
         <p {...stylex.props(styles.overNote)}>
           {format(m.paperCapOver, { sum: sum, total: trimAmount(paper.cap!) })}
         </p>
       )}
-      {sum === null && roots.length > 0 && (
-        <p {...stylex.props(styles.unsetNote)}>{format(m.paperCapUnset)}</p>
-      )}
-    </section>
+    </div>
   )
 }
 

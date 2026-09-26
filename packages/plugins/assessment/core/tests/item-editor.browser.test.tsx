@@ -1887,6 +1887,100 @@ describe('what already stands under a question', () => {
   })
 })
 
+describe('the structure', () => {
+  const MORAL = '88888888-8888-4888-8888-8888888888c1'
+  const CLASSWORK = '88888888-8888-4888-8888-8888888888c2'
+  const section = (id: string, parent: string, name: string, sortOrder: number) => ({
+    id,
+    parentGroupId: parent,
+    name,
+    cap: '20',
+    floor: null,
+    sortOrder,
+    itemCount: 0,
+  })
+  const question = (id: string, title: string, scoreGroupId: string, over: object = {}) => ({
+    ...officerItem(),
+    id,
+    title,
+    scoreGroupId,
+    ...over,
+  })
+  const shown = () =>
+    [...document.querySelectorAll<HTMLElement>('[data-testid="structure-row"]')].map((row) => ({
+      name: row.textContent ?? '',
+      kind: row.getAttribute('data-kind'),
+      context: row.getAttribute('data-context'),
+    }))
+  const withSections = (items: readonly unknown[]) =>
+    open({
+      groups: [
+        paper,
+        section(MORAL, PAPER_ID, '德育素质', 0),
+        section(CLASSWORK, MORAL, '班级与社团工作', 0),
+      ],
+      items,
+    })
+
+  it('folds a section away with everything in it, and back', async () => {
+    await withSections([
+      question('66666666-6666-4666-8666-6666666666d1', '学生干部任职', CLASSWORK),
+      question('66666666-6666-4666-8666-6666666666d2', '社会实践', MORAL),
+    ])
+    await vi.waitFor(() => expect(shown()).toHaveLength(4))
+    const fold = page.getByRole('button', { name: '收起或展开「德育素质」' })
+    await expect.element(fold).toHaveAttribute('aria-expanded', 'true')
+    await fold.click()
+    await vi.waitFor(() => expect(shown().map((row) => row.kind)).toEqual(['group']))
+    await expect.element(fold).toHaveAttribute('aria-expanded', 'false')
+    await fold.click()
+    await vi.waitFor(() => expect(shown()).toHaveLength(4))
+  })
+
+  // A match lifted out of its section was a name with nothing to say where
+  // it counts; the sections above it stay, quieter than the match.
+  it('finds a question where it lives, with the sections it sits in', async () => {
+    await withSections([
+      question('66666666-6666-4666-8666-6666666666d1', '学生干部任职', CLASSWORK),
+      question('66666666-6666-4666-8666-6666666666d2', '社会实践', MORAL),
+    ])
+    await vi.waitFor(() => expect(shown()).toHaveLength(4))
+    await page.getByRole('searchbox', { name: '搜索分组或项目' }).fill('干部')
+    await vi.waitFor(() =>
+      expect(shown().map((row) => [row.kind, row.context])).toEqual([
+        ['group', 'true'],
+        ['group', 'true'],
+        ['item', null],
+      ]),
+    )
+    expect(shown()[2]!.name).toContain('学生干部任职')
+  })
+
+  // The column read a single list off the stored policy, which has held two
+  // routes for a long time, so it said nothing on every row.
+  it('says how each question is reviewed from both of its routes, and when it is scored by a rule', async () => {
+    const direct = question('66666666-6666-4666-8666-6666666666d3', '志愿服务', PAPER_ID, {
+      currentRevision: { ...officerItem().currentRevision, reviewPolicy: { mode: 'none' } },
+    })
+    await open({
+      items: [
+        { ...officerWithAppeals(), scoreGroupId: PAPER_ID },
+        direct,
+        { ...formulaItem(), id: '66666666-6666-4666-8666-6666666666d4', scoreGroupId: PAPER_ID },
+      ],
+    })
+    await vi.waitFor(() =>
+      expect(document.querySelectorAll('[data-testid="structure-review"]')).toHaveLength(3),
+    )
+    const said = (test: string, attribute: string) =>
+      [...document.querySelectorAll(`[data-testid="${test}"]`)].map((cell) =>
+        cell.getAttribute(attribute),
+      )
+    expect(said('structure-review', 'data-review')).toEqual(['1+1', 'direct', '1+0'])
+    expect(said('structure-each', 'data-each')).toEqual(['2.00', '2.00', 'rule'])
+  })
+})
+
 describe('rearranging the structure', () => {
   /** one row dragged onto another, the way a pointer does it: its top edge, or its middle */
   const dragOnto = (from: string, onto: string, where: 'top' | 'middle' = 'top') => {

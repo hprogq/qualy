@@ -5026,10 +5026,6 @@ const i18n = definePluginMessages({
       defaultMessage:
         'Saving applies the new rule to every determination already in force; the amounts above are recalculated when results are read.',
     },
-    structureDragHint: {
-      id: 'assessment/items/structure-drag-hint',
-      defaultMessage: 'Drag a row to reorder it or move it to another group.',
-    },
     structureSearch: {
       id: 'assessment/items/structure-search',
       defaultMessage: 'Search groups or items',
@@ -5040,8 +5036,6 @@ const i18n = definePluginMessages({
       defaultMessage: 'Published',
     },
     structureNew: { id: 'assessment/items/structure-new', defaultMessage: 'New' },
-    structureNewItem: { id: 'assessment/items/structure-new-item', defaultMessage: 'Item' },
-    structureColOrdinal: { id: 'assessment/items/structure-col-ordinal', defaultMessage: 'No.' },
     structureColName: { id: 'assessment/items/structure-col-name', defaultMessage: 'Name' },
     structureColEach: {
       id: 'assessment/items/structure-col-each',
@@ -5059,13 +5053,38 @@ const i18n = definePluginMessages({
     structureColStatus: { id: 'assessment/items/structure-col-status', defaultMessage: 'Status' },
     structureNoMatch: {
       id: 'assessment/items/structure-no-match',
-      defaultMessage: 'No content matches the current filters.',
+      defaultMessage: 'Nothing matches the search or filter',
     },
     structureUncapped: {
       id: 'assessment/items/structure-uncapped',
       defaultMessage: 'No upper limit',
     },
     structureUnlimited: { id: 'assessment/items/structure-unlimited', defaultMessage: 'Unlimited' },
+    structureStepsBoth: {
+      id: 'assessment/items/structure-steps-both',
+      defaultMessage: '{count, plural, one {# step} other {# steps}}, escalation {escalation}',
+    },
+    structureEachByRule: {
+      id: 'assessment/items/structure-each-by-rule',
+      defaultMessage: 'By rule',
+    },
+    structureEmpty: {
+      id: 'assessment/items/structure-empty',
+      defaultMessage: 'No groups or items yet; start from New',
+    },
+    structureFold: { id: 'assessment/items/structure-fold', defaultMessage: 'Fold “{name}”' },
+    structureAddItemIn: {
+      id: 'assessment/items/structure-add-item-in',
+      defaultMessage: 'New item in “{name}”',
+    },
+    structureAddGroupIn: {
+      id: 'assessment/items/structure-add-group-in',
+      defaultMessage: 'New subgroup in “{name}”',
+    },
+    structureRowMenuOf: {
+      id: 'assessment/items/structure-row-menu-of',
+      defaultMessage: 'More for “{name}”',
+    },
     structureSteps: {
       id: 'assessment/items/structure-steps',
       defaultMessage: '{count, plural, one {# step} other {# steps}}',
@@ -5120,7 +5139,6 @@ const i18n = definePluginMessages({
     },
     paperFloorNone: { id: 'assessment/items/paper-floor-none', defaultMessage: 'No lower limit' },
     paperEdit: { id: 'assessment/items/paper-edit', defaultMessage: 'Edit scoring structure' },
-    itemsTreeTitle: { id: 'assessment/items/tree-title', defaultMessage: 'Structure' },
     itemsPreviewTitle: {
       id: 'assessment/items/preview-title',
       defaultMessage: 'Participant view',
@@ -5212,11 +5230,6 @@ const i18n = definePluginMessages({
       id: 'assessment/items/structure-subtotal',
       defaultMessage: 'Subtotal {sum}',
     },
-    structureRowAddGroup: {
-      id: 'assessment/items/structure-row-add-group',
-      defaultMessage: 'Subgroup',
-    },
-    structureRowMenu: { id: 'assessment/items/structure-row-menu', defaultMessage: 'More' },
     structureOpen: { id: 'assessment/items/structure-open', defaultMessage: 'Open' },
 
     /** one question, opened out of the structure */
