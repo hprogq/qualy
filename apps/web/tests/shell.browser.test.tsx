@@ -1056,6 +1056,20 @@ describe('the rail’s column, lent to the open screen', () => {
     await expect.element(column.getByRole('link', { name: '阶段安排' })).toBeVisible()
   })
 
+  it('runs the open screen to the window’s edge while it holds the column', async () => {
+    await page.viewport(1280, 800)
+    await mount()
+    const main = page.getByRole('main')
+    // the strip a scrollbar would take, held open whether or not one shows
+    const gutter = () => main.element().getBoundingClientRect().width - main.element().clientWidth
+    await expect.element(page.getByTestId('workspace-rail')).toHaveAttribute('data-lent', 'true')
+    await expect.poll(gutter).toBe(0)
+    // given back, the sections' pages keep the room they hold for one
+    await page.getByRole('button', { name: 'give back' }).click()
+    await expect.element(page.getByTestId('workspace-rail')).not.toHaveAttribute('data-lent')
+    await expect.poll(gutter).toBeGreaterThan(0)
+  })
+
   it('lends nothing on a window too narrow for the rail', async () => {
     await page.viewport(800, 900)
     try {

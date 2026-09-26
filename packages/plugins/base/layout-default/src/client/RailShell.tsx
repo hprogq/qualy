@@ -400,6 +400,13 @@ const styles = stylex.create({
     // scrollbar floats over the page - every phone - it holds nothing.
     scrollbarGutter: 'stable',
   },
+  // Beside a lent column the open screen runs to the window's edge: its
+  // work fills the height and scrolls inside itself, so a held gutter would
+  // only be an empty strip down the right, and there is no centred measure
+  // to keep still from one page to the next.
+  mainLent: {
+    scrollbarGutter: 'auto',
+  },
   // exactly the bar's own height, so the last row of a page ends above it
   // rather than behind it
   mainFoot: {
@@ -1327,7 +1334,13 @@ function CapableRailShell({
           {/* auto, not scroll: the screens that fill the viewport - the review
             workbench, my filings - then carry a scrollbar that can never
             move, which reads as a page with somewhere to go. */}
-          <main {...stylex.props(styles.main, sectionsAtFoot && styles.mainFoot)}>
+          <main
+            {...stylex.props(
+              styles.main,
+              lent.claimed && styles.mainLent,
+              sectionsAtFoot && styles.mainFoot,
+            )}
+          >
             <Outlet />
           </main>
         </div>
