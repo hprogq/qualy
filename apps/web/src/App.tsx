@@ -1,9 +1,6 @@
-import { useEffect, useMemo, type ComponentType, type ReactNode } from 'react'
-import * as stylex from '@stylexjs/stylex'
-import { Link } from 'react-router'
-import { primaryNavigation, surfaceLabel, type BrowserSurface } from '@qualy/ui-contract'
+import type { ComponentType, ReactNode } from 'react'
+import { primaryNavigation } from '@qualy/ui-contract'
 import {
-  Failure,
   GuardedBrowserRouter,
   ManifestRoutes,
   preloadable,
@@ -13,15 +10,11 @@ import {
   useTheme,
   useUiCollection,
   type ComponentRegistry,
-  type RouteSlots,
 } from '@qualy/web-runtime'
 import { UiProvider } from '@qualy/ui/provider'
-import { I18nProvider, resolveInitialLocale, useI18n } from '@qualy/web-i18n'
+import { I18nProvider, resolveInitialLocale } from '@qualy/web-i18n'
 import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
-import { commonMessages } from '@qualy/web-i18n/messages'
-import { Button } from '@qualy/ui/button'
-import { ResourceState } from '@qualy/ui/resource-state'
-import { ColdStart, LoadingScreen, PageLoading } from '@qualy/ui/spinner'
+import { ColdStart, LoadingScreen } from '@qualy/ui/spinner'
 import {
   catalogs,
   errorMessages,
@@ -31,17 +24,11 @@ import {
   slotComponents,
 } from 'virtual:qualy/plugins'
 import { releases, webRelease } from './release.ts'
+import { useRouteSlots } from './route-states.tsx'
 import { SIGN_IN_PAGE } from '@qualy/auth-contract/sign-in-failure'
 
 // There is no global client to build: each plugin derives its own from the
 // api definitions it calls, through the runtime's per-definition cache.
-
-const styles = stylex.create({
-  // no shell around it: the state is the viewport
-  standalone: {
-    minHeight: '100dvh',
-  },
-})
 
 // The aggregate hands over loaders keyed by surface; the shell wraps each in
 // the lazy component the router and the slots render. One table per address
@@ -106,64 +93,10 @@ function WidgetBridge({ children }: { children: ReactNode }) {
 // the runtime so its rules stay testable outside a browser
 function ManifestRouter() {
   const manifest = useManifest()
-  const { format } = useI18n()
   const navigation = useUiCollection(primaryNavigation)
   const home = navigation.find((item) => item.target.kind === 'page')
   const homePath = home?.target.kind === 'page' ? home.target.path : undefined
-  // rebuilt when the locale changes, so route-level fallbacks never keep
-  // the previous language
-  const slots = useMemo<RouteSlots>(
-    () => ({
-      pageLoading: <PageLoading />,
-      layoutLoading: <LoadingScreen />,
-      // A page's code that failed is drawn as any page that cannot be shown
-      // is: where the page would have been, with a retry and the way home.
-      pageError: (retry) => (
-        <Failure
-          title={format(commonMessages.pageFailed)}
-          description={format(commonMessages.loadFailedHint)}
-          onRetry={retry}
-          actions={homePath === undefined ? [] : [<HomeLink key="home" to={homePath} />]}
-        />
-      ),
-      layoutError: (retry) => (
-        <Failure
-          title={format(commonMessages.layoutFailed)}
-          description={format(commonMessages.loadFailedHint)}
-          onRetry={retry}
-          fullscreen
-        />
-      ),
-      componentMissing: (surface) => (
-        <MissingComponent surface={surface} title={format(commonMessages.componentMissing)} />
-      ),
-      // The way out of a mistyped address is the home the route builder
-      // resolved - one resolution, the same one the origin redirects to - so
-      // a viewer with any page to open is always offered it; one with none
-      // has nowhere to be sent, and the shell's own header still offers
-      // whatever the session allows. The same state a page draws for a
-      // record that is not there, since an address that leads nowhere is one.
-      notFound: ({ homePath: home, standalone }) => (
-        <ResourceState
-          kind="missing"
-          title={format(commonMessages.notFoundTitle)}
-          description={format(commonMessages.notFoundHint)}
-          actions={home === undefined ? [] : [<HomeLink key="home" to={home} primary />]}
-          {...(standalone ? { xstyle: styles.standalone } : {})}
-        />
-      ),
-      // no page to open at all: there is no shell either, so this is the screen
-      empty: (
-        <ResourceState
-          kind="denied"
-          title={format(commonMessages.emptyPagesTitle)}
-          description={format(commonMessages.emptyPagesHint)}
-          xstyle={styles.standalone}
-        />
-      ),
-    }),
-    [format, homePath],
-  )
+  const slots = useRouteSlots(homePath)
   return (
     <ManifestRoutes
       manifest={manifest}
@@ -173,25 +106,4 @@ function ManifestRouter() {
       slots={slots}
     />
   )
-}
-
-/** home, as a way out of a state that is not a page */
-function HomeLink({ to, primary = false }: { to: string; primary?: boolean }) {
-  const { format } = useI18n()
-  return (
-    <Button asChild variant={primary ? 'default' : 'outline'}>
-      <Link to={to}>{format(commonMessages.goHome)}</Link>
-    </Button>
-  )
-}
-
-// a surface the manifest named is not in this bundle: the reader is told the
-// page cannot open, and the console is told which surface and in which
-// release - a fact for whoever ships the bundle, never for the screen
-function MissingComponent({ surface, title }: { surface: BrowserSurface; title: string }) {
-  const label = surfaceLabel(surface)
-  useEffect(() => {
-    console.error(`[qualy] missing from this build: ${label} (release ${webRelease.releaseId})`)
-  }, [label])
-  return <Failure title={title} />
 }
