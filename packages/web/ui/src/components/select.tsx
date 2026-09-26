@@ -140,7 +140,8 @@ const triggerStyles = stylex.create({
   // inside a form field: the width of the field, like the input above it
   fill: { width: '100%' },
   // the control itself, drawn as a quiet key: the height and ground of an
-  // icon key beside it, and no box
+  // icon key beside it, and no box. With no border to colour, keyboard focus
+  // is a ring of its own
   quiet: {
     height: 32,
     minHeight: 32,
@@ -148,6 +149,8 @@ const triggerStyles = stylex.create({
     backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
     paddingInline: 8,
     color: tokens.foreground,
+    outline: 'none',
+    boxShadow: { default: 'none', ':focus-visible': `0 0 0 2px ${tokens.focusRing}` },
   },
 })
 

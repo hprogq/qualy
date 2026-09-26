@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 import { UiProvider } from '@qualy/ui/provider'
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@qualy/ui/select'
@@ -39,6 +39,12 @@ describe('a quiet select trigger', () => {
     expect(edge('key')).toBe('rgba(0, 0, 0, 0)')
     expect(chevron('key')).toBeNull()
     expect(trigger('key').getBoundingClientRect().height).toBe(32)
+    // with no border to colour, keyboard focus is a ring of its own
+    expect(getComputedStyle(trigger('key')).boxShadow).toBe('none')
+    await userEvent.tab()
+    await userEvent.tab()
+    expect(document.activeElement).toBe(trigger('key'))
+    expect(getComputedStyle(trigger('key')).boxShadow).not.toBe('none')
   })
 })
 
