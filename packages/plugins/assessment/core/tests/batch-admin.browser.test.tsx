@@ -1124,6 +1124,24 @@ describe('the batch lifecycle', () => {
 })
 
 describe('creating a batch', () => {
+  // A batch is created with the people it covers, chosen from the units the
+  // reader manages. With none, the dialog took a name and dates and then
+  // offered an empty tree with one grey line under it; it says so first.
+  it('says there is no unit to take participants from before anything is typed', async () => {
+    await screen(
+      { listScopeOptions: () => Effect.succeed({ nodes: [], orgTypes: [] }) },
+      '/assessment/batches',
+    )
+    await page.getByRole('button', { name: '新建批次' }).click()
+    const dialog = page.getByRole('dialog')
+    await expect
+      .element(dialog.getByTestId('new-batch-stuck'))
+      .toHaveAttribute('data-kind', 'no-units')
+    expect(dialog.getByRole('textbox', { name: '名称' }).elements()).toHaveLength(0)
+    expect(dialog.getByRole('button', { name: '下一步' }).elements()).toHaveLength(0)
+    await expect.element(dialog.getByRole('button', { name: '关闭' }).first()).toBeVisible()
+  })
+
   it('walks two steps and picks units in place', async () => {
     const createBatch = vi.fn((_request: Request) =>
       Effect.succeed({ batch: { ...batch(), id: 'created' } }),

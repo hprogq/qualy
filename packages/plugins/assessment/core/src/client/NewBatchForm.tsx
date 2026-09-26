@@ -2,6 +2,7 @@ import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Building2Icon, NetworkIcon } from 'lucide-react'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useIsMobile } from '@qualy/ui/use-mobile'
 import { useI18n, useLocale } from '@qualy/web-i18n'
@@ -17,6 +18,7 @@ import { Steps } from '@qualy/ui/steps'
 import { TreeSelect } from '@qualy/ui/tree-select'
 import { assessmentMessages as m } from './i18n.ts'
 import { assessmentApi } from './api.ts'
+import { DialogBlank } from './DialogBlank.tsx'
 
 // Creating a batch, one decision at a time: what it is, then who it covers.
 //
@@ -106,6 +108,13 @@ export function NewBatchDialog({
     onError: (error: unknown) => setFailure(formatError(error)),
   })
 
+  // A batch is created with the people it covers, and they are chosen from
+  // the units this reader manages. With none, nothing typed here can come to
+  // a batch, so the dialog says so before the first field rather than after
+  // the second step.
+  const nowhere = nodes.data !== undefined && nodes.data.nodes.length === 0
+  const optionsFailed = nodes.isError || userTypes.isError
+
   const basicsReady = name.trim() !== '' && range.start !== '' && range.end !== ''
   const scopeReady = scopeNodeIds.length > 0 && userTypeIds.length > 0
 
@@ -116,7 +125,11 @@ export function NewBatchDialog({
 
   const narrow = useIsMobile()
 
-  const footer = (
+  const footer = nowhere ? (
+    <Button variant="outline" onClick={close}>
+      {format(commonMessages.close)}
+    </Button>
+  ) : (
     <>
       {step === 0 ? (
         <Button variant="outline" onClick={close}>
@@ -139,12 +152,42 @@ export function NewBatchDialog({
     </>
   )
 
-  const body = (
+  const body = nowhere ? (
+    <DialogBlank
+      testId="new-batch-stuck"
+      kind="no-units"
+      icon={<Building2Icon />}
+      title={format(m.newBatchNoUnits)}
+      description={format(m.newBatchNoUnitsHint)}
+    />
+  ) : (
     <>
       <Steps steps={[format(m.stepBasics), format(m.stepScope)]} current={step} />
       <Feedback message={failure} />
 
-      {step === 0 ? (
+      {step === 1 && optionsFailed ? (
+        // the units or the kinds of people could not be read: said, with the
+        // way to ask again, rather than an empty tree that reads as "none"
+        <DialogBlank
+          testId="new-batch-stuck"
+          kind="failed"
+          icon={<NetworkIcon />}
+          title={format(m.newBatchOptionsFailed)}
+          description={formatError(nodes.error ?? userTypes.error)}
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                void nodes.refetch()
+                void userTypes.refetch()
+              }}
+            >
+              {format(commonMessages.retry)}
+            </Button>
+          }
+        />
+      ) : step === 0 ? (
         <FieldGroup>
           <Field label={format(m.nameLabel)}>
             {(id) => (

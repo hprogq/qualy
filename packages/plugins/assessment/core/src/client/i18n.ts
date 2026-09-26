@@ -711,6 +711,18 @@ const i18n = definePluginMessages({
       defaultMessage: 'No assessment batches to show',
     },
     newBatch: { id: 'assessment/batch/new', defaultMessage: 'New batch' },
+    newBatchNoUnits: {
+      id: 'assessment/batch/new-no-units',
+      defaultMessage: 'You manage no units to take participants from',
+    },
+    newBatchNoUnitsHint: {
+      id: 'assessment/batch/new-no-units-hint',
+      defaultMessage: 'Ask an organization administrator to give you a unit to manage',
+    },
+    newBatchOptionsFailed: {
+      id: 'assessment/batch/new-options-failed',
+      defaultMessage: 'The units could not be loaded',
+    },
     batchesEmptyHint: {
       id: 'assessment/batch/empty-hint',
       defaultMessage: 'No assessment batch involves you yet',
