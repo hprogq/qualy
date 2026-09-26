@@ -6,7 +6,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Field, FormDialog } from '@qualy/ui/admin'
-import { RouteOffIcon } from 'lucide-react'
+import { NetworkIcon, RouteOffIcon } from 'lucide-react'
 import { Button } from '@qualy/ui/button'
 import { Blank } from '@qualy/ui/screen'
 import { Input } from '@qualy/ui/input'
@@ -23,6 +23,10 @@ import type { Api, OrgShape, Run } from '../shape.ts'
 // list of names: two classes called "1班" are only told apart by what is
 // above them. Places the move may not land on stay in that tree, each saying
 // why, because a tree with holes in it cannot be read.
+//
+// A task with nothing it could do - a unit under a kind that holds none, a
+// move with nowhere to land - says so as an answer with the way to the rules
+// that make it so, and keeps only the button that closes it.
 
 export type NodeTask = { readonly kind: 'create' | 'rename' | 'move'; readonly nodeId: string }
 
@@ -103,7 +107,21 @@ export function NodeDialogs({
 
   if (task === null || node === undefined) return null
   const kindName = shape.types.find((type) => type.id === node.orgTypeId)?.name ?? ''
-  const nowhere = task.kind === 'move' && shape.nodes.every((one) => barred[one.id] !== undefined)
+  const nowhere =
+    (task.kind === 'move' && shape.nodes.every((one) => barred[one.id] !== undefined)) ||
+    (task.kind === 'create' && childTypes.length === 0)
+  const toRules = (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={() => {
+        onDone()
+        onOpenRules(node.orgTypeId)
+      }}
+    >
+      {format(m.moveNowhereRules)}
+    </Button>
+  )
 
   const submit = () => {
     const work =
@@ -145,7 +163,7 @@ export function NodeDialogs({
       footer={
         <>
           <Button variant="outline" onClick={onDone}>
-            {format(commonMessages.cancel)}
+            {format(nowhere ? commonMessages.close : commonMessages.cancel)}
           </Button>
           {!nowhere && (
             <Button type="submit" form="org-node-task" disabled={!ready || busy}>
@@ -167,7 +185,15 @@ export function NodeDialogs({
       >
         {task.kind === 'create' &&
           (childTypes.length === 0 ? (
-            <p {...stylex.props(styles.note)}>{format(m.noChildrenAllowed)}</p>
+            <div data-testid="create-nowhere">
+              <Blank
+                size="compact"
+                icon={<NetworkIcon />}
+                title={format(m.createNowhereTitle, { name: node.name })}
+                description={format(m.createNowhere, { type: kindName })}
+                action={toRules}
+              />
+            </div>
           ) : (
             <Field label={format(m.typeColumn)}>
               {(id) => (
@@ -186,7 +212,7 @@ export function NodeDialogs({
               )}
             </Field>
           ))}
-        {task.kind !== 'move' && (
+        {task.kind !== 'move' && !nowhere && (
           <Field label={format(m.nameLabel)}>
             {(id) => (
               <Input
@@ -204,21 +230,11 @@ export function NodeDialogs({
           // which will take the press
           <div data-testid="move-nowhere">
             <Blank
+              size="compact"
               icon={<RouteOffIcon />}
               title={format(m.moveNowhereTitle)}
               description={format(m.moveNowhere, { type: kindName })}
-              action={
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    onDone()
-                    onOpenRules(node.orgTypeId)
-                  }}
-                >
-                  {format(m.moveNowhereRules)}
-                </Button>
-              }
+              action={toRules}
             />
           </div>
         )}

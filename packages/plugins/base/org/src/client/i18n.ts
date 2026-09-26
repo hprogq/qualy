@@ -43,8 +43,15 @@ const peopleCountMessage = defineMessage<{ count: number }>()({
 
 const moveNowhereMessage = defineMessage<{ type: string }>()({
   id: 'org/node/move-nowhere',
-  defaultMessage:
-    'As the rules stand, no other unit may hold a {type}. Let another kind of unit hold it, and the places of that kind appear here.',
+  defaultMessage: 'Let another kind of unit hold a {type} first',
+})
+const createNowhereTitleMessage = defineMessage<{ name: string }>()({
+  id: 'org/node/create-nowhere-title',
+  defaultMessage: 'Nothing can be created under {name}',
+})
+const createNowhereMessage = defineMessage<{ type: string }>()({
+  id: 'org/node/create-nowhere',
+  defaultMessage: 'Let a {type} hold another kind of unit first',
 })
 const rowAddBarredMessage = defineMessage<{ type: string }>()({
   id: 'org/tree/row-add-barred',
@@ -290,6 +297,8 @@ const i18n = definePluginMessages({
       defaultMessage: 'under the unit being moved',
     },
     moveNowhere: moveNowhereMessage,
+    createNowhereTitle: createNowhereTitleMessage,
+    createNowhere: createNowhereMessage,
     moveNowhereTitle: {
       id: 'org/node/move-nowhere-title',
       defaultMessage: 'There is nowhere to move it',
