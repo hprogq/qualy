@@ -1,4 +1,12 @@
 import { projectEntrySummary } from '../../entry/summary.ts'
+import {
+  claimActOf,
+  claimAsked,
+  claimFilesOf,
+  claimNoteOf,
+  type ClaimAct,
+  type ClaimNote,
+} from '../entry/claim-facts.ts'
 
 // The account as rows: what the ledger draws, worked out away from the drawing.
 //
@@ -131,16 +139,7 @@ export type LedgerLineStanding =
   | 'open'
 
 /** the last thing that happened to a claim, in the words its list uses */
-export type LedgerAct =
-  | 'asked'
-  | 'returned'
-  | 'refused'
-  | 'recorded'
-  | 'approved'
-  | 'submitted'
-  | 'revoked'
-  | 'abandoned'
-  | 'saved'
+export type LedgerAct = ClaimAct
 
 /** a claim as its own row says it, where the reader holds the claim */
 export interface LedgerClaim {
@@ -154,7 +153,7 @@ export interface LedgerClaim {
   readonly act: LedgerAct
   readonly actAt: string | null
   /** a reviewer's words it carries: what to add, why it came back, or why it was refused */
-  readonly note: { readonly kind: 'ask' | 'return' | 'refusal'; readonly text: string } | null
+  readonly note: ClaimNote | null
   /** files attached to the version it stands at */
   readonly files: number
 }
@@ -433,87 +432,19 @@ export const isMoving = (entry: LedgerEntry): boolean =>
 export const isDraft = (entry: LedgerEntry): boolean =>
   entry.status === 'draft' && entry.openRound == null
 
-/** the reviewer's open ask on a claim, as far as the ledger reads it */
-const askOf = (
-  entry: LedgerEntry,
-): { readonly requestedAt: string | null; readonly instructions: string } | null => {
-  const ask = entry.supplement
-  if (ask === null || ask === undefined || typeof ask !== 'object') return null
-  const { requestedAt, instructions } = ask as { requestedAt?: unknown; instructions?: unknown }
-  return {
-    requestedAt: typeof requestedAt === 'string' ? requestedAt : null,
-    instructions: typeof instructions === 'string' ? instructions.trim() : '',
-  }
-}
-
-/**
- * The last thing that happened to a claim and when, the way the filing page
- * lists it: an open ask outranks the claim's own state, and a fact the
- * office recorded is recorded or revoked rather than approved or given up.
- */
-const actOf = (entry: LedgerEntry): { act: LedgerAct; at: string | null } => {
-  const revised = entry.currentRevision?.createdAt ?? entry.createdAt ?? null
-  const office = entry.source !== undefined && RECORDED_SOURCES.has(entry.source)
-  const ask = askOf(entry)
-  if (ask !== null) return { act: 'asked', at: ask.requestedAt ?? revised }
-  switch (entry.status) {
-    case 'needs_revision':
-      return { act: 'returned', at: entry.refusal?.at ?? revised }
-    case 'rejected':
-      return {
-        act: 'refused',
-        at: entry.refusal?.at ?? entry.recognition?.createdAt ?? revised,
-      }
-    case 'approved':
-      return { act: office ? 'recorded' : 'approved', at: entry.recognition?.createdAt ?? revised }
-    case 'in_review':
-      return { act: 'submitted', at: revised }
-    case 'voided':
-      return { act: office ? 'revoked' : 'abandoned', at: revised }
-    default:
-      return { act: 'saved', at: revised }
-  }
-}
-
-/** the reviewer's words a claim carries: what to add, why it came back, or why it was refused */
-const noteOf = (entry: LedgerEntry): LedgerClaim['note'] => {
-  const ask = askOf(entry)
-  if (ask !== null) return ask.instructions === '' ? null : { kind: 'ask', text: ask.instructions }
-  const said = (entry.refusal?.comment ?? entry.refusal?.reason ?? '').trim()
-  if (said === '') return null
-  if (entry.status === 'needs_revision') return { kind: 'return', text: said }
-  if (entry.status === 'rejected') return { kind: 'refusal', text: said }
-  return null
-}
-
-/** how many files the claim's current version carries, over the question's file fields */
-const filesOf = (entry: LedgerEntry, item: LedgerItem): number => {
-  const fields = (item.currentRevision?.formConfig as { fields?: unknown } | null | undefined)
-    ?.fields
-  const payload = entry.currentRevision?.payload
-  if (!Array.isArray(fields) || payload === null || typeof payload !== 'object') return 0
-  let count = 0
-  for (const field of fields as readonly { key?: unknown; type?: unknown }[]) {
-    if (field.type !== 'attachment' || typeof field.key !== 'string') continue
-    if (!Object.hasOwn(payload, field.key)) continue
-    const value = (payload as Record<string, unknown>)[field.key]
-    if (Array.isArray(value)) count += value.length
-  }
-  return count
-}
-
+/** a claim as its own row says it, read the way every list of claims reads it */
 const claimOf = (entry: LedgerEntry, item: LedgerItem): LedgerClaim => {
-  const { act, at } = actOf(entry)
+  const { act, at } = claimActOf(entry)
   return {
     status: entry.status,
     source: entry.source ?? null,
     revised: entry.currentReviewInstanceId != null,
-    asked: askOf(entry) !== null,
+    asked: claimAsked(entry),
     openRound: entry.openRound ?? null,
     act,
     actAt: at,
-    note: noteOf(entry),
-    files: filesOf(entry, item),
+    note: claimNoteOf(entry),
+    files: claimFilesOf(entry, item.currentRevision?.formConfig),
   }
 }
 
