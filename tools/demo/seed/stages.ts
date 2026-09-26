@@ -101,7 +101,11 @@ export interface ScopedStage {
 }
 
 export interface Staging {
-  /** the batch's own description, shown at the top of its overview */
+  /**
+   * The batch's own description, shown at the top of its overview above the
+   * stages: only what this term has of its own. What filing asks for every
+   * term is the filing stage's to say.
+   */
   readonly descriptionMd: string
   readonly stages: readonly Stage[]
   readonly scoped?: ScopedStage
@@ -137,10 +141,10 @@ const SEASONS: Readonly<Record<Term, string>> = {
   '25-26-2': '2026年春季学期',
 }
 
-const filing = (term: Term, lead = ''): Stage => ({
+const filing = (term: Term): Stage => ({
   phaseKey: 'entry',
   displayName: '材料填报',
-  description: `${lead}提交${SEASONS[term]}的加分材料，每项附证明；学业成绩、寝室卫生与学生干部任职由辅导员统一导入，无需申报。`,
+  description: `提交${SEASONS[term]}的加分材料，每项附证明；学业成绩、寝室卫生与学生干部任职由辅导员统一导入，无需申报。`,
   permissionProfile: FILING,
   enters: [0, '08:00'],
 })
@@ -177,28 +181,27 @@ const archive: Stage = {
   enters: [13, '10:00'],
 }
 
-const described = (term: Term, more: string) =>
-  `请在填报期内提交${SEASONS[term]}的加分材料，每项须附证明；学业成绩、寝室卫生、学生干部任职等由辅导员统一导入，无需申报。\n${more}`
-
+// A batch's description says what its term has of its own: a change of
+// rules, a stage moved or merged, and why. What filing asks for every term is
+// the filing stage's to say, and the overview shows both on one screen.
 export const STAGING: Readonly<Record<Term, Staging>> = {
   // the first term the school ran in the system
   '23-24-1': {
-    descriptionMd: `本学期起综合素质测评在系统内填报与审核。\n${described('23-24-1', '审核结果公布后可对单条申报提出申诉。')}`,
-    stages: [filing('23-24-1', '本学期起改在系统内填报。'), review, appeal(), settling(), archive],
+    descriptionMd:
+      '本学期起综合素质测评改在系统内填报与审核，不再收取纸质材料，证明请拍照或扫描后上传。',
+    stages: [filing('23-24-1'), review, appeal(), settling(), archive],
   },
   // review split in two: the class leads' own, then what is left over
   '23-24-2': {
-    descriptionMd: described(
-      '23-24-2',
-      '本学期审核分为「班级审核」与「复核与补件」两段；校园文化活动院级第一名加分调整为0.4分，团体竞赛名次每降一名减0.1分。',
-    ),
+    descriptionMd:
+      '本学期审核分为「班级审核」与「复核与补件」两段。\n校园文化活动院级第一名加分调整为0.4分，团体竞赛名次每降一名减0.1分。',
     stages: [
       filing('23-24-2'),
       {
         ...review,
         displayName: '班级审核',
         description:
-          '班级综测负责人逐条审核本班申报，拿不准的上提专业负责人合议；本阶段不再接受新申报。',
+          '班级综测负责人审核本班申报，拿不准的上提专业负责人合议；未审完的在「复核与补件」中继续处理。',
       },
       {
         phaseKey: 'recheck',
@@ -214,27 +217,18 @@ export const STAGING: Readonly<Record<Term, Staging>> = {
   },
   // appeals stay open until the next day's noon, and the plan says so by name
   '24-25-1': {
-    descriptionMd: described(
-      '24-25-1',
-      '转专业的同学按新专业参评；结果申诉截止顺延至3月15日 12:00。',
-    ),
+    descriptionMd: '转专业的同学按新专业参评。\n因学院春季运动会，结果申诉的截止时间顺延。',
     stages: [
       filing('24-25-1'),
       review,
-      {
-        ...appeal('因学院春季运动会，申诉截止顺延至3月15日 12:00。'),
-        displayName: '结果申诉（顺延）',
-      },
+      { ...appeal('截止时间顺延至3月15日 12:00。'), displayName: '结果申诉（顺延）' },
       settling([12, '12:00']),
       archive,
     ],
   },
   // the rules are published three days before filing opens
   '24-25-2': {
-    descriptionMd: described(
-      '24-25-2',
-      '开放填报前先公示本学期细则，对细则有疑问的请在公示期内向班级综测负责人反映。',
-    ),
+    descriptionMd: '开放填报前先公示本学期细则，对细则有疑问的请在公示期内向班级综测负责人反映。',
     stages: [
       {
         phaseKey: 'rules',
@@ -253,10 +247,7 @@ export const STAGING: Readonly<Record<Term, Staging>> = {
   },
   // appeals are settled inside the appeal stage, with no stage of their own
   '25-26-1': {
-    descriptionMd: described(
-      '25-26-1',
-      '本学期试行「志愿服务时长认定」；结果公示期内受理并处理申诉。',
-    ),
+    descriptionMd: '本学期结果公示与申诉合并进行，请在公示期内核对本人结果。',
     stages: [
       filing('25-26-1'),
       review,
@@ -270,10 +261,7 @@ export const STAGING: Readonly<Record<Term, Staging>> = {
   },
   // the new language question reopened for the certificates that came late
   '25-26-2': {
-    descriptionMd: described(
-      '25-26-2',
-      '本学期起「职业技能证书」改为「语言技能证书」，青年大学习不再计入。',
-    ),
+    descriptionMd: '本学期起「职业技能证书」改为「语言技能证书」，青年大学习不再计入。',
     stages: [filing('25-26-2'), review, appeal(), settling(), archive],
     scoped: {
       after: 'review',

@@ -278,6 +278,13 @@ const SELECTION_ITEMS: readonly ItemSpec[] = [
  * would move the batch on by itself, weeks after the story stopped. Each
  * says instead what it waits for.
  */
+/**
+ * What the selection's overview says above its phases: who may apply and
+ * where the roster comes from. What to hand in is the first phase's to say.
+ */
+export const SELECTION_DESCRIPTION =
+  '申请人须前三学年无补考重修、平均学分绩位列本专业前20%、通过大学英语四级。\n名单按各班报名汇总录入，已报名但不在名单上的请联系辅导员。'
+
 export const SELECTION_PHASES = [
   {
     phaseKey: 'entry',
@@ -301,7 +308,7 @@ export const SELECTION_PHASES = [
     phaseKey: 'review',
     displayName: '材料审核',
     description:
-      '辅导员审核材料，思想品德考核表由本班班级综测负责人审核。单项结论一出即可申诉，辅导员也可替申请人发起复查。',
+      '辅导员审核材料，思想品德考核表由本班综测负责人审核。单项结论一出即可申诉，辅导员也可替申请人发起复查。',
     permissionProfile: [
       'assessment.review.process',
       'assessment.review.escalate',
@@ -420,8 +427,7 @@ export const runSelection = (input: {
         t,
         {
           name: '2027届推荐优秀应届本科毕业生免试攻读硕士学位研究生综合评价',
-          descriptionMd:
-            '申请人须前三学年无补考重修、平均学分绩位列本专业前20%、通过大学英语四级。\n名单按各班报名汇总录入。请在材料提交期内上传申请表、思想品德考核表、成绩单与四级成绩，并申报学科竞赛与科研成果；学业成绩与品德文体由学院统一导入。',
+          descriptionMd: SELECTION_DESCRIPTION,
           materialRange: { start: '2023-09-01', end: '2026-09-01' },
           import: { orgNodeIds: [world.grade], userTypeIds: [] },
         },

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { OFFERED_PHASE_CODES } from '@qualy/plugin-assessment/permissions'
 import { itemsOf } from '../rules.ts'
 import { EPISODES } from '../seed/episodes.ts'
-import { SELECTION_PHASES } from '../seed/selection.ts'
+import { SELECTION_DESCRIPTION, SELECTION_PHASES } from '../seed/selection.ts'
 import {
   STAGING,
   minutesOf,
@@ -28,6 +28,18 @@ const opens = (stage: Stage | undefined, code: string) =>
   stage?.permissionProfile.includes(code) ?? false
 /** the stage a moment falls in, by key */
 const keyAt = (staging: Staging, moment: Moment) => stageAt(staging, moment)?.phaseKey
+/** the longest run of characters two texts share */
+const sharedRun = (a: string, b: string) => {
+  let longest = ''
+  for (let i = 0; i < a.length; i++) {
+    for (let j = i + longest.length + 1; j <= a.length && b.includes(a.slice(i, j)); j++) {
+      longest = a.slice(i, j)
+    }
+  }
+  return longest
+}
+/** a phrase a batch description may share with its stages, a name in quotes or a date, at most */
+const SHARED_AT_MOST = 10
 
 describe('the plan of each term', () => {
   it('names its stages unlike any other term, so the plans read apart', () => {
@@ -37,6 +49,25 @@ describe('the plan of each term', () => {
         .join(' → '),
     )
     expect(new Set(names).size, names.join('\n')).toBe(plans.length)
+  })
+
+  it('keeps the batch description to what the term has of its own, apart from its stages', () => {
+    const batches = [
+      ...plans.map(({ term, staging }) => ({
+        name: term,
+        description: staging.descriptionMd,
+        stages: stagesOf(staging),
+      })),
+      { name: 'selection', description: SELECTION_DESCRIPTION, stages: SELECTION_PHASES },
+    ]
+    for (const { name, description, stages } of batches) {
+      for (const stage of stages) {
+        const shared = sharedRun(description, stage.description)
+        expect(shared.length, `${name} ${stage.phaseKey}: ${shared}`).toBeLessThanOrEqual(
+          SHARED_AT_MOST,
+        )
+      }
+    }
   })
 
   it('says what every stage is for, within what a plan write takes', () => {
