@@ -9,6 +9,7 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
+import { toast } from '@qualy/ui/toast'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,13 +44,6 @@ const styles = stylex.create({
     fontSize: '0.75rem',
     lineHeight: '1rem',
     color: tokens.mutedForeground,
-  },
-  errorNote: {
-    display: 'block',
-    paddingInline: 8,
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
-    color: tokens.danger,
   },
   trigger: {
     display: 'flex',
@@ -219,7 +213,6 @@ export default function UserMenu() {
   const { format, formatError } = useI18n()
   const businessNo = useTerm(authTerms.businessNumber)
   const endSession = useSessionTransition()
-  const [signOutError, setSignOutError] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   // one identity, told once: surfaces that remount (the drawer, this menu
   // after a layout change) read the cached answer instead of asking again
@@ -323,24 +316,19 @@ export default function UserMenu() {
           <DropdownMenuItem
             variant="destructive"
             onSelect={() => {
-              setSignOutError(null)
               // only the server can end the session: the cookie is HttpOnly,
               // so a failed request leaves the identity intact and must say
-              // so instead of pretending to have signed the user out
+              // so instead of pretending to have signed the user out - as a
+              // notice of its own, not words squeezed into the top bar
               void run(api.auth.endSession())
                 .then(() => endSession({ destination: { kind: 'page', page: 'auth/login' } }))
-                .catch((error: unknown) => setSignOutError(formatError(error)))
+                .catch((error: unknown) => toast.error(formatError(error)))
             }}
           >
             {format(m.signOut)}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      {signOutError && (
-        <span {...stylex.props(styles.errorNote)} role="alert">
-          {signOutError}
-        </span>
-      )}
     </div>
   )
 }
