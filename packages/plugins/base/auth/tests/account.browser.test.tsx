@@ -6,7 +6,7 @@ import { page } from 'vitest/browser'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import type { authApi } from '@qualy/plugin-auth/client/api'
 import { Effect } from 'effect'
-import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The reader's own account. What the screens have to get right is what they
 // offer: facts to read, and letting go of an account only where the server
@@ -306,6 +306,10 @@ describe('binding an account of your own', () => {
     const bindable = rows.elements().map((row) => row.getAttribute('data-bindable'))
     expect(bindable).toEqual(['false', 'true'])
     expect(page.getByRole('button', { name: '绑定', exact: true }).elements()).toHaveLength(1)
+    // read, and put away: it leaves the address with it
+    await page.getByTestId('account-failure').getByRole('button', { name: '关闭' }).click()
+    await expect.poll(() => document.querySelector('[data-testid="account-failure"]')).toBeNull()
+    expect(addressNow()).not.toContain('error=')
   })
 
   it('asks to sign in again first where that is how the account shows it is theirs', async () => {

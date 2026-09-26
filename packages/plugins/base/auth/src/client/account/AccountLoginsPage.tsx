@@ -16,7 +16,8 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection, ConfirmDialog } from '@qualy/ui/admin'
-import { Alert, AlertTitle } from '@qualy/ui/alert'
+import { XIcon } from 'lucide-react'
+import { Alert, AlertAction, AlertTitle } from '@qualy/ui/alert'
 import {
   Card,
   CardEmpty,
@@ -63,7 +64,7 @@ export default function AccountLoginsPage() {
   const endSession = useSessionTransition()
   const { format, formatError, locale } = useI18n()
   const [releasing, setReleasing] = useState<Entrance | null>(null)
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const here = usePageHref('auth/account-logins')
   // where the reader sets their own address, when this assembly has the page
   const securityHref = usePageHref('auth/account-security')
@@ -104,8 +105,29 @@ export default function AccountLoginsPage() {
     <div {...stylex.props(styles.page)}>
       <SectionHead title={format(m.accountLogins)} />
       {failed !== undefined && (
+        // what came back from the other side, until the reader has read it:
+        // put away, it leaves the address too, so a reload does not say it again
         <Alert variant="destructive" data-testid="account-failure" data-code={failed}>
           <AlertTitle>{formatError({ _tag: failed })}</AlertTitle>
+          <AlertAction>
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              aria-label={format(commonMessages.close)}
+              onClick={() =>
+                setSearchParams(
+                  (current) => {
+                    const next = new URLSearchParams(current)
+                    next.delete('error')
+                    return next
+                  },
+                  { replace: true },
+                )
+              }
+            >
+              <XIcon aria-hidden />
+            </Button>
+          </AlertAction>
         </Alert>
       )}
       <AsyncSection
