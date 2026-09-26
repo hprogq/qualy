@@ -1,8 +1,8 @@
 'use client'
 
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { ChevronDownIcon, XIcon } from 'lucide-react'
+import { ListTreeIcon, XIcon } from 'lucide-react'
 import { tokens } from '../theme/tokens.stylex.ts'
 import { useIsMobile } from '../hooks/use-mobile.ts'
 import { Popover, PopoverContent, PopoverTrigger } from './popover.tsx'
@@ -27,6 +27,12 @@ import { Button } from './button.tsx'
 // Three ways to hold one: said and nothing more; each step a way to look at
 // that unit; or the whole chain a press away, every level on a line of its
 // own - a popover beside a pointer, a sheet from the foot on a phone.
+//
+// A line that wrapped keeps the width it was given, and the steps that stay
+// on it stand at its start: whatever follows the words - the mark that says
+// the chain opens - is drawn back against the last of them by however much
+// of the line is left over, measured with the wrap and never fed back into
+// the layout it was measured from.
 
 const LINE = 20
 
@@ -44,7 +50,6 @@ const styles = stylex.create({
     display: 'flex',
     minWidth: 0,
     height: LINE,
-    flexGrow: 1,
     flexDirection: 'row-reverse',
     flexWrap: 'wrap',
     justifyContent: 'flex-end',
@@ -108,13 +113,17 @@ const styles = stylex.create({
     textDecorationColor: `color-mix(in oklab, ${tokens.mutedForeground} 50%, transparent)`,
     textUnderlineOffset: 3,
   },
-  triggerPath: { minWidth: 0, flexGrow: 1 },
+  triggerPath: { display: 'flex', minWidth: 0, flexShrink: 1 },
+  // the chain's own mark, a tree rather than a fold: beside a control that
+  // folds something away it must not read as a second one
   triggerMark: {
-    width: 12,
-    height: 12,
+    display: 'inline-flex',
     flexShrink: 0,
     color: tokens.mutedForeground,
   },
+  triggerGlyph: { width: 13, height: 13 },
+  // drawn back over what a wrapped line leaves at its end
+  drawnBack: (by: number) => ({ transform: `translateX(${String(-by)}px)` }),
   // ---- the chain, one level to a line ----
   chainHead: {
     margin: 0,
@@ -240,6 +249,7 @@ function PathLine({
   onPick,
   pickLabel,
   emphasis,
+  trail,
   xstyle,
 }: {
   steps: readonly string[]
@@ -247,16 +257,33 @@ function PathLine({
   onPick: ((index: number) => void) | undefined
   pickLabel: string | undefined
   emphasis: 'last' | 'none'
+  /** what follows the words, kept against the last of them */
+  trail?: ReactNode
   xstyle: stylex.StyleXStyles | undefined
 }) {
   const seat = useRef<HTMLSpanElement>(null)
   const [clipped, setClipped] = useState(false)
+  // how much of a wrapped line is left over past the steps that stay on it
+  const [slack, setSlack] = useState(0)
   const whole = steps.join(SEPARATOR)
 
   useLayoutEffect(() => {
     const node = seat.current
     if (node === null) return
-    const read = () => setClipped(node.scrollHeight > node.clientHeight + 1)
+    const read = () => {
+      const wrapped = node.scrollHeight > node.clientHeight + 1
+      setClipped(wrapped)
+      if (!wrapped) {
+        setSlack(0)
+        return
+      }
+      const line = node.getBoundingClientRect()
+      const kept = [...node.children]
+        .map((step) => step.getBoundingClientRect())
+        .filter((box) => box.top < line.bottom - 1)
+      const end = Math.max(line.left, ...kept.map((box) => box.right))
+      setSlack(Math.max(0, Math.floor(line.right - end)))
+    }
     read()
     const watch = new ResizeObserver(read)
     watch.observe(node)
@@ -316,6 +343,15 @@ function PathLine({
             </span>
           ))}
       </span>
+      {trail !== undefined && (
+        <span
+          aria-hidden
+          data-testid="unit-path-trail"
+          {...stylex.props(styles.triggerMark, slack > 0 && styles.drawnBack(slack))}
+        >
+          {trail}
+        </span>
+      )}
     </span>
   )
 }
@@ -340,6 +376,7 @@ function ChainTrigger({
         onPick={undefined}
         pickLabel={undefined}
         emphasis="last"
+        trail={<ListTreeIcon {...stylex.props(styles.triggerGlyph)} />}
         xstyle={xstyle}
       />
     </span>
@@ -354,7 +391,6 @@ function ChainTrigger({
       {...(phone ? { onClick: () => setOpen(true), 'aria-haspopup': 'dialog' as const } : {})}
     >
       {line}
-      <ChevronDownIcon aria-hidden {...stylex.props(styles.triggerMark)} />
     </button>
   )
   if (phone) {

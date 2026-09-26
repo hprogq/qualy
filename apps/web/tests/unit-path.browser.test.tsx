@@ -71,6 +71,27 @@ describe('a unit path', () => {
     await expect.element(chain).not.toBeInTheDocument()
   })
 
+  it('keeps the chain’s mark against the words, whether or not the line wrapped', async () => {
+    await page.viewport(1280, 800)
+    // how far the mark stands from the end of the unit's own name
+    const apart = () => {
+      const unit = document.querySelector(`[data-path-step="${STEPS.length - 1}"]`)!
+      const mark = document.querySelector('[data-testid="unit-path-trail"]')!
+      return mark.getBoundingClientRect().left - unit.getBoundingClientRect().right
+    }
+    const chain = { label: '所在单位', closeLabel: '关闭' }
+    // a cell far wider than the path, and one that folds its front away
+    for (const width of [900, 260]) {
+      const { unmount } = await mount(<UnitPath steps={STEPS} chain={chain} />, width)
+      await expect
+        .element(page.getByTestId('unit-path'))
+        .toHaveAttribute('data-clipped', String(width < 900))
+      await expect.poll(apart).toBeLessThanOrEqual(8)
+      expect(apart()).toBeGreaterThanOrEqual(0)
+      await unmount()
+    }
+  })
+
   it('lists the chain it is given where it holds more than the line', async () => {
     await page.viewport(1280, 800)
     await mount(
