@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
+import { CircleAlertIcon, UsersIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { commonMessages } from '@qualy/web-i18n/messages'
+import { Button } from '@qualy/ui/button'
 import { CursorPager } from '@qualy/ui/pager'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -71,7 +74,27 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
     fontVariantNumeric: 'tabular-nums',
   },
-  quiet: { fontSize: 13, color: tokens.mutedForeground },
+  // an answer in place of the names, at the size of the names: what is not
+  // there, or what went wrong and the way to ask again
+  state: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    minHeight: '6.5rem',
+    paddingBlock: 12,
+    textAlign: 'center',
+    fontSize: 13,
+    lineHeight: 1.5,
+    color: tokens.mutedForeground,
+    textWrap: 'pretty',
+  },
+  stateIcon: {
+    width: 20,
+    height: 20,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 75%, transparent)`,
+  },
   bones: { display: 'flex', flexDirection: 'column', gap: 8 },
 })
 
@@ -131,9 +154,23 @@ export function UnitRoster({
           <Skeleton height={14} width="62%" radius={4} />
         </div>
       ) : people.isError ? (
-        <p {...stylex.props(styles.quiet)}>{formatError(people.error)}</p>
+        <div
+          role="alert"
+          data-testid="unit-roster-state"
+          data-kind="failed"
+          {...stylex.props(styles.state)}
+        >
+          <CircleAlertIcon aria-hidden {...stylex.props(styles.stateIcon)} />
+          <span>{formatError(people.error)}</span>
+          <Button size="sm" variant="outline" onClick={() => void people.refetch()}>
+            {format(commonMessages.retry)}
+          </Button>
+        </div>
       ) : rows.length === 0 ? (
-        <p {...stylex.props(styles.quiet)}>{format(m.recordUnitRosterEmpty)}</p>
+        <div data-testid="unit-roster-state" data-kind="empty" {...stylex.props(styles.state)}>
+          <UsersIcon aria-hidden {...stylex.props(styles.stateIcon)} />
+          <span>{format(m.recordUnitRosterEmpty)}</span>
+        </div>
       ) : (
         <ul {...stylex.props(styles.list)}>
           {rows.map((row) => (

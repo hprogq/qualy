@@ -88,7 +88,7 @@ const difference = (n: number) => ({
   observedFingerprint: `fingerprint-${n}`,
 })
 
-const open = (children: React.ReactNode) =>
+const open = (children: React.ReactNode, over: Record<string, unknown> = {}) =>
   renderScreen({
     client: fakeClient({
       app: {
@@ -117,6 +117,7 @@ const open = (children: React.ReactNode) =>
             changedTotal: 40,
             unavailableTotal: 0,
           }),
+        ...over,
       },
     }),
     children,
@@ -367,5 +368,54 @@ describe('a roster dialog that outgrows the window', () => {
     expect(panel.scrollHeight).toBeLessThanOrEqual(panel.clientHeight + 1)
     expect(inView(one('[data-slot="dialog-title"]'))).toBe(true)
     expect(inView(page.getByRole('button', { name: '导入', exact: true }).element())).toBe(true)
+  })
+})
+
+// A dialog with nothing left to act on answers as an answer: what is so and
+// why, and the way out - not a line of grey text over buttons that do
+// nothing.
+describe('a roster dialog with nothing to act on', () => {
+  it('says the roster is in step with the organization, and offers only the way out', async () => {
+    const onClose = vi.fn()
+    await open(
+      <PlacementDialog
+        batchId={BATCH_ID}
+        open
+        pending={false}
+        onDecide={() => {}}
+        onClose={onClose}
+      />,
+      {
+        listParticipantPlacements: () =>
+          Effect.succeed({ items: [], nextCursor: null, changedTotal: 0, unavailableTotal: 0 }),
+      },
+    )
+    const dialog = page.getByTestId('placement-dialog')
+    await expect.element(dialog.getByTestId('placement-quiet')).toBeVisible()
+    // no choices about nobody: neither decision, nor a page box, nor a pager
+    expect(dialog.getByRole('button', { name: '同步所选' }).elements()).toHaveLength(0)
+    expect(dialog.getByRole('button', { name: '保留所选' }).elements()).toHaveLength(0)
+    expect(dialog.getByTestId('placement-pager').elements()).toHaveLength(0)
+    await dialog.getByRole('button', { name: '关闭' }).click()
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('says why nothing can be imported when the reader manages no unit', async () => {
+    await open(
+      <ImportDialog
+        batchId={BATCH_ID}
+        open
+        pending={false}
+        onImport={() => {}}
+        onClose={() => {}}
+      />,
+      { listScopeOptions: () => Effect.succeed({ nodes: [], orgTypes: [] }) },
+    )
+    const stuck = page.getByTestId('import-stuck')
+    await expect.element(stuck).toHaveAttribute('data-kind', 'no-units')
+    // two empty fields over a grey button said nothing about why
+    expect(page.getByTestId('import-units').elements()).toHaveLength(0)
+    expect(page.getByRole('button', { name: '导入' }).elements()).toHaveLength(0)
+    await expect.element(page.getByRole('button', { name: '关闭' }).first()).toBeVisible()
   })
 })

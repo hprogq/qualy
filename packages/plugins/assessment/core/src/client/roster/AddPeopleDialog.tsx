@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { ShieldQuestionIcon } from 'lucide-react'
 import { UiSlot } from '@qualy/web-runtime'
 import { peoplePickerView } from '@qualy/ui-contract'
 import { useI18n } from '@qualy/web-i18n'
@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from '@qualy/ui/dialog'
 import { assessmentMessages as m } from '../i18n.ts'
+import { DialogBlank } from '../DialogBlank.tsx'
 import { useCandidates } from './candidates.ts'
 
 // Adding people to the roster one at a time, or a dozen at a time.
@@ -34,7 +35,6 @@ const styles = stylex.create({
   // it held left the list a band short of its own foot, and changed height
   // under the hand with every filter.
   panel: { height: 'min(90dvh, 48rem)' },
-  quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
 })
 
 export function AddPeopleDialog({
@@ -85,7 +85,14 @@ export function AddPeopleDialog({
               },
               onChange: setChosen,
             })}
-            fallback={<p {...stylex.props(styles.quiet)}>{format(m.pickerUnavailable)}</p>}
+            fallback={
+              <DialogBlank
+                testId="add-people-unavailable"
+                icon={<ShieldQuestionIcon />}
+                title={format(m.pickerUnavailable)}
+                description={format(m.pickerUnavailableHint)}
+              />
+            }
           />
         </DialogBody>
         <DialogFooter>

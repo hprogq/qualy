@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { useQueryClient } from '@tanstack/react-query'
-import { DownloadIcon, PlusIcon, SearchIcon } from 'lucide-react'
+import { DownloadIcon, PlusIcon, SearchIcon, ShieldOffIcon } from 'lucide-react'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { useApiQuery, usePageQueryState, usePageQueryUpdate } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from '@qualy/ui/dialog'
 import { Drill, type DrillMove } from '@qualy/ui/reveal'
+import { Blank, Card } from '@qualy/ui/screen'
 import { PageHeader, BannerBack } from '@qualy/ui/admin'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { toast } from '@qualy/ui/toast'
@@ -63,7 +64,9 @@ const styles = stylex.create({
     flexBasis: '0%',
     flexDirection: 'column',
   },
-  quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
+  // a whole page with nothing on it for this reader: an answer the height
+  // of the page's own content, not one line under its banner
+  refused: { minHeight: '22rem', borderWidth: 0 },
   // sized like the line of prose it sits in rather than like a control: a
   // button at a control's own height makes the band taller than the heading
   // it took over
@@ -315,7 +318,16 @@ function RecordsBody({
   })
 
   if (!batch.capabilities.record) {
-    return <p {...stylex.props(styles.quiet)}>{format(m.recordNoStanding)}</p>
+    return (
+      <Card data-testid="record-no-standing">
+        <Blank
+          icon={<ShieldOffIcon />}
+          title={format(m.recordNoStanding)}
+          description={format(m.recordNoStandingHint)}
+          xstyle={styles.refused}
+        />
+      </Card>
+    )
   }
 
   return (

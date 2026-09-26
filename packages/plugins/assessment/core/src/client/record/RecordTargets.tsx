@@ -1,6 +1,7 @@
 import { useId, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
+import { ShieldQuestionIcon } from 'lucide-react'
 import { orgNodePickerView } from '@qualy/ui-contract'
 import { UiSlot, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -20,6 +21,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
+import { DialogBlank } from '../DialogBlank.tsx'
 import { RosterPeoplePicker } from './RosterPeoplePicker.tsx'
 import { UnitRoster } from './UnitRoster.tsx'
 
@@ -60,7 +62,6 @@ const styles = stylex.create({
     gap: 16,
     gridTemplateColumns: { default: null, [breakpoints.desktop]: 'minmax(0, 1fr) minmax(0, 1fr)' },
   },
-  quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
   // the tree takes the height the dialog gives and the kinds keep theirs at
   // the foot, so the dialog body never scrolls around a tree that scrolls
   unitsSide: { display: 'flex', minHeight: 0, minWidth: 0, flexDirection: 'column', gap: 16 },
@@ -267,7 +268,14 @@ function RosterUnits({
               loading: roster.isPending,
               fill: true,
             }}
-            fallback={<p {...stylex.props(styles.quiet)}>{format(m.pickerUnavailable)}</p>}
+            fallback={
+              <DialogBlank
+                testId="record-units-unavailable"
+                icon={<ShieldQuestionIcon />}
+                title={format(m.unitPickerUnavailable)}
+                description={format(m.pickerUnavailableHint)}
+              />
+            }
           />
         </section>
         {/* one kind of people is no choice; several are, and choosing none

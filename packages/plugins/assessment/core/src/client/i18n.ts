@@ -1453,7 +1453,11 @@ const i18n = definePluginMessages({
     // the review queue
     recordNoStanding: {
       id: 'assessment/record/no-standing',
-      defaultMessage: 'You may not make administrative records in this batch.',
+      defaultMessage: 'You may not make administrative records in this batch',
+    },
+    recordNoStandingHint: {
+      id: 'assessment/record/no-standing-hint',
+      defaultMessage: 'To record or import for this batch, ask a batch administrator for access',
     },
     reviewTab: { id: 'assessment/review/tab', defaultMessage: 'Review' },
     reviewColumnItem: { id: 'assessment/review/column-item', defaultMessage: 'Item' },
@@ -2015,7 +2019,7 @@ const i18n = definePluginMessages({
     },
     recordUnitRosterEmpty: {
       id: 'assessment/record/unit-roster-empty',
-      defaultMessage: 'Nobody in this round stands in these units',
+      defaultMessage: 'Nobody in this batch stands in the chosen units',
     },
     recordUnitsTitle: { id: 'assessment/record/units-title', defaultMessage: 'Units' },
     recordUnitKinds: { id: 'assessment/record/unit-kinds', defaultMessage: 'Kinds of people' },
@@ -5923,6 +5927,22 @@ const i18n = definePluginMessages({
       defaultMessage: 'Search by name or {businessNo}, or browse the organization.',
     }),
     addPeopleConfirm,
+    importNoUnits: {
+      id: 'assessment/roster/import-no-units',
+      defaultMessage: 'You manage no units to import from',
+    },
+    importNoUnitsHint: {
+      id: 'assessment/roster/import-no-units-hint',
+      defaultMessage: 'Ask an organization administrator to give you a unit to manage',
+    },
+    importNoTypes: {
+      id: 'assessment/roster/import-no-types',
+      defaultMessage: 'No user types to import',
+    },
+    importNoTypesHint: {
+      id: 'assessment/roster/import-no-types-hint',
+      defaultMessage: 'Ask a system administrator to enable a user type',
+    },
     pickerUnavailable: {
       id: 'assessment/roster/picker-unavailable',
       defaultMessage: 'People cannot be chosen here right now',
@@ -5988,7 +6008,11 @@ const i18n = definePluginMessages({
     },
     placementQuiet: {
       id: 'assessment/placement/quiet',
-      defaultMessage: 'Everyone is where the organization has them.',
+      defaultMessage: 'In step with the organization',
+    },
+    placementQuietHint: {
+      id: 'assessment/placement/quiet-hint',
+      defaultMessage: 'Nobody on the roster has moved since it was drawn',
     },
     placementRound: { id: 'assessment/placement/round', defaultMessage: 'This batch' },
     placementCurrent: { id: 'assessment/placement/current', defaultMessage: 'Organization' },

@@ -559,3 +559,20 @@ describe('recording with a determination', () => {
     })
   })
 })
+
+// Somebody who may not record in the round opens its records page: an
+// answer as tall as the page's content, with what to do about it, rather
+// than one grey sentence under the banner.
+describe('the records page for a reader who may not record', () => {
+  it('answers with why and whom to ask, and draws nothing to press', async () => {
+    await open({
+      getBatch: () =>
+        Effect.succeed({
+          batch: { ...batch(), capabilities: { ...batch().capabilities, record: false } },
+        }),
+    })
+    await expect.element(page.getByTestId('record-no-standing')).toBeVisible()
+    expect(page.getByTestId('record-step-next').elements()).toHaveLength(0)
+    expect(page.getByRole('tablist').elements()).toHaveLength(0)
+  })
+})

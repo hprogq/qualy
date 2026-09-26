@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useQuery } from '@tanstack/react-query'
+import { CircleCheckIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { useI18n } from '@qualy/web-i18n'
@@ -24,6 +25,7 @@ import { CursorPager } from '@qualy/ui/pager'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
+import { DialogBlank } from '../DialogBlank.tsx'
 
 // Deciding, person by person, whether the round follows the organization.
 //
@@ -69,7 +71,6 @@ const styles = stylex.create({
   body: { gap: 12 },
   waiting: { display: 'flex', flexDirection: 'column', gap: 8 },
   waitingRow: { height: 88, width: '100%' },
-  quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
   aside: { fontSize: 12, lineHeight: '1rem', color: tokens.mutedForeground },
   // The differences' own box, laid out as the people pickers lay theirs: a
   // bar that takes the whole page in or out over the rows, and the rows
@@ -224,6 +225,9 @@ export function PlacementDialog({
 
   // a decision that has been sent leaves the list; so does its tick
   const items = differences.data?.items ?? []
+  // nothing left to decide, once the answer is in: somebody settled it
+  // first, or the last decision here settled it
+  const quiet = differences.data !== undefined && items.length === 0
   const decidable = items.filter((row) => row.observedFingerprint !== null)
   const selected = [...chosen.values()]
   const syncable = selected.length > 0 && selected.every((row) => row.canSync)
@@ -273,7 +277,7 @@ export function PlacementDialog({
       <DialogContent data-testid="placement-dialog" size="48rem" xstyle={styles.panel}>
         <DialogHeader>
           <DialogTitle>{format(m.placementTitle)}</DialogTitle>
-          <DialogDescription>{format(m.placementHint)}</DialogDescription>
+          {!quiet && <DialogDescription>{format(m.placementHint)}</DialogDescription>}
         </DialogHeader>
         <DialogBody xstyle={styles.body}>
           <AsyncSection
@@ -289,8 +293,13 @@ export function PlacementDialog({
               </div>
             }
           >
-            {items.length === 0 ? (
-              <p {...stylex.props(styles.quiet)}>{format(m.placementQuiet)}</p>
+            {quiet ? (
+              <DialogBlank
+                testId="placement-quiet"
+                icon={<CircleCheckIcon />}
+                title={format(m.placementQuiet)}
+                description={format(m.placementQuietHint)}
+              />
             ) : (
               <>
                 {decidable.length > 0 && (
@@ -382,16 +391,25 @@ export function PlacementDialog({
           )}
         </DialogBody>
         <DialogFooter>
-          <Button
-            variant="outline"
-            disabled={pending || selected.length === 0}
-            onClick={() => decide(selected, 'keep')}
-          >
-            {format(m.placementKeepSelected)}
-          </Button>
-          <Button disabled={pending || !syncable} onClick={() => decide(selected, 'sync')}>
-            {format(m.placementSyncSelected)}
-          </Button>
+          {quiet && pageIndex === 0 ? (
+            // nothing to decide: the way out, not two choices about nobody
+            <Button variant="outline" onClick={onClose}>
+              {format(commonMessages.close)}
+            </Button>
+          ) : (
+            <>
+              <Button
+                variant="outline"
+                disabled={pending || selected.length === 0}
+                onClick={() => decide(selected, 'keep')}
+              >
+                {format(m.placementKeepSelected)}
+              </Button>
+              <Button disabled={pending || !syncable} onClick={() => decide(selected, 'sync')}>
+                {format(m.placementSyncSelected)}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

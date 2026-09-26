@@ -3,7 +3,7 @@ import { lazy } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
-import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // Naming who an administrative finding is about by unit, as a recorder who
 // may record in this round and may not browse the directory: the units and
@@ -242,5 +242,51 @@ describe('choosing who a finding is about by unit', () => {
     } finally {
       await page.viewport(1280, 800)
     }
+  })
+})
+
+// Who the chosen units come to, when that cannot be read or is nobody: an
+// answer where the names would be, and after a failure the way to ask
+// again - it was one grey line of the error's words, with no way on.
+describe('the people a unit finding comes to, when there are none to show', () => {
+  it('says the read failed and reads again when asked', async () => {
+    let calls = 0
+    const people = vi.fn((_request: Request) => {
+      calls += 1
+      return calls === 1
+        ? Effect.fail(apiError('SERVICE_UNAVAILABLE', {}))
+        : Effect.succeed({
+            items: [
+              {
+                id: 'p-1',
+                userId: 'u-1',
+                displayName: '周予安',
+                businessNo: '20230001',
+                userTypeId: UNDERGRADUATE,
+                anchorNodeId: CLASS_A,
+                anchorPath: 'r.a.a1',
+                status: 'active',
+              },
+            ],
+            nextCursor: null,
+          })
+    })
+    await open({ listParticipants: people })
+    await page.getByRole('button', { name: '按组织选择' }).click()
+    await page.getByTestId('record-units').getByRole('checkbox', { name: '软件 2301 班' }).click()
+    const state = page.getByTestId('unit-roster-state')
+    await expect.element(state).toHaveAttribute('data-kind', 'failed')
+    await state.getByRole('button', { name: '重试' }).click()
+    await expect.element(page.getByTestId('unit-roster-row')).toBeVisible()
+    expect(page.getByTestId('unit-roster-state').elements()).toHaveLength(0)
+  })
+
+  it('says nobody in the round stands in the chosen units', async () => {
+    await open({ listParticipants: () => Effect.succeed({ items: [], nextCursor: null }) })
+    await page.getByRole('button', { name: '按组织选择' }).click()
+    await page.getByTestId('record-units').getByRole('checkbox', { name: '软件 2301 班' }).click()
+    await expect
+      .element(page.getByTestId('unit-roster-state'))
+      .toHaveAttribute('data-kind', 'empty')
   })
 })

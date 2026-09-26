@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import * as stylex from '@stylexjs/stylex'
+import { ShieldQuestionIcon } from 'lucide-react'
 import { peoplePickerView } from '@qualy/ui-contract'
 import { UiSlot, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
+import { DialogBlank } from '../DialogBlank.tsx'
 
 // Choosing people for an administrative finding.
 //
@@ -31,10 +31,6 @@ import { assessmentMessages as m } from '../i18n.ts'
 // paged through.
 
 const PAGE = 25
-
-const styles = stylex.create({
-  quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
-})
 
 export function RosterPeoplePicker({
   batchId,
@@ -148,7 +144,14 @@ export function RosterPeoplePicker({
         },
         onRetry: () => void people.refetch(),
       }}
-      fallback={<p {...stylex.props(styles.quiet)}>{format(m.pickerUnavailable)}</p>}
+      fallback={
+        <DialogBlank
+          testId="record-people-unavailable"
+          icon={<ShieldQuestionIcon />}
+          title={format(m.pickerUnavailable)}
+          description={format(m.pickerUnavailableHint)}
+        />
+      }
     />
   )
 }

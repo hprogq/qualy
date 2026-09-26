@@ -3,6 +3,7 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useQuery } from '@tanstack/react-query'
+import { Building2Icon, UserRoundXIcon } from 'lucide-react'
 import { orgNodePickerView } from '@qualy/ui-contract'
 import { UiSlot, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -22,6 +23,7 @@ import {
 import { TreeSelect } from '@qualy/ui/tree-select'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
+import { DialogBlank } from '../DialogBlank.tsx'
 
 // Running the organization query again, once.
 //
@@ -106,13 +108,23 @@ export function ImportDialog({
     enabled: open && ready,
   })
   const failed = nodes.isError ? nodes.error : userTypes.isError ? userTypes.error : null
+  // Nothing this reader could import from: no unit they manage, or no kind
+  // of person to take. Either way no choice here can come to anything, so
+  // the dialog says which and why rather than drawing two empty fields
+  // over a button that stays grey.
+  const stuck =
+    nodes.data !== undefined && nodes.data.nodes.length === 0
+      ? 'no-units'
+      : userTypes.data !== undefined && userTypes.data.userTypes.length === 0
+        ? 'no-types'
+        : null
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent size="42rem">
         <DialogHeader>
           <DialogTitle>{format(m.importTitle)}</DialogTitle>
-          <DialogDescription>{format(m.importHint)}</DialogDescription>
+          {stuck === null && <DialogDescription>{format(m.importHint)}</DialogDescription>}
         </DialogHeader>
         <DialogBody>
           <AsyncSection
@@ -125,74 +137,100 @@ export function ImportDialog({
               void userTypes.refetch()
             }}
           >
-            <FieldGroup>
-              <Field label={format(m.scopeLegend)}>
-                {() => (
-                  <div data-testid="import-units" {...stylex.props(styles.units)}>
-                    <UiSlot
-                      token={orgNodePickerView}
-                      context={{
-                        value: selection.orgNodeIds,
-                        onChange: (orgNodeIds: string[]) =>
-                          setSelection((now) => ({ ...now, orgNodeIds })),
-                        nodes: nodes.data?.nodes ?? [],
-                        orgTypes: nodes.data?.orgTypes ?? [],
-                        loading: nodes.isPending,
-                      }}
-                      fallback={
-                        <div {...stylex.props(styles.tree)}>
-                          <TreeSelect
-                            value={selection.orgNodeIds}
-                            onChange={(orgNodeIds) =>
-                              setSelection((now) => ({ ...now, orgNodeIds }))
-                            }
-                            nodes={nodes.data?.nodes ?? []}
-                            emptyLabel={format(m.scopeEmpty)}
-                          />
-                        </div>
-                      }
-                    />
-                  </div>
-                )}
-              </Field>
-              <CheckboxGroup
-                legend={format(m.userTypesLegend)}
-                options={(userTypes.data?.userTypes ?? []).map((type) => ({
-                  value: type.id,
-                  label: type.name,
-                }))}
-                selected={[...selection.userTypeIds]}
-                onChange={(userTypeIds) => setSelection((now) => ({ ...now, userTypeIds }))}
-                emptyLabel={format(m.userTypesEmpty)}
+            {stuck === 'no-units' ? (
+              <DialogBlank
+                testId="import-stuck"
+                kind={stuck}
+                icon={<Building2Icon />}
+                title={format(m.importNoUnits)}
+                description={format(m.importNoUnitsHint)}
               />
-            </FieldGroup>
+            ) : stuck === 'no-types' ? (
+              <DialogBlank
+                testId="import-stuck"
+                kind={stuck}
+                icon={<UserRoundXIcon />}
+                title={format(m.importNoTypes)}
+                description={format(m.importNoTypesHint)}
+              />
+            ) : (
+              <FieldGroup>
+                <Field label={format(m.scopeLegend)}>
+                  {() => (
+                    <div data-testid="import-units" {...stylex.props(styles.units)}>
+                      <UiSlot
+                        token={orgNodePickerView}
+                        context={{
+                          value: selection.orgNodeIds,
+                          onChange: (orgNodeIds: string[]) =>
+                            setSelection((now) => ({ ...now, orgNodeIds })),
+                          nodes: nodes.data?.nodes ?? [],
+                          orgTypes: nodes.data?.orgTypes ?? [],
+                          loading: nodes.isPending,
+                        }}
+                        fallback={
+                          <div {...stylex.props(styles.tree)}>
+                            <TreeSelect
+                              value={selection.orgNodeIds}
+                              onChange={(orgNodeIds) =>
+                                setSelection((now) => ({ ...now, orgNodeIds }))
+                              }
+                              nodes={nodes.data?.nodes ?? []}
+                              emptyLabel={format(m.scopeEmpty)}
+                            />
+                          </div>
+                        }
+                      />
+                    </div>
+                  )}
+                </Field>
+                <CheckboxGroup
+                  legend={format(m.userTypesLegend)}
+                  options={(userTypes.data?.userTypes ?? []).map((type) => ({
+                    value: type.id,
+                    label: type.name,
+                  }))}
+                  selected={[...selection.userTypeIds]}
+                  onChange={(userTypeIds) => setSelection((now) => ({ ...now, userTypeIds }))}
+                  emptyLabel={format(m.userTypesEmpty)}
+                />
+              </FieldGroup>
+            )}
           </AsyncSection>
         </DialogBody>
-        <DialogFooter className={stylex.props(styles.foot).className}>
-          <span
-            // how many this import would add, as a number; the sentence
-            // around it is copy and changes without the count changing
-            data-testid="import-candidates"
-            data-ready={String(ready && candidates.data !== undefined)}
-            data-count={ready && candidates.data ? String(candidates.data.candidates) : ''}
-            {...stylex.props(styles.quiet)}
-          >
-            {ready && candidates.data
-              ? format(m.importCandidates, { count: candidates.data.candidates })
-              : format(m.importChoose)}
-          </span>
-          <div {...stylex.props(styles.footSide)}>
+        {stuck !== null ? (
+          <DialogFooter>
             <Button variant="outline" onClick={onClose}>
-              {format(commonMessages.cancel)}
+              {format(commonMessages.close)}
             </Button>
-            <Button
-              disabled={pending || !ready || (candidates.data?.candidates ?? 0) === 0}
-              onClick={() => onImport(selection)}
+          </DialogFooter>
+        ) : (
+          <DialogFooter className={stylex.props(styles.foot).className}>
+            <span
+              // how many this import would add, as a number; the sentence
+              // around it is copy and changes without the count changing
+              data-testid="import-candidates"
+              data-ready={String(ready && candidates.data !== undefined)}
+              data-count={ready && candidates.data ? String(candidates.data.candidates) : ''}
+              {...stylex.props(styles.quiet)}
             >
-              {format(m.importConfirm)}
-            </Button>
-          </div>
-        </DialogFooter>
+              {ready && candidates.data
+                ? format(m.importCandidates, { count: candidates.data.candidates })
+                : format(m.importChoose)}
+            </span>
+            <div {...stylex.props(styles.footSide)}>
+              <Button variant="outline" onClick={onClose}>
+                {format(commonMessages.cancel)}
+              </Button>
+              <Button
+                disabled={pending || !ready || (candidates.data?.candidates ?? 0) === 0}
+                onClick={() => onImport(selection)}
+              >
+                {format(m.importConfirm)}
+              </Button>
+            </div>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   )
