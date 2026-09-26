@@ -4,6 +4,9 @@ import { page } from 'vitest/browser'
 import { lazy } from 'react'
 import { Effect } from 'effect'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { Field } from '@qualy/ui/admin'
+import { Input } from '@qualy/ui/input'
+import { Wizard, WizardBody, WizardSection } from '../src/client/record/wizard.tsx'
 
 const PeoplePickerView = lazy(() => import('@qualy/plugin-auth/client/iam/PeoplePickerView'))
 
@@ -574,5 +577,45 @@ describe('the records page for a reader who may not record', () => {
     await expect.element(page.getByTestId('record-no-standing')).toBeVisible()
     expect(page.getByTestId('record-step-next').elements()).toHaveLength(0)
     expect(page.getByRole('tablist').elements()).toHaveLength(0)
+  })
+})
+
+// The parts of a step - who, the material, the determination, the reason -
+// were headed at the size of the field labels inside them and one weight
+// heavier, with nothing between one part and the next: a heading read as
+// one more field. A heading is now a size up with a mark before it, its
+// note on a line of its own, and every part after the first ruled off.
+describe('the parts of a recording step', () => {
+  it('heads each part above the fields in it and rules the parts apart', async () => {
+    await renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
+      children: (
+        <Wizard>
+          <WizardBody>
+            <WizardSection title="认定对象" note="按人员或按组织选择">
+              <span>按人员选择</span>
+            </WizardSection>
+            <WizardSection title="认定材料">
+              <Field label="获奖名称">{(id) => <Input id={id} />}</Field>
+            </WizardSection>
+          </WizardBody>
+        </Wizard>
+      ),
+    })
+    const parts = page.getByTestId('wizard-section')
+    await expect.element(parts.first()).toBeVisible()
+    const [first, second] = parts.elements() as HTMLElement[]
+    const heading = second!.querySelector('h3')!
+    const label = second!.querySelector('label')!
+    expect(Number.parseFloat(getComputedStyle(heading).fontSize)).toBeGreaterThan(
+      Number.parseFloat(getComputedStyle(label).fontSize),
+    )
+    expect(getComputedStyle(first!).borderTopWidth).toBe('0px')
+    expect(getComputedStyle(second!).borderTopWidth).toBe('1px')
+    // the note under its heading, not squeezed beside it
+    const note = first!.querySelector('h3')!.nextElementSibling!
+    expect(note.getBoundingClientRect().top).toBeGreaterThanOrEqual(
+      first!.querySelector('h3')!.getBoundingClientRect().bottom - 0.5,
+    )
   })
 })

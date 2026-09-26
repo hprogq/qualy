@@ -168,12 +168,46 @@ const styles = stylex.create({
   footDotWaiting: { backgroundColor: tokens.warning },
   footStatus: { minWidth: 0, fontSize: 13, color: tokens.mutedForeground },
   footKeys: { display: 'flex', flexShrink: 0, gap: 8, marginLeft: 'auto' },
-  section: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 12 },
-  sectionHead: { display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 8 },
-  sectionTitle: { margin: 0, fontSize: 14, fontWeight: 600 },
+  // A part of a step, set apart from the fields inside it: a rule across
+  // the body above every part but the first, a heading a size up from a
+  // field's label with a mark in front of it, and its note on a line of its
+  // own. At one size and a hair more weight than the labels under it, a
+  // heading read as one more field.
+  section: {
+    display: 'flex',
+    minWidth: 0,
+    flexShrink: 0,
+    flexDirection: 'column',
+    gap: 14,
+    borderTopWidth: { default: 1, ':first-child': 0 },
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.divider,
+    paddingTop: { default: 20, ':first-child': 0 },
+  },
+  sectionHead: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 3 },
+  sectionTitle: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    margin: 0,
+    fontSize: 15,
+    lineHeight: 1.4,
+    fontWeight: 600,
+    color: tokens.foreground,
+  },
+  sectionMark: {
+    flexShrink: 0,
+    width: 3,
+    height: 14,
+    borderRadius: 2,
+    backgroundColor: tokens.primary,
+  },
   sectionNote: {
-    fontSize: 12,
+    paddingInlineStart: 11,
+    fontSize: 12.5,
+    lineHeight: 1.5,
     color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+    textWrap: 'pretty',
   },
   sectionBody: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 14 },
   recap: {
@@ -328,9 +362,12 @@ export function WizardSection({
   children: ReactNode
 }) {
   return (
-    <section {...stylex.props(styles.section)}>
+    <section {...stylex.props(styles.section)} data-testid="wizard-section">
       <div {...stylex.props(styles.sectionHead)}>
-        <h3 {...stylex.props(styles.sectionTitle)}>{title}</h3>
+        <h3 {...stylex.props(styles.sectionTitle)}>
+          <span aria-hidden {...stylex.props(styles.sectionMark)} />
+          {title}
+        </h3>
         {note !== undefined && <span {...stylex.props(styles.sectionNote)}>{note}</span>}
       </div>
       <div {...stylex.props(styles.sectionBody)}>{children}</div>
