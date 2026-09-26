@@ -1130,6 +1130,57 @@ describe('one account beside its person', () => {
     }
   })
 
+  // Over the work the facts share a line, a rule between each two. When they
+  // wrap, the fact that starts the next line has nothing before it, so no
+  // rule stands in front of it; and where they stand is said whole where
+  // the line has room for it.
+  it('never starts a line of facts with a rule, and says the unit whole where it fits', async () => {
+    await page.viewport(834, 1112)
+    try {
+      await shelled(open, 'zh-CN', {
+        listRosterUnits: () =>
+          Effect.succeed({
+            units: [
+              { id: SCHOOL, name: '示例大学', parentId: null },
+              { id: 'n1', name: '计算机与软件学院', parentId: SCHOOL },
+              { id: 'n2', name: '计算机科学与技术2023级1班', parentId: 'n1' },
+            ],
+          }),
+        listUserTypeOptions: () =>
+          Effect.succeed({
+            userTypes: [
+              {
+                id: '99999999-9999-4999-8999-999999999999',
+                code: 'student',
+                name: '全日制本科生（含第二学士学位）与交换生',
+              },
+            ],
+          }),
+      })
+      const head = page.getByTestId('participant-head')
+      await expect.element(head).toBeVisible()
+      await expect.poll(() => head.element().querySelector('[data-fact="kind"]')).not.toBeNull()
+      const facts = [...head.element().querySelectorAll('[data-fact]')]
+      const clip = facts[0]!.parentElement!.parentElement!.getBoundingClientRect()
+      const tops = new Set(facts.map((fact) => Math.round(fact.getBoundingClientRect().top)))
+      // the facts do not all fit on one line here
+      expect(tops.size).toBeGreaterThan(1)
+      for (const fact of facts) {
+        const rule = fact.firstElementChild!.getBoundingClientRect()
+        if (rule.right <= clip.left + 0.5) continue
+        // a rule that shows stands after another fact on its line
+        const before = fact.previousElementSibling
+        expect(before).not.toBeNull()
+        expect(
+          Math.abs(before!.getBoundingClientRect().top - fact.getBoundingClientRect().top),
+        ).toBeLessThan(2)
+      }
+      await expect.element(head.getByTestId('unit-path')).toHaveAttribute('data-clipped', 'false')
+    } finally {
+      await page.viewport(1280, 800)
+    }
+  })
+
   it('folds the facts behind the name on a phone, and brings them out on a press', async () => {
     await page.viewport(390, 844)
     try {

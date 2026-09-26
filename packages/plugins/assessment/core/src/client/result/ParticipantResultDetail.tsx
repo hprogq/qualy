@@ -223,8 +223,18 @@ const styles = stylex.create({
   },
   headName: { minWidth: 0 },
   headEnd: { display: 'flex', marginInlineStart: 'auto', alignItems: 'center', gap: 4 },
-  // across, the facts share a line and a rule stands between them; on a
-  // phone each takes a line of its own, where a rule would start the second
+  // Across, the facts share a line and a rule stands between them; on a
+  // phone each takes a line of its own. Every fact carries its rule in
+  // front of it, and the line starts one rule and gap to the left of where
+  // it is seen, so the rule in front of whichever fact starts a line - the
+  // first, or one that wrapped - is cut away rather than standing alone.
+  lineClip: {
+    minWidth: 0,
+    overflow: 'hidden',
+    // room for a fact's focus ring inside the cut
+    padding: 2,
+    margin: -2,
+  },
   line: {
     display: 'flex',
     minWidth: 0,
@@ -233,6 +243,7 @@ const styles = stylex.create({
     alignItems: { default: 'center', [breakpoints.phone]: 'flex-start' },
     columnGap: 10,
     rowGap: 4,
+    marginInlineStart: { default: -11, [breakpoints.phone]: 0 },
     fontSize: 13,
     color: tokens.surfaceMutedForeground,
   },
@@ -250,7 +261,9 @@ const styles = stylex.create({
     flexShrink: 0,
     backgroundColor: tokens.border,
   },
-  lineUnit: { minWidth: 0, maxWidth: { default: '28rem', [breakpoints.phone]: '100%' } },
+  // as wide as what it says, up to the whole line; a path cut to fit then
+  // starts a line of its own, and whatever it leaves over ends that line
+  lineUnit: { minWidth: 0, maxWidth: '100%' },
   fold: { width: 16, height: 16, transitionProperty: 'transform', transitionDuration: '150ms' },
   foldOpen: { transform: 'rotate(180deg)' },
   tabs: { display: 'flex', alignItems: 'center', gap: 4, marginBottom: -1 },
@@ -745,35 +758,38 @@ export function ParticipantResultDetail({
       {participant === undefined ? (
         !unreadablePerson && <Skeleton className={stylex.props(styles.numberBone).className} />
       ) : (
-        <div {...stylex.props(styles.line)}>
-          <span data-fact="number" {...stylex.props(styles.lineFact, styles.numeric)}>
-            {number}
-          </span>
-          {unit !== null && (
-            <span
-              data-fact="unit"
-              data-path={where.path}
-              data-unknown={where.unknown}
-              {...stylex.props(styles.lineFact)}
-            >
+        <div {...stylex.props(styles.lineClip)}>
+          <div {...stylex.props(styles.line)}>
+            <span data-fact="number" {...stylex.props(styles.lineFact, styles.numeric)}>
               <span aria-hidden {...stylex.props(styles.lineRule)} />
-              <span {...stylex.props(styles.lineUnit)}>{unit}</span>
+              {number}
             </span>
-          )}
-          {!folded && kind !== undefined && (
-            <span data-fact="kind" {...stylex.props(styles.lineFact)}>
-              <span aria-hidden {...stylex.props(styles.lineRule)} />
-              {kind.name}
-            </span>
-          )}
-          {!folded && (
-            <span data-fact="roster" {...stylex.props(styles.lineFact)}>
-              <span aria-hidden {...stylex.props(styles.lineRule)} />
-              {format(excluded ? m.participantExcludedOn : m.participantIncludedOn, {
-                date: included,
-              })}
-            </span>
-          )}
+            {unit !== null && (
+              <span
+                data-fact="unit"
+                data-path={where.path}
+                data-unknown={where.unknown}
+                {...stylex.props(styles.lineFact)}
+              >
+                <span aria-hidden {...stylex.props(styles.lineRule)} />
+                <span {...stylex.props(styles.lineUnit)}>{unit}</span>
+              </span>
+            )}
+            {!folded && kind !== undefined && (
+              <span data-fact="kind" {...stylex.props(styles.lineFact)}>
+                <span aria-hidden {...stylex.props(styles.lineRule)} />
+                {kind.name}
+              </span>
+            )}
+            {!folded && (
+              <span data-fact="roster" {...stylex.props(styles.lineFact)}>
+                <span aria-hidden {...stylex.props(styles.lineRule)} />
+                {format(excluded ? m.participantExcludedOn : m.participantIncludedOn, {
+                  date: included,
+                })}
+              </span>
+            )}
+          </div>
         </div>
       )}
       <ZoneAwayNotice xstyle={styles.zone} />
