@@ -57,6 +57,33 @@ function collectItems(node: React.ReactNode, out: Map<string, React.ReactNode>):
   })
 }
 
+type ContentAlign = 'start' | 'center' | 'end'
+
+/** the edge of its trigger the open list lines up with, as its content says */
+function alignOf(node: React.ReactNode): ContentAlign | undefined {
+  let found: ContentAlign | undefined
+  React.Children.forEach(node, (child) => {
+    if (found !== undefined || !React.isValidElement(child)) return
+    const props = child.props as { align?: ContentAlign; children?: React.ReactNode }
+    if (child.type === SelectContent) found = props.align ?? 'start'
+    else if (props.children !== undefined) found = alignOf(props.children)
+  })
+  return found
+}
+
+const PLACEMENT = { start: 'bottom-start', center: 'bottom', end: 'bottom-end' } as const
+
+/**
+ * The panels a list opened from inside them must not spill out of. Past a
+ * modal panel's edge the list lies over the veil and reads as though it had
+ * come loose from the dialog; on the page, the window is the only bound.
+ */
+const MODAL_PANEL =
+  '[data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="sheet-content"]'
+
+/** the room kept between an open list and the edge that bounds it */
+const EDGE_ROOM = 8
+
 function Select(props: {
   value?: string
   defaultValue?: string
@@ -77,13 +104,19 @@ function Select(props: {
   const controlled = 'value' in props
   const [inner, setInner] = React.useState(defaultValue)
   const [opened, setOpened] = React.useState(false)
+  // the modal panel the trigger sits in, found as the list opens
+  const [bound, setBound] = React.useState<Element | null>(null)
   const store = useCombobox({
-    onDropdownOpen: () => setOpened(true),
+    onDropdownOpen: () => {
+      setBound(store.targetRef.current?.closest(MODAL_PANEL) ?? null)
+      setOpened(true)
+    },
     onDropdownClose: () => setOpened(false),
   })
   const chosen = controlled ? value : inner
   const items = new Map<string, React.ReactNode>()
   collectItems(children, items)
+  const boundary = bound ?? 'clippingAncestors'
   const state = React.useMemo<SelectState>(
     () => ({
       value: chosen,
@@ -110,18 +143,27 @@ function Select(props: {
       // The list is as wide as its widest option and never narrower than
       // its trigger. The widget's own list is the trigger's width exactly,
       // so a field showing a short choice folded every longer option over
-      // two or three lines. A trigger narrower than the list - an icon at
-      // the end of a toolbar - centres it past the window's edge, and the
-      // widget turns sideways shifting off for a list the width of its
-      // trigger; this one is not, so it may slide back inside the window,
-      // still under its trigger.
+      // two or three lines.
+      //
+      // A list wider than its field starts where the field starts. Centred
+      // under it, as the widget places a list by default, it stuck out on
+      // both sides at once: over the field to its left, and past the edge
+      // of a dialog onto the veil. Where there is no room on the far side
+      // it slides back, and it never leaves the window or the modal panel
+      // it was opened from - its measure is capped at that room, and past
+      // the cap an option wraps. A key at the end of a toolbar asks for the
+      // end edge instead (SelectContent's `align`).
       width="max-content"
+      position={PLACEMENT[alignOf(children) ?? 'start']}
       middlewares={{
         flip: true,
-        shift: { mainAxis: true, padding: 8 },
+        shift: { mainAxis: true, padding: EDGE_ROOM, boundary },
         size: {
-          apply: ({ rects, elements }) => {
+          padding: EDGE_ROOM,
+          boundary,
+          apply: ({ rects, availableWidth, elements }) => {
             elements.floating.style.minWidth = `max(9rem, ${rects.reference.width}px)`
+            elements.floating.style.maxWidth = `min(24rem, ${Math.floor(availableWidth)}px)`
           },
         },
       }}
@@ -358,7 +400,12 @@ function SelectContent({
 }: React.ComponentProps<'div'> & {
   /** kept for call-site compatibility; the widget positions the list */
   position?: string
-  align?: string
+  /**
+   * The trigger's edge the list lines up with when it is the wider of the
+   * two: `start` by default, `end` for a key at the end of a toolbar. Read
+   * by the root, which places the list.
+   */
+  align?: ContentAlign
 }) {
   return (
     <Combobox.Dropdown

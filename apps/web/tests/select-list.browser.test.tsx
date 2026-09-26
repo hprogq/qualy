@@ -2,8 +2,9 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 import * as stylex from '@stylexjs/stylex'
+import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@qualy/ui/dialog'
 import { UiProvider } from '@qualy/ui/provider'
-import { Select, SelectContent, SelectItem, SelectTrigger } from '@qualy/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import '../src/app.css'
 
 // A select away from a form: the quiet key it can stand as in a toolbar,
@@ -74,6 +75,18 @@ const inWindow = (element: Element) => {
   const box = element.getBoundingClientRect()
   return box.left >= 0 && box.right <= window.innerWidth
 }
+
+/** options each wider than a narrow field, in both scripts */
+const LONG_OPTIONS = [
+  'short',
+  'School of Computer Science and Engineering',
+  '计算机科学与技术学院 2023 级本科生第一党支部',
+  '数据科学与大数据技术专业 2022 级 3 班',
+]
+
+/** where the open list lies, read fresh each time it is asked */
+const listBox = () => () =>
+  document.querySelector('[data-slot="select-content"]')!.getBoundingClientRect()
 
 describe('a select’s open list', () => {
   it('stays inside the window under a trigger narrower than it', async () => {
@@ -146,6 +159,156 @@ describe('a select’s open list', () => {
       .toBe(Math.round(wide.element().getBoundingClientRect().width))
     await userEvent.keyboard('{Escape}')
   })
+
+  // A list wider than its field starts where the field starts. Centred under
+  // it, the list stuck out on both sides: over the field to its left, and in
+  // a dialog past the panel's edge onto the veil.
+  it('lines up with the start of a field narrower than it', async () => {
+    await render(
+      <UiProvider scheme="light">
+        <div style={{ position: 'fixed', top: 40, left: 200 }}>
+          <Select value="short">
+            <SelectTrigger aria-label="unit" style={{ width: 170 }}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {LONG_OPTIONS.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </UiProvider>,
+    )
+    const trigger = page.getByRole('combobox', { name: 'unit' })
+    await trigger.click()
+    await expect.element(page.getByRole('listbox')).toBeVisible()
+    const list = listBox()
+    const field = trigger.element().getBoundingClientRect()
+    await expect.poll(() => Math.abs(list().left - field.left)).toBeLessThanOrEqual(1)
+    expect(list().width).toBeGreaterThan(field.width)
+    expect(list().right).toBeLessThanOrEqual(window.innerWidth - 8 + 1)
+  })
+
+  it('slides back inside the window beside its right edge', async () => {
+    await render(
+      <UiProvider scheme="light">
+        <div style={{ position: 'fixed', top: 40, right: 16 }}>
+          <Select value="short">
+            <SelectTrigger aria-label="unit" style={{ width: 120 }}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {LONG_OPTIONS.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </UiProvider>,
+    )
+    const trigger = page.getByRole('combobox', { name: 'unit' })
+    await trigger.click()
+    await expect.element(page.getByRole('listbox')).toBeVisible()
+    const list = listBox()
+    await expect.poll(() => list().right).toBeLessThanOrEqual(window.innerWidth - 8 + 1)
+    expect(list().left).toBeGreaterThanOrEqual(0)
+    // still under its field: it overlaps the field it was opened from
+    const field = trigger.element().getBoundingClientRect()
+    expect(list().left).toBeLessThan(field.left)
+    expect(list().right).toBeGreaterThan(field.left)
+  })
+
+  // A key at the end of a toolbar asks for its end edge instead.
+  it('lines up with the end of its trigger when it asks to', async () => {
+    await render(
+      <UiProvider scheme="light">
+        <div style={{ position: 'fixed', top: 40, left: 600 }}>
+          <Select value="short">
+            <SelectTrigger aria-label="order" style={{ width: 120 }}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="end">
+              {LONG_OPTIONS.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </UiProvider>,
+    )
+    const trigger = page.getByRole('combobox', { name: 'order' })
+    await trigger.click()
+    await expect.element(page.getByRole('listbox')).toBeVisible()
+    const field = trigger.element().getBoundingClientRect()
+    await expect.poll(() => Math.abs(listBox()().right - field.right)).toBeLessThanOrEqual(1)
+  })
+
+  // Inside a dialog the list keeps to the panel, on a desk and on a phone:
+  // a field at the start of the panel opens its list from its own start,
+  // and one at the far side slides back rather than spilling onto the veil.
+  for (const [width, height] of [
+    [1280, 800],
+    [390, 844],
+  ] as const) {
+    it(`keeps inside the dialog it was opened from at ${width} wide`, async () => {
+      await page.viewport(width, height)
+      await render(
+        <UiProvider scheme="light">
+          <Dialog open>
+            <DialogContent size="32rem">
+              <DialogHeader>
+                <DialogTitle>columns</DialogTitle>
+              </DialogHeader>
+              <DialogBody>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  {['near', 'far'].map((side) => (
+                    <Select key={side} value="short">
+                      <SelectTrigger aria-label={side}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {LONG_OPTIONS.map((option) => (
+                          <SelectItem key={option} value={option}>
+                            {option}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ))}
+                </div>
+              </DialogBody>
+            </DialogContent>
+          </Dialog>
+        </UiProvider>,
+      )
+      const panel = () =>
+        document.querySelector('[data-slot="dialog-content"]')!.getBoundingClientRect()
+      const list = listBox()
+      for (const side of ['near', 'far']) {
+        const trigger = page.getByRole('combobox', { name: side })
+        await trigger.click()
+        await expect.element(page.getByRole('listbox')).toBeVisible()
+        await expect.poll(() => list().left).toBeGreaterThanOrEqual(panel().left + 8 - 1)
+        expect(list().right).toBeLessThanOrEqual(panel().right - 8 + 1)
+        // where the room allows, the near one starts where its field starts;
+        // on a phone the panel is narrower than the list's measure, and the
+        // list slides back the few pixels it lacks
+        if (side === 'near' && width > 390) {
+          const field = trigger.element().getBoundingClientRect()
+          expect(Math.abs(list().left - field.left)).toBeLessThanOrEqual(1)
+        }
+        await userEvent.keyboard('{Escape}')
+        await expect.poll(() => document.querySelector('[data-slot="select-content"]')).toBeNull()
+      }
+    })
+  }
 
   it('says which option is the one in force', async () => {
     await render(<EdgeSelect value="newest" />)
