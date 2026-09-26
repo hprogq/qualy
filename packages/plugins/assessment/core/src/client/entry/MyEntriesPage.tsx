@@ -198,6 +198,13 @@ function Body({
       ),
     [mine.data],
   )
+  // An account that no longer moves is not said to be kept current: the
+  // round is archived, or the participant is off the roster - which is when
+  // the server hides the filing gate of every question, as it never does
+  // for anybody still on it.
+  const offRoster =
+    gates.size > 0 && [...gates.values()].every((gate) => gate.create.state === 'hidden')
+  const closed = round.status === 'archived' || offRoster
 
   // the refresh key's one press: every read this screen stands on, again -
   // the batch's own standing included, which carries the current phase
@@ -483,6 +490,7 @@ function Body({
           viewer="owner"
           heading={format(m.myEntriesTab)}
           totalLabel={format(m.entriesCountedTotal)}
+          live={closed ? null : live}
           rows={rows}
           entriesByItem={entriesByItem}
           entries={entries}

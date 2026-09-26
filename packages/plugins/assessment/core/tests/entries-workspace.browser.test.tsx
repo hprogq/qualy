@@ -823,6 +823,132 @@ describe('reading one question’s claims', () => {
 })
 
 describe('the head of the structure', () => {
+  /**
+   * A line that opens a moment after the screen dials it, and says when it
+   * has carried its first word. The moment matters: a first word sent at
+   * once, while the dial a remount abandoned is still winding down, is
+   * overwritten by that old dial saying the line is down.
+   */
+  const keptLive = () => {
+    let heard = false
+    return {
+      heard: () => heard,
+      watchBatch: () =>
+        Effect.succeed(
+          Stream.concat(
+            Stream.fromEffect(
+              Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 50))).pipe(
+                Effect.map(() => {
+                  heard = true
+                  return { kind: 'sync' as const }
+                }),
+              ),
+            ),
+            Stream.never,
+          ),
+        ),
+    }
+  }
+  const live = () => page.getByTestId('entries-live')
+  /** long enough after the line spoke for a mark to have been drawn */
+  const settled = () => new Promise((resolve) => setTimeout(resolve, 300))
+
+  // The account follows the round while the line is open, and the head says
+  // so beside the way to ask again - never "provisional" in its place.
+  it('says the account is kept live once the line opens, and nothing before', async () => {
+    await page.viewport(1440, 900)
+    let open = () => {}
+    const opened = new Promise<void>((resolve) => {
+      open = resolve
+    })
+    await workspace({
+      route: `${base}?open=${itemId(1)}`,
+      stubs: {
+        watchBatch: () =>
+          Effect.succeed(
+            Stream.concat(
+              Stream.fromEffect(
+                Effect.promise(() => opened).pipe(Effect.as({ kind: 'sync' as const })),
+              ),
+              Stream.never,
+            ),
+          ),
+      },
+    })
+    await expect.element(page.getByRole('heading', { name: '品德题目 1' })).toBeVisible()
+    expect(live().elements()).toHaveLength(0)
+    open()
+    await expect.element(live()).toHaveAttribute('data-state', 'live')
+  })
+
+  // An account that no longer moves is not said to be kept current.
+  it('says nothing about keeping current once the round is archived', async () => {
+    await page.viewport(1440, 900)
+    const line = keptLive()
+    await workspace({
+      route: `${base}?open=${itemId(1)}`,
+      stubs: {
+        watchBatch: line.watchBatch,
+        getBatch: () =>
+          Effect.succeed({
+            batch: {
+              id: BATCH_ID,
+              name: '2026 春季综测',
+              descriptionMd: null,
+              manageable: false,
+              reviewReasons: { reject: [], escalate: [] },
+              capabilities: {
+                personal: true,
+                review: false,
+                record: false,
+                manage: false,
+                redetermine: false,
+              },
+              participantCount: 12,
+              materialRange: { start: '2026-03-01', end: '2026-09-01' },
+              timezone: 'Asia/Shanghai',
+              status: 'archived',
+              configRevision: 1,
+              currentPhaseId: null,
+              currentPhaseName: null,
+              createdAt: '2026-02-01T00:00:00.000Z',
+            },
+          }),
+      },
+    })
+    await expect.element(page.getByRole('heading', { name: '品德题目 1' })).toBeVisible()
+    await expect.poll(line.heard).toBe(true)
+    await settled()
+    expect(live().elements()).toHaveLength(0)
+  })
+
+  it('says nothing about keeping current once the owner is off the roster', async () => {
+    await page.viewport(1440, 900)
+    const line = keptLive()
+    await workspace({
+      route: `${base}?open=${itemId(1)}`,
+      stubs: {
+        watchBatch: line.watchBatch,
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [claim(1, itemId(1), 'approved')],
+            filing: [itemId(1), itemId(2)].map((id) => ({
+              itemId: id,
+              create: hidden,
+              submit: hidden,
+            })),
+            nextCursor: null,
+            attention: { unreadItemIds: [] },
+          }),
+      },
+    })
+    await expect.poll(() => rows().length).toBe(1)
+    await expect.poll(line.heard).toBe(true)
+    await settled()
+    expect(live().elements()).toHaveLength(0)
+  })
+
   // The head's "in review" and the list's filter of the same name hold the
   // same claims: one the owner appealed is out with the reviewers again, and
   // one a reviewer asked more of is still in review while it waits on them.

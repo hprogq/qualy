@@ -1085,7 +1085,7 @@ export default {
   'assessment/entries/step-label': '相邻项目',
   'assessment/entries/counted-total': '已计入成绩',
   'assessment/entries/staff-heading': '申报记录',
-  'assessment/entries/staff-total': '当前总分（暂定）',
+  'assessment/entries/staff-total': '当前总分',
   'assessment/entries/awaiting-you': '待你审核',
   'assessment/entries/awaiting-you-count': '{count} 条申报等你审核',
   'assessment/entries/go-review': '去审核',

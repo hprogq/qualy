@@ -4,6 +4,7 @@ import { ChevronDownIcon, ChevronRightIcon, RefreshCwIcon } from 'lucide-react'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
+import { LiveMark, type LiveState } from '@qualy/ui/live-mark'
 import { Portion } from '@qualy/ui/reveal'
 import { Ticker } from '@qualy/ui/ticker'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
@@ -387,6 +388,7 @@ export function StructureRail({
   heading,
   headingLevel = 1,
   totalLabel,
+  stream = null,
   outline,
   total,
   scored,
@@ -406,8 +408,10 @@ export function StructureRail({
   heading: string
   /** 1 where the column's name is the page's own; 2 under a page that has one */
   headingLevel?: 1 | 2
-  /** what the big figure is: counted so far, or the provisional total */
+  /** what the big figure is: the owner's counted so far, or somebody's current total */
   totalLabel: string
+  /** whether the page keeps the account current as the round moves; null where it does not say */
+  stream?: LiveState | null
   outline: Outline
   total: { readonly got: string | null; readonly cap: number | null }
   /** false while the score could not be read: every figure is unknown, not zero */
@@ -647,6 +651,13 @@ export function StructureRail({
             <h1 {...stylex.props(styles.title)}>{heading}</h1>
           ) : (
             <h2 {...stylex.props(styles.title)}>{heading}</h2>
+          )}
+          {/* the page keeping time with the round, beside the way to ask
+              again by hand; nothing where the round no longer moves */}
+          {stream !== null && (
+            <LiveMark state={stream} data-testid="entries-live">
+              {format(m.resultLive, { state: stream })}
+            </LiveMark>
           )}
           {/* the escape hatch, not the mechanism: state flows in on its own,
               and this is for the reader who wants to ask again anyway */}

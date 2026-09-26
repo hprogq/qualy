@@ -4329,7 +4329,7 @@ const i18n = definePluginMessages({
     },
     entriesStaffTotal: {
       id: 'assessment/entries/staff-total',
-      defaultMessage: 'Current total, provisional',
+      defaultMessage: 'Current total',
     },
     entriesAwaitingYou: {
       id: 'assessment/entries/awaiting-you',
