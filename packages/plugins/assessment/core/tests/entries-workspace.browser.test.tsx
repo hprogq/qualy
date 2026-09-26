@@ -1029,3 +1029,59 @@ describe('where filing is shut', () => {
     expect(page.getByTestId('file-claim').elements()).toHaveLength(0)
   })
 })
+
+describe('going up to a section and back', () => {
+  /** whatever scrolls the opened question at a desk */
+  const paneScroller = () => {
+    let at: HTMLElement | null = document.querySelector('[data-testid="item-pane"]')
+    while (at !== null && getComputedStyle(at).overflowY !== 'auto') at = at.parentElement
+    return at
+  }
+
+  // Up to a section from inside a question is somewhere the back key
+  // returns from: to the same question, scrolled where it was left.
+  it('brings the back key back to the question, where it was read', async () => {
+    await page.viewport(1440, 700)
+    const lot = Array.from({ length: 12 }, (_, i) => claim(i + 1, TAIL, 'in_review'))
+    await workspace({ route: `${base}?open=${TAIL}`, entries: lot })
+    await expect.poll(() => rows().length).toBe(12)
+    paneScroller()!.scrollTop = 240
+    await expect.poll(() => paneScroller()!.scrollTop).toBeGreaterThan(200)
+    const was = paneScroller()!.scrollTop
+
+    const aside = page.getByRole('complementary', { name: '填报要求' })
+    await userEvent.click(aside.element().querySelector(`[data-section="${SUB_B}"]`)!)
+    await expect
+      .poll(() => document.querySelector('[data-testid="group-pane"]')?.getAttribute('data-group'))
+      .toBe(SUB_B)
+
+    pressBack()
+    await expect.poll(openItem).toBe(TAIL)
+    await expect.poll(() => Math.abs(paneScroller()!.scrollTop - was)).toBeLessThan(4)
+  })
+
+  it('does the same from the question’s own crumbs', async () => {
+    await page.viewport(1440, 900)
+    await workspace({ route: `${base}?open=${TAIL}` })
+    const crumbs = page.getByRole('list', { name: '所在位置' })
+    await crumbs.getByRole('button', { name: /学业发展/ }).click()
+    await expect
+      .poll(() => document.querySelector('[data-testid="group-pane"]')?.getAttribute('data-group'))
+      .toBe(BAND_B)
+    pressBack()
+    await expect.poll(openItem).toBe(TAIL)
+  })
+
+  // Picking another question from the structure at a desk stays in place:
+  // ten questions looked at are not ten presses of the back key.
+  it('keeps picks from the structure out of the history', async () => {
+    await page.viewport(1440, 900)
+    await workspace({ route: '/elsewhere' })
+    await page.getByTestId('to-question').click()
+    await expect.poll(openItem).toBe(itemId(2))
+    await userEvent.click(railRow(3))
+    await expect.poll(openItem).toBe(itemId(3))
+    pressBack()
+    await expect.poll(() => addressNow()).toBe('/elsewhere')
+  })
+})

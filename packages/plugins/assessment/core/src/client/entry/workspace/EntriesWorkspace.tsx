@@ -307,8 +307,9 @@ export interface WorkspaceProps {
   /**
    * Open a row, or '' for the structure itself. `push` only where the reader
    * went somewhere the back key should bring them out of: from a phone's
-   * structure into one question. Everything else - a neighbour, any move at
-   * a desk - stands in place of where they were. The way back up from a
+   * structure into one question, or from a question up to a section it sits
+   * in. Everything else - a neighbour, a row picked from the structure at a
+   * desk - stands in place of where they were. The way back up from a
    * question the structure opened goes back through the history instead,
    * and does not come here.
    */
@@ -399,12 +400,20 @@ function Workspace({
 
   // A new question starts at its top, wherever the last one was left - and
   // only a new one: data arriving for the same question (a wake-up, a
-  // refetch) must leave the reader where they were.
+  // refetch) must leave the reader where they were. The one exception is the
+  // back key onto a place the reader left by going up to a section: it lands
+  // where they were reading, not at the top of the question.
   const scroller = useRef<HTMLDivElement | null>(null)
   const rootNode = useRef<HTMLDivElement | null>(null)
   const [roomRef, room] = useRoomBelow(fit === 'window' && !phone)
   const selectedId = selected?.id ?? null
   const addressed = picked !== null
+  const location = useLocation()
+  const navigation = useNavigationType()
+  const navigate = useNavigate()
+  /** where each history entry left its pane scrolled, for the back key to return to */
+  const leftAt = useRef(new Map<string, number>())
+  const returning = navigation === 'POP' ? leftAt.current.get(location.key) : undefined
   // On a phone the structure and one question are two screens of one page.
   // Going into a question remembers where the structure was scrolled to, and
   // coming back out lands there - on the row of the question the reader
@@ -416,7 +425,7 @@ function Workspace({
   useLayoutEffect(() => {
     if (!phone) {
       wasAddressed.current = addressed
-      if (scroller.current !== null) scroller.current.scrollTop = 0
+      if (scroller.current !== null) scroller.current.scrollTop = returning ?? 0
       return
     }
     const node = rootNode.current
@@ -463,7 +472,7 @@ function Workspace({
       row.focus({ preventScroll: true })
       return
     }
-    scrollTo(0)
+    scrollTo(returning ?? 0)
     cameFrom.current = selectedId
     // a screen that changed under the reader says so: focus moves to what
     // the new screen is about, and a reader who cannot see it hears its name
@@ -471,6 +480,9 @@ function Workspace({
       const title = node.querySelector('[data-pane-title]')
       if (title instanceof HTMLElement) title.focus({ preventScroll: true })
     }
+    // `returning` belongs to the move that changed the question; a back key
+    // that shuts a drawer over the same question must not move the pane
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- read with the question it came with, never on its own
   }, [selectedId, phone, addressed])
 
   // The history a phone has walked since it went from its structure into a
@@ -481,9 +493,6 @@ function Workspace({
   // it, so the structure is not left in the history a second time for the
   // back key to land on. Null where the question was reached some other
   // way - a link, a reload - and there is nothing behind it to walk back to.
-  const location = useLocation()
-  const navigation = useNavigationType()
-  const navigate = useNavigate()
   const trail = useRef<{ keys: string[]; at: number } | null>(null)
   useEffect(() => {
     const walked = trail.current
@@ -532,6 +541,17 @@ function Workspace({
   // to a neighbour, a crumb. Ten questions looked at are not ten presses of
   // the back key.
   const go = (id: string) => onOpen(id, 'replace')
+
+  /**
+   * From a question up to a section it sits in - its crumbs, the sections
+   * its requirements list. That is going somewhere, not looking beside:
+   * the back key brings the reader back to the question, scrolled where
+   * they left it.
+   */
+  const goUp = (id: string) => {
+    leftAt.current.set(location.key, phone ? structureScroll() : (scroller.current?.scrollTop ?? 0))
+    onOpen(id, 'push')
+  }
 
   /** from a phone's question back up to the structure it was entered from */
   const upToStructure = () => {
@@ -600,7 +620,7 @@ function Workspace({
         headerAction={itemAction?.(item)}
         onEntry={onEntry}
         onFile={() => onFile?.(item)}
-        onGoto={go}
+        onGoto={goUp}
         onRequirements={() => setAsideOpen(true)}
       />
     ) : (
@@ -627,7 +647,7 @@ function Workspace({
         scored={scored}
         onGoto={(id) => {
           setAsideOpen(false)
-          go(id)
+          goUp(id)
         }}
       />
     ) : null

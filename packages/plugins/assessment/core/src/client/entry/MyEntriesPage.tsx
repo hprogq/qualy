@@ -499,11 +499,9 @@ function Body({
             )
           }
           open={open}
-          // a desk's question is furniture beside the list; only a phone's
-          // step from the structure into a question is somewhere to come back from
-          onOpen={(id, how) =>
-            updateQuery({ open: id }, { history: mode === 'phone' ? how : 'replace' })
-          }
+          // the workspace says which moves are somewhere to come back from:
+          // a phone's step into a question, and going up to a section
+          onOpen={(id, how) => updateQuery({ open: id }, { history: how })}
           gates={gates}
           round={round}
           busy={setStatus.isPending || declare.isPending}
