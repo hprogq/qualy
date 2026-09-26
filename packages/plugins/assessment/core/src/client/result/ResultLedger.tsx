@@ -540,6 +540,15 @@ const styles = stylex.create({
     textOverflow: 'ellipsis',
     whiteSpace: { default: 'nowrap', [breakpoints.phone]: 'normal' },
   },
+  // the rule a claim's own line sets its parts apart with
+  madeRule: {
+    display: 'inline-block',
+    width: 1,
+    height: 10,
+    marginInline: 4,
+    verticalAlign: 'middle',
+    backgroundColor: tokens.border,
+  },
   chevron: {
     display: 'inline-block',
     width: 12,
@@ -1646,7 +1655,17 @@ interface Tag {
   readonly attention: boolean
 }
 
-/** what the line under a question's name is made of */
+/**
+ * The line under a question's name: what it is made of, the words for it,
+ * and - where it is one claim - what that claim says of itself, set apart
+ * by the page rather than by a character in the words.
+ */
+interface Made {
+  readonly kind: MadeKind
+  readonly said: string
+  readonly identity?: string | null
+}
+
 type MadeKind =
   | 'voided'
   | 'derived'
@@ -1698,7 +1717,7 @@ const madeOf = (
   format: Format,
   list: (parts: readonly string[]) => string,
   dayOf: (at: string | null) => string | null,
-): { readonly kind: MadeKind; readonly said: string } => {
+): Made => {
   if (item.voided) return { kind: 'voided', said: format(m.resultMade, { kind: 'voided' }) }
   if (item.derived) return { kind: 'derived', said: format(m.resultMade, { kind: 'derived' }) }
   const { facts } = item
@@ -1711,10 +1730,7 @@ const madeOf = (
     const said = format(m.resultWord, { kind: only.standing })
     const word = day === null ? said : `${day} ${said}`
     const identity = [only.lead, only.sub].filter((part): part is string => part !== null).join(' ')
-    return {
-      kind: 'claim',
-      said: identity === '' ? word : format(m.resultMadeClaim, { word, identity }),
-    }
+    return { kind: 'claim', said: word, identity: identity === '' ? null : identity }
   }
   const told: readonly string[] = tag === null ? [] : TAG_SAYS[tag.kind]
   const parts = FACT_ORDER.filter((kind) => facts[kind] > 0 && !told.includes(kind)).map((kind) =>
@@ -1900,7 +1916,16 @@ function ItemRow({
       </span>
       <span {...stylex.props(styles.madeCell)}>
         <span data-made={made.kind} {...stylex.props(styles.made)}>
-          {made.said}
+          {made.identity == null ? (
+            made.said
+          ) : (
+            <>
+              {made.said} {/* the rule stays with the claim's words when the line wraps */}
+              <span aria-hidden {...stylex.props(styles.madeRule)} />
+              {'\u00a0'}
+              {made.identity}
+            </>
+          )}
         </span>
         {expandable && (
           <ChevronDownIcon

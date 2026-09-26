@@ -486,11 +486,6 @@ const resultShowRest = defineMessage<{ count: number }>()({
   defaultMessage: 'Show {count} more',
 })
 
-const resultMadeClaim = defineMessage<{ word: string; identity: string }>()({
-  id: 'assessment/result/made-claim',
-  defaultMessage: '{word}: {identity}',
-})
-
 const resultStopped = defineMessage<{ kind: string }>()({
   id: 'assessment/result/stopped',
   defaultMessage:
@@ -1900,7 +1895,6 @@ const i18n = definePluginMessages({
     resultTrim,
     resultLive,
     resultShowRest,
-    resultMadeClaim,
     resultStopped,
     resultEditAway,
     // ------------------------------------------------------------------

@@ -387,7 +387,6 @@ export default {
     '{reader, select, staff {查看全部 {count} 条} other {在我的申报中查看全部 {count} 条}}',
   'assessment/result/live': '{state, select, live {实时更新} other {正在重连}}',
   'assessment/result/show-rest': '显示其余 {count} 条',
-  'assessment/result/made-claim': '{word}　{identity}',
   'assessment/result/stopped':
     '{kind, select, unsupplied {未补充材料} unrevised {退回后未再提交} unsent {草稿未提交} other {未审结}}',
   'assessment/result/edit-away':

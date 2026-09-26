@@ -789,6 +789,24 @@ describe('the rows of the account', () => {
     expect(document.body.textContent).not.toContain('·')
   })
 
+  it('sets a claim’s own words apart from what became of it with a rule, not a wide space', async () => {
+    await page.viewport(1440, 900)
+    await screen(normal())
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
+    // one record by the office: when and what, then what it says of itself
+    const made = itemRow('q6').querySelector<HTMLElement>('[data-made="claim"]')!
+    const rule = made.querySelector<HTMLElement>('[aria-hidden]')!
+    const identity = document.createRange()
+    identity.selectNodeContents(made.lastChild!)
+    expect(made.lastChild!.textContent).toContain('课程加权平均分 95.02')
+    expect(rule.getBoundingClientRect().width).toBeGreaterThan(0)
+    expect(identity.getBoundingClientRect().left).toBeGreaterThan(
+      rule.getBoundingClientRect().right,
+    )
+    // no character does the work of the rule anywhere on the page
+    expect(document.body.textContent).not.toContain('\u3000')
+  })
+
   it('keeps a record the office revoked on the account apart from a plain zero', async () => {
     await page.viewport(1440, 900)
     await screen(normal())
