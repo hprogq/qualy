@@ -22,7 +22,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { recordedOnly, type EntryDto, type ItemDto } from '../model.ts'
 import type { Standing, StructureRow } from '../standing.ts'
-import { useWidthOf, type WorkspaceMode } from './layout.ts'
+import { ROOMY_PANE, useWidthOf, type WorkspaceMode } from './layout.ts'
 import { EntryRow } from './EntryRow.tsx'
 import { UnreadDot } from './marks.tsx'
 import { useCalcLine, useLineWords } from './calc.ts'
@@ -54,9 +54,6 @@ const ENDED: ReadonlySet<ChipKey> = new Set<ChipKey>(['abandoned', 'voided', 're
 
 /** the orders the claims can be read in */
 type Order = 'newest' | 'oldest'
-
-/** the pane width from which the rows take their desk shape, and the toolbar where its filters fit */
-const ROOMY = 720
 
 const PHONE = '@media (max-width: 767.98px)'
 const BELOW_DESK = '@media (max-width: 1279.98px)'
@@ -541,7 +538,7 @@ export function ItemPane({
   // the toolbar and the rows lay out by the room the pane is given, not by
   // the window: at a desk inside a narrower page the pane is narrow too
   const [paneRef, paneWidth] = useWidthOf()
-  const roomy = paneWidth === null ? mode === 'desk' : paneWidth >= ROOMY
+  const roomy = paneWidth === null ? mode === 'desk' : paneWidth >= ROOMY_PANE
   const compact = !roomy
   const chips = useMemo(() => chipsFor(viewer, item), [viewer, item])
   const [chip, setChip] = useState<ChipKey>('all')

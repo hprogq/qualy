@@ -2,7 +2,7 @@ import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { useWorkspaceMode, type WorkspaceMode } from './layout.ts'
+import { ROOMY_PANE, useWidthOf, useWorkspaceMode, type WorkspaceMode } from './layout.ts'
 import type { Viewer } from './model.ts'
 import { statsShownFor } from './preferences.ts'
 
@@ -137,11 +137,15 @@ const styles = stylex.create({
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.divider,
     paddingBlock: 10,
-    paddingInline: { default: 28, [BELOW_DESK]: 16 },
   },
+  // the pane's own shapes, by the room it is given: a roomy pane's one row
+  // and desk-shaped claims, or a narrower pane's keys and folded claims
+  roomyInset: { paddingInline: 28 },
+  compactInset: { paddingInline: 16 },
   chips: { height: 32, borderRadius: 9999 },
-  search: { height: 30, borderRadius: 8 },
-  sort: { height: 30, borderRadius: 8 },
+  search: { height: 32, borderRadius: 8 },
+  sort: { height: 32, borderRadius: 8 },
+  iconKey: { width: 32, height: 32, borderRadius: 8 },
   claim: {
     display: 'flex',
     alignItems: 'center',
@@ -150,7 +154,6 @@ const styles = stylex.create({
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.divider,
     paddingBlock: 14,
-    paddingInline: { default: 28, [BELOW_DESK]: 16 },
   },
   claimWords: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 8 },
   claimLead: { height: 14 },
@@ -214,6 +217,11 @@ export function WorkspaceSkeleton({
   // read once, the way the workspace reads it when it mounts
   const [statsShown] = useState(() => statsShownFor(viewer))
   const phone = mode === 'phone'
+  // the question's toolbar and claims take the shape the pane will give them,
+  // by the pane's own width as the pane itself decides it
+  const [paneRef, paneWidth] = useWidthOf()
+  const roomy = paneWidth === null ? mode === 'desk' : paneWidth >= ROOMY_PANE
+  const inset = roomy ? styles.roomyInset : styles.compactInset
   const bone = (xstyle: stylex.StyleXStyles, width?: string | number) => (
     <Skeleton
       className={stylex.props(xstyle).className}
@@ -282,7 +290,7 @@ export function WorkspaceSkeleton({
   )
 
   const question = (
-    <div data-bone="question" {...stylex.props(styles.column)}>
+    <div ref={paneRef} data-bone="question" {...stylex.props(styles.column)}>
       {phone && (
         <div {...stylex.props(styles.phoneBar)}>
           {bone(styles.back)}
@@ -305,19 +313,23 @@ export function WorkspaceSkeleton({
         </div>
         {mode !== 'desk' && bone(styles.asideKey)}
       </div>
-      <div {...stylex.props(styles.toolbar)}>
-        {bone(styles.chips, phone ? '52%' : 180)}
+      <div
+        data-bone="toolbar"
+        data-shape={roomy ? 'row' : 'wrap'}
+        {...stylex.props(styles.toolbar, inset)}
+      >
+        {bone(styles.chips, roomy ? 180 : '52%')}
         <span {...stylex.props(styles.spacer)} />
-        {!phone && bone(styles.search, 160)}
-        {bone(styles.sort, phone ? 56 : 120)}
+        {roomy ? bone(styles.search, 160) : bone(styles.iconKey)}
+        {bone(styles.sort, roomy ? 120 : 56)}
       </div>
       {LEADS.map((lead) => (
-        <div key={lead} {...stylex.props(styles.claim)}>
+        <div key={lead} {...stylex.props(styles.claim, inset)}>
           <span {...stylex.props(styles.claimWords)}>
             {bone(styles.claimLead, lead)}
             {bone(styles.claimSecond, '34%')}
           </span>
-          {mode === 'desk' && bone(styles.pill)}
+          {roomy && bone(styles.pill)}
           <span {...stylex.props(styles.amount)}>
             {bone(styles.amountValue)}
             {bone(styles.amountWord)}

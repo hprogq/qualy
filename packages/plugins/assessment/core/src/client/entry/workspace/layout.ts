@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react'
 
 // The three shapes the entries workspace takes, and the room it is given.
 //
@@ -14,6 +14,14 @@ export type WorkspaceMode = 'phone' | 'tablet' | 'desk'
 /** where the two columns start standing side by side, and where the third joins */
 export const TABLET_UP = '(min-width: 768px)'
 export const DESK_UP = '(min-width: 1280px)'
+
+/**
+ * The width of a question's pane from which its claims take their desk
+ * shape and its toolbar stands in one row. The pane's own width, not the
+ * window's: a desk's three columns leave the middle one narrower than this
+ * on a laptop, and a page set in a narrower container narrower still.
+ */
+export const ROOMY_PANE = 720
 
 let watched: { tablet: MediaQueryList; desk: MediaQueryList } | null = null
 const lists = () =>
@@ -98,12 +106,14 @@ export function useRoomBelow(
  * How wide an element is drawn, for a part that lays itself out by the room
  * it is given rather than by the window: the same pane is the whole middle
  * of a wide screen on one page and a third of a narrower container on another.
- * Null until it has been measured once.
+ * Null until it has been measured once, which is before its first paint.
  */
 export function useWidthOf(): [(node: HTMLElement | null) => void, number | null] {
   const [node, setNode] = useState<HTMLElement | null>(null)
   const [width, setWidth] = useState<number | null>(null)
-  useEffect(() => {
+  // measured before the frame is painted, so a pane never shows the shape
+  // it only guessed at
+  useLayoutEffect(() => {
     if (node === null) return
     const measure = () => setWidth(Math.round(node.getBoundingClientRect().width))
     measure()

@@ -1318,6 +1318,30 @@ describe('the workspace while it loads', () => {
     },
   )
 
+  // The toolbar a question's pane takes is decided by the pane's width, and
+  // a laptop's three columns leave the middle one narrow: the outline draws
+  // the shape the pane is about to take, not the shape the window suggests.
+  it.each([
+    [1280, 800],
+    [1440, 900],
+    [834, 1112],
+  ] as const)('outlines the toolbar the pane will take at %ipx', async (width, height) => {
+    await page.viewport(width, height)
+    const loading = await workspace({
+      route: `${base}?open=${TAIL}`,
+      stubs: { listItems: () => Effect.never },
+    })
+    await expect.poll(() => bones()).not.toBeNull()
+    const outlined = bones()!.querySelector('[data-bone="toolbar"]')!.getAttribute('data-shape')
+    await loading.unmount()
+    await workspace({ route: `${base}?open=${TAIL}`, entries: [claim(1, TAIL, 'in_review')] })
+    await expect.poll(() => rows().length).toBe(1)
+    expect({ width, shape: outlined }).toEqual({
+      width,
+      shape: document.querySelector('[data-testid="entries-toolbar"]')!.getAttribute('data-shape'),
+    })
+  })
+
   it('stands in a phone’s structure, or the question the address opens', async () => {
     await page.viewport(390, 844)
     await workspace({ route: base, stubs: { listItems: () => Effect.never } })
