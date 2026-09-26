@@ -4153,6 +4153,14 @@ const i18n = definePluginMessages({
       id: 'assessment/entries/section-full',
       defaultMessage: 'Limit reached',
     },
+    entriesSectionSaid: {
+      id: 'assessment/entries/section-said',
+      defaultMessage: '{got} of {cap} points',
+    },
+    entriesSectionSaidUncapped: {
+      id: 'assessment/entries/section-said-uncapped',
+      defaultMessage: '{got} points',
+    },
     entriesDescription: {
       id: 'assessment/entries/description',
       defaultMessage: 'How to file',

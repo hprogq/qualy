@@ -5,7 +5,6 @@ import { inZone } from '../../batch/zone.ts'
 import {
   fieldsOf,
   recordedOnly,
-  trimAmount,
   unitsOf,
   type EntryDto,
   type FilingGateDto,
@@ -204,17 +203,18 @@ export const rowWordOf = (row: StructureRow): MessageDescriptor | null => {
 export const urgentTag = (row: StructureRow): boolean =>
   row.tag === 'supplement' || row.tag === 'needs_revision'
 
+/**
+ * Whether a row's word is one the reader has to act on - more asked for,
+ * sent back, their own draft - and so is drawn in a list of questions, where
+ * everything else is the dot's to say (the same three as "to do").
+ */
+export const handsOn = (row: StructureRow): boolean => urgentTag(row) || row.tag === 'draft'
+
 /** amounts on the workspace speak with two decimals and a true minus sign */
 export const two = (value: string | number): string => {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return String(value)
   return parsed < 0 ? `−${(-parsed).toFixed(2)}` : parsed.toFixed(2)
-}
-
-/** a short amount for a row: 9.5, −2 */
-export const short = (value: string): string => {
-  const trimmed = trimAmount(value)
-  return trimmed.startsWith('-') ? `−${trimmed.slice(1)}` : trimmed
 }
 
 /**

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { commands, page, userEvent } from 'vitest/browser'
 import { Effect, Stream } from 'effect'
 import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import zhCN from '../src/client/locales/zh-CN.ts'
 
 // The entries workspace as a reader moves through it: the structure down
 // one side, one question or section opened beside it, and the claims under
@@ -1259,6 +1260,100 @@ describe('what a question’s row says at a glance', () => {
       .poll(() => document.querySelector('[data-chip="abandoned"]')?.getAttribute('data-count'))
       .toBe('1')
     expect(document.querySelector('[data-chip="voided"]')).toBeNull()
+  })
+
+  // The right edge of the structure says one thing one way: a word only
+  // where the reader has something to do, every figure to two places in one
+  // column, and a section's figure with its limit and no unit - the unit is
+  // said once, at the head.
+  it('draws a word only where the reader has work, and every figure one way', async () => {
+    await page.viewport(1440, 900)
+    const line = (n: number, item: string, value: string) => ({
+      lineId: `entry:${entryId(n)}`,
+      kind: 'entry',
+      label: '',
+      value,
+      itemId: item,
+      provenance: { entryId: entryId(n) },
+    })
+    const filed = [
+      claim(1, itemId(1), 'approved'),
+      claim(2, itemId(2), 'draft'),
+      claim(3, itemId(2), 'approved'),
+      claim(4, itemId(3), 'in_review'),
+      claim(5, itemId(4), 'needs_revision'),
+      claim(6, itemId(5), 'rejected'),
+    ]
+    await workspace({
+      route: `${base}?open=${itemId(1)}`,
+      items: [
+        question(1, '品德题目 1', BAND_A),
+        question(2, '品德题目 2', BAND_A),
+        question(3, '品德题目 3', BAND_A),
+        question(4, '品德题目 4', BAND_A),
+        question(5, '纪律题目 5', DEEP_B),
+      ],
+      groups: [group(BAND_A, null, '品德行为表现', 0), group(DEEP_B, null, '纪律扣分', 1)],
+      entries: filed,
+      stubs: {
+        getMyResult: () =>
+          Effect.succeed({
+            mode: 'provisional',
+            total: '5.80',
+            groups: [
+              { groupId: BAND_A, cap: '20.00', final: '5.8' },
+              { groupId: DEEP_B, cap: null, final: '0' },
+            ].map((one) => ({
+              ...one,
+              parentGroupId: null,
+              depth: 0,
+              name: one.groupId,
+              itemsTotal: one.final,
+              childrenTotal: '0.00',
+              raw: one.final,
+              floor: null,
+            })),
+            lines: [line(1, itemId(1), '4.8'), line(3, itemId(2), '1')],
+          }),
+      },
+    })
+    await expect
+      .poll(() => railRow(1).querySelector('[data-amount]')?.getAttribute('data-amount'))
+      .toBe('4.80')
+    // words drawn only on the draft and the one sent back
+    const worded = [...document.querySelectorAll('[data-rail-row] [data-word]')].map((word) =>
+      word.closest('[data-rail-row]')?.getAttribute('data-tag'),
+    )
+    expect(worded).toEqual(['draft', 'needs_revision'])
+    // ...and every row still says where it stands to a screen reader
+    const said = {
+      1: zhCN['assessment/entry/status-approved'],
+      3: zhCN['assessment/entry/status-in-review'],
+      5: zhCN['assessment/entry/status-rejected'],
+    } as const
+    for (const [n, word] of Object.entries(said)) {
+      expect(railRow(Number(n)).querySelector('[data-word]')).toBeNull()
+      expect(railRow(Number(n)).textContent).toContain(word)
+    }
+    // figures to two places, in one column down the right
+    expect(railRow(2).querySelector('[data-amount]')?.getAttribute('data-amount')).toBe('1.00')
+    expect(railRow(3).querySelector('[data-amount]')?.getAttribute('data-amount')).toBe('')
+    const cells = [1, 2, 3, 4, 5].map((n) =>
+      railRow(n).querySelector('[data-amount]')!.getBoundingClientRect(),
+    )
+    for (const cell of cells) {
+      expect(Math.round(cell.right)).toBe(Math.round(cells[0]!.right))
+      expect(Math.round(cell.width)).toBe(Math.round(cells[0]!.width))
+    }
+    // a section's figure: two places, with its limit where it has one
+    const figure = (id: string) =>
+      document
+        .querySelector(`[data-rail-row="${id}"]`)!
+        .querySelector('[data-testid="section-figure"]')!
+    expect(figure(BAND_A).getAttribute('data-got')).toBe('5.80')
+    expect(figure(BAND_A).querySelector('[data-testid="section-meter"]')).not.toBeNull()
+    expect(figure(DEEP_B).getAttribute('data-got')).toBe('0.00')
+    expect(figure(DEEP_B).querySelector('[data-testid="section-meter"]')).toBeNull()
   })
 
   // A section's fill is a small pie beside its figure, not a line along the foot

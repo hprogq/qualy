@@ -4,12 +4,12 @@ import { useI18n } from '@qualy/web-i18n'
 import { Portion } from '@qualy/ui/reveal'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../../i18n.ts'
-import { recordedOnly, trimAmount, type EntryDto, type ItemDto } from '../model.ts'
+import { recordedOnly, type EntryDto, type ItemDto } from '../model.ts'
 import { useCalcLine } from './calc.ts'
-import { SectionMeter } from './marks.tsx'
+import { SectionFigure } from './marks.tsx'
 import { meterStyles } from './meter.ts'
 import { chainNamesOf, type StructureRow } from '../standing.ts'
-import { chainOf, short, two, type Outline } from './model.ts'
+import { chainOf, two, type Outline } from './model.ts'
 
 // What one question asks and pays, beside its claims: how much it has
 // counted, how many places it has, which sections it adds up in and how full
@@ -260,17 +260,9 @@ export function Requirements({
                         {format(m.entriesSectionFull)}
                       </span>
                     )}
-                    {/* how full it is, beside its figure as the structure
-                        draws it: a bar under each line read as rules */}
-                    {scored && cap !== null && cap > 0 && <SectionMeter got={got} cap={cap} />}
-                    <span {...stylex.props(styles.keep)} data-scored={scored}>
-                      <b>{scored ? short(section.right === '' ? '0' : section.right) : '–'}</b>
-                      <span {...stylex.props(styles.muted)}>
-                        {cap === null
-                          ? ` ${format(m.myEntriesPaperUnit)}`
-                          : ` / ${format(m.entriesPoints, { value: trimAmount(String(cap)) })}`}
-                      </span>
-                    </span>
+                    {/* how full it is, drawn as the structure draws it: a
+                        bar under each line read as rules */}
+                    <SectionFigure got={section.right} cap={cap} scored={scored} />
                   </span>
                 </button>
               )

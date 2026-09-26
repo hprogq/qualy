@@ -13,12 +13,12 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { trimAmount } from '../model.ts'
 import type { StructureRow } from '../standing.ts'
-import { SectionMeter, UnreadCount } from './marks.tsx'
+import { SectionFigure, UnreadCount } from './marks.tsx'
 import { meterStyles } from './meter.ts'
 import {
   dotOf,
+  handsOn,
   rowWordOf,
-  short,
   two,
   urgentTag,
   type Dot,
@@ -312,17 +312,6 @@ const styles = stylex.create({
     textDecorationColor: `color-mix(in oklab, ${tokens.mutedForeground} 45%, transparent)`,
   },
   foldNote: { flexShrink: 0, fontSize: 11, color: tokens.mutedForeground },
-  ledger: {
-    flexShrink: 0,
-    whiteSpace: 'nowrap',
-    fontSize: 12,
-    fontVariantNumeric: 'tabular-nums',
-    color: tokens.mutedForeground,
-  },
-  ledgerGot: { fontWeight: 600, color: tokens.successForeground },
-  ledgerZero: { fontWeight: 600, color: tokens.mutedForeground },
-  // the pie and the figure it draws, side by side
-  ledgerSeat: { display: 'inline-flex', flexShrink: 0, alignItems: 'center', gap: 6 },
   word: {
     flexShrink: 0,
     maxWidth: 88,
@@ -333,15 +322,17 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
   },
   wordUrgent: { fontWeight: 500, color: tokens.warningForeground },
+  // one column down the right of every question, whether or not it holds a
+  // figure, so the words before it stand in a column too
   score: {
     flexShrink: 0,
-    minWidth: 28,
+    minWidth: 44,
     textAlign: 'right',
     whiteSpace: 'nowrap',
     fontSize: 12.5,
     fontWeight: 500,
     fontVariantNumeric: 'tabular-nums',
-    color: tokens.successForeground,
+    color: tokens.surfaceMutedForeground,
   },
   scoreNegative: { color: tokens.danger },
   guide: {
@@ -485,23 +476,6 @@ export function StructureRail({
 
   const capOf = (row: StructureRow) =>
     row.cap === null || row.cap === undefined || row.cap === '' ? null : Number(row.cap)
-  const ledgerOf = (row: StructureRow) => {
-    const cap = capOf(row)
-    const got = row.right === '' ? 0 : Number(row.right)
-    return (
-      <span {...stylex.props(styles.ledgerSeat)}>
-        {scored && cap !== null && cap > 0 && <SectionMeter got={got} cap={cap} />}
-        <span {...stylex.props(styles.ledger)} data-scored={scored}>
-          <span {...stylex.props(got === 0 || !scored ? styles.ledgerZero : styles.ledgerGot)}>
-            {scored ? short(row.right === '' ? '0' : row.right) : '–'}
-          </span>
-          {cap === null
-            ? ` ${format(m.myEntriesPaperUnit)}`
-            : ` / ${format(m.entriesPoints, { value: trimAmount(String(cap)) })}`}
-        </span>
-      </span>
-    )
-  }
   const guides = (depth: number) =>
     Array.from({ length: depth }, (_, level) => (
       <span
@@ -585,7 +559,7 @@ export function StructureRail({
                     <UnreadCount count={unreadInside(index)} />
                   )}
                   <span {...stylex.props(styles.spacer)} />
-                  {ledgerOf(row)}
+                  <SectionFigure got={row.right} cap={capOf(row)} scored={scored} />
                 </button>
               </li>
             )
@@ -593,10 +567,25 @@ export function StructureRail({
           const word = rowWordOf(row)
           const gone = row.tag === 'voided'
           const score = row.right === '' ? 0 : Number(row.right)
+          const figured = scored && score !== 0
+          // the word is drawn only where the reader has something to do;
+          // everything else the dot says, and the word is still read out
+          const drawn = word !== null && handsOn(row)
           return (
             <li key={row.id}>
               <button
                 type="button"
+                title={[
+                  row.name,
+                  ...(word === null ? [] : [format(word)]),
+                  ...(figured
+                    ? [
+                        format(score < 0 ? m.entriesDeductedFact : m.entriesCountedFact, {
+                          value: two(Math.abs(score)),
+                        }),
+                      ]
+                    : []),
+                ].join(format(m.entriesListJoin))}
                 data-rail-row={row.id}
                 data-kind="item"
                 data-tag={row.tag ?? ''}
@@ -622,16 +611,22 @@ export function StructureRail({
                 </span>
                 {row.unread > 0 && <UnreadCount count={row.unread} />}
                 <span {...stylex.props(styles.spacer)} />
-                {word !== null && row.tag !== 'approved' && row.tag !== 'granted' && (
-                  <span {...stylex.props(styles.word, urgentTag(row) && styles.wordUrgent)}>
+                {drawn ? (
+                  <span
+                    data-word=""
+                    {...stylex.props(styles.word, urgentTag(row) && styles.wordUrgent)}
+                  >
                     {format(word)}
                   </span>
+                ) : (
+                  word !== null && <VisuallyHidden>{format(word)}</VisuallyHidden>
                 )}
-                {scored && score !== 0 && (
-                  <span {...stylex.props(styles.score, score < 0 && styles.scoreNegative)}>
-                    {short(row.right)}
-                  </span>
-                )}
+                <span
+                  data-amount={figured ? two(score) : ''}
+                  {...stylex.props(styles.score, score < 0 && styles.scoreNegative)}
+                >
+                  {figured ? two(score) : null}
+                </span>
                 {layout === 'screen' && (
                   <ChevronRightIcon aria-hidden {...stylex.props(styles.chevron)} />
                 )}
@@ -700,7 +695,7 @@ export function StructureRail({
                 return (
                   <span
                     key={row.id}
-                    title={`${row.name} ${short(row.right === '' ? '0' : row.right)} / ${trimAmount(String(cap))}`}
+                    title={`${row.name} ${two(row.right === '' ? '0' : row.right)} / ${trimAmount(String(cap))}`}
                     data-full={full}
                     {...stylex.props(styles.segment)}
                     style={{ flexGrow: cap, flexBasis: 0 }}

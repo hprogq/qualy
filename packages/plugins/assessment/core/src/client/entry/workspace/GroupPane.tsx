@@ -6,13 +6,12 @@ import { assessmentMessages as m } from '../../i18n.ts'
 import { trimAmount, type EntryDto } from '../model.ts'
 import type { StructureRow } from '../standing.ts'
 import { useCalcLine } from './calc.ts'
-import { SectionMeter, UnreadCount } from './marks.tsx'
+import { SectionFigure, SectionMeter, UnreadCount } from './marks.tsx'
 import {
   chainOf,
   dotOf,
   insideOf,
   rowWordOf,
-  short,
   two,
   urgentTag,
   type Outline,
@@ -85,6 +84,7 @@ const styles = stylex.create({
   },
   ledgerGot: { fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em' },
   ledgerZero: { color: tokens.mutedForeground },
+  ledgerNegative: { color: tokens.danger },
   ledgerCap: { fontSize: 13, color: tokens.mutedForeground },
   facts: {
     display: 'flex',
@@ -320,9 +320,13 @@ export function GroupPane({
             {scored && cap !== null && cap > 0 && <SectionMeter got={got} cap={cap} large />}
             <span {...stylex.props(styles.ledger)} data-scored={scored}>
               <span
-                {...stylex.props(styles.ledgerGot, (!scored || got === 0) && styles.ledgerZero)}
+                {...stylex.props(
+                  styles.ledgerGot,
+                  (!scored || got === 0) && styles.ledgerZero,
+                  scored && got < 0 && styles.ledgerNegative,
+                )}
               >
-                {scored ? short(row.right === '' ? '0' : row.right) : '–'}
+                {scored ? two(got) : '–'}
               </span>
               <span {...stylex.props(styles.ledgerCap)}>
                 {cap === null
@@ -363,17 +367,7 @@ export function GroupPane({
                   <span {...stylex.props(styles.subNo)}>{outline.numbers.get(one.id)}</span>
                   <span {...stylex.props(styles.subName)}>{one.name}</span>
                   <span {...stylex.props(styles.spacer)} />
-                  {scored && subCap !== null && subCap > 0 && (
-                    <SectionMeter got={one.right === '' ? 0 : Number(one.right)} cap={subCap} />
-                  )}
-                  <span {...stylex.props(styles.subLedger)} data-scored={scored}>
-                    <b>{scored ? short(one.right === '' ? '0' : one.right) : '–'}</b>
-                    <span {...stylex.props(styles.muted)}>
-                      {subCap === null
-                        ? ` ${format(m.myEntriesPaperUnit)}`
-                        : ` / ${format(m.entriesPoints, { value: trimAmount(String(subCap)) })}`}
-                    </span>
-                  </span>
+                  <SectionFigure got={one.right} cap={subCap} scored={scored} />
                 </button>
               </li>
             )

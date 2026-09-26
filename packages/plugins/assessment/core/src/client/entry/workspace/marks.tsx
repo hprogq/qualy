@@ -4,6 +4,8 @@ import { useI18n } from '@qualy/web-i18n'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../../i18n.ts'
+import { trimAmount } from '../model.ts'
+import { two } from './model.ts'
 
 // The small marks the workspace sets beside a row's name.
 //
@@ -52,6 +54,21 @@ const styles = stylex.create({
     borderRadius: 9999,
     backgroundColor: tokens.danger,
   },
+  // a section's figure in a list: the pie, what it has got, and its limit
+  // after a stroke - no unit, which the head's own total says once
+  figure: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 6,
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  got: { fontWeight: 600, color: tokens.foreground },
+  gotNone: { fontWeight: 600, color: tokens.mutedForeground },
+  gotNegative: { fontWeight: 600, color: tokens.danger },
+  of: { color: tokens.mutedForeground },
   pie: { width: 14, height: 14, flexShrink: 0 },
   // beside a section's own heading figure, which is set larger
   pieLarge: { width: 20, height: 20 },
@@ -78,6 +95,54 @@ export function UnreadCount({ count }: { count: number }) {
  */
 export function UnreadDot({ xstyle }: { xstyle?: stylex.StyleXStyles }) {
   return <span aria-hidden data-testid="unread-dot" {...stylex.props(styles.dot, xstyle)} />
+}
+
+/**
+ * A section's figure where sections are listed - the structure, a section's
+ * page, the sections a question's requirements name: the pie, what it has
+ * got to two places, and its limit. Said in full to assistive technology,
+ * and to a pointer that rests on it.
+ */
+export function SectionFigure({
+  got,
+  cap,
+  scored,
+}: {
+  /** what it has got so far, as the result carries it; '' for nothing yet */
+  got: string
+  cap: number | null
+  /** false while the score could not be read: the figure is unknown, not zero */
+  scored: boolean
+}) {
+  const { format } = useI18n()
+  const value = got === '' ? 0 : Number(got)
+  const said = scored
+    ? cap === null
+      ? format(m.entriesSectionSaidUncapped, { got: two(value) })
+      : format(m.entriesSectionSaid, { got: two(value), cap: trimAmount(String(cap)) })
+    : null
+  return (
+    <span
+      data-testid="section-figure"
+      data-scored={scored}
+      data-got={scored ? two(value) : ''}
+      title={said ?? undefined}
+      {...stylex.props(styles.figure)}
+    >
+      {scored && cap !== null && cap > 0 && <SectionMeter got={value} cap={cap} />}
+      <span aria-hidden={said !== null || undefined}>
+        <span
+          {...stylex.props(
+            !scored || value === 0 ? styles.gotNone : value < 0 ? styles.gotNegative : styles.got,
+          )}
+        >
+          {scored ? two(value) : '–'}
+        </span>
+        {cap !== null && <span {...stylex.props(styles.of)}> /{trimAmount(String(cap))}</span>}
+      </span>
+      {said !== null && <VisuallyHidden>{said}</VisuallyHidden>}
+    </span>
+  )
 }
 
 /**
