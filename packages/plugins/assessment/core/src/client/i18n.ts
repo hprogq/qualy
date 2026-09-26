@@ -1793,6 +1793,19 @@ const i18n = definePluginMessages({
       id: 'assessment/participant-results/back',
       defaultMessage: 'Back to participants',
     },
+    // the person an account page names is not there to show
+    participantMissingTitle: {
+      id: 'assessment/participant-results/missing-title',
+      defaultMessage: "This participant can't be found",
+    },
+    participantMissingHint: {
+      id: 'assessment/participant-results/missing-hint',
+      defaultMessage: 'The link may be wrong. Pick someone from the list',
+    },
+    participantDeniedTitle: {
+      id: 'assessment/participant-results/denied-title',
+      defaultMessage: "You can't view this participant",
+    },
     /** whose account the work beside the person's column is, and which half of it */
     participantAccountHeading: defineMessage<{ name: string; half: string }>()({
       id: 'assessment/participant-results/account-heading',

@@ -860,14 +860,77 @@ describe('the participant results screen', () => {
     expect(card.element().textContent ?? '').not.toContain('dddddddd')
   })
 
-  it('says so where the name would be when the person cannot be read', async () => {
+  it('says once that the person is not there, and leads back to the list', async () => {
+    const missing = () => Effect.fail(apiError('ASSESSMENT_PARTICIPANT_NOT_FOUND'))
     await screen(
-      { getParticipant: () => Effect.fail(apiError('ASSESSMENT_PARTICIPANT_NOT_FOUND')) },
+      {
+        getParticipant: missing,
+        listParticipantEntries: missing,
+        getParticipantResult: missing,
+      },
       `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}`,
     )
-    await expect.element(page.getByTestId('participant-unreadable')).toBeVisible()
-    // and the way back to the list stands beside it
-    await expect.element(page.getByRole('button', { name: '返回参评名单' })).toBeVisible()
+    const state = page.getByTestId('participant-absent')
+    await expect.element(state).toBeVisible()
+    await expect
+      .poll(() =>
+        document.querySelector('[data-slot="resource-state"]')?.getAttribute('data-state'),
+      )
+      .toBe('missing')
+    // said once: not again where the name would be, nor by the claims
+    expect(document.querySelectorAll('[data-slot="resource-state"]')).toHaveLength(1)
+    expect(page.getByRole('alert').elements()).toHaveLength(0)
+    await expect
+      .element(page.getByTestId('participant-head'))
+      .toHaveAttribute('data-absent', 'missing')
+    expect(page.getByTestId('participant-tab-entries').elements()).toHaveLength(0)
+    // nothing to ask again about somebody who is not there
+    expect(state.getByRole('button', { name: '重试' }).elements()).toHaveLength(0)
+    await state.getByRole('button', { name: '返回参评名单' }).click()
+    await expect.poll(() => addressNow()).not.toContain('participant=')
+    await expect.element(page.getByTestId('participant-row').first()).toBeVisible()
+  })
+
+  it('asks nobody about an address that cannot name a person', async () => {
+    const getParticipant = vi.fn(() => Effect.succeed({ participant: participant() }))
+    await screen(
+      { getParticipant },
+      `/assessment/batches/${BATCH_ID}/results?participant=not-a-person`,
+    )
+    await expect
+      .poll(() =>
+        document.querySelector('[data-slot="resource-state"]')?.getAttribute('data-state'),
+      )
+      .toBe('missing')
+    expect(getParticipant).not.toHaveBeenCalled()
+  })
+
+  it('offers to ask again when the person could not be read', async () => {
+    const reads = { fail: true }
+    await screen(
+      {
+        getParticipant: (request: Request) =>
+          reads.fail
+            ? Effect.fail(apiError('SOMETHING_ELSE'))
+            : Effect.succeed({
+                participant: participant({ id: request.params?.['participantId'] }),
+              }),
+      },
+      `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}`,
+    )
+    const state = page.getByTestId('participant-absent')
+    await expect.element(state).toBeVisible()
+    await expect
+      .poll(() =>
+        document.querySelector('[data-slot="resource-state"]')?.getAttribute('data-state'),
+      )
+      .toBe('failed')
+    reads.fail = false
+    await state.getByRole('button', { name: '重试' }).click()
+    await expect.element(page.getByTestId('participant-head')).not.toHaveAttribute('data-absent')
+    await expect
+      .element(page.getByTestId('participant-head').getByRole('heading', { level: 1 }))
+      .toHaveTextContent('郭航旗')
   })
 
   it('says a score cannot be read rather than showing an old one', async () => {
@@ -1794,6 +1857,30 @@ describe('working the list beside an open account', () => {
       `[data-testid="roster-walk-row"][data-participant="${personId(n)}"]`,
     )!
   const walkList = () => page.getByTestId('roster-walk')
+
+  it('keeps the list in the column when the person is not there', async () => {
+    await page.viewport(1280, 800)
+    const missing = () => Effect.fail(apiError('ASSESSMENT_PARTICIPANT_NOT_FOUND'))
+    await shelled(`/assessment/batches/${BATCH_ID}/results?participant=${personId(99)}`, {
+      getParticipant: missing,
+      listParticipantEntries: missing,
+      getParticipantResult: missing,
+    }).rendered
+    const panel = page.getByTestId('participant-panel')
+    await expect.element(panel).toHaveAttribute('data-absent', 'missing')
+    // no name to stand there, nor the halves of an account nobody has
+    expect(panel.getByRole('heading', { level: 1 }).elements()).toHaveLength(0)
+    expect(panel.getByTestId('participant-tab-entries').elements()).toHaveLength(0)
+    // the way back and the list itself stay, so the next person is a press away
+    await expect.element(panel.getByRole('button', { name: '返回参评名单' })).toBeVisible()
+    await expect.element(panel.getByTestId('roster-walk')).toHaveAttribute('data-total', '45')
+    // and the state stands once, in the room the work would have had
+    const main = page.getByRole('main')
+    await expect.element(main.getByTestId('participant-absent')).toBeVisible()
+    expect(document.querySelectorAll('[data-slot="resource-state"]')).toHaveLength(1)
+    await panel.getByRole('button', { name: /参评人02/ }).click()
+    await expect.poll(() => addressNow()).toContain(`participant=${personId(2)}`)
+  })
 
   it('tells the open person apart from a row under the pointer', async () => {
     await page.viewport(1280, 800)

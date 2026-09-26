@@ -3,9 +3,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { ArrowLeftIcon, ChevronDownIcon } from 'lucide-react'
 import {
+  isRecordId,
+  LoadFailure,
   ScreenAside,
   useApi,
   useApiQuery,
+  useLoadFailure,
   useRunApi,
   useScreenAsideOffered,
 } from '@qualy/web-runtime'
@@ -349,7 +352,17 @@ const styles = stylex.create({
     paddingBottom: 32,
   },
   zone: { margin: 0 },
-  unreadable: { margin: 0, fontSize: 14, color: tokens.danger },
+  // with nobody to name, the head keeps only its ways out
+  headAbsent: { paddingBottom: 8 },
+  // the state stands where the work would, a little in from the column
+  absent: {
+    display: 'flex',
+    flexGrow: 1,
+    flexDirection: 'column',
+    paddingInline: { default: 28, [breakpoints.phone]: 16 },
+    paddingTop: { default: 24, [breakpoints.phone]: 16 },
+    paddingBottom: 32,
+  },
   // the same shape the name and the number take, so nothing moves when the
   // words arrive
   nameBone: { height: 22, width: 128 },
@@ -389,6 +402,9 @@ const ROSTER_MAX_WAIT = 5_000
 
 /** a read this recent is not read again when a line opens */
 const SYNC_FRESH = 2_000
+
+/** the code that says the person this page is about is not there */
+const PARTICIPANT_MISSING = 'ASSESSMENT_PARTICIPANT_NOT_FOUND'
 
 export function ParticipantResultDetail({
   batchId,
@@ -550,18 +566,37 @@ export function ParticipantResultDetail({
   // Stepping to the next person, the list beside the account has already
   // read who they are: said at once, the facts do not blank and come back
   // under the reader's eyes, and the list under them does not jump with them.
+  // An address that cannot name anybody names nobody, and is not asked about.
+  const shaped = isRecordId(participantId)
   const who = useQuery({
     ...query.assessment.getParticipant.queryOptions({ params: { batchId, participantId } }),
+    enabled: shaped,
     placeholderData:
       listed !== undefined && listed !== null && listed.id === participantId
         ? { participant: listed }
         : undefined,
   })
-  const result = useQuery(
-    query.assessment.getParticipantResult.queryOptions({ params: { batchId, participantId } }),
-  )
+  const result = useQuery({
+    ...query.assessment.getParticipantResult.queryOptions({ params: { batchId, participantId } }),
+    enabled: shaped,
+  })
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
-  const entries = useQuery(useParticipantEntries(batchId, participantId))
+  const entries = useQuery({ ...useParticipantEntries(batchId, participantId), enabled: shaped })
+  // The person this page is about is not there, or not this reader's to see,
+  // or could not be read at all: said once, in the room their work would
+  // have had, with the way back to the list. The column keeps the list
+  // itself, so the next person is still a press away.
+  const failures = useLoadFailure()
+  const absentWords = {
+    missing: {
+      title: format(m.participantMissingTitle),
+      description: format(m.participantMissingHint),
+    },
+    denied: { title: format(m.participantDeniedTitle) },
+  }
+  const absent = shaped
+    ? failures.subject(who, { missing: [PARTICIPANT_MISSING], copy: absentWords })
+    : failures.missing({ copy: absentWords })
   // Where they stand, in names: the round's units as this reader may see
   // them, and the kinds of person. Both are optional reading - a unit whose
   // name is not given keeps its place on the path, and a reader who reads
@@ -703,18 +738,11 @@ export function ParticipantResultDetail({
       </span>
     )
 
-  // who this is could not be read, and nothing was read before: said where
-  // the name would be, rather than an outline that never fills
-  const unreadablePerson = participant === undefined && who.error !== null
+  // Nobody to name: the name, the facts and the two halves stand down, and
+  // the state in the work says why once; only the ways out stay.
   const name =
-    participant === undefined ? (
-      unreadablePerson ? (
-        <p role="alert" data-testid="participant-unreadable" {...stylex.props(styles.unreadable)}>
-          {formatError(who.error)}
-        </p>
-      ) : (
-        <Skeleton className={stylex.props(styles.nameBone).className} />
-      )
+    absent !== null ? null : participant === undefined ? (
+      <Skeleton className={stylex.props(styles.nameBone).className} />
     ) : (
       <h1 {...stylex.props(styles.name, !beside && styles.headName)}>{participant.displayName}</h1>
     )
@@ -751,23 +779,49 @@ export function ParticipantResultDetail({
     { key: 'score', label: m.participantResultsScoreTab, count: null, total: true },
   ] as const
 
+  const halvesNav = (
+    <nav aria-label={format(m.participantResultsViews)} {...stylex.props(styles.halves)}>
+      {halves.map(({ key, label, count, total }) => (
+        <button
+          key={key}
+          type="button"
+          data-testid={`participant-tab-${key}`}
+          data-count={count ?? ''}
+          aria-current={view === key}
+          onClick={() => onView(key)}
+          {...stylex.props(styles.half, view === key && styles.halfOn)}
+        >
+          <span {...stylex.props(styles.halfWord)}>{format(label)}</span>
+          {count !== null && <Count>{String(count)}</Count>}
+          {total && result.data !== undefined && (
+            <span data-testid="participant-total" {...stylex.props(styles.halfFigure)}>
+              {result.data.total}
+            </span>
+          )}
+        </button>
+      ))}
+    </nav>
+  )
+
   const panel = (
-    <div data-testid="participant-panel" {...stylex.props(styles.panel)}>
+    <div data-testid="participant-panel" data-absent={absent?.kind} {...stylex.props(styles.panel)}>
       <div {...stylex.props(styles.panelTop)}>
         {back}
         {neighbors}
       </div>
-      <div {...stylex.props(styles.identity)}>
-        {name}
-        {chips !== null && (
-          <div {...stylex.props(styles.standingLine)}>
-            {chips}
-            {standingKey}
-          </div>
-        )}
-      </div>
-      {participant === undefined ? (
-        !unreadablePerson && <Skeleton className={stylex.props(styles.numberBone).className} />
+      {absent === null && (
+        <div {...stylex.props(styles.identity)}>
+          {name}
+          {chips !== null && (
+            <div {...stylex.props(styles.standingLine)}>
+              {chips}
+              {standingKey}
+            </div>
+          )}
+        </div>
+      )}
+      {absent !== null ? null : participant === undefined ? (
+        <Skeleton className={stylex.props(styles.numberBone).className} />
       ) : (
         <dl {...stylex.props(styles.facts)}>
           <div {...stylex.props(styles.fact)}>
@@ -807,28 +861,8 @@ export function ParticipantResultDetail({
           </div>
         </dl>
       )}
-      <ZoneAwayNotice xstyle={styles.zone} />
-      <nav aria-label={format(m.participantResultsViews)} {...stylex.props(styles.halves)}>
-        {halves.map(({ key, label, count, total }) => (
-          <button
-            key={key}
-            type="button"
-            data-testid={`participant-tab-${key}`}
-            data-count={count ?? ''}
-            aria-current={view === key}
-            onClick={() => onView(key)}
-            {...stylex.props(styles.half, view === key && styles.halfOn)}
-          >
-            <span {...stylex.props(styles.halfWord)}>{format(label)}</span>
-            {count !== null && <Count>{String(count)}</Count>}
-            {total && result.data !== undefined && (
-              <span data-testid="participant-total" {...stylex.props(styles.halfFigure)}>
-                {result.data.total}
-              </span>
-            )}
-          </button>
-        ))}
-      </nav>
+      {absent === null && <ZoneAwayNotice xstyle={styles.zone} />}
+      {absent === null && halvesNav}
       {roster}
     </div>
   )
@@ -837,12 +871,8 @@ export function ParticipantResultDetail({
   // way to take somebody off fold behind the name, so the work starts high
   // on a short screen; a press on the fold brings them out.
   const folded = phone && !unfolded
-  const head = (
-    <header data-testid="participant-head" {...stylex.props(styles.head)}>
-      <div {...stylex.props(styles.headTop)}>
-        {back}
-        {neighbors}
-      </div>
+  const headWho = (
+    <>
       <div {...stylex.props(styles.headWho)}>
         {name}
         {chips}
@@ -866,7 +896,7 @@ export function ParticipantResultDetail({
         </span>
       </div>
       {participant === undefined ? (
-        !unreadablePerson && <Skeleton className={stylex.props(styles.numberBone).className} />
+        <Skeleton className={stylex.props(styles.numberBone).className} />
       ) : (
         <div {...stylex.props(styles.lineClip)}>
           <div {...stylex.props(styles.line)}>
@@ -920,6 +950,19 @@ export function ParticipantResultDetail({
           </button>
         ))}
       </nav>
+    </>
+  )
+  const head = (
+    <header
+      data-testid="participant-head"
+      data-absent={absent?.kind}
+      {...stylex.props(styles.head, absent !== null && styles.headAbsent)}
+    >
+      <div {...stylex.props(styles.headTop)}>
+        {back}
+        {neighbors}
+      </div>
+      {absent === null && headWho}
     </header>
   )
 
@@ -932,7 +975,7 @@ export function ParticipantResultDetail({
       {/* Beside the column the name stands in the column, which is a
           landmark of its own; the work still says whose it is, for a reader
           moving by headings through the main part of the page. */}
-      {beside && participant !== undefined && (
+      {beside && participant !== undefined && absent === null && (
         <h2 {...stylex.props(a11yStyles.visuallyHidden)}>
           {format(m.participantAccountHeading, {
             name: participant.displayName,
@@ -948,123 +991,148 @@ export function ParticipantResultDetail({
         move={step}
         drillKey={participantId}
         className={
-          stylex.props(styles.body, filled ? styles.bodyFilled : styles.bodyGrown).className
+          stylex.props(
+            styles.body,
+            filled && absent === null ? styles.bodyFilled : styles.bodyGrown,
+          ).className
         }
       >
-        <Swap swapKey={view} className={stylex.props(filled && styles.swapFilled).className}>
-          {view === 'entries' ? (
-            <ParticipantEntries
-              batchId={batchId}
-              participantId={participantId}
-              entryId={entryId}
-              may={{
-                returnForRevision: writable && manageable,
-                withdraw: writable && mayRecord,
-                record: writable && mayRecord,
-              }}
-              line={line}
-              closed={!writable || participant?.status === 'excluded'}
-              onEntry={onEntry}
+        {absent !== null ? (
+          <div data-testid="participant-absent" {...stylex.props(styles.absent)}>
+            <LoadFailure
+              failure={absent}
+              size="section"
+              onRetry={() => void who.refetch()}
+              retrying={who.isFetching}
+              extra={
+                <Button variant={absent.retryable ? 'outline' : 'default'} onClick={onBack}>
+                  {format(m.participantResultsBack)}
+                </Button>
+              }
             />
-          ) : (
-            <div {...stylex.props(styles.ledger)}>
-              {unreadable ? (
-                <ResultUnavailable
-                  error={result.error}
-                  retrying={result.isFetching}
-                  onRetry={() => void result.refetch()}
-                />
-              ) : (
-                <AsyncSection
-                  pending={
-                    result.isPending || items.isPending || entries.isPending || who.isPending
-                  }
-                  // a read that failed with nothing to show; one that failed
-                  // later keeps what it showed, and the account says it may
-                  // be behind
-                  error={
-                    [result, items, entries]
-                      .map((read) =>
-                        read.data === undefined && read.error !== null
-                          ? formatError(read.error)
-                          : null,
-                      )
-                      .find((said) => said !== null) ?? null
-                  }
-                  loadingLabel={format(commonMessages.loading)}
-                  retryLabel={format(commonMessages.retry)}
-                  onRetry={() => {
-                    void result.refetch()
-                    void items.refetch()
-                    void entries.refetch()
-                  }}
-                  skeleton={
-                    <div>
-                      <div {...stylex.props(styles.skBand)}>
-                        <span {...stylex.props(styles.skTotal)}>
-                          <Skeleton className={stylex.props(styles.skBone).className} width={64} />
-                          <Skeleton height={34} width={96} radius={6} />
-                        </span>
-                        <span {...stylex.props(styles.skBars)}>
-                          <Skeleton height={12} radius={9999} />
-                          <Skeleton className={stylex.props(styles.skBone).className} width="60%" />
-                        </span>
-                      </div>
-                      <div {...stylex.props(styles.skGroups)}>
-                        {['52%', '38%', '61%', '44%'].map((width, index) => (
-                          <div key={index} {...stylex.props(styles.skGroupRow)}>
+          </div>
+        ) : (
+          <Swap swapKey={view} className={stylex.props(filled && styles.swapFilled).className}>
+            {view === 'entries' ? (
+              <ParticipantEntries
+                batchId={batchId}
+                participantId={participantId}
+                entryId={entryId}
+                may={{
+                  returnForRevision: writable && manageable,
+                  withdraw: writable && mayRecord,
+                  record: writable && mayRecord,
+                }}
+                line={line}
+                closed={!writable || participant?.status === 'excluded'}
+                onEntry={onEntry}
+              />
+            ) : (
+              <div {...stylex.props(styles.ledger)}>
+                {unreadable ? (
+                  <ResultUnavailable
+                    error={result.error}
+                    retrying={result.isFetching}
+                    onRetry={() => void result.refetch()}
+                  />
+                ) : (
+                  <AsyncSection
+                    pending={
+                      result.isPending || items.isPending || entries.isPending || who.isPending
+                    }
+                    // a read that failed with nothing to show; one that failed
+                    // later keeps what it showed, and the account says it may
+                    // be behind
+                    error={
+                      [result, items, entries]
+                        .map((read) =>
+                          read.data === undefined && read.error !== null
+                            ? formatError(read.error)
+                            : null,
+                        )
+                        .find((said) => said !== null) ?? null
+                    }
+                    loadingLabel={format(commonMessages.loading)}
+                    retryLabel={format(commonMessages.retry)}
+                    onRetry={() => {
+                      void result.refetch()
+                      void items.refetch()
+                      void entries.refetch()
+                    }}
+                    skeleton={
+                      <div>
+                        <div {...stylex.props(styles.skBand)}>
+                          <span {...stylex.props(styles.skTotal)}>
                             <Skeleton
                               className={stylex.props(styles.skBone).className}
-                              width={width}
+                              width={64}
                             />
-                            <Skeleton className={stylex.props(styles.skBone).className} />
-                          </div>
-                        ))}
+                            <Skeleton height={34} width={96} radius={6} />
+                          </span>
+                          <span {...stylex.props(styles.skBars)}>
+                            <Skeleton height={12} radius={9999} />
+                            <Skeleton
+                              className={stylex.props(styles.skBone).className}
+                              width="60%"
+                            />
+                          </span>
+                        </div>
+                        <div {...stylex.props(styles.skGroups)}>
+                          {['52%', '38%', '61%', '44%'].map((width, index) => (
+                            <div key={index} {...stylex.props(styles.skGroupRow)}>
+                              <Skeleton
+                                className={stylex.props(styles.skBone).className}
+                                width={width}
+                              />
+                              <Skeleton className={stylex.props(styles.skBone).className} />
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  }
-                >
-                  {result.data !== undefined && (
-                    <>
-                      {result.error !== null && (
-                        <StandingNotice
-                          error={result.error}
-                          stale
-                          retrying={result.isFetching}
-                          onRetry={() => void result.refetch()}
+                    }
+                  >
+                    {result.data !== undefined && (
+                      <>
+                        {result.error !== null && (
+                          <StandingNotice
+                            error={result.error}
+                            stale
+                            retrying={result.isFetching}
+                            onRetry={() => void result.refetch()}
+                          />
+                        )}
+                        <ResultLedger
+                          result={result.data}
+                          items={items.data?.items ?? []}
+                          entries={claims.map((one) => one.entry)}
+                          // somebody else's account, read by whoever runs the round
+                          reader="staff"
+                          // an archived round, or somebody taken off it, no longer moves
+                          closed={!writable ? 'archived' : excluded ? 'excluded' : null}
+                          // kept current while the line is open, by the rule the
+                          // claims half and the owner's own pages keep; a total
+                          // already said to be behind is not also live
+                          stream={result.error === null ? liveStateOf(line) : null}
+                          align="start"
+                          // a number leads back to the filing it came from, on
+                          // the question it was filed under; this is the reason
+                          // the two halves are one page
+                          onEntryOpen={(id) =>
+                            onFollow(
+                              id,
+                              claims.find((one) => one.entry.id === id)?.entry.itemId ?? null,
+                            )
+                          }
+                          onItemOpen={onItem}
                         />
-                      )}
-                      <ResultLedger
-                        result={result.data}
-                        items={items.data?.items ?? []}
-                        entries={claims.map((one) => one.entry)}
-                        // somebody else's account, read by whoever runs the round
-                        reader="staff"
-                        // an archived round, or somebody taken off it, no longer moves
-                        closed={!writable ? 'archived' : excluded ? 'excluded' : null}
-                        // kept current while the line is open, by the rule the
-                        // claims half and the owner's own pages keep; a total
-                        // already said to be behind is not also live
-                        stream={result.error === null ? liveStateOf(line) : null}
-                        align="start"
-                        // a number leads back to the filing it came from, on
-                        // the question it was filed under; this is the reason
-                        // the two halves are one page
-                        onEntryOpen={(id) =>
-                          onFollow(
-                            id,
-                            claims.find((one) => one.entry.id === id)?.entry.itemId ?? null,
-                          )
-                        }
-                        onItemOpen={onItem}
-                      />
-                    </>
-                  )}
-                </AsyncSection>
-              )}
-            </div>
-          )}
-        </Swap>
+                      </>
+                    )}
+                  </AsyncSection>
+                )}
+              </div>
+            )}
+          </Swap>
+        )}
       </Drill>
       <ConfirmDialog
         open={excluding !== null && excluding === participantId}
