@@ -72,7 +72,7 @@ export default {
   'common/page/not-found-title': '页面无法访问',
   'common/page/not-found-hint': '该页面不存在，或你暂无访问权限',
   'common/load/missing-title': '找不到该内容',
-  'common/load/missing-hint': '它可能已被删除，或链接有误',
+  'common/load/missing-hint': '可能已被删除，或链接有误',
   'common/load/denied-title': '无法查看该内容',
   'common/load/denied-hint': '你没有查看权限，如有需要请联系管理员',
   'common/load/offline-title': '无法连接 Qualy',

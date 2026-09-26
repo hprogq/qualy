@@ -3,6 +3,7 @@ import { page } from 'vitest/browser'
 import { Effect } from 'effect'
 import { pageComponents } from 'virtual:qualy/plugins'
 import { useI18n } from '@qualy/web-i18n'
+import { LoadFailure, useLoadFailure } from '@qualy/web-runtime'
 import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 // The one suite whose subject IS the copy.
@@ -359,6 +360,34 @@ function LanguageSwitch() {
     </button>
   )
 }
+
+describe('a thing that is not there', () => {
+  // The generic sentence stands under whatever noun its owner names in the
+  // heading - a batch, a record, a person - so it names nothing itself: "it"
+  // under "找不到该用户" calls a person a thing.
+  function Missing() {
+    const describe = useLoadFailure()
+    return (
+      <LoadFailure failure={describe.missing({ copy: { missing: { title: '找不到该用户' } } })} />
+    )
+  }
+
+  it('says what may have happened without a pronoun, in both languages', async () => {
+    for (const [locale, sentence] of [
+      ['zh-CN', '可能已被删除，或链接有误'],
+      ['en-US', 'May have been removed, or the link may be wrong'],
+    ] as const) {
+      const { unmount } = await renderScreen({
+        client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
+        locale,
+        children: <Missing />,
+      })
+      await expect.element(page.getByRole('heading', { name: '找不到该用户' })).toBeVisible()
+      await expect.element(page.getByText(sentence, { exact: true })).toBeVisible()
+      await unmount()
+    }
+  })
+})
 
 describe('choosing a language', () => {
   it('changes the language where the browser keeps nothing for the page', async () => {
