@@ -21,6 +21,27 @@ const styles = stylex.create({
     width: '100%',
     overflowX: 'auto',
   },
+  // the table as the part of its box that scrolls: it takes the height it is
+  // given and scrolls both ways inside it, so a head held at its top stays
+  // there while the rows move under it
+  containerFill: {
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 'auto',
+    overflowY: 'auto',
+    overscrollBehavior: 'contain',
+  },
+  // A head that stays at the top of a scrolling table. The rule under it is
+  // drawn as a shadow: a collapsed table draws its borders on the grid, and
+  // a border there stays behind while the head it belonged to holds still.
+  headerSticky: {
+    position: 'sticky',
+    insetBlockStart: 0,
+    zIndex: 1,
+    backgroundColor: tokens.surface,
+    boxShadow: `inset 0 -1px 0 ${tokens.divider}`,
+  },
   table: {
     width: '100%',
     captionSide: 'bottom',
@@ -89,17 +110,48 @@ const styles = stylex.create({
 
 type Extendable = { xstyle?: StyleXStyles }
 
-function Table({ className, xstyle, ...props }: React.ComponentProps<'table'> & Extendable) {
+function Table({
+  className,
+  xstyle,
+  fill = false,
+  ...props
+}: React.ComponentProps<'table'> &
+  Extendable & {
+    /**
+     * Take the height the box around it hands out and scroll inside it, for a
+     * table with a head that should stay in view; the box must be a column
+     * that gives it one.
+     */
+    fill?: boolean
+  }) {
   const sx = stylex.props(styles.table, xstyle)
   return (
-    <div data-slot="table-container" {...stylex.props(styles.container)}>
+    <div
+      data-slot="table-container"
+      {...stylex.props(styles.container, fill && styles.containerFill)}
+    >
       <table data-slot="table" {...sx} {...props} className={clsx(sx.className, className)} />
     </div>
   )
 }
 
-function TableHeader({ className, ...props }: React.ComponentProps<'thead'>) {
-  return <thead data-slot="table-header" {...props} className={className} />
+function TableHeader({
+  className,
+  sticky = false,
+  ...props
+}: React.ComponentProps<'thead'> & {
+  /** held at the top of a table that scrolls; see `fill` */
+  sticky?: boolean
+}) {
+  const sx = stylex.props(sticky && styles.headerSticky)
+  return (
+    <thead
+      data-slot="table-header"
+      {...sx}
+      {...props}
+      className={clsx(sx.className, className) || undefined}
+    />
+  )
 }
 
 /** whether the rows below are the table's own run of records */

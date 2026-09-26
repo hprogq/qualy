@@ -25,7 +25,18 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
   },
   spacer: { flexGrow: 1 },
+  controls: { display: 'flex', alignItems: 'center', gap: 8 },
 })
+
+/** the names the two arrows are spoken by, where the caller has given them */
+const edgeLabels =
+  (previousLabel: string | undefined, nextLabel: string | undefined) =>
+  (control: 'first' | 'previous' | 'last' | 'next') =>
+    control === 'previous' && previousLabel !== undefined
+      ? { 'aria-label': previousLabel }
+      : control === 'next' && nextLabel !== undefined
+        ? { 'aria-label': nextLabel }
+        : {}
 
 export function Pager({
   page,
@@ -34,6 +45,9 @@ export function Pager({
   onPage,
   summary,
   label,
+  previousLabel,
+  nextLabel,
+  compact = false,
   disabled = false,
   testId,
 }: {
@@ -46,6 +60,14 @@ export function Pager({
   summary?: string
   /** spoken name of the navigation */
   label: string
+  /** spoken names of the two arrows */
+  previousLabel?: string
+  nextLabel?: string
+  /**
+   * Only the page being read between the first and the last, for a strip
+   * that shares a narrow foot with something else.
+   */
+  compact?: boolean
   disabled?: boolean
   testId?: string
 }) {
@@ -65,14 +87,83 @@ export function Pager({
           aria-label={label}
           size="sm"
           radius="md"
-          siblings={1}
+          siblings={compact ? 0 : 1}
           boundaries={1}
           total={pages}
           value={Math.min(page, pages)}
           onChange={onPage}
           disabled={disabled}
           withEdges={false}
+          getControlProps={edgeLabels(previousLabel, nextLabel)}
         />
+      )}
+    </div>
+  )
+}
+
+/**
+ * The same strip over a list read forwards, a page at a time.
+ *
+ * A list walked by cursor does not know how many pages it has - only
+ * whether there is a next one - so it offers the way back, the page being
+ * read, and the way on: the numbered strip's own controls, so the two kinds
+ * of list look like one.
+ */
+export function CursorPager({
+  page,
+  hasNext,
+  onPrevious,
+  onNext,
+  summary,
+  label,
+  previousLabel,
+  nextLabel,
+  disabled = false,
+  testId,
+}: {
+  /** counted from one */
+  page: number
+  hasNext: boolean
+  onPrevious: () => void
+  onNext: () => void
+  summary?: string
+  /** spoken name of the navigation */
+  label: string
+  previousLabel: string
+  nextLabel: string
+  disabled?: boolean
+  testId?: string
+}) {
+  const known = page + (hasNext ? 1 : 0)
+  return (
+    <div
+      {...stylex.props(styles.seat)}
+      data-testid={testId}
+      data-page={page}
+      data-has-next={hasNext}
+    >
+      {summary !== undefined && <span {...stylex.props(styles.summary)}>{summary}</span>}
+      <span {...stylex.props(styles.spacer)} />
+      {known > 1 && (
+        <Pagination.Root
+          aria-label={label}
+          size="sm"
+          radius="md"
+          total={known}
+          value={page}
+          disabled={disabled}
+          onChange={(next) => (next > page ? onNext() : onPrevious())}
+        >
+          <div {...stylex.props(styles.controls)}>
+            <Pagination.Previous aria-label={previousLabel} />
+            {/* where the reader is, drawn as the numbered strip draws it;
+                it is not a way anywhere, so it takes no focus */}
+            <Pagination.Control active aria-current="page" tabIndex={-1}>
+              {page}
+            </Pagination.Control>
+            <Pagination.Next aria-label={nextLabel} />
+          </div>
+        </Pagination.Root>
       )}
     </div>
   )
