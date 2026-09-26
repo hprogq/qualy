@@ -3,11 +3,9 @@ import * as stylex from '@stylexjs/stylex'
 import { useApiQuery, useLoadFailure, usePageRouteParams } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@qualy/ui/empty'
+import { ResourceState } from '@qualy/ui/resource-state'
 import { EditorSkeleton, SectionHead } from '@qualy/ui/screen'
-import { LockKeyholeIcon } from 'lucide-react'
 import { iamMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
 import { SessionsCard, SignInRecords } from '../account/security-records.tsx'
@@ -22,12 +20,6 @@ import { SessionsCard, SignInRecords } from '../account/security-records.tsx'
 
 const styles = stylex.create({
   page: { display: 'flex', flexDirection: 'column', gap: 12 },
-  denied: {
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.divider,
-    backgroundColor: tokens.surface,
-  },
 })
 
 export default function UserActivityPage() {
@@ -61,15 +53,14 @@ export default function UserActivityPage() {
           ) : (
             // a reader who may read the person but not their account: said
             // plainly, rather than as two cards that each failed
-            <Empty data-testid="user-activity-denied" xstyle={styles.denied}>
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <LockKeyholeIcon aria-hidden />
-                </EmptyMedia>
-                <EmptyTitle>{format(m.personActivityDenied)}</EmptyTitle>
-                <EmptyDescription>{format(m.personActivityDeniedHint)}</EmptyDescription>
-              </EmptyHeader>
-            </Empty>
+            <ResourceState
+              kind="denied"
+              size="section"
+              framed
+              data-testid="user-activity-denied"
+              title={format(m.personActivityDenied)}
+              description={format(m.personActivityDeniedHint)}
+            />
           ))}
       </AsyncSection>
     </div>

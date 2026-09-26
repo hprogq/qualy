@@ -130,7 +130,9 @@ describe("a person's security activity", () => {
     const sessions = vi.fn(() => Effect.succeed({ items: [], nextCursor: null }))
     const signIns = vi.fn(() => Effect.succeed({ items: [], total: 0, page: 1, pageSize: 5 }))
     await open(person(false), { listUserSessions: sessions, listUserSignIns: signIns })
-    await expect.element(page.getByTestId('user-activity-denied')).toBeInTheDocument()
+    await expect
+      .element(page.getByTestId('user-activity-denied'))
+      .toHaveAttribute('data-state', 'denied')
     expect(document.querySelector('[data-testid="sessions-card"]')).toBeNull()
     expect(sessions).not.toHaveBeenCalled()
     expect(signIns).not.toHaveBeenCalled()
