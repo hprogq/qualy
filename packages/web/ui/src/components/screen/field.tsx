@@ -6,6 +6,11 @@ import { Input } from '../input.tsx'
 // A field for narrowing a list: the glass inside its leading edge, its
 // purpose said as the placeholder and as its name.
 //
+// It looks for somebody or something else, so nothing of the reader's own
+// belongs in it: the browser is told not to offer past entries or to
+// correct the words, and password managers are told it is no login - a
+// field on a screen with a name in it is exactly what they otherwise fill.
+//
 // It is the product's own field at the product's own height. A mock draws
 // the ones in a card's head four pixels shorter; the height and the type of
 // every field are decided once for the whole input family - the type answers
@@ -38,6 +43,14 @@ export function SearchField({
       value={value}
       placeholder={label}
       aria-label={label}
+      autoComplete="off"
+      autoCorrect="off"
+      autoCapitalize="off"
+      spellCheck={false}
+      data-1p-ignore=""
+      data-lpignore="true"
+      data-bwignore="true"
+      data-form-type="other"
       onChange={(event) => onChange(event.target.value)}
       lead={<SearchIcon aria-hidden {...stylex.props(styles.glass)} />}
       {...(xstyle === undefined ? {} : { wrapperXstyle: xstyle })}

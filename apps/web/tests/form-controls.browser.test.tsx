@@ -10,6 +10,7 @@ import { Input } from '@qualy/ui/input'
 import { NativeSelect } from '@qualy/ui/native-select'
 import { UiProvider } from '@qualy/ui/provider'
 import { RadioGroup, RadioGroupItem } from '@qualy/ui/radio-group'
+import { SearchField } from '@qualy/ui/screen'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Textarea } from '@qualy/ui/textarea'
 import '../src/app.css'
@@ -336,5 +337,21 @@ describe('the input family types at one size', () => {
     for (const picker of ['date-range-picker', 'date-time-picker'])
       expect(slot(picker).startsWith('21px')).toBe(true)
     document.documentElement.style.removeProperty('--q-input-fz')
+  })
+})
+
+// A field that narrows a list looks for somebody else: nothing of the
+// reader's own belongs in it, and a password manager that took it for a
+// login filled the reader's own name into a roster search.
+describe('a search field keeps the reader’s own out', () => {
+  it('asks neither the browser nor a password manager to fill it', async () => {
+    await mount(<SearchField value="" onChange={() => {}} label="find" name="find" />)
+    const field = page.getByRole('searchbox', { name: 'find' }).element()
+    expect(field.getAttribute('autocomplete')).toBe('off')
+    expect(field.getAttribute('spellcheck')).toBe('false')
+    expect(field.getAttribute('data-1p-ignore')).not.toBeNull()
+    expect(field.getAttribute('data-lpignore')).toBe('true')
+    expect(field.getAttribute('data-bwignore')).toBe('true')
+    expect(field.getAttribute('data-form-type')).toBe('other')
   })
 })
