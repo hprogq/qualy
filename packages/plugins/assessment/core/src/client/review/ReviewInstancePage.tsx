@@ -43,6 +43,7 @@ import { type WorkbenchPart } from './Pane.tsx'
 import { useBenchColumns } from './bench-columns.tsx'
 import { QueueRail } from './QueueRail.tsx'
 import { PartStrip, PersonStrip, RunStrip } from './WorkbenchStrips.tsx'
+import { queuePlaceOf } from './queue-place.ts'
 import { EscalationNotice } from './EscalationNotice.tsx'
 import { FlowColumn } from './FlowColumn.tsx'
 import { FilingColumn } from './FilingColumn.tsx'
@@ -816,6 +817,15 @@ function Workbench({ batch }: { batch: BatchDto }) {
       }),
     [navigate, batch.id, runRaw],
   )
+  /** out of the run, to the queue as it was left: the same view, question and page */
+  const backToQueue = useCallback(
+    () =>
+      navigate('assessment/batch-reviews', {
+        params: { batchId: batch.id },
+        search: queuePlaceOf(batch.id),
+      }),
+    [navigate, batch.id],
+  )
   const openTrail = useCallback(() => setTrailOpen(true), [])
   const openVersions = useCallback(() => setVersionsOpen(true), [])
 
@@ -1252,7 +1262,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
             open={queueOpen}
             onToggle={() => setQueueOpen(false)}
             onOpen={goTo}
-            onBack={() => navigate('assessment/batch-reviews', { params: { batchId: batch.id } })}
+            onBack={backToQueue}
           />
           <div
             data-review-route={review?.chain.route ?? 'normal'}
@@ -1261,6 +1271,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
             {done ? (
               <DoneScreen
                 batchId={batch.id}
+                onBack={backToQueue}
                 log={handled}
                 startedAt={startedAt.current}
                 inboxRows={(inbox.data?.items ?? []).filter(
@@ -1290,9 +1301,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
                   canPrev={currentIndex > 0}
                   canNext={currentIndex !== -1 && currentIndex < remaining.length - 1}
                   onMove={move}
-                  onBack={() =>
-                    navigate('assessment/batch-reviews', { params: { batchId: batch.id } })
-                  }
+                  onBack={backToQueue}
                   onQueue={() => setQueueOpen(true)}
                   onKeys={() => setKeysOpen((open) => !open)}
                 />
@@ -1340,12 +1349,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
                         {format(m.reviewGoneNext)}
                       </Button>
                     ) : (
-                      <Button
-                        size="sm"
-                        onClick={() =>
-                          navigate('assessment/batch-reviews', { params: { batchId: batch.id } })
-                        }
-                      >
+                      <Button size="sm" onClick={backToQueue}>
                         {format(m.reviewGoneFinish)}
                       </Button>
                     )}
@@ -1918,11 +1922,14 @@ function KeysPanel({ onClose }: { onClose: () => void }) {
 /** the run is over: what was decided, and where to go next (1g) */
 function DoneScreen({
   batchId,
+  onBack,
   log,
   startedAt,
   inboxRows,
 }: {
   batchId: string
+  /** back to the queue as it was left */
+  onBack: () => void
   log: readonly SessionEntry[]
   startedAt: number
   inboxRows: readonly InboxItemDto[]
@@ -1981,10 +1988,7 @@ function DoneScreen({
               {format(m.reviewDoneNext, { title: next[1].title, count: next[1].rows.length })}
             </Button>
           )}
-          <Button
-            variant="outline"
-            onClick={() => navigate('assessment/batch-reviews', { params: { batchId } })}
-          >
+          <Button variant="outline" onClick={onBack}>
             {format(m.reviewDoneBack)}
           </Button>
           <span {...stylex.props(styles.keysSpacer)} />

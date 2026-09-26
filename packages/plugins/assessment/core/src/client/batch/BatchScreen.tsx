@@ -182,7 +182,8 @@ export function BatchScreen({
 }: {
   /** which of the batch's pages this is; the bar above says which batch */
   title: string
-  description?: string
+  /** what the section says about itself under its name: a line of words, or a line of facts */
+  description?: ReactNode
   /** what the section says about itself beside its name, at a glance */
   actions?: ReactNode
   size?: 'default' | 'wide' | 'full'

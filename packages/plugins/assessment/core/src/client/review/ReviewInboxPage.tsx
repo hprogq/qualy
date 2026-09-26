@@ -1,14 +1,19 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useLocation, useNavigate } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { FileTextIcon, SearchIcon, ShieldIcon } from 'lucide-react'
-import { useApiQuery, usePageNavigate, usePageQueryState } from '@qualy/web-runtime'
+import {
+  useApiQuery,
+  usePageNavigate,
+  usePageQueryState,
+  usePageQueryUpdate,
+  usePageRouteParams,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { AsyncSection } from '@qualy/ui/admin'
-import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
-import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
@@ -25,23 +30,18 @@ import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { AwaitingSection } from './AwaitingSection.tsx'
 import { useAwaitingQuery, useQueueRefresh, useReviewQueueQuery } from './queue.ts'
 import { useDraftSweep } from './use-draft.ts'
-import {
-  groupByDay,
-  groupByItem,
-  groupByPerson,
-  matchesSearch,
-  rowSummary,
-  timeLabel,
-  clockLabel,
-  writeRunScope,
-  type InboxItemDto,
-} from './model.ts'
-import { useBatchZone } from '../batch/zone.ts'
+import { useBeside } from './pointer.ts'
+import { rememberQueuePlace } from './queue-place.ts'
+import { ItemQueue, PersonQueue, QueueSkeleton, TimeQueue } from './QueueViews.tsx'
+import { matchesSearch, pageNumberOf, type InboxItemDto } from './model.ts'
 
 // The queue, laid out three ways: by question so one standard is applied in
 // a row, by submitted time to clear a backlog oldest first, by participant
 // so one person's duplicates sit next to each other. Every row opens the
 // same workbench; the layout only decides which rows it walks in a run.
+//
+// How much is waiting, and the way to start on it, stand in the band above:
+// they are about the whole queue, whichever way it is laid out below.
 
 const md = '@media (min-width: 768px)'
 
@@ -66,10 +66,9 @@ const styles = stylex.create({
     gap: 16,
   },
   // One register per breakpoint. On a phone the row is the segmented switch
-  // and one search key - the two selects and the counters are desktop
-  // instruments, and stacked together here they were a wall of controls
-  // above three rows of work. On a desk the row is exactly what it was:
-  // everything at tab height, side by side.
+  // and one search key - the selects are desktop instruments, and stacked
+  // together here they were a wall of controls above three rows of work. On
+  // a desk everything stands at tab height, side by side.
   controls: {
     display: 'flex',
     flexDirection: 'column',
@@ -92,8 +91,6 @@ const styles = stylex.create({
   seekKeyOpen: {
     backgroundColor: tokens.surfaceMuted,
   },
-  // every control on this row is the same height as the tabs beside it: a
-  // row of filters that do not line up reads as two rows
   deskOnly: {
     display: {
       default: 'none',
@@ -134,381 +131,36 @@ const styles = stylex.create({
       [md]: 'none',
     },
   },
-  spacer: {
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
-  },
-  // the same three numbers the desk keeps at the row's end, as one quiet
-  // line: a phone without them made the two registers count different things
-  phoneStats: {
-    display: {
-      default: 'flex',
-      [md]: 'none',
-    },
-    flexWrap: 'wrap',
-    alignItems: 'baseline',
-    columnGap: 6,
-    fontSize: 12,
-    color: tokens.mutedForeground,
-  },
-  phoneStatNum: {
-    fontWeight: 500,
-    color: tokens.foreground,
-    fontVariantNumeric: 'tabular-nums',
-  },
-  stats: {
-    display: 'flex',
-    alignItems: 'flex-end',
-    gap: 20,
-  },
-  stat: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'flex-end',
-    gap: 2,
-  },
-  statLabel: {
-    fontSize: 12,
-    whiteSpace: 'nowrap',
-    color: tokens.mutedForeground,
-  },
-  statValue: {
-    fontSize: 16,
-    lineHeight: 1,
-    fontWeight: 600,
-    fontVariantNumeric: 'tabular-nums',
-  },
-  quietFiled: {
-    color: tokens.mutedForeground,
-  },
   noMatches: {
-    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
+    borderRadius: 14,
+    backgroundColor: tokens.surface,
+    boxShadow: `0 0 0 1px ${tokens.border}`,
     paddingInline: 20,
     paddingBlock: 16,
     fontSize: 14,
     color: tokens.mutedForeground,
   },
-  groups: {
+  // ---- how much is waiting, in the band ----
+  standing: {
     display: 'flex',
-    flexDirection: 'column',
-    gap: 16,
-  },
-  groupFrame: {
-    overflow: 'hidden',
-    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
-  },
-  groupHead: {
-    display: 'flex',
+    minWidth: 0,
     flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: tokens.border,
-    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
-    paddingInline: 16,
-    paddingBlock: 10,
-  },
-  groupHeadTight: {
-    paddingBlock: 8,
-  },
-  groupTitle: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontSize: 14,
-    fontWeight: 600,
-  },
-  groupTitleNums: {
+    columnGap: { default: 10, [breakpoints.phone]: 14 },
+    rowGap: 2,
     fontVariantNumeric: 'tabular-nums',
   },
-  groupCount: {
-    fontSize: 12,
-    whiteSpace: 'nowrap',
-    color: tokens.mutedForeground,
-  },
-  personAvatar: {
-    width: 28,
-    height: 28,
-  },
-  personInitial: {
-    fontSize: 12,
-  },
-  personUnit: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontSize: 12,
-    color: tokens.mutedForeground,
-  },
-  /** the column names, which name nothing once the columns are gone */
-  head: {
-    display: {
-      default: 'grid',
-      [breakpoints.phone]: 'none',
-    },
-    alignItems: 'center',
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: tokens.border,
-    paddingInline: 16,
-    paddingBlock: 6,
-    fontSize: 12,
-    color: tokens.mutedForeground,
-  },
-  headValues: {
-    display: 'flex',
-    minWidth: 0,
-    gap: 12,
-  },
-  /**
-   * One queued filing.
-   *
-   * A table of columns where there is room for one, and two lines where
-   * there is not: who and when on the first, what they filed on the second.
-   * The track widths are inline, so narrow says flex instead of overriding
-   * them - a grid told 11rem of name on a 390px screen has nowhere to put
-   * the rest of the row, and the whole queue leaves the side of the phone.
-   */
-  row: {
-    display: {
-      default: 'grid',
-      [breakpoints.phone]: 'flex',
-    },
-    width: '100%',
-    cursor: 'pointer',
-    alignItems: 'center',
-    gap: {
-      default: null,
-      [breakpoints.tablet]: 12,
-      [breakpoints.desktop]: 12,
-    },
-    flexWrap: {
-      default: null,
-      [breakpoints.phone]: 'wrap',
-    },
-    columnGap: {
-      default: null,
-      [breakpoints.phone]: 8,
-    },
-    rowGap: {
-      default: null,
-      [breakpoints.phone]: 4,
-    },
-    borderBottomWidth: {
-      default: 1,
-      ':last-child': 0,
-    },
-    borderBottomStyle: 'solid',
-    borderBottomColor: tokens.border,
-    paddingInline: 16,
-    paddingBlock: 10,
-    textAlign: 'left',
-    fontSize: 14,
-    transitionProperty: 'color, background-color',
-    backgroundColor: {
-      default: 'transparent',
-      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
-    },
-  },
-  /** what drops to a line of its own under the row's first line */
-  wraps: {
-    order: {
-      default: null,
-      [breakpoints.phone]: 9999,
-    },
-    flexBasis: {
-      default: null,
-      [breakpoints.phone]: '100%',
-    },
-  },
-  who: {
-    display: 'flex',
-    minWidth: 0,
-    alignItems: 'baseline',
-    gap: 8,
-    flexGrow: {
-      default: null,
-      [breakpoints.phone]: 1,
-    },
-  },
-  whoName: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontWeight: 500,
-  },
-  whoNo: {
+  standingPart: { display: 'inline-flex', alignItems: 'center', gap: 10 },
+  // a phone's line wraps, and a rule carried to the start of the next line
+  // separates nothing; there the gap alone parts them
+  standingRule: {
+    display: { default: null, [breakpoints.phone]: 'none' },
+    width: 1,
+    height: 12,
     flexShrink: 0,
-    fontSize: 12,
-    color: tokens.mutedForeground,
-    fontVariantNumeric: 'tabular-nums',
+    backgroundColor: `color-mix(in oklab, ${tokens.foreground} 14%, transparent)`,
   },
-  values: {
-    display: 'flex',
-    minWidth: 0,
-    gap: 12,
-  },
-  value: {
-    minWidth: 0,
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  when: {
-    fontSize: 12,
-    whiteSpace: 'nowrap',
-    color: tokens.mutedForeground,
-    fontVariantNumeric: 'tabular-nums',
-  },
-  titleCell: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  titleCellGrows: {
-    flexGrow: {
-      default: null,
-      [breakpoints.phone]: 1,
-    },
-  },
-  titleCellStrong: {
-    fontWeight: 500,
-  },
-  summaryCell: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    color: tokens.mutedForeground,
-  },
-  filesCell: {
-    fontSize: 12,
-    whiteSpace: 'nowrap',
-    color: tokens.mutedForeground,
-  },
-  chipCell: {
-    display: 'flex',
-    justifyContent: 'flex-end',
-  },
-  // ---- the queue's own shape, greyed ----
-  skColumn: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 16,
-  },
-  skControls: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-  },
-  skTabs: { height: 36, width: 232, display: { default: 'block', [breakpoints.phone]: 'none' } },
-  skGroupHead: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: tokens.border,
-    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
-    paddingInline: 16,
-    paddingBlock: 10,
-  },
-  skGroupTitle: { height: 16 },
-  skGroupKey: { height: 28, width: 104, flexShrink: 0 },
-  skSearch: {
-    height: 36,
-    width: 288,
-    flexGrow: {
-      default: null,
-      [breakpoints.phone]: 1,
-    },
-  },
-  skFilter: {
-    height: 36,
-    width: 112,
-    display: {
-      default: 'block',
-      [breakpoints.phone]: 'none',
-    },
-  },
-  skSpacer: {
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
-    display: {
-      default: 'block',
-      [breakpoints.phone]: 'none',
-    },
-  },
-  skStats: {
-    height: 36,
-    width: 160,
-    display: {
-      default: 'block',
-      [breakpoints.phone]: 'none',
-    },
-  },
-  skFrame: {
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'hidden',
-    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
-  },
-  skRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 16,
-    borderTopWidth: {
-      default: 1,
-      ':first-child': 0,
-    },
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.border,
-    paddingInline: 16,
-    paddingBlock: 14,
-  },
-  skName: {
-    height: 16,
-    width: 96,
-    flexShrink: 0,
-  },
-  skValue: {
-    height: 16,
-  },
-  skWhen: {
-    marginLeft: 'auto',
-    height: 16,
-    width: 56,
-    flexShrink: 0,
-    display: {
-      default: 'block',
-      [breakpoints.phone]: 'none',
-    },
-  },
-  skChip: {
-    height: 32,
-    width: 64,
-    flexShrink: 0,
-  },
+  standingBones: { height: 14, width: 200, marginBlock: 3 },
   // ---- a quiet day, said in full ----
   emptyScreen: {
     display: 'flex',
@@ -563,48 +215,18 @@ const styles = stylex.create({
 
 type View = 'item' | 'time' | 'person' | 'asked'
 
-export default function ReviewInboxPage() {
-  const { format } = useI18n()
-  const [view, setView] = usePageQueryState('view', 'item')
-  return (
-    <BatchScreen title={format(m.reviewTab)} description={format(m.reviewHint)} size="wide">
-      {(batch) =>
-        batch.capabilities.review ? (
-          <Queue batchId={batch.id} view={(view as View) || 'item'} onView={setView} />
-        ) : (
-          // said as what it is: no standing here, not an empty queue -
-          // pretending otherwise makes permission problems look like quiet
-          // days
-          <EmptyScreen
-            state="no-standing"
-            icon={<ShieldIcon aria-hidden className={stylex.props(styles.emptyIcon).className} />}
-            title={format(m.reviewNoRoleTitle)}
-            body={format(m.reviewNoStandingHint)}
-          />
-        )
-      }
-    </BatchScreen>
-  )
-}
+const VIEWS: readonly View[] = ['item', 'time', 'person', 'asked']
 
-function Queue({
-  batchId,
-  view,
-  onView,
-}: {
-  batchId: string
-  view: View
-  onView: (next: string) => void
-}) {
+const viewOf = (raw: string): View =>
+  (VIEWS as readonly string[]).includes(raw) ? (raw as View) : 'item'
+
+/**
+ * Everything waiting for this reader's decision in the round, and what their
+ * step has asked somebody else for: read whole, kept current by the batch's
+ * wake-ups, and read at all only by somebody who reviews here.
+ */
+function useQueue(batchId: string, reviewing: boolean) {
   const query = useApiQuery(assessmentApi)
-  const { format, formatError } = useI18n()
-  useDraftSweep()
-  const [itemFilter, setItemFilter] = usePageQueryState('item')
-  const [unitFilter, setUnitFilter] = usePageQueryState('unit')
-  const [search, setSearch] = usePageQueryState('q')
-  // the phone's search input stands behind its key; a search already typed
-  // (arriving via the address) keeps the input on show
-  const [seeking, setSeeking] = useState(search !== '')
   const queryClient = useQueryClient()
   // queue changes arrive as wake-ups; the poll below is the fallback pace
   const refreshQueue = useQueueRefresh(batchId)
@@ -625,28 +247,200 @@ function Queue({
   })
   const inbox = useQuery({
     ...useReviewQueueQuery(batchId),
+    enabled: reviewing,
     refetchInterval: live ? 60_000 : 30_000,
   })
-  // the same read the section below makes; one request either way, and the
-  // header can say how much is out with somebody else without owning the list
+  // what is out with somebody else, counted beside what can be decided now
   const asked = useQuery({
     ...useAwaitingQuery(batchId),
+    enabled: reviewing,
     refetchInterval: live ? 60_000 : 30_000,
   })
-  const awaiting = asked.data?.items.length ?? 0
   const all = useMemo(
     () => (inbox.data?.items ?? []).filter((item) => item.batchId === batchId),
     [inbox.data, batchId],
   )
+  return { inbox, asked, all, awaiting: asked.data?.items.length ?? 0 }
+}
+
+type Queue = ReturnType<typeof useQueue>
+
+/** opens a filing from the queue, remembering where in the queue it was opened from */
+function useOpenRow(batchId: string) {
+  const navigate = usePageNavigate()
+  const location = useLocation()
+  return (row: InboxItemDto, run: string) => {
+    rememberQueuePlace(batchId, location.search)
+    navigate('assessment/review-instance', {
+      params: { batchId, instanceId: row.instanceId },
+      search: run === '' ? {} : { run },
+    })
+  }
+}
+
+export default function ReviewInboxPage() {
+  const { format } = useI18n()
+  const { batchId } = usePageRouteParams('batchId')
+  const query = useApiQuery(assessmentApi)
+  const [view] = usePageQueryState('view', 'item')
+  // the batch the screen below reads, from the same cache: only somebody who
+  // reviews here is asked about a queue
+  const standing = useQuery({
+    ...query.assessment.getBatch.queryOptions({ params: { batchId } }),
+    staleTime: 30_000,
+  })
+  const reviewing = standing.data?.batch.capabilities.review === true
+  const queue = useQueue(batchId, reviewing)
+  const open = useOpenRow(batchId)
+  const first = queue.all[0]
+  return (
+    <BatchScreen
+      title={format(m.reviewTab)}
+      description={
+        // held open while the batch is read, so the line arriving does not
+        // push the page down under the reader
+        standing.isPending ? (
+          <Skeleton className={stylex.props(styles.standingBones).className} />
+        ) : reviewing ? (
+          <QueueStanding queue={queue} />
+        ) : undefined
+      }
+      actions={
+        // the whole queue from its oldest filing: the way in for somebody
+        // who only wants to get through what is waiting
+        reviewing && first !== undefined ? (
+          <Button data-testid="review-start" onClick={() => open(first, '')}>
+            {format(m.reviewRunStart)}
+          </Button>
+        ) : undefined
+      }
+      size="wide"
+    >
+      {(batch) =>
+        batch.capabilities.review ? (
+          <QueueBody batchId={batch.id} view={viewOf(view)} queue={queue} onOpen={open} />
+        ) : (
+          // said as what it is: no standing here, not an empty queue -
+          // pretending otherwise makes permission problems look like quiet
+          // days
+          <EmptyScreen
+            state="no-standing"
+            icon={<ShieldIcon aria-hidden className={stylex.props(styles.emptyIcon).className} />}
+            title={format(m.reviewNoRoleTitle)}
+            body={format(m.reviewNoStandingHint)}
+          />
+        )
+      }
+    </BatchScreen>
+  )
+}
+
+/**
+ * How much is waiting, how much this reader moved today, and how much is out
+ * with somebody else - one line under the page's name. The last only where
+ * there is any: a zero there is a fact nobody asked for.
+ */
+function QueueStanding({ queue }: { queue: Queue }) {
+  const { format } = useI18n()
+  if (queue.inbox.data === undefined) {
+    return queue.inbox.isPending ? (
+      <Skeleton className={stylex.props(styles.standingBones).className} />
+    ) : null
+  }
+  const pending = queue.all.length
+  const today = queue.inbox.data.handledToday
+  const parts: ReactNode[] = [
+    format(m.reviewGroupCount, { count: pending }),
+    format(m.reviewStandingToday, { count: today }),
+    ...(queue.awaiting > 0 ? [format(m.reviewStandingAwaiting, { count: queue.awaiting })] : []),
+  ]
+  return (
+    <span
+      data-testid="review-stats"
+      data-pending={pending}
+      data-today={today}
+      data-awaiting={queue.awaiting}
+      {...stylex.props(styles.standing)}
+    >
+      {parts.map((part, index) => (
+        <span key={index} {...stylex.props(styles.standingPart)}>
+          {index > 0 && <span aria-hidden {...stylex.props(styles.standingRule)} />}
+          <span>{part}</span>
+        </span>
+      ))}
+    </span>
+  )
+}
+
+function QueueBody({
+  batchId,
+  view,
+  queue,
+  onOpen,
+}: {
+  batchId: string
+  view: View
+  queue: Queue
+  onOpen: (row: InboxItemDto, run: string) => void
+}) {
+  const { format, formatError } = useI18n()
+  const beside = useBeside()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const update = usePageQueryUpdate()
+  useDraftSweep()
+  const [itemKey] = usePageQueryState('item')
+  const [personKey] = usePageQueryState('person')
+  const [unitFilter] = usePageQueryState('unit')
+  const [search] = usePageQueryState('q')
+  const [pageRaw] = usePageQueryState('page')
+  const page = pageNumberOf(pageRaw)
+  // the phone's search input stands behind its key; a search already typed
+  // (arriving via the address) keeps the input on show
+  const [seeking, setSeeking] = useState(search !== '')
+
+  // the way back to the queue finds it where it was left
+  useEffect(() => {
+    rememberQueuePlace(batchId, location.search)
+  }, [batchId, location.search])
+
+  /** any narrowing of the queue starts it again from its first page */
+  const narrow = (changes: Record<string, string>, history: 'replace' | 'push' = 'replace') =>
+    update({ ...changes, page: '' }, { history })
+
+  // Narrow, picking a question or a person is a step into its own screen,
+  // and the back key is how anybody leaves one. The way back drawn above
+  // the list goes back over that same step where this sitting took it, so
+  // the list is not left in the history twice.
+  const steppedIn = useRef(false)
+  const choose = (key: 'item' | 'person', value: string) => {
+    if (beside) {
+      narrow({ [key]: value })
+      return
+    }
+    steppedIn.current = true
+    narrow({ [key]: value }, 'push')
+  }
+  const back = (key: 'item' | 'person') => {
+    if (steppedIn.current) {
+      steppedIn.current = false
+      void navigate(-1)
+      return
+    }
+    narrow({ [key]: '' })
+  }
+
+  const all = queue.all
   const rows = useMemo(
     () =>
       all.filter(
         (row) =>
-          (itemFilter === '' || row.itemId === itemFilter) &&
+          // each narrowing only where its control stands
+          (view !== 'time' || itemKey === '' || row.itemId === itemKey) &&
           (unitFilter === '' || row.unitId === unitFilter) &&
           matchesSearch(row, search.trim()),
       ),
-    [all, itemFilter, unitFilter, search],
+    [all, view, itemKey, unitFilter, search],
   )
   const itemOptions = useMemo(
     () =>
@@ -666,55 +460,21 @@ function Queue({
         .sort(([, a], [, b]) => a.localeCompare(b)),
     [all],
   )
+  const onPage = (next: number) => update({ page: next === 1 ? '' : String(next) })
+  const onSearch = (value: string) => narrow({ q: value })
 
   return (
     <AsyncSection
-      pending={inbox.isPending}
+      pending={queue.inbox.isPending}
       // a read that failed only in the background keeps the queue it last
       // showed: the page is somebody's place in their work
-      error={inbox.data === undefined && inbox.error ? formatError(inbox.error) : null}
+      error={
+        queue.inbox.data === undefined && queue.inbox.error ? formatError(queue.inbox.error) : null
+      }
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
-      onRetry={() => void inbox.refetch()}
-      skeleton={
-        // The queue's own shape, greyed: the switch and the controls above,
-        // then work in the groups it actually arrives in - a heading with a
-        // count and its rows under it. One anonymous slab, or a flat list
-        // where the page draws grouped frames, says the page is simpler than
-        // what lands a moment later.
-        <div {...stylex.props(styles.skColumn)}>
-          <div {...stylex.props(styles.skControls)}>
-            <Skeleton className={stylex.props(styles.skTabs).className} />
-            <Skeleton className={stylex.props(styles.skSearch).className} />
-            <Skeleton className={stylex.props(styles.skFilter).className} />
-            <span {...stylex.props(styles.skSpacer)} />
-            <Skeleton className={stylex.props(styles.skStats).className} />
-          </div>
-          {[
-            ['38%', ['33%', '50%', '40%']],
-            ['26%', ['45%', '30%']],
-          ].map(([title, widths], group) => (
-            <div key={group} {...stylex.props(styles.skFrame)}>
-              <div {...stylex.props(styles.skGroupHead)}>
-                <Skeleton
-                  className={stylex.props(styles.skGroupTitle).className}
-                  style={{ width: title as string }}
-                />
-                <span {...stylex.props(styles.skSpacer)} />
-                <Skeleton className={stylex.props(styles.skGroupKey).className} />
-              </div>
-              {(widths as string[]).map((width, index) => (
-                <div key={index} {...stylex.props(styles.skRow)}>
-                  <Skeleton className={stylex.props(styles.skName).className} />
-                  <Skeleton className={stylex.props(styles.skValue).className} style={{ width }} />
-                  <Skeleton className={stylex.props(styles.skWhen).className} />
-                  <Skeleton className={stylex.props(styles.skChip).className} />
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-      }
+      onRetry={() => void queue.inbox.refetch()}
+      skeleton={<QueueSkeleton />}
       xstyle={styles.fill}
     >
       <div {...stylex.props(styles.queue)}>
@@ -723,7 +483,7 @@ function Queue({
             <Tabs
               variant="segmented"
               value={view}
-              onValueChange={onView}
+              onValueChange={(next) => update({ view: next === 'item' ? '' : next, page: '' })}
               xstyle={styles.viewsField}
             >
               <TabsList>
@@ -737,7 +497,7 @@ function Queue({
                     opening. */}
                 <TabsTrigger value="asked">
                   {format(m.reviewAwaitingTab)}
-                  {awaiting > 0 && <Count>{awaiting}</Count>}
+                  {queue.awaiting > 0 && <Count>{queue.awaiting}</Count>}
                 </TabsTrigger>
               </TabsList>
             </Tabs>
@@ -753,24 +513,26 @@ function Queue({
                 <VisuallyHidden>{format(m.reviewSearchPlaceholder)}</VisuallyHidden>
               </Button>
             )}
-            <div {...stylex.props(styles.deskOnly)}>
-              {view !== 'person' && view !== 'asked' && (
-                <Filter
-                  label={format(m.reviewFilterAllItems)}
-                  value={itemFilter}
-                  options={itemOptions}
-                  onChange={setItemFilter}
-                />
-              )}
-              {view !== 'time' && view !== 'asked' && unitOptions.length > 0 && (
-                <Filter
-                  label={format(m.reviewFilterAllUnits)}
-                  value={unitFilter}
-                  options={unitOptions}
-                  onChange={setUnitFilter}
-                />
-              )}
-              {view !== 'asked' && (
+            {view !== 'asked' && (
+              <div {...stylex.props(styles.deskOnly)}>
+                {/* by question the list beside the filings is the question
+                    picker; by time a question is one more narrowing */}
+                {view === 'time' && (
+                  <Filter
+                    label={format(m.reviewFilterAllItems)}
+                    value={itemKey}
+                    options={itemOptions}
+                    onChange={(next) => narrow({ item: next })}
+                  />
+                )}
+                {unitOptions.length > 0 && (
+                  <Filter
+                    label={format(m.reviewFilterAllUnits)}
+                    value={unitFilter}
+                    options={unitOptions}
+                    onChange={(next) => narrow({ unit: next })}
+                  />
+                )}
                 <div {...stylex.props(styles.searchSeat)}>
                   <SearchIcon aria-hidden className={stylex.props(styles.searchIcon).className} />
                   <Input
@@ -779,32 +541,12 @@ function Queue({
                     className={stylex.props(styles.searchInput).className}
                     value={search}
                     placeholder={format(m.reviewSearchPlaceholder)}
-                    onChange={(event) => setSearch(event.target.value)}
+                    onChange={(event) => onSearch(event.target.value)}
                   />
                 </div>
-              )}
-              <span {...stylex.props(styles.spacer)} />
-              <Stats
-                pending={all.length}
-                handledToday={inbox.data?.handledToday ?? 0}
-                awaiting={awaiting}
-              />
-            </div>
-          </div>
-          <p {...stylex.props(styles.phoneStats)}>
-            <span>{format(m.reviewStatPending)}</span>
-            <span {...stylex.props(styles.phoneStatNum)}>{all.length}</span>
-            {awaiting > 0 && (
-              <>
-                <span aria-hidden>　</span>
-                <span>{format(m.reviewAwaitingTab)}</span>
-                <span {...stylex.props(styles.phoneStatNum)}>{awaiting}</span>
-              </>
+              </div>
             )}
-            <span aria-hidden>　</span>
-            <span>{format(m.reviewStatToday)}</span>
-            <span {...stylex.props(styles.phoneStatNum)}>{inbox.data?.handledToday ?? 0}</span>
-          </p>
+          </div>
           {seeking && view !== 'asked' && (
             <div {...stylex.props(styles.phoneSearchSeat)}>
               <SearchIcon aria-hidden className={stylex.props(styles.searchIcon).className} />
@@ -815,7 +557,7 @@ function Queue({
                 className={stylex.props(styles.searchInputWide).className}
                 value={search}
                 placeholder={format(m.reviewSearchPlaceholder)}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => onSearch(event.target.value)}
               />
             </div>
           )}
@@ -824,12 +566,12 @@ function Queue({
         {/* the awaiting view is its own room; the queue's empty states are
             about the queue alone, so all-done gets its whole screen back */}
         {view === 'asked' ? (
-          <AwaitingSection batchId={batchId} />
+          <AwaitingSection batchId={batchId} page={page} onPage={onPage} />
         ) : all.length === 0 ? (
           // a phase that keeps judging shut empties the queue however much
           // is waiting, and nothing will arrive until it opens: that is not
           // a quiet day, and promising new work would be wrong
-          inbox.data?.judging === false ? (
+          queue.inbox.data?.judging === false ? (
             <EmptyScreen
               state="closed"
               icon={
@@ -840,12 +582,12 @@ function Queue({
             />
           ) : // two different quiet days: everything handled, or nothing has
           // arrived yet. The counter is what tells them apart
-          (inbox.data?.handledToday ?? 0) > 0 ? (
+          (queue.inbox.data?.handledToday ?? 0) > 0 ? (
             <EmptyScreen
               state="done"
               mark={<DoneMark />}
               title={format(m.reviewAllDoneTitle)}
-              body={format(m.reviewAllDoneBody, { count: inbox.data?.handledToday ?? 0 })}
+              body={format(m.reviewAllDoneBody, { count: queue.inbox.data?.handledToday ?? 0 })}
             />
           ) : (
             <EmptyScreen
@@ -858,308 +600,34 @@ function Queue({
             />
           )
         ) : rows.length === 0 ? (
-          <p {...stylex.props(styles.noMatches)}>{format(m.reviewMatchesNone)}</p>
+          <p data-testid="review-no-matches" {...stylex.props(styles.noMatches)}>
+            {format(m.reviewMatchesNone)}
+          </p>
         ) : view === 'item' ? (
-          <ByItem batchId={batchId} rows={rows} />
+          <ItemQueue
+            rows={rows}
+            chosen={itemKey}
+            page={page}
+            onChoose={(itemId) => choose('item', itemId)}
+            onBack={() => back('item')}
+            onPage={onPage}
+            onOpen={onOpen}
+          />
         ) : view === 'time' ? (
-          <ByTime batchId={batchId} rows={rows} />
+          <TimeQueue rows={rows} page={page} onPage={onPage} onOpen={onOpen} />
         ) : (
-          <ByPerson batchId={batchId} rows={rows} />
+          <PersonQueue
+            rows={rows}
+            chosen={personKey}
+            page={page}
+            onChoose={(key) => choose('person', key)}
+            onBack={() => back('person')}
+            onPage={onPage}
+            onOpen={onOpen}
+          />
         )}
       </div>
     </AsyncSection>
-  )
-}
-
-/** how much is waiting and how much moved, beside the filters they describe */
-function Stats({
-  pending,
-  handledToday,
-  awaiting,
-}: {
-  pending: number
-  handledToday: number
-  /** out with somebody else; shown only when there is any, never as a zero */
-  awaiting: number
-}) {
-  const { format } = useI18n()
-  return (
-    <div
-      {...stylex.props(styles.stats)}
-      data-testid="review-stats"
-      data-pending={pending}
-      data-awaiting={awaiting}
-    >
-      <Stat label={format(m.reviewStatPending)} value={pending} />
-      {awaiting > 0 && <Stat label={format(m.reviewAwaitingTitle)} value={awaiting} />}
-      <Stat label={format(m.reviewStatToday)} value={handledToday} />
-    </div>
-  )
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <span {...stylex.props(styles.stat)}>
-      <span {...stylex.props(styles.statLabel)}>{label}</span>
-      <span {...stylex.props(styles.statValue)}>{value}</span>
-    </span>
-  )
-}
-
-/**
- * One answer in a list cell.
- *
- * A field that asks for files is a field: it keeps its own column under its
- * own name and says how many were filed under it. Folding every such field
- * into a single "materials" count at the end of the row made "the
- * certificate" and "a photo of the ceremony" into the same fact.
- */
-function FiledValue({ pair }: { pair: InboxItemDto['values'][number] }) {
-  const { format } = useI18n()
-  if (pair.files === null) return <>{pair.value}</>
-  return (
-    <span {...stylex.props(pair.files === 0 && styles.quietFiled)}>
-      {format(m.reviewFilesCount, { count: pair.files })}
-    </span>
-  )
-}
-
-/** where the round stands, as one small chip on the row */
-function StateChip({ row }: { row: InboxItemDto }) {
-  const { format } = useI18n()
-  if (row.route === 'escalation') {
-    return <Badge variant="outline">{format(m.reviewStateEscalated)}</Badge>
-  }
-  if (row.roundNo > 1) {
-    return <Badge variant="outline">{format(m.reviewStateRound, { round: row.roundNo })}</Badge>
-  }
-  return <Badge variant="secondary">{format(m.reviewStateWaiting)}</Badge>
-}
-
-function useOpenRow(batchId: string) {
-  const navigate = usePageNavigate()
-  return (row: InboxItemDto, run: string) =>
-    navigate('assessment/review-instance', {
-      params: { batchId, instanceId: row.instanceId },
-      search: run === '' ? {} : { run },
-    })
-}
-
-function ByItem({ batchId, rows }: { batchId: string; rows: readonly InboxItemDto[] }) {
-  const { format, locale } = useI18n()
-  const zone = useBatchZone()
-  const open = useOpenRow(batchId)
-  const groups = groupByItem(rows)
-  return (
-    <div {...stylex.props(styles.groups)}>
-      {groups.map((group) => {
-        const run = writeRunScope({ kind: 'item', itemId: group.itemId })
-        return (
-          <section key={group.itemId} {...stylex.props(styles.groupFrame)}>
-            <header {...stylex.props(styles.groupHead)}>
-              <h3 {...stylex.props(styles.groupTitle)}>{group.itemTitle}</h3>
-              <span {...stylex.props(styles.groupCount)}>
-                {format(m.reviewGroupCount, { count: group.rows.length })}
-              </span>
-              <span {...stylex.props(styles.spacer)} />
-              <Button size="sm" variant="outline" onClick={() => open(group.rows[0]!, run)}>
-                {/* the words alone: how many are waiting is said on the
-                    line above, and the key that starts them is a shortcut
-                    for somebody who already knows the bench */}
-                {format(m.reviewRunStart)}
-              </Button>
-            </header>
-            <div {...stylex.props(styles.head)} style={{ gridTemplateColumns: GRID_ITEM }}>
-              <span>{format(m.reviewColumnParticipant)}</span>
-              <span {...stylex.props(styles.headValues)}>
-                {group.columns.map((column, index) => (
-                  <span key={index} {...stylex.props(styles.value)}>
-                    {column}
-                  </span>
-                ))}
-              </span>
-              <span>{format(m.reviewColumnWhen)}</span>
-              <span />
-            </div>
-            <ul>
-              {group.rows.map((row) => (
-                <li key={row.instanceId}>
-                  <button
-                    type="button"
-                    {...stylex.props(styles.row)}
-                    style={{ gridTemplateColumns: GRID_ITEM }}
-                    onClick={() => open(row, run)}
-                  >
-                    <span {...stylex.props(styles.who)}>
-                      <span {...stylex.props(styles.whoName)}>{row.participantName}</span>
-                      {row.businessNo !== null && (
-                        <span {...stylex.props(styles.whoNo)}>{row.businessNo}</span>
-                      )}
-                    </span>
-                    <span {...stylex.props(styles.values, styles.wraps)}>
-                      {row.values.map((pair, index) => (
-                        <span key={index} {...stylex.props(styles.value)}>
-                          <FiledValue pair={pair} />
-                        </span>
-                      ))}
-                    </span>
-                    <span {...stylex.props(styles.when)}>
-                      {timeLabel(row.submittedAt, locale, zone)}
-                    </span>
-                    <span {...stylex.props(styles.chipCell)}>
-                      <StateChip row={row} />
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )
-      })}
-    </div>
-  )
-}
-
-const GRID_ITEM = '11rem minmax(0,1fr) 7rem 6rem'
-const GRID_TIME = '4rem 11rem 12rem minmax(0,1fr) 6rem'
-const GRID_PERSON = '12rem minmax(0,1fr) 4rem 7rem 6rem'
-
-function ByTime({ batchId, rows }: { batchId: string; rows: readonly InboxItemDto[] }) {
-  const { format, locale } = useI18n()
-  const zone = useBatchZone()
-  const open = useOpenRow(batchId)
-  const days = groupByDay(rows, zone)
-  return (
-    <div {...stylex.props(styles.groups)}>
-      {days.map((day) => (
-        <section key={day.day} {...stylex.props(styles.groupFrame)}>
-          <header {...stylex.props(styles.groupHead)}>
-            <h3 {...stylex.props(styles.groupTitle, styles.groupTitleNums)}>{day.day}</h3>
-            <span {...stylex.props(styles.groupCount)}>
-              {format(m.reviewGroupCount, { count: day.rows.length })}
-            </span>
-          </header>
-          <div {...stylex.props(styles.head)} style={{ gridTemplateColumns: GRID_TIME }}>
-            <span>{format(m.reviewColumnTime)}</span>
-            <span>{format(m.reviewColumnParticipant)}</span>
-            <span>{format(m.reviewColumnItem)}</span>
-            <span>{format(m.reviewColumnSummary)}</span>
-            <span />
-          </div>
-          <ul>
-            {day.rows.map((row) => (
-              <li key={row.instanceId}>
-                <button
-                  type="button"
-                  {...stylex.props(styles.row)}
-                  style={{ gridTemplateColumns: GRID_TIME }}
-                  onClick={() => open(row, '')}
-                >
-                  <span {...stylex.props(styles.when)}>
-                    {clockLabel(row.submittedAt, locale, zone)}
-                  </span>
-                  <span {...stylex.props(styles.who)}>
-                    <span {...stylex.props(styles.whoName)}>{row.participantName}</span>
-                    {row.businessNo !== null && (
-                      <span {...stylex.props(styles.whoNo)}>{row.businessNo}</span>
-                    )}
-                  </span>
-                  <span {...stylex.props(styles.titleCell, styles.titleCellGrows)}>
-                    {row.itemTitle}
-                  </span>
-                  <span {...stylex.props(styles.summaryCell, styles.wraps)}>{rowSummary(row)}</span>
-                  <span {...stylex.props(styles.chipCell)}>
-                    <StateChip row={row} />
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
-    </div>
-  )
-}
-
-function ByPerson({ batchId, rows }: { batchId: string; rows: readonly InboxItemDto[] }) {
-  const { format, locale } = useI18n()
-  const zone = useBatchZone()
-  const open = useOpenRow(batchId)
-  const people = groupByPerson(rows)
-  return (
-    <div {...stylex.props(styles.groups)}>
-      {people.map((person) => {
-        const run = writeRunScope({ kind: 'person', businessNo: person.key })
-        return (
-          <section key={person.key} {...stylex.props(styles.groupFrame)}>
-            <header {...stylex.props(styles.groupHead, styles.groupHeadTight)}>
-              <Avatar className={stylex.props(styles.personAvatar).className}>
-                <AvatarFallback className={stylex.props(styles.personInitial).className}>
-                  {person.name.slice(0, 1)}
-                </AvatarFallback>
-              </Avatar>
-              <h3 {...stylex.props(styles.groupTitle)}>{person.name}</h3>
-              {person.businessNo !== null && (
-                <span {...stylex.props(styles.whoNo)}>{person.businessNo}</span>
-              )}
-              {person.unitName !== null && (
-                <span {...stylex.props(styles.personUnit)}>{person.unitName}</span>
-              )}
-              <span {...stylex.props(styles.spacer)} />
-              <span {...stylex.props(styles.groupCount)}>
-                {format(m.reviewGroupCount, { count: person.rows.length })}
-              </span>
-              <Button size="sm" variant="outline" onClick={() => open(person.rows[0]!, run)}>
-                {/* the words alone: how many are waiting is said on the
-                    line above, and the key that starts them is a shortcut
-                    for somebody who already knows the bench */}
-                {format(m.reviewRunStart)}
-              </Button>
-            </header>
-            <div {...stylex.props(styles.head)} style={{ gridTemplateColumns: GRID_PERSON }}>
-              <span>{format(m.reviewColumnItem)}</span>
-              <span>{format(m.reviewColumnSummary)}</span>
-              <span>{format(m.reviewColumnWhen)}</span>
-              <span />
-            </div>
-            <ul>
-              {person.rows.map((row) => (
-                <li key={row.instanceId}>
-                  <button
-                    type="button"
-                    {...stylex.props(styles.row)}
-                    style={{ gridTemplateColumns: GRID_PERSON }}
-                    onClick={() => open(row, run)}
-                  >
-                    <span
-                      {...stylex.props(
-                        styles.titleCell,
-                        styles.titleCellStrong,
-                        styles.titleCellGrows,
-                      )}
-                    >
-                      {row.itemTitle}
-                    </span>
-                    <span {...stylex.props(styles.summaryCell, styles.wraps)}>
-                      {rowSummary(row)}
-                    </span>
-                    <span {...stylex.props(styles.filesCell)}>
-                      {format(m.reviewFilesCount, { count: row.attachmentCount })}
-                    </span>
-                    <span {...stylex.props(styles.when)}>
-                      {timeLabel(row.submittedAt, locale, zone)}
-                    </span>
-                    <span {...stylex.props(styles.chipCell)}>
-                      <StateChip row={row} />
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )
-      })}
-    </div>
   )
 }
 

@@ -1471,10 +1471,6 @@ const i18n = definePluginMessages({
       defaultMessage: 'You may not make administrative records in this batch.',
     },
     reviewTab: { id: 'assessment/review/tab', defaultMessage: 'Review' },
-    reviewHint: {
-      id: 'assessment/review/hint',
-      defaultMessage: 'Submissions awaiting your review, oldest first.',
-    },
     reviewColumnItem: { id: 'assessment/review/column-item', defaultMessage: 'Item' },
     reviewColumnWho: { id: 'assessment/review/column-who', defaultMessage: 'Applicant' },
     reviewColumnStatus: { id: 'assessment/review/column-status', defaultMessage: 'Status' },
@@ -3116,13 +3112,33 @@ const i18n = definePluginMessages({
     },
     reviewSayTitle: { id: 'assessment/review/say-title', defaultMessage: 'Review note' },
     // the review queue, laid out three ways
-    reviewStatPending: { id: 'assessment/review/stat-pending', defaultMessage: 'Awaiting review' },
-    reviewStatToday: { id: 'assessment/review/stat-today', defaultMessage: 'Reviewed today' },
+    reviewStandingToday: {
+      id: 'assessment/review/standing-today',
+      defaultMessage: '{count} reviewed today',
+    },
+    reviewStandingAwaiting: {
+      id: 'assessment/review/standing-awaiting',
+      defaultMessage: '{count} awaiting material',
+    },
+    reviewMasterItems: { id: 'assessment/review/master-items', defaultMessage: 'Items' },
+    reviewAllPeople: { id: 'assessment/review/all-people', defaultMessage: 'All participants' },
+    reviewOldest: { id: 'assessment/review/oldest', defaultMessage: 'Oldest {when}' },
+    reviewStartItem: { id: 'assessment/review/start-item', defaultMessage: 'Review this item' },
+    reviewStartPerson: {
+      id: 'assessment/review/start-person',
+      defaultMessage: 'Review this participant',
+    },
+    reviewColumnFiles: { id: 'assessment/review/column-files', defaultMessage: 'Materials' },
+    reviewPagerLabel: { id: 'assessment/review/pager', defaultMessage: 'Pages of the queue' },
+    reviewPageSummary: {
+      id: 'assessment/review/page-summary',
+      defaultMessage: '{from}–{to} of {total}',
+    },
     reviewTabByItem: { id: 'assessment/review/tab-by-item', defaultMessage: 'By item' },
-    reviewTabByTime: { id: 'assessment/review/tab-by-time', defaultMessage: 'By submission time' },
+    reviewTabByTime: { id: 'assessment/review/tab-by-time', defaultMessage: 'By time' },
     reviewTabByPerson: {
       id: 'assessment/review/tab-by-person',
-      defaultMessage: 'By participant',
+      defaultMessage: 'By person',
     },
     reviewFilterAllItems: {
       id: 'assessment/review/filter-all-items',
@@ -3138,7 +3154,7 @@ const i18n = definePluginMessages({
     },
     reviewMatchesNone: {
       id: 'assessment/review/matches-none',
-      defaultMessage: 'No pending submissions match the current filters.',
+      defaultMessage: 'No pending submissions match these filters',
     },
     reviewGroupCount: {
       id: 'assessment/review/group-count',
@@ -3148,19 +3164,17 @@ const i18n = definePluginMessages({
       id: 'assessment/review/column-participant',
       defaultMessage: 'Participant',
     },
-    reviewColumnTime: { id: 'assessment/review/column-time', defaultMessage: 'Time' },
     reviewColumnSummary: { id: 'assessment/review/column-summary', defaultMessage: 'Summary' },
     reviewColumnState: { id: 'assessment/review/column-state', defaultMessage: 'Status' },
-    reviewStateWaiting: {
-      id: 'assessment/review/state-waiting',
-      defaultMessage: 'Awaiting review',
-    },
     reviewStateRound: { id: 'assessment/review/state-round', defaultMessage: 'Round {round}' },
     reviewStateEscalated: {
       id: 'assessment/review/state-escalated',
       defaultMessage: 'Under escalation review',
     },
-    reviewFilesCount: { id: 'assessment/review/files-count', defaultMessage: '{count} files' },
+    reviewFilesCount: {
+      id: 'assessment/review/files-count',
+      defaultMessage: '{count, plural, one {# file} other {# files}}',
+    },
     reviewNoStandingHint: {
       id: 'assessment/review/no-standing-hint',
       defaultMessage: 'Contact a batch administrator to be assigned an appropriate review role.',
@@ -3241,6 +3255,7 @@ const i18n = definePluginMessages({
     },
     reviewKeyQueue: { id: 'assessment/review/key-queue', defaultMessage: 'Pending reviews' },
     timeYesterday: { id: 'assessment/time/yesterday', defaultMessage: 'Yesterday' },
+    timeYesterdayAt: { id: 'assessment/time/yesterday-at', defaultMessage: 'Yesterday {time}' },
     entrySubmittedToast: {
       id: 'assessment/entry/submitted-toast',
       defaultMessage: 'Submitted for review.',
@@ -3798,11 +3813,6 @@ const i18n = definePluginMessages({
     reviewAwaitingBack: {
       id: 'assessment/review/awaiting-back',
       defaultMessage: '{count} completed',
-    },
-    reviewAwaitingNote: {
-      id: 'assessment/review/awaiting-note',
-      defaultMessage:
-        'Not included in the pending review count; completed submissions return to the review queue',
     },
     reviewAwaitingColAsk: {
       id: 'assessment/review/awaiting-col-ask',

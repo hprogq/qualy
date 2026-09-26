@@ -5,11 +5,12 @@ import { usePageNavigate } from '@qualy/web-runtime'
 import { useI18n, useList } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
+import { Card } from '@qualy/ui/screen'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
-import { timeLabel, useHowLongAgo, type AwaitingDto } from './model.ts'
-import { useBatchZone } from '../batch/zone.ts'
+import { pageOf, useHowLongAgo, useQueueClock, type AwaitingDto } from './model.ts'
 import { useAwaitingQuery } from './queue.ts'
+import { PagerFoot } from './QueueViews.tsx'
 
 // What this reviewer's step is waiting on somebody else for.
 //
@@ -25,35 +26,28 @@ import { useAwaitingQuery } from './queue.ts'
 
 const lg = '@media (min-width: 1024px)'
 
+/** asks to a page, the same as a question's filings */
+const ASKED_PAGE = 10
+
 const styles = stylex.create({
   empty: {
-    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
+    borderRadius: 14,
+    backgroundColor: tokens.surface,
+    boxShadow: `0 0 0 1px ${tokens.border}`,
     paddingInline: 20,
     paddingBlock: 16,
     fontSize: 14,
     color: tokens.mutedForeground,
-  },
-  section: {
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'hidden',
-    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
   },
   head: {
     display: 'flex',
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: 10,
+    minHeight: 42,
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
-    borderBottomColor: tokens.border,
-    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
+    borderBottomColor: tokens.divider,
     paddingInline: 16,
     paddingBlock: 10,
   },
@@ -69,24 +63,23 @@ const styles = stylex.create({
     fontSize: 12,
     color: tokens.mutedForeground,
   },
-  spacer: {
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
-  },
+  // the queue tables' own grey head strip
   columns: {
     display: {
       default: 'none',
       [lg]: 'grid',
     },
-    gridTemplateColumns: '10rem minmax(0, 1fr) 9rem 9rem 7rem 6rem',
+    gridTemplateColumns: '10rem minmax(0, 1fr) 9rem 9rem 8rem 6rem',
+    alignItems: 'center',
     gap: 12,
+    height: 32,
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
-    borderBottomColor: tokens.border,
+    borderBottomColor: tokens.divider,
+    backgroundColor: tokens.surfaceInset,
     paddingInline: 16,
-    paddingBlock: 8,
-    fontSize: 12,
+    fontSize: 11,
+    fontWeight: 500,
     color: tokens.mutedForeground,
   },
   list: {
@@ -101,7 +94,7 @@ const styles = stylex.create({
     flexDirection: 'column',
     gridTemplateColumns: {
       default: null,
-      [lg]: '10rem minmax(0, 1fr) 9rem 9rem 7rem 6rem',
+      [lg]: '10rem minmax(0, 1fr) 9rem 9rem 8rem 6rem',
     },
     alignItems: {
       default: null,
@@ -120,7 +113,7 @@ const styles = stylex.create({
       ':last-child': 0,
     },
     borderBottomStyle: 'solid',
-    borderBottomColor: tokens.border,
+    borderBottomColor: tokens.divider,
     borderLeftWidth: 2,
     borderLeftStyle: 'solid',
     paddingInline: 16,
@@ -318,7 +311,15 @@ const styles = stylex.create({
   },
 })
 
-export function AwaitingSection({ batchId }: { batchId: string }) {
+export function AwaitingSection({
+  batchId,
+  page,
+  onPage,
+}: {
+  batchId: string
+  page: number
+  onPage: (page: number) => void
+}) {
   const { format } = useI18n()
   const navigate = usePageNavigate()
   const howLongAgo = useHowLongAgo()
@@ -333,9 +334,10 @@ export function AwaitingSection({ batchId }: { batchId: string }) {
     return <p {...stylex.props(styles.empty)}>{format(m.reviewAwaitingEmpty)}</p>
   }
   const answered = rows.filter((row) => row.status === 'answered').length
+  const list = pageOf(rows, page, ASKED_PAGE)
 
   return (
-    <section {...stylex.props(styles.section)}>
+    <Card data-testid="awaiting-pane" data-count={rows.length}>
       <header {...stylex.props(styles.head)}>
         <p {...stylex.props(styles.headTitle)}>{format(m.reviewAwaitingTitle)}</p>
         <Badge variant="outline" className={stylex.props(styles.countBadge).className}>
@@ -346,8 +348,6 @@ export function AwaitingSection({ batchId }: { batchId: string }) {
             {format(m.reviewAwaitingBack, { count: answered })}
           </p>
         )}
-        <span {...stylex.props(styles.spacer)} />
-        <p {...stylex.props(styles.quietNote)}>{format(m.reviewAwaitingNote)}</p>
       </header>
 
       {/* the same column names the queue uses, so the two read as one table
@@ -362,7 +362,7 @@ export function AwaitingSection({ batchId }: { batchId: string }) {
       </div>
 
       <ul {...stylex.props(styles.list)}>
-        {rows.map((row) => (
+        {list.rows.map((row) => (
           <AwaitingRow
             key={row.requestId}
             row={row}
@@ -375,7 +375,8 @@ export function AwaitingSection({ batchId }: { batchId: string }) {
           />
         ))}
       </ul>
-    </section>
+      <PagerFoot list={list} size={ASKED_PAGE} onPage={onPage} anchor="awaiting-pane" />
+    </Card>
   )
 }
 
@@ -388,8 +389,8 @@ function AwaitingRow({
   howLongAgo: (iso: string) => string
   onOpen: () => void
 }) {
-  const { format, locale } = useI18n()
-  const zone = useBatchZone()
+  const { format } = useI18n()
+  const clock = useQueueClock()
   const listJoin = useList()
   const answered = row.status === 'answered'
   return (
@@ -435,7 +436,7 @@ function AwaitingRow({
         <span aria-hidden {...stylex.props(styles.dotSep)}>
           　
         </span>
-        <span {...stylex.props(styles.askedAt)}>{timeLabel(row.requestedAt, locale, zone)}</span>
+        <span {...stylex.props(styles.askedAt)}>{clock(row.requestedAt)}</span>
         <span {...stylex.props(styles.mobileSpacer)} />
         <span {...stylex.props(styles.openSeat)}>
           {/* one way in either way: the round is where both the answer and

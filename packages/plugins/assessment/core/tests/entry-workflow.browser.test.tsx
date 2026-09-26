@@ -2310,8 +2310,12 @@ describe('judging a submission', () => {
     )
 
     // the queue shows this batch's work and nobody else's
-    await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
+    await expect.element(page.getByRole('button', { name: /退役复学/ })).toBeVisible()
     expect(page.getByText('不该出现').elements()).toHaveLength(0)
+
+    // on a phone the question is a step in from the list of questions
+    await page.getByRole('button', { name: /退役复学/ }).click()
+    await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
 
     // the row itself opens the workbench; the filed answer stands under its
     // own label in the reading pane

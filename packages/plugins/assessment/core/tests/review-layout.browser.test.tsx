@@ -5,7 +5,7 @@ import { UNNAMED } from '../src/client/roster/unit-path.ts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect, Stream } from 'effect'
-import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 // The only suite that needs the real stylesheet: what it asserts is which
 // parts a width shows, and without the sheet every breakpoint is the same
 // screen. Test files run in their own frame, so this stays here.
@@ -155,7 +155,7 @@ const inboxRow = (over: Record<string, unknown> = {}) => ({
   ...over,
 })
 
-const queue = (inbox?: Record<string, unknown>) =>
+const queue = (inbox?: Record<string, unknown>, search = '') =>
   renderScreen({
     client: fakeClient({
       app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
@@ -176,7 +176,7 @@ const queue = (inbox?: Record<string, unknown>) =>
     routes: [
       { path: '/assessment/batches/:batchId/reviews', element: <ReviewInboxPage /> },
     ] as never,
-    route: `/assessment/batches/${BATCH_ID}/reviews`,
+    route: `/assessment/batches/${BATCH_ID}/reviews${search}`,
   })
 
 const open = (stubs: Record<string, unknown> = {}) =>
@@ -365,7 +365,8 @@ describe('one workbench, three widths', () => {
 
   it('keeps the queue inside the width it is given', async () => {
     await page.viewport(390, 844)
-    await queue()
+    // a phone opens on the list of questions; the filings are a step in
+    await queue(undefined, `?item=${ITEM_ID}`)
     await expect.element(page.getByText('周予安').first()).toBeVisible()
     // A table of fixed tracks is 11rem of name before anything else on a
     // 390px screen, and the rest of the row runs off the end of it. The
@@ -997,6 +998,174 @@ describe('a queue longer than one page', () => {
 
     // the queue it had stands; the page is not swapped for an error
     await expect.element(page.getByTestId('review-stats')).toHaveAttribute('data-pending', '2')
+  })
+})
+
+// The queue a page at a time: by question the questions stand in a list
+// beside one question's filings, ten to a page, the page in the address; a
+// run started from a page still walks the whole question, and the way back
+// from the workbench finds the queue where it was left.
+describe('the queue, a page at a time', () => {
+  const OTHER_ITEM = '66666666-6666-4666-8666-666666666666'
+  const rowId = (n: number) => `aaaaaaaa-aaaa-4aaa-8aaa-${String(n).padStart(12, '0')}`
+  /** a question with `count` filings, arriving a minute apart from `from` */
+  const filings = (count: number, from: number, over: Record<string, unknown> = {}) =>
+    Array.from({ length: count }, (_, index) =>
+      inboxRow({
+        instanceId: rowId(from + index),
+        participantName: `参评人${String(from + index)}`,
+        businessNo: `20230${String(from + index).padStart(5, '0')}`,
+        submittedAt: new Date(Date.UTC(2026, 2, 3, 0, from + index)).toISOString(),
+        ...over,
+      }),
+    )
+  // the api serves the queue oldest first: the long question arrived first
+  const both = () => [
+    ...filings(23, 0),
+    ...filings(2, 100, { itemId: OTHER_ITEM, itemTitle: '志愿服务时长' }),
+  ]
+  const inboxOf = (items: readonly Record<string, unknown>[]) => ({
+    items,
+    nextCursor: null,
+    handledToday: 4,
+    judging: true,
+  })
+  const withBench = (items: readonly Record<string, unknown>[], search = '') =>
+    renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+        assessment: {
+          getBatch: () => Effect.succeed({ batch: batch() }),
+          listReviewInbox: () => Effect.succeed(inboxOf(items)),
+          listAwaitingSupplements: () => Effect.succeed({ items: [], nextCursor: null }),
+          getReviewInstance: () => Effect.succeed({ review }),
+          getEntryHistory: () => Effect.succeed({ revisions: [], events: [], rounds: [] }),
+        },
+      }),
+      routes: [
+        { path: '/assessment/batches/:batchId/reviews', element: <ReviewInboxPage /> },
+        {
+          path: '/assessment/batches/:batchId/reviews/:instanceId',
+          element: (
+            <div style={{ display: 'flex', height: '100dvh', flexDirection: 'column' }}>
+              <ReviewInstancePage />
+            </div>
+          ),
+        },
+      ] as never,
+      route: `/assessment/batches/${BATCH_ID}/reviews${search}`,
+    })
+  const masters = () => page.getByTestId('queue-master-row')
+  const rows = () => page.getByTestId('inbox-row')
+
+  afterEach(() => window.sessionStorage.clear())
+
+  it('lists the questions beside one question’s filings, ten to a page', async () => {
+    await page.viewport(1440, 900)
+    await queue(inboxOf(both()))
+    // every question with work, oldest first, and how much each holds
+    await expect.element(masters().first()).toHaveAttribute('data-key', ITEM_ID)
+    expect(
+      masters()
+        .elements()
+        .map((row) => row.getAttribute('data-count')),
+    ).toEqual(['23', '2'])
+    // at a desk the question that has waited longest is open without a press
+    await expect.element(page.getByTestId('queue-pane')).toHaveAttribute('data-key', ITEM_ID)
+    await expect.element(masters().first()).toHaveAttribute('data-selected', 'true')
+    expect(rows().elements()).toHaveLength(10)
+    const pager = page.getByTestId('review-queue-pager')
+    await expect.element(pager).toHaveAttribute('data-pages', '3')
+
+    await pager.getByRole('button', { name: '3' }).click()
+    await expect.element(rows().first()).toHaveAttribute('data-instance', rowId(20))
+    expect(rows().elements()).toHaveLength(3)
+    expect(addressNow()).toContain('page=3')
+
+    // another question starts from its own first page, and one page needs no strip
+    await masters().nth(1).click()
+    await expect.element(page.getByTestId('queue-pane')).toHaveAttribute('data-key', OTHER_ITEM)
+    expect(rows().elements()).toHaveLength(2)
+    expect(addressNow()).not.toContain('page=')
+    expect(page.getByTestId('review-queue-pager').elements()).toHaveLength(0)
+  })
+
+  // How much is waiting and how much moved today is about the whole queue,
+  // so it is said once, in the band, not beside the filters of one view.
+  it('says the whole queue’s standing in the band, whichever view is open', async () => {
+    await page.viewport(1440, 900)
+    await queue(inboxOf(both()), '?view=person')
+    const stats = page.getByTestId('batch-band').getByTestId('review-stats')
+    await expect.element(stats).toHaveAttribute('data-pending', '25')
+    await expect.element(stats).toHaveAttribute('data-today', '4')
+  })
+
+  // Every row of the queue is waiting; a word saying so on each of them was
+  // a column of noise. Only a round that is not simply waiting is marked.
+  it('marks only the rounds that are more than waiting', async () => {
+    await page.viewport(1440, 900)
+    await queue(
+      inboxOf([
+        ...filings(1, 0),
+        ...filings(1, 1, { route: 'escalation' }),
+        ...filings(1, 2, { roundNo: 2 }),
+      ]),
+    )
+    await expect.element(rows().first()).toBeVisible()
+    const marks = rows()
+      .elements()
+      .map((row) => row.querySelector('[data-testid="inbox-row-mark"]')?.getAttribute('data-mark'))
+    expect(marks).toEqual([undefined, 'escalated', 'round'])
+  })
+
+  it('walks the whole question from a page of it, and comes back to that page', async () => {
+    await page.viewport(1440, 900)
+    await withBench(both(), '?page=2')
+    await expect.element(page.getByTestId('review-queue-pager')).toHaveAttribute('data-page', '2')
+
+    // a row on the second page opens the run over the whole question
+    await rows().first().click()
+    await expect.element(page.getByTestId('queue-key')).toHaveAttribute('data-count', '23')
+
+    // and the way back finds the queue on the page it was left on
+    await page.getByTestId('queue-back').click()
+    await expect.element(page.getByTestId('review-queue-pager')).toHaveAttribute('data-page', '2')
+    await expect.element(page.getByTestId('queue-pane')).toHaveAttribute('data-key', ITEM_ID)
+  })
+
+  // The band's key is for somebody who only wants to get through what is
+  // waiting: the whole queue, from its oldest filing.
+  it('starts the whole queue from its oldest filing from the band', async () => {
+    await page.viewport(1440, 900)
+    await withBench(both(), `?item=${OTHER_ITEM}`)
+    await page.getByTestId('review-start').click()
+    await expect.element(page.getByTestId('queue-key')).toHaveAttribute('data-count', '25')
+  })
+
+  // Narrower than a desk the list and a question's filings are one screen
+  // after the other: the list first, the filings a step in, and back.
+  it('steps into a question and back out on a phone', async () => {
+    await page.viewport(390, 844)
+    await queue(inboxOf(both()))
+    await expect.element(masters().first()).toBeVisible()
+    expect(rows().elements()).toHaveLength(0)
+
+    await masters().nth(1).click()
+    await expect.element(page.getByTestId('queue-pane')).toHaveAttribute('data-key', OTHER_ITEM)
+    expect(rows().elements()).toHaveLength(2)
+
+    await page.getByTestId('queue-pane-back').click()
+    await expect.element(masters().first()).toBeVisible()
+    expect(page.getByTestId('queue-pane').elements()).toHaveLength(0)
+  })
+
+  it('lays the whole queue out by time, twenty to a page', async () => {
+    await page.viewport(1440, 900)
+    await queue(inboxOf(both()), '?view=time')
+    await expect.element(rows().first()).toHaveAttribute('data-instance', rowId(0))
+    expect(page.getByTestId('queue-master-row').elements()).toHaveLength(0)
+    expect(rows().elements()).toHaveLength(20)
+    await expect.element(page.getByTestId('review-queue-pager')).toHaveAttribute('data-total', '25')
   })
 })
 

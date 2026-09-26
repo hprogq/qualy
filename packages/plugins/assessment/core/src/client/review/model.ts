@@ -5,7 +5,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { answerOf, displayValueOf, fieldsOf } from '../entry/model.ts'
-import { calendarDaysBetween, dayKeyOf, inZone, useBatchZone, yearOf } from '../batch/zone.ts'
+import { calendarDaysBetween, inZone, useBatchZone, yearOf } from '../batch/zone.ts'
 
 // What the review screens agree on: the queue row, the three ways it is
 // laid out, and the run - the ordered slice of the queue a reviewer walks
@@ -62,7 +62,11 @@ export const runRows = (rows: readonly InboxItemDto[], scope: RunScope): readonl
       ? rows.filter((row) => (row.businessNo ?? row.participantName) === scope.businessNo)
       : rows
 
-/** one question's rows, keeping the queue's own order inside each group */
+/**
+ * One question's rows, keeping the queue's own order inside each group, and
+ * the groups in the order their oldest filing arrived: the question that has
+ * waited longest comes first.
+ */
 export interface ItemGroup {
   readonly itemId: string
   readonly itemTitle: string
@@ -84,26 +88,6 @@ export const groupByItem = (rows: readonly InboxItemDto[]): readonly ItemGroup[]
     columns: (group.rows[0]?.values ?? []).map((pair) => pair.label),
     rows: group.rows,
   }))
-}
-
-/** newest day first, oldest row first inside a day: clearing from the top clears the backlog */
-export interface DayGroup {
-  readonly day: string
-  readonly rows: readonly InboxItemDto[]
-}
-
-/** days are the batch's days (`zone`), the same days its "handled today" counts */
-export const groupByDay = (rows: readonly InboxItemDto[], zone?: string): readonly DayGroup[] => {
-  const groups = new Map<string, InboxItemDto[]>()
-  for (const row of rows) {
-    const day = dayKeyOf(Date.parse(row.submittedAt), zone)
-    const group = groups.get(day)
-    if (group === undefined) groups.set(day, [row])
-    else group.push(row)
-  }
-  return [...groups.entries()]
-    .sort(([a], [b]) => (a < b ? -1 : 1))
-    .map(([day, dayRows]) => ({ day, rows: dayRows }))
 }
 
 /** one person's whole pile, so their duplicates sit next to each other */
@@ -185,6 +169,15 @@ export const timeLabel = (iso: string, locale: string, zone?: string): string =>
 export const clockLabel = (iso: string, locale: string, zone?: string): string =>
   new Date(iso).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', ...inZone(zone) })
 
+/** a calendar day as a reader writes it: 9月24日, with the year only when it is not this one */
+const dayLabel = (at: Date, locale: string, zone?: string): string =>
+  at.toLocaleDateString(locale, {
+    ...(yearOf(at.getTime(), zone) === yearOf(Date.now(), zone) ? {} : { year: 'numeric' }),
+    month: 'short',
+    day: 'numeric',
+    ...inZone(zone),
+  })
+
 /**
  * A clock that admits which day it is.
  *
@@ -202,8 +195,65 @@ export function useDayClock(): (iso: string) => string {
     const days = calendarDaysBetween(at.getTime(), Date.now(), zone)
     if (days <= 0) return clockLabel(iso, locale, zone)
     if (days === 1) return format(m.timeYesterday)
-    return at.toLocaleDateString(locale, { month: '2-digit', day: '2-digit', ...inZone(zone) })
+    return dayLabel(at, locale, zone)
   }
+}
+
+/**
+ * When a filing arrived, as a column of the queue says it: the day and the
+ * minute, never the second. Today is the minute alone and yesterday is said
+ * as yesterday; a filing from another year gives its day and no minute,
+ * because by then the minute says nothing a reviewer acts on.
+ */
+export function useQueueClock(): (iso: string) => string {
+  const { format, locale } = useI18n()
+  const zone = useBatchZone()
+  return (iso: string) => {
+    const at = new Date(iso)
+    const days = calendarDaysBetween(at.getTime(), Date.now(), zone)
+    const time = clockLabel(iso, locale, zone)
+    if (days <= 0) return time
+    if (days === 1) return format(m.timeYesterdayAt, { time })
+    if (yearOf(at.getTime(), zone) !== yearOf(Date.now(), zone)) return dayLabel(at, locale, zone)
+    return `${dayLabel(at, locale, zone)} ${time}`
+  }
+}
+
+/**
+ * One page of a list the queue lays out, and where it stands.
+ *
+ * The queue is read whole (queue.ts), so its pages are cut here rather than
+ * asked for; a page past the end is the last page, the way the pager clamps
+ * it, so a list that shrank under the reader never shows an empty page.
+ */
+export const pageOf = <Row>(
+  rows: readonly Row[],
+  page: number,
+  size: number,
+): {
+  readonly rows: readonly Row[]
+  readonly page: number
+  readonly from: number
+  readonly to: number
+  readonly total: number
+} => {
+  const pages = Math.max(1, Math.ceil(rows.length / size))
+  const at = Math.min(Math.max(1, page), pages)
+  const start = (at - 1) * size
+  const shown = rows.slice(start, start + size)
+  return {
+    rows: shown,
+    page: at,
+    from: shown.length === 0 ? 0 : start + 1,
+    to: start + shown.length,
+    total: rows.length,
+  }
+}
+
+/** a page number as the address carries it; anything else is the first page */
+export const pageNumberOf = (raw: string): number => {
+  const read = Number(raw)
+  return Number.isInteger(read) && read >= 1 ? read : 1
 }
 
 /**
