@@ -12,7 +12,8 @@ import { answerOf, fieldsOf, type EntryDto, type ItemDto } from './model.ts'
 // back, giving it up - for a page other than the filing page that shows the
 // claim's drawer. Each is said out loud when it lands, and a refusal over the
 // claim's fields names those fields and what is wrong with each, since no
-// form is open to show them.
+// form is open to show them. Beside them, the look that marks a question's
+// news as seen.
 
 export type OwnStatus = 'in_review' | 'draft' | 'voided'
 
@@ -93,4 +94,39 @@ export function useOwnClaimActs({
   })
 
   return setStatus
+}
+
+/**
+ * The owner has seen what changed on one question.
+ *
+ * The same look the filing page records when a question is shown, for a
+ * page that shows the question's claims some other way: looking is not a
+ * business change, so the cached list is corrected in place and nothing is
+ * read again or announced.
+ */
+export function useMarkItemRead(batchId: string) {
+  const api = useApi(assessmentApi)
+  const query = useApiQuery(assessmentApi)
+  const run = useRunApi()
+  const queryClient = useQueryClient()
+  const listKey = query.assessment.listMyEntries.key({ params: { batchId }, query: {} })
+  return useMutation({
+    mutationFn: (itemId: string) =>
+      run(api.assessment.markMyEntryRead({ params: { batchId, itemId } })),
+    onSuccess: (_result, itemId) => {
+      queryClient.setQueryData(
+        listKey,
+        (old: { attention: { unreadItemIds: readonly string[] } } | undefined) =>
+          old === undefined
+            ? old
+            : {
+                ...old,
+                attention: {
+                  ...old.attention,
+                  unreadItemIds: old.attention.unreadItemIds.filter((id) => id !== itemId),
+                },
+              },
+      )
+    },
+  })
 }

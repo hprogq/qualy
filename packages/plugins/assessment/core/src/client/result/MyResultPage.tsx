@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -17,7 +17,7 @@ import type { EntryDto, FilingGateDto, ItemDto } from '../entry/model.ts'
 import { EntrySheet } from '../entry/EntrySheet.tsx'
 import { AppealDialog } from '../entry/AppealDialog.tsx'
 import { SupplementAnswerDialog } from '../entry/SupplementAnswerDialog.tsx'
-import { useOwnClaimActs } from '../entry/own-acts.ts'
+import { useMarkItemRead, useOwnClaimActs } from '../entry/own-acts.ts'
 import { entryLineOf } from '../entry/workspace/model.ts'
 import { useLineWords } from '../entry/workspace/calc.ts'
 import { useWorkspaceMode } from '../entry/workspace/layout.ts'
@@ -228,6 +228,14 @@ function Standing({
       : { entry, item, trail: trailOf(groups ?? [], item.scoreGroupId) }
   }, [detail, entries, questions, groups])
   const lingering = useLingering(detailed)
+  // A claim read in its drawer is its question looked at, as the filing page
+  // counts a question shown: what changed on it is no longer news there.
+  const markRead = useMarkItemRead(batchId).mutate
+  const unread = mine.data?.attention?.unreadItemIds
+  const reading = detailed?.item.id
+  useEffect(() => {
+    if (reading !== undefined && unread?.includes(reading) === true) markRead(reading)
+  }, [reading, unread, markRead])
   const [appealing, setAppealing] = useState<EntryDto | null>(null)
   const lingeringAppeal = useLingering(appealing)
   const [answering, setAnswering] = useState<EntryDto | null>(null)

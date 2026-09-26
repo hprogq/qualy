@@ -1540,6 +1540,35 @@ describe('a claim read in its drawer on the score page', () => {
     expect(addressNow()).toContain('entry=back')
   })
 
+  it('counts a claim read in its drawer as its question looked at', async () => {
+    await page.viewport(1440, 900)
+    const looked = vi.fn(() => Effect.succeed({ ok: true as const }))
+    const round = paper()
+    await screen(round, {
+      markMyEntryRead: looked,
+      listMyEntries: () =>
+        Effect.succeed({
+          participantId: PARTICIPANT_ID,
+          entries: round.entries,
+          nextCursor: null,
+          attention: { unreadItemIds: ['q'] },
+        }),
+    })
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
+    // the account on its own is not the claim read
+    expect(looked).not.toHaveBeenCalled()
+    await openClaim('back')
+    await vi.waitFor(() => expect(looked).toHaveBeenCalledOnce())
+    expect(looked).toHaveBeenCalledWith(
+      expect.objectContaining({ params: { batchId: BATCH_ID, itemId: 'q' } }),
+    )
+    // seen once, it is not news the next time either
+    await userEvent.keyboard('{Escape}')
+    await openClaim('sent')
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    expect(looked).toHaveBeenCalledOnce()
+  })
+
   it('keeps the claim open across a reload of the address', async () => {
     await page.viewport(390, 844)
     await renderScreen({
