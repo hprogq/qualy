@@ -529,6 +529,8 @@ const participantCandidateView = Schema.Struct({
   displayName: Schema.String,
   businessNo: Schema.NullOr(Schema.String),
   userTypeName: Schema.NullOr(Schema.String),
+  /** the unit they stand at, one the reader manages; the scope options name it */
+  orgNodeId: Schema.String,
   /** on the roster now, taken off it, or never on it */
   roster: Schema.NullOr(Schema.Literals(['active', 'excluded'])),
 })

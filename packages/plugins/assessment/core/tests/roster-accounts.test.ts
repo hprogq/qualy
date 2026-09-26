@@ -727,7 +727,7 @@ describe.runIf(postgresAvailable)('the people an administrator could add', () =>
               f.principal(f.reviewer),
             ),
           )
-          return { everyone, searched, inClass, reviewer }
+          return { everyone, searched, inClass, reviewer, classA: f.classA }
         }),
       ),
     )
@@ -745,6 +745,10 @@ describe.runIf(postgresAvailable)('the people an administrator could add', () =>
       'Reviewer',
       'Zhang San',
     ])
+    // where each of them stands, for the picker to spell the way down to it
+    expect(result.inClass.rows.map((row) => row.orgNodeId)).toEqual(
+      result.inClass.rows.map(() => result.classA),
+    )
     expect(errorOf<{ _tag: string }>(result.reviewer)?._tag).toBe('ACCESS_DENIED')
   })
 

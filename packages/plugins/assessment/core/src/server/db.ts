@@ -1850,6 +1850,7 @@ export const participantCandidatesPage = (
         'u.displayName',
         'u.businessNo',
         'ut.name as userTypeName',
+        'n.id as orgNodeId',
         'bp.status as roster',
       ])
       .orderBy('u.displayName')

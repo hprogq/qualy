@@ -1422,6 +1422,7 @@ export class Assessment extends Context.Service<
           displayName: string
           businessNo: string | null
           userTypeName: string | null
+          orgNodeId: string
           roster: string | null
         }[]
         total: number
@@ -7205,6 +7206,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             displayName: row.displayName,
             businessNo: row.businessNo,
             userTypeName: row.userTypeName,
+            orgNodeId: row.orgNodeId,
             roster: row.roster === 'active' || row.roster === 'excluded' ? row.roster : null,
           })),
           total: found.total,
