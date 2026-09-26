@@ -1103,6 +1103,34 @@ describe('the room the roster gives its rows', () => {
     expect(bandBeforeWaiting()).toBeGreaterThanOrEqual(0)
   })
 
+  // The words for a missing number run past the number's column in English;
+  // under the column's head a dash says it, and the words stay a hover and
+  // a reader away rather than cut off at the column's edge.
+  it('says a missing number with a dash that is never cut, the words a hover away', async () => {
+    await page.viewport(1440, 900)
+    await open(
+      {
+        listParticipantAccounts: (request: Request) =>
+          pageOf(request, [person(1), person(2, { businessNo: null })]),
+      },
+      undefined,
+      undefined,
+      'en-US',
+    )
+    await expect.poll(() => rows().elements().length).toBe(2)
+    const none = page.getByTestId('participant-no-number')
+    await expect.element(none).toBeVisible()
+    expect(none.elements()).toHaveLength(1)
+    const cell = none.element().parentElement!
+    // nothing of it runs past the column
+    expect(cell.scrollWidth).toBeLessThanOrEqual(cell.clientWidth)
+    // the eye gets a dash, a pointer and a reader the same words
+    const dash = none.element().querySelector('[aria-hidden="true"]')!
+    const heard = (none.element().textContent ?? '').replace(dash.textContent ?? '', '').trim()
+    expect(heard).not.toBe('')
+    expect(cell.getAttribute('title')).toBe(heard)
+  })
+
   it('widens the waiting column to at least the page’s longest answer', async () => {
     await open({
       listParticipantAccounts: (request: Request) =>

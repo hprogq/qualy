@@ -47,6 +47,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useIsBelow, useIsMobile } from '@qualy/ui/use-mobile'
 import { UnitPath } from '@qualy/ui/unit-path'
+import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { AddPeopleDialog } from '../roster/AddPeopleDialog.tsx'
 import { ImportDialog } from '../roster/ImportDialog.tsx'
 import { PlacementDialog, type PlacementDecision } from '../roster/PlacementDialog.tsx'
@@ -322,6 +323,8 @@ const styles = stylex.create({
   name: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   mark: { display: 'inline-flex', flexShrink: 0 },
   unitLine: { display: 'flex', minWidth: 0, fontWeight: 400 },
+  // a column's none, as light as the dash of a row with nothing waiting
+  none: { color: `color-mix(in oklab, ${tokens.mutedForeground} 55%, transparent)` },
   // the total's own edge, which is the row's: the digits of every row line
   // up against the menu, where the eye running down the column meets them
   scoreSeat: { display: 'flex', minWidth: 0, justifyContent: 'flex-end' },
@@ -950,8 +953,30 @@ export function ParticipantResultList({
                       </>
                     ) : (
                       <>
-                        <Cell lead numeric tone={row.businessNo === null ? 'quiet' : 'plain'}>
-                          {row.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
+                        {/* under its column's head a missing number is a
+                            dash, as a row with nothing waiting is: the words
+                            for it are longer than the column in some
+                            languages, and stay a hover and a reader away */}
+                        <Cell
+                          lead
+                          numeric
+                          tone={row.businessNo === null ? 'quiet' : 'plain'}
+                          title={
+                            row.businessNo === null
+                              ? format(m.noBusinessNoShort, { businessNo })
+                              : undefined
+                          }
+                        >
+                          {row.businessNo ?? (
+                            <span data-testid="participant-no-number">
+                              <span aria-hidden {...stylex.props(styles.none)}>
+                                —
+                              </span>
+                              <VisuallyHidden>
+                                {format(m.noBusinessNoShort, { businessNo })}
+                              </VisuallyHidden>
+                            </span>
+                          )}
                         </Cell>
                         <Cell tone="plain" unlabelled>
                           {who}
