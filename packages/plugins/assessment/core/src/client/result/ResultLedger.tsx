@@ -2051,12 +2051,14 @@ function Lines({
   // there would only repeat it
   const rest = !inPlace && all === null && toWaiting === null && item.aside > 0 ? toItem : null
   const goOn = () => {
+    // the reader's place moves to the first claim that was not there before,
+    // found by what it is rather than by where it falls among the rows
+    const next = claims[LINES_SHOWN]?.key
     setWhole(true)
-    // the reader's place moves to the first claim that was not there before
     requestAnimationFrame(() =>
-      seat.current
-        ?.querySelectorAll<HTMLElement>('[data-testid="ledger-line"]')
-        [LINES_SHOWN]?.focus({ preventScroll: true }),
+      [...(seat.current?.querySelectorAll<HTMLElement>('[data-line]') ?? [])]
+        .find((row) => row.dataset['line'] === next)
+        ?.focus({ preventScroll: true }),
     )
   }
   return (
@@ -2222,6 +2224,7 @@ function LineRow({
   const would = off && !closed && line.wouldCents !== null
   const unsent = claim?.status === 'draft'
   const data = {
+    'data-line': line.key,
     'data-line-kind': line.kind,
     'data-standing': line.standing,
     'data-revoked': line.revoked ? 'true' : undefined,
@@ -2340,7 +2343,9 @@ function LineRow({
       {cells}
     </button>
   ) : (
-    <div {...data} {...stylex.props(shape)}>
+    // a claim this reader cannot open still takes the reader's place when the
+    // list goes on past it
+    <div tabIndex={-1} {...data} {...stylex.props(shape)}>
       {cells}
     </div>
   )

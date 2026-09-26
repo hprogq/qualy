@@ -688,6 +688,37 @@ describe('the rows of the account', () => {
     expect(page.getByTestId('entries-page').elements()).toHaveLength(0)
   })
 
+  it('moves the reader to the first claim shown on, whatever rows before it are', async () => {
+    await page.viewport(1440, 900)
+    const paper = normal()
+    // a line of the account this reader cannot open, among the first six
+    const unopened = {
+      lineId: 'entry:unopened',
+      kind: 'entry' as const,
+      label: '志愿服务时长',
+      value: '0.00',
+      itemId: 'q7',
+    }
+    const lines = paper.result.lines
+    const at = lines.findIndex((one) => one.itemId === 'q7')
+    await screen({
+      ...paper,
+      result: { ...paper.result, lines: [...lines.slice(0, at), unopened, ...lines.slice(at)] },
+    })
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
+    const row = itemRow('q7')
+    await userEvent.click(row.querySelector('button[aria-expanded]') as HTMLElement)
+    const fold = row.querySelector('[data-testid="ledger-lines"]') as HTMLElement
+    await expect.poll(() => fold.getAttribute('data-open')).toBe('true')
+    // four still on their way, the one that cannot be opened, then the first
+    // on the account; the seventh claim is the second one approved
+    expect(fold.querySelector('[data-line="entry:unopened"]')?.tagName).toBe('DIV')
+    await userEvent.click(fold.querySelector('[data-testid="ledger-more"]') as HTMLElement)
+    await expect
+      .poll(() => (document.activeElement as HTMLElement | null)?.dataset['line'])
+      .toBe('entry:vol-1')
+  })
+
   it('lists what waits on the reader first, and opens it in place', async () => {
     await page.viewport(1440, 900)
     await screen(normal())
