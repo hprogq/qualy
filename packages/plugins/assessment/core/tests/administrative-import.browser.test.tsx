@@ -553,3 +553,80 @@ describe('importing a workbook of administrative records', () => {
     expect(addressNow()).toContain('tab=imports')
   })
 })
+
+// A record's facts are short - a number, a word for how it came in, a
+// name, a time - and stacked two to a column they spent a line's height
+// each. Across a wide screen a record, an act and an import are each one
+// line, under a head of as many columns; on a phone they stay a card.
+describe('the record book and its histories across a screen', () => {
+  const visible = (element: Element) =>
+    [...element.children].filter((child) => getComputedStyle(child).display !== 'none')
+  /** how far apart, top to bottom, the middles of a row's visible cells are */
+  const spread = (row: Element) => {
+    const middles = visible(row)
+      .filter((cell) => cell.getBoundingClientRect().height > 0)
+      .map((cell) => {
+        const box = cell.getBoundingClientRect()
+        return box.top + box.height / 2
+      })
+    return Math.max(...middles) - Math.min(...middles)
+  }
+  const act = {
+    id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    itemId: ITEM_ID,
+    itemTitle: '优秀学生干部',
+    targetKind: 'organization',
+    recordedCount: 12,
+    voidedCount: 2,
+    actorName: '张老师',
+    createdAt: '2026-09-16T10:22:00.000Z',
+  }
+  const tables = [
+    { tab: '', row: 'administrative-entry', list: 'administrative-entries' },
+    { tab: '?tab=acts', row: 'administrative-act', list: 'administrative-acts' },
+    { tab: '?tab=imports', row: 'administrative-import', list: 'administrative-imports' },
+  ] as const
+
+  it('waits for the record book in the shape of one line a record', async () => {
+    await page.viewport(1280, 800)
+    await open(base, { listAdministrativeEntries: () => Effect.never })
+    const bones = page.getByTestId('list-skeleton-row').first()
+    await expect.element(bones).toBeVisible()
+    expect(spread(bones.element())).toBeLessThan(4)
+    expect(
+      Math.max(...visible(bones.element()).map((cell) => cell.getBoundingClientRect().height)),
+    ).toBeLessThan(26)
+  })
+
+  for (const { tab, row, list } of tables) {
+    it(`draws ${list} one line a row at a desk, and as a card on a phone`, async () => {
+      await page.viewport(1280, 800)
+      try {
+        const screen = await open(`${base}${tab}`, {
+          listAdministrativeRecords: () => Effect.succeed({ items: [act], nextCursor: null }),
+        })
+        const line = page.getByTestId(row).first()
+        await expect.element(line).toBeVisible()
+        expect(spread(line.element())).toBeLessThan(4)
+        // and no cell is two facts stacked: every one of them is one line
+        const tallest = Math.max(
+          ...visible(line.element()).map((cell) => cell.getBoundingClientRect().height),
+        )
+        expect(tallest).toBeLessThan(26)
+        // a column head over every fact the row shows
+        const head = page.getByTestId(list).element().firstElementChild!
+        expect(visible(head)).toHaveLength(visible(line.element()).length)
+        screen.unmount()
+
+        await page.viewport(390, 800)
+        await open(`${base}${tab}`, {
+          listAdministrativeRecords: () => Effect.succeed({ items: [act], nextCursor: null }),
+        })
+        await expect.element(page.getByTestId(row).first()).toBeVisible()
+        expect(spread(page.getByTestId(row).first().element())).toBeGreaterThan(12)
+      } finally {
+        await page.viewport(1280, 800)
+      }
+    })
+  }
+})

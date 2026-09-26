@@ -33,6 +33,10 @@ import { useWhen } from '../when.ts'
 const PAGE = 30
 const wide = '@media (min-width: 900px)'
 
+// what it was, what it filled, what it comes to now, who, and when: one line
+// a record, the time at the right edge
+const WIDE_COLUMNS = 'minmax(0, 1.4fr) minmax(0, 1fr) 9rem minmax(4rem, 0.7fr) 7.5rem 1rem'
+
 const styles = stylex.create({
   card: {
     display: 'flex',
@@ -45,7 +49,7 @@ const styles = stylex.create({
   },
   head: {
     display: { default: 'none', [wide]: 'grid' },
-    gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr) 9rem 9rem 1rem',
+    gridTemplateColumns: WIDE_COLUMNS,
     columnGap: 12,
     alignItems: 'center',
     borderBottomWidth: 1,
@@ -63,7 +67,7 @@ const styles = stylex.create({
     width: '100%',
     gridTemplateColumns: {
       default: 'minmax(0, 1fr) 1rem',
-      [wide]: 'minmax(0, 1.4fr) minmax(0, 1fr) 9rem 9rem 1rem',
+      [wide]: WIDE_COLUMNS,
     },
     alignItems: 'center',
     columnGap: 12,
@@ -76,16 +80,18 @@ const styles = stylex.create({
       ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
     },
     paddingInline: 16,
-    paddingBlock: 12,
+    paddingBlock: { default: 12, [wide]: 11 },
     textAlign: 'start',
     cursor: 'pointer',
     transitionProperty: 'background-color',
   },
   // withdrawn whole: still on the page, no longer counting
   spent: { color: tokens.mutedForeground },
+  // Across, every cell takes the next column in the order it is written;
+  // narrow, each is put where the stacked card wants it.
   file: {
-    gridColumnStart: 1,
-    gridRowStart: 1,
+    gridColumnStart: { default: 1, [wide]: 'auto' },
+    gridRowStart: { default: 1, [wide]: 'auto' },
     display: 'flex',
     minWidth: 0,
     alignItems: 'center',
@@ -101,23 +107,18 @@ const styles = stylex.create({
     fontWeight: 500,
   },
   itemCell: {
-    gridColumnStart: { default: 1, [wide]: 2 },
-    gridRowStart: { default: 2, [wide]: 1 },
+    gridColumnStart: { default: 1, [wide]: 'auto' },
+    gridRowStart: { default: 2, [wide]: 'auto' },
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     fontSize: { default: 13, [wide]: 14 },
   },
-  // who brought it in and when, two lines on a wide screen
-  whenCell: {
-    display: { default: 'none', [wide]: 'flex' },
-    gridColumnStart: 3,
-    minWidth: 0,
-    flexDirection: 'column',
-    gap: 2,
-  },
-  actorLine: {
+  // who, and when at the right edge: columns of their own across, and on a
+  // phone the time joins the count for want of one
+  fact: {
+    display: { default: 'none', [wide]: 'block' },
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -125,16 +126,17 @@ const styles = stylex.create({
     fontSize: 13,
     color: tokens.mutedForeground,
   },
-  whenLine: {
-    fontSize: 12,
+  when: {
+    textAlign: 'end',
+    fontSize: 12.5,
     color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
     fontVariantNumeric: 'tabular-nums',
   },
   // what the file comes to now; narrow, the time joins it for want of a
   // column of its own
   standing: {
-    gridColumnStart: { default: 1, [wide]: 4 },
-    gridRowStart: { default: 3, [wide]: 1 },
+    gridColumnStart: { default: 1, [wide]: 'auto' },
+    gridRowStart: { default: 3, [wide]: 'auto' },
     display: 'flex',
     flexWrap: 'wrap',
     alignItems: 'center',
@@ -144,12 +146,13 @@ const styles = stylex.create({
     fontVariantNumeric: 'tabular-nums',
   },
   tick: { width: 1, height: 10, backgroundColor: tokens.divider },
+  headEnd: { textAlign: 'end' },
   phoneOnly: { display: { default: 'inline', [wide]: 'none' } },
   chevron: {
     width: 16,
     height: 16,
-    gridColumnStart: { default: 2, [wide]: 5 },
-    gridRowStart: 1,
+    gridColumnStart: { default: 2, [wide]: 'auto' },
+    gridRowStart: { default: 1, [wide]: 'auto' },
     gridRowEnd: { default: 'span 3', [wide]: 'auto' },
     color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
   },
@@ -209,7 +212,7 @@ export function AdministrativeImportHistory({
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
       onRetry={() => void history.refetch()}
-      skeleton={<ListSkeleton />}
+      skeleton={<ListSkeleton kind="history" />}
     >
       {rows.length === 0 ? (
         <ListEmpty
@@ -230,8 +233,9 @@ export function AdministrativeImportHistory({
             <div {...stylex.props(styles.head)} aria-hidden>
               <span>{format(m.importColumnFile)}</span>
               <span>{format(m.recordColumnItem)}</span>
-              <span>{format(m.recordColumnActor)}</span>
               <span>{format(m.importColumnStanding)}</span>
+              <span>{format(m.recordColumnActor)}</span>
+              <span {...stylex.props(styles.headEnd)}>{format(m.recordColumnWhen)}</span>
               <span />
             </div>
             {rows.map((row) => {
@@ -256,12 +260,6 @@ export function AdministrativeImportHistory({
                     </span>
                   </span>
                   <span {...stylex.props(styles.itemCell)}>{row.item.title}</span>
-                  <span {...stylex.props(styles.whenCell)}>
-                    <span {...stylex.props(styles.actorLine)}>
-                      {row.actor?.name ?? format(m.recordActorUnknown)}
-                    </span>
-                    <span {...stylex.props(styles.whenLine)}>{when}</span>
-                  </span>
                   <span {...stylex.props(styles.standing)}>
                     <span>{format(m.importStandingCount, { count: row.importedCount })}</span>
                     {row.standing.voided > 0 && (
@@ -275,6 +273,10 @@ export function AdministrativeImportHistory({
                     <span aria-hidden {...stylex.props(styles.tick, styles.phoneOnly)} />
                     <span {...stylex.props(styles.phoneOnly)}>{when}</span>
                   </span>
+                  <span {...stylex.props(styles.fact)}>
+                    {row.actor?.name ?? format(m.recordActorUnknown)}
+                  </span>
+                  <span {...stylex.props(styles.fact, styles.when)}>{when}</span>
                   <ChevronRightIcon aria-hidden {...stylex.props(styles.chevron)} />
                 </button>
               )

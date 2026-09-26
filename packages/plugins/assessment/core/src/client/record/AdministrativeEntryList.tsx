@@ -25,12 +25,14 @@ import { useWhen } from './when.ts'
 // product uses: white is the record, days are not grouped because a record
 // book is read by person and question rather than by when.
 //
-// One line answers four things at once - who, on what, where it stands, and
-// who settled it when - so on a wide screen each gets a column and the last
-// one hangs off the right edge, where a reader scanning for this morning's
-// work looks. Narrow, the same four stack into three lines with the standing
-// beside the name, because a column that has been squeezed to nothing is not
-// a column any more.
+// One line answers who, on what, how it came in, where it stands, and who
+// settled it when - so on a wide screen every fact gets a column of its own
+// and a record is one line, the time at the right edge where a reader
+// scanning for this morning's work looks. Two lines per record spent a
+// line's height on facts this short. Where the width runs out, how it came
+// in is the first to go; narrow, the facts stack into three lines with the
+// standing beside the name, because a column that has been squeezed to
+// nothing is not a column any more.
 //
 // A withdrawn record stays on the page and goes grey. It is still part of
 // what this round did, and greying the whole line says it no longer counts
@@ -38,6 +40,14 @@ import { useWhen } from './when.ts'
 
 const PAGE = 30
 const wide = '@media (min-width: 900px)'
+const wider = '@media (min-width: 1100px)'
+
+// name, number, item, standing, recorder, time - and how it came in, once
+// there is the room for it
+const WIDE_COLUMNS =
+  'minmax(5rem, 0.9fr) 7rem minmax(0, 1.6fr) 5.5rem minmax(4rem, 0.8fr) 7.5rem 1rem'
+const WIDER_COLUMNS =
+  'minmax(5rem, 0.9fr) 7rem minmax(0, 1.6fr) 5rem 5.5rem minmax(4rem, 0.8fr) 7.5rem 1rem'
 
 const styles = stylex.create({
   column: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 12 },
@@ -65,7 +75,7 @@ const styles = stylex.create({
   },
   head: {
     display: { default: 'none', [wide]: 'grid' },
-    gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1.2fr) 6.5rem 9rem 1rem',
+    gridTemplateColumns: { default: null, [wide]: WIDE_COLUMNS, [wider]: WIDER_COLUMNS },
     columnGap: 12,
     alignItems: 'center',
     borderBottomWidth: 1,
@@ -79,12 +89,14 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
   },
   headEnd: { textAlign: 'end' },
+  headWider: { display: { default: 'none', [wider]: 'block' } },
   row: {
     display: 'grid',
     width: '100%',
     gridTemplateColumns: {
       default: 'minmax(0, 1fr) auto 1rem',
-      [wide]: 'minmax(0, 1.3fr) minmax(0, 1.2fr) 6.5rem 9rem 1rem',
+      [wide]: WIDE_COLUMNS,
+      [wider]: WIDER_COLUMNS,
     },
     alignItems: 'center',
     columnGap: 12,
@@ -97,16 +109,18 @@ const styles = stylex.create({
       ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
     },
     paddingInline: 16,
-    paddingBlock: 12,
+    paddingBlock: { default: 12, [wide]: 11 },
     textAlign: 'start',
     cursor: 'pointer',
     transitionProperty: 'background-color',
   },
   // withdrawn: still on the page, no longer counting
   spent: { color: tokens.mutedForeground },
+  // Across, every cell takes the next column in the order it is written;
+  // narrow, each is put where the stacked card wants it.
   name: {
-    gridColumnStart: 1,
-    gridRowStart: 1,
+    gridColumnStart: { default: 1, [wide]: 'auto' },
+    gridRowStart: { default: 1, [wide]: 'auto' },
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -115,11 +129,11 @@ const styles = stylex.create({
     fontWeight: 500,
   },
   // number and how it arrived, joined by the time of it on a narrow screen
-  // where there is no column to put the time in
+  // where there is no column to put any of them in
   meta: {
-    gridColumn: { default: '1 / span 2', [wide]: '1' },
-    gridRowStart: { default: 3, [wide]: 2 },
-    display: 'flex',
+    gridColumn: '1 / span 2',
+    gridRowStart: 3,
+    display: { default: 'flex', [wide]: 'none' },
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: 8,
@@ -132,10 +146,9 @@ const styles = stylex.create({
     height: 10,
     backgroundColor: tokens.divider,
   },
-  phoneOnly: { display: { default: 'inline', [wide]: 'none' } },
   itemCell: {
-    gridColumn: { default: '1 / span 2', [wide]: '2' },
-    gridRow: { default: '2', [wide]: '1 / span 2' },
+    gridColumn: { default: '1 / span 2', [wide]: 'auto' },
+    gridRow: { default: '2', [wide]: 'auto' },
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -144,20 +157,12 @@ const styles = stylex.create({
   },
   standingSeat: {
     display: 'flex',
-    gridColumnStart: { default: 2, [wide]: 3 },
-    gridRow: { default: '1', [wide]: '1 / span 2' },
+    gridColumnStart: { default: 2, [wide]: 'auto' },
+    gridRow: { default: '1', [wide]: 'auto' },
   },
-  // who settled it and when, hung off the right edge
-  whenCell: {
-    display: { default: 'none', [wide]: 'flex' },
-    gridColumnStart: 4,
-    gridRow: '1 / span 2',
-    minWidth: 0,
-    flexDirection: 'column',
-    gap: 2,
-    textAlign: 'end',
-  },
-  actorLine: {
+  // a fact in a column of its own across; narrow it is on the meta line
+  fact: {
+    display: { default: 'none', [wide]: 'block' },
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -165,16 +170,20 @@ const styles = stylex.create({
     fontSize: 13,
     color: tokens.mutedForeground,
   },
-  whenLine: {
-    fontSize: 12,
+  factWider: { display: { default: 'none', [wider]: 'block' } },
+  number: { fontSize: 12.5, fontVariantNumeric: 'tabular-nums' },
+  // when, at the right edge
+  when: {
+    textAlign: 'end',
+    fontSize: 12.5,
     color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
     fontVariantNumeric: 'tabular-nums',
   },
   chevron: {
     width: 16,
     height: 16,
-    gridColumnStart: { default: 3, [wide]: 5 },
-    gridRow: { default: '1 / span 3', [wide]: '1 / span 2' },
+    gridColumnStart: { default: 3, [wide]: 'auto' },
+    gridRow: { default: '1 / span 3', [wide]: 'auto' },
     color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
   },
   empty: {
@@ -264,16 +273,28 @@ export function AdministrativeEntryList({
             <div {...stylex.props(styles.card)} data-testid="administrative-entries">
               {/* named columns, because five facts in a row need saying
                   once at the top rather than guessing at per line */}
-              <div {...stylex.props(styles.head)} aria-hidden>
+              <div
+                {...stylex.props(styles.head)}
+                aria-hidden
+                data-testid="administrative-entries-head"
+              >
                 <span>{format(m.recordColumnWho)}</span>
+                <span>{businessNo}</span>
                 <span>{format(m.recordColumnItem)}</span>
+                <span {...stylex.props(styles.headWider)}>{format(m.recordColumnSource)}</span>
                 <span>{format(m.importColumnStatus)}</span>
-                <span {...stylex.props(styles.headEnd)}>{format(m.recordColumnActor)}</span>
+                <span>{format(m.recordColumnActor)}</span>
+                <span {...stylex.props(styles.headEnd)}>{format(m.recordColumnWhen)}</span>
                 <span />
               </div>
               {rows.map((row) => {
                 const spent = row.status === 'voided'
                 const when = whenOf(row.revision.createdAt)
+                const number =
+                  row.participant.businessNo ?? format(m.noBusinessNoShort, { businessNo })
+                const source = format(
+                  row.source === 'import' ? m.recordSourceImport : m.recordSourceManual,
+                )
                 return (
                   <button
                     key={row.entryId}
@@ -285,31 +306,31 @@ export function AdministrativeEntryList({
                     onClick={() => onOpen(row.entryId)}
                     {...stylex.props(styles.row, spent && styles.spent)}
                   >
-                    <span {...stylex.props(styles.name)}>{row.participant.displayName}</span>
-                    <span {...stylex.props(styles.meta)}>
-                      <span>
-                        {row.participant.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
-                      </span>
-                      <span aria-hidden {...stylex.props(styles.tick)} />
-                      <span>
-                        {format(
-                          row.source === 'import' ? m.recordSourceImport : m.recordSourceManual,
-                        )}
-                      </span>
-                      <span aria-hidden {...stylex.props(styles.tick, styles.phoneOnly)} />
-                      <span {...stylex.props(styles.phoneOnly)}>{when}</span>
+                    <span {...stylex.props(styles.name)} title={row.participant.displayName}>
+                      {row.participant.displayName}
                     </span>
-                    <span {...stylex.props(styles.itemCell)}>{row.item.title}</span>
+                    <span {...stylex.props(styles.fact, styles.number)}>{number}</span>
+                    <span {...stylex.props(styles.itemCell)} title={row.item.title}>
+                      {row.item.title}
+                    </span>
+                    <span {...stylex.props(styles.fact, styles.factWider)}>{source}</span>
                     <span {...stylex.props(styles.standingSeat)}>
                       <RecordStanding status={row.status} />
                     </span>
-                    <span {...stylex.props(styles.whenCell)}>
-                      <span {...stylex.props(styles.actorLine)}>
-                        {row.revision.actorName ?? format(m.recordActorUnknown)}
-                      </span>
-                      <span {...stylex.props(styles.whenLine)}>{when}</span>
+                    <span {...stylex.props(styles.fact)}>
+                      {row.revision.actorName ?? format(m.recordActorUnknown)}
                     </span>
+                    <span {...stylex.props(styles.fact, styles.when)}>{when}</span>
                     <ChevronRightIcon aria-hidden {...stylex.props(styles.chevron)} />
+                    {/* narrow, the number, how it came in and when share one
+                        line under the item */}
+                    <span {...stylex.props(styles.meta)}>
+                      <span>{number}</span>
+                      <span aria-hidden {...stylex.props(styles.tick)} />
+                      <span>{source}</span>
+                      <span aria-hidden {...stylex.props(styles.tick)} />
+                      <span>{when}</span>
+                    </span>
                   </button>
                 )
               })}
