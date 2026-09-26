@@ -3,9 +3,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { ArrowLeftIcon, EllipsisIcon } from 'lucide-react'
 import {
+  isRecordId,
+  LoadFailure,
   PageLink,
+  SubjectAbsence,
   useApi,
   useApiQuery,
+  useLoadFailure,
   usePageNavigate,
   usePageRouteParams,
   useRunApi,
@@ -44,6 +48,11 @@ import { PersonFacts, type PersonFact } from './person-facts.tsx'
 // beside it do. It carries the acts that concern the person as a whole -
 // their name, address and kind, whether they may sign in at all, whether
 // they stay on the books - and nothing that belongs to one section.
+//
+// It is also who says the person is not there: an address naming nobody, a
+// person deleted or beyond the reader, a first reading that failed. The
+// shell then folds the record's sections away and shows what this hands it
+// in their place, with the way back to the roster.
 
 const styles = stylex.create({
   // two rows: the way back, then the person. The strip this sits in is the
@@ -149,6 +158,8 @@ const styles = stylex.create({
   boneMeta: { width: '100%', maxWidth: 320, height: 14, borderRadius: 4 },
   form: { display: 'flex', flexDirection: 'column', gap: 16 },
   fullField: { width: '100%' },
+  // the room the record's pages would have had, for the state in their place
+  absent: { display: 'flex', minWidth: 0, minHeight: 0, flexGrow: 1, flexDirection: 'column' },
 })
 
 export default function UserDetailHeader() {
@@ -170,7 +181,19 @@ export default function UserDetailHeader() {
   const [userTypeId, setUserTypeId] = useState('')
   const navigate = usePageNavigate()
 
-  const user = useQuery(query.identity.getUser.queryOptions({ params: { userId } }))
+  const describe = useLoadFailure()
+  // an address that cannot name anybody is known to name nobody without asking
+  const addressable = isRecordId(userId)
+  const user = useQuery({
+    ...query.identity.getUser.queryOptions({ params: { userId } }),
+    enabled: addressable,
+  })
+  // not there and not the reader's are one answer on purpose
+  const gone = {
+    missing: ['USER_NOT_FOUND'],
+    copy: { missing: { title: format(m.personGoneTitle), description: format(m.personGone) } },
+  }
+  const absent = addressable ? describe.subject(user, gone) : describe.missing(gone)
   const options = useQuery({
     ...query.identity.getUserOptions.queryOptions({ query: {} }),
     enabled: editing,
@@ -257,10 +280,16 @@ export default function UserDetailHeader() {
         query: { version: String(record?.version ?? 1) },
       }),
     ),
-    onSuccess: async () => {
+    onSuccess: () => {
       setConfirmingDelete(false)
-      await refresh()
+      // Away to the roster, which is read again; what was read about the
+      // person is not. Read again while the page is still leaving, it
+      // answered "not found" and the page flashed its absence on the way out.
       navigate('auth/users', { search: rosterSearch(), replace: true })
+      void queryClient.invalidateQueries({
+        queryKey: query.identity.key(),
+        predicate: (entry) => !JSON.stringify(entry.queryKey).includes(userId),
+      })
     },
   })
 
@@ -326,6 +355,21 @@ export default function UserDetailHeader() {
           },
         ]
 
+  if (absent !== null) {
+    return (
+      <SubjectAbsence>
+        <div data-testid="user-detail-absent" {...stylex.props(styles.absent)}>
+          <LoadFailure
+            failure={absent}
+            onRetry={() => void user.refetch()}
+            retrying={user.isFetching}
+            back={{ page: 'auth/users', label: format(m.backToUsers), search: rosterSearch() }}
+          />
+        </div>
+      </SubjectAbsence>
+    )
+  }
+
   return (
     <div data-testid="user-detail-header" {...stylex.props(styles.band)}>
       <PageLink
@@ -338,9 +382,7 @@ export default function UserDetailHeader() {
         {format(m.backToUsers)}
       </PageLink>
 
-      {user.isError ? (
-        <Feedback message={formatError(user.error)} />
-      ) : !record ? (
+      {!record ? (
         <div {...stylex.props(styles.who)}>
           <Skeleton className={stylex.props(styles.portrait).className} />
           <div {...stylex.props(styles.textBones)}>

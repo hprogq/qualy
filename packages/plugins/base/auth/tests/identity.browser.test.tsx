@@ -964,6 +964,85 @@ describe("a person's header", () => {
     expect(aside.getBoundingClientRect().right).toBeLessThanOrEqual(edge + 0.5)
   })
 
+  // Nobody there is the whole answer, said in the page's place with the way
+  // back to the roster, never a line in the band over sections of nobody.
+  it('says the person is not there instead of drawing their band', async () => {
+    await mount({ getUser: () => Effect.fail(apiError('USER_NOT_FOUND')) })
+    const state = page.getByTestId('user-detail-absent')
+    await expect.element(state).toBeInTheDocument()
+    expect(
+      state.element().querySelector('[data-slot="resource-state"]')?.getAttribute('data-state'),
+    ).toBe('missing')
+    expect(document.querySelector('[data-testid="feedback"]')).toBeNull()
+    expect(document.querySelector('[data-testid="person-facts"]')).toBeNull()
+    // another try would find nobody either: the way out is the roster
+    expect(page.getByRole('button', { name: '重试' }).query()).toBeNull()
+  })
+
+  it('knows an address that names nobody without asking', async () => {
+    const asked = vi.fn(() => Effect.succeed(person()))
+    await renderScreen({
+      client: fakeClient(stubs({ identity: { getUser: asked } })),
+      route: '/organization/users/not-a-person',
+      path: '/organization/users/:userId',
+      children: <UserDetailHeader />,
+    })
+    const state = page.getByTestId('user-detail-absent')
+    await expect.element(state).toBeInTheDocument()
+    expect(state.element().querySelector('[data-state]')?.getAttribute('data-state')).toBe(
+      'missing',
+    )
+    expect(asked).not.toHaveBeenCalled()
+  })
+
+  // Deleting leaves for the roster before the record is read again: read
+  // again first, it answered "not found" and the page flashed its absence.
+  it('leaves for the roster before anything reads the deleted person again', async () => {
+    const answers = { deleted: false }
+    const seen = { absence: false }
+    const watcher = new MutationObserver(() => {
+      if (document.querySelector('[data-testid="user-detail-absent"]')) seen.absence = true
+    })
+    watcher.observe(document.body, { childList: true, subtree: true })
+    try {
+      await renderScreen({
+        client: fakeClient({
+          ...stubs({
+            identity: {
+              getUser: () =>
+                answers.deleted
+                  ? Effect.fail(apiError('USER_NOT_FOUND'))
+                  : Effect.succeed(person()),
+              deleteUser: () => {
+                answers.deleted = true
+                return Effect.succeed({ ok: true as const })
+              },
+            },
+          }),
+          app: {
+            getManifest: () =>
+              Effect.succeed({
+                ...emptyManifest(),
+                pages: [{ id: 'auth/users', path: '/organization/users', layout: 'admin' }],
+              }),
+          },
+        }),
+        routes: [
+          { path: '/organization/users', element: <p data-testid="roster" /> },
+          { path: '/organization/users/:userId', element: <UserDetailHeader /> },
+        ] as never,
+        route: `/organization/users/${USER_ID}`,
+      })
+      await page.getByRole('button', { name: '更多操作' }).click()
+      await page.getByRole('menuitem', { name: '删除' }).click()
+      await page.getByRole('alertdialog').getByTestId('confirm-accept').click()
+      await expect.element(page.getByTestId('roster')).toBeInTheDocument()
+      expect(seen.absence).toBe(false)
+    } finally {
+      watcher.disconnect()
+    }
+  })
+
   it('says why a disable was refused once the question is put away, and not in the form after', async () => {
     const status = vi.fn(() => Effect.fail(apiError('LAST_ADMINISTRATOR')))
     await mount({ setUserStatus: status })
