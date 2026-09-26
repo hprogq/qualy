@@ -273,12 +273,17 @@ const SELECTION_ITEMS: readonly ItemSpec[] = [
 /**
  * The selection's phases. Re-examination opens while material is reviewed
  * and while results may be appealed, as in the school's own assessments
- * (term.ts); settling what was appealed opens nothing new.
+ * (stages.ts); settling what was appealed opens nothing new. The phases
+ * still ahead carry no time: the phase scheduler of a restored instance
+ * would move the batch on by itself, weeks after the story stopped. Each
+ * says instead what it waits for.
  */
 export const SELECTION_PHASES = [
   {
     phaseKey: 'entry',
-    displayName: '报名与材料提交',
+    displayName: '材料提交',
+    description:
+      '已报名的同学提交推免申请表、思想品德考核表、成绩单与四级成绩，并申报学科竞赛与科研成果；学业成绩与品德文体由学院导入。',
     permissionProfile: [
       'assessment.entry.create',
       'assessment.entry.edit',
@@ -295,6 +300,8 @@ export const SELECTION_PHASES = [
     // be contested at once, and staff may re-examine one
     phaseKey: 'review',
     displayName: '材料审核',
+    description:
+      '辅导员审核材料，思想品德考核表由本班班级综测负责人审核。单项结论一出即可申诉，辅导员也可替申请人发起复查。',
     permissionProfile: [
       'assessment.review.process',
       'assessment.review.escalate',
@@ -306,6 +313,8 @@ export const SELECTION_PHASES = [
   {
     phaseKey: 'appeal',
     displayName: '结果公示与申诉',
+    description: '公示推免综合成绩与排名，对结果有异议的在本阶段内提出申诉。',
+    entryNote: '材料全部审核完毕后由学院推免工作组宣布',
     permissionProfile: [
       'assessment.entry.appeal',
       'assessment.review.process',
@@ -316,9 +325,17 @@ export const SELECTION_PHASES = [
   {
     phaseKey: 'appeal-review',
     displayName: '申诉处理',
+    description: '学院推免工作组处理已提出的申诉，不再接受新的申诉。',
+    entryNote: '公示期满后开始',
     permissionProfile: ['assessment.review.process', 'assessment.review.escalate'],
   },
-  { phaseKey: 'archive', displayName: '归档', permissionProfile: [] },
+  {
+    phaseKey: 'archive',
+    displayName: '归档',
+    description: '推免综合评价结束，推荐名单报送研究生院。',
+    entryNote: '申诉处理完毕后归档',
+    permissionProfile: [],
+  },
 ]
 
 const GROUPS = [
@@ -600,7 +617,7 @@ export const runSelection = (input: {
         assessment.advancePhase(
           t,
           batch.id,
-          { to: phases[0]!.id, force: true, reason: '按学院通知开始推免报名' },
+          { to: phases[0]!.id, force: true, reason: '按学院通知开始推免材料提交' },
           lead,
         ),
       ),

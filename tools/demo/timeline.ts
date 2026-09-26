@@ -44,6 +44,8 @@ export const MOVED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
   roster_imports: ['occurred_at'],
   batch_phases: ['created_at', 'updated_at', 'actual_entry_at'],
   phase_events: ['created_at', 'actual_at', 'processed_at'],
+  phase_item_scopes: ['created_at'],
+  phase_participant_scopes: ['created_at'],
   score_groups: ['created_at', 'updated_at'],
   assessment_items: ['created_at', 'updated_at', 'voided_at'],
   assessment_item_revisions: ['created_at'],

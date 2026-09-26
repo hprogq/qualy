@@ -20,11 +20,12 @@ import { episodesOf, TRIAL_ITEM, type Episode } from './episodes.ts'
 import { stageProof, stageWorkbook } from './files.ts'
 import { buildTermItems, reviewPolicyOf, scoringConfigOf, type Versions } from './items.ts'
 import { EventQueue } from './queue.ts'
+import { STAGING, type Stage } from './stages.ts'
 import type { Student, World } from './world.ts'
 
 // One term, from the batch being set up to its archive.
 //
-//   D-3  the assessment lead sets the batch up: phases, score tree, questions
+//   D-3  the assessment lead sets the batch up: stages, score tree, questions
 //   D    filing opens
 //   D+1  a counsellor imports what the offices send: grades, youth study,
 //        dormitory inspections, student posts
@@ -36,6 +37,10 @@ import type { Student, World } from './world.ts'
 //   D+9  first results: appeals open for two and a half days
 //   D+11 appeals close; the ones filed are settled
 //   D+13 the term is archived
+//
+// Each term stages these moments its own way (stages.ts): review split in
+// two, appeals open longer, rules published before filing, or filing
+// reopened for one question while review goes on.
 //
 // Everything happens through the queue, in story order.
 
@@ -110,46 +115,13 @@ export const dayAt = (day: string, days: number, time: string) => {
   return cst(`${ymd}T${time}:00`)
 }
 
-const ENTRY = [
-  'assessment.entry.create',
-  'assessment.entry.edit',
-  'assessment.entry.submit',
-  'assessment.entry.withdraw',
-  'assessment.entry.abandon',
-  'assessment.entry.record',
-  'assessment.review.process',
-  'assessment.review.escalate',
-]
-// Staff may send a concluded claim through the escalation route again
-// (re-examination) while review runs and while students may appeal - the
-// same two windows the selection opens it in. Settling what was appealed
-// opens nothing new.
-const REVIEW = [
-  'assessment.review.process',
-  'assessment.review.escalate',
-  'assessment.entry.record',
-  'assessment.review.reopen',
-]
-const APPEAL = [
-  'assessment.entry.appeal',
-  'assessment.review.process',
-  'assessment.review.escalate',
-  'assessment.entry.record',
-  'assessment.review.reopen',
-]
-const APPEAL_REVIEW = [
-  'assessment.review.process',
-  'assessment.review.escalate',
-  'assessment.entry.record',
-]
-
-export const PHASES = [
-  { phaseKey: 'entry', displayName: '材料填报', permissionProfile: ENTRY },
-  { phaseKey: 'review', displayName: '审核整理', permissionProfile: REVIEW },
-  { phaseKey: 'appeal', displayName: '结果申诉', permissionProfile: APPEAL },
-  { phaseKey: 'appeal-review', displayName: '申诉处理', permissionProfile: APPEAL_REVIEW },
-  { phaseKey: 'archive', displayName: '归档', permissionProfile: [] as string[] },
-]
+/** a stage as a plan write states it */
+const specOf = (stage: Stage) => ({
+  phaseKey: stage.phaseKey,
+  displayName: stage.displayName,
+  description: stage.description,
+  permissionProfile: [...stage.permissionProfile],
+})
 
 export const ESCALATE_REASONS = ['材料真实性存疑', '认定标准存在争议', '超出当前审核范围'] as const
 
@@ -199,6 +171,8 @@ export const runTerm = (input: {
   Effect.gen(function* () {
     const { world, plan, versions, story, random, persona } = input
     const episodes = episodesOf(plan.term, input.index)
+    const staging = STAGING[plan.term]
+    const scoped = staging.scoped
     const assessment = yield* Assessment
     const t = world.tenantId
     const lead = principalOf(t, world.staff.manager.id)
@@ -214,8 +188,7 @@ export const runTerm = (input: {
         t,
         {
           name: plan.name,
-          descriptionMd:
-            '请在填报期内提交本学期的加分材料，每项须附证明。学业成绩、寝室、学生干部等由辅导员统一导入，无需申报。',
+          descriptionMd: staging.descriptionMd,
           materialRange: plan.material,
           import: { orgNodeIds: [world.grade], userTypeIds: [world.userTypes.student] },
         },
@@ -224,7 +197,7 @@ export const runTerm = (input: {
       120,
     )
     yield* story.step(
-      assessment.replacePlan(t, batch.id, { specs: PHASES.map((phase) => ({ ...phase })) }, lead),
+      assessment.replacePlan(t, batch.id, { specs: staging.stages.map(specOf) }, lead),
       300,
     )
     const built = yield* buildTermItems(world, plan.term, batch.id, versions, story, lead)
@@ -255,7 +228,6 @@ export const runTerm = (input: {
       yield* story.step(assessment.setItemStatus(t, trial.id, { status: 'active' }, lead), 20)
       items.set(TRIAL_ITEM.key, { id: trial.id, spec: TRIAL_ITEM })
     }
-    const phases = yield* assessment.getPlan(t, batch.id, lead)
     const participants = new Map<string, string>()
     for (const row of (
       (yield* runSql(
@@ -276,25 +248,42 @@ export const runTerm = (input: {
         (found) => (found as { rows: { id: string | null }[] }).rows[0]?.id ?? null,
       )
 
-    // --- the phases, on their dates ---------------------------------------
+    // --- the stages, on their dates ---------------------------------------
 
-    const advance = (index: number, time: Date) =>
-      queue.at(time, 'phase', () =>
-        Effect.asVoid(
-          assessment.advancePhase(
+    // by key rather than by place: a stage added once the term is under way
+    // moves every later one down
+    const enter = (stage: Stage, first: boolean) =>
+      queue.at(at(...stage.enters), 'phase', () =>
+        Effect.gen(function* () {
+          const to = (yield* assessment.getPlan(t, batch.id, lead)).find(
+            (phase) => phase.phaseKey === stage.phaseKey,
+          )!.id
+          yield* assessment.advancePhase(
             t,
             batch.id,
-            index === 0
-              ? { to: phases[index]!.id, force: true, reason: '按学院通知开始本学期综测填报' }
-              : { to: phases[index]!.id },
+            first ? { to, force: true, reason: '按学院通知启动本学期综合素质测评' } : { to },
             lead,
-          ),
-        ),
+          )
+        }),
       )
-    advance(0, at(0, '08:00'))
-    advance(1, deadline)
-    advance(2, at(9, '09:00'))
-    advance(3, at(11, '17:00'))
+    staging.stages.forEach((stage, order) => enter(stage, order === 0))
+    if (scoped !== undefined) {
+      // filing reopened for some questions, in after the stage current then
+      queue.at(at(...scoped.added), 'phase', () =>
+        Effect.gen(function* () {
+          const current = yield* assessment.getPlan(t, batch.id, lead)
+          const itemScope = scoped.items.map((key) => itemOf(key).id)
+          const specs = current.flatMap((phase) => {
+            const kept = { id: phase.id, phaseKey: phase.phaseKey, displayName: phase.displayName }
+            return phase.phaseKey === scoped.after
+              ? [kept, { ...specOf(scoped.stage), itemScope }]
+              : [kept]
+          })
+          yield* assessment.replacePlan(t, batch.id, { specs }, lead)
+        }),
+      )
+      enter(scoped.stage, false)
+    }
 
     // --- who can decide a round now ---------------------------------------
 
@@ -394,15 +383,8 @@ export const runTerm = (input: {
         return state
       })
 
-    // the persona's own claims leave room for what their episodes file
-    const roomLeft = (student: Student, claims: Claim[]) => {
-      if (student.id !== persona.id) return claims
-      const taken = new Map<string, number>()
-      for (const episode of episodes) {
-        for (const claim of [episode.first, episode.claim, episode.refiled]) {
-          if (claim !== undefined) taken.set(claim.item, (taken.get(claim.item) ?? 0) + 1)
-        }
-      }
+    /** the claims each question still has room for, beside what `taken` counts */
+    const allowed = (claims: readonly Claim[], taken: Map<string, number>) => {
       const kept: Claim[] = []
       for (const claim of claims) {
         const most = items.get(claim.item)?.spec.maxEntries ?? null
@@ -414,10 +396,45 @@ export const runTerm = (input: {
       return kept
     }
 
+    // the persona's own claims leave room for what their episodes file, and
+    // for the one they file once filing reopens for its question
+    const roomLeft = (student: Student, claims: Claim[]) => {
+      if (student.id !== persona.id) return claims
+      const taken = new Map<string, number>()
+      for (const episode of episodes) {
+        for (const claim of [episode.first, episode.claim, episode.refiled]) {
+          if (claim !== undefined) taken.set(claim.item, (taken.get(claim.item) ?? 0) + 1)
+        }
+      }
+      if (scoped !== undefined) taken.set(scoped.persona.claim.item, 1)
+      return allowed(
+        claims.filter((claim) => !(scoped?.items.includes(claim.item) ?? false)),
+        taken,
+      )
+    }
+
+    /** a claim on a reopened question that waited for its papers */
+    const waited = (claim: Claim) =>
+      scoped !== undefined &&
+      scoped.items.includes(claim.item) &&
+      scoped.awaited.includes(String(claim.payload['kind'])) &&
+      random.chance(scoped.late)
+
     for (const student of present) {
       if (input.onLeave.some((one) => one.id === student.id)) continue
       const claims = roomLeft(student, claimsOf(student, plan.term, random, plan.material))
       for (const claim of claims) {
+        if (scoped !== undefined && waited(claim)) {
+          // in the evenings once the stage reopening its question is in
+          const day = random.int(...scoped.filedOn)
+          const hour = random.chance(0.75) ? random.int(19, 22) : random.int(12, 17)
+          queue.at(
+            addMinutes(at(day, `${String(hour).padStart(2, '0')}:00`), random.int(0, 59)),
+            'file',
+            () => Effect.asVoid(file(student, claim)),
+          )
+          continue
+        }
         // evenings mostly, over the four filing days; a last-minute rush on the last one
         const dayOffset = random.weighted([
           { day: 0, weight: 18 },
@@ -1586,6 +1603,27 @@ export const runTerm = (input: {
 
     episodes.forEach((episode, order) => play(episode, order))
 
+    // the persona's certificate, filed once filing reopens for its question
+    if (scoped !== undefined) {
+      const held: { entry?: Filed } = {}
+      queue.at(at(...scoped.persona.files), 'episode', () =>
+        Effect.map(file(persona, scoped.persona.claim, true), (entry) => {
+          held.entry = entry
+        }),
+      )
+      queue.at(at(...scoped.persona.approved), 'episode', () =>
+        Effect.gen(function* () {
+          const entry = held.entry!
+          const judge = yield* judgeOf(entry.instanceId!, entry.student)
+          if (judge === null) {
+            return yield* Effect.die(new Error("nobody can decide the persona's late certificate"))
+          }
+          yield* approveWith(entry, judge, undefined, undefined)
+          entry.status = 'approved'
+        }),
+      )
+    }
+
     // --- appeals -----------------------------------------------------------
 
     queue.at(at(9, '09:30'), 'appeals', () =>
@@ -1662,7 +1700,6 @@ export const runTerm = (input: {
         }
       }),
     )
-    advance(4, at(13, '10:00'))
     queue.at(at(13, '10:06'), 'archive', () =>
       Effect.asVoid(assessment.setBatchStatus(t, batch.id, { status: 'archived' }, lead)),
     )
