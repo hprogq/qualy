@@ -25,6 +25,7 @@ import {
 } from '@qualy/ui-contract'
 import {
   ScreenAsideScope,
+  ScreenFillScope,
   ScreenFootScope,
   UiSlot,
   useIdlePagePrefetch,
@@ -32,6 +33,7 @@ import {
   usePendingNavigation,
   useUiCollection,
   useScreenAsideSeat,
+  useScreenFillClaimed,
   useScreenFootClaimed,
   WorkspaceCapabilityScope,
   useWorkspaceCapabilities,
@@ -209,6 +211,10 @@ const styles = stylex.create({
     paddingTop: 14,
     paddingBottom: 20,
     paddingInline: { default: 24, [breakpoints.phone]: 16 },
+  },
+  // and none, while the column under it holds none
+  contextBannerEdge: {
+    scrollbarGutter: 'auto',
   },
   // the hairlines every other band in the product opens on, gathered in the
   // far corner and gone before they reach the words
@@ -400,11 +406,13 @@ const styles = stylex.create({
     // scrollbar floats over the page - every phone - it holds nothing.
     scrollbarGutter: 'stable',
   },
-  // Beside a lent column the open screen runs to the window's edge: its
-  // work fills the height and scrolls inside itself, so a held gutter would
-  // only be an empty strip down the right, and there is no centred measure
-  // to keep still from one page to the next.
-  mainLent: {
+  // A screen that fills the height and scrolls inside itself - a workbench,
+  // or one standing beside a lent column - runs to the window's edge: the
+  // shell never scrolls around it, so a held gutter would only be an empty
+  // strip down the right, and there is no centred measure to keep still
+  // from one page to the next. Only the gutter goes; a window too short for
+  // the screen's own floor still scrolls.
+  mainEdge: {
     scrollbarGutter: 'auto',
   },
   // exactly the bar's own height, so the last row of a page ends above it
@@ -976,11 +984,13 @@ export function RailShell(props: RailShellProps) {
   const lends = !useIsBelow(SHELL_BREAKPOINT) && props.banner !== true
   return (
     <WorkspaceCapabilityScope>
-      <ScreenFootScope>
-        <ScreenAsideScope offered={lends}>
-          <CapableRailShell {...props} />
-        </ScreenAsideScope>
-      </ScreenFootScope>
+      <ScreenFillScope>
+        <ScreenFootScope>
+          <ScreenAsideScope offered={lends}>
+            <CapableRailShell {...props} />
+          </ScreenAsideScope>
+        </ScreenFootScope>
+      </ScreenFillScope>
     </WorkspaceCapabilityScope>
   )
 }
@@ -1009,6 +1019,9 @@ function CapableRailShell({
   // a screen that has something to stand beside its work has asked for the
   // rail's column, and draws there instead of the rail
   const lent = useScreenAsideSeat()
+  // a screen that fills the room scrolls inside itself, and gives up the
+  // strip the shell holds for a scrollbar that will never come
+  const filled = useScreenFillClaimed()
   const [railOpen, setRailOpen] = useState(() => !narrow && !railFolded())
   useEffect(() => setRailOpen(!narrow && !railFolded()), [narrow])
 
@@ -1177,6 +1190,7 @@ function CapableRailShell({
         {...stylex.props(
           styles.contextBar,
           banner ? styles.contextBanner : owned ? styles.contextHead : styles.contextLine,
+          banner && filled && styles.contextBannerEdge,
         )}
       >
         {banner && <span aria-hidden {...stylex.props(styles.hairlines)} />}
@@ -1250,7 +1264,7 @@ function CapableRailShell({
         )}
       </div>
       {banner ? (
-        <main {...stylex.props(styles.personMain)}>
+        <main {...stylex.props(styles.personMain, filled && styles.mainEdge)}>
           <div {...stylex.props(styles.personSeat)}>
             {!narrow && (
               <nav
@@ -1339,7 +1353,7 @@ function CapableRailShell({
           <main
             {...stylex.props(
               styles.main,
-              lent.claimed && styles.mainLent,
+              (lent.claimed || filled) && styles.mainEdge,
               sectionsAtFoot && styles.mainFoot,
             )}
           >

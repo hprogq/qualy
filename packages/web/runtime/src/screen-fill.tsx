@@ -11,6 +11,19 @@ import { sharedContext } from './shared-context.ts'
 // So the screen says so, and the shell gives it exactly the height left
 // under its bars, stops scrolling itself, and leaves its foot out.
 //
+// A shell that already gives every screen the height under its bars - the
+// rail shells around a workspace or a person - has only one thing to give
+// up for it: the strip it holds down the right for a scrollbar, which is
+// there so pages do not shift sideways from one to the next, and beside a
+// workbench is an empty band that can never fill. A screen declares itself
+// with one line where it decides its own shape:
+//
+//   useClaimScreenFill(mode !== 'phone')
+//
+// at the widths where it scrolls inside itself, including while it is
+// still a skeleton - claimed only once the data arrives, the whole screen
+// would move sideways by a gutter at that moment.
+//
 // Counted rather than a flag, like the screen foot: two screens overlap for
 // the length of a route change, and the one leaving must not take the room
 // back from the one arriving.

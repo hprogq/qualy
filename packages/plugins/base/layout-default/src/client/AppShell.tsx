@@ -81,9 +81,11 @@ const styles = stylex.create({
     overscrollBehaviorY: 'contain',
   },
   // a screen that fills the room scrolls inside itself; the shell does not
-  // scroll around it
+  // scroll around it, and holds no strip down the right for a scrollbar
+  // that cannot come
   mainFilled: {
     overflowY: 'hidden',
+    scrollbarGutter: 'auto',
   },
   head: {
     position: 'absolute',
@@ -303,10 +305,10 @@ function Shell() {
           titleShown={titleShown}
         />
       </div>
-      {/* auto, so a page that fits shows nothing. The width this once
-          protected only moves where scrollbars take space, and there a track
-          with no thumb is its own defect; a reserved gutter is worse still,
-          being a blank strip a full-width band cannot paint into.
+      {/* auto rather than scroll, so a page that fits shows no track. The
+          gutter is held (see the style) so pages do not shift sideways from
+          one to the next, and let go by a screen that fills the room and so
+          never scrolls here.
           `scrollPaddingTop` is where the scrollport's top really is, for
           everything that scrolls something into view - a focused control,
           an anchor, `scrollIntoView` - which would otherwise park it under

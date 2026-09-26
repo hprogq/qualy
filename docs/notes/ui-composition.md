@@ -153,3 +153,11 @@ apps/web      → web-runtime / ui-contract(纯路由引擎,无布局 DOM)
 
 深链语义:路由存在 ≠ 资源授权成立;页面必须区分「有身份但当前无事可做」与「没有身份」两种话术
 (unauthorized 不得伪装成 empty),守门的仍然是 API。
+
+## 增补裁决:满屏工作台放弃滚动条槽(2026-09-26)
+
+用户反馈:我的申报与审核详情在 PC 端右侧留着一条滚动条槽,而这两页只在各自的窗格里滚动,整屏滚动条永远不会出现。
+RailShell 挂 `ScreenFillScope`,页面用
+`useClaimScreenFill(宽度条件)` 声明自己在内部滚动(我的申报、审核详情在各自页面加这一行,骨架阶段也要声明),
+壳即把 main 的 `scrollbar-gutter` 回到 auto(只改槽位不改 overflow,极矮窗口仍可滚动);AppShell 的满屏声明同样放弃槽位。
+普通页面照旧保留槽位,居中量度在页面之间不跳。

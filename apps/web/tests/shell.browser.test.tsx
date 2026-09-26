@@ -4,7 +4,12 @@ import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
 import { layoutComponents, slotComponents } from 'virtual:qualy/plugins'
-import { ScreenAside, usePageTitle, useScreenAsideOffered } from '@qualy/web-runtime'
+import {
+  ScreenAside,
+  useClaimScreenFill,
+  usePageTitle,
+  useScreenAsideOffered,
+} from '@qualy/web-runtime'
 import { Screen } from '@qualy/ui/screen'
 import { PageLoading } from '@qualy/ui/spinner'
 import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
@@ -1121,5 +1126,63 @@ describe('a folded workspace rail', () => {
     await toggle.click()
     await expect.element(toggle).toHaveAttribute('aria-expanded', 'true')
     expect(localStorage.getItem('qualy:workspace-rail-folded')).toBeNull()
+  })
+})
+
+describe('a screen that fills the room', () => {
+  // A workbench scrolls inside itself, so the shell never scrolls around it:
+  // the strip held down the right for a scrollbar - there so pages do not
+  // shift sideways from one to the next - is an empty band beside one.
+  function Filling() {
+    const [holding, setHolding] = useState(true)
+    useClaimScreenFill(holding)
+    return (
+      <div data-testid="filling" data-holding={holding}>
+        <button type="button" onClick={() => setHolding(false)}>
+          let go
+        </button>
+      </div>
+    )
+  }
+  const gutterOf = () => {
+    const main = document.querySelector('main')!
+    return main.getBoundingClientRect().width - main.clientWidth
+  }
+  const filling = (shellElement: ReactNode, path: string, route: string, shown: unknown) =>
+    renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(shown) } }),
+      route,
+      children: (
+        <Routes>
+          <Route element={shellElement}>
+            <Route path={path} element={<Filling />} />
+          </Route>
+        </Routes>
+      ),
+    })
+
+  it('runs the open workbench to the window’s edge in a workspace, and holds the strip again after', async () => {
+    await page.viewport(1280, 800)
+    await filling(
+      <WorkspaceShell />,
+      '/assessment/batches/:batchId/phases',
+      `/assessment/batches/${BATCH_ID}/phases`,
+      settledManifest(),
+    )
+    await expect.element(page.getByTestId('filling')).toBeVisible()
+    await expect.poll(gutterOf).toBe(0)
+    // the rail is still the way around the batch
+    await expect.element(page.getByRole('link', { name: '阶段安排' })).toBeVisible()
+    await page.getByRole('button', { name: 'let go' }).click()
+    await expect.poll(gutterOf).toBeGreaterThan(0)
+  })
+
+  it('does the same in the application shell', async () => {
+    await page.viewport(1280, 800)
+    await filling(<AppShell />, '/organization/users', '/organization/users', manifest())
+    await expect.element(page.getByTestId('filling')).toBeVisible()
+    await expect.poll(gutterOf).toBe(0)
+    await page.getByRole('button', { name: 'let go' }).click()
+    await expect.poll(gutterOf).toBeGreaterThan(0)
   })
 })
