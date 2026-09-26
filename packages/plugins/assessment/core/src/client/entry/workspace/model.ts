@@ -2,7 +2,6 @@ import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { projectEntrySummary } from '../../../entry/summary.ts'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { inZone } from '../../batch/zone.ts'
-import { entryRefusalReason } from '../refusals.ts'
 import {
   fieldsOf,
   recordedOnly,
@@ -550,14 +549,61 @@ export const totalsOf = (
   return { got: standing?.total ?? null, cap: summed }
 }
 
+/** a sentence, with whatever fills it */
+export interface Said {
+  readonly message: MessageDescriptor
+  readonly values?: Readonly<Record<string, string>>
+}
+
+/** where the round stands, as far as starting a claim in it goes */
+export interface RoundState {
+  readonly status: string
+  /** the stage under way, by the name the round gave it */
+  readonly phaseName: string | null
+}
+
+/**
+ * Why a new claim cannot be started on a question, said about starting one.
+ *
+ * The phase gate answers for every act with the same few reasons, and the
+ * refusal sentences built on them stay general ("not open in this stage")
+ * because they are shown after a press, beside the act that was pressed.
+ * Here nothing was pressed: the sentence stands in place of the way in, so
+ * it names the act and, where the round says, the stage that shut it.
+ */
+export const filingHeldOf = (reason: string | null, round: RoundState | null): Said => {
+  switch (reason) {
+    case 'phase-closed':
+      return round?.phaseName != null && round.phaseName.trim() !== ''
+        ? { message: m.entriesHeldPhase, values: { phase: round.phaseName.trim() } }
+        : { message: m.entriesHeldNow }
+    case 'no-active-phase':
+      return round?.status === 'archived'
+        ? { message: m.entriesHeldArchived }
+        : round?.status === 'draft'
+          ? { message: m.entriesHeldNotStarted }
+          : { message: m.entriesHeldNoPhase }
+    case 'item-out-of-scope':
+      return { message: m.entriesHeldItemScope }
+    case 'participant-out-of-scope':
+      return { message: m.entriesHeldParticipantScope }
+    case 'account-ceiling-reached':
+      return { message: m.entriesHeldRoundFull }
+    default:
+      return { message: m.entriesHeldNow }
+  }
+}
+
 /** what the owner may put into one question now, and what to say where they may not */
 export interface Filing {
   /** filing belongs on this question at all, and the gate did not hide it */
   readonly mayAdd: boolean
   /** ...but the phase has shut it for now */
   readonly shut: boolean
-  /** why it is shut, in the refusal vocabulary */
-  readonly why: MessageDescriptor | null
+  /** why it is shut, said about starting a claim */
+  readonly why: Said | null
+  /** the gate's reason code, for the data hook beside the sentence */
+  readonly reason: string | null
   /** the gate's own state, for the key's data hook */
   readonly gate: string
   /** its places are used up */
@@ -576,6 +622,8 @@ export const filingOf = (
   item: ItemDto,
   entries: readonly EntryDto[],
   gate: FilingGateDto | undefined,
+  /** the round's stage, for saying which one shut filing */
+  round: RoundState | null = null,
 ): Filing => {
   const live = entries.filter((entry) => entry.status !== 'voided')
   const granted = item.itemType === 'constant'
@@ -595,10 +643,8 @@ export const filingOf = (
   return {
     mayAdd,
     shut,
-    why: shut
-      ? ((gate.create.reason === null ? null : entryRefusalReason(gate.create.reason)) ??
-        m.entryBlockedNow)
-      : null,
+    why: shut ? filingHeldOf(gate.create.reason, round) : null,
+    reason: shut ? gate.create.reason : null,
     gate: gate?.create.state ?? 'available',
     full,
     room,

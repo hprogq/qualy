@@ -941,3 +941,83 @@ describe('what a question’s row says at a glance', () => {
     expect(lines).toHaveLength(0)
   })
 })
+
+describe('where filing is shut', () => {
+  const shut = (reason: string) => ({ state: 'blocked' as const, reason })
+  const filing = (reason: string) => ({
+    listMyEntries: () =>
+      Effect.succeed({
+        participantId: PARTICIPANT_ID,
+        entries: [claim(1, itemId(1), 'approved'), claim(2, itemId(1), 'in_review')],
+        filing: [itemId(1), itemId(2)].map((id) => ({
+          itemId: id,
+          create: shut(reason),
+          submit: shut(reason),
+        })),
+        nextCursor: null,
+        attention: { unreadItemIds: [] },
+      }),
+  })
+  const archived = () =>
+    Effect.succeed({
+      batch: {
+        id: BATCH_ID,
+        name: '2026 春季综测',
+        descriptionMd: null,
+        manageable: false,
+        reviewReasons: { reject: [], escalate: [] },
+        capabilities: {
+          personal: true,
+          review: false,
+          record: false,
+          manage: false,
+          redetermine: false,
+        },
+        participantCount: 12,
+        materialRange: { start: '2026-03-01', end: '2026-09-01' },
+        timezone: 'Asia/Shanghai',
+        status: 'archived',
+        configRevision: 1,
+        currentPhaseId: null,
+        currentPhaseName: null,
+        createdAt: '2026-02-01T00:00:00.000Z',
+      },
+    })
+
+  // Where the next claim would start, the reason it cannot, naming the act
+  // and the stage that shut it - not a key that says only "unavailable".
+  it('says why at the foot of the list, naming the stage', async () => {
+    await page.viewport(1440, 900)
+    await workspace({ route: `${base}?open=${itemId(1)}`, stubs: filing('phase-closed') })
+    const held = page.getByTestId('filing-held')
+    await expect.element(held).toHaveAttribute('data-reason', 'phase-closed')
+    // the sentence that names the stage, which this round has
+    await expect.element(held).toHaveAttribute('data-said', 'assessment/entries/held-phase')
+    // one way to file on screen, the one in the head, and that one shut
+    const keys = page.getByTestId('file-claim').elements()
+    expect(keys).toHaveLength(1)
+    expect(keys[0]!.getAttribute('data-gate')).toBe('blocked')
+    expect((keys[0] as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('says why in an empty question, in place of its key', async () => {
+    await page.viewport(1440, 900)
+    await workspace({ route: `${base}?open=${itemId(2)}`, stubs: filing('item-out-of-scope') })
+    const tray = page.getByTestId('entries-tray')
+    await expect.element(tray).toHaveAttribute('data-reason', 'item-out-of-scope')
+    await expect.element(tray).toHaveAttribute('data-said', 'assessment/entries/held-item-scope')
+    expect(tray.element().querySelector('[data-testid="file-claim"]')).toBeNull()
+  })
+
+  it('says an archived round is why, and keeps no dead key at a phone’s foot', async () => {
+    await page.viewport(390, 844)
+    await workspace({
+      route: `${base}?open=${itemId(1)}`,
+      stubs: { ...filing('no-active-phase'), getBatch: archived },
+    })
+    const held = page.getByTestId('filing-held')
+    await expect.element(held).toHaveAttribute('data-said', 'assessment/entries/held-archived')
+    expect(page.getByTestId('phone-foot').elements()).toHaveLength(0)
+    expect(page.getByTestId('file-claim').elements()).toHaveLength(0)
+  })
+})

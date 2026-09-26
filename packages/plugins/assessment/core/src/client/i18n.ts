@@ -4129,9 +4129,37 @@ const i18n = definePluginMessages({
       id: 'assessment/entries/sort-oldest',
       defaultMessage: 'Oldest first',
     },
-    entriesAddHeld: {
-      id: 'assessment/entries/add-held',
-      defaultMessage: 'New entries are not open now',
+    entriesHeldPhase: {
+      id: 'assessment/entries/held-phase',
+      defaultMessage: 'New entries can’t be started during {phase}',
+    },
+    entriesHeldNow: {
+      id: 'assessment/entries/held-now',
+      defaultMessage: 'New entries can’t be started in the current stage',
+    },
+    entriesHeldNoPhase: {
+      id: 'assessment/entries/held-no-phase',
+      defaultMessage: 'No stage is under way, so new entries can’t be started',
+    },
+    entriesHeldArchived: {
+      id: 'assessment/entries/held-archived',
+      defaultMessage: 'The round is archived; new entries can’t be started',
+    },
+    entriesHeldNotStarted: {
+      id: 'assessment/entries/held-not-started',
+      defaultMessage: 'The round hasn’t started; new entries can’t be started yet',
+    },
+    entriesHeldItemScope: {
+      id: 'assessment/entries/held-item-scope',
+      defaultMessage: 'The current stage doesn’t take new entries for this item',
+    },
+    entriesHeldParticipantScope: {
+      id: 'assessment/entries/held-participant-scope',
+      defaultMessage: 'The current stage takes new entries from some participants only',
+    },
+    entriesHeldRoundFull: {
+      id: 'assessment/entries/held-round-full',
+      defaultMessage: 'You have reached the round’s limit on entries',
     },
     entriesRoomLeft: {
       id: 'assessment/entries/room-left',
@@ -4189,10 +4217,6 @@ const i18n = definePluginMessages({
       id: 'assessment/entries/staff-empty-hint',
       defaultMessage: 'No entries under this item yet',
     },
-    entriesHeldHint: {
-      id: 'assessment/entries/held-hint',
-      defaultMessage: 'New entries are not open now',
-    },
     entriesNotOpen: {
       id: 'assessment/entries/not-open',
       defaultMessage: 'This item is not open for filing',
@@ -4244,10 +4268,6 @@ const i18n = definePluginMessages({
     entriesStepLabel: {
       id: 'assessment/entries/step-label',
       defaultMessage: 'Neighbouring items',
-    },
-    entriesFootHeld: {
-      id: 'assessment/entries/foot-held',
-      defaultMessage: 'Not open now',
     },
     entriesCountedTotal: {
       id: 'assessment/entries/counted-total',

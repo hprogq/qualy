@@ -31,7 +31,7 @@ import { answerOf, fieldsOf, type EntryDto, type FilingGateDto, type ItemDto } f
 import { EntriesWorkspace } from './workspace/EntriesWorkspace.tsx'
 import { StandingNotice } from './workspace/StandingNotice.tsx'
 import { useLineWords } from './workspace/calc.ts'
-import { entryLineOf } from './workspace/model.ts'
+import { entryLineOf, type RoundState } from './workspace/model.ts'
 import { useWorkspaceMode } from './workspace/layout.ts'
 
 // One's own filings: the round's structure, one question of it opened, and
@@ -92,7 +92,11 @@ export default function MyEntriesPage() {
     // workspace fills whatever the shell gives it
     <BatchScreen title={format(m.myEntriesTab)} size="full" chrome="none">
       {(batch) => (
-        <Body batchId={batch.id} batchName={batch.name} materialRange={batch.materialRange} />
+        <Body
+          batchId={batch.id}
+          materialRange={batch.materialRange}
+          round={{ status: batch.status, phaseName: batch.currentPhaseName }}
+        />
       )}
     </BatchScreen>
   )
@@ -101,10 +105,12 @@ export default function MyEntriesPage() {
 function Body({
   batchId,
   materialRange,
+  round,
 }: {
   batchId: string
-  batchName: string
   materialRange: { start: string; end: string }
+  /** the stage the round is in, for saying which one shut filing */
+  round: RoundState
 }) {
   const query = useApiQuery(assessmentApi)
   const api = useApi(assessmentApi)
@@ -499,6 +505,7 @@ function Body({
             updateQuery({ open: id }, { history: mode === 'phone' ? how : 'replace' })
           }
           gates={gates}
+          round={round}
           busy={setStatus.isPending || declare.isPending}
           refreshing={anyFetching}
           onRefresh={refetchAll}

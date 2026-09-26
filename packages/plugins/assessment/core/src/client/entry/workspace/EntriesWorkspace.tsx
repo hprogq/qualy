@@ -22,7 +22,15 @@ import { GroupPane } from './GroupPane.tsx'
 import { FileKey, ItemPane } from './ItemPane.tsx'
 import { Requirements } from './Requirements.tsx'
 import { StructureRail } from './StructureRail.tsx'
-import { filingOf, headStatsOf, movingOn, outlineOf, totalsOf, type Viewer } from './model.ts'
+import {
+  filingOf,
+  headStatsOf,
+  movingOn,
+  outlineOf,
+  totalsOf,
+  type RoundState,
+  type Viewer,
+} from './model.ts'
 
 // The entries workspace: a round's structure, one question or section of it
 // opened beside it, and - at a desk - what that question asks in a column of
@@ -307,6 +315,8 @@ export interface WorkspaceProps {
   onOpen: (id: string, history: 'push' | 'replace') => void
   /** the owner's filing gates, per question */
   gates?: ReadonlyMap<string, FilingGateDto>
+  /** where the round stands, for saying which stage shut filing */
+  round?: RoundState
   busy: boolean
   refreshing: boolean
   onRefresh: () => void
@@ -346,6 +356,7 @@ function Workspace({
   open,
   onOpen,
   gates,
+  round,
   busy,
   refreshing,
   onRefresh,
@@ -382,7 +393,9 @@ function Workspace({
   const item = selected?.kind === 'item' ? (selected.item ?? null) : null
   const itemEntries = item === null ? [] : (entriesByItem.get(item.id) ?? [])
   const filing =
-    viewer === 'owner' && item !== null ? filingOf(item, itemEntries, gates?.get(item.id)) : null
+    viewer === 'owner' && item !== null
+      ? filingOf(item, itemEntries, gates?.get(item.id), round ?? null)
+      : null
 
   // A new question starts at its top, wherever the last one was left - and
   // only a new one: data arriving for the same question (a wake-up, a
@@ -508,7 +521,11 @@ function Workspace({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shown?.id, shown?.unread])
 
-  const footed = phone && picked !== null && item !== null && filing !== null && filing.mayAdd
+  // the bar at a phone's foot is the way in; while the stage has shut it the
+  // question says why where the way in would be, and a key that could only
+  // say "not now" is not put in the reader's thumb
+  const footed =
+    phone && picked !== null && item !== null && filing !== null && filing.mayAdd && !filing.shut
   useClaimScreenFoot(footed)
 
   // Moving within a layer stands in place of where the reader was: stepping
@@ -701,13 +718,7 @@ function Workspace({
                       : `${String(used)} / ${String(item.maxEntries)}`}
                   </span>
                 </span>
-                <FileKey
-                  filing={filing}
-                  busy={busy}
-                  size="lg"
-                  heldWord={format(m.entriesFootHeld)}
-                  onPress={() => onFile?.(item)}
-                />
+                <FileKey filing={filing} busy={busy} size="lg" onPress={() => onFile?.(item)} />
               </div>
             )}
           </>

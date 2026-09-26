@@ -2635,7 +2635,7 @@ describe('the phase gate on the paper', () => {
       },
     })
 
-  it('renders a shut create as a disabled control, not a trap', async () => {
+  it('renders a shut create as its reason, never as a trap', async () => {
     await screen(
       {
         listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
@@ -2653,9 +2653,19 @@ describe('the phase gate on the paper', () => {
     )
 
     await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
-    const button = page.getByTestId('file-claim').first()
-    await expect.element(button).toBeDisabled()
-    await expect.element(button).toHaveAttribute('data-gate', 'blocked')
+    // the empty question says why in place of its key, and whatever key is
+    // left on screen to start a claim is one the stage has shut
+    await expect
+      .element(page.getByTestId('entries-tray'))
+      .toHaveAttribute('data-reason', 'phase-closed')
+    for (const key of page.getByTestId('file-claim').elements()) {
+      expect((key as HTMLButtonElement).disabled).toBe(true)
+      expect(key.getAttribute('data-gate')).toBe('blocked')
+    }
+    await page.viewport(1280, 800)
+    const head = page.getByTestId('file-claim')
+    await expect.element(head).toBeDisabled()
+    await expect.element(head).toHaveAttribute('data-gate', 'blocked')
   })
 
   it('shuts the handing-on half of the dialog while drafts stay open', async () => {

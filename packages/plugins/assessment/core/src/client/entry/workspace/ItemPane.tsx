@@ -152,15 +152,20 @@ const styles = stylex.create({
   },
   tagMoving: { backgroundColor: tokens.surfaceMuted, color: tokens.surfaceMutedForeground },
   tagOpen: { boxShadow: `inset 0 0 0 1px ${tokens.border}`, color: tokens.mutedForeground },
-  held: {
+  // why no claim can be started now, where the way to start one would be
+  heldRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     margin: 0,
-    fontSize: 12.5,
-    color: tokens.warningForeground,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+    paddingBlock: 14,
+    fontSize: 13,
+    color: tokens.mutedForeground,
   },
-  heldIcon: { width: 13, height: 13, flexShrink: 0 },
+  heldIcon: { width: 14, height: 14, flexShrink: 0 },
   asideKey: {
     display: 'flex',
     minWidth: 0,
@@ -344,7 +349,6 @@ const styles = stylex.create({
     textAlign: 'left',
     cursor: 'pointer',
   },
-  addRowShut: { cursor: 'not-allowed', color: tokens.mutedForeground },
   addMark: {
     display: 'inline-flex',
     width: 28,
@@ -405,6 +409,7 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
     textWrap: 'pretty',
   },
+  trayHeld: { color: tokens.surfaceMutedForeground },
   noPointer: { pointerEvents: 'none' },
 })
 
@@ -440,14 +445,11 @@ export function FileKey({
   filing,
   busy,
   size = 'default',
-  heldWord,
   onPress,
 }: {
   filing: Filing
   busy: boolean
   size?: 'default' | 'lg'
-  /** what a shut key says instead of its act, where there is room for only the key */
-  heldWord?: string
   onPress: () => void
 }) {
   const { format } = useI18n()
@@ -460,17 +462,15 @@ export function FileKey({
       {...stylex.props(filing.shut && styles.noPointer)}
       onClick={onPress}
     >
-      {filing.shut && heldWord !== undefined ? (
-        heldWord
-      ) : (
-        <>
-          <PlusIcon aria-hidden />
-          {format(filing.declared ? m.entryDeclare : m.entryNew)}
-        </>
-      )}
+      <PlusIcon aria-hidden />
+      {format(filing.declared ? m.entryDeclare : m.entryNew)}
     </Button>
   )
-  return <Held why={filing.why === null ? null : format(filing.why)}>{key}</Held>
+  return (
+    <Held why={filing.why === null ? null : format(filing.why.message, filing.why.values)}>
+      {key}
+    </Held>
+  )
 }
 
 export function ItemPane({
@@ -681,37 +681,41 @@ export function ItemPane({
   )
 
   const addLabel = format(filing?.declared === true ? m.entryDeclare : m.entryNew)
+  // Where another claim would start, the way in - or, while the stage has
+  // shut it, why, in the words the way in would have had: a key that only
+  // says it is unavailable sends the reader looking for the reason.
   const addRow =
-    filing !== null && filing.mayAdd && listed.length > 0 ? (
-      <Held why={filing.why === null ? null : format(filing.why)} xstyle={styles.rows}>
-        <button
-          type="button"
-          data-testid="file-claim"
-          data-gate={filing.gate}
-          disabled={busy || filing.shut}
-          onClick={onFile}
-          {...stylex.props(
-            styles.addRow,
-            styles.inset,
-            filing.shut && styles.addRowShut,
-            filing.shut && styles.noPointer,
-          )}
-        >
-          <span aria-hidden {...stylex.props(styles.addMark)}>
-            <PlusIcon {...stylex.props(styles.addIcon)} />
+    filing === null || !filing.mayAdd || listed.length === 0 ? null : filing.shut ? (
+      <p
+        data-testid="filing-held"
+        data-reason={filing.reason ?? ''}
+        data-said={filing.why?.message.id ?? ''}
+        {...stylex.props(styles.heldRow, styles.inset)}
+      >
+        <ClockIcon aria-hidden {...stylex.props(styles.heldIcon)} />
+        {filing.why === null ? null : format(filing.why.message, filing.why.values)}
+      </p>
+    ) : (
+      <button
+        type="button"
+        data-testid="file-claim"
+        data-gate={filing.gate}
+        disabled={busy}
+        onClick={onFile}
+        {...stylex.props(styles.addRow, styles.inset)}
+      >
+        <span aria-hidden {...stylex.props(styles.addMark)}>
+          <PlusIcon {...stylex.props(styles.addIcon)} />
+        </span>
+        <span {...stylex.props(styles.addWord)}>{addLabel}</span>
+        <span {...stylex.props(styles.spacer)} />
+        {filing.room !== null && (
+          <span {...stylex.props(styles.addRoom)}>
+            {format(m.entriesRoomLeft, { count: filing.room })}
           </span>
-          <span {...stylex.props(styles.addWord)}>
-            {filing.shut ? format(m.entriesAddHeld) : addLabel}
-          </span>
-          <span {...stylex.props(styles.spacer)} />
-          {filing.room !== null && !filing.shut && (
-            <span {...stylex.props(styles.addRoom)}>
-              {format(m.entriesRoomLeft, { count: filing.room })}
-            </span>
-          )}
-        </button>
-      </Held>
-    ) : null
+        )}
+      </button>
+    )
 
   return (
     <div
@@ -792,12 +796,6 @@ export function ItemPane({
             </span>
           )}
         </div>
-        {filing !== null && filing.shut && filing.why !== null && (
-          <p {...stylex.props(styles.held)} data-testid="filing-held">
-            <ClockIcon aria-hidden {...stylex.props(styles.heldIcon)} />
-            {format(filing.why)}
-          </p>
-        )}
         {/* the requirements have a column of their own only at a desk */}
         {mode !== 'desk' && (
           <button
@@ -907,6 +905,8 @@ function Tray({
   const granted = item.itemType === 'constant'
   const recorded = recordedOnly(item)
   const title = granted ? m.paperEmptyGranted : recorded ? m.paperEmptyRecorded : m.paperEmptyTitle
+  // a stage that has shut filing is said as why, in place of the key
+  const held = viewer === 'owner' && filing !== null && filing.mayAdd && filing.shut
   const hint = granted
     ? m.paperEmptyGrantedHint
     : recorded
@@ -917,21 +917,21 @@ function Tray({
         ? m.itemVoided
         : viewer === 'staff'
           ? m.entriesStaffEmptyHint
-          : filing?.shut === true
-            ? m.entriesHeldHint
-            : filing !== null && !filing.mayAdd
-              ? // nothing to press here, for now or for good: an empty list
-                // must not invite a filing the page will not offer
-                m.entriesNotOpen
-              : filing?.declared === true
-                ? m.entriesDeclareHint
-                : m.paperEmptyHint
+          : filing !== null && !filing.mayAdd
+            ? // nothing to press here, for now or for good: an empty list
+              // must not invite a filing the page will not offer
+              m.entriesNotOpen
+            : filing?.declared === true
+              ? m.entriesDeclareHint
+              : m.paperEmptyHint
   const icon = stylex.props(styles.trayIcon)
   return (
     <div
       {...stylex.props(styles.tray)}
       data-testid="entries-tray"
       data-kind={granted ? 'granted' : recorded ? 'recorded' : 'filing'}
+      data-reason={held ? (filing.reason ?? '') : undefined}
+      data-said={held ? (filing.why?.message.id ?? '') : undefined}
     >
       <span {...stylex.props(styles.trayMark)}>
         {granted ? (
@@ -943,21 +943,20 @@ function Tray({
         )}
       </span>
       <p {...stylex.props(styles.trayTitle)}>{format(title)}</p>
-      <p {...stylex.props(styles.trayHint)}>{format(hint)}</p>
-      {keyed && filing !== null && filing.mayAdd && (
-        <Held why={filing.why === null ? null : format(filing.why)}>
-          <Button
-            data-testid="file-claim"
-            data-gate={filing.gate}
-            size="sm"
-            disabled={busy || filing.shut}
-            {...stylex.props(filing.shut && styles.noPointer)}
-            onClick={onFile}
-          >
-            <PlusIcon aria-hidden />
-            {label}
-          </Button>
-        </Held>
+      <p {...stylex.props(styles.trayHint, held && styles.trayHeld)}>
+        {held && filing.why !== null ? format(filing.why.message, filing.why.values) : format(hint)}
+      </p>
+      {keyed && filing !== null && filing.mayAdd && !filing.shut && (
+        <Button
+          data-testid="file-claim"
+          data-gate={filing.gate}
+          size="sm"
+          disabled={busy}
+          onClick={onFile}
+        >
+          <PlusIcon aria-hidden />
+          {label}
+        </Button>
       )}
     </div>
   )

@@ -5,9 +5,11 @@ import {
   chipsFor,
   dotOf,
   entryLineOf,
+  filingHeldOf,
   headStatsOf,
   outlineOf,
   totalsOf,
+  type RoundState,
   type Viewer,
 } from '../src/client/entry/workspace/model.ts'
 
@@ -170,5 +172,38 @@ describe('the dot beside a question', () => {
       const quiet = row({ id: 'q', kind: 'item', tag })
       expect(dotOf({ ...quiet, unread: true })).toBe(dotOf(quiet))
     }
+  })
+})
+
+describe('why a new claim cannot be started', () => {
+  const said = (reason: string | null, round: RoundState | null) =>
+    filingHeldOf(reason, round).message.id
+
+  it('names the stage that shut it, where the round names one', () => {
+    const during = filingHeldOf('phase-closed', { status: 'active', phaseName: ' 材料审核 ' })
+    expect(during.message.id).toBe('assessment/entries/held-phase')
+    expect(during.values).toEqual({ phase: '材料审核' })
+    expect(said('phase-closed', { status: 'active', phaseName: null })).toBe(
+      'assessment/entries/held-now',
+    )
+  })
+
+  it('tells an archived round and one not begun from a round between stages', () => {
+    expect(said('no-active-phase', { status: 'archived', phaseName: null })).toBe(
+      'assessment/entries/held-archived',
+    )
+    expect(said('no-active-phase', { status: 'draft', phaseName: null })).toBe(
+      'assessment/entries/held-not-started',
+    )
+    expect(said('no-active-phase', { status: 'active', phaseName: null })).toBe(
+      'assessment/entries/held-no-phase',
+    )
+  })
+
+  it('says a stage open to others only, and a round already full', () => {
+    expect(said('item-out-of-scope', null)).toBe('assessment/entries/held-item-scope')
+    expect(said('participant-out-of-scope', null)).toBe('assessment/entries/held-participant-scope')
+    expect(said('account-ceiling-reached', null)).toBe('assessment/entries/held-round-full')
+    expect(said('something-new', null)).toBe('assessment/entries/held-now')
   })
 })
