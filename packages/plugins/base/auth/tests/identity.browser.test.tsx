@@ -741,6 +741,42 @@ describe('users workspace', () => {
     expect(sheet.getByRole('button', { name: '重试' }).query()).toBeNull()
   })
 
+  // Units that could not be read say so once, with another try, and never
+  // also that the reader administers nobody: that is a different answer.
+  it('says the units could not be read, and nothing about administering none', async () => {
+    await renderScreen({
+      client: fakeClient(
+        rosterStubs({ getUserOptions: () => Effect.fail(apiError('INTERNAL_FAILURE')) }),
+      ),
+      route: '/admin/users',
+      children: <UsersPage />,
+    })
+    await expect
+      .poll(() =>
+        document.querySelector('[data-slot="resource-state"]')?.getAttribute('data-state'),
+      )
+      .toBe('failed')
+    expect(document.querySelectorAll('[data-slot="resource-state"]')).toHaveLength(1)
+    expect(document.querySelector('[data-testid="users-no-anchors"]')).toBeNull()
+    expect(document.querySelector('[data-testid="feedback"]')).toBeNull()
+    await expect.element(page.getByRole('button', { name: '重试' })).toBeVisible()
+  })
+
+  it('says so as a state when the reader administers nobody', async () => {
+    await renderScreen({
+      client: fakeClient(
+        rosterStubs({
+          getUserOptions: () => Effect.succeed({ truncated: false, nodes: [], userTypes: [] }),
+        }),
+      ),
+      route: '/admin/users',
+      children: <UsersPage />,
+    })
+    await expect
+      .element(page.getByTestId('users-no-anchors'))
+      .toHaveAttribute('data-state', 'denied')
+  })
+
   it('asks the server for the unit the tree has selected', async () => {
     const list = vi.fn(() =>
       Effect.succeed({

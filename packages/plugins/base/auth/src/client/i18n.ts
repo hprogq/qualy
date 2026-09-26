@@ -750,7 +750,11 @@ const i18n = definePluginMessages({
     noOptions: { id: 'auth/field/no-options', defaultMessage: 'Nothing to choose from yet.' },
     noAnchors: {
       id: 'auth/users/no-anchors',
-      defaultMessage: 'You do not administer users anywhere yet.',
+      defaultMessage: 'You do not administer users anywhere yet',
+    },
+    noAnchorsHint: {
+      id: 'auth/users/no-anchors-hint',
+      defaultMessage: 'Ask a system administrator if you need to',
     },
 
     create: { id: 'auth/action/create', defaultMessage: 'Create' },

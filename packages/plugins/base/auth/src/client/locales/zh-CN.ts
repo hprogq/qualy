@@ -441,6 +441,7 @@ export default {
   'auth/users/anchor': '组织',
   'auth/users/scope': '包含全部下级组织',
   'auth/users/no-anchors': '当前无权管理任何组织下的用户',
+  'auth/users/no-anchors-hint': '如需管理，请联系系统管理员',
   'auth/field/placement-tenant-root': '固定归属根组织',
   'auth/field/placement-hint':
     '此处仅定义允许归属的组织范围，具体权限由角色决定。若取消的组织类型下仍有用户，系统将阻止保存并提示受影响人数。',

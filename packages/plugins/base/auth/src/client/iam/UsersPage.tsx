@@ -5,6 +5,7 @@ import { ArrowUpRightIcon, InfoIcon, PlusIcon } from 'lucide-react'
 import {
   PageLink,
   useApiQuery,
+  useLoadFailure,
   usePageHref,
   usePageNavigate,
   usePageQueryState,
@@ -18,7 +19,8 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { AsyncSection, Feedback } from '@qualy/ui/admin'
+import { AsyncSection } from '@qualy/ui/admin'
+import { ResourceState } from '@qualy/ui/resource-state'
 import {
   BandAction,
   BandActions,
@@ -75,7 +77,6 @@ const ALL_TYPES = 'all'
 const PAGE_SIZE = 50
 
 const styles = stylex.create({
-  emptyNote: { margin: 0, fontSize: 14, color: tokens.mutedForeground },
   // never squeezed to a square: the band it sits in holds a name, a count
   // and a filter or two, and a field that gave way to them stopped being a
   // field anybody could read what they had typed in
@@ -178,6 +179,7 @@ const emsOf = (text: string) =>
 export default function UsersPage() {
   const query = useApiQuery(authApi)
   const { format, formatError } = useI18n()
+  const describe = useLoadFailure()
   const businessNo = useTerm(authTerms.businessNumber)
   const [anchor] = usePageQueryState('anchor')
   const [scope] = usePageQueryState('scope', 'subtree')
@@ -348,9 +350,29 @@ export default function UsersPage() {
         />
       }
     >
-      {options.isError && <Feedback message={formatError(options.error)} />}
-      {!options.isPending && nodes.length === 0 ? (
-        <p {...stylex.props(styles.emptyNote)}>{format(m.noAnchors)}</p>
+      {options.isError && options.data === undefined ? (
+        // the units could not be read, which says nothing about whether the
+        // reader administers any: one state, with another try
+        <AsyncSection
+          pending={false}
+          error={describe.of(options.error)}
+          framed
+          retrying={options.isFetching}
+          loadingLabel={format(commonMessages.loading)}
+          retryLabel={format(commonMessages.retry)}
+          onRetry={() => void options.refetch()}
+        >
+          {null}
+        </AsyncSection>
+      ) : !options.isPending && nodes.length === 0 ? (
+        <ResourceState
+          kind="denied"
+          size="section"
+          framed
+          data-testid="users-no-anchors"
+          title={format(m.noAnchors)}
+          description={format(m.noAnchorsHint)}
+        />
       ) : (
         <ResizableSplit
           storageKey="qualy.users.tree-width"
