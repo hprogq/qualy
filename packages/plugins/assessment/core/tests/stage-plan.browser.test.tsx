@@ -237,3 +237,46 @@ describe('the stage plan, being edited', () => {
     expect(addressNow()).toBe(`/assessment/batches/${BATCH_ID}/phases`)
   })
 })
+
+describe('the batch settings, being edited', () => {
+  it('asks before the page is left with changes, and saves them on the way out', async () => {
+    await page.viewport(1280, 800)
+    const updateBatch = vi.fn((_request: Request) => Effect.succeed({ batch: batch() }))
+    await screen({ updateBatch }, `/assessment/batches/${BATCH_ID}/settings`)
+
+    await page.getByRole('textbox', { name: '名称' }).fill('2026 春季综测（修订）')
+    await page.getByRole('link', { name: 'elsewhere' }).click()
+    await expect.element(page.getByRole('alertdialog')).toBeVisible()
+    expect(addressNow()).toBe(`/assessment/batches/${BATCH_ID}/settings`)
+
+    await page.getByRole('alertdialog').getByRole('button', { name: '保存后离开' }).click()
+    await vi.waitFor(() => expect(updateBatch).toHaveBeenCalledTimes(1))
+    expect(updateBatch.mock.calls[0]![0].payload).toMatchObject({ name: '2026 春季综测（修订）' })
+    await expect.element(page.getByTestId('elsewhere')).toBeVisible()
+  })
+
+  it('lets the reader go without the changes', async () => {
+    await page.viewport(1280, 800)
+    const updateBatch = vi.fn((_request: Request) => Effect.succeed({ batch: batch() }))
+    await screen({ updateBatch }, `/assessment/batches/${BATCH_ID}/settings`)
+
+    await page.getByRole('textbox', { name: '名称' }).fill('2026 春季综测（修订）')
+    await page.getByRole('link', { name: 'elsewhere' }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '放弃修改' }).click()
+    await expect.element(page.getByTestId('elsewhere')).toBeVisible()
+    expect(updateBatch).not.toHaveBeenCalled()
+  })
+
+  it('goes to the list without asking once the batch it was changing is deleted', async () => {
+    await page.viewport(1280, 800)
+    const deleteBatch = vi.fn(() => Effect.succeed({}))
+    await screen({ deleteBatch }, `/assessment/batches/${BATCH_ID}/settings`)
+
+    await page.getByRole('textbox', { name: '名称' }).fill('2026 春季综测（修订）')
+    await page.getByRole('button', { name: '删除批次' }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '删除批次' }).click()
+    await vi.waitFor(() => expect(deleteBatch).toHaveBeenCalledTimes(1))
+    await expect.element(page.getByTestId('batch-list')).toBeVisible()
+    expect(page.getByRole('alertdialog').elements()).toHaveLength(0)
+  })
+})

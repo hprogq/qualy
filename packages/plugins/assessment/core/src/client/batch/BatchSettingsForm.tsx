@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { Appear } from '@qualy/ui/reveal'
 import { GripVerticalIcon, PlusIcon, RotateCcwIcon, Trash2Icon, XIcon } from 'lucide-react'
-import { useApi, useApiQuery, usePageNavigate, useRunApi } from '@qualy/web-runtime'
+import { useApi, useApiQuery, useLeaveGuard, usePageNavigate, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
@@ -449,6 +449,38 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
     onError: (error: unknown) => setFailure(said(error)),
   })
 
+  const editable = batch.manageable && batch.status !== 'archived'
+  const shownRange = pickedOf(batch.materialRange)
+  // a window picked only halfway has no end to send
+  const rangeIncomplete = range.start === '' || range.end === ''
+  const unchanged =
+    name === batch.name &&
+    description === (batch.descriptionMd ?? '') &&
+    range.start === shownRange.start &&
+    range.end === shownRange.end &&
+    JSON.stringify(rejectReasons) === JSON.stringify(batch.reviewReasons.reject) &&
+    JSON.stringify(escalateReasons) === JSON.stringify(batch.reviewReasons.escalate)
+
+  // Leaving with the form changed asks first. Saving on the way out is
+  // offered only while the form can be saved: a window picked halfway has
+  // no end to send, so there the choice is to stay or to let it go.
+  const { bypass } = useLeaveGuard({
+    when: editable && !unchanged,
+    ...(rangeIncomplete
+      ? {}
+      : {
+          onSave: async () => {
+            try {
+              await save.mutateAsync()
+              return true
+            } catch {
+              // the reason is on the page, where the reader is left to read it
+              return false
+            }
+          },
+        }),
+  })
+
   const archive = useMutation({
     mutationFn: () =>
       run(
@@ -502,8 +534,9 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
     onSuccess: () => {
       toast.success(format(m.toastBatchDeleted))
       setConfirming(null)
-      // the batch this workspace is about no longer exists
-      navigate('assessment/batches', { replace: true })
+      // the batch this workspace is about no longer exists, and neither do
+      // any edits to it: the way out is not a page being left with changes
+      bypass(() => navigate('assessment/batches', { replace: true }))
       void settle()
     },
     onError: (error: unknown) => {
@@ -511,18 +544,6 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
       setFailure(said(error))
     },
   })
-
-  const editable = batch.manageable && batch.status !== 'archived'
-  const shownRange = pickedOf(batch.materialRange)
-  // a window picked only halfway has no end to send
-  const rangeIncomplete = range.start === '' || range.end === ''
-  const unchanged =
-    name === batch.name &&
-    description === (batch.descriptionMd ?? '') &&
-    range.start === shownRange.start &&
-    range.end === shownRange.end &&
-    JSON.stringify(rejectReasons) === JSON.stringify(batch.reviewReasons.reject) &&
-    JSON.stringify(escalateReasons) === JSON.stringify(batch.reviewReasons.escalate)
 
   return (
     <div {...stylex.props(styles.column)}>
