@@ -1,7 +1,7 @@
 import { Fragment, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PencilLineIcon, PlusIcon } from 'lucide-react'
-import { useApi, useApiQuery, useLeaveGuard, useRunApi } from '@qualy/web-runtime'
+import { useApi, useApiQuery, useLeaveGuard, useLoadFailure, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'
@@ -253,6 +253,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
+  const loadFailure = useLoadFailure()
 
   const phases = useQuery(
     query.assessment.getPhases.queryOptions({ params: { batchId: batch.id } }),
@@ -613,7 +614,8 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
 
       <AsyncSection
         pending={phases.isPending}
-        error={phases.isError ? formatError(phases.error) : null}
+        error={phases.isError ? loadFailure.of(phases.error) : null}
+        framed
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void phases.refetch()}
@@ -741,6 +743,18 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
           opened?.itemScope ?? [],
         )}
         itemsPending={items.isPending || groups.isPending}
+        itemsFailure={
+          items.isError
+            ? loadFailure.of(items.error)
+            : groups.isError
+              ? loadFailure.of(groups.error)
+              : null
+        }
+        onItemsRetry={() => {
+          if (items.isError) void items.refetch()
+          if (groups.isError) void groups.refetch()
+        }}
+        itemsRetrying={items.isFetching || groups.isFetching}
         readOnly={readOnly}
         frozen={actionsAt !== null && actionsAt < shape.currentIndex}
         onDraft={(next) => {

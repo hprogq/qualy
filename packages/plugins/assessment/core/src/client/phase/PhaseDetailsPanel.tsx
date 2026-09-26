@@ -2,7 +2,9 @@ import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useI18n } from '@qualy/web-i18n'
-import { Field, SidePanel } from '@qualy/ui/admin'
+import { commonMessages } from '@qualy/web-i18n/messages'
+import { AsyncSection, Field, SidePanel } from '@qualy/ui/admin'
+import type { ResourceFailure } from '@qualy/ui/resource-state'
 import { ModeChoice, PickList } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
@@ -93,6 +95,9 @@ function ScopeFields({
   stored,
   sections,
   pending,
+  failure,
+  retrying,
+  onRetry,
   locked,
   onDraft,
 }: {
@@ -100,6 +105,10 @@ function ScopeFields({
   stored: PhaseDraft | undefined
   sections: readonly ScopeSection[]
   pending: boolean
+  /** why the paper could not be read, which is not the same as there being none */
+  failure: ResourceFailure | null
+  retrying: boolean
+  onRetry: () => void
   locked: boolean
   onDraft: (next: PhaseDraft) => void
 }) {
@@ -109,7 +118,7 @@ function ScopeFields({
   // nothing to narrow: the stage opens no filing action, and an allowance
   // over it would change nothing anybody can do
   const idle = !narrowsByItem(draft.permissionProfile) && draft.itemScope.length === 0
-  const empty = !pending && sections.length === 0
+  const empty = !pending && failure === null && sections.length === 0
   const kept = stored?.participantScope ?? []
 
   return (
@@ -126,7 +135,7 @@ function ScopeFields({
       <ModeChoice
         legend={format(m.scopeItemsLabel)}
         value={some ? 'some' : 'all'}
-        disabled={locked || (!some && (idle || empty))}
+        disabled={locked || (!some && (idle || empty || failure !== null))}
         options={[
           { value: 'all', label: format(m.scopeItemsAll) },
           { value: 'some', label: format(m.scopeItemsSome) },
@@ -140,7 +149,21 @@ function ScopeFields({
       {!locked && !some && !idle && empty && (
         <p {...stylex.props(styles.hint)}>{format(m.scopeItemsNone)}</p>
       )}
-      {some && (
+      {failure !== null && (some || !idle) && (
+        // the paper could not be read: said as a reading that failed, with
+        // another try, rather than as a batch with no items in it
+        <AsyncSection
+          pending={false}
+          error={failure}
+          retrying={retrying}
+          onRetry={onRetry}
+          loadingLabel={format(commonMessages.loading)}
+          retryLabel={format(commonMessages.retry)}
+        >
+          {null}
+        </AsyncSection>
+      )}
+      {failure === null && some && (
         <div {...stylex.props(styles.lists)}>
           {pending ? (
             <Skeleton className={stylex.props(styles.bone).className} />
@@ -201,6 +224,9 @@ export function PhaseDetailsPanel({
   presets,
   sections,
   itemsPending,
+  itemsFailure,
+  itemsRetrying,
+  onItemsRetry,
   readOnly,
   frozen,
   onDraft,
@@ -213,6 +239,10 @@ export function PhaseDetailsPanel({
   /** the paper an item allowance is chosen from */
   sections: readonly ScopeSection[]
   itemsPending: boolean
+  /** why the paper could not be read, if it could not */
+  itemsFailure: ResourceFailure | null
+  itemsRetrying: boolean
+  onItemsRetry: () => void
   readOnly: boolean
   /** an ended phase keeps its profile and allowance as the record of what it allowed */
   frozen: boolean
@@ -332,6 +362,9 @@ export function PhaseDetailsPanel({
             stored={stored}
             sections={sections}
             pending={itemsPending}
+            failure={itemsFailure}
+            retrying={itemsRetrying}
+            onRetry={onItemsRetry}
             locked={readOnly || frozen}
             onDraft={onDraft}
           />

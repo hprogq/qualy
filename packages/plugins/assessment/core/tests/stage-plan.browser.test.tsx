@@ -309,6 +309,36 @@ describe('the stage plan, read', () => {
       .map((node) => node.getAttribute('data-waits'))
     expect(waits).toEqual([null, 'earlier', 'earlier'])
   })
+
+  it('says the paper could not be read, rather than that there is none', async () => {
+    await page.viewport(1280, 800)
+    const listItems = vi.fn(() => Effect.fail({ _tag: 'SERVICE_UNAVAILABLE' } as never))
+    await screen({
+      listItems,
+      getPhases: () =>
+        Effect.succeed({
+          phases: [
+            phase({
+              id: ENTRY_ID,
+              phaseKey: 'entry',
+              displayName: '正式填报',
+              permissionProfile: ['assessment.entry.create', 'assessment.entry.submit'],
+            }),
+          ],
+          planFingerprint: 'plan-one',
+        }),
+    })
+    await vi.waitFor(() => expect(keys()).toHaveLength(1))
+
+    await page.getByTestId('phase-row').first().getByText('正式填报').click()
+    const editor = page.getByRole('dialog').getByTestId('phase-scope-editor')
+    // a reading that failed, of a kind another try can mend
+    const state = editor.element().querySelector('[data-slot="resource-state"]')
+    expect(state?.getAttribute('data-state')).toBe('unavailable')
+    const asked = listItems.mock.calls.length
+    await editor.getByRole('button', { name: '重试' }).click()
+    await vi.waitFor(() => expect(listItems.mock.calls.length).toBeGreaterThan(asked))
+  })
 })
 
 describe('the batch settings, being edited', () => {
