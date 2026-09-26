@@ -202,6 +202,45 @@ describe('adding people to the roster', () => {
     await expect.element(pager).toHaveAttribute('data-page', '2')
   })
 
+  // on a slow line the page pressed is taken at once, and the rows being
+  // read wait under it instead of blanking
+  it('turns to the page asked for at once and waits on it', async () => {
+    let release = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const answer = candidates.getMockImplementation()!
+    candidates.mockImplementation((request: Request) =>
+      request.query?.['page'] === '2'
+        ? Effect.promise(() => gate).pipe(Effect.andThen(answer(request)))
+        : answer(request),
+    )
+    try {
+      await open(
+        <AddPeopleDialog
+          batchId={BATCH_ID}
+          open
+          pending={false}
+          onAdd={() => {}}
+          onClose={() => {}}
+        />,
+      )
+      await expect.poll(() => rows().length).toBe(20)
+      const pager = page.getByTestId('people-picker-pager')
+      await pager.getByRole('button', { name: '2', exact: true }).click()
+      await expect.element(pager).toHaveAttribute('data-page', '2')
+      const list = page.getByTestId('people-picker-list')
+      await expect.element(list).toHaveAttribute('data-waiting', 'page')
+      expect(rows()).toHaveLength(20)
+
+      release()
+      await expect.element(list).toHaveAttribute('aria-busy', 'false')
+      await expect.poll(() => rows()[0]!.textContent).toContain('同学20')
+    } finally {
+      candidates.mockImplementation(answer)
+    }
+  })
+
   it('takes a page in without the one already on the roster, and adds them all', async () => {
     const added = vi.fn()
     await open(

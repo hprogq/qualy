@@ -52,11 +52,24 @@ export function useCandidates(batchId: string, open: boolean) {
       },
     }),
     enabled: open,
+    // the answer being replaced stays up until the next one arrives, so
+    // turning a page does not blank the table under the pointer
     placeholderData: keepPreviousData,
   })
+  // Which question the rows on screen answer: a page kept up while the next
+  // page of the same question arrives is still its answer, and its count
+  // still holds; one kept up while a changed question is asked is not.
+  const question = `${nodeId ?? ''}:${scope}:${userTypeId}:${search}`
+  const [answered, setAnswered] = useState(question)
+  const kept = page.isPlaceholderData
+  if (page.data !== undefined && !kept && answered !== question) setAnswered(question)
+  const waiting = kept ? (answered === question ? 'page' : 'question') : undefined
+
   const rows = page.data?.items ?? []
   const pages = Math.max(1, Math.ceil((page.data?.total ?? 0) / PAGE))
-  const current = page.data?.page ?? at
+  // the page asked for until its answer arrives, then the one the server
+  // answered with: a page past the end comes back as the last one
+  const current = kept ? at : (page.data?.page ?? at)
   // a different question starts at its first page
   const asking =
     <T>(set: (value: T) => void) =>
@@ -96,6 +109,7 @@ export function useCandidates(batchId: string, open: boolean) {
     ...(choice.disabled === undefined ? {} : { disabled: choice.disabled }),
     ...(choice.disabledLabel === undefined ? {} : { disabledLabel: choice.disabledLabel }),
     pending: page.isPending || units.isPending,
+    ...(waiting === undefined ? {} : { waiting }),
     error: page.isError ? formatError(page.error) : null,
     hasPrevious: current > 1,
     hasNext: current < pages,
