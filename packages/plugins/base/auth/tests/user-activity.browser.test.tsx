@@ -112,6 +112,20 @@ describe("a person's security activity", () => {
     )
   })
 
+  it('offers the whole record only when there is something in it', async () => {
+    const signIns = vi.fn(() => Effect.succeed({ items: [], total: 0, page: 1, pageSize: 5 }))
+    await open(person(), {
+      listUserSessions: () => Effect.succeed({ items: [], nextCursor: null }),
+      listUserSignIns: signIns,
+    })
+    const card = page.getByTestId('sign-ins-card')
+    await expect.element(card).toBeInTheDocument()
+    await vi.waitFor(() => expect(signIns).toHaveBeenCalled())
+    // read, and empty: nothing to open a sheet onto
+    await vi.waitFor(() => expect(card.element().querySelector('[role="status"]')).toBeNull())
+    expect(page.getByTestId('sign-ins-card-all').query()).toBeNull()
+  })
+
   it('says so once to a reader beyond the account, and asks nothing of it', async () => {
     const sessions = vi.fn(() => Effect.succeed({ items: [], nextCursor: null }))
     const signIns = vi.fn(() => Effect.succeed({ items: [], total: 0, page: 1, pageSize: 5 }))

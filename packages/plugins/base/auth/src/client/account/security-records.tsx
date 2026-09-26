@@ -471,10 +471,11 @@ function RecordCard<Item extends { readonly id: string }>({
   const items = recent.data?.items ?? []
   return (
     <Card data-testid={testId}>
-      {/* always there: the sheet is where the record is searched by day and
-          outcome, not only where the rest of it is */}
+      {/* there whenever there is a record: the sheet is where it is searched
+          by day and outcome, not only where the rest of it is; an empty one
+          has nothing to search */}
       <CardHead title={title}>
-        {recent.data !== undefined && (
+        {recent.data !== undefined && recent.data.total > 0 && (
           <Button
             size="xs"
             variant="ghost"
