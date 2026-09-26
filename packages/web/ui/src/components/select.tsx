@@ -31,6 +31,8 @@ interface SelectState {
   items: ReadonlyMap<string, React.ReactNode>
   opened: boolean
   toggle: () => void
+  /** make an option the one Enter picks, as the pointer comes onto it */
+  highlight: (option: HTMLElement) => void
 }
 const SelectCtx = React.createContext<SelectState | null>(null)
 
@@ -125,6 +127,21 @@ function Select(props: {
       items,
       opened,
       toggle: () => store.toggleDropdown(),
+      highlight: (option) => {
+        // the widget's own list, in the order its keys walk it
+        const list = option.closest('[role="listbox"]')
+        if (list === null) return
+        const options = [...list.querySelectorAll<HTMLElement>('[data-combobox-option]')]
+        for (const other of options) {
+          if (other === option || !other.hasAttribute('data-combobox-selected')) continue
+          other.removeAttribute('data-combobox-selected')
+          // the widget's keys also say the row they are on as selected; a
+          // row left behind says again only whether it is the choice
+          other.setAttribute('aria-selected', String(other.hasAttribute('data-combobox-active')))
+        }
+        option.setAttribute('data-combobox-selected', 'true')
+        store.updateSelectedOptionIndex(options.indexOf(option))
+      },
     }),
     // the item map is rebuilt each render by design; identity is not stable
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -233,8 +250,11 @@ const styles = stylex.create({
   // The widget marks the option the keyboard is on with
   // data-combobox-selected and fills it with the primary behind a hard-coded
   // white - a black bar in the light scheme and white on near-white in the
-  // dark - while its pointer hover stepped DOWN the dark ramp. Both now wear
-  // the same wash as a menu row. Disabled is the widget's own.
+  // dark - and grounds the row under the pointer separately, so an arrow
+  // press and a pointer left two rows lit alike while Enter took the arrow's
+  // one. The pointer moves the keyboard's mark instead (SelectItem), and the
+  // mark alone is drawn, in the wash a menu row wears: one lit row, the one
+  // Enter picks. Disabled is the widget's own.
   item: {
     position: 'relative',
     display: 'flex',
@@ -244,8 +264,7 @@ const styles = stylex.create({
     paddingRight: 32,
     borderRadius: tokens.radiusMd,
     backgroundColor: {
-      default: null,
-      ':hover:not([data-combobox-disabled])': tokens.hoverSurface,
+      default: 'transparent',
       '[data-combobox-selected]': tokens.hoverSurface,
     },
     color: { default: null, '[data-combobox-selected]': tokens.foreground },
@@ -442,8 +461,9 @@ function SelectItem({
    */
   description?: React.ReactNode
 }) {
-  const { value: chosen } = useSelect()
+  const { value: chosen, highlight } = useSelect()
   const selected = chosen === value
+  const { onMouseMove, ...rest } = props
   return (
     <Combobox.Option
       value={value}
@@ -453,7 +473,15 @@ function SelectItem({
       aria-selected={selected}
       active={selected}
       data-slot="select-item"
-      {...props}
+      // Moving, not entering: a list the keys scroll slides rows under a
+      // pointer that never moved, and those must not take the mark back.
+      onMouseMove={(event) => {
+        onMouseMove?.(event)
+        const option = event.currentTarget
+        if (disabled === true || option.hasAttribute('data-combobox-selected')) return
+        highlight(option)
+      }}
+      {...rest}
       {...seatOf(stylex.props(styles.item), className)}
     >
       {/* the indicator seat is always reserved, so choosing never reflows the row */}

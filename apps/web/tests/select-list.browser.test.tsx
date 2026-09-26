@@ -310,6 +310,45 @@ describe('a select’s open list', () => {
     })
   }
 
+  // The keys and the pointer share one mark. With a mark each, an arrow
+  // press and a pointer left two rows lit alike, and Enter took the arrow's.
+  it('lights one row at a time, the one Enter picks', async () => {
+    const picked: string[] = []
+    await render(
+      <UiProvider scheme="light">
+        <Select value="a" onValueChange={(next) => picked.push(next)}>
+          <SelectTrigger aria-label="unit" style={{ width: 200 }}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {['a', 'b', 'c', 'd', 'e'].map((value) => (
+              <SelectItem key={value} value={value}>
+                {`option ${value}`}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </UiProvider>,
+    )
+    await page.getByRole('combobox', { name: 'unit' }).click()
+    await expect.element(page.getByRole('listbox')).toBeVisible()
+    const lit = () =>
+      [...document.querySelectorAll('[data-slot="select-item"]')]
+        .filter((row) => getComputedStyle(row).backgroundColor !== 'rgba(0, 0, 0, 0)')
+        .map((row) => row.textContent)
+    await userEvent.keyboard('{ArrowDown}')
+    await expect.poll(lit).toHaveLength(1)
+    await page.getByRole('option', { name: 'option d' }).hover()
+    await expect.poll(lit).toEqual(['option d'])
+    // the keys go on from where the pointer left the mark
+    await userEvent.keyboard('{ArrowUp}')
+    await expect.poll(lit).toEqual(['option c'])
+    await page.getByRole('option', { name: 'option e' }).hover()
+    await expect.poll(lit).toEqual(['option e'])
+    await userEvent.keyboard('{Enter}')
+    expect(picked).toEqual(['e'])
+  })
+
   it('says which option is the one in force', async () => {
     await render(<EdgeSelect value="newest" />)
     await page.getByRole('combobox', { name: 'order' }).click()
