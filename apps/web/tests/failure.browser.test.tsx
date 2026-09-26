@@ -31,14 +31,19 @@ describe('a failure with a way to retry', () => {
     })
     const again = page.getByRole('button')
     await expect.element(again).toBeVisible()
-    expect(document.querySelector('[role="alert"]')!.hasAttribute('data-again')).toBe(false)
+    const notice = () => document.querySelector('[data-slot="resource-state"]')!
+    expect(notice().hasAttribute('data-again')).toBe(false)
+    // heard once, by the focus on its heading, not a second time as an alert
+    await vi.waitFor(() =>
+      expect(document.activeElement).toBe(page.getByRole('heading', { level: 1 }).element()),
+    )
+    expect(notice().getAttribute('role')).toBeNull()
+    expect(page.getByRole('alert').elements()).toHaveLength(0)
     await again.click()
     // pressed: busy before anything else happens
     await expect.element(again).toHaveAttribute('aria-busy', 'true')
     await vi.waitFor(() => expect(retried).toHaveBeenCalledTimes(1))
     // and the notice that came back says it is the answer to that press
-    await vi.waitFor(() =>
-      expect(document.querySelector('[role="alert"]')!.getAttribute('data-again')).toBe('true'),
-    )
+    await vi.waitFor(() => expect(notice().getAttribute('data-again')).toBe('true'))
   })
 })

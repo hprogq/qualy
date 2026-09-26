@@ -109,6 +109,7 @@ export function LoadFailure({
   retrying = false,
   back,
   size = 'page',
+  headingLevel,
   extra,
 }: {
   failure: ResourceFailure
@@ -117,6 +118,11 @@ export function LoadFailure({
   retrying?: boolean
   back?: LoadFailureWayBack
   size?: 'page' | 'section'
+  /**
+   * A section's heading rank: 2 on the page's own ground (the default), 3
+   * inside a card or a dialog that has a title of its own. A page is always 1.
+   */
+  headingLevel?: 2 | 3 | 4
   /** anything else worth offering, after the ways out */
   extra?: ReactNode
 }) {
@@ -156,6 +162,7 @@ export function LoadFailure({
       title={failure.title}
       description={failure.description}
       size={size}
+      {...(size === 'section' && headingLevel !== undefined ? { headingLevel } : {})}
       actions={actions}
     />
   )

@@ -32,7 +32,8 @@ const styles = stylex.create({
 // in their language, what to do about it, and a retry; never a stack trace.
 // It stands where the page would have been, the same state a page draws for
 // a record that is not there, so every "this cannot be shown" in the product
-// looks like one thing.
+// looks like one thing - and is heard as one: focus goes to its heading,
+// which a screen reader reads out, rather than an alert said on top of it.
 export function Failure({
   title,
   description,
@@ -80,7 +81,6 @@ export function Failure({
     )
   return (
     <ResourceState
-      role="alert"
       data-again={again ? 'true' : undefined}
       kind={kind}
       title={title}
