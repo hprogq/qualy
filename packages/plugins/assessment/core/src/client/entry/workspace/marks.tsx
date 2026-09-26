@@ -58,12 +58,6 @@ export function UnreadMark() {
   )
 }
 
-/** the fill a bar is drawn in: full in the colour of what counts, the rest quiet */
-export const meterStyles = stylex.create({
-  fill: { backgroundColor: `color-mix(in oklab, ${tokens.foreground} 58%, ${tokens.background})` },
-  full: { backgroundColor: tokens.success },
-})
-
 /**
  * How far a section has got against its limit, as a pie beside its figure.
  * The figure itself is said in words next to it; the pie is that figure

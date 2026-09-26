@@ -13,7 +13,8 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { trimAmount } from '../model.ts'
 import type { StructureRow } from '../standing.ts'
-import { meterStyles, SectionMeter, UnreadMark } from './marks.tsx'
+import { SectionMeter, UnreadMark } from './marks.tsx'
+import { meterStyles } from './meter.ts'
 import {
   dotOf,
   rowWordOf,
