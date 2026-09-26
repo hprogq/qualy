@@ -933,6 +933,60 @@ describe('the batch overview', () => {
   })
 })
 
+describe('the batch note on the overview', () => {
+  const noted = (descriptionMd: string | null) =>
+    screen(
+      {
+        getBatch: () =>
+          Effect.succeed({
+            batch: batch({ status: 'active', currentPhaseId: ENTRY_PHASE_ID, descriptionMd }),
+          }),
+        getTimeline: () => Effect.succeed({ timeline: running(30 * HOUR) }),
+      },
+      `/assessment/batches/${BATCH_ID}`,
+    )
+
+  // What the managers wrote stands over the desk, as they wrote it: plain
+  // text with its line breaks, never read as markup.
+  it('shows what the managers wrote over the desk, line breaks and all', async () => {
+    await page.viewport(1280, 800)
+    await noted('本批次为推免专项\n请于十月前完成填报\n<b>不是标记</b>')
+    const note = page.getByTestId('batch-note')
+    await expect.element(note).toBeVisible()
+    const text = note.element().querySelector('p')!
+    expect(text.textContent).toBe('本批次为推免专项\n请于十月前完成填报\n<b>不是标记</b>')
+    expect(text.querySelector('b')).toBeNull()
+    expect(getComputedStyle(text).whiteSpace).toBe('pre-wrap')
+    // three short lines are all there is: nothing to open
+    await expect.element(note).toHaveAttribute('data-long', 'false')
+    expect(note.element().querySelector('button')).toBeNull()
+  })
+
+  it('folds a long note to four lines, and opens it on the reader’s word', async () => {
+    await page.viewport(1280, 800)
+    await noted(Array.from({ length: 10 }, (_, n) => `第 ${String(n + 1)} 条说明`).join('\n'))
+    const note = page.getByTestId('batch-note')
+    await expect.element(note).toHaveAttribute('data-long', 'true')
+    const text = note.element().querySelector('p')!
+    const folded = text.getBoundingClientRect().height
+    const line = parseFloat(getComputedStyle(text).lineHeight)
+    expect(Math.round(folded / line)).toBe(4)
+    const key = note.getByRole('button')
+    await expect.element(key).toHaveAttribute('aria-expanded', 'false')
+    await key.click()
+    await expect.element(note).toHaveAttribute('data-expanded', 'true')
+    expect(Math.round(text.getBoundingClientRect().height / line)).toBe(10)
+    await expect.element(key).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('says nothing where the managers wrote nothing', async () => {
+    await page.viewport(1280, 800)
+    await noted('   ')
+    await expectVisibleText('正式填报')
+    expect(page.getByTestId('batch-note').elements()).toHaveLength(0)
+  })
+})
+
 describe('the batch lifecycle', () => {
   it('offers to delete a draft, and never says the word activate', async () => {
     const deleteBatch = vi.fn((_request: Request) => Effect.succeed({ deleted: true }))
@@ -957,7 +1011,7 @@ describe('the batch lifecycle', () => {
     // nothing to save until something differs from what was read
     await expect.element(page.getByRole('button', { name: '保存', exact: false })).toBeDisabled()
     await page.getByRole('textbox', { name: '名称' }).fill('2026 春季综测（改）')
-    await page.getByRole('textbox', { name: '备注' }).fill('先行试点')
+    await page.getByRole('textbox', { name: '批次说明' }).fill('先行试点')
     await page.getByRole('button', { name: '保存', exact: false }).click()
 
     await vi.waitFor(() => expect(updateBatch).toHaveBeenCalledTimes(1))

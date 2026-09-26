@@ -5402,6 +5402,15 @@ const i18n = definePluginMessages({
       id: 'assessment/overview/activity-unread',
       defaultMessage: '{count, plural, one {# entry has news} other {# entries have news}}',
     },
+    overviewBatchNote: { id: 'assessment/overview/batch-note', defaultMessage: 'About this batch' },
+    overviewBatchNoteMore: {
+      id: 'assessment/overview/batch-note-more',
+      defaultMessage: 'Read all',
+    },
+    overviewBatchNoteLess: {
+      id: 'assessment/overview/batch-note-less',
+      defaultMessage: 'Show less',
+    },
     overviewActivityNone: {
       id: 'assessment/overview/activity-none',
       defaultMessage: 'Nothing has happened around you here yet',
@@ -5639,11 +5648,11 @@ const i18n = definePluginMessages({
       defaultMessage:
         'The material date range determines which achievements may be submitted in this batch.',
     },
-    settingsNote: { id: 'assessment/settings/note', defaultMessage: 'Notes' },
+    settingsNote: { id: 'assessment/settings/note', defaultMessage: 'About this batch' },
     settingsNoteHint: {
       id: 'assessment/settings/note-hint',
       defaultMessage:
-        'Visible to batch participants and staff. Do not include sensitive information.',
+        'Shown at the top of the batch overview to participants and staff; leave out anything sensitive',
     },
     settingsUnsaved: { id: 'assessment/settings/unsaved', defaultMessage: 'Not saved' },
     settingsLifecycle: { id: 'assessment/settings/lifecycle', defaultMessage: 'Batch status' },

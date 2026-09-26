@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { CheckIcon, ChevronRightIcon } from 'lucide-react'
+import { CheckIcon, ChevronDownIcon, ChevronRightIcon, ChevronUpIcon } from 'lucide-react'
 import {
   useApi,
   useApiQuery,
@@ -59,6 +59,45 @@ const styles = stylex.create({
       [wide]: 32,
     },
   },
+  // what the batch's managers wrote about it, over everything else
+  note: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 8 },
+  noteText: {
+    margin: 0,
+    fontSize: 13.5,
+    lineHeight: 1.7,
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'anywhere',
+    color: tokens.surfaceMutedForeground,
+  },
+  // four lines, the last fading out, until the reader asks for the rest
+  noteFolded: {
+    display: '-webkit-box',
+    overflow: 'hidden',
+    WebkitBoxOrient: 'vertical',
+    WebkitLineClamp: 4,
+  },
+  noteFaded: {
+    maskImage: 'linear-gradient(to bottom, black calc(100% - 1.7em), transparent)',
+  },
+  noteKey: {
+    display: 'inline-flex',
+    alignSelf: 'flex-start',
+    alignItems: 'center',
+    gap: 4,
+    height: 26,
+    marginLeft: -8,
+    borderWidth: 0,
+    borderRadius: 6,
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 70%, transparent)`,
+    },
+    paddingInline: 8,
+    fontSize: 12.5,
+    color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
+    cursor: 'pointer',
+  },
+  noteKeyIcon: { width: 13, height: 13 },
   // the stage plan on a phone: the same strip, laid over the desk rather
   // than beside it
   sectionTitle: {
@@ -580,7 +619,7 @@ export default function BatchOverviewPage() {
 
   return (
     <BatchScreen title={format(m.tabOverview)} description={format(m.overviewHint)}>
-      {() => (
+      {(batch) => (
         <div {...stylex.props(styles.desk)}>
           {/* No plan here on a phone: the band at the top of the screen is
               the window's own head there, and it already carries the stage,
@@ -588,6 +627,9 @@ export default function BatchOverviewPage() {
               first thing on the page pushed what the reader came for below
               the fold. */}
           <div {...stylex.props(styles.main)}>
+            {batch.descriptionMd !== null && batch.descriptionMd.trim() !== '' && (
+              <BatchNote text={batch.descriptionMd.trim()} />
+            )}
             <MyDesk batchId={batchId} overview={overview} />
           </div>
 
@@ -608,6 +650,71 @@ export default function BatchOverviewPage() {
         </div>
       )}
     </BatchScreen>
+  )
+}
+
+/**
+ * What the batch's managers wrote about it, as they wrote it: plain text,
+ * its line breaks kept, never read as markup. Four lines at first - the
+ * desk under it is what the reader came for - and the rest a press away.
+ */
+function BatchNote({ text }: { text: string }) {
+  const { format } = useI18n()
+  const id = useId()
+  const body = useRef<HTMLParagraphElement | null>(null)
+  const [open, setOpen] = useState(false)
+  // whether four lines hold it all; measured, since how many lines a text
+  // takes depends on the width it is given
+  const [long, setLong] = useState(false)
+  useLayoutEffect(() => {
+    const node = body.current
+    if (node === null || open) return
+    const measure = () => setLong(node.scrollHeight > node.clientHeight + 1)
+    measure()
+    const watch = new ResizeObserver(measure)
+    watch.observe(node)
+    return () => watch.disconnect()
+  }, [text, open])
+  const folded = !open
+  return (
+    <section
+      data-testid="batch-note"
+      data-expanded={open}
+      data-long={long}
+      aria-labelledby={`${id}-title`}
+      {...stylex.props(styles.note)}
+    >
+      <h2 id={`${id}-title`} {...stylex.props(styles.sectionTitle)}>
+        {format(m.overviewBatchNote)}
+      </h2>
+      <p
+        ref={body}
+        id={`${id}-text`}
+        {...stylex.props(
+          styles.noteText,
+          folded && styles.noteFolded,
+          folded && long && styles.noteFaded,
+        )}
+      >
+        {text}
+      </p>
+      {(long || open) && (
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={`${id}-text`}
+          onClick={() => setOpen((now) => !now)}
+          {...stylex.props(styles.noteKey)}
+        >
+          {format(open ? m.overviewBatchNoteLess : m.overviewBatchNoteMore)}
+          {open ? (
+            <ChevronUpIcon aria-hidden {...stylex.props(styles.noteKeyIcon)} />
+          ) : (
+            <ChevronDownIcon aria-hidden {...stylex.props(styles.noteKeyIcon)} />
+          )}
+        </button>
+      )}
+    </section>
   )
 }
 
