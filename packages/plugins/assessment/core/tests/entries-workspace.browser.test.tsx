@@ -1202,6 +1202,27 @@ function FillProbe() {
   return <span hidden data-testid="fill-probe" data-claimed={useScreenFillClaimed()} />
 }
 
+describe('an address naming a claim', () => {
+  // A link to a claim that is gone - given up, or never this reader's - opens
+  // nothing: it used to open an empty form for a new claim in its place.
+  it('opens no form for a claim that is not there', async () => {
+    await page.viewport(1440, 900)
+    await workspace({
+      route: `${base}?open=${itemId(1)}&entry=${entryId(9)}`,
+      entries: [claim(1, itemId(1), 'approved')],
+    })
+    await expect.poll(() => rows().length).toBe(1)
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it('still opens the form for a new claim the address asks for', async () => {
+    await page.viewport(1440, 900)
+    await workspace({ route: `${base}?open=${itemId(1)}&entry=new` })
+    await expect.poll(() => document.querySelector('[role="dialog"]')).not.toBeNull()
+  })
+})
+
 describe('the room the page asks of the shell', () => {
   // From a tablet up the workspace scrolls each column in its own place and
   // the window never, so the page tells the shell it fills the room - the

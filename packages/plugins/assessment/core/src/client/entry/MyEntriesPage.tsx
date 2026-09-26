@@ -273,17 +273,15 @@ function Body({
     [rows],
   )
   const writingRow = filing === '' ? null : (itemById.get(open) ?? null)
-  const writing =
-    writingRow?.item === undefined
+  const written =
+    writingRow === null || filing === 'new'
       ? null
-      : {
-          item: writingRow.item,
-          trail: writingRow.trail,
-          entry:
-            filing === 'new'
-              ? null
-              : ((entriesByItem.get(writingRow.id) ?? []).find((one) => one.id === filing) ?? null),
-        }
+      : ((entriesByItem.get(writingRow.id) ?? []).find((one) => one.id === filing) ?? null)
+  // a claim the address names that is not there is not a new one to write
+  const writing =
+    writingRow?.item === undefined || (filing !== 'new' && written === null)
+      ? null
+      : { item: writingRow.item, trail: writingRow.trail, entry: written }
   const lingeringFiling = useLingering(writing)
   // the claim the drawer is holding, resolved the same way
   const detailed = (() => {
