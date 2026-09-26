@@ -24,12 +24,14 @@ import {
   type UiSlotToken,
 } from '@qualy/ui-contract'
 import {
+  ScreenAsideScope,
   ScreenFootScope,
   UiSlot,
   useIdlePagePrefetch,
   usePagePrefetch,
   usePendingNavigation,
   useUiCollection,
+  useScreenAsideSeat,
   useScreenFootClaimed,
   WorkspaceCapabilityScope,
   useWorkspaceCapabilities,
@@ -239,6 +241,22 @@ const styles = stylex.create({
   },
   asideGone: {
     width: 0,
+  },
+  // The column lent to the open screen: wider than the rail, because what
+  // stands in it is one thing described rather than a list of places, and
+  // its longest line - where somebody stands - is the one worth the room.
+  asideLent: {
+    width: 280,
+    borderRightWidth: 1,
+    borderRightStyle: 'solid',
+    borderRightColor: tokens.border,
+  },
+  lentSeat: {
+    display: 'flex',
+    height: '100%',
+    width: 280,
+    flexDirection: 'column',
+    overflowY: 'auto',
   },
   // the rail is always its full width; the column around it is what narrows
   railNav: {
@@ -921,10 +939,16 @@ export interface RailShellProps {
 }
 
 export function RailShell(props: RailShellProps) {
+  // Around a workspace, wide enough for the rail to stand beside the page,
+  // its column can be lent to the open screen. Around a record the sections
+  // stand inside the page's own measure and there is no column to lend.
+  const lends = !useIsBelow(SHELL_BREAKPOINT) && props.banner !== true
   return (
     <WorkspaceCapabilityScope>
       <ScreenFootScope>
-        <CapableRailShell {...props} />
+        <ScreenAsideScope offered={lends}>
+          <CapableRailShell {...props} />
+        </ScreenAsideScope>
       </ScreenFootScope>
     </WorkspaceCapabilityScope>
   )
@@ -951,6 +975,9 @@ function CapableRailShell({
   const drawer = useNavDrawer()
   // a screen whose own bar ends at the bottom edge has asked for that corner
   const footTaken = useScreenFootClaimed()
+  // a screen that has something to stand beside its work has asked for the
+  // rail's column, and draws there instead of the rail
+  const lent = useScreenAsideSeat()
   const [railOpen, setRailOpen] = useState(!narrow)
   useEffect(() => setRailOpen(!narrow), [narrow])
 
@@ -1242,15 +1269,33 @@ function CapableRailShell({
             collapsed all the way, because the drawer has taken over. */}
           <aside
             data-testid="workspace-rail"
+            data-lent={lent.claimed || undefined}
             // fully out of reach while folded: clipped is not gone, and the
             // keyboard would still walk into the toggle behind the fold
             {...(narrow ? { inert: true, 'aria-hidden': true } : {})}
             {...stylex.props(
               styles.aside,
-              narrow ? styles.asideGone : railOpen ? styles.asideOpen : styles.asideClosed,
+              narrow
+                ? styles.asideGone
+                : lent.claimed
+                  ? styles.asideLent
+                  : railOpen
+                    ? styles.asideOpen
+                    : styles.asideClosed,
             )}
           >
-            {rail}
+            {/* The open screen's own column, while it holds it: the way back
+                to the sections is that screen's way out, so the rail is not
+                drawn behind it as well. */}
+            {lent.claimed ? (
+              <div
+                ref={lent.seat}
+                data-testid="workspace-aside"
+                {...stylex.props(styles.lentSeat)}
+              />
+            ) : (
+              rail
+            )}
           </aside>
           {/* auto, not scroll: the screens that fill the viewport - the review
             workbench, my filings - then carry a scrollbar that can never

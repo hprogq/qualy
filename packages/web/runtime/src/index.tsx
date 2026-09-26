@@ -663,5 +663,11 @@ export {
   type WorkspaceCapabilities,
 } from './workspace-capabilities.tsx'
 export { ScreenFootScope, useScreenFootClaimed, useClaimScreenFoot } from './screen-foot.tsx'
+export {
+  ScreenAside,
+  ScreenAsideScope,
+  useScreenAsideOffered,
+  useScreenAsideSeat,
+} from './screen-aside.tsx'
 export { ScreenFillScope, useScreenFillClaimed, useClaimScreenFill } from './screen-fill.tsx'
 export { PageTitleScope, usePageTitle, usePageTitleClaim } from './page-title.tsx'

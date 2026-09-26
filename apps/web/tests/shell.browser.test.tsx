@@ -1,10 +1,10 @@
-import { lazy, Suspense, type ReactNode } from 'react'
+import { lazy, Suspense, useState, type ReactNode } from 'react'
 import { Outlet, Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
 import { layoutComponents, slotComponents } from 'virtual:qualy/plugins'
-import { usePageTitle } from '@qualy/web-runtime'
+import { ScreenAside, usePageTitle, useScreenAsideOffered } from '@qualy/web-runtime'
 import { Screen } from '@qualy/ui/screen'
 import { PageLoading } from '@qualy/ui/spinner'
 import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
@@ -1004,5 +1004,66 @@ describe('a press on the rail', () => {
     expect(preloads.users).not.toHaveBeenCalled()
     await page.getByRole('link', { name: '组织与权限' }).hover()
     await vi.waitFor(() => expect(preloads.users).toHaveBeenCalled())
+  })
+})
+
+describe('the rail’s column, lent to the open screen', () => {
+  // A screen that has one thing open - one person on a roster - asks for the
+  // column the rail stands in and draws who it is there, for as long as it
+  // holds it. On a window too narrow for the rail there is no column to
+  // lend, and the screen is told so and draws the same in its own flow.
+  function Lending() {
+    const offered = useScreenAsideOffered()
+    const [holding, setHolding] = useState(true)
+    return (
+      <div data-testid="lending" data-offered={offered}>
+        {holding && (
+          <ScreenAside>
+            <div data-testid="lent-content">郭航旗</div>
+          </ScreenAside>
+        )}
+        <button type="button" onClick={() => setHolding(false)}>
+          give back
+        </button>
+      </div>
+    )
+  }
+  const mount = () =>
+    renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(settledManifest()) } }),
+      route: `/assessment/batches/${BATCH_ID}/phases`,
+      children: (
+        <Routes>
+          <Route element={<WorkspaceShell />}>
+            <Route path="/assessment/batches/:batchId/phases" element={<Lending />} />
+          </Route>
+        </Routes>
+      ),
+    })
+
+  it('draws the screen’s column where the rail stood, and the rail again once it lets go', async () => {
+    await page.viewport(1280, 800)
+    await mount()
+    const column = page.getByTestId('workspace-rail')
+    await expect.element(column).toHaveAttribute('data-lent', 'true')
+    await expect.element(column.getByTestId('lent-content')).toBeVisible()
+    await expect.element(page.getByTestId('lending')).toHaveAttribute('data-offered', 'true')
+    // the rail is not drawn behind it
+    expect(column.getByRole('link', { name: '阶段安排' }).elements()).toHaveLength(0)
+
+    await page.getByRole('button', { name: 'give back' }).click()
+    await expect.element(column).not.toHaveAttribute('data-lent')
+    await expect.element(column.getByRole('link', { name: '阶段安排' })).toBeVisible()
+  })
+
+  it('lends nothing on a window too narrow for the rail', async () => {
+    await page.viewport(800, 900)
+    try {
+      await mount()
+      await expect.element(page.getByTestId('lending')).toHaveAttribute('data-offered', 'false')
+      expect(page.getByTestId('lent-content').elements()).toHaveLength(0)
+    } finally {
+      await page.viewport(1280, 800)
+    }
   })
 })
