@@ -30,7 +30,41 @@ const styles = stylex.create({
   // the page being read, drawn as the numbered strip draws its own and
   // pointing at nothing
   here: { cursor: 'default', userSelect: 'none' },
+  // A page number is a quiet key, and the page being read wears the tint
+  // the product gives a chosen option. The widget's own current page was
+  // the primary filled behind a hard-coded white: a black block at the foot
+  // of every list in the light scheme, and white on near-white in the dark,
+  // where the primary is paper. Secondary navigation should be neither.
+  control: {
+    borderColor: {
+      default: 'transparent',
+      '[data-active]': tokens.selectedBorder,
+    },
+    backgroundColor: {
+      default: 'transparent',
+      ':hover:not([data-active]):not(:disabled):not([data-disabled])': tokens.hoverSurface,
+      '[data-active]': tokens.selectedSurface,
+    },
+    color: {
+      default: tokens.mutedForeground,
+      ':hover:not(:disabled):not([data-disabled])': tokens.foreground,
+      '[data-active]': tokens.foreground,
+    },
+    fontSize: 13,
+    fontVariantNumeric: 'tabular-nums',
+    fontWeight: { default: 400, '[data-active]': 600 },
+    transitionProperty: 'background-color, color',
+    transitionDuration: { default: '120ms', '@media (prefers-reduced-motion: reduce)': '0s' },
+    transitionTimingFunction: 'ease-out',
+  },
+  dots: { color: tokens.mutedForeground },
 })
+
+/** the look both strips hand the widget for its keys */
+const controlClassNames = {
+  control: stylex.props(styles.control).className ?? '',
+  dots: stylex.props(styles.dots).className ?? '',
+}
 
 /** the names the two arrows are spoken by, where the caller has given them */
 const edgeLabels =
@@ -99,6 +133,7 @@ export function Pager({
           disabled={disabled}
           withEdges={false}
           getControlProps={edgeLabels(previousLabel, nextLabel)}
+          classNames={controlClassNames}
         />
       )}
     </div>
@@ -157,6 +192,7 @@ export function CursorPager({
           value={page}
           disabled={disabled}
           onChange={(next) => (next > page ? onNext() : onPrevious())}
+          classNames={controlClassNames}
         >
           <div {...stylex.props(styles.controls)}>
             <Pagination.Previous aria-label={previousLabel} />
@@ -169,7 +205,10 @@ export function CursorPager({
               data-active
               data-with-padding
               data-disabled={disabled || undefined}
-              className={clsx(Pagination.classes.control, stylex.props(styles.here).className)}
+              className={clsx(
+                Pagination.classes.control,
+                stylex.props(styles.control, styles.here).className,
+              )}
             >
               {page}
             </span>

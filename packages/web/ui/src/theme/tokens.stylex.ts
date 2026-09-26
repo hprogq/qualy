@@ -28,6 +28,7 @@ export const tokens = stylex.defineVars({
   surfaceMutedForeground: 'var(--q-surface-muted-foreground)',
   selectedBorder: 'var(--q-selected-border)',
   selectedSurface: 'var(--q-selected-surface)',
+  hoverSurface: 'var(--q-hover-surface)',
   radiusSm: 'var(--q-radius-sm)',
   radiusMd: 'var(--q-radius-md)',
   radiusLg: 'var(--q-radius-lg)',

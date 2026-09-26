@@ -56,6 +56,11 @@
   /* the ground a row that removes something takes under the pointer; it
      carries further in the dark, where a 10% wash disappears */
   --q-danger-surface: color-mix(in oklab, var(--q-danger) 10%, transparent);
+  /* the ground a row in a list or a panel wears under the pointer, and under
+     the keyboard's highlight: a wash of the ink rather than a step of the
+     surface ramp, so it reads on whatever ground the row sits on - on the
+     raised dark panel the next surface step is too close to see */
+  --q-hover-surface: color-mix(in oklch, var(--q-foreground) 6%, transparent);
   /* how far a surface stands off the page: the ring is the border's own
      weight, the shadow says the distance - a card at rest, the card that
      leads a page, a panel over the page. In the dark a shadow is
@@ -108,6 +113,7 @@
   --q-selected-border: color-mix(in oklab, var(--q-primary) 20%, transparent);
   --q-selected-surface: color-mix(in oklab, var(--q-primary) 10%, transparent);
   --q-danger-surface: color-mix(in oklab, var(--q-danger) 20%, transparent);
+  --q-hover-surface: color-mix(in oklch, var(--q-foreground) 8%, transparent);
   --q-elevation-1: 0 0 0 1px oklch(1 0 0 / 0.08);
   --q-elevation-2: 0 0 0 1px oklch(1 0 0 / 0.1);
   --q-elevation-3: 0 0 0 1px oklch(1 0 0 / 0.12);
