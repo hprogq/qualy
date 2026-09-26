@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import {
@@ -24,7 +24,7 @@ import { AppealDialog } from './AppealDialog.tsx'
 import { SupplementAnswerDialog } from './SupplementAnswerDialog.tsx'
 import { EntryDialog } from './EntryDialog.tsx'
 import { EntrySheet } from './EntrySheet.tsx'
-import { useMarkItemRead, useOwnClaimActs, useOwnFailure } from './own-acts.ts'
+import { useMarkEntryRead, useOwnClaimActs, useOwnFailure } from './own-acts.ts'
 import { standingRows } from './standing.ts'
 import type { EntryDto, FilingGateDto, ItemDto } from './model.ts'
 import { EntriesWorkspace } from './workspace/EntriesWorkspace.tsx'
@@ -274,9 +274,9 @@ function Body({
   // in: one the school records is still theirs to read. A question still
   // being composed is the only one nobody outside the paper can see.
   const visible = useMemo(() => questions.filter((item) => item.status !== 'draft'), [questions])
-  const unreadItems = useMemo(
-    () => new Set(mine.data?.attention?.unreadItemIds ?? []),
-    [mine.data?.attention?.unreadItemIds],
+  const unreadEntries = useMemo(
+    () => new Set(mine.data?.attention?.unreadEntryIds ?? []),
+    [mine.data?.attention?.unreadEntryIds],
   )
   const rows = useMemo(
     () =>
@@ -285,14 +285,10 @@ function Body({
         items: visible,
         entriesByItem,
         standing: standing.data ?? null,
-        unreadItems,
+        unreadEntries,
       }),
-    [groups.data, visible, entriesByItem, standing.data, unreadItems],
+    [groups.data, visible, entriesByItem, standing.data, unreadEntries],
   )
-
-  // Looking silences the news (§32.72): a question on screen is a question
-  // looked at.
-  const markRead = useMarkItemRead(batchId)
 
   // The claim being written, resolved from the address: 'new' is one about
   // to exist on the open question, anything else is one of that question's
@@ -324,6 +320,21 @@ function Body({
       : { entry: found, item: itemRow.item, trail: itemRow.trail }
   })()
   const lingeringDetail = useLingering(detailed)
+
+  // A claim's news is read by opening that claim (§32.72, amended): its
+  // drawer, or its form, which opens on the words it came back with. Opening
+  // the question it sits under reads nothing. News that lands while the
+  // claim is open is read as it lands.
+  const markRead = useMarkEntryRead(batchId).mutate
+  const reading = [detailed?.entry.id, writing?.entry?.id].filter(
+    (id): id is string => id !== undefined && unreadEntries.has(id),
+  )
+  const readingKey = reading.join()
+  useEffect(() => {
+    for (const id of reading) markRead(id)
+    // what matters is which open claims hold news, not the array's identity
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readingKey, markRead])
 
   // opening a question AND starting a claim on it is one address write: two
   // writes from one press race on the router's snapshot, and the second
@@ -424,9 +435,7 @@ function Body({
               ? declare.mutate({ itemId: item.id })
               : openAndFile(item.id, 'new')
           }
-          onShow={(row) => {
-            if (row.unread) markRead.mutate(row.id)
-          }}
+          unreadEntries={unreadEntries}
           fit="parent"
         />
       )}

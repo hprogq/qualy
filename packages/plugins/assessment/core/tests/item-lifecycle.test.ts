@@ -659,10 +659,9 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
             f.principal(f.s2),
           )
           yield* assessment.setEntryStatus(f.t, inReview.id, 'in_review', f.principal(f.s2))
-          // both owners have looked at their question before it goes
-          for (const who of [f.s1, f.s2]) {
-            yield* assessment.markMyEntryRead(f.t, g.batch.id, g.item.id, f.principal(who))
-          }
+          // both owners have read their claim before it goes
+          yield* assessment.markMyEntryRead(f.t, g.batch.id, drafted.id, f.principal(f.s1))
+          yield* assessment.markMyEntryRead(f.t, g.batch.id, inReview.id, f.principal(f.s2))
           yield* assessment.setItemStatus(
             f.t,
             g.item.id,
@@ -687,7 +686,7 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
                 f.principal(who),
               )
               return {
-                unread: desk.participant!.unreadItemIds,
+                unread: desk.participant!.unreadEntryIds,
                 activity: activity.items.map((row) => row.kind),
                 // why, in whichever of the two the reason rides
                 why: activity.items.map((row) => row.reason ?? row.comment),
@@ -703,8 +702,8 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
             roundSaid,
             draftTrail: yield* trailOf(drafted.id),
             reviewTrail: yield* trailOf(inReview.id),
-            draftOwner: yield* seenBy(f.s1),
-            reviewOwner: yield* seenBy(f.s2),
+            draftOwner: { ...(yield* seenBy(f.s1)), entryId: drafted.id },
+            reviewOwner: { ...(yield* seenBy(f.s2)), entryId: inReview.id },
           }
         }),
       ),
@@ -722,7 +721,8 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
     // claim tell their owner why
     expect(result.roundSaid.comment).toBe('policy withdrawn for the term')
     for (const owner of [result.draftOwner, result.reviewOwner]) {
-      expect(owner.unread).toHaveLength(1)
+      // the claim itself is the news, not its question
+      expect(owner.unread).toEqual([owner.entryId])
       expect(owner.activity[0]).toBe('entry-voided-with-item')
       expect(owner.why[0]).toBe('policy withdrawn for the term')
     }

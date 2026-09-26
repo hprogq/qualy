@@ -159,7 +159,7 @@ const ambient = {
       participantId: PARTICIPANT_ID,
       entries: [],
       nextCursor: null,
-      attention: { unreadItemIds: [] },
+      attention: { unreadEntryIds: [] },
     }),
   // the queue's other half; empty unless a case says otherwise
   listAwaitingSupplements: () => Effect.succeed({ items: [], nextCursor: null }),
@@ -210,7 +210,7 @@ describe('the overview desk', () => {
         getMyOverview: () =>
           Effect.succeed({
             participant: {
-              unreadItemIds: [ITEM_ID],
+              unreadEntryIds: [ENTRY_ID],
               actions: [
                 {
                   kind: 'supplement' as const,
@@ -299,7 +299,7 @@ describe('the overview desk', () => {
     expect(feed.querySelector('[data-perspective="reviewer"]')?.getAttribute('data-kind')).toBe(
       'review-approved',
     )
-    // the unread question's newest row wears the dot
+    // the unread claim's newest row wears the dot
     expect(feed.querySelector('[data-unread]')?.getAttribute('data-kind')).toBe(
       'supplement-requested',
     )
@@ -315,6 +315,58 @@ describe('the overview desk', () => {
     await page.viewport(414, 896)
   })
 
+  // Marked by the claim: two claims under one question are two lines of news,
+  // and only the one with news its owner has not read wears the dot.
+  it('marks the newest line of each claim with news, not of each question', async () => {
+    await page.viewport(1280, 800)
+    const OTHER_ID = '33333333-3333-4333-8333-333333333334'
+    const line = (id: string, entryId: string, at: string) => ({
+      id,
+      perspective: 'participant' as const,
+      kind: 'review-approved' as const,
+      entryId,
+      itemId: ITEM_ID,
+      itemTitle: '退役复学',
+      subjectName: null,
+      instanceId: null,
+      actorName: '示例辅导员',
+      reason: null,
+      comment: null,
+      summary: [],
+      at,
+    })
+    await screen(
+      {
+        getTimeline: () => Effect.succeed({ timeline: [] }),
+        getMyOverview: () =>
+          Effect.succeed({
+            participant: { unreadEntryIds: [OTHER_ID], actions: [] },
+            reviewer: null,
+          }),
+        listMyActivity: () =>
+          Effect.succeed({
+            items: [
+              line(REQUEST_ID, ENTRY_ID, '2026-03-04T10:00:00.000Z'),
+              line(INSTANCE_ID, OTHER_ID, '2026-03-03T10:00:00.000Z'),
+              line(REVISION_ID, OTHER_ID, '2026-03-02T10:00:00.000Z'),
+            ],
+            nextCursor: null,
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}`,
+      [{ path: '/assessment/batches/:batchId', element: <BatchOverviewPage /> }],
+    )
+    await expect.element(page.getByTestId('overview-activity')).toBeVisible()
+    const feed = page.getByTestId('overview-activity').element()
+    const lines = [...feed.querySelectorAll('[data-perspective]')]
+    const marked = [...feed.querySelectorAll('[data-unread]')]
+    // the newest line of the claim with news, and nothing of its neighbour
+    expect(marked).toHaveLength(1)
+    expect(lines.indexOf(marked[0]!)).toBe(1)
+    expect(marked[0]!.querySelector('[data-testid="unread-dot"]')).not.toBeNull()
+    await expect.element(page.getByTestId('overview-unread')).toHaveAttribute('data-count', '1')
+  })
+
   // One standing reads the same as two: its rows under the strip that
   // names it, as a reviewer's and a participant's desk both do.
   it('heads a participant’s own rows with their strip, alone as they are', async () => {
@@ -325,7 +377,7 @@ describe('the overview desk', () => {
         getMyOverview: () =>
           Effect.succeed({
             participant: {
-              unreadItemIds: [],
+              unreadEntryIds: [],
               actions: [
                 {
                   kind: 'revision' as const,
@@ -381,7 +433,7 @@ describe('filing a claim', () => {
             participantId: PARTICIPANT_ID,
             entries: filed ? [entry()] : [],
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
         createEntry: (request: { payload: Record<string, unknown> }) => {
           filed = true
@@ -466,7 +518,7 @@ describe('filing a claim', () => {
               participantId: PARTICIPANT_ID,
               entries: [entry()],
               nextCursor: null,
-              attention: { unreadItemIds: [] },
+              attention: { unreadEntryIds: [] },
             }),
           setEntryStatus: submitted,
         },
@@ -534,7 +586,7 @@ describe('filing a claim', () => {
               participantId: PARTICIPANT_ID,
               entries: [entry()],
               nextCursor: null,
-              attention: { unreadItemIds: [] },
+              attention: { unreadEntryIds: [] },
             }),
           setEntryStatus: submitted,
         },
@@ -811,7 +863,7 @@ describe('filing a claim', () => {
               }),
             ],
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
         prepareAttachmentUpload: () =>
           Effect.flatMap(
@@ -996,19 +1048,29 @@ describe('filing a claim', () => {
     await vi.waitFor(() => expect(listed.mock.calls.length).toBeGreaterThan(before))
   })
 
-  it('wears the dot only until its owner looks', async () => {
-    // wide, so the structure rail stands beside the paper instead of
-    // folding into the phone's drawer
+  // Read by the claim (ruling of 2026-09-26): the question counts its claims
+  // with news, the claim wears its own mark, and only opening that claim
+  // reads it - opening the question it sits under reads nothing.
+  it('wears the marks until its owner opens the claim itself', async () => {
+    // wide, so the structure stands beside the question
     await page.viewport(1280, 800)
-    const looked = vi.fn(() => Effect.succeed({ ok: true as const }))
-    // two questions, with the news on the SECOND: the reader lands settled
-    // on the first, so the dwell-marking never touches the dot until they
-    // actually go to it
-    // three questions with the news on the MIDDLE one: the spy calls the
-    // last band "being read" on a short page, so the edges are the noisy
-    // seats and the middle is where a dot can sit still
-    const second = item({ id: ITEM2_ID, title: '献血加分', sortOrder: 1 })
+    const looked = vi.fn((_: { params: { entryId: string } }) =>
+      Effect.succeed({ ok: true as const }),
+    )
+    const second = item({ id: ITEM2_ID, title: '献血加分', sortOrder: 1, maxEntries: 3 })
     const third = item({ id: ITEM3_ID, title: '志愿服务', sortOrder: 2 })
+    const OTHER_ID = '33333333-3333-4333-8333-333333333334'
+    const told = entry({
+      itemId: ITEM2_ID,
+      status: 'approved',
+      currentRevision: { ...entry().currentRevision!, payload: { summary: '无偿献血 400 毫升' } },
+    })
+    const quiet = entry({
+      id: OTHER_ID,
+      itemId: ITEM2_ID,
+      status: 'in_review',
+      currentRevision: { ...entry().currentRevision!, payload: { summary: '成分献血一次' } },
+    })
     await screen(
       {
         listItems: () =>
@@ -1016,9 +1078,9 @@ describe('filing a claim', () => {
         listMyEntries: () =>
           Effect.succeed({
             participantId: PARTICIPANT_ID,
-            entries: [],
+            entries: [told, quiet],
             nextCursor: null,
-            attention: { unreadItemIds: [ITEM2_ID] },
+            attention: { unreadEntryIds: [ENTRY_ID] },
           }),
         markMyEntryRead: looked,
       },
@@ -1027,26 +1089,31 @@ describe('filing a claim', () => {
     )
 
     await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
-    // An unseen change is a mark of its own after the question's name; the
-    // dot beside the name stays the question's standing, news or not.
-    await expect.poll(() => page.getByTestId('unread-mark').elements().length).toBe(1)
-    const row = () =>
-      page.getByTestId('unread-mark').elements().length === 0
-        ? document.querySelector(`[data-rail-row="${ITEM2_ID}"]`)
-        : page.getByTestId('unread-mark').element().closest('[data-rail-row]')
-    expect(row()?.getAttribute('data-rail-row')).toBe(ITEM2_ID)
-    const standing = row()?.querySelector('[data-dot]')?.getAttribute('data-dot')
-    expect(standing).toBe('open')
+    // the question with news counts its claims holding it, apart from the
+    // dot that says where the question stands
+    const railRow = () => document.querySelector(`[data-rail-row="${ITEM2_ID}"]`)!
+    const count = () => railRow().querySelector('[data-testid="unread-mark"]')
+    await expect.poll(() => count()?.getAttribute('data-count')).toBe('1')
+    const standing = railRow().querySelector('[data-dot]')?.getAttribute('data-dot')
 
-    // opening the question is a look: the server hears it once, and the
-    // mark goes while the dot stays what it was
-    await page
-      .getByRole('button', { name: /献血加分/ })
-      .first()
-      .click()
+    // opening the question reads nothing: the claim with news says which it is
+    await userEvent.click(railRow())
+    await expect.element(page.getByRole('heading', { name: '献血加分' })).toBeVisible()
+    const claimRow = (id: string) =>
+      document.querySelector(`[data-testid="claim-row"][data-entry="${id}"]`)
+    await expect.poll(() => claimRow(ENTRY_ID)?.getAttribute('data-unread')).toBe('true')
+    expect(claimRow(OTHER_ID)?.hasAttribute('data-unread')).toBe(false)
+    expect(looked).not.toHaveBeenCalled()
+    expect(count()?.getAttribute('data-count')).toBe('1')
+
+    // opening the claim reads it, once, and that claim alone
+    await userEvent.click(claimRow(ENTRY_ID)!)
     await vi.waitFor(() => expect(looked).toHaveBeenCalledOnce())
-    await expect.poll(() => page.getByTestId('unread-mark').elements().length).toBe(0)
-    expect(row()?.querySelector('[data-dot]')?.getAttribute('data-dot')).toBe(standing)
+    expect(looked.mock.calls[0]![0].params.entryId).toBe(ENTRY_ID)
+    await expect.poll(() => count()).toBeNull()
+    expect(claimRow(ENTRY_ID)?.hasAttribute('data-unread')).toBe(false)
+    // the question still stands where it stood
+    expect(railRow().querySelector('[data-dot]')?.getAttribute('data-dot')).toBe(standing)
     await page.viewport(414, 896)
   })
 
@@ -1070,7 +1137,7 @@ describe('filing a claim', () => {
               }),
             ],
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
         getEntryHistory: () =>
           Effect.succeed({
@@ -1184,7 +1251,7 @@ describe('filing a claim', () => {
             participantId: PARTICIPANT_ID,
             entries: [entry()],
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
         getEntryHistory: () =>
           Effect.succeed({
@@ -1254,7 +1321,7 @@ describe('filing a claim', () => {
             participantId: PARTICIPANT_ID,
             entries: [entry({ status: 'approved' })],
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
         getEntryHistory: () =>
           Effect.succeed({
@@ -1329,7 +1396,7 @@ describe('filing a claim', () => {
             participantId: PARTICIPANT_ID,
             entries: [appealed],
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
         getEntryHistory: () =>
           Effect.succeed({
@@ -1399,7 +1466,7 @@ describe('filing a claim', () => {
               participantId: PARTICIPANT_ID,
               entries: [withStanding(actorName)],
               nextCursor: null,
-              attention: { unreadItemIds: [] },
+              attention: { unreadEntryIds: [] },
             }),
           getEntryHistory: () =>
             Effect.succeed({
@@ -1459,7 +1526,7 @@ describe('filing a claim', () => {
             participantId: PARTICIPANT_ID,
             entries: [],
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
       },
       `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
@@ -1505,7 +1572,7 @@ describe('filing a claim', () => {
               }),
             ],
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
         getEntryHistory: () =>
           Effect.succeed({
@@ -1637,7 +1704,7 @@ describe('filing a claim', () => {
             participantId: PARTICIPANT_ID,
             entries: [entry({ status: 'rejected' })],
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
         getEntryHistory: () =>
           Effect.succeed({
@@ -1720,7 +1787,7 @@ describe('filing a claim', () => {
               }),
             ],
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
         getEntryHistory: () =>
           Effect.succeed({
@@ -1816,7 +1883,7 @@ describe('filing a claim', () => {
             participantId: PARTICIPANT_ID,
             entries: [entry({ status: 'rejected' })],
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
       },
       `/assessment/batches/${BATCH_ID}/my-entries`,
@@ -1884,7 +1951,7 @@ describe('filing a claim', () => {
             participantId: PARTICIPANT_ID,
             entries: [standing()],
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
         reviseEntry: revised,
       },
@@ -1925,7 +1992,7 @@ describe('filing a claim', () => {
             participantId: PARTICIPANT_ID,
             entries: [],
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
       },
       `/assessment/batches/${BATCH_ID}/my-entries?open=${GROUP_ID}`,
@@ -1984,7 +2051,7 @@ describe('filing a claim', () => {
               }),
             ],
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
         listAttachmentDescriptors: () =>
           Effect.succeed({
@@ -2682,7 +2749,7 @@ describe('the phase gate on the paper', () => {
             entries: [],
             filing: [{ itemId: ITEM_ID, create: shut, submit: shut }],
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
       },
       `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
@@ -2713,7 +2780,7 @@ describe('the phase gate on the paper', () => {
             entries: [],
             filing: [{ itemId: ITEM_ID, create: openGate, submit: shut }],
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
       },
       `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
@@ -2745,7 +2812,7 @@ describe('the phase gate on the paper', () => {
             entries: [withdrawable()],
             filing: [{ itemId: ITEM_ID, create: shut, submit: shut }],
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
       },
       `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
@@ -2791,7 +2858,7 @@ describe('the phase gate on the paper', () => {
               entries: [returned],
               filing: [{ itemId: ITEM_ID, create: openGate, submit: openGate }],
               nextCursor: null,
-              attention: { unreadItemIds: [] },
+              attention: { unreadEntryIds: [] },
             }),
           setEntryStatus: submitted,
         },
@@ -2823,7 +2890,7 @@ describe('the phase gate on the paper', () => {
             entries: [withdrawable()],
             filing: [{ itemId: ITEM_ID, create: openGate, submit: openGate }],
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
       },
       `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
@@ -2864,7 +2931,7 @@ describe('the phase gate on the paper', () => {
             ],
             filing: [{ itemId: ITEM_ID, create: shut, submit: shut }],
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
       },
       `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}&detail=${ENTRY_ID}`,
@@ -2905,7 +2972,7 @@ describe('the phase gate on the paper', () => {
             entries: [withdrawable()],
             filing: [{ itemId: ITEM_ID, create: openGate, submit: openGate }],
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
         setEntryStatus: refused,
       },
@@ -2943,7 +3010,7 @@ describe('the phase gate on the paper', () => {
             ],
             filing: [{ itemId: ITEM_ID, create: shut, submit: shut }],
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
       },
       `/assessment/batches/${BATCH_ID}/my-result?detail=${ENTRY_ID}`,
@@ -2971,7 +3038,7 @@ describe('the head of a claim’s drawer', () => {
             participantId: PARTICIPANT_ID,
             entries: [entry({ status: 'approved' })],
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
       },
       `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}&detail=${ENTRY_ID}`,
@@ -3026,7 +3093,7 @@ describe('what giving up a contested claim says', () => {
             participantId: PARTICIPANT_ID,
             entries: [running],
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
       },
       `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
@@ -3231,7 +3298,7 @@ describe('a round longer than one page', () => {
             participantId: PARTICIPANT_ID,
             entries: [entry({ status: 'draft' })],
             nextCursor: 'second-page',
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }
         : {
             participantId: PARTICIPANT_ID,
@@ -3252,7 +3319,7 @@ describe('a round longer than one page', () => {
               }),
             ],
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           },
     )
   }

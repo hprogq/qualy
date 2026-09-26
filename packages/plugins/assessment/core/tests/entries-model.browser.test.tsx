@@ -57,7 +57,11 @@ describe('the head of the structure against the filters under it', () => {
     claim('e7', { supplement: asked }),
   ]
   const counts = (viewer: Viewer) =>
-    new Map(chipsFor(viewer).map((chip) => [chip.key, claims.filter(chip.test).length] as const))
+    new Map(
+      chipsFor(viewer, { status: 'active' }).map(
+        (chip) => [chip.key, claims.filter(chip.test).length] as const,
+      ),
+    )
   const stats = (viewer: Viewer) =>
     new Map(headStatsOf(viewer, claims).map((stat) => [stat.key, stat.count] as const))
 
@@ -68,10 +72,26 @@ describe('the head of the structure against the filters under it', () => {
     expect(counts('owner').get('in_review')).toBe(stats('owner').get('in_review'))
     // which is also the owner's own to-do: the owner's filters may overlap
     expect(
-      chipsFor('owner')
+      chipsFor('owner', { status: 'active' })
         .filter((chip) => chip.test(claims[6]!))
         .map((chip) => chip.key),
     ).toEqual(['all', 'todo', 'in_review'])
+  })
+
+  // Ended without counting, each under the word for how it ended - and the
+  // owner has them too, since news on one is read by opening it there.
+  it('files a claim that ended under how it ended, for the owner as for staff', () => {
+    const givenUp = claim('x1', { status: 'voided' })
+    const revoked = claim('x2', { status: 'voided', source: 'record' })
+    const keys = (viewer: Viewer, item: { status: 'active' | 'voided' }, one: EntryDto) =>
+      chipsFor(viewer, item)
+        .filter((chip) => chip.test(one))
+        .map((chip) => chip.key)
+    for (const viewer of ['owner', 'staff'] as const) {
+      expect(keys(viewer, { status: 'active' }, givenUp)).toEqual(['abandoned'])
+      expect(keys(viewer, { status: 'voided' }, givenUp)).toEqual(['voided'])
+      expect(keys(viewer, { status: 'voided' }, revoked)).toEqual(['revoked'])
+    }
   })
 
   it('gives a staff reader every head figure as a filter of the same count', () => {
@@ -92,7 +112,7 @@ const row = (over: Partial<StructureRow> & Pick<StructureRow, 'id'>): StructureR
   right: '',
   tag: null,
   todo: false,
-  unread: false,
+  unread: 0,
   trail: [],
   parentId: null,
   cap: null,
@@ -228,6 +248,12 @@ describe('a claim’s identity line', () => {
     expect(said('given-up').act).toBe('abandoned')
     expect(said('given-up').action.id).toBe(m.resultActAbandoned.id)
     expect(said('revoked').action.id).toBe(m.entriesActRevoked.id)
+    // one that went with its question it was filed under: voided, in the
+    // row's word and its amount's, never given up
+    const withdrawn: ItemDto = { ...withFile, status: 'voided' }
+    const gone = entryLineOf(claims[0]!, withdrawn, null, words)
+    expect(gone.action.id).toBe(m.entriesActVoided.id)
+    expect(gone.amountWord.id).toBe(m.entryStatusVoided.id)
     // an ask with nothing written in it carries no words to show
     expect(said('asked').note).toEqual({ kind: 'ask', text: 'a stamped copy' })
     expect(said('blank-ask').note).toBeNull()
@@ -239,7 +265,7 @@ describe('the dot beside a question', () => {
   it('says where it stands whether or not there is news on it', () => {
     for (const tag of ['needs_revision', 'approved', 'in_review', 'rejected', null] as const) {
       const quiet = row({ id: 'q', kind: 'item', tag })
-      expect(dotOf({ ...quiet, unread: true })).toBe(dotOf(quiet))
+      expect(dotOf({ ...quiet, unread: 2 })).toBe(dotOf(quiet))
     }
   })
 })

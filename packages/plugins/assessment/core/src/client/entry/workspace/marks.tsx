@@ -5,12 +5,15 @@ import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../../i18n.ts'
 
-// Two small marks the workspace sets beside a row's name.
+// The small marks the workspace sets beside a row's name.
 //
 // The dot at the head of a question's row says where it stands, and nothing
-// else: news the reader has not looked at is a word of its own after the
-// name, so opening the question takes the news away and leaves the standing
-// exactly as it was.
+// else. News the owner has not read is the red of a message count: a count
+// after a question's name, how many of its claims hold news, and a dot at
+// the head of each such claim. It is read one claim at a time, by opening
+// that claim, and the standing stays exactly as it was. A count rather than
+// a word: a word after a question's name reads as something said about the
+// question - "new" as in a question just added.
 //
 // A section's fill is a small pie beside its figure rather than a line under
 // its row: a line along the foot of a row reads as the rule between two
@@ -25,19 +28,29 @@ const WEDGE = 2.5
 const ROUND = 2 * Math.PI * WEDGE
 
 const styles = stylex.create({
-  news: {
+  count: {
     display: 'inline-flex',
     flexShrink: 0,
     alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 16,
     height: 16,
-    borderRadius: 4,
-    backgroundColor: `color-mix(in oklab, ${tokens.danger} 12%, transparent)`,
-    paddingInline: 5,
+    borderRadius: 9999,
+    backgroundColor: tokens.danger,
+    paddingInline: 4.5,
     fontSize: 10.5,
     lineHeight: 1,
     fontWeight: 600,
-    letterSpacing: '0.02em',
-    color: tokens.danger,
+    fontVariantNumeric: 'tabular-nums',
+    color: 'white',
+  },
+  dot: {
+    display: 'inline-block',
+    width: 6,
+    height: 6,
+    flexShrink: 0,
+    borderRadius: 9999,
+    backgroundColor: tokens.danger,
   },
   pie: { width: 14, height: 14, flexShrink: 0 },
   // beside a section's own heading figure, which is set larger
@@ -47,15 +60,24 @@ const styles = stylex.create({
   full: { stroke: tokens.success },
 })
 
-/** the one mark of news the reader has not looked at; the name carries the rest */
-export function UnreadMark() {
+/** how many claims under a question, or a folded section, hold news their owner has not read */
+export function UnreadCount({ count }: { count: number }) {
   const { format } = useI18n()
   return (
-    <span data-testid="unread-mark" {...stylex.props(styles.news)}>
-      <span aria-hidden>{format(m.rowUnreadMark)}</span>
-      <VisuallyHidden>{format(m.rowUnread)}</VisuallyHidden>
+    <span data-testid="unread-mark" data-count={count} {...stylex.props(styles.count)}>
+      <span aria-hidden>{count > 99 ? '99+' : count}</span>
+      <VisuallyHidden>{format(m.rowUnreadCount, { count })}</VisuallyHidden>
     </span>
   )
+}
+
+/**
+ * One claim with news its owner has not read. Drawn where the caller puts
+ * it, and hidden from assistive technology: the caller says "unread" in
+ * words where it reads the claim out.
+ */
+export function UnreadDot({ xstyle }: { xstyle?: stylex.StyleXStyles }) {
+  return <span aria-hidden data-testid="unread-dot" {...stylex.props(styles.dot, xstyle)} />
 }
 
 /**

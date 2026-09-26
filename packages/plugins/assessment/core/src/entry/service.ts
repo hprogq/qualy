@@ -53,8 +53,8 @@ import { lockBatch, oneBatch } from '../server/db.ts'
 import { announce } from '../live/events.ts'
 import {
   bumpParticipantAttention,
-  markMyEntryReads,
-  unreadItemIdsOf,
+  markMyEntryRead as markOwnEntryRead,
+  unreadEntryIdsOf,
   myActionRowsOf,
 } from './db.ts'
 import { itemOf, revisionOf, type ItemRevisionRow, type ItemRow } from '../item/db.ts'
@@ -413,7 +413,7 @@ export interface EntryMethods {
         submit: ActionAvailability
       }[]
       nextCursor: string | null
-      attention: { unreadItemIds: readonly string[] }
+      attention: { unreadEntryIds: readonly string[] }
     },
     BatchNotFound | ParticipantNotFound | AccessDenied | BadRequest
   >
@@ -507,7 +507,7 @@ export interface EntryMethods {
   readonly markMyEntryRead: (
     tenantId: string,
     batchId: string,
-    itemId: string,
+    entryId: string,
     as: Principal,
   ) => Effect.Effect<{ ok: true }, BatchNotFound | ParticipantNotFound | AccessDenied>
   readonly getMyEntrySummary: (
@@ -516,7 +516,7 @@ export interface EntryMethods {
     as: Principal,
   ) => Effect.Effect<
     {
-      unreadItemIds: readonly string[]
+      unreadEntryIds: readonly string[]
       actions: readonly {
         kind: 'supplement' | 'revision'
         entryId: string
@@ -2172,7 +2172,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 ? encodeQueryCursor(fingerprint, [lastIso, last.id])
                 : null,
             attention: {
-              unreadItemIds: yield* unreadItemIdsOf({
+              unreadEntryIds: yield* unreadEntryIdsOf({
                 tenantId,
                 batchId,
                 participantId: membership.id,
@@ -2756,13 +2756,15 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
   })
 
   const markMyEntryRead: EntryMethods['markMyEntryRead'] = Effect.fn('Assessment.markMyEntryRead')(
-    function* (tenantId, batchId, itemId, as) {
+    function* (tenantId, batchId, entryId, as) {
       return yield* withDb(
         Effect.gen(function* () {
           const membership = yield* myMembership(tenantId, batchId, as)
-          // a look is not a business act: no phase gate, no updatedAt, no
-          // announcement - and marking a question with no claims is a no-op
-          yield* markMyEntryReads({ tenantId, batchId, itemId, participantId: membership.id })
+          // Reading is not a business act: no phase gate, no updatedAt, no
+          // announcement. Only the reader's own claim is touched, and an id
+          // that is not one of theirs answers the same as one that is, so
+          // the answer says nothing about somebody else's claims.
+          yield* markOwnEntryRead({ tenantId, batchId, entryId, participantId: membership.id })
           return { ok: true as const }
         }).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
       )
@@ -2775,7 +2777,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
     return yield* withDb(
       Effect.gen(function* () {
         const membership = yield* myMembership(tenantId, batchId, as)
-        const unread = yield* unreadItemIdsOf({ tenantId, batchId, participantId: membership.id })
+        const unread = yield* unreadEntryIdsOf({ tenantId, batchId, participantId: membership.id })
         // every row is something to do, and a member taken off the roster has
         // nothing left to do here: their history stays readable, not actionable
         const actions =
@@ -2795,7 +2797,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           readerUserId: as.userId,
         })
         return {
-          unreadItemIds: unread,
+          unreadEntryIds: unread,
           actions: actions.map((row) => ({
             kind: row.kind,
             entryId: row.entryId,

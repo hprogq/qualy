@@ -238,6 +238,15 @@ export const contested = (entry: EntryDto): boolean =>
 const administrative = (entry: EntryDto): boolean =>
   entry.source === 'record' || entry.source === 'import'
 
+/**
+ * A claim that ended voided under a question since withdrawn: it went with
+ * the question rather than being given up by its owner. Read off the
+ * question, so a claim given up before its question was withdrawn reads the
+ * same way - either way it ended without counting.
+ */
+export const voidedWithItem = (entry: EntryDto, item: Pick<ItemDto, 'status'>): boolean =>
+  entry.status === 'voided' && !administrative(entry) && item.status === 'voided'
+
 /** what a claim is doing, as the tests and the tags read it */
 export const standingOf = (entry: EntryDto): string =>
   entry.supplement !== null ? 'awaiting_supplement' : contested(entry) ? 'contested' : entry.status
@@ -311,7 +320,11 @@ export const entryLineOf = (
   let amountWord: MessageDescriptor = m.entryScoreIfApproved
   let amountTone: EntryLine['amountTone'] = 'pending'
   if (entry.status === 'voided') {
-    amountWord = administrative(entry) ? m.recordStandingWithdrawn : m.entryStatusAbandoned
+    amountWord = administrative(entry)
+      ? m.recordStandingWithdrawn
+      : voidedWithItem(entry, item)
+        ? m.entryStatusVoided
+        : m.entryStatusAbandoned
     amountTone = 'muted'
   } else if (item.status === 'voided' || entry.status === 'rejected') {
     amountWord = m.entriesAmountNotCounted
@@ -361,7 +374,7 @@ export const entryLineOf = (
     amountTone,
     at: at ?? entry.createdAt,
     act,
-    action: claimActWord[act],
+    action: voidedWithItem(entry, item) ? m.entriesActVoided : claimActWord[act],
     note: claimNoteOf(entry),
     files: claimFilesOf(entry, formConfig),
   }
@@ -387,6 +400,7 @@ export type ChipKey =
   | 'approved'
   | 'rejected'
   | 'abandoned'
+  | 'voided'
   | 'revoked'
 
 export interface Chip {
@@ -399,7 +413,7 @@ export interface Chip {
 
 const OWNER_TODO = new Set(['draft', 'needs_revision'])
 
-export const chipsFor = (viewer: Viewer): readonly Chip[] => [
+export const chipsFor = (viewer: Viewer, item: Pick<ItemDto, 'status'>): readonly Chip[] => [
   {
     key: 'all',
     label: m.myEntriesFilterAll,
@@ -450,25 +464,31 @@ export const chipsFor = (viewer: Viewer): readonly Chip[] => [
     test: (entry) => entry.status === 'rejected' && !contested(entry),
     urgent: false,
   },
-  // What ended without counting, under the word for who ended it: a claim
-  // its owner gave up, and a record the office took back. The chip on each
-  // row says the same, so the filter never calls a row something else.
-  ...(viewer === 'staff'
-    ? [
-        {
-          key: 'abandoned' as const,
-          label: m.entryStatusAbandoned,
-          test: (entry: EntryDto) => entry.status === 'voided' && !administrative(entry),
-          urgent: false,
-        },
-        {
-          key: 'revoked' as const,
-          label: m.recordStandingWithdrawn,
-          test: (entry: EntryDto) => entry.status === 'voided' && administrative(entry),
-          urgent: false,
-        },
-      ]
-    : []),
+  // What ended without counting, under the word for how it ended: a claim
+  // its owner gave up, one that went with its question, and a record the
+  // office took back. The chip on each row says the same, so the filter
+  // never calls a row something else. Offered to the owner too, each only
+  // where it holds something: news on such a claim is read by opening it,
+  // and this is where it opens (ruling of 2026-09-26).
+  {
+    key: 'abandoned',
+    label: m.entryStatusAbandoned,
+    test: (entry) =>
+      entry.status === 'voided' && !administrative(entry) && !voidedWithItem(entry, item),
+    urgent: false,
+  },
+  {
+    key: 'voided',
+    label: m.entryStatusVoided,
+    test: (entry) => voidedWithItem(entry, item),
+    urgent: false,
+  },
+  {
+    key: 'revoked',
+    label: m.recordStandingWithdrawn,
+    test: (entry) => entry.status === 'voided' && administrative(entry),
+    urgent: false,
+  },
 ]
 
 /** the figures across the head: what is moving, as the reader needs it counted */

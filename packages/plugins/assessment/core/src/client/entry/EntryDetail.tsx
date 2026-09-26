@@ -24,7 +24,7 @@ import { EntryStanding } from './EntryStanding.tsx'
 import { choiceLabel, displayTitle, kindOf, type AtomicSchema } from '@qualy/value-schema'
 import { answerOf, displayValueOf, fieldsOf, type EntryDto, type ItemDto } from './model.ts'
 import { useWorkspaceMode } from './workspace/layout.ts'
-import { momentOf, type EntryLine } from './workspace/model.ts'
+import { momentOf, voidedWithItem, type EntryLine } from './workspace/model.ts'
 
 // One claim, in full, in a drawer over the list it came from.
 //
@@ -572,6 +572,7 @@ export function EntryDetail({
                     revised={entry.currentReviewInstanceId !== null}
                     asked={entry.supplement !== null}
                     openRound={entry.openRound}
+                    withItem={voidedWithItem(entry, item)}
                   />
                   <span {...stylex.props(styles.versionNote)}>
                     {format(sourceLabelOf(entry.source))}

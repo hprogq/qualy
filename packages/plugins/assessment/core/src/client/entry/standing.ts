@@ -83,8 +83,12 @@ export interface StructureRow {
    * is not on anybody's plate and deliberately does not count (§32.72).
    */
   todo: boolean
-  /** a change the reader has not looked at yet, marked apart from where the row stands */
-  unread: boolean
+  /**
+   * How many of its claims hold a change the reader has not read yet
+   * (§32.72): marked apart from where the row stands, and read one claim at
+   * a time by opening that claim. A section counts none of its own.
+   */
+  unread: number
   /** the groups above it, outermost first, for a breadcrumb */
   trail: readonly string[]
   cap?: string | null
@@ -197,14 +201,14 @@ export const standingRows = ({
   items,
   entriesByItem,
   standing,
-  unreadItems = new Set<string>(),
+  unreadEntries = new Set<string>(),
 }: {
   groups: readonly { id: string; parentGroupId: string | null; name: string }[]
   items: readonly ItemDto[]
   entriesByItem: ReadonlyMap<string, readonly EntryDto[]>
   standing: Standing | null
-  /** questions holding changes the reader has not looked at (§32.72) */
-  unreadItems?: ReadonlySet<string>
+  /** claims holding changes their owner has not read (§32.72) */
+  unreadEntries?: ReadonlySet<string>
 }): readonly StructureRow[] => {
   const childrenOf = new Map<string | null, { id: string; name: string }[]>()
   for (const group of groups) {
@@ -242,7 +246,7 @@ export const standingRows = ({
         right: score === null ? '' : trimAmount(score.final),
         tag: null,
         todo: false,
-        unread: false,
+        unread: 0,
         trail,
         cap: score?.cap ?? null,
         floor: score?.floor ?? null,
@@ -251,7 +255,14 @@ export const standingRows = ({
       const inside = [...trail, group.name]
       for (const item of items.filter((one) => one.scoreGroupId === group.id)) {
         rows.push(
-          itemRow(item, entriesByItem.get(item.id) ?? [], standing, depth + 1, inside, unreadItems),
+          itemRow(
+            item,
+            entriesByItem.get(item.id) ?? [],
+            standing,
+            depth + 1,
+            inside,
+            unreadEntries,
+          ),
         )
       }
       walk(group.id, depth + 1, inside)
@@ -265,7 +276,7 @@ export const standingRows = ({
   const placed = new Set(rows.map((row) => row.id))
   for (const item of items) {
     if (!placed.has(item.id)) {
-      rows.unshift(itemRow(item, entriesByItem.get(item.id) ?? [], standing, 0, [], unreadItems))
+      rows.unshift(itemRow(item, entriesByItem.get(item.id) ?? [], standing, 0, [], unreadEntries))
     }
   }
 
@@ -278,7 +289,7 @@ const itemRow = (
   standing: Standing | null,
   depth: number,
   trail: readonly string[],
-  unreadItems: ReadonlySet<string>,
+  unreadEntries: ReadonlySet<string>,
 ): StructureRow => {
   const granted = itemScore(standing, item.id)
   // a constant lands by itself: before the scorer has spoken, its terms
@@ -336,7 +347,9 @@ const itemRow = (
                           : null,
     // unfinished BY the reader; "could still file" is not a duty
     todo: item.status !== 'voided' && (asked > 0 || sentBack > 0 || drafts > 0),
-    unread: item.status !== 'voided' && unreadItems.has(item.id),
+    // every claim with news counts, those that ended with the question or
+    // were revoked included: each can be opened, and opening it reads it
+    unread: entries.filter((entry) => unreadEntries.has(entry.id)).length,
     trail,
     parentId: item.scoreGroupId,
   }

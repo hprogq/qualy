@@ -460,7 +460,7 @@ const screen = (
             participantId: PARTICIPANT_ID,
             entries: paper.entries,
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
         ...over,
       },
@@ -1047,7 +1047,7 @@ describe('the way to file another claim', () => {
           participantId: PARTICIPANT_ID,
           entries: paper.entries,
           nextCursor: null,
-          attention: { unreadItemIds: [] },
+          attention: { unreadEntryIds: [] },
           filing: paper.items.map((one) => ({
             itemId: one.id,
             create: one.id === 'q8' ? full : open,
@@ -1124,7 +1124,7 @@ describe('a question the stages keep shut', () => {
           participantId: PARTICIPANT_ID,
           entries: paper.entries,
           nextCursor: null,
-          attention: { unreadItemIds: [] },
+          attention: { unreadEntryIds: [] },
           filing: paper.items.map((one) => ({
             itemId: one.id,
             create:
@@ -1606,9 +1606,13 @@ describe('a claim read in its drawer on the score page', () => {
     expect(addressNow()).toContain('entry=back')
   })
 
-  it('counts a claim read in its drawer as its question looked at', async () => {
+  // Read by the claim (ruling of 2026-09-26): a drawer reads the claim in
+  // it, and a neighbour under the same question keeps its own news.
+  it('counts a claim read in its drawer as that claim read, and no other', async () => {
     await page.viewport(1440, 900)
-    const looked = vi.fn(() => Effect.succeed({ ok: true as const }))
+    const looked = vi.fn((_: { params: { batchId: string; entryId: string } }) =>
+      Effect.succeed({ ok: true as const }),
+    )
     const round = paper()
     await screen(round, {
       markMyEntryRead: looked,
@@ -1617,20 +1621,25 @@ describe('a claim read in its drawer on the score page', () => {
           participantId: PARTICIPANT_ID,
           entries: round.entries,
           nextCursor: null,
-          attention: { unreadItemIds: ['q'] },
+          attention: { unreadEntryIds: ['back'] },
         }),
     })
     await expect.element(page.getByTestId('result-total')).toBeVisible()
     // the account on its own is not the claim read
     expect(looked).not.toHaveBeenCalled()
+    // a claim without news under the same question reads nothing
+    await openClaim('sent')
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    expect(looked).not.toHaveBeenCalled()
+    await userEvent.keyboard('{Escape}')
     await openClaim('back')
     await vi.waitFor(() => expect(looked).toHaveBeenCalledOnce())
     expect(looked).toHaveBeenCalledWith(
-      expect.objectContaining({ params: { batchId: BATCH_ID, itemId: 'q' } }),
+      expect.objectContaining({ params: { batchId: BATCH_ID, entryId: 'back' } }),
     )
-    // seen once, it is not news the next time either
+    // read once, it is not news the next time either
     await userEvent.keyboard('{Escape}')
-    await openClaim('sent')
+    await openClaim('back')
     await new Promise((resolve) => setTimeout(resolve, 200))
     expect(looked).toHaveBeenCalledOnce()
   })
@@ -1651,7 +1660,7 @@ describe('a claim read in its drawer on the score page', () => {
               participantId: PARTICIPANT_ID,
               entries: paper().entries,
               nextCursor: null,
-              attention: { unreadItemIds: [] },
+              attention: { unreadEntryIds: [] },
             }),
         },
       }),
@@ -1725,7 +1734,7 @@ describe('an account that has stopped moving', () => {
           participantId: PARTICIPANT_ID,
           entries: paper.entries,
           nextCursor: null,
-          attention: { unreadItemIds: [] },
+          attention: { unreadEntryIds: [] },
           filing: paper.items.map((one) => ({ itemId: one.id, create: hidden, submit: hidden })),
         }),
     })
@@ -1747,7 +1756,7 @@ describe('an account that has stopped moving', () => {
           participantId: PARTICIPANT_ID,
           entries: paper.entries,
           nextCursor: null,
-          attention: { unreadItemIds: [] },
+          attention: { unreadEntryIds: [] },
           filing: paper.items.map((one) => ({ itemId: one.id, create: open, submit: open })),
         }),
     })
@@ -1800,7 +1809,7 @@ describe('a round that moves while the page is open', () => {
       participantId: PARTICIPANT_ID,
       entries,
       nextCursor: null,
-      attention: { unreadItemIds: [] },
+      attention: { unreadEntryIds: [] },
     })
 
   it('reads the account again when the round says it moved', async () => {
@@ -1980,7 +1989,7 @@ describe('a round that moves while the page is open', () => {
           entries: paper.entries,
           filing: paper.items.map((one) => ({ itemId: one.id, create: hidden, submit: hidden })),
           nextCursor: null,
-          attention: { unreadItemIds: [] },
+          attention: { unreadEntryIds: [] },
         }),
       watchBatch: () =>
         Effect.succeed(Stream.concat(Stream.make({ kind: 'sync' as const }), Stream.never)),

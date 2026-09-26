@@ -91,7 +91,7 @@ const open = (stubs: Record<string, unknown>) =>
             participantId: PARTICIPANT_ID,
             entries: [],
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
         listAwaitingSupplements: () => Effect.succeed({ items: [], nextCursor: null }),
         listScoreGroups: () =>

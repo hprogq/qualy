@@ -67,6 +67,7 @@ export function EntryStanding({
   asked,
   source,
   openRound,
+  withItem = false,
   size = 'default',
 }: {
   status: EntryDto['status']
@@ -91,6 +92,11 @@ export function EntryStanding({
    * by the item's type, because one question may accept both.
    */
   source?: EntryDto['source']
+  /**
+   * The question it was filed under has been withdrawn. A claim that ended
+   * voided then went with its question: voided, not given up by its owner.
+   */
+  withItem?: boolean
   /** `roomy` where the chip stands in a column of its own */
   size?: 'default' | 'roomy'
 }) {
@@ -113,9 +119,11 @@ export function EntryStanding({
               // exists because something was asked of it
               m.entryStatusRevising
             : status === 'voided'
-              ? // a claim somebody filed ends voided only by their giving it
-                // up; voiding is what happens to a question or a record
-                m.entryStatusAbandoned
+              ? // a claim somebody filed ends voided by their giving it up,
+                // or by the question it was filed under being withdrawn
+                withItem
+                ? m.entryStatusVoided
+                : m.entryStatusAbandoned
               : entryStatusMessage[status]
   const standing = asked === true ? 'awaiting_supplement' : contested ? 'contested' : status
   const tone =
@@ -137,6 +145,11 @@ export function EntryStanding({
       {...(openRound === null || openRound === undefined
         ? {}
         : { 'data-open-round': openRound.origin })}
+      // how a claim that ended voided ended: given up, gone with its
+      // question, or a record taken back
+      {...(status === 'voided'
+        ? { 'data-ended': administrative ? 'revoked' : withItem ? 'with-item' : 'abandoned' }
+        : {})}
       {...stylex.props(styles.chip, size === 'roomy' && styles.roomy, tone)}
     >
       {format(word)}

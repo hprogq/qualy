@@ -123,7 +123,7 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
           const unread = () =>
             Effect.map(
               assessment.listMyEntries(f.t, g.batch.id, {}, s1),
-              (page) => page.attention.unreadItemIds,
+              (page) => page.attention.unreadEntryIds,
             )
 
           const entry = yield* assessment.createEntry(
@@ -155,20 +155,90 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
           )
           const afterVerdict = yield* unread()
 
-          yield* assessment.markMyEntryRead(f.t, g.batch.id, g.item.id, s1)
+          yield* assessment.markMyEntryRead(f.t, g.batch.id, entry.id, s1)
           const afterLook = yield* unread()
           // idempotent: looking twice is still just looked
-          const again = yield* assessment.markMyEntryRead(f.t, g.batch.id, g.item.id, s1)
-          return { afterOwn, afterHandover, afterVerdict, afterLook, again, itemId: g.item.id }
+          const again = yield* assessment.markMyEntryRead(f.t, g.batch.id, entry.id, s1)
+          return { afterOwn, afterHandover, afterVerdict, afterLook, again, entryId: entry.id }
         }),
       ),
     )
 
     expect(result.afterOwn).toEqual([])
     expect(result.afterHandover).toEqual([])
-    expect(result.afterVerdict).toEqual([result.itemId])
+    expect(result.afterVerdict).toEqual([result.entryId])
     expect(result.afterLook).toEqual([])
     expect(result.again).toEqual({ ok: true })
+  })
+
+  // Reading is by the claim (ruling of 2026-09-26): news on one claim is
+  // read by opening that claim, and its neighbours under the same question
+  // keep theirs until they are opened too.
+  it('reads one claim at a time, and never somebody else’s', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('at-per-claim')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: PROFILE })
+          const s1 = f.principal(f.s1)
+          // two claims under the one question: the first given up to make
+          // room for the second, then news on both
+          const first = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          yield* assessment.setEntryStatus(f.t, first.id, 'voided', s1)
+          const second = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          yield* transaction(
+            Effect.gen(function* () {
+              yield* bumpParticipantAttention(f.t, first.id)
+              yield* bumpParticipantAttention(f.t, second.id)
+            }),
+          )
+          const unread = () =>
+            Effect.map(
+              assessment.listMyEntries(f.t, g.batch.id, {}, s1),
+              (page) => page.attention.unreadEntryIds,
+            )
+          const before = yield* unread()
+          // somebody else in the round names this reader's claim: nothing moves,
+          // and the answer is the one their own claim would get
+          const stranger = yield* assessment.markMyEntryRead(
+            f.t,
+            g.batch.id,
+            second.id,
+            f.principal(f.s2),
+          )
+          const afterStranger = yield* unread()
+          yield* assessment.markMyEntryRead(f.t, g.batch.id, first.id, s1)
+          const afterFirst = yield* unread()
+          const desk = (yield* assessment.getMyOverview(f.t, g.batch.id, s1)).participant!
+          return {
+            before,
+            stranger,
+            afterStranger,
+            afterFirst,
+            desk: desk.unreadEntryIds,
+            first: first.id,
+            second: second.id,
+          }
+        }),
+      ),
+    )
+
+    expect(result.before).toEqual([result.first, result.second])
+    expect(result.stranger).toEqual({ ok: true })
+    expect(result.afterStranger).toEqual([result.first, result.second])
+    // the claim read is read; its neighbour under the same question is not
+    expect(result.afterFirst).toEqual([result.second])
+    expect(result.desk).toEqual([result.second])
   })
 
   it('keeps a change that raced the look unread, and tells the story in order', async () => {
@@ -198,7 +268,7 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
             f.principal(f.reviewer),
           )
           // the owner looks...
-          yield* assessment.markMyEntryRead(f.t, g.batch.id, g.item.id, s1)
+          yield* assessment.markMyEntryRead(f.t, g.batch.id, entry.id, s1)
           // ...and in the same breath the ask is withdrawn: newer than the
           // look, so the dot must come back
           const mine = yield* assessment.getEntry(f.t, entry.id, s1)
@@ -208,7 +278,7 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
             f.principal(f.reviewer),
           )
           const racedUnread = (yield* assessment.listMyEntries(f.t, g.batch.id, {}, s1)).attention
-            .unreadItemIds
+            .unreadEntryIds
 
           // the desk knows what needs a hand, and the activity tells the
           // story newest first in business words
@@ -216,7 +286,7 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
           const activity = yield* assessment.listMyActivity(f.t, g.batch.id, {}, s1)
           return {
             racedUnread,
-            itemId: g.item.id,
+            entryId: entry.id,
             summary: overview.participant!,
             kinds: activity.items.map((one) => one.kind),
             ats: activity.items.map((one) => one.at),
@@ -225,10 +295,10 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
       ),
     )
 
-    expect(result.racedUnread).toEqual([result.itemId])
+    expect(result.racedUnread).toEqual([result.entryId])
     // the ask was cancelled, so nothing needs the owner's hand any more
     expect(result.summary.actions).toEqual([])
-    expect(result.summary.unreadItemIds).toEqual([result.itemId])
+    expect(result.summary.unreadEntryIds).toEqual([result.entryId])
     // newest first: cancel, ask, submit, create - and no raw event kinds
     expect(result.kinds).toEqual([
       'supplement-cancelled',
@@ -287,7 +357,7 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
             ),
           )
           yield* Deferred.await(queued)
-          yield* assessment.markMyEntryRead(f.t, g.batch.id, g.item.id, s1)
+          yield* assessment.markMyEntryRead(f.t, g.batch.id, entry.id, s1)
           const waited = yield* Fiber.join(holder)
 
           const row = one<{ marked: number; seen: number }>(
@@ -299,8 +369,8 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
             waited,
             row,
             unread: (yield* assessment.listMyEntries(f.t, g.batch.id, {}, s1)).attention
-              .unreadItemIds,
-            itemId: g.item.id,
+              .unreadEntryIds,
+            entryId: entry.id,
           }
         }),
       ),
@@ -309,7 +379,7 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
     // the look really did queue on the lock; without that this proves nothing
     expect(result.waited).toBe(true)
     expect(result.row.marked).toBeGreaterThan(result.row.seen)
-    expect(result.unread).toEqual([result.itemId])
+    expect(result.unread).toEqual([result.entryId])
   })
 
   it('lists the open ask and the return mark as the two things to handle', async () => {
@@ -455,7 +525,7 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
 
     // the fixture's org-scope import sweeps the reviewer into the roster
     // too, so their participant branch exists and is simply empty
-    expect(result.before.participant).toEqual({ unreadItemIds: [], actions: [] })
+    expect(result.before.participant).toEqual({ unreadEntryIds: [], actions: [] })
     expect(result.before.reviewer?.pendingCount).toBe(1)
     expect(result.before.reviewer?.answeredAskCount).toBe(0)
     // the queue's second line: the same one claim, under its score group

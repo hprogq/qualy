@@ -1414,14 +1414,12 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/row-partial',
       defaultMessage: 'Partly refused',
     },
-    rowUnread: {
-      id: 'assessment/entry/row-unread',
-      defaultMessage: 'New change you have not seen',
+    rowUnreadCount: {
+      id: 'assessment/entry/row-unread-count',
+      defaultMessage:
+        '{count, plural, one {# entry with news you have not read} other {# entries with news you have not read}}',
     },
-    rowUnreadMark: {
-      id: 'assessment/entry/row-unread-mark',
-      defaultMessage: 'New',
-    },
+    claimUnread: { id: 'assessment/entry/claim-unread', defaultMessage: 'Unread' },
     entryStatusRejected: { id: 'assessment/entry/status-rejected', defaultMessage: 'Not approved' },
     entryStatusVoided: { id: 'assessment/entry/status-voided', defaultMessage: 'Voided' },
     // a claim its owner gave up: their act, never a question voided under it
@@ -4083,6 +4081,10 @@ const i18n = definePluginMessages({
       id: 'assessment/entries/act-revoked',
       defaultMessage: 'revoked',
     },
+    entriesActVoided: {
+      id: 'assessment/entries/act-voided',
+      defaultMessage: 'voided',
+    },
     entriesChipWaiting: {
       id: 'assessment/entries/chip-waiting',
       defaultMessage: 'With the participant',
@@ -5388,7 +5390,7 @@ const i18n = definePluginMessages({
     },
     overviewActivityUnread: {
       id: 'assessment/overview/activity-unread',
-      defaultMessage: '{count, plural, one {# question has news} other {# questions have news}}',
+      defaultMessage: '{count, plural, one {# entry has news} other {# entries have news}}',
     },
     overviewActivityNone: {
       id: 'assessment/overview/activity-none',

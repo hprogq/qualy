@@ -341,10 +341,14 @@ export interface WorkspaceProps {
   onFile?: (item: ItemDto) => void
   /** somebody else's key for a question, in place of the owner's */
   itemAction?: (item: ItemDto) => ReactNode
-  /** a question came on screen */
-  onShow?: (row: StructureRow) => void
   /** claims whose open round waits on this staff reader's own decision */
   awaitingMe?: ReadonlySet<string>
+  /**
+   * The owner's claims holding news they have not read (§32.72), each marked
+   * on its row until it is opened. Only the owner's page passes it: whether
+   * somebody has read their news is nobody else's to see.
+   */
+  unreadEntries?: ReadonlySet<string>
   /**
    * `parent`: fill a parent that bounds the height. `window`: take the room
    * from where it lands to the foot of the window, in a page that scrolls.
@@ -379,8 +383,8 @@ function Workspace({
   onEntry,
   onFile,
   itemAction,
-  onShow,
   awaitingMe,
+  unreadEntries,
   fit,
   mode,
 }: WorkspaceProps & { mode: WorkspaceMode }) {
@@ -549,17 +553,6 @@ function Workspace({
   const asideOpen = asideFor !== null && asideFor === selected?.id
   const setAsideOpen = (now: boolean) => setAsideFor(now && selected !== null ? selected.id : null)
 
-  // A question on screen is a question looked at: its news is read - and
-  // news that lands while it is on screen is read too, so the dot never
-  // waits for the reader to leave and come back.
-  const shown = onPane && item !== null ? selected : null
-  useEffect(() => {
-    if (shown !== null) onShow?.(shown)
-    // the row is re-derived every render; what matters is which one it is
-    // and whether it holds news
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shown?.id, shown?.unread])
-
   // the bar at a phone's foot is the way in; while the stage has shut it the
   // question says why where the way in would be, and a key that could only
   // say "not now" is not put in the reader's thumb
@@ -637,17 +630,14 @@ function Workspace({
         outline={outline}
         row={selected}
         item={item}
-        entries={
-          viewer === 'owner'
-            ? itemEntries.filter((entry) => entry.status !== 'voided')
-            : itemEntries
-        }
+        entries={itemEntries}
         standing={standing}
         scored={scored}
         filing={filing}
         busy={busy}
         selectedEntryId={openEntryId}
         {...(awaitingMe === undefined ? {} : { awaitingMe })}
+        {...(unreadEntries === undefined ? {} : { unreadEntries })}
         headerAction={itemAction?.(item)}
         onEntry={onEntry}
         onFile={() => onFile?.(item)}

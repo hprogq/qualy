@@ -1,11 +1,13 @@
 import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
+import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { useBatchZone } from '../../batch/zone.ts'
 import { EntryStanding } from '../EntryStanding.tsx'
 import type { EntryDto } from '../model.ts'
+import { UnreadDot } from './marks.tsx'
 import { momentOf, standingOf, type EntryLine } from './model.ts'
 
 // One claim as one row: two lines that say which claim it is and what last
@@ -15,9 +17,13 @@ import { momentOf, standingOf, type EntryLine } from './model.ts'
 // for: when a reviewer sent it back or asked for more, their words are right
 // there. The version number is not - it belongs to the account in the drawer,
 // where versions are what the reader is looking at.
+//
+// A claim holding news its owner has not read wears a red dot in the margin
+// before its name, and its name in a heavier weight, until it is opened.
 
 const styles = stylex.create({
   row: {
+    position: 'relative',
     display: 'grid',
     width: '100%',
     alignItems: 'center',
@@ -49,6 +55,15 @@ const styles = stylex.create({
   rowOn: {
     backgroundColor: tokens.selectedSurface,
   },
+  // in the margin, level with the name, so nothing on the row moves for it
+  unread: {
+    position: 'absolute',
+    // the name's first line: the row's own padding, then half its height
+    top: 'calc(14px + 0.65em)',
+    left: 11,
+  },
+  unreadCompact: { left: 5 },
+  leadUnread: { fontWeight: 600 },
   main: {
     display: 'flex',
     minWidth: 0,
@@ -168,10 +183,16 @@ export function EntryRow({
   compact,
   selected,
   awaitingMe = false,
+  unread = false,
+  withItem = false,
   onOpen,
 }: {
   entry: EntryDto
   line: EntryLine
+  /** the owner has news on it they have not read; nobody else is told */
+  unread?: boolean
+  /** it ended voided under a question since withdrawn */
+  withItem?: boolean
   /** a staff reader's own review is what this claim waits on */
   awaitingMe?: boolean
   /** tablet and phone: the status folds into the second line */
@@ -190,6 +211,7 @@ export function EntryRow({
       revised={entry.currentReviewInstanceId !== null}
       asked={entry.supplement !== null}
       openRound={entry.openRound}
+      withItem={withItem}
       size={compact ? 'default' : 'roomy'}
     />
   )
@@ -218,6 +240,7 @@ export function EntryRow({
       data-standing={standingOf(entry)}
       data-files={String(line.files)}
       data-awaiting-me={awaitingMe || undefined}
+      data-unread={unread || undefined}
       aria-current={selected ? 'true' : undefined}
       onClick={onOpen}
       {...stylex.props(
@@ -226,9 +249,11 @@ export function EntryRow({
         selected && styles.rowOn,
       )}
     >
+      {unread && <UnreadDot xstyle={[styles.unread, compact && styles.unreadCompact]} />}
       <span {...stylex.props(styles.main)}>
+        {unread && <VisuallyHidden>{format(m.claimUnread)}</VisuallyHidden>}
         <span {...stylex.props(styles.identity)}>
-          <span data-part="lead" {...stylex.props(styles.lead)}>
+          <span data-part="lead" {...stylex.props(styles.lead, unread && styles.leadUnread)}>
             {line.lead}
           </span>
           {line.sub !== '' && (

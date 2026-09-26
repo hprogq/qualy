@@ -13,7 +13,7 @@ import { answerOf, fieldsOf, type EntryDto, type ItemDto } from './model.ts'
 // back, giving it up - for every page that shows the claim's drawer. Each is
 // said out loud when it lands, and a refusal over the claim's fields names
 // those fields and what is wrong with each, since no form is open to show
-// them. Beside them, the look that marks a question's news as seen.
+// them. Beside them, the read that marks a claim's news as seen.
 
 export type OwnStatus = 'in_review' | 'draft' | 'voided'
 
@@ -131,36 +131,47 @@ export function useOwnClaimActs({ items, entries, materialRange }: OwnClaims) {
 }
 
 /**
- * The owner has seen what changed on one question: the filing page records
- * it when the question is shown, the account when one of its claims is read.
+ * The owner has read one of their claims: opened its drawer or its form.
  *
- * Looking is not a business change, so the cached list is corrected in
+ * Reading is not a business change, so the cached list is corrected in
  * place - everything else it says about what needs attention kept - and
- * nothing is read again or announced.
+ * nothing is announced. The mark goes the moment the claim opens: a read of
+ * the list already on its way was asked before this one, so it is called off
+ * rather than let bring the mark back, and asked again once the server has
+ * heard. The batch's front page is never on screen beside a claim, and reads
+ * its desk afresh whenever it opens.
  */
-export function useMarkItemRead(batchId: string) {
+export function useMarkEntryRead(batchId: string) {
   const api = useApi(assessmentApi)
   const query = useApiQuery(assessmentApi)
   const run = useRunApi()
   const queryClient = useQueryClient()
   const listKey = query.assessment.listMyEntries.key({ params: { batchId }, query: {} })
   return useMutation({
-    mutationFn: (itemId: string) =>
-      run(api.assessment.markMyEntryRead({ params: { batchId, itemId } })),
-    onSuccess: (_result, itemId) => {
+    mutationFn: (entryId: string) =>
+      run(api.assessment.markMyEntryRead({ params: { batchId, entryId } })),
+    onMutate: async (entryId: string) => {
+      const interrupted = queryClient.isFetching({ queryKey: listKey }) > 0
+      await queryClient.cancelQueries({ queryKey: listKey })
       queryClient.setQueryData(
         listKey,
-        (old: { attention: { unreadItemIds: readonly string[] } } | undefined) =>
+        (old: { attention: { unreadEntryIds: readonly string[] } } | undefined) =>
           old === undefined
             ? old
             : {
                 ...old,
                 attention: {
                   ...old.attention,
-                  unreadItemIds: old.attention.unreadItemIds.filter((id) => id !== itemId),
+                  unreadEntryIds: old.attention.unreadEntryIds.filter((id) => id !== entryId),
                 },
               },
       )
+      return { interrupted }
+    },
+    onSettled: (_result, _error, _entryId, context) => {
+      if (context?.interrupted === true) {
+        void queryClient.invalidateQueries({ queryKey: listKey })
+      }
     },
   })
 }

@@ -1890,27 +1890,32 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         ),
         nextCursor: Schema.NullOr(Schema.String),
         /**
-         * The unread dots (§32.72): questions where something changed FOR
-         * this reader since they last looked. Not on entryView, on purpose -
+         * The unread marks (§32.72): claims where something changed FOR
+         * this reader since they last read them. Not on entryView, on purpose -
          * that view also reaches reviewers and administrators, and whether
          * the owner has read their news is nobody else's field.
          */
-        attention: Schema.Struct({ unreadItemIds: Schema.Array(Schema.String) }),
+        attention: Schema.Struct({ unreadEntryIds: Schema.Array(Schema.String) }),
       }),
       error: [BatchNotFound, ParticipantNotFound, AccessDenied, BadRequest],
     }).middleware(Authenticated),
   )
   .add(
     /**
-     * The owner has looked at one question's claims. Idempotent, gate-free
-     * (a look is not a business act), archived batches included; touching
-     * only the caller's own participant row is the whole authorization.
+     * The owner has read one of their claims: opened its drawer or its
+     * form. Idempotent, gate-free (reading is not a business act), archived
+     * batches included; touching only the caller's own claim is the whole
+     * authorization, and an id that is not one of theirs changes nothing.
      */
-    HttpApiEndpoint.put('markMyEntryRead', '/assessment/batches/:batchId/me/items/:itemId/read', {
-      params: Schema.Struct({ batchId: uuidInput, itemId: uuidInput }),
-      success: Schema.Struct({ ok: Schema.Literal(true) }),
-      error: [BatchNotFound, ParticipantNotFound, AccessDenied],
-    }).middleware(Authenticated),
+    HttpApiEndpoint.put(
+      'markMyEntryRead',
+      '/assessment/batches/:batchId/me/entries/:entryId/read',
+      {
+        params: Schema.Struct({ batchId: uuidInput, entryId: uuidInput }),
+        success: Schema.Struct({ ok: Schema.Literal(true) }),
+        error: [BatchNotFound, ParticipantNotFound, AccessDenied],
+      },
+    ).middleware(Authenticated),
   )
   .add(
     /**
@@ -1926,8 +1931,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       success: Schema.Struct({
         participant: Schema.NullOr(
           Schema.Struct({
-            /** the questions with changes their owner has not looked at */
-            unreadItemIds: Schema.Array(Schema.String),
+            /** the claims with changes their owner has not read */
+            unreadEntryIds: Schema.Array(Schema.String),
             actions: Schema.Array(
               Schema.Struct({
                 kind: Schema.Literals(['supplement', 'revision']),

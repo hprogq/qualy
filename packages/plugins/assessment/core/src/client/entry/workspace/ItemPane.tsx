@@ -24,6 +24,7 @@ import { recordedOnly, type EntryDto, type ItemDto } from '../model.ts'
 import type { Standing, StructureRow } from '../standing.ts'
 import { useWidthOf, type WorkspaceMode } from './layout.ts'
 import { EntryRow } from './EntryRow.tsx'
+import { UnreadDot } from './marks.tsx'
 import { useCalcLine, useLineWords } from './calc.ts'
 import {
   chainOf,
@@ -32,6 +33,7 @@ import {
   rowWordOf,
   two,
   badgeOf,
+  voidedWithItem,
   type ChipKey,
   type Filing,
   type Outline,
@@ -497,6 +499,7 @@ export function ItemPane({
   busy,
   selectedEntryId,
   awaitingMe,
+  unreadEntries,
   headerAction,
   onEntry,
   onFile,
@@ -508,7 +511,7 @@ export function ItemPane({
   outline: Outline
   row: StructureRow
   item: ItemDto
-  /** the claims under it this reader may read; the owner's abandoned ones are not among them */
+  /** every claim under it this reader may read, those that ended without counting included */
   entries: readonly EntryDto[]
   standing: Standing | null
   scored: boolean
@@ -518,6 +521,8 @@ export function ItemPane({
   selectedEntryId: string
   /** claims whose open round waits on this staff reader's own decision */
   awaitingMe?: ReadonlySet<string>
+  /** the owner's claims holding news they have not read */
+  unreadEntries?: ReadonlySet<string>
   /** somebody else's key for this question, where the owner's is not the one */
   headerAction?: ReactNode
   onEntry: (entry: EntryDto) => void
@@ -534,7 +539,7 @@ export function ItemPane({
   const [paneRef, paneWidth] = useWidthOf()
   const roomy = paneWidth === null ? mode === 'desk' : paneWidth >= ROOMY
   const compact = !roomy
-  const chips = useMemo(() => chipsFor(viewer), [viewer])
+  const chips = useMemo(() => chipsFor(viewer, item), [viewer, item])
   const [chip, setChip] = useState<ChipKey>('all')
   const [search, setSearch] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
@@ -552,6 +557,11 @@ export function ItemPane({
   const counts = new Map(
     chips.map((one) => [one.key, entries.filter((entry) => one.test(entry)).length] as const),
   )
+  // a filter holding a claim with unread news says so, so the news under a
+  // filter the reader is not in is never out of sight
+  const holdsNews = (test: (entry: EntryDto) => boolean) =>
+    unreadEntries !== undefined &&
+    entries.some((entry) => unreadEntries.has(entry.id) && test(entry))
   // a chosen filter that has nothing left under it gives way to all
   const active = chip !== 'all' && (counts.get(chip) ?? 0) === 0 ? 'all' : chip
   const test = chips.find((one) => one.key === active)?.test ?? (() => true)
@@ -682,6 +692,7 @@ export function ItemPane({
               aria-pressed={on}
               data-chip={one.key}
               data-count={count}
+              data-unread={(!on && holdsNews(one.test)) || undefined}
               onClick={() => {
                 setChip(one.key)
                 setLimit(PAGE)
@@ -698,6 +709,7 @@ export function ItemPane({
               <span {...stylex.props(styles.chipCount, one.urgent && styles.chipCountWaits)}>
                 <Ticker value={String(count)} />
               </span>
+              {!on && holdsNews(one.test) && <UnreadDot />}
             </button>
           )
         })}
@@ -935,6 +947,8 @@ export function ItemPane({
                       compact={compact}
                       selected={entry.id === selectedEntryId}
                       awaitingMe={awaitingMe?.has(entry.id) ?? false}
+                      unread={unreadEntries?.has(entry.id) ?? false}
+                      withItem={voidedWithItem(entry, item)}
                       onOpen={() => onEntry(entry)}
                     />
                   </SiftRow>

@@ -893,7 +893,7 @@ export interface MyFilings {
 
 export interface MyOverview {
   readonly participant: {
-    readonly unreadItemIds: readonly string[]
+    readonly unreadEntryIds: readonly string[]
     readonly actions: readonly {
       kind: 'supplement' | 'revision'
       entryId: string
@@ -7873,7 +7873,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         return yield* assessment.markMyEntryRead(
           principal.tenantId,
           params.batchId,
-          params.itemId,
+          params.entryId,
           principal,
         )
       }),

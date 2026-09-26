@@ -18,7 +18,7 @@ import type { EntryDto, FilingGateDto, ItemDto } from '../entry/model.ts'
 import { EntrySheet } from '../entry/EntrySheet.tsx'
 import { AppealDialog } from '../entry/AppealDialog.tsx'
 import { SupplementAnswerDialog } from '../entry/SupplementAnswerDialog.tsx'
-import { useMarkItemRead, useOwnClaimActs } from '../entry/own-acts.ts'
+import { useMarkEntryRead, useOwnClaimActs } from '../entry/own-acts.ts'
 import { entryLineOf, filingOf } from '../entry/workspace/model.ts'
 import { useLineWords } from '../entry/workspace/calc.ts'
 import { useWorkspaceMode } from '../entry/workspace/layout.ts'
@@ -281,11 +281,11 @@ function Standing({
   }, [detail, entries, questions, groups])
   const lingering = useLingering(detailed)
   const opener = useFocusBack(detailed !== null)
-  // A claim read in its drawer is its question looked at, as the filing page
-  // counts a question shown: what changed on it is no longer news there.
-  const markRead = useMarkItemRead(batchId).mutate
-  const unread = mine.data?.attention?.unreadItemIds
-  const reading = detailed?.item.id
+  // A claim read in its drawer is read, as on the filing page: what changed
+  // on it is no longer news anywhere. Its neighbours keep theirs.
+  const markRead = useMarkEntryRead(batchId).mutate
+  const unread = mine.data?.attention?.unreadEntryIds
+  const reading = detailed?.entry.id
   useEffect(() => {
     if (reading !== undefined && unread?.includes(reading) === true) markRead(reading)
   }, [reading, unread, markRead])

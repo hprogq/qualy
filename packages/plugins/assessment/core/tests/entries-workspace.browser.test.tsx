@@ -236,7 +236,7 @@ const workspace = ({
             participantId: PARTICIPANT_ID,
             entries,
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
         listAwaitingSupplements: () => Effect.succeed({ items: [], nextCursor: null }),
         listScoreGroups: () =>
@@ -1016,7 +1016,7 @@ describe('the head of the structure', () => {
               submit: hidden,
             })),
             nextCursor: null,
-            attention: { unreadItemIds: [] },
+            attention: { unreadEntryIds: [] },
           }),
       },
     })
@@ -1094,25 +1094,29 @@ describe('the head of the structure', () => {
     await expect.element(page.getByTestId('entries-total')).toHaveAttribute('data-cap', '10')
   })
 
-  // News landing on the question being read is read at once: the dot does
-  // not wait for the reader to leave and come back.
-  it('reads news that arrives on the question already open', async () => {
+  // News landing on the claim being read is read at once: the mark does not
+  // wait for the reader to shut the claim and open it again.
+  it('reads news that arrives on the claim already open', async () => {
     await page.viewport(1440, 900)
     let unread: readonly string[] = []
-    const looked = vi.fn(() => Effect.succeed({ ok: true as const }))
+    const looked = vi.fn((_: { params: { entryId: string } }) =>
+      Effect.succeed({ ok: true as const }),
+    )
     let release = () => {}
     const gate = new Promise<void>((resolve) => {
       release = resolve
     })
+    const filed = [claim(1, itemId(2), 'approved')]
     await workspace({
-      route: `${base}?open=${itemId(2)}`,
+      route: `${base}?open=${itemId(2)}&detail=${entryId(1)}`,
+      entries: filed,
       stubs: {
         listMyEntries: () =>
           Effect.succeed({
             participantId: PARTICIPANT_ID,
-            entries: [],
+            entries: filed,
             nextCursor: null,
-            attention: { unreadItemIds: unread },
+            attention: { unreadEntryIds: unread },
           }),
         markMyEntryRead: looked,
         watchBatch: () =>
@@ -1126,24 +1130,33 @@ describe('the head of the structure', () => {
           ),
       },
     })
-    await expect.element(page.getByRole('heading', { name: '品德题目 2' })).toBeVisible()
+    // the claim's drawer is up over its question
+    await expect.element(page.getByRole('dialog')).toBeVisible()
     expect(looked).not.toHaveBeenCalled()
-    unread = [itemId(2)]
+    unread = [entryId(1)]
     release()
     await vi.waitFor(() => expect(looked).toHaveBeenCalledOnce())
+    expect(looked.mock.calls[0]![0].params.entryId).toBe(entryId(1))
     await expect.poll(() => page.getByTestId('unread-mark').elements().length).toBe(0)
     expect(railRow(2).getAttribute('data-unread')).toBe('false')
   })
 })
 
 describe('what a question’s row says at a glance', () => {
-  // The dot says where a question stands and only that; news the reader has
-  // not looked at is a mark of its own, so looking takes the news away and
+  // The dot says where a question stands and only that; news the owner has
+  // not read is a count of its own, read one claim at a time by opening the
+  // claim - so opening a question takes nothing away, and reading a claim
   // leaves the standing exactly where it was.
-  it('marks news apart from the dot, and looking clears the news alone', async () => {
+  it('counts news apart from the dot, and opening a claim reads that claim alone', async () => {
     await page.viewport(1440, 900)
-    const looked = vi.fn(() => Effect.succeed({ ok: true as const }))
-    const filed = [claim(1, itemId(3), 'needs_revision'), claim(2, itemId(4), 'approved')]
+    const looked = vi.fn((_: { params: { entryId: string } }) =>
+      Effect.succeed({ ok: true as const }),
+    )
+    const filed = [
+      claim(1, itemId(3), 'needs_revision'),
+      claim(2, itemId(3), 'approved'),
+      claim(3, itemId(4), 'approved'),
+    ]
     await workspace({
       route: `${base}?open=${itemId(1)}`,
       entries: filed,
@@ -1153,29 +1166,99 @@ describe('what a question’s row says at a glance', () => {
             participantId: PARTICIPANT_ID,
             entries: filed,
             nextCursor: null,
-            attention: { unreadItemIds: [itemId(3), itemId(4)] },
+            attention: { unreadEntryIds: [entryId(1), entryId(2), entryId(3)] },
           }),
         markMyEntryRead: looked,
       },
     })
     await expect.element(page.getByRole('heading', { name: '品德题目 1' })).toBeVisible()
     const dot = (n: number) => railRow(n).querySelector('[data-dot]')?.getAttribute('data-dot')
-    const news = (n: number) => railRow(n).querySelector('[data-testid="unread-mark"]')
+    const news = (n: number) =>
+      railRow(n).querySelector('[data-testid="unread-mark"]')?.getAttribute('data-count') ?? null
     // unread, each still wears its own standing: amber for the one sent
     // back, green for the one that counts - never one colour for both
-    await expect.poll(() => railRow(3).getAttribute('data-unread')).toBe('true')
-    expect(news(3)).not.toBeNull()
+    await expect.poll(() => news(3)).toBe('2')
     expect(dot(3)).toBe('waits')
-    expect(news(4)).not.toBeNull()
+    expect(news(4)).toBe('1')
     expect(dot(4)).toBe('approved')
 
+    // opening the question is not reading its claims
     await userEvent.click(railRow(3))
+    await expect.element(page.getByRole('heading', { name: '品德题目 3' })).toBeVisible()
+    expect(looked).not.toHaveBeenCalled()
+    const claimRow = (n: number) =>
+      document.querySelector(`[data-testid="claim-row"][data-entry="${entryId(n)}"]`)!
+    expect(claimRow(1).getAttribute('data-unread')).toBe('true')
+    expect(claimRow(2).getAttribute('data-unread')).toBe('true')
+
+    await userEvent.click(claimRow(1))
     await vi.waitFor(() => expect(looked).toHaveBeenCalledOnce())
-    await expect.poll(() => news(3)).toBeNull()
-    expect(railRow(3).getAttribute('data-unread')).toBe('false')
+    expect(looked.mock.calls[0]![0].params.entryId).toBe(entryId(1))
+    await expect.poll(() => news(3)).toBe('1')
+    expect(claimRow(1).hasAttribute('data-unread')).toBe(false)
+    expect(claimRow(2).getAttribute('data-unread')).toBe('true')
     expect(dot(3)).toBe('waits')
-    // the one not looked at keeps its news
-    expect(news(4)).not.toBeNull()
+    // the question not opened keeps its news
+    expect(news(4)).toBe('1')
+  })
+
+  // A claim that went with its question, or a record the office took back,
+  // is not among the question's live claims - but its news is read the same
+  // way, so the filter it sits under is offered and says it holds news.
+  it('opens a claim that went with its question, and reads it there', async () => {
+    await page.viewport(1440, 900)
+    const looked = vi.fn((_: { params: { entryId: string } }) =>
+      Effect.succeed({ ok: true as const }),
+    )
+    const gone = question(2, '社团活动', BAND_A, { status: 'voided', voidReason: '已并入' })
+    const filed = [claim(1, itemId(2), 'voided'), claim(2, itemId(1), 'voided')]
+    await workspace({
+      route: `${base}?open=${itemId(2)}`,
+      items: [question(1, '品德题目 1', BAND_A), gone],
+      entries: filed,
+      stubs: {
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: filed,
+            nextCursor: null,
+            attention: { unreadEntryIds: [entryId(1)] },
+          }),
+        markMyEntryRead: looked,
+      },
+    })
+    await expect.element(page.getByRole('heading', { name: '社团活动' })).toBeVisible()
+    await expect
+      .poll(() =>
+        railRow(2).querySelector('[data-testid="unread-mark"]')?.getAttribute('data-count'),
+      )
+      .toBe('1')
+    // nothing live under it, and the filter holding the voided claim says it
+    // holds news
+    expect(rows()).toHaveLength(0)
+    const chip = () => document.querySelector('[data-chip="voided"]')!
+    expect(chip().getAttribute('data-count')).toBe('1')
+    expect(chip().getAttribute('data-unread')).toBe('true')
+    await userEvent.click(chip())
+    const row = document.querySelector(`[data-testid="claim-row"][data-entry="${entryId(1)}"]`)!
+    expect(row.getAttribute('data-unread')).toBe('true')
+    // went with its question: voided, not given up by its owner
+    expect(row.querySelector('[data-testid="entry-standing"]')?.getAttribute('data-ended')).toBe(
+      'with-item',
+    )
+    await userEvent.click(row)
+    await vi.waitFor(() => expect(looked).toHaveBeenCalledOnce())
+    expect(looked.mock.calls[0]![0].params.entryId).toBe(entryId(1))
+    await expect.poll(() => railRow(2).querySelector('[data-testid="unread-mark"]')).toBeNull()
+
+    // the one its owner gave up under a live question sits under its own filter
+    await userEvent.keyboard('{Escape}')
+    await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull()
+    await userEvent.click(railRow(1))
+    await expect
+      .poll(() => document.querySelector('[data-chip="abandoned"]')?.getAttribute('data-count'))
+      .toBe('1')
+    expect(document.querySelector('[data-chip="voided"]')).toBeNull()
   })
 
   // A section's fill is a small pie beside its figure, not a line along the foot
@@ -1298,7 +1381,7 @@ describe('where filing is shut', () => {
           submit: shut(reason),
         })),
         nextCursor: null,
-        attention: { unreadItemIds: [] },
+        attention: { unreadEntryIds: [] },
       }),
   })
   const archived = () =>

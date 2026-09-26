@@ -6,7 +6,7 @@ import { assessmentMessages as m } from '../../i18n.ts'
 import { trimAmount, type EntryDto } from '../model.ts'
 import type { StructureRow } from '../standing.ts'
 import { useCalcLine } from './calc.ts'
-import { SectionMeter, UnreadMark } from './marks.tsx'
+import { SectionMeter, UnreadCount } from './marks.tsx'
 import {
   chainOf,
   dotOf,
@@ -389,7 +389,7 @@ export function GroupPane({
               <button
                 type="button"
                 data-group-item={one.id}
-                data-unread={one.unread}
+                data-unread={one.unread > 0}
                 onClick={() => onGoto(one.id)}
                 {...stylex.props(styles.item)}
                 style={{ paddingLeft: `${pad + 12}px` }}
@@ -406,7 +406,7 @@ export function GroupPane({
                     >
                       {outline.numbers.get(one.id)}. {one.name}
                     </span>
-                    {one.unread && <UnreadMark />}
+                    {one.unread > 0 && <UnreadCount count={one.unread} />}
                   </span>
                   <span {...stylex.props(styles.itemFacts)}>
                     {word !== null && (

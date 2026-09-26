@@ -13,7 +13,7 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { trimAmount } from '../model.ts'
 import type { StructureRow } from '../standing.ts'
-import { SectionMeter, UnreadMark } from './marks.tsx'
+import { SectionMeter, UnreadCount } from './marks.tsx'
 import { meterStyles } from './meter.ts'
 import {
   dotOf,
@@ -461,6 +461,9 @@ export function StructureRail({
   }
   const holdsTodo = (index: number) =>
     rows.slice(index + 1, endOf(index)).some((row) => row.kind === 'item' && isTodo(row))
+  /** the claims with news inside a section, said on its head while it is folded */
+  const unreadInside = (index: number) =>
+    rows.slice(index + 1, endOf(index)).reduce((sum, row) => sum + row.unread, 0)
 
   // what the tree lists: everything, or only what is left to do and the
   // sections holding it; folded sections keep their head and hide the rest
@@ -516,7 +519,7 @@ export function StructureRail({
       </p>
     ) : (
       <ul {...stylex.props(styles.list)}>
-        {listed.map(({ row, inside }) => {
+        {listed.map(({ row, index, inside }) => {
           const no = outline.numbers.get(row.id) ?? ''
           const on = selectedId === row.id
           const indent = GUTTER + row.depth * INDENT
@@ -577,6 +580,10 @@ export function StructureRail({
                       {format(m.entriesFoldedCount, { count: inside })}
                     </span>
                   )}
+                  {/* folded away, the news under it is still said on its head */}
+                  {isFolded && unreadInside(index) > 0 && (
+                    <UnreadCount count={unreadInside(index)} />
+                  )}
                   <span {...stylex.props(styles.spacer)} />
                   {ledgerOf(row)}
                 </button>
@@ -593,7 +600,7 @@ export function StructureRail({
                 data-rail-row={row.id}
                 data-kind="item"
                 data-tag={row.tag ?? ''}
-                data-unread={row.unread}
+                data-unread={row.unread > 0}
                 aria-current={on ? 'true' : undefined}
                 onClick={() => onSelect(row.id)}
                 {...stylex.props(
@@ -613,7 +620,7 @@ export function StructureRail({
                 <span {...stylex.props(styles.name, on && styles.nameOn, gone && styles.nameGone)}>
                   {row.name}
                 </span>
-                {row.unread && <UnreadMark />}
+                {row.unread > 0 && <UnreadCount count={row.unread} />}
                 <span {...stylex.props(styles.spacer)} />
                 {word !== null && row.tag !== 'approved' && row.tag !== 'granted' && (
                   <span {...stylex.props(styles.word, urgentTag(row) && styles.wordUrgent)}>

@@ -408,7 +408,7 @@ export const bumpParticipantAttention = (tenantId: string, entryId: string) =>
   )
 
 /**
- * The owner has looked at this question's claims, all of them at once.
+ * The owner has read one of their claims.
  *
  * Seen is read through a subquery rather than off the row being written, and
  * that is the whole of it. `set seen = attention` reads the column from the
@@ -422,11 +422,14 @@ export const bumpParticipantAttention = (tenantId: string, entryId: string) =>
  * snapshot, so what is marked seen is what was there when the reader asked.
  * A bump that lands in the meantime stays ahead and rings, which is the
  * direction to be wrong in.
+ *
+ * Only the reader's own row is touched: an id that names somebody else's
+ * claim, or none, updates nothing.
  */
-export const markMyEntryReads = (input: {
+export const markMyEntryRead = (input: {
   tenantId: string
   batchId: string
-  itemId: string
+  entryId: string
   participantId: string
 }) =>
   db.query((k) =>
@@ -438,7 +441,7 @@ export const markMyEntryReads = (input: {
       })
       .where('tenantId', '=', input.tenantId)
       .where('batchId', '=', input.batchId)
-      .where('itemId', '=', input.itemId)
+      .where('id', '=', input.entryId)
       .where('participantId', '=', input.participantId)
       .execute(),
   )
@@ -606,8 +609,8 @@ export const participatingBatchIdsOf = (input: {
         )
         .pipe(Effect.map((rows) => rows.map((row) => row.batchId)))
 
-/** the questions holding anything their owner has not seen yet */
-export const unreadItemIdsOf = (input: {
+/** the claims holding something their owner has not read yet, oldest first */
+export const unreadEntryIdsOf = (input: {
   tenantId: string
   batchId: string
   participantId: string
@@ -616,15 +619,16 @@ export const unreadItemIdsOf = (input: {
     .query((k) =>
       k
         .selectFrom('Entry')
-        .select('itemId')
-        .distinct()
+        .select('id')
         .where('tenantId', '=', input.tenantId)
         .where('batchId', '=', input.batchId)
         .where('participantId', '=', input.participantId)
         .where(sql<boolean>`participant_attention_revision > participant_seen_revision`)
+        .orderBy('createdAt')
+        .orderBy('id')
         .execute(),
     )
-    .pipe(Effect.map((rows) => rows.map((row) => row.itemId)))
+    .pipe(Effect.map((rows) => rows.map((row) => row.id)))
 
 export const setEntryState = (input: {
   tenantId: string

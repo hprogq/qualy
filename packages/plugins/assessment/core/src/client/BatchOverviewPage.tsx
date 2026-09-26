@@ -14,6 +14,7 @@ import { useI18n, useList } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
+import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { assessmentApi } from './api.ts'
 import { useBatchLive } from './live.ts'
 import type { ApiResult } from '@qualy/web-runtime/api'
@@ -21,7 +22,7 @@ import { BatchScreen } from './batch/BatchScreen.tsx'
 import { BatchFlow } from './batch/BatchFlow.tsx'
 import { calendarDaysBetween, inZone, useBatchZone, yearOf } from './batch/zone.ts'
 import { assessmentMessages as m } from './i18n.ts'
-import { UnreadMark } from './entry/workspace/marks.tsx'
+import { UnreadDot } from './entry/workspace/marks.tsx'
 
 // The batch's front page as one desk (§32.73, laid out to design 2a/2b):
 // the page description says what stands on the desk, the body starts
@@ -354,7 +355,10 @@ const styles = stylex.create({
     fontWeight: 600,
   },
   unreadNote: {
+    display: 'inline-flex',
     flexShrink: 0,
+    alignItems: 'center',
+    gap: 6,
     fontSize: 12,
     color: tokens.mutedForeground,
   },
@@ -709,16 +713,16 @@ function MyDesk({
     [activity.data],
   )
   const groups = useMemo(() => groupByDay(rows, locale, format, zone), [rows, locale, format, zone])
-  // the unread questions, marked once each: the newest row of that question
-  // in the feed carries the dot, read state stays the version pair's
+  // the unread claims, marked once each: the newest row of that claim in the
+  // feed carries the dot, read state stays the version pair's
   const freshRowIds = useMemo(() => {
-    const unread = new Set(overview.data?.participant?.unreadItemIds ?? [])
+    const unread = new Set(overview.data?.participant?.unreadEntryIds ?? [])
     const marked = new Set<string>()
     const fresh = new Set<string>()
     for (const row of rows) {
       if (row.perspective !== 'participant') continue
-      if (!unread.has(row.itemId) || marked.has(row.itemId)) continue
-      marked.add(row.itemId)
+      if (!unread.has(row.entryId) || marked.has(row.entryId)) continue
+      marked.add(row.entryId)
       fresh.add(row.id + row.kind)
     }
     return fresh
@@ -879,10 +883,15 @@ function MyDesk({
       <section {...stylex.props(styles.activity)}>
         <div {...stylex.props(styles.activityHead)}>
           <h2 {...stylex.props(styles.activityTitle)}>{format(m.overviewActivityTitle)}</h2>
-          {(desk?.participant?.unreadItemIds.length ?? 0) > 0 && (
-            <span {...stylex.props(styles.unreadNote)}>
+          {(desk?.participant?.unreadEntryIds.length ?? 0) > 0 && (
+            <span
+              data-testid="overview-unread"
+              data-count={desk!.participant!.unreadEntryIds.length}
+              {...stylex.props(styles.unreadNote)}
+            >
+              <UnreadDot />
               {format(m.overviewActivityUnread, {
-                count: desk!.participant!.unreadItemIds.length,
+                count: desk!.participant!.unreadEntryIds.length,
               })}
             </span>
           )}
@@ -985,9 +994,14 @@ function MyDesk({
                       <span {...stylex.props(styles.feedBody)}>
                         <span {...stylex.props(styles.feedTitleLine)}>
                           <span {...stylex.props(styles.feedTitleSeat)}>
+                            {/* the same mark of news as on the claim's own row */}
+                            {freshRowIds.has(row.id + row.kind) && (
+                              <>
+                                <UnreadDot />
+                                <VisuallyHidden>{format(m.claimUnread)}</VisuallyHidden>
+                              </>
+                            )}
                             <span {...stylex.props(styles.feedTitle)}>{row.itemTitle}</span>
-                            {/* the same mark of news as on the paper itself */}
-                            {freshRowIds.has(row.id + row.kind) && <UnreadMark />}
                           </span>
                           {mixed && (
                             <span {...stylex.props(styles.feedLaneWord)}>

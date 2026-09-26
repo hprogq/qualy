@@ -232,7 +232,7 @@ describe('an account the arithmetic cannot compute', () => {
               participantId: PARTICIPANT_ID,
               entries: [],
               nextCursor: null,
-              attention: { unreadItemIds: [] },
+              attention: { unreadEntryIds: [] },
             }),
           getMyResult: result,
         },
