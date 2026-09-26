@@ -38,7 +38,6 @@ const styles = stylex.create({
     gridColumn: { default: null, [breakpoints.tablet]: '1 / -1', [breakpoints.desktop]: '1 / -1' },
   },
   fullWidth: { width: '100%' },
-  labelHint: { marginLeft: 8, fontWeight: 400, color: tokens.mutedForeground },
   cards: {
     display: 'grid',
     gap: 12,
@@ -221,12 +220,9 @@ export function BasicsTab({
           )}
         </Field>
         <div {...stylex.props(styles.span)}>
-          <Field
-            label={format(m.itemsFieldDescription)}
-            aside={
-              <span {...stylex.props(styles.labelHint)}>{format(m.itemsDescriptionHint)}</span>
-            }
-          >
+          {/* the hint under the box rather than beside the name: on a phone
+              the line beside it squeezed the name to a letter per line */}
+          <Field label={format(m.itemsFieldDescription)} hint={format(m.itemsDescriptionHint)}>
             {(id) => (
               <Textarea
                 id={id}

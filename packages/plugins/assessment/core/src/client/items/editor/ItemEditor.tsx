@@ -139,11 +139,26 @@ const styles = stylex.create({
     borderBottomColor: tokens.border,
     backgroundColor: tokens.background,
   },
-  tabsSeat: { minWidth: 0, overflowX: 'auto', scrollbarWidth: 'none' },
-  tabList: { gap: { default: 24, [breakpoints.phone]: 16 } },
-  tab: { height: 38, paddingInline: 2 },
-  tabLabel: { display: 'inline-flex', alignItems: 'center', gap: 7 },
-  spacer: { flexGrow: 1 },
+  // the views take the row, and what is left before a save sits at its end
+  tabsSeat: { minWidth: 0, flexGrow: 1, overflowX: 'auto', scrollbarWidth: 'none' },
+  // A phone holds all three views on one line, in either language: a name
+  // that does not fit is shortened where it can be seen, never pushed past
+  // the edge behind a scroll nobody can see.
+  tabList: { gap: { default: 24, [breakpoints.phone]: 14 } },
+  tab: {
+    height: 38,
+    minWidth: { default: null, [breakpoints.phone]: 0 },
+    flexShrink: { default: 0, [breakpoints.phone]: 1 },
+    paddingInline: { default: 2, [breakpoints.phone]: 0 },
+    fontSize: { default: null, [breakpoints.phone]: 13 },
+  },
+  tabLabel: {
+    display: 'inline-flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: { default: 7, [breakpoints.phone]: 5 },
+  },
+  tabWord: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   body: { display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 40 },
   menu: { width: 176 },
 })
@@ -1407,33 +1422,37 @@ export function ItemEditor({
           <div {...stylex.props(styles.tabsSeat)}>
             <Tabs value={area} onValueChange={(next) => setPanelParam(next)}>
               <TabsList xstyle={styles.tabList}>
-                {AREAS.filter((one) => one !== 'rules' || draft.mode !== 'automatic').map((one) => (
-                  <TabsTrigger
-                    key={one}
-                    value={one}
-                    xstyle={styles.tab}
-                    data-area={one}
-                    data-pending={toneOf(one) !== 'ok'}
-                    data-tone={toneOf(one)}
-                  >
-                    <span {...stylex.props(styles.tabLabel)}>
-                      <Dot tone={toneOf(one)} />
-                      {format(
-                        one === 'basics'
-                          ? m.itemsTabBasics
-                          : one === 'scoring'
-                            ? draft.mode === 'automatic'
-                              ? m.itemsTabScoring
-                              : m.itemsTabForm
-                            : m.itemsTabRules,
-                      )}
-                    </span>
-                  </TabsTrigger>
-                ))}
+                {AREAS.filter((one) => one !== 'rules' || draft.mode !== 'automatic').map((one) => {
+                  const name = format(
+                    one === 'basics'
+                      ? m.itemsTabBasics
+                      : one === 'scoring'
+                        ? draft.mode === 'automatic'
+                          ? m.itemsTabScoring
+                          : m.itemsTabForm
+                        : m.itemsTabRules,
+                  )
+                  return (
+                    <TabsTrigger
+                      key={one}
+                      value={one}
+                      xstyle={styles.tab}
+                      data-area={one}
+                      data-pending={toneOf(one) !== 'ok'}
+                      data-tone={toneOf(one)}
+                    >
+                      <span {...stylex.props(styles.tabLabel)}>
+                        <Dot tone={toneOf(one)} />
+                        <span {...stylex.props(styles.tabWord)} title={name}>
+                          {name}
+                        </span>
+                      </span>
+                    </TabsTrigger>
+                  )
+                })}
               </TabsList>
             </Tabs>
           </div>
-          <span {...stylex.props(styles.spacer)} />
           <PendingList problems={problems} failed={failed} onGo={jumpTo} />
         </div>
         {failed && !dismissed && (

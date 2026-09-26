@@ -373,11 +373,13 @@ const open = (
     alerts?: readonly unknown[]
     /** whether the reader may give out the round's roles */
     manage?: boolean
+    locale?: 'zh-CN' | 'en-US'
   } = {},
 ) => {
   // what the server holds, so a save is read back as it was stored
   const holding = [...((had.items ?? []) as Record<string, any>[])]
   return renderScreen({
+    ...(had.locale === undefined ? {} : { locale: had.locale }),
     client: fakeClient({
       app: {
         getManifest: () =>
@@ -1554,11 +1556,17 @@ describe('the band', () => {
   // The question's heading is the section heading's own shape, and its three
   // views are the first row of the body: a band that grew a row of tabs each
   // time a question opened pushed everything under it down by that row.
-  for (const width of [1280, 390]) {
-    it(`keeps the band one height whether the structure or a question holds it, at ${width}`, async () => {
+  // English says the section in more letters, and on a phone its line used
+  // to wrap where the question's did not.
+  for (const [width, locale] of [
+    [1280, 'zh-CN'],
+    [390, 'zh-CN'],
+    [390, 'en-US'],
+  ] as const) {
+    it(`keeps the band one height whether the structure or a question holds it, at ${width} in ${locale}`, async () => {
       await page.viewport(width, 900)
       try {
-        await open({ items: [{ ...officerItem(), scoreGroupId: PAPER_ID }] })
+        await open({ items: [{ ...officerItem(), scoreGroupId: PAPER_ID }], locale })
         const band = page.getByTestId('batch-band')
         await expect.element(band).toHaveAttribute('data-banner', 'section')
         await vi.waitFor(() =>
@@ -1574,7 +1582,7 @@ describe('the band', () => {
             .find((one) => (one as HTMLElement).checkVisibility())!,
         )
         await expect.element(band).toHaveAttribute('data-banner', 'open')
-        await expect.element(tab(/基本信息/)).toBeVisible()
+        await expect.element(page.getByTestId('item-tabs')).toBeVisible()
         await new Promise((settle) => setTimeout(settle, 400))
         const question = band.element().getBoundingClientRect().height
         expect(Math.abs(question - section)).toBeLessThanOrEqual(1)
@@ -1588,23 +1596,56 @@ describe('the band', () => {
 
   // A phone's row of views had room for two of the three once a line saying
   // all was well took its end, and the first view's fields took the width
-  // of their longest hint and ran off the right of the screen.
-  it('keeps every view and every field of a question on a phone screen', async () => {
-    await page.viewport(390, 900)
-    try {
-      await open({ items: [officerItem()], question: ITEM_ID })
-      await expect.element(tab(/基本信息/)).toBeVisible()
-      for (const name of [/基本信息/, /表单与计分/, /记录与审核/]) {
-        const box = tab(name).element().getBoundingClientRect()
-        expect(box.right).toBeLessThanOrEqual(390)
+  // of their longest hint and ran off the right of the screen. In English
+  // the third view was still pushed past the edge, behind a hidden scroll.
+  for (const locale of ['zh-CN', 'en-US'] as const) {
+    it(`keeps every view and every field of a question on a phone screen, in ${locale}`, async () => {
+      await page.viewport(390, 900)
+      try {
+        await open({ items: [officerItem()], question: ITEM_ID, locale })
+        await expect.element(page.getByTestId('item-tabs')).toBeVisible()
+        const tabs = page.getByRole('tab').elements()
+        expect(tabs).toHaveLength(3)
+        for (const one of tabs) {
+          expect(one.getBoundingClientRect().right).toBeLessThanOrEqual(390 - 16 + 1)
+        }
+        const title = document.querySelector('[data-testid="item-editor"] input')!
+        expect(title.getBoundingClientRect().right).toBeLessThanOrEqual(390)
+        // every field's name on one line: a hint beside the description's
+        // name squeezed it down to a letter per line
+        for (const label of document.querySelectorAll<HTMLElement>(
+          '[data-testid="item-editor"] label[for]',
+        )) {
+          if (!label.checkVisibility()) continue
+          expect(label.getBoundingClientRect().height).toBeLessThan(26)
+        }
+        expect(document.querySelector('[data-testid="pending-none"]')?.checkVisibility()).toBe(
+          false,
+        )
+      } finally {
+        await page.viewport(1280, 900)
       }
-      const title = page.getByRole('textbox', { name: '项目名称' })
-      expect(title.element().getBoundingClientRect().right).toBeLessThanOrEqual(390)
-      expect(document.querySelector('[data-testid="pending-none"]')?.checkVisibility()).toBe(false)
-    } finally {
-      await page.viewport(1280, 900)
-    }
-  })
+    })
+
+    // With something left to do, its count takes the end of the row too.
+    it(`keeps every view on a phone beside what is left to do, in ${locale}`, async () => {
+      await page.viewport(390, 900)
+      try {
+        await open({ items: [{ ...officerItem(), title: '' }], question: ITEM_ID, locale })
+        await expect.element(page.getByTestId('pending-trigger')).toBeVisible()
+        const trigger = page.getByTestId('pending-trigger').element().getBoundingClientRect()
+        expect(trigger.right).toBeLessThanOrEqual(390 - 16 + 1)
+        for (const one of page.getByRole('tab').elements()) {
+          const box = one.getBoundingClientRect()
+          expect(box.right).toBeLessThanOrEqual(trigger.left)
+          // shortened where it can be seen, never squeezed out of sight
+          expect(box.width).toBeGreaterThan(40)
+        }
+      } finally {
+        await page.viewport(1280, 900)
+      }
+    })
+  }
 
   it('keeps the section heading in the band until a question arriving by address can take it', async () => {
     let release: (() => void) | undefined

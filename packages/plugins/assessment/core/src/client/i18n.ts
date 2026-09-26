@@ -2724,7 +2724,7 @@ const i18n = definePluginMessages({
     itemsTab: { id: 'assessment/items/tab', defaultMessage: 'Item configuration' },
     itemsHint: {
       id: 'assessment/items/hint',
-      defaultMessage: 'Set up groups and items, and how each is filed, scored and reviewed',
+      defaultMessage: 'Set up groups, items, scoring and review',
     },
     itemsStuckSummary: {
       id: 'assessment/items/stuck-summary',
@@ -4936,7 +4936,7 @@ const i18n = definePluginMessages({
       defaultMessage:
         'The submission is in the escalation workflow; the final review step determines the outcome.',
     },
-    itemsTabBasics: { id: 'assessment/items/tab-basics', defaultMessage: 'Basic information' },
+    itemsTabBasics: { id: 'assessment/items/tab-basics', defaultMessage: 'Basics' },
     itemsTabScoring: { id: 'assessment/items/tab-scoring', defaultMessage: 'Scoring' },
     itemsSummaryTitle: { id: 'assessment/items/summary-title', defaultMessage: 'Claim summary' },
     itemsSummaryHint: {
