@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react'
-import { TriangleAlertIcon } from 'lucide-react'
+import { RotateCwIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import type { StyleXStyles } from '@stylexjs/stylex'
 import { clsx } from 'clsx'
 import { Alert, AlertDescription } from '../alert.tsx'
 import { Button } from '../button.tsx'
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from '../empty.tsx'
+import { ResourceState, type ResourceFailure } from '../resource-state.tsx'
 import { Spinner } from '../spinner.tsx'
 
 const styles = stylex.create({
@@ -15,17 +15,16 @@ const styles = stylex.create({
     justifyContent: 'center',
     paddingBlock: 32,
   },
-  // the visible edge the bare empty state leaves to its callers
-  bordered: {
-    borderWidth: 1,
-  },
 })
 
-// loading, failed-with-retry, or the content — the three states every remote
-// section has, so no screen invents its own combination of them
+// loading, failed, or the content — the three states every remote section
+// has, so no screen invents its own combination of them
 export function AsyncSection({
   pending,
   error,
+  errorAction,
+  retrying = false,
+  framed = false,
   loadingLabel,
   retryLabel,
   onRetry,
@@ -35,7 +34,22 @@ export function AsyncSection({
   children,
 }: {
   pending: boolean
-  error?: string | null
+  /**
+   * Why the section could not load: a reading failure already worded and
+   * classified (web-runtime's `useLoadFailure`), which carries a heading and
+   * says whether a retry can help; or, from callers not yet speaking that,
+   * one sentence, which is shown with a retry as before.
+   */
+  error?: ResourceFailure | string | null
+  /** another way out beside the retry, such as back to the list */
+  errorAction?: ReactNode
+  /** a retry is on its way: the button says so rather than taking a second press */
+  retrying?: boolean
+  /**
+   * The section stands on the page's bare ground rather than inside a card
+   * or a dialog, so a failure draws a card of its own to stand on.
+   */
+  framed?: boolean
   loadingLabel: string
   retryLabel: string
   onRetry: () => void
@@ -69,24 +83,51 @@ export function AsyncSection({
     )
   }
   if (error) {
-    // Centred and given room, rather than a red bar hugging the left edge.
-    // A section that could not load is the whole of what the reader is
-    // looking at, and the sentence and its one action should be where their
-    // eye already is.
+    // Centred in the room the section would have had, with a heading, and
+    // no dashed outline: a dashed box reads as a place something will be
+    // dropped, not as an answer. A failure that another try cannot change -
+    // not there, not the reader's - offers no retry to press.
+    // A bare sentence is all a caller not yet speaking the classified form
+    // gives. It becomes the heading, the one thing said, and a heading ends
+    // without the full stop the sentence was written with.
+    const failure =
+      typeof error === 'string'
+        ? {
+            kind: 'failed' as const,
+            title: error.replace(/[。.]$/u, ''),
+            description: undefined,
+            retryable: true,
+          }
+        : error
     return (
-      <Empty xstyle={[styles.bordered, xstyle]} className={className}>
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <TriangleAlertIcon />
-          </EmptyMedia>
-          <EmptyDescription>{error}</EmptyDescription>
-        </EmptyHeader>
-        <EmptyContent>
-          <Button variant="outline" size="sm" onClick={onRetry}>
-            {retryLabel}
-          </Button>
-        </EmptyContent>
-      </Empty>
+      <ResourceState
+        size="section"
+        framed={framed}
+        kind={failure.kind}
+        title={failure.title}
+        description={failure.description}
+        actions={[
+          ...(failure.retryable
+            ? [
+                <Button
+                  key="retry"
+                  variant="outline"
+                  size="sm"
+                  disabled={retrying}
+                  aria-busy={retrying || undefined}
+                  onClick={onRetry}
+                >
+                  {/* the same seat before and during: the button does not grow */}
+                  {retrying ? <Spinner aria-hidden /> : <RotateCwIcon aria-hidden />}
+                  {retryLabel}
+                </Button>,
+              ]
+            : []),
+          ...(errorAction === undefined ? [] : [errorAction]),
+        ]}
+        {...(xstyle === undefined ? {} : { xstyle })}
+        {...(className === undefined ? {} : { className })}
+      />
     )
   }
   if (className === undefined && xstyle === undefined) return <>{children}</>

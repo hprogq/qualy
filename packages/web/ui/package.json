@@ -51,6 +51,7 @@
     "./radio-group": "./src/components/radio-group.tsx",
     "./collapsible": "./src/components/collapsible.tsx",
     "./empty": "./src/components/empty.tsx",
+    "./resource-state": "./src/components/resource-state.tsx",
     "./empty-row": "./src/components/empty-row.tsx",
     "./toggle-group": "./src/components/toggle-group.tsx",
     "./steps": "./src/components/steps.tsx",
