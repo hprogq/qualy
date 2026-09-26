@@ -1579,6 +1579,61 @@ describe('what a question’s row says at a glance', () => {
     }
   })
 
+  // The count's small white figure reads on its red in either scheme: the
+  // dark scheme lifts its red to be read as text, and a count mixed from it
+  // came out too light for the figure on it.
+  it('keeps the news count’s figure legible on its red, in the dark as on paper', async () => {
+    /** a painted colour as sRGB channels, whatever notation it computes to */
+    const channels = (css: string) => {
+      const context = document.createElement('canvas').getContext('2d')!
+      context.fillStyle = css
+      context.fillRect(0, 0, 1, 1)
+      return [...context.getImageData(0, 0, 1, 1).data.slice(0, 3)]
+    }
+    const luminance = (rgb: readonly number[]) => {
+      const [r, g, b] = rgb.map((value) => {
+        const unit = value / 255
+        return unit <= 0.04045 ? unit / 12.92 : ((unit + 0.055) / 1.055) ** 2.4
+      })
+      return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!
+    }
+    const contrast = (a: readonly number[], b: readonly number[]) => {
+      const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+      return (light! + 0.05) / (dark! + 0.05)
+    }
+    const root = document.documentElement
+    try {
+      for (const scheme of ['light', 'dark'] as const) {
+        root.classList.toggle('dark', scheme === 'dark')
+        root.setAttribute('data-mode', scheme)
+        const filed = [claim(1, itemId(1), 'in_review')]
+        const { unmount } = await workspace({
+          route: `${base}?open=${itemId(2)}`,
+          entries: filed,
+          stubs: {
+            listMyEntries: () =>
+              Effect.succeed({
+                participantId: PARTICIPANT_ID,
+                entries: filed,
+                nextCursor: null,
+                attention: { unreadEntryIds: [entryId(1)] },
+              }),
+          },
+        })
+        await expect
+          .poll(() => railRow(1).querySelector('[data-testid="unread-mark"]'))
+          .not.toBeNull()
+        const mark = getComputedStyle(railRow(1).querySelector('[data-testid="unread-mark"]')!)
+        const ratio = contrast(channels(mark.backgroundColor), channels(mark.color))
+        expect({ scheme, legible: ratio >= 4.5 }).toEqual({ scheme, legible: true })
+        await unmount()
+      }
+    } finally {
+      root.classList.remove('dark')
+      root.setAttribute('data-mode', 'light')
+    }
+  })
+
   // Among ended claims the one holding news is where the list opens, and a
   // question still taking claims keeps its way in under them.
   it('opens on the ended claims holding news, and keeps the way to file under them', async () => {
