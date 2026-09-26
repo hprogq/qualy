@@ -1,5 +1,5 @@
 import UserRoleGrantsPage from '../src/client/UserRoleGrantsPage.tsx'
-import { lazy } from 'react'
+import { lazy, type ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
@@ -63,6 +63,9 @@ const confined = (over: Partial<GrantDto> = {}): GrantDto =>
 
 const roleOptions = [{ id: ROLE_ID, code: 'counsellor', name: '辅导员', kind: 'org' as const }]
 
+// a reader who may give roles across the tenant and in the tree
+const everywhere = { tenant: true, organization: true }
+
 const open = (
   stubs: Record<string, unknown> = {},
   manifest: Partial<ReturnType<typeof emptyManifest>> = {},
@@ -72,8 +75,9 @@ const open = (
     client: fakeClient({
       app: { getManifest: () => Effect.succeed({ ...emptyManifest(), ...manifest }) },
       access: {
-        getUserRoleGrants: () => Effect.succeed({ grants: [grant(), confined()] }),
-        getRoleGrantOptions: () => Effect.succeed({ roles: roleOptions }),
+        getUserRoleGrants: () =>
+          Effect.succeed({ grants: [grant(), confined()], grantable: everywhere }),
+        getRoleGrantOptions: () => Effect.succeed({ roles: roleOptions, refused: [] }),
         ...stubs,
       },
     }),
@@ -186,7 +190,10 @@ describe('the grants of one person', () => {
     await open({ createRoleGrant: create })
     // the form is a dialog over the section, opened from its heading
     await page.getByRole('button', { name: '授予角色' }).click()
+    await page.getByRole('radio', { name: '整个租户' }).click()
     await expect.element(page.getByRole('combobox', { name: '角色' })).toBeInTheDocument()
+    // the one office on offer is the answer already
+    await expect.element(page.getByRole('button', { name: '授予', exact: true })).toBeEnabled()
     await page.getByRole('button', { name: '授予', exact: true }).click()
     await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1))
     expect(create).toHaveBeenCalledWith({
@@ -196,10 +203,12 @@ describe('the grants of one person', () => {
 
   it('asks the server again for the unit picked, and sends the unit it asked about', async () => {
     const create = vi.fn(() => Effect.succeed({ id: 'created-grant' }))
-    const options = vi.fn(() => Effect.succeed({ roles: roleOptions }))
+    const options = vi.fn(() => Effect.succeed({ roles: roleOptions, refused: [] }))
+    const asked = vi.fn()
     // the unit picker is the organization owner's contribution; here a
     // stand-in that offers one unit
     function OneUnitPicker({ context }: { context: OrgNodePickerContext }) {
+      asked(context)
       return (
         <button
           type="button"
@@ -213,25 +222,22 @@ describe('the grants of one person', () => {
     }
     await open(
       { getRoleGrantOptions: options, createRoleGrant: create },
-      { slots: { 'iam/org-node-picker': [{ id: 'auth/org-node-picker', order: 0 }] } },
-      {
-        slots: {
-          'iam/org-node-picker': {
-            'auth/org-node-picker': lazy(() => Promise.resolve({ default: OneUnitPicker })),
-          },
-        },
-      },
+      unitPicker.manifest,
+      unitPicker.registry(OneUnitPicker),
     )
-    // the form is a dialog over the section, opened from its heading
+    // the form is a dialog over the section, opened from its heading, and
+    // asks for a unit first: that is where nearly every office is held
     await page.getByRole('button', { name: '授予角色' }).click()
-    await expect.element(page.getByRole('combobox', { name: '生效范围' })).toBeInTheDocument()
-    await page.getByRole('combobox', { name: '生效范围' }).click()
-    await page.getByRole('option', { name: '某个组织节点' }).click()
+    await expect.element(page.getByTestId('grant-form')).toHaveAttribute('data-scope', 'org-node')
+    // the form's one answer: the picker is asked to mark it on every row
+    await vi.waitFor(() =>
+      expect(asked).toHaveBeenCalledWith(expect.objectContaining({ single: true, radio: true })),
+    )
     // no unit yet: nothing is asked for, and nothing can be granted
     await expect.element(page.getByRole('button', { name: '授予', exact: true })).toBeDisabled()
+    expect(options).not.toHaveBeenCalled()
     await page.getByRole('button', { name: '分部' }).click()
-    await page.getByRole('combobox', { name: '覆盖' }).click()
-    await page.getByRole('option', { name: '仅该节点' }).click()
+    await page.getByRole('radio', { name: '仅该组织' }).click()
     await vi.waitFor(() =>
       expect(options).toHaveBeenCalledWith({
         query: { userId: USER_ID, target: 'org-node', orgNodeId: BRANCH_NODE_ID, coverage: 'self' },
@@ -251,10 +257,117 @@ describe('the grants of one person', () => {
   // an empty list is an answer: this caller holds nothing wide enough to pass
   // on here, which is different from a list that has not arrived
   it('says so when nothing can be granted rather than offering an empty picker', async () => {
-    await open({ getRoleGrantOptions: () => Effect.succeed({ roles: [] }) })
-    // the form is a dialog over the section, opened from its heading
+    await open({
+      getUserRoleGrants: () =>
+        Effect.succeed({ grants: [grant()], grantable: { tenant: true, organization: false } }),
+      getRoleGrantOptions: () => Effect.succeed({ roles: [], refused: [] }),
+    })
     await page.getByRole('button', { name: '授予角色' }).click()
+    // one scope the reader may give in: no choice of scope is offered
+    await expect.element(page.getByTestId('grant-form')).toHaveAttribute('data-scope', 'tenant')
+    expect(page.getByRole('radio', { name: '指定组织' }).query()).toBeNull()
     await expect.element(page.getByTestId('grant-nothing-offered')).toBeInTheDocument()
     await expect.element(page.getByRole('button', { name: '授予', exact: true })).toBeDisabled()
   })
+
+  it('names the offices that do not fit here, with why, when none can be given', async () => {
+    await open(
+      {
+        getRoleGrantOptions: () =>
+          Effect.succeed({
+            roles: [],
+            refused: [
+              { ...refusedRole('monitor', '班长'), refusal: 'org-type' as const },
+              { ...refusedRole('mentor', '辅导员'), refusal: 'user-type' as const },
+            ],
+          }),
+      },
+      unitPicker.manifest,
+      unitPicker.registry(PickBranch),
+    )
+    await page.getByRole('button', { name: '授予角色' }).click()
+    await page.getByRole('button', { name: '分部' }).click()
+    const nothing = page.getByTestId('grant-nothing-offered')
+    await expect.element(nothing).toHaveAttribute('data-refused', '2')
+    expect(
+      [...nothing.element().querySelectorAll('[data-testid="grant-refused"]')].map((row) =>
+        row.getAttribute('data-refusal'),
+      ),
+    ).toEqual(['org-type', 'user-type'])
+    // the office names are the tenant's own words, read as they are
+    expect(nothing.element().textContent).toContain('班长')
+  })
+
+  it('offers what can be given and shows what cannot beneath it, choosing nothing for the reader', async () => {
+    await open(
+      {
+        getRoleGrantOptions: () =>
+          Effect.succeed({
+            roles: [
+              ...roleOptions,
+              { id: OTHER_ROLE_ID, code: 'head', name: '班主任', kind: 'org' as const },
+            ],
+            refused: [{ ...refusedRole('monitor', '班长'), refusal: 'org-type' as const }],
+          }),
+      },
+      unitPicker.manifest,
+      unitPicker.registry(PickBranch),
+    )
+    await page.getByRole('button', { name: '授予角色' }).click()
+    await page.getByRole('button', { name: '分部' }).click()
+    const role = page.getByRole('combobox', { name: '角色' })
+    await expect.element(role).toBeEnabled()
+    // two on offer: the reader says which, and nothing is given until then
+    await expect.element(page.getByRole('button', { name: '授予', exact: true })).toBeDisabled()
+    await role.click()
+    await expect.element(page.getByRole('option', { name: /辅导员/ })).toBeVisible()
+    await expect
+      .element(page.getByRole('option', { name: /班长/ }))
+      .toHaveAttribute('data-combobox-disabled', 'true')
+    await page.getByRole('option', { name: /班主任/ }).click()
+    await expect.element(page.getByRole('button', { name: '授予', exact: true })).toBeEnabled()
+  })
+
+  it('offers no form to a reader who may give a role nowhere', async () => {
+    await open({
+      getUserRoleGrants: () =>
+        Effect.succeed({ grants: [grant()], grantable: { tenant: false, organization: false } }),
+    })
+    await vi.waitFor(() => expect(rows().length).toBe(1))
+    expect(page.getByRole('button', { name: '授予角色' }).query()).toBeNull()
+  })
 })
+
+const OTHER_ROLE_ID = '33333333-3333-4333-8333-333333333333'
+
+const refusedRole = (code: string, name: string) => ({
+  id: `44444444-4444-4444-8444-${code === 'monitor' ? '000000000001' : '000000000002'}`,
+  code,
+  name,
+  kind: 'org' as const,
+})
+
+function PickBranch({ context }: { context: OrgNodePickerContext }) {
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        context.onChange([BRANCH_NODE_ID], [{ id: BRANCH_NODE_ID, name: '分部', path: '分部' }])
+      }
+    >
+      分部
+    </button>
+  )
+}
+
+/** the organization owner's picker, stood in for by whatever the test hands it */
+const unitPicker = {
+  manifest: { slots: { 'iam/org-node-picker': [{ id: 'auth/org-node-picker', order: 0 }] } },
+  registry: (component: (props: { context: OrgNodePickerContext }) => ReactNode) => ({
+    slots: {
+      'iam/org-node-picker': {
+        'auth/org-node-picker': lazy(() => Promise.resolve({ default: component })),
+      },
+    },
+  }),
+}

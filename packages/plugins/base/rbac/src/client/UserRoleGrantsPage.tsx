@@ -5,7 +5,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { AsyncSection, ConfirmDialog, Feedback, FormDialog } from '@qualy/ui/admin'
+import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'
 import { PlusIcon } from 'lucide-react'
 import {
   Card,
@@ -21,7 +21,7 @@ import {
 import { Button } from '@qualy/ui/button'
 import { rbacMessages as m } from './i18n.ts'
 import { GrantOrigin } from './GrantOrigin.tsx'
-import { GrantRoleForm } from './GrantRoleForm.tsx'
+import { GrantRoleDialog } from './GrantRoleForm.tsx'
 import { accessApi } from './api.ts'
 import { useMoment } from './when.ts'
 
@@ -82,9 +82,12 @@ export default function UserRoleGrantsPage() {
   const [revoking, setRevoking] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [granting, setGranting] = useState(false)
+  // each opening is a form of its own, mounted afresh
+  const [opening, setOpening] = useState(0)
 
   const grants = useQuery(query.access.getUserRoleGrants.queryOptions({ params: { userId } }))
   const items: readonly Grant[] = grants.data?.grants ?? []
+  const grantable = grants.data?.grantable ?? { tenant: false, organization: false }
   const organizational = items.filter((grant) => grant.resource === null)
   const confined = items.filter((grant) => grant.resource !== null)
 
@@ -127,10 +130,21 @@ export default function UserRoleGrantsPage() {
           count={organizational.length}
           aside={format(m.organizationalHint)}
           actions={
-            <Button size="sm" variant="outline" onClick={() => setGranting(true)}>
-              <PlusIcon aria-hidden />
-              {format(m.grantOpen)}
-            </Button>
+            // only for a reader who may give a role somewhere: a form that
+            // could only ever say "nothing here for you" is not an errand
+            (grantable.tenant || grantable.organization) && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setOpening((count) => count + 1)
+                  setGranting(true)
+                }}
+              >
+                <PlusIcon aria-hidden />
+                {format(m.grantOpen)}
+              </Button>
+            )
           }
         />
         <Feedback message={feedback} />
@@ -249,9 +263,13 @@ export default function UserRoleGrantsPage() {
         )}
       </section>
 
-      <FormDialog open={granting} title={format(m.grantOpen)} onClose={() => setGranting(false)}>
-        <GrantRoleForm userId={userId} onGranted={() => setGranting(false)} />
-      </FormDialog>
+      <GrantRoleDialog
+        key={opening}
+        userId={userId}
+        open={granting}
+        grantable={grantable}
+        onClose={() => setGranting(false)}
+      />
 
       <ConfirmDialog
         open={revoking !== null}

@@ -14,6 +14,11 @@ const permissionCountMessage = defineMessage<{ count: number }>()({
   defaultMessage: '{count, plural, one {# permission} other {# permissions}}',
 })
 
+const grantDoneMessage = defineMessage<{ role: string }>()({
+  id: 'rbac/grants/done',
+  defaultMessage: 'Granted {role}',
+})
+
 const assignmentCountMessage = defineMessage<{ count: number }>()({
   id: 'rbac/roles/assignment-count',
   defaultMessage: '{count, plural, one {# grant} other {# grants}}',
@@ -194,10 +199,58 @@ const i18n = definePluginMessages({
       defaultMessage: 'That unit and everything under it',
     },
     grantRole: { id: 'rbac/grants/role', defaultMessage: 'Role' },
-    grantRolesEmpty: {
-      id: 'rbac/grants/roles-empty',
-      defaultMessage: 'None of the roles you hold can be granted here',
+    grantPickUnitFirst: {
+      id: 'rbac/grants/pick-unit-first',
+      defaultMessage: 'Choose a unit first',
     },
+    grantRolesLoading: { id: 'rbac/grants/roles-loading', defaultMessage: 'Finding roles…' },
+    grantRolesNone: { id: 'rbac/grants/roles-none', defaultMessage: 'No role to grant' },
+    grantRoleChoose: { id: 'rbac/grants/role-choose', defaultMessage: 'Choose a role' },
+    grantRefusedGroup: {
+      id: 'rbac/grants/refused-group',
+      defaultMessage: 'Cannot be granted here',
+    },
+    refusedUserType: {
+      id: 'rbac/grants/refused-user-type',
+      defaultMessage: 'Not for their user type',
+    },
+    refusedOrgType: {
+      id: 'rbac/grants/refused-org-type',
+      defaultMessage: 'Not for this kind of unit',
+    },
+    refusedPersonDisabled: {
+      id: 'rbac/grants/refused-person-disabled',
+      defaultMessage: 'The user is disabled',
+    },
+    refusedSelfEscalation: {
+      id: 'rbac/grants/refused-self-escalation',
+      defaultMessage: 'Beyond your own authority',
+    },
+    refusedUnavailable: {
+      id: 'rbac/grants/refused-unavailable',
+      defaultMessage: 'Disabled or removed',
+    },
+    grantNonePersonDisabled: {
+      id: 'rbac/grants/none-person-disabled',
+      defaultMessage: 'Enable the user before granting them a role',
+    },
+    grantNoneRefusedTenant: {
+      id: 'rbac/grants/none-refused-tenant',
+      defaultMessage: 'The roles below do not fit this user',
+    },
+    grantNoneRefusedUnit: {
+      id: 'rbac/grants/none-refused-unit',
+      defaultMessage: 'The roles below do not fit here; try another unit',
+    },
+    grantNoneTenant: {
+      id: 'rbac/grants/none-tenant',
+      defaultMessage: 'You have no role to grant across the whole tenant',
+    },
+    grantNoneUnit: {
+      id: 'rbac/grants/none-unit',
+      defaultMessage: 'You have no role to grant at this unit; try another',
+    },
+    grantDone: grantDoneMessage,
     grantSubmit: { id: 'rbac/action/grant', defaultMessage: 'Grant' },
     'permission.iam.role.manage': {
       id: 'rbac/permission/role-manage',
