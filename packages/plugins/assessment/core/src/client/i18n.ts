@@ -5957,10 +5957,6 @@ const i18n = definePluginMessages({
       id: 'assessment/template/timeline-label',
       defaultMessage: 'Timeline template',
     },
-    timelineTemplateEmpty: {
-      id: 'assessment/template/timeline-empty',
-      defaultMessage: 'No timeline templates are available. Stages can still be added manually.',
-    },
     timelineTemplateChoose: {
       id: 'assessment/template/timeline-choose',
       defaultMessage: 'Select a timeline template…',

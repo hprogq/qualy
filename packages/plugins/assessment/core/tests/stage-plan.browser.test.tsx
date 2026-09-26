@@ -75,6 +75,14 @@ const threeStages = {
   planFingerprint: 'plan-three',
 }
 
+const timelineTemplate = {
+  id: '88888888-8888-4888-8888-888888888888',
+  name: '常规四阶段',
+  kind: 'timeline' as const,
+  version: 1,
+  phases: [],
+}
+
 const stubs = (over: Stubs = {}): Stubs => ({
   getBatch: () => Effect.succeed({ batch: batch() }),
   getPhases: () => Effect.succeed(threeStages),
@@ -308,6 +316,27 @@ describe('the stage plan, read', () => {
       .elements()
       .map((node) => node.getAttribute('data-waits'))
     expect(waits).toEqual([null, 'earlier', 'earlier'])
+  })
+
+  it('offers no timeline template where there is none to add', async () => {
+    await page.viewport(1280, 800)
+    await screen({ getPhases: () => Effect.succeed({ phases: [], planFingerprint: 'plan-empty' }) })
+    await expect.element(page.getByTestId('phase-plan-empty')).toBeVisible()
+    await expect.element(page.getByRole('button', { name: '新增阶段' })).toBeVisible()
+    expect(page.getByRole('button', { name: '从模板添加' }).elements()).toHaveLength(0)
+  })
+
+  it('offers a timeline template where there is one', async () => {
+    await page.viewport(1280, 800)
+    await screen({
+      getPhases: () => Effect.succeed({ phases: [], planFingerprint: 'plan-empty' }),
+      listTemplates: (request: Request) =>
+        Effect.succeed({
+          items: request.query?.['kind'] === 'timeline' ? [timelineTemplate] : [],
+          nextCursor: null,
+        }),
+    })
+    await expect.element(page.getByRole('button', { name: '从模板添加' })).toBeVisible()
   })
 
   it('says the paper could not be read, rather than that there is none', async () => {

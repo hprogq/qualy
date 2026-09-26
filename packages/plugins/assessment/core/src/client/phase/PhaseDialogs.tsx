@@ -17,10 +17,6 @@ import { inZone, useBatchZone } from '../batch/zone.ts'
 // control parked in a row.
 
 const styles = stylex.create({
-  quietNote: {
-    fontSize: 14,
-    color: tokens.mutedForeground,
-  },
   skipped: {
     display: 'block',
     color: tokens.warningForeground,
@@ -173,7 +169,11 @@ export function UnscheduleDialog({
   )
 }
 
-/** a timeline template adds its phases to the end of the plan, unscheduled */
+/**
+ * A timeline template adds its phases to the end of the plan, unscheduled.
+ * Offered only where there is a template to choose: the plan has no way
+ * in to this dialog without one.
+ */
 export function TemplateDialog({
   open,
   templates,
@@ -209,22 +209,18 @@ export function TemplateDialog({
         </>
       }
     >
-      {templates.length === 0 ? (
-        <p {...stylex.props(styles.quietNote)}>{format(m.timelineTemplateEmpty)}</p>
-      ) : (
-        <Field label={format(m.timelineTemplateLabel)}>
-          {(id) => (
-            <NativeSelect id={id} value={value} onChange={(event) => onChange(event.target.value)}>
-              <option value="">{format(m.timelineTemplateChoose)}</option>
-              {templates.map((row) => (
-                <option key={row.id} value={row.id}>
-                  {row.name}
-                </option>
-              ))}
-            </NativeSelect>
-          )}
-        </Field>
-      )}
+      <Field label={format(m.timelineTemplateLabel)}>
+        {(id) => (
+          <NativeSelect id={id} value={value} onChange={(event) => onChange(event.target.value)}>
+            <option value="">{format(m.timelineTemplateChoose)}</option>
+            {templates.map((row) => (
+              <option key={row.id} value={row.id}>
+                {row.name}
+              </option>
+            ))}
+          </NativeSelect>
+        )}
+      </Field>
     </FormDialog>
   )
 }

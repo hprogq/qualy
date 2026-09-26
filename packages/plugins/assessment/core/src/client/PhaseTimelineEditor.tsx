@@ -272,6 +272,9 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
   )
   const titles = useMemo(() => titlesOf(items.data?.items ?? []), [items.data])
   const paperOrder = useMemo(() => (items.data?.items ?? []).map((item) => item.id), [items.data])
+  // the timeline templates a plan may be added from; with none, nothing
+  // offers to add from one
+  const hasTimelines = (timelines.data?.items.length ?? 0) > 0
 
   const rows = useMemo(() => phases.data?.phases ?? [], [phases.data])
   const serverDrafts = useMemo(() => rows.map(draftOf), [rows])
@@ -570,9 +573,11 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
           </Appear>
           {!readOnly && editing && (
             <>
-              <Button size="sm" variant="ghost" onClick={() => setTemplateOpen(true)}>
-                {format(m.templateAdd)}
-              </Button>
+              {hasTimelines && (
+                <Button size="sm" variant="ghost" onClick={() => setTemplateOpen(true)}>
+                  {format(m.templateAdd)}
+                </Button>
+              )}
               <Button
                 size="sm"
                 variant="outline"
@@ -634,9 +639,11 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
                   <Button size="sm" onClick={addPhase}>
                     {format(m.addPhase)}
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => setTemplateOpen(true)}>
-                    {format(m.templateAdd)}
-                  </Button>
+                  {hasTimelines && (
+                    <Button size="sm" variant="outline" onClick={() => setTemplateOpen(true)}>
+                      {format(m.templateAdd)}
+                    </Button>
+                  )}
                 </div>
               )}
             </div>

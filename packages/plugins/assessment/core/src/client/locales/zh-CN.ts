@@ -1774,7 +1774,6 @@ export default {
   'assessment/phase/plan-refused': '阶段信息保存失败：',
 
   'assessment/template/timeline-label': '时间线模板',
-  'assessment/template/timeline-empty': '暂无时间线模板，可手动添加阶段。',
   'assessment/template/timeline-choose': '选择时间线模板…',
   'assessment/template/phase-legend': '应用时间线模板',
   'assessment/template/phase-choose': '选择时间线模板…',
