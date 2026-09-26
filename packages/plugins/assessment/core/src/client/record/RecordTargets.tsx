@@ -148,7 +148,7 @@ export function RecordTargets({
           a phone-sized panel - a tree too narrow to read a unit's name in,
           beside a list that turns a page every four people. */}
       <Dialog open={picking === 'people'} onOpenChange={(open) => !open && setPicking(null)}>
-        <DialogContent size="62rem" xstyle={styles.peoplePanel}>
+        <DialogContent size="68rem" xstyle={styles.peoplePanel}>
           <DialogHeader>
             <DialogTitle>{format(m.recordPickPeople)}</DialogTitle>
           </DialogHeader>

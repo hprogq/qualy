@@ -149,7 +149,7 @@ export function AddStaffDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent size="60rem" xstyle={styles.panel}>
+      <DialogContent size="68rem" xstyle={styles.panel}>
         <DialogHeader>
           <DialogTitle>{format(m.addStaffTitle)}</DialogTitle>
           <DialogDescription>{format(m.addStaffHint)}</DialogDescription>

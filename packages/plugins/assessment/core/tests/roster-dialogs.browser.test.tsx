@@ -163,6 +163,24 @@ describe('adding people to the roster', () => {
     expect(picker.height).toBeGreaterThan(body.height - 16)
   })
 
+  // the unit is the column a reader tells two people of one name apart by,
+  // and at a desk it has room for a class's whole name beside the path
+  it('gives the unit column room at a desk', async () => {
+    await page.viewport(1440, 900)
+    await open(
+      <AddPeopleDialog
+        batchId={BATCH_ID}
+        open
+        pending={false}
+        onAdd={() => {}}
+        onClose={() => {}}
+      />,
+    )
+    await expect.poll(() => rows().length).toBe(20)
+    const unit = page.getByRole('columnheader', { name: '所属组织' }).element()
+    expect(unit.getBoundingClientRect().width).toBeGreaterThanOrEqual(220)
+  })
+
   it('pages the people by number, each ending at the unit they stand at', async () => {
     await open(
       <AddPeopleDialog

@@ -60,7 +60,7 @@ export function AddPeopleDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent size="60rem" xstyle={styles.panel}>
+      <DialogContent size="68rem" xstyle={styles.panel}>
         <DialogHeader>
           <DialogTitle>{format(m.addPeopleTitle)}</DialogTitle>
           <DialogDescription>{format(m.addPeopleHint, { businessNo })}</DialogDescription>
