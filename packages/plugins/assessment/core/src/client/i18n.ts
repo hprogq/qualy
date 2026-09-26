@@ -1448,6 +1448,8 @@ const i18n = definePluginMessages({
         '{count, plural, one {# entry with news you have not read} other {# entries with news you have not read}}',
     },
     claimUnread: { id: 'assessment/entry/claim-unread', defaultMessage: 'Unread' },
+    // a filter, or the whole list, holding news the list in view leaves out
+    holdsUnread: { id: 'assessment/entry/holds-unread', defaultMessage: 'includes unread' },
     entryStatusRejected: { id: 'assessment/entry/status-rejected', defaultMessage: 'Not approved' },
     entryStatusVoided: { id: 'assessment/entry/status-voided', defaultMessage: 'Voided' },
     // a claim its owner gave up: their act, never a question voided under it

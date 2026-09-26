@@ -730,7 +730,12 @@ export function ItemPane({
               <span {...stylex.props(styles.chipCount, one.urgent && styles.chipCountWaits)}>
                 <Ticker value={String(count)} />
               </span>
-              {!on && holdsNews(one.test) && <UnreadDot />}
+              {!on && holdsNews(one.test) && (
+                <>
+                  <UnreadDot />
+                  <VisuallyHidden>{format(m.holdsUnread)}</VisuallyHidden>
+                </>
+              )}
             </button>
           )
         })}

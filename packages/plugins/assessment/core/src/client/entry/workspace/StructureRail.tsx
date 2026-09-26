@@ -13,7 +13,7 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { trimAmount } from '../model.ts'
 import type { StructureRow } from '../standing.ts'
-import { SectionFigure, UnreadCount } from './marks.tsx'
+import { SectionFigure, UnreadCount, UnreadDot } from './marks.tsx'
 import { meterStyles } from './meter.ts'
 import {
   dotOf,
@@ -496,6 +496,9 @@ export function StructureRail({
   const rows = outline.rows
   const items = outline.items
   const todoCount = items.filter(isTodo).length
+  // news on a question the narrower view leaves out is said on the key back
+  // to all of them, as a filter says the news it holds
+  const newsLeftOut = todoOnly && items.some((row) => row.unread > 0 && !isTodo(row))
   const endOf = (index: number) => {
     let end = index + 1
     while (end < rows.length && rows[end]!.depth > rows[index]!.depth) end += 1
@@ -828,11 +831,19 @@ export function StructureRail({
           <button
             type="button"
             aria-pressed={!todoOnly}
+            data-testid="rail-all"
+            data-unread={newsLeftOut || undefined}
             onClick={() => onTodoOnly(false)}
             {...stylex.props(styles.tab, !todoOnly && styles.tabOn)}
           >
             {format(m.paperViewAll)}
             <span {...stylex.props(styles.tabCount)}>{items.length}</span>
+            {newsLeftOut && (
+              <>
+                <UnreadDot />
+                <VisuallyHidden>{format(m.holdsUnread)}</VisuallyHidden>
+              </>
+            )}
           </button>
           <button
             type="button"

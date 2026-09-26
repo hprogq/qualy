@@ -1423,6 +1423,7 @@ export default {
   'assessment/entry/row-partial': '部分未通过',
   'assessment/entry/row-unread-count': '{count} 条申报有未读变化',
   'assessment/entry/claim-unread': '未读',
+  'assessment/entry/holds-unread': '含未读',
   'assessment/overview/actions-title': '需要你处理',
   'assessment/overview/actions-none': '暂时没有需要你处理的事项',
   'assessment/overview/action-supplement': '{who} 要求你补充材料',

@@ -1500,6 +1500,50 @@ describe('what a question’s row says at a glance', () => {
     expect(document.querySelector('[data-chip="voided"]')).toBeNull()
   })
 
+  // News is never out of sight: a narrower view of the structure, or a
+  // filter over the claims, that leaves some out says so on the key that
+  // brings them back - to the eye with a dot, to a screen reader in words.
+  it('says where news lies outside the view in force, to the eye and aloud', async () => {
+    await page.viewport(1440, 900)
+    const filed = [
+      claim(1, itemId(1), 'approved'),
+      claim(2, itemId(2), 'needs_revision'),
+      claim(3, itemId(3), 'in_review'),
+      claim(4, itemId(3), 'voided'),
+    ]
+    await workspace({
+      route: `${base}?open=${itemId(3)}`,
+      items: [
+        question(1, '品德题目 1', BAND_A),
+        question(2, '品德题目 2', BAND_A),
+        question(3, '品德题目 3', BAND_A),
+      ],
+      entries: filed,
+      stubs: {
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: filed,
+            nextCursor: null,
+            attention: { unreadEntryIds: [entryId(1), entryId(4)] },
+          }),
+      },
+    })
+    const holds = zhCN['assessment/entry/holds-unread']
+    // the claim given up is behind its filter while the live ones show
+    const abandoned = page.getByRole('button', { name: new RegExp(`已放弃.*${holds}`) })
+    await expect.element(abandoned).toHaveAttribute('data-unread', 'true')
+
+    // only what waits on the reader: the question with news is left out, and
+    // the key back to all of them says so
+    const all = () => document.querySelector('[data-testid="rail-all"]')!
+    expect(all().hasAttribute('data-unread')).toBe(false)
+    await userEvent.click(document.querySelector('[data-testid="rail-todo"]')!)
+    await expect.poll(() => railRow(1)).toBeNull()
+    expect(all().getAttribute('data-unread')).toBe('true')
+    await expect.element(page.getByTestId('rail-all')).toHaveAccessibleName(new RegExp(holds))
+  })
+
   // Among ended claims the one holding news is where the list opens, and a
   // question still taking claims keeps its way in under them.
   it('opens on the ended claims holding news, and keeps the way to file under them', async () => {
