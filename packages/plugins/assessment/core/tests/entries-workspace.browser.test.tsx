@@ -1934,6 +1934,42 @@ describe('what a question’s row says at a glance', () => {
     expect(plain.clientWidth).toBe(plain.scrollWidth)
   })
 
+  // A long name gives up its room to a short word, never the other way: the
+  // word a reader acts on stays whole.
+  it('keeps a short word whole beside a long name', async () => {
+    await page.viewport(834, 900)
+    const filed = [claim(1, itemId(1), 'needs_revision')]
+    await workspace({
+      route: `${base}?open=${itemId(2)}`,
+      items: [
+        question(1, '学生干部任职情况及社会工作履职考核（含校级、院级、班级三级组织）', BAND_A),
+        question(2, '品德题目 2', BAND_A),
+      ],
+      groups: [group(BAND_A, null, '品德行为表现', 0)],
+      entries: filed,
+      stubs: {
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: filed,
+            nextCursor: null,
+            attention: { unreadEntryIds: [entryId(1)] },
+          }),
+      },
+    })
+    await expect.poll(() => railRow(1).querySelector('[data-word]')).not.toBeNull()
+    const word = railRow(1).querySelector('[data-word]') as HTMLElement
+    // the word's own text against the box it is given, to the fraction of a
+    // pixel: a box a hair too small already draws an ellipsis
+    const text = document.createRange()
+    text.selectNodeContents(word)
+    expect(text.getBoundingClientRect().width).toBeLessThanOrEqual(
+      word.getBoundingClientRect().width + 0.01,
+    )
+    const name = railRow(1).querySelector('[data-rail-name]') as HTMLElement
+    expect(name.scrollWidth).toBeGreaterThan(name.clientWidth)
+  })
+
   // A section's fill is a small pie beside its figure, not a line along the foot
   // of its row: a full line there is indistinguishable from the rule under it.
   it('draws a section’s fill beside its figure, full in its own colour', async () => {

@@ -335,11 +335,12 @@ const styles = stylex.create({
   },
   foldNote: { flexShrink: 0, fontSize: 11, color: tokens.mutedForeground },
   word: {
-    // next to nothing, so it keeps its room while the name gives up its own,
-    // and gives it up once the name is down to its floor
-    flexShrink: 0.01,
-    minWidth: 0,
-    maxWidth: 88,
+    // Whole while it is short, as the words a reader acts on are; a long one
+    // (English, mostly) is held to a share of the row, so what the name gives
+    // up stops at its floor. It never shrinks with the name: any shrinking at
+    // all cuts a word that fits by a hair into an ellipsis.
+    flexShrink: 0,
+    maxWidth: 'min(88px, 30%)',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
