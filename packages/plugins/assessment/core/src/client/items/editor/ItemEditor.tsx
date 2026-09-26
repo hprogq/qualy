@@ -62,6 +62,8 @@ import {
   problemsOf,
   recognitionRows,
   stated,
+  stagesOn,
+  withStageAt,
   type Contract,
   type Draft,
   type EditorArea,
@@ -176,8 +178,9 @@ const REFUSED_HINT = {
 type OpenSheet =
   | { kind: 'recognition'; handle: string }
   | { kind: 'field'; key: string }
-  // `fresh` is a step being composed: it is not in the chain until it is whole
-  | { kind: 'stage'; key: string; fresh?: StageDraft }
+  // `fresh` is a step being composed: it is not in the chain until it is
+  // whole, and `at` is the place in its route it was asked for
+  | { kind: 'stage'; key: string; fresh?: StageDraft; at?: number }
   | { kind: 'preview' }
 
 type Ask =
@@ -847,48 +850,28 @@ export function ItemEditor({
   }
 
   // ---- review steps -------------------------------------------------------
-  const patchStage = (key: string, next: Partial<StageDraft>) =>
-    setDraft((previous) => ({
-      ...previous,
-      stages: previous.stages.map((stage) => (stage.key === key ? { ...stage, ...next } : stage)),
-    }))
-  const moveStage = (key: string, delta: -1 | 1) =>
-    setDraft((previous) => {
-      const stage = previous.stages.find((candidate) => candidate.key === key)
-      if (stage === undefined) return previous
-      const siblings = previous.stages.filter((candidate) => candidate.chain === stage.chain)
-      const at = siblings.findIndex((candidate) => candidate.key === key)
-      const target = at + delta
-      if (target < 0 || target >= siblings.length) return previous
-      const reordered = [...siblings]
-      const [moved] = reordered.splice(at, 1)
-      reordered.splice(target, 0, moved!)
-      const others = previous.stages.filter((candidate) => candidate.chain !== stage.chain)
-      return {
-        ...previous,
-        stages: stage.chain === 'normal' ? [...reordered, ...others] : [...others, ...reordered],
-      }
-    })
   /** a new step is composed in its panel; the chain does not hold it yet */
-  const addStage = (chain: 'normal' | 'escalation') => {
+  const addStage = (chain: 'normal' | 'escalation', at?: number) => {
     const stage = blankStage(options, chain)
-    setSheet({ kind: 'stage', key: stage.key, fresh: stage })
-  }
-  /** a whole step, put at the end of its chain or over what stood there */
-  const applyStage = (next: StageDraft, fresh: boolean) => {
-    if (!fresh) {
-      patchStage(next.key, next)
-      return
-    }
-    setDraft((previous) => {
-      const own = previous.stages.filter((one) => one.chain === next.chain)
-      const others = previous.stages.filter((one) => one.chain !== next.chain)
-      return {
-        ...previous,
-        stages: next.chain === 'normal' ? [...own, next, ...others] : [...others, ...own, next],
-      }
+    setSheet({
+      kind: 'stage',
+      key: stage.key,
+      fresh: stage,
+      at: at ?? stagesOn(draft, chain).length,
     })
   }
+  /** a whole step, put at the place chosen for it in its own route */
+  const applyStage = (next: StageDraft, at: number) =>
+    setDraft((previous) => ({ ...previous, stages: withStageAt(previous.stages, next, at) }))
+  /**
+   * The chain's own card for a step just added, once the panel has let go.
+   * The panel hands the focus back to whatever opened it - here the place
+   * the step was inserted at, which the step now fills.
+   */
+  const focusStepSoon = (key: string) =>
+    window.setTimeout(() => {
+      document.querySelector<HTMLElement>(`[data-stage-key="${CSS.escape(key)}"]`)?.focus()
+    }, 260)
   const removeStage = (key: string) =>
     setDraft((previous) => ({
       ...previous,
@@ -1630,8 +1613,9 @@ export function ItemEditor({
           const composing = lingeringSheet.fresh
           const stage = composing ?? draft.stages.find((one) => one.key === lingeringSheet.key)
           if (stage === undefined) return null
-          const chain = draft.stages.filter((one) => one.chain === stage.chain)
-          const at = chain.findIndex((one) => one.key === stage.key)
+          const route = stagesOn(draft, stage.chain)
+          const at =
+            composing === undefined ? route.indexOf(stage) : (lingeringSheet.at ?? route.length)
           return (
             <StageSheet
               // the panel edits a copy, and a copy belongs to one step
@@ -1640,18 +1624,19 @@ export function ItemEditor({
               batchId={batchId}
               stage={stage}
               fresh={composing !== undefined}
+              route={route}
+              at={at}
               options={options}
-              panelable={stage.chain === 'escalation' && at >= 0 && at < chain.length - 1}
-              // an escalation step that could hold a panel if it were not the
-              // last one: the control appears, and says why it cannot be used
-              panelLast={stage.chain === 'escalation' && at >= 0 && at === chain.length - 1}
-              place={at < 0 ? undefined : { index: at, total: chain.length }}
-              removable={stage.chain === 'escalation' || chain.length > 1}
-              onApply={(next) => {
-                applyStage(next, composing !== undefined)
+              removable={stage.chain === 'escalation' || route.length > 1}
+              onApply={(next, place) => {
+                applyStage(next, place)
                 setSheet(null)
+                if (composing !== undefined) focusStepSoon(next.key)
               }}
-              onMove={(delta) => moveStage(stage.key, delta)}
+              onApplyAndAdd={(next, place) => {
+                applyStage(next, place)
+                addStage(next.chain, place + 1)
+              }}
               onRemove={() => {
                 removeStage(stage.key)
                 setSheet(null)

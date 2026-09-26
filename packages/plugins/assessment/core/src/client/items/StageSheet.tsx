@@ -1,16 +1,17 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react'
+import { PlusIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n, useList } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { Field } from '@qualy/ui/admin'
+import { Field, RadioGroup } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Input } from '@qualy/ui/input'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
+import { MAX_STAGES_PER_ROUTE } from '../../api.ts'
 import { assessmentApi } from '../api.ts'
 import { Choice } from './Choice.tsx'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -24,12 +25,13 @@ import type { ItemOptions } from './options.ts'
 // four controls and a coverage answer, which is a panel's worth of screen
 // and would crowd the path if it were opened in place.
 //
-// The panel works on a copy. A step joins the chain - or a changed one
-// replaces what stood there - only when it is whole: named, anchored at a
-// level, with somebody to do the reviewing. Until then the confirming press
-// says what is missing under the control it is missing from, and the chain
-// is left exactly as it was. That is what keeps the chain from ever holding
-// a step that reviews nothing.
+// The panel works on a copy, where the step stands included. A step joins
+// the chain - or a changed one replaces what stood there, at the place now
+// chosen for it - only when it is whole: named, anchored at a level, with
+// somebody to do the reviewing. Until then the confirming press says what is
+// missing under the control it is missing from, and the chain is left
+// exactly as it was. That is what keeps the chain from ever holding a step
+// that reviews nothing, and what lets cancel take back a move as well.
 
 const styles = stylex.create({
   roleList: { display: 'flex', flexDirection: 'column', gap: 6 },
@@ -39,8 +41,26 @@ const styles = stylex.create({
   problem: { margin: 0, fontSize: 12, color: tokens.danger },
   spacer: { flexGrow: 1 },
   danger: { color: tokens.danger },
-  moves: { display: 'inline-flex', alignItems: 'center', gap: 2 },
   inlineFlex: { display: 'inline-flex' },
+  // what a panel left last still owes: amber, because it waits rather than
+  // being wrong, with the way to settle it beside the words
+  owed: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: -12,
+    paddingInline: 12,
+    paddingBlock: 10,
+    borderRadius: tokens.radiusMd,
+    backgroundColor: `color-mix(in oklab, ${tokens.warning} 10%, transparent)`,
+  },
+  owedWords: {
+    margin: 0,
+    fontSize: 12.5,
+    lineHeight: 1.5,
+    color: tokens.warningForeground,
+  },
 })
 
 export interface StageDraft {
@@ -67,13 +87,12 @@ export function StageSheet({
   batchId,
   stage,
   fresh,
+  route,
+  at,
   options,
-  panelable,
-  panelLast,
-  place,
   removable,
   onApply,
-  onMove,
+  onApplyAndAdd,
   onRemove,
   onClose,
 }: {
@@ -84,29 +103,17 @@ export function StageSheet({
   stage: StageDraft
   /** composing a step the chain does not hold yet */
   fresh: boolean
+  /** the steps of this step's own route as the chain holds them now */
+  route: readonly StageDraft[]
+  /** where in its route the step stands, or - a new one - where it was asked for */
+  at: number
   options: ItemOptions
-  /**
-   * Whether this step may sit as a panel: an escalation middle step and
-   * nothing else. The ordinary route confirms one voice at a time, and the
-   * escalation route's last step must speak with one final voice.
-   */
-  panelable: boolean
-  /**
-   * The last step of the escalation route, where a panel is refused.
-   *
-   * Shown rather than hidden: a control that is simply absent reads as a
-   * feature the product does not have, and the rule behind it - the final
-   * voice cannot split, because a split has nowhere left to go (§32.66) -
-   * is worth one sentence where somebody is looking for it.
-   */
-  panelLast?: boolean
-  /** where the step stands in its chain, for a step that is in one */
-  place?: { index: number; total: number } | undefined
   /** whether the chain may lose this step: the ordinary route keeps one */
   removable: boolean
-  /** the step, whole, to put into the chain */
-  onApply: (next: StageDraft) => void
-  onMove?: ((delta: -1 | 1) => void) | undefined
+  /** the step, whole, to put into the chain at the place chosen for it */
+  onApply: (next: StageDraft, at: number) => void
+  /** the same, and then a new step composed straight after it */
+  onApplyAndAdd?: ((next: StageDraft, at: number) => void) | undefined
   onRemove?: (() => void) | undefined
   onClose: () => void
 }) {
@@ -133,12 +140,41 @@ export function StageSheet({
   })
   const uncovered = (coverage.data?.nodes ?? []).filter((node) => node.reviewers === 0)
 
-  const confirm = () => {
+  // The places the step can take: before each of the others, or after all
+  // of them. Its own place is one of them, so a move is chosen like any other
+  // setting and taken back like any other by cancel.
+  const others = route.filter((one) => one.key !== stage.key)
+  const [place, setPlace] = useState(Math.max(0, Math.min(at, others.length)))
+  const nameOf = (one: StageDraft) =>
+    one.label.trim() === '' ? format(m.itemsStageUnnamed) : one.label.trim()
+  const places = Array.from({ length: others.length + 1 }, (_unused, index) => ({
+    value: String(index),
+    label: format(m.itemsStagePositionOption, { n: index + 1 }),
+    description:
+      index === others.length
+        ? format(m.itemsStagePositionLast)
+        : format(m.itemsStagePositionBefore, { name: nameOf(others[index]!) }),
+  }))
+  const escalation = local.chain === 'escalation'
+  // where this route ends is where its final voice is; a panel there waits
+  // for the step after it (§32.66)
+  const owesSuccessor = escalation && local.participation === 'all' && place === others.length
+  const roomAfter = others.length + 1 < MAX_STAGES_PER_ROUTE
+
+  const whole = (): StageDraft | null => {
     if (wanting.length > 0) {
       setPressed(true)
-      return
+      return null
     }
-    onApply({ ...local, label: local.label.trim() })
+    return { ...local, label: local.label.trim() }
+  }
+  const confirm = () => {
+    const next = whole()
+    if (next !== null) onApply(next, place)
+  }
+  const confirmAndAdd = () => {
+    const next = whole()
+    if (next !== null) onApplyAndAdd?.(next, place)
   }
 
   return (
@@ -149,7 +185,7 @@ export function StageSheet({
           ? format(fresh ? m.itemsStageNew : m.itemsStageUnnamed)
           : local.label.trim()
       }
-      tag={format(m.itemsStageSettings)}
+      tag={format(escalation ? m.itemsEscalationStageTag : m.itemsStageSettings)}
       onClose={onClose}
       testId="stage-sheet"
       footer={
@@ -178,28 +214,6 @@ export function StageSheet({
                 </Tooltip>
               </TooltipProvider>
             ))}
-          {!fresh && onMove !== undefined && place !== undefined && place.total > 1 && (
-            <span {...stylex.props(styles.moves)}>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                disabled={place.index <= 0}
-                onClick={() => onMove(-1)}
-                aria-label={format(m.itemsStageMoveEarlier)}
-              >
-                <ChevronUpIcon aria-hidden />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                disabled={place.index >= place.total - 1}
-                onClick={() => onMove(1)}
-                aria-label={format(m.itemsStageMoveLater)}
-              >
-                <ChevronDownIcon aria-hidden />
-              </Button>
-            </span>
-          )}
           <span {...stylex.props(styles.spacer)} />
           <Button variant="outline" onClick={onClose}>
             {format(commonMessages.cancel)}
@@ -356,30 +370,61 @@ export function StageSheet({
         </Field>
       )}
 
-      {(panelable || panelLast === true) && (
-        <Field
-          label={format(m.itemsStageParticipation)}
-          hint={format(
-            panelLast === true
-              ? m.itemsStageEveryoneLast
-              : local.participation === 'all'
-                ? m.itemsStageEveryoneHint
-                : m.itemsStageAnyoneHint,
-          )}
-        >
+      {places.length > 1 && (
+        <Field label={format(m.itemsStagePosition)}>
           {(id) => (
             <Choice
               id={id}
-              value={panelLast === true ? 'any' : local.participation}
-              disabled={panelLast === true}
-              options={[
-                { value: 'any', label: format(m.itemsStageAnyone) },
-                { value: 'all', label: format(m.itemsStageEveryone) },
-              ]}
-              onChange={(next) => patch({ participation: next as StageDraft['participation'] })}
+              value={String(place)}
+              options={places}
+              onChange={(next) => setPlace(Number(next))}
             />
           )}
         </Field>
+      )}
+
+      {/* Both ways, side by side and said in full, on every escalation step
+          - a new one included: which of them a step may take depends on
+          where it ends up, and that is only settled once it is placed. The
+          ordinary route has no panels (§32.66), so it asks nothing here. */}
+      {escalation && (
+        <div data-testid="stage-participation" data-owed={owesSuccessor}>
+          <RadioGroup
+            legend={format(m.itemsStageParticipation)}
+            name={`participation-${stage.key}`}
+            variant="cards"
+            selected={local.participation}
+            onChange={(next) => patch({ participation: next as StageDraft['participation'] })}
+            options={[
+              {
+                value: 'any',
+                label: format(m.itemsStageAnyone),
+                hint: format(m.itemsStageAnyoneHint),
+              },
+              {
+                value: 'all',
+                label: format(m.itemsStageEveryone),
+                hint: format(m.itemsStageEveryoneHint),
+              },
+            ]}
+          />
+        </div>
+      )}
+      {owesSuccessor && (
+        <div {...stylex.props(styles.owed)} data-testid="stage-owed">
+          <p {...stylex.props(styles.owedWords)}>{format(m.itemsStageEveryoneLast)}</p>
+          {roomAfter && onApplyAndAdd !== undefined && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={confirmAndAdd}
+              data-testid="stage-add-after"
+            >
+              <PlusIcon aria-hidden />
+              {format(m.itemsStageAddAfter)}
+            </Button>
+          )}
+        </div>
       )}
     </EditorSheet>
   )

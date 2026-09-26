@@ -133,6 +133,8 @@ const PROBLEM_LABEL: Record<string, MessageDescriptor> = {
   'stage-unnamed': m.itemsProblemStageUnnamed,
   'stage-unset': m.itemsProblemStageUnset,
   'stage-quorum': m.itemsProblemStageQuorum,
+  'stage-panel-last': m.itemsProblemStagePanelLast,
+  'stages-too-many': m.itemsProblemStagesTooMany,
   'stage-refused': m.itemsProblemStageRefused,
   'policy-refused': m.itemsProblemPolicyRefused,
   'folding-refused': m.itemsProblemFoldingRefused,

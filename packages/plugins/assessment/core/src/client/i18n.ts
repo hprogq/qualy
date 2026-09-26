@@ -2989,14 +2989,6 @@ const i18n = definePluginMessages({
       id: 'assessment/items/stage-keep-one',
       defaultMessage: 'The ordinary route keeps at least one step',
     },
-    itemsStageMoveEarlier: {
-      id: 'assessment/items/stage-move-earlier',
-      defaultMessage: 'Move earlier',
-    },
-    itemsStageMoveLater: {
-      id: 'assessment/items/stage-move-later',
-      defaultMessage: 'Move later',
-    },
     itemsStageParticipation: {
       id: 'assessment/items/stage-participation',
       defaultMessage: 'Handling',
@@ -3007,7 +2999,7 @@ const i18n = definePluginMessages({
     },
     itemsStageAnyoneHint: {
       id: 'assessment/items/stage-anyone-hint',
-      defaultMessage: 'One reviewer answers for this step.',
+      defaultMessage: 'One reviewer answers for this step',
     },
     itemsStageEveryone: {
       id: 'assessment/items/stage-everyone',
@@ -3016,12 +3008,50 @@ const i18n = definePluginMessages({
     itemsStageEveryoneLast: {
       id: 'assessment/items/stage-everyone-last',
       defaultMessage:
-        'The last review step speaks with one voice: a split there has nowhere left to go. Add a step after this one to make this a panel.',
+        'A review step after this one has to give the final decision; add it before saving',
     },
     itemsStageEveryoneHint: {
       id: 'assessment/items/stage-everyone-hint',
       defaultMessage:
-        'Every eligible reviewer weighs in: unanimous approval settles it, anything else hands it to the next review step.',
+        'Every reviewer at this step weighs in, and the outcome goes to the next step as an opinion',
+    },
+    itemsStageAddAfter: {
+      id: 'assessment/items/stage-add-after',
+      defaultMessage: 'Add a review step after it',
+    },
+    itemsStagePosition: { id: 'assessment/items/stage-position', defaultMessage: 'Position' },
+    itemsStagePositionOption: {
+      id: 'assessment/items/stage-position-option',
+      defaultMessage: 'Step {n}',
+    },
+    itemsStagePositionBefore: {
+      id: 'assessment/items/stage-position-before',
+      defaultMessage: 'Before “{name}”',
+    },
+    itemsStagePositionLast: {
+      id: 'assessment/items/stage-position-last',
+      defaultMessage: 'The last step',
+    },
+    itemsEscalationStageTag: {
+      id: 'assessment/items/escalation-stage-tag',
+      defaultMessage: 'Escalation step',
+    },
+    itemsStageInsert: {
+      id: 'assessment/items/stage-insert',
+      defaultMessage: 'Insert a review step before step {n}, “{name}”',
+    },
+    itemsEscalationInsert: {
+      id: 'assessment/items/escalation-insert',
+      defaultMessage: 'Insert an escalation step before step {n}, “{name}”',
+    },
+    itemsStageInsertHere: {
+      id: 'assessment/items/stage-insert-here',
+      defaultMessage: 'Insert a step here',
+    },
+    itemsStagesShort: {
+      id: 'assessment/items/stages-short',
+      defaultMessage:
+        '{count, plural, one {# step has a unit with no reviewer} other {# steps have a unit with no reviewer}}',
     },
     itemsStageRoleAt: {
       id: 'assessment/items/stage-role-at',
@@ -7299,6 +7329,14 @@ const i18n = definePluginMessages({
     itemsProblemStageUnnamed: {
       id: 'assessment/items/problem-stage-unnamed',
       defaultMessage: 'The step has no name',
+    },
+    itemsProblemStagePanelLast: {
+      id: 'assessment/items/problem-stage-panel-last',
+      defaultMessage: 'needs a review step after it to give the final decision',
+    },
+    itemsProblemStagesTooMany: {
+      id: 'assessment/items/problem-stages-too-many',
+      defaultMessage: 'A route holds at most {max} steps',
     },
     itemsProblemStageQuorum: {
       id: 'assessment/items/problem-stage-quorum',

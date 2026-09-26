@@ -23,7 +23,7 @@ import {
   materializeField,
   type FieldDraft as ValueDraft,
 } from '@qualy/web-value-form/model'
-import { MAX_ENTRIES_PER_ITEM } from '../../../api.ts'
+import { MAX_ENTRIES_PER_ITEM, MAX_STAGES_PER_ROUTE } from '../../../api.ts'
 import { SUMMARY_FIELDS_MOST, summaryFieldIdsOf } from '../../../entry/summary.ts'
 import type { ItemDto } from '../../entry/model.ts'
 import type { StageDraft } from '../StageSheet.tsx'
@@ -804,30 +804,48 @@ export const itemTypeOf = (draft: Draft, item: ItemDto | null): string => {
   return 'evidence'
 }
 
-const storedStage = (stage: StageDraft, panelable: boolean) => ({
+/** one route's steps, in the order they are walked */
+export const stagesOn = (draft: Draft, chain: 'normal' | 'escalation'): readonly StageDraft[] =>
+  draft.stages.filter((one) => one.chain === chain)
+
+// A panel is written as it was chosen, wherever it stands. One left as the
+// last escalation step is a step the chain still owes a successor, said as
+// such on the chain and holding the save (see `problemsOf`); writing it as
+// "any" instead changed a choice nobody had taken back.
+const storedStage = (stage: StageDraft) => ({
   id: stage.key,
   ...(stage.label.trim() !== '' ? { label: stage.label.trim() } : {}),
   selector:
     stage.kind === 'roleAt'
       ? { kind: 'roleAt', nodeTypeId: stage.nodeTypeId, roleIds: stage.roleIds }
       : { kind: 'nearestRole', roleId: stage.roleId },
-  // a panel only where the server allows one: an escalation middle step
-  quorum: { type: panelable && stage.participation === 'all' ? 'all' : 'any' },
+  // the ordinary route has no panels at all (§32.66)
+  quorum: {
+    type: stage.chain === 'escalation' && stage.participation === 'all' ? 'all' : 'any',
+  },
 })
 
 export const reviewPolicyOf = (draft: Draft) => {
   if (draft.mode !== 'review') return { mode: 'none' }
-  const escalation = draft.stages.filter((one) => one.chain === 'escalation')
   return {
-    normal: {
-      stages: draft.stages
-        .filter((one) => one.chain === 'normal')
-        .map((one) => storedStage(one, false)),
-    },
-    escalation: {
-      stages: escalation.map((one, index) => storedStage(one, index < escalation.length - 1)),
-    },
+    normal: { stages: stagesOn(draft, 'normal').map(storedStage) },
+    escalation: { stages: stagesOn(draft, 'escalation').map(storedStage) },
   }
+}
+
+/**
+ * The chain with one step put at a place in its own route: a new one, or
+ * one already there moved. The other route is left as it stands.
+ */
+export const withStageAt = (
+  stages: readonly StageDraft[],
+  next: StageDraft,
+  at: number,
+): StageDraft[] => {
+  const own = stages.filter((one) => one.chain === next.chain && one.key !== next.key)
+  const others = stages.filter((one) => one.chain !== next.chain)
+  own.splice(Math.max(0, Math.min(at, own.length)), 0, next)
+  return next.chain === 'normal' ? [...own, ...others] : [...others, ...own]
 }
 
 export type Folding = { rule: 'sum' } | { rule: 'max' } | { rule: 'top-n'; n: number }
@@ -1670,6 +1688,34 @@ export const problemsOf = (input: {
         })
       }
     }
+    for (const chain of ['normal', 'escalation'] as const) {
+      const route = stagesOn(draft, chain)
+      if (route.length > MAX_STAGES_PER_ROUTE) {
+        found.push({
+          area: 'rules',
+          block: chain === 'normal' ? 'review' : 'escalation',
+          code: 'stages-too-many',
+          tone: 'error',
+          values: { max: MAX_STAGES_PER_ROUTE },
+        })
+      }
+    }
+    // A panel hands its outcome on as an opinion, so it cannot be where the
+    // escalation route ends (§32.66): the last voice has to be one voice.
+    // Chosen there anyway - as the last step, or left last by a removal or a
+    // move - it waits for the step after it rather than being changed.
+    const escalation = stagesOn(draft, 'escalation')
+    const last = escalation[escalation.length - 1]
+    if (last !== undefined && last.participation === 'all') {
+      found.push({
+        area: 'rules',
+        block: 'escalation',
+        code: 'stage-panel-last',
+        entity: { kind: 'stage', key: last.key },
+        subject: last.label.trim(),
+        tone: 'pending',
+      })
+    }
   }
   if (
     draft.mode !== 'automatic' &&
@@ -1988,8 +2034,27 @@ export const problemsFromIssues = (input: {
       })
       continue
     }
+    const routeAt = /^reviewPolicy\.(normal|escalation)\b/.exec(path)
+    if (routeAt !== null && reason === 'policy-stages-too-many') {
+      placed.push({
+        area: 'rules',
+        block: routeAt[1] === 'escalation' ? 'escalation' : 'review',
+        code: 'stages-too-many',
+        tone: 'error',
+        values: { max: MAX_STAGES_PER_ROUTE },
+        reason,
+      })
+      continue
+    }
     if (path.startsWith('reviewPolicy')) {
-      placed.push({ area: 'rules', block: 'review', code: 'policy-refused', tone: 'error', reason })
+      // said on the route it is about, not always on the first one
+      placed.push({
+        area: 'rules',
+        block: routeAt?.[1] === 'escalation' ? 'escalation' : 'review',
+        code: 'policy-refused',
+        tone: 'error',
+        reason,
+      })
       continue
     }
     if (path === 'entryChannels') {

@@ -1089,35 +1089,6 @@ describe('records and review', () => {
     await vi.waitFor(() => expect(steps()).toHaveLength(1))
   })
 
-  it("moves and removes a step from the step's own panel, and keeps the last one", async () => {
-    const stageOf = (id: string, label: string) => ({
-      id,
-      label,
-      selector: { kind: 'roleAt', nodeTypeId: ORG_TYPE_ID, roleIds: [ROLE_ID] },
-      quorum: { type: 'any' },
-    })
-    const item = officerItem()
-    item.currentRevision.reviewPolicy = {
-      normal: { stages: [stageOf('s-first', '班委初审'), stageOf('s-second', '专业复审')] },
-      escalation: { stages: [] },
-    }
-    await open({ items: [item], question: ITEM_ID, panel: 'rules' })
-    const steps = () => page.getByTestId('chain-step').elements()
-    const sheet = () => page.getByTestId('stage-sheet')
-    await vi.waitFor(() => expect(steps()).toHaveLength(2))
-    const titlesNow = () => steps().map((node) => node.textContent ?? '')
-    expect(titlesNow()[0]).toContain('班委初审')
-
-    await page.getByTestId('chain-step').first().click()
-    await sheet().getByRole('button', { name: '后移' }).click()
-    await vi.waitFor(() => expect(titlesNow()[0]).toContain('专业复审'))
-    await sheet().getByRole('button', { name: '删除步骤' }).click()
-    await vi.waitFor(() => expect(steps()).toHaveLength(1))
-    // the ordinary route keeps one step: the last cannot be taken out
-    await page.getByTestId('chain-step').first().click()
-    await expect.element(sheet().getByRole('button', { name: '删除步骤' })).toBeDisabled()
-  })
-
   it('says a round that holds as many questions as it can takes no new one', async () => {
     await open({
       refuse: [
@@ -1147,6 +1118,209 @@ describe('records and review', () => {
     // the title is the first thing missing, and it lives on the basics tab
     await expect.element(editor()).toHaveAttribute('data-panel', 'basics')
     expect(saved).toHaveLength(0)
+  })
+})
+
+describe('composing the two routes', () => {
+  const stageOf = (id: string, label: string, quorum: 'any' | 'all' = 'any') => ({
+    id,
+    label,
+    selector: { kind: 'roleAt', nodeTypeId: ORG_TYPE_ID, roleIds: [ROLE_ID] },
+    quorum: { type: quorum },
+  })
+  /** the officer question with these two routes */
+  const routed = (normal: readonly unknown[], escalation: readonly unknown[] = []) => {
+    const item = officerItem()
+    item.currentRevision.reviewPolicy = {
+      normal: { stages: normal as never },
+      escalation: { stages: escalation as never },
+    }
+    return item
+  }
+  const steps = (chain: 'normal' | 'escalation') =>
+    [
+      ...document.querySelectorAll<HTMLElement>(
+        `[data-testid="chain-${chain}"] [data-testid="chain-step"]`,
+      ),
+    ].map((node) => node.textContent ?? '')
+  const sheet = () => page.getByTestId('stage-sheet')
+  /** a name and a reviewer, which is all a step needs to be whole */
+  const compose = async (name: string) => {
+    await sheet().getByRole('textbox', { name: '步骤名称' }).fill(name)
+    await sheet().getByRole('checkbox', { name: '审核员' }).click()
+  }
+  const quorumsSaved = (saved: { config?: unknown }[]) => {
+    const config = saved.at(-1)!.config as {
+      reviewPolicy: { escalation: { stages: { quorum: { type: string } }[] } }
+    }
+    return config.reviewPolicy.escalation.stages.map((one) => one.quorum.type)
+  }
+
+  it('inserts a step between two others from the place between them, and focuses it', async () => {
+    await open({
+      items: [routed([stageOf('s-first', '班委初审'), stageOf('s-second', '专业复审')])],
+      question: ITEM_ID,
+      panel: 'rules',
+    })
+    await vi.waitFor(() => expect(steps('normal')).toHaveLength(2))
+
+    // a place before the first step too, named for the step it comes before
+    await page.getByRole('button', { name: '在第 1 步「班委初审」之前插入审核步骤' }).click()
+    await expect.element(sheet()).toBeVisible()
+    await sheet().getByRole('button', { name: '取消' }).click()
+    await vi.waitFor(() => expect(steps('normal')).toHaveLength(2))
+
+    await page.getByRole('button', { name: '在第 2 步「专业复审」之前插入审核步骤' }).click()
+    await expect
+      .element(sheet().getByRole('combobox', { name: '位置' }))
+      .toHaveTextContent('第 2 步')
+    // the ordinary route has no panels, so it asks nothing about handling
+    expect(document.querySelector('[data-testid="stage-participation"]')).toBeNull()
+    await compose('辅导员审核')
+    await sheet().getByTestId('stage-apply').click()
+
+    await vi.waitFor(() => {
+      const now = steps('normal')
+      expect(now).toHaveLength(3)
+      expect(now[0]).toContain('班委初审')
+      expect(now[1]).toContain('辅导员审核')
+      expect(now[2]).toContain('专业复审')
+    })
+    // the card of the step just added holds the focus, not the place it filled
+    await vi.waitFor(() =>
+      expect((document.activeElement as HTMLElement | null)?.textContent ?? '').toContain(
+        '辅导员审核',
+      ),
+    )
+  })
+
+  it("moves a step by its position in the step's own panel, and cancel takes the move back", async () => {
+    await open({
+      items: [routed([stageOf('s-first', '班委初审'), stageOf('s-second', '专业复审')])],
+      question: ITEM_ID,
+      panel: 'rules',
+    })
+    await vi.waitFor(() => expect(steps('normal')).toHaveLength(2))
+    const place = async (name: RegExp) => {
+      await sheet().getByRole('combobox', { name: '位置' }).click()
+      await page.getByRole('option', { name }).click()
+    }
+
+    await page.getByTestId('chain-step').first().click()
+    await place(/第 2 步/)
+    await sheet().getByRole('button', { name: '取消' }).click()
+    await new Promise((settle) => setTimeout(settle, 250))
+    expect(steps('normal')[0]).toContain('班委初审')
+
+    await page.getByTestId('chain-step').first().click()
+    await place(/第 2 步/)
+    await sheet().getByTestId('stage-apply').click()
+    await vi.waitFor(() => expect(steps('normal')[0]).toContain('专业复审'))
+
+    await page.getByTestId('chain-step').first().click()
+    await sheet().getByRole('button', { name: '删除步骤' }).click()
+    await vi.waitFor(() => expect(steps('normal')).toHaveLength(1))
+    // the ordinary route keeps one step: the last cannot be taken out
+    await page.getByTestId('chain-step').first().click()
+    await expect.element(sheet().getByRole('button', { name: '删除步骤' })).toBeDisabled()
+  })
+
+  // A new step was always the last one, where a panel is refused, so the
+  // choice between the two ways never showed while a step was being made.
+  it('offers both ways on a new escalation step, and holds the save while a panel ends the route', async () => {
+    const saved: { config?: unknown }[] = []
+    await open({
+      items: [routed([stageOf('s-first', '班委初审')], [stageOf('s-appeal', '学院复核')])],
+      question: ITEM_ID,
+      panel: 'rules',
+      saved,
+    })
+    await vi.waitFor(() => expect(steps('escalation')).toHaveLength(1))
+
+    await page.getByTestId('chain-escalation').getByTestId('chain-add').click()
+    await expect.element(sheet().getByTestId('stage-participation')).toBeVisible()
+    await compose('学院复核小组')
+    await sheet().getByRole('radio', { name: /全员共同审核/ }).click()
+    // chosen at the end of the route, it says what it still needs, and is taken
+    await expect.element(sheet().getByTestId('stage-owed')).toBeVisible()
+    await sheet().getByTestId('stage-apply').click()
+
+    const panel = page.getByTestId('chain-escalation').getByTestId('chain-step').last()
+    await expect.element(panel).toHaveAttribute('data-problem', 'stage-panel-last')
+    await expect.element(panel).toHaveAttribute('data-tone', 'pending')
+
+    // a save walks to it instead of sending, and it is settled from there
+    await page.getByTestId('item-save').click()
+    await expect.element(sheet().getByTestId('stage-owed')).toBeVisible()
+    expect(saved).toHaveLength(0)
+    await sheet().getByTestId('stage-add-after').click()
+    await expect
+      .element(sheet().getByRole('combobox', { name: '位置' }))
+      .toHaveTextContent('第 3 步')
+    await compose('学院终审')
+    await sheet().getByTestId('stage-apply').click()
+
+    await vi.waitFor(() => expect(steps('escalation')).toHaveLength(3))
+    expect(document.querySelector('[data-problem="stage-panel-last"]')).toBeNull()
+    await page.getByTestId('item-save').click()
+    await vi.waitFor(() => expect(saved).toHaveLength(1))
+    expect(quorumsSaved(saved)).toEqual(['any', 'all', 'any'])
+  })
+
+  // Written as "any one" on save, a panel left last by a removal changed a
+  // choice nobody had taken back, while the chain still said the other thing.
+  it('keeps a panel a removal left last as it was chosen, and waits for the step after it', async () => {
+    const saved: { config?: unknown }[] = []
+    await open({
+      items: [
+        routed(
+          [stageOf('s-first', '班委初审')],
+          [stageOf('s-panel', '学院复核小组', 'all'), stageOf('s-final', '学院终审')],
+        ),
+      ],
+      question: ITEM_ID,
+      panel: 'rules',
+      saved,
+    })
+    await vi.waitFor(() => expect(steps('escalation')).toHaveLength(2))
+
+    await page.getByTestId('chain-escalation').getByTestId('chain-step').last().click()
+    await sheet().getByRole('button', { name: '删除步骤' }).click()
+    const panel = page.getByTestId('chain-escalation').getByTestId('chain-step').first()
+    await expect.element(panel).toHaveAttribute('data-participation', 'all')
+    await expect.element(panel).toHaveAttribute('data-problem', 'stage-panel-last')
+
+    await page.getByTestId('item-save').click()
+    await expect.element(sheet()).toBeVisible()
+    await new Promise((settle) => setTimeout(settle, 300))
+    expect(saved).toHaveLength(0)
+  })
+
+  it('stops offering a step once a route holds ten, and says a refusal about a route on that route', async () => {
+    const ten = Array.from({ length: 10 }, (_unused, index) =>
+      stageOf(`s-step-${index}`, `第${index + 1}审`),
+    )
+    await open({
+      items: [routed(ten, [stageOf('s-appeal', '学院复核')])],
+      question: ITEM_ID,
+      panel: 'rules',
+      check: () => [{ path: 'reviewPolicy.escalation.stages', reason: 'policy-stages-too-many' }],
+    })
+    const normal = page.getByTestId('chain-normal')
+    await expect.element(normal).toHaveAttribute('data-full', 'true')
+    await expect.element(normal.getByTestId('chain-add')).toBeDisabled()
+    expect(normal.getByTestId('chain-insert').elements()).toHaveLength(0)
+    // the other route still has room, and places to use it
+    expect(
+      page.getByTestId('chain-escalation').getByTestId('chain-insert').elements(),
+    ).toHaveLength(1)
+
+    await vi.waitFor(() =>
+      expect(
+        document.querySelector('[data-testid="escalation-chain"] [data-tone="error"]'),
+      ).not.toBeNull(),
+    )
+    expect(document.querySelector('[data-testid="review-chain"] [data-tone="error"]')).toBeNull()
   })
 })
 

@@ -8,6 +8,8 @@ import type { UiText } from '@qualy/i18n-contract'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Input } from '@qualy/ui/input'
+import { VisuallyHidden } from '@qualy/ui/visually-hidden'
+import { MAX_STAGES_PER_ROUTE } from '../../../api.ts'
 import { assessmentApi } from '../../api.ts'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { amountOf, trimAmount, unitsOf } from '../../entry/model.ts'
@@ -27,9 +29,13 @@ import { problemWords, sentences } from './words.ts'
 //
 // A step is composed in its panel and only joins the chain once it is
 // whole, so the chain never holds a step that cannot review anything. What
-// the chain can still say is wrong about a whole step is that some unit at
-// its level has nobody to do the reviewing - which is about the round's
-// people, not about the step, and is said without stopping the save.
+// the chain can still say about a whole step is that some unit at its level
+// has nobody to do the reviewing - which is about the round's people, not
+// about the step, and is said in amber without stopping the save.
+//
+// A step can be put anywhere: between any two of them there is a place to
+// insert one, shown where a pointer rests or the keyboard lands, and always
+// on a screen with nothing to point with.
 
 const MONO = "'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace"
 
@@ -128,9 +134,13 @@ const styles = stylex.create({
     boxShadow: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
   },
   link: { display: 'grid', gridTemplateColumns: '28px minmax(0, 1fr)', columnGap: 14 },
+  list: { display: 'flex', flexDirection: 'column', margin: 0, padding: 0, listStyleType: 'none' },
   rail: { display: 'flex', flexDirection: 'column', alignItems: 'center' },
   // the 2px line that strings the marks together; absent under the last
   line: { flexGrow: 1, width: 2, backgroundColor: tokens.border },
+  // a step's mark sits across from its name, with the line running on
+  // above it and below it
+  lineAbove: { flexShrink: 0, width: 2, height: 12, backgroundColor: tokens.border },
   mark: {
     display: 'inline-flex',
     flexShrink: 0,
@@ -148,7 +158,6 @@ const styles = stylex.create({
     backgroundColor: tokens.mutedForeground,
   },
   markStep: {
-    marginTop: 6,
     backgroundColor: tokens.foreground,
     color: tokens.background,
     fontSize: 12.5,
@@ -162,6 +171,81 @@ const styles = stylex.create({
     borderColor: tokens.danger,
     color: tokens.danger,
   },
+  markStepWarn: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: tokens.warning,
+    color: tokens.warningForeground,
+  },
+  // ---- a place to insert a step ---------------------------------------
+  // The gap between two steps, as a press. It holds its height whether or
+  // not it is showing, so pointing at it moves nothing.
+  insert: {
+    position: 'relative',
+    display: 'grid',
+    gridTemplateColumns: '28px minmax(0, 1fr)',
+    columnGap: 14,
+    width: '100%',
+    height: { default: 16, '@media (hover: none)': 32 },
+    padding: 0,
+    borderWidth: 0,
+    borderRadius: 6,
+    fontFamily: 'inherit',
+    color: 'inherit',
+    backgroundColor: 'transparent',
+    cursor: 'pointer',
+    outlineOffset: 2,
+  },
+  gap: { height: { default: 16, '@media (hover: none)': 32 } },
+  insertMark: {
+    position: 'absolute',
+    top: '50%',
+    left: 4,
+    display: 'inline-flex',
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '9999px',
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: `color-mix(in oklab, ${tokens.foreground} 30%, transparent)`,
+    backgroundColor: tokens.background,
+    color: tokens.mutedForeground,
+    transform: 'translateY(-50%)',
+    opacity: {
+      default: 0,
+      [stylex.when.ancestor(':hover')]: 1,
+      [stylex.when.ancestor(':focus-visible')]: 1,
+      '@media (hover: none)': 1,
+    },
+    transitionProperty: 'opacity',
+    transitionDuration: '120ms',
+  },
+  insertWords: {
+    position: 'absolute',
+    top: '50%',
+    left: 42,
+    fontSize: 12,
+    fontWeight: 500,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+    transform: 'translateY(-50%)',
+    // a thumb sees the mark and nothing more: words that come and go under
+    // it would only be in the way of the step it is reaching for
+    display: { default: 'block', '@media (hover: none)': 'none' },
+    opacity: {
+      default: 0,
+      [stylex.when.ancestor(':hover')]: 1,
+      [stylex.when.ancestor(':focus-visible')]: 1,
+    },
+    transitionProperty: 'opacity',
+    transitionDuration: '120ms',
+  },
+  icon12: { width: 12, height: 12 },
+  addOff: { cursor: 'default' },
+  addWordsOff: { color: tokens.mutedForeground, cursor: 'default' },
   markAdd: {
     borderWidth: 1.5,
     borderStyle: 'dashed',
@@ -172,7 +256,6 @@ const styles = stylex.create({
     display: 'flex',
     alignItems: 'center',
     minHeight: 28,
-    marginBottom: 12,
     fontSize: 13,
     color: tokens.mutedForeground,
   },
@@ -210,8 +293,6 @@ const styles = stylex.create({
     minWidth: 0,
     alignItems: 'center',
     gap: 14,
-    marginTop: -6,
-    marginBottom: 12,
     paddingInline: 14,
     paddingBlock: 12,
     width: '100%',
@@ -238,6 +319,7 @@ const styles = stylex.create({
     fontWeight: 600,
   },
   bad: { color: tokens.danger },
+  warn: { color: tokens.warningForeground },
   cardWho: {
     display: 'flex',
     minWidth: 0,
@@ -275,8 +357,8 @@ export function RulesTab({
   problems: readonly EditorProblem[]
   onPatch: (next: Partial<Draft>) => void
   onOpenStage: (key: string) => void
-  /** a new step, composed in its panel before it joins the chain */
-  onAddStage: (chain: 'normal' | 'escalation') => void
+  /** a new step, composed in its panel before it joins the chain at `at` */
+  onAddStage: (chain: 'normal' | 'escalation', at?: number) => void
 }) {
   const { format } = useI18n()
   const normal = draft.stages.filter((one) => one.chain === 'normal')
@@ -313,7 +395,7 @@ export function RulesTab({
             options={options}
             problems={problems}
             onOpen={onOpenStage}
-            onAdd={() => onAddStage('normal')}
+            onAdd={(at) => onAddStage('normal', at)}
           />
           <StepChain
             batchId={batchId}
@@ -322,7 +404,7 @@ export function RulesTab({
             options={options}
             problems={problems}
             onOpen={onOpenStage}
-            onAdd={() => onAddStage('escalation')}
+            onAdd={(at) => onAddStage('escalation', at)}
             note={noAppeal}
           />
         </>
@@ -545,8 +627,8 @@ function RulesCard({
 
 /**
  * One route, read top to bottom: where a record enters, every step it
- * passes, the place to add another, and where it leaves - with one 12px
- * rhythm between them and one line strung through the marks.
+ * passes, the place to add another, and where it leaves - with one line
+ * strung through the marks, and a place to insert a step between any two.
  */
 function StepChain({
   batchId,
@@ -564,7 +646,8 @@ function StepChain({
   options: ItemOptions
   problems: readonly EditorProblem[]
   onOpen: (key: string) => void
-  onAdd: () => void
+  /** a new step at this place in the route; the end when none is said */
+  onAdd: (at?: number) => void
   /** a line said under the chain, when there is something to say about it */
   note?: ReactNode
 }) {
@@ -605,126 +688,199 @@ function StepChain({
   const problemOf = (key: string) =>
     problems.find((one) => one.entity?.kind === 'stage' && one.entity.key === key)
   const chainProblem = problems.find((one) => one.block === block && one.entity === undefined)
-  const short = steps.filter((_stage, index) =>
-    (coverage[index]?.data?.nodes ?? []).some((node) => node.reviewers === 0),
+  const uncoveredAt = (index: number) =>
+    (coverage[index]?.data?.nodes ?? []).filter((node) => node.reviewers === 0).length
+  const wrong = steps.filter((stage) => problemOf(stage.key)?.tone === 'error').length
+  const waiting = steps.filter((stage) => problemOf(stage.key)?.tone === 'pending').length
+  const short = steps.filter(
+    (stage, index) => problemOf(stage.key) === undefined && uncoveredAt(index) > 0,
   ).length
-  const wrong = steps.filter((stage) => problemOf(stage.key) !== undefined).length + short
+  const title = format(chain === 'normal' ? m.itemsReviewChain : m.itemsEscalationTitle)
+  // a route holds so many steps and no more; past that there is nowhere to
+  // put one, so no place offers itself (the save would be refused anyway)
+  const full = steps.length >= MAX_STAGES_PER_ROUTE
+  const nameOf = (stage: StageDraft) =>
+    stage.label.trim() === '' ? format(m.itemsStageUnnamed) : stage.label.trim()
 
   return (
     <EditorSection
-      title={format(chain === 'normal' ? m.itemsReviewChain : m.itemsEscalationTitle)}
+      title={title}
       hint={format(chain === 'normal' ? m.itemsReviewChainLong : m.itemsEscalationLong)}
       aside={
         wrong > 0 ? (
           <SectionCount tone="error">{format(m.itemsStagesWrong, { count: wrong })}</SectionCount>
         ) : chainProblem !== undefined ? (
           <SectionCount tone={chainProblem.tone}>{problemWords(chainProblem, format)}</SectionCount>
+        ) : waiting > 0 ? (
+          <SectionCount tone="pending">
+            {format(m.itemsPendingCount, { count: waiting })}
+          </SectionCount>
+        ) : short > 0 ? (
+          <SectionCount tone="pending">{format(m.itemsStagesShort, { count: short })}</SectionCount>
         ) : undefined
       }
       testId={chain === 'normal' ? 'review-chain' : 'escalation-chain'}
       block={block}
     >
       {note}
-      <div {...stylex.props(styles.chain)} data-testid={`chain-${chain}`}>
+      <div
+        {...stylex.props(styles.chain)}
+        data-testid={`chain-${chain}`}
+        data-steps={steps.length}
+        data-full={full}
+      >
         <div {...stylex.props(styles.link)}>
           <div {...stylex.props(styles.rail)}>
             <span {...stylex.props(styles.mark, styles.markEnd)}>
               <span aria-hidden {...stylex.props(styles.startDot)} />
             </span>
-            <span aria-hidden {...stylex.props(styles.line)} />
           </div>
           <div {...stylex.props(styles.endWords)}>
             {format(chain === 'normal' ? m.itemsFlowSubmitLine : m.itemsEscalationStartLine)}
           </div>
         </div>
 
-        {steps.map((stage, index) => {
-          const problem = problemOf(stage.key)
-          const nodes = coverage[index]?.data?.nodes
-          const uncovered = (nodes ?? []).filter((node) => node.reviewers === 0).length
-          const bad = problem !== undefined || uncovered > 0
-          const named = stage.label.trim() !== ''
-          const settled = stageSettled(stage, options)
-          return (
-            <div key={stage.key} {...stylex.props(styles.link)}>
-              <div {...stylex.props(styles.rail)}>
-                <span {...stylex.props(styles.mark, styles.markStep, bad && styles.markStepBad)}>
-                  {index + 1}
-                </span>
-                <span aria-hidden {...stylex.props(styles.line)} />
-              </div>
-              <button
-                type="button"
-                {...stylex.props(styles.card)}
-                onClick={() => onOpen(stage.key)}
-                data-testid="chain-step"
-                data-stage-key={stage.key}
-                data-step-complete={problem === undefined}
-                data-uncovered={uncovered}
-              >
-                <span {...stylex.props(styles.cardWords)}>
-                  <span {...stylex.props(styles.cardName, bad && styles.bad)}>
-                    {named ? stage.label.trim() : format(m.itemsStageUnnamed)}
-                  </span>
-                  {settled && (
-                    <span {...stylex.props(styles.cardWho)}>
-                      <span>
-                        {stage.kind === 'roleAt'
-                          ? (options.orgTypes.find((one) => one.id === stage.nodeTypeId)?.name ??
-                            '')
-                          : format(m.itemsStageWalkUp)}
-                      </span>
-                      <span aria-hidden {...stylex.props(styles.rule)} />
-                      <span {...stylex.props(styles.roles)}>
-                        {options.roles
-                          .filter((role) =>
-                            stage.kind === 'roleAt'
-                              ? stage.roleIds.includes(role.id)
-                              : role.id === stage.roleId,
-                          )
-                          .map((role) => (
-                            <Tag key={role.id}>{role.name}</Tag>
-                          ))}
-                      </span>
-                      <span>
-                        {format(
-                          stage.participation === 'all' ? m.itemsStageRuleAll : m.itemsStageRuleAny,
-                        )}
-                      </span>
-                    </span>
-                  )}
-                  {problem !== undefined && (
-                    <span
-                      {...stylex.props(styles.coverage, styles.bad)}
-                      role="alert"
-                      data-testid="step-problem"
-                    >
-                      {problemWords(problem, format)}
-                    </span>
-                  )}
-                </span>
-                {problem === undefined && nodes !== undefined && (
-                  <span
-                    {...stylex.props(styles.coverage, uncovered > 0 && styles.bad)}
-                    data-testid="step-coverage"
+        <ol aria-label={title} {...stylex.props(styles.list)}>
+          {steps.map((stage, index) => {
+            const problem = problemOf(stage.key)
+            const nodes = coverage[index]?.data?.nodes
+            const uncovered = uncoveredAt(index)
+            const bad = problem?.tone === 'error'
+            const warn = !bad && (problem !== undefined || uncovered > 0)
+            const named = stage.label.trim() !== ''
+            const settled = stageSettled(stage, options)
+            return (
+              <li key={stage.key}>
+                {full ? (
+                  <Gap />
+                ) : (
+                  <button
+                    type="button"
+                    {...stylex.props(styles.insert, stylex.defaultMarker())}
+                    onClick={() => onAdd(index)}
+                    data-testid="chain-insert"
+                    data-at={index}
+                    aria-label={format(
+                      chain === 'normal' ? m.itemsStageInsert : m.itemsEscalationInsert,
+                      { n: index + 1, name: nameOf(stage) },
+                    )}
                   >
-                    {nodes.length === 0
-                      ? format(m.itemsReviewNoUnits)
-                      : uncovered === 0
-                        ? format(m.itemsReviewCovered, { count: nodes.length })
-                        : format(m.itemsReviewUncoveredCount, { count: uncovered })}
-                  </span>
+                    <span {...stylex.props(styles.rail)}>
+                      <span aria-hidden {...stylex.props(styles.line)} />
+                    </span>
+                    <span aria-hidden {...stylex.props(styles.insertMark)}>
+                      <PlusIcon {...stylex.props(styles.icon12)} />
+                    </span>
+                    <span aria-hidden {...stylex.props(styles.insertWords)}>
+                      {format(m.itemsStageInsertHere)}
+                    </span>
+                  </button>
                 )}
-                <ChevronRightIcon aria-hidden {...stylex.props(styles.chevron)} />
-              </button>
-            </div>
-          )
-        })}
+                <div {...stylex.props(styles.link)}>
+                  <div {...stylex.props(styles.rail)}>
+                    <span aria-hidden {...stylex.props(styles.lineAbove)} />
+                    <span
+                      aria-hidden
+                      {...stylex.props(
+                        styles.mark,
+                        styles.markStep,
+                        bad && styles.markStepBad,
+                        warn && styles.markStepWarn,
+                      )}
+                    >
+                      {index + 1}
+                    </span>
+                    <span aria-hidden {...stylex.props(styles.line)} />
+                  </div>
+                  <button
+                    type="button"
+                    {...stylex.props(styles.card)}
+                    onClick={() => onOpen(stage.key)}
+                    data-testid="chain-step"
+                    data-stage-key={stage.key}
+                    data-step-complete={problem?.tone !== 'error'}
+                    data-problem={problem?.code}
+                    data-tone={bad ? 'error' : warn ? 'pending' : 'ok'}
+                    data-participation={stage.participation}
+                    data-uncovered={uncovered}
+                  >
+                    <span {...stylex.props(styles.cardWords)}>
+                      <span
+                        {...stylex.props(styles.cardName, bad && styles.bad, warn && styles.warn)}
+                      >
+                        {/* the mark beside the card says which step this is; a
+                            reader who cannot see it hears it first */}
+                        <VisuallyHidden>
+                          {format(m.itemsStagePositionOption, { n: index + 1 })}{' '}
+                        </VisuallyHidden>
+                        {named ? stage.label.trim() : format(m.itemsStageUnnamed)}
+                      </span>
+                      {settled && (
+                        <span {...stylex.props(styles.cardWho)}>
+                          <span>
+                            {stage.kind === 'roleAt'
+                              ? (options.orgTypes.find((one) => one.id === stage.nodeTypeId)
+                                  ?.name ?? '')
+                              : format(m.itemsStageWalkUp)}
+                          </span>
+                          <span aria-hidden {...stylex.props(styles.rule)} />
+                          <span {...stylex.props(styles.roles)}>
+                            {options.roles
+                              .filter((role) =>
+                                stage.kind === 'roleAt'
+                                  ? stage.roleIds.includes(role.id)
+                                  : role.id === stage.roleId,
+                              )
+                              .map((role) => (
+                                <Tag key={role.id}>{role.name}</Tag>
+                              ))}
+                          </span>
+                          <span>
+                            {format(
+                              chain === 'escalation' && stage.participation === 'all'
+                                ? m.itemsStageRuleAll
+                                : m.itemsStageRuleAny,
+                            )}
+                          </span>
+                        </span>
+                      )}
+                      {problem !== undefined && (
+                        <span
+                          {...stylex.props(styles.coverage, bad ? styles.bad : styles.warn)}
+                          role={bad ? 'alert' : undefined}
+                          data-testid="step-problem"
+                          data-code={problem.code}
+                        >
+                          {problemWords(problem, format)}
+                        </span>
+                      )}
+                    </span>
+                    {problem === undefined && nodes !== undefined && (
+                      <span
+                        {...stylex.props(styles.coverage, uncovered > 0 && styles.warn)}
+                        data-testid="step-coverage"
+                      >
+                        {nodes.length === 0
+                          ? format(m.itemsReviewNoUnits)
+                          : uncovered === 0
+                            ? format(m.itemsReviewCovered, { count: nodes.length })
+                            : format(m.itemsReviewUncoveredCount, { count: uncovered })}
+                      </span>
+                    )}
+                    <ChevronRightIcon aria-hidden {...stylex.props(styles.chevron)} />
+                  </button>
+                </div>
+              </li>
+            )
+          })}
+        </ol>
+        <Gap />
 
         <button
           type="button"
-          {...stylex.props(styles.addButton)}
-          onClick={onAdd}
+          {...stylex.props(styles.addButton, full && styles.addOff)}
+          onClick={() => onAdd()}
+          disabled={full}
           data-testid="chain-add"
         >
           <span {...stylex.props(styles.rail)}>
@@ -733,8 +889,10 @@ function StepChain({
             </span>
             <span aria-hidden {...stylex.props(styles.line)} />
           </span>
-          <span {...stylex.props(styles.addWords)}>
-            {format(chain === 'normal' ? m.itemsStageAdd : m.itemsEscalationAddStep)}
+          <span {...stylex.props(styles.addWords, full && styles.addWordsOff)}>
+            {full
+              ? format(m.itemsProblemStagesTooMany, { max: MAX_STAGES_PER_ROUTE })
+              : format(chain === 'normal' ? m.itemsStageAdd : m.itemsEscalationAddStep)}
           </span>
         </button>
 
@@ -750,5 +908,16 @@ function StepChain({
         </div>
       </div>
     </EditorSection>
+  )
+}
+
+/** the room between two things on the chain, with the line running through it */
+function Gap() {
+  return (
+    <div aria-hidden {...stylex.props(styles.link, styles.gap)}>
+      <span {...stylex.props(styles.rail)}>
+        <span {...stylex.props(styles.line)} />
+      </span>
+    </div>
   )
 }
