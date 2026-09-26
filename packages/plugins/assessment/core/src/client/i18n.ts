@@ -946,7 +946,7 @@ const i18n = definePluginMessages({
     tabOverview: { id: 'assessment/overview/tab', defaultMessage: 'Overview' },
     overviewHint: {
       id: 'assessment/overview/hint',
-      defaultMessage: 'View batch progress and items requiring your attention.',
+      defaultMessage: 'View batch progress and items requiring your attention',
     },
     overviewPlaceholder: {
       id: 'assessment/overview/placeholder',
@@ -5293,7 +5293,7 @@ const i18n = definePluginMessages({
     },
     overviewActionsNone: {
       id: 'assessment/overview/actions-none',
-      defaultMessage: 'Nothing needs your attention right now.',
+      defaultMessage: 'Nothing needs your attention right now',
     },
     overviewActionSupplement: {
       id: 'assessment/overview/action-supplement',
@@ -5321,7 +5321,7 @@ const i18n = definePluginMessages({
     },
     overviewActivityNone: {
       id: 'assessment/overview/activity-none',
-      defaultMessage: 'Nothing has happened around you here yet.',
+      defaultMessage: 'Nothing has happened around you here yet',
     },
     overviewActivityMore: {
       id: 'assessment/overview/activity-more',
