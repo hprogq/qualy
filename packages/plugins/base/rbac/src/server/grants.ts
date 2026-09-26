@@ -106,8 +106,20 @@ export interface GrantScope {
   userId: string
 }
 
-/** why a role cannot be given here, in words a screen can act on */
-export type RoleRefusal = 'user-type' | 'authority' | 'self-escalation' | 'unavailable'
+/**
+ * Why a role cannot be given here, in words a screen can act on.
+ *
+ * `authority` is the caller's: the office is not theirs to fill. Every other
+ * one is about this person or this place, for an office that is - which is
+ * what lets a form show those and leave the rest of the catalog out.
+ */
+export type RoleRefusal =
+  | 'user-type'
+  | 'org-type'
+  | 'person-disabled'
+  | 'authority'
+  | 'self-escalation'
+  | 'unavailable'
 
 /**
  * Whether a grant is inside a scope, for a query that has outer-joined its node.
@@ -926,9 +938,20 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     return { codes, allActive: false, gainsAppointments }
   })
 
-  const refusalOf = (tag: string): RoleRefusal =>
+  const refusalOf = (tag: string, reason: string | undefined): RoleRefusal =>
     tag === 'GRANT_NOT_ELIGIBLE'
-      ? 'user-type'
+      ? // the role does not admit this kind of person, or this kind of
+        // unit, or the person is out of service: three different things to
+        // change, and one sentence for all of them sent people to the wrong one
+        reason === 'org-type'
+        ? 'org-type'
+        : reason === 'user-disabled'
+          ? 'person-disabled'
+          : reason === 'user-type'
+            ? 'user-type'
+            : // not assignable, or of the other kind: candidates are neither,
+              // so this is a role that changed under the probe
+              'unavailable'
       : tag === 'ROLE_NOT_FOUND'
         ? 'unavailable'
         : // only a self-grant can raise it now, and "this would grow you" is
@@ -1011,13 +1034,18 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     for (const role of candidates) {
       const verdict = yield* transaction(
         Effect.gen(function* () {
+          // In the write's own order: whether the office is the caller's to
+          // fill, then whether it fits this person and this place. Asked the
+          // other way round, an office the caller could never give came back
+          // as "not for this kind of person", which read as theirs to give
+          // somewhere else.
+          yield* mayAdministerRole(actor, tenantId, role.id)
+          yield* mayAppointRole(actor, tenantId, role.id, request.target)
           yield* eligible(tenantId, {
             userId: request.userId,
             roleId: role.id,
             target: request.target,
           })
-          yield* mayAdministerRole(actor, tenantId, role.id)
-          yield* mayAppointRole(actor, tenantId, role.id, request.target)
           // one's own name in the recipient line is the one case where a
           // grant could grow its granter; everyone else is the graph's call
           if (actor.userId === request.userId) {
@@ -1027,7 +1055,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
               request.target,
             )
           }
-          return true
+          return true as const
         }),
       ).pipe(
         // the tag is kept rather than collapsed to false: an offer list that
@@ -1052,7 +1080,10 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
             // answer rather than a fault
             'ROLE_NOT_FOUND',
           ],
-          (error) => Effect.succeed<string | true>(error._tag),
+          (error) =>
+            Effect.succeed<RoleRefusal | true>(
+              refusalOf(error._tag, error._tag === 'GRANT_NOT_ELIGIBLE' ? error.reason : undefined),
+            ),
         ),
         Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
       )
@@ -1061,7 +1092,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
         code: role.code,
         name: role.name,
         kind: role.kind,
-        refusal: typeof verdict === 'string' ? refusalOf(verdict) : null,
+        refusal: verdict === true ? null : verdict,
       })
     }
     return offered

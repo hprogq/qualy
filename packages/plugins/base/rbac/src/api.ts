@@ -442,12 +442,33 @@ export const accessApiGroup = HttpApiGroup.make('access')
         coverage: Schema.optional(coverage),
       }),
       success: Schema.Struct({
+        /** what may be given this person here, now */
         roles: Schema.Array(
           Schema.Struct({
             id: Schema.String,
             code: Schema.String,
             name: Schema.String,
             kind: roleKind,
+          }),
+        ),
+        /**
+         * Offices the caller could fill that do not fit this person or this
+         * place, each with why. Offices that are not the caller's to fill
+         * are not among them: those are no part of the caller's question.
+         */
+        refused: Schema.Array(
+          Schema.Struct({
+            id: Schema.String,
+            code: Schema.String,
+            name: Schema.String,
+            kind: roleKind,
+            refusal: Schema.Literals([
+              'user-type',
+              'org-type',
+              'person-disabled',
+              'self-escalation',
+              'unavailable',
+            ]),
           }),
         ),
       }),
@@ -479,7 +500,11 @@ export const accessApiGroup = HttpApiGroup.make('access')
   .add(
     HttpApiEndpoint.get('getUserRoleGrants', '/iam/users/:userId/role-grants', {
       params: Schema.Struct({ userId: uuidInput }),
-      success: Schema.Struct({ grants: Schema.Array(grantShape) }),
+      success: Schema.Struct({
+        grants: Schema.Array(grantShape),
+        /** whether the reader may give any role across the tenant, and anywhere in the tree */
+        grantable: Schema.Struct({ tenant: Schema.Boolean, organization: Schema.Boolean }),
+      }),
       error: [AccessDenied],
     }).middleware(Authenticated),
   )

@@ -1903,6 +1903,135 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
     }
   })
 
+  it('says an office the caller fills does not fit the unit, and one never theirs is theirs to lack', async () => {
+    const db = await createTestContext('effect-grant-refusals')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const access = yield* Access
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const staff = one<{ id: string }>(
+            yield* runSql(
+              sql`select id from user_types where tenant_id = ${f.tenant} and code = 'staff'`,
+            ),
+          ).id
+          const unitType = one<{ id: string }>(
+            yield* runSql(
+              sql`select id from org_types where tenant_id = ${f.tenant} and name = 'U'`,
+            ),
+          ).id
+          // a kind of unit the child is not
+          const classType = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into org_types (tenant_id, name) values (${f.tenant}, 'V') returning id`),
+          ).id
+          const permission = (code: string) =>
+            Effect.map(
+              runSql(sql`
+                insert into permissions (code, plugin, name, target_kind)
+                values (${code}, 'org', ${code}, 'org-node')
+                on conflict (code) do update set code = excluded.code returning id`),
+              (result) => one<{ id: string }>(result).id,
+            )
+          const manage = yield* permission('iam.grant.manage')
+          const tree = yield* permission('org.tree.manage')
+          const role = (
+            code: string,
+            permissions: readonly string[],
+            admits: { userTypes: readonly string[]; orgTypes: readonly string[] },
+          ) =>
+            Effect.gen(function* () {
+              const created = one<{ id: string }>(
+                yield* runSql(sql`
+                  insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+        values (${f.tenant}, ${code}, ${code}, 'org', 'active', 'explicit', 'allow-list')
+                  returning id`),
+              ).id
+              for (const id of permissions) {
+                yield* runSql(sql`
+                  insert into role_permissions (tenant_id, role_id, permission_id)
+                  values (${f.tenant}, ${created}, ${id})`)
+              }
+              for (const id of admits.userTypes) {
+                yield* runSql(sql`
+                  insert into role_allowed_user_types (tenant_id, role_id, user_type_id)
+                  values (${f.tenant}, ${created}, ${id})`)
+              }
+              for (const id of admits.orgTypes) {
+                yield* runSql(sql`
+                  insert into role_allowed_org_types (tenant_id, role_id, org_type_id)
+                  values (${f.tenant}, ${created}, ${id})`)
+              }
+              return created
+            })
+          const here = { userTypes: [staff], orgTypes: [unitType] }
+          const granter = yield* role('granter', [manage], here)
+          const collegeAdmin = yield* role('college-admin', [tree], here)
+          // theirs to fill, and fits
+          const counsellor = yield* role('counsellor', [tree], here)
+          // theirs to fill, but only at another kind of unit
+          const monitor = yield* role('monitor', [tree], {
+            userTypes: [staff],
+            orgTypes: [classType],
+          })
+          // never theirs to fill, and not for staff either: the reader's
+          // question stops at the first, which is what it is told
+          yield* role('foreign', [tree], { userTypes: [], orgTypes: [unitType] })
+          for (const target of [counsellor, monitor]) {
+            yield* runSql(sql`
+              insert into role_grant_rules (tenant_id, granter_role_id, target_role_id)
+              values (${f.tenant}, ${collegeAdmin}, ${target})`)
+          }
+          const li = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.tenant}, 'Li', ${staff}, ${f.child}) returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            values (${f.tenant}, ${f.anchored.userId}, ${granter}, ${f.root}, 'subtree')`)
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            values (${f.tenant}, ${f.anchored.userId}, ${collegeAdmin}, ${f.child}, 'subtree')`)
+          const offered = yield* access.grants.options(
+            f.tenant,
+            { userId: li, target: { kind: 'org-node', orgNodeId: f.child, coverage: 'self' } },
+            f.anchored,
+          )
+          const monitorWrite = tagOf(
+            yield* Effect.result(
+              access.grants.grant(
+                f.tenant,
+                {
+                  userId: li,
+                  roleId: monitor,
+                  target: { kind: 'org-node', orgNodeId: f.child, coverage: 'self' },
+                },
+                f.anchored,
+              ),
+            ),
+          )
+          return {
+            refusals: Object.fromEntries(offered.map((role) => [role.code, role.refusal])),
+            monitorWrite,
+          }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.refusals['counsellor']).toBeNull()
+      // said as the unit's kind, not the person's: the person fits it
+      expect(answer.refusals['monitor']).toBe('org-type')
+      // and the write refuses it for the same reason
+      expect(answer.monitorWrite).toBe('GRANT_NOT_ELIGIBLE')
+      // asked in the write's own order: not theirs to fill comes first
+      expect(answer.refusals['foreign']).toBe('authority')
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('lets one shed one\u2019s own role with the authority any revocation takes', async () => {
     const db = await createTestContext('effect-grant-self')
     try {

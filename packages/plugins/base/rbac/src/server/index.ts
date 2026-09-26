@@ -362,6 +362,17 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
           GRANT_USER_NOT_FOUND: () => Effect.succeed([]),
           GRANT_NODE_NOT_FOUND: () => Effect.succeed([]),
         }),
+        // the port keeps its four words: a unit or a person out of service
+        // is said as the person's not fitting, as it always was there
+        Effect.map((candidates) =>
+          candidates.map((candidate) => ({
+            ...candidate,
+            refusal:
+              candidate.refusal === 'org-type' || candidate.refusal === 'person-disabled'
+                ? ('user-type' as const)
+                : candidate.refusal,
+          })),
+        ),
       )
     }),
 
@@ -782,14 +793,31 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
                 orgNodeId: query.orgNodeId!,
                 coverage: query.coverage!,
               } as const)
+        const considered = yield* access.grants.options(
+          principal.tenantId,
+          { userId: query.userId, target },
+          principal,
+        )
         return {
-          // this screen offers what can be granted; the refusals it now gets
-          // back are for the pickers that explain themselves
-          roles: (yield* access.grants.options(
-            principal.tenantId,
-            { userId: query.userId, target },
-            principal,
-          )).filter((role) => role.refusal === null),
+          roles: considered
+            .filter((role) => role.refusal === null)
+            .map(({ id, code, name, kind }) => ({ id, code, name, kind })),
+          // the offices the reader could fill, that do not fit this person
+          // or this place, each with why; an office that is not theirs to
+          // fill at all is no part of their question and is left out
+          refused: considered.flatMap((role) =>
+            role.refusal === null || role.refusal === 'authority'
+              ? []
+              : [
+                  {
+                    id: role.id,
+                    code: role.code,
+                    name: role.name,
+                    kind: role.kind,
+                    refusal: role.refusal,
+                  },
+                ],
+          ),
         }
       }),
     )
@@ -842,12 +870,21 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
       Effect.fn('access.getUserRoleGrants.handler')(function* ({ params }) {
         const access = yield* Access
         const principal = yield* CurrentUser
+        const scope = yield* access.grantScopeFor(principal)
         const found = yield* access.grants.list(
           principal.tenantId,
           { userId: params.userId },
-          yield* access.grantScopeFor(principal),
+          scope,
         )
-        return { grants: found.map(toGrantShape) }
+        return {
+          grants: found.map(toGrantShape),
+          // where the reader may give anything at all: the form offers only
+          // those scopes, and nothing to press where there are none
+          grantable: {
+            tenant: scope.tenantGrants.manage,
+            organization: scope.manage.tenantWide || scope.manage.anchors.length > 0,
+          },
+        }
       }),
     )
     .handle(
