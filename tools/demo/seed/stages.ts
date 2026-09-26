@@ -1,5 +1,6 @@
 import type { Term } from '../rules.ts'
 import type { Claim } from './claims.ts'
+import { TRIAL_NOTICE, type Episode } from './episodes.ts'
 
 // How each term's batch is staged: the plan the assessment lead writes when
 // setting it up, what each stage is for, and the moment the story moves the
@@ -132,6 +133,19 @@ export const stageAt = (staging: Staging, moment: Moment): Stage | undefined =>
     .filter((stage) => minutesOf(stage.enters) <= minutesOf(moment))
     .at(-1)
 
+/**
+ * The description a term's batch is created with: a term that tries a
+ * question for a few days (the `item-void` episode) announces it first.
+ */
+export const openingDescription = (staging: Staging, episodes: readonly Episode[]) =>
+  episodes.some((episode) => episode.kind === 'item-void')
+    ? `${TRIAL_NOTICE.tried}\n${staging.descriptionMd}`
+    : staging.descriptionMd
+
+/** the same description once the tried question is voided, which it then says instead */
+export const voidedDescription = (description: string) =>
+  description.replace(TRIAL_NOTICE.tried, TRIAL_NOTICE.voided)
+
 const SEASONS: Readonly<Record<Term, string>> = {
   '23-24-1': '2023年秋季学期',
   '23-24-2': '2024年春季学期',
@@ -245,7 +259,8 @@ export const STAGING: Readonly<Record<Term, Staging>> = {
       archive,
     ],
   },
-  // appeals are settled inside the appeal stage, with no stage of their own
+  // appeals are settled inside the appeal stage, with no stage of their own;
+  // the question tried this term is announced by its episode (openingDescription)
   '25-26-1': {
     descriptionMd: '本学期结果公示与申诉合并进行，请在公示期内核对本人结果。',
     stages: [

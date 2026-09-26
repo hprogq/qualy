@@ -3,13 +3,15 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { OFFERED_PHASE_CODES } from '@qualy/plugin-assessment/permissions'
 import { itemsOf } from '../rules.ts'
-import { EPISODES } from '../seed/episodes.ts'
+import { EPISODES, TRIAL_NOTICE } from '../seed/episodes.ts'
 import { SELECTION_DESCRIPTION, SELECTION_PHASES } from '../seed/selection.ts'
 import {
   STAGING,
   minutesOf,
+  openingDescription,
   stageAt,
   stagesOf,
+  voidedDescription,
   type Moment,
   type Stage,
   type Staging,
@@ -55,7 +57,7 @@ describe('the plan of each term', () => {
     const batches = [
       ...plans.map(({ term, staging }) => ({
         name: term,
-        description: staging.descriptionMd,
+        description: openingDescription(staging, EPISODES[term]),
         stages: stagesOf(staging),
       })),
       { name: 'selection', description: SELECTION_DESCRIPTION, stages: SELECTION_PHASES },
@@ -153,6 +155,34 @@ describe('the plan of each term', () => {
       if (kinds.has('reopen')) {
         expect(opens(stageAt(staging, [6, '10:20']), 'assessment.review.reopen'), term).toBe(true)
       }
+    }
+  })
+})
+
+describe('the batch description', () => {
+  const trying = plans.filter(({ term }) =>
+    EPISODES[term].some((episode) => episode.kind === 'item-void'),
+  )
+
+  it('never names the question a term tries on its own', () => {
+    for (const { term, staging } of plans) {
+      expect(staging.descriptionMd, term).not.toContain('志愿服务时长认定')
+    }
+  })
+
+  it('announces the tried question where it is tried, and says it stopped once voided', () => {
+    expect(trying.map(({ term }) => term)).toEqual(['25-26-1'])
+    for (const { term, staging } of plans) {
+      const opening = openingDescription(staging, EPISODES[term])
+      if (!trying.some((one) => one.term === term)) {
+        expect(opening, term).toBe(staging.descriptionMd)
+        continue
+      }
+      expect(opening.split('\n')[0], term).toBe(TRIAL_NOTICE.tried)
+      const voided = voidedDescription(opening)
+      expect(voided, term).not.toContain(TRIAL_NOTICE.tried)
+      expect(voided.split('\n')[0], term).toBe(TRIAL_NOTICE.voided)
+      expect(voided.split('\n').slice(1), term).toEqual(staging.descriptionMd.split('\n'))
     }
   })
 })

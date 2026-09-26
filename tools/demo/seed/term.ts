@@ -20,7 +20,7 @@ import { episodesOf, TRIAL_ITEM, type Episode } from './episodes.ts'
 import { stageProof, stageWorkbook } from './files.ts'
 import { buildTermItems, reviewPolicyOf, scoringConfigOf, type Versions } from './items.ts'
 import { EventQueue } from './queue.ts'
-import { STAGING, type Stage } from './stages.ts'
+import { STAGING, openingDescription, voidedDescription, type Stage } from './stages.ts'
 import type { Student, World } from './world.ts'
 
 // One term, from the batch being set up to its archive.
@@ -192,6 +192,7 @@ export const runTerm = (input: {
     const { world, plan, versions, story, random, persona } = input
     const episodes = episodesOf(plan.term, input.index)
     const staging = STAGING[plan.term]
+    const description = openingDescription(staging, episodes)
     const scoped = staging.scoped
     const assessment = yield* Assessment
     const t = world.tenantId
@@ -208,7 +209,7 @@ export const runTerm = (input: {
         t,
         {
           name: plan.name,
-          descriptionMd: staging.descriptionMd,
+          descriptionMd: description,
           materialRange: plan.material,
           import: { orgNodeIds: [world.grade], userTypeIds: [world.userTypes.student] },
         },
@@ -1553,9 +1554,10 @@ export const runTerm = (input: {
               ),
             ),
           )
+          // the lead voids it, and says so where the batch announced it
           queue.at(addMinutes(at(1, '11:00'), order * 7), 'episode', () =>
-            Effect.asVoid(
-              assessment.setItemStatus(
+            Effect.gen(function* () {
+              yield* assessment.setItemStatus(
                 t,
                 itemOf(TRIAL_ITEM.key).id,
                 {
@@ -1563,8 +1565,17 @@ export const runTerm = (input: {
                   reason: '本题与「社会实践与志愿服务」重复，已停用，请在该题申报',
                 },
                 lead,
-              ),
-            ),
+              )
+              yield* assessment.updateBatch(
+                t,
+                batch.id,
+                {
+                  descriptionMd: voidedDescription(description),
+                  reason: '试行题目已停用，同步更新批次说明',
+                },
+                lead,
+              )
+            }),
           )
           const refiled: { entry?: Filed } = {}
           queue.at(addMinutes(at(1, '20:40'), order * 7), 'episode', () =>

@@ -88,6 +88,16 @@ const practice = (
   filename: `${activity}证明.jpg`,
 })
 
+/**
+ * What the batch description says of the question a term tries: announced
+ * when the batch is set up, and said to have stopped once it is voided, so the
+ * overview never goes on announcing a question marked voided below it.
+ */
+export const TRIAL_NOTICE = {
+  tried: '本学期试行「志愿服务时长认定」，志愿服务可按服务时长申报。',
+  voided: '「志愿服务时长认定」试行已停止，请改在「社会实践与志愿服务」申报。',
+} as const
+
 /** a question some terms asked for a few days, and then voided */
 export const TRIAL_ITEM: ItemSpec = {
   key: 'volunteer-hours',
