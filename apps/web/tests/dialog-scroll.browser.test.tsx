@@ -136,8 +136,9 @@ describe('a dialog that outgrows the window', () => {
   }
 
   // An alert holds a sentence, and a sentence long enough to outgrow a phone
-  // is still to be answered: its two keys stay where the thumb is.
-  it('keeps an alert’s answers in view however long the question is', async () => {
+  // is still to be answered: the question stays above it and its two keys
+  // stay where the thumb is, while the explanation between them scrolls.
+  it('keeps an alert’s question and answers in view however long it runs', async () => {
     await page.viewport(390, 640)
     await mount(
       <ConfirmDialog
@@ -152,7 +153,18 @@ describe('a dialog that outgrows the window', () => {
     )
     await settle()
     const panel = one('[data-slot="alert-dialog-content"]')
+    const header = one('[data-slot="alert-dialog-header"]')
+    const description = one('[data-slot="alert-dialog-description"]')
     expect(panel.scrollHeight).toBeLessThanOrEqual(panel.clientHeight + 1)
+
+    // the explanation is what scrolls, and nothing around it moves
+    expect(description.scrollHeight).toBeGreaterThan(description.clientHeight)
+    description.scrollTop = description.scrollHeight
+    await expect.poll(() => description.scrollTop).toBeGreaterThan(0)
+    expect(header.scrollTop).toBe(0)
+    expect(panel.scrollTop).toBe(0)
+
+    expect(inView(one('[data-slot="alert-dialog-title"]'))).toBe(true)
     expect(inView(one('[data-testid="confirm-accept"]'))).toBe(true)
     expect(inView(one('[data-testid="confirm-dismiss"]'))).toBe(true)
   })

@@ -86,7 +86,8 @@ const styles = stylex.create({
   },
   // A column whose foot keeps its size: an answer that could scroll out of
   // reach is not an answer anybody can give. Whatever outgrows the window
-  // is the question itself, and that is what scrolls.
+  // is the question's explanation, and that is what scrolls - the question
+  // itself stays in view above it.
   content: {
     display: 'flex',
     flexDirection: 'column',
@@ -105,12 +106,14 @@ const styles = stylex.create({
   // narrow-screen cap, which the prop cannot express: a phone gets the small
   // alert's measure whichever size was asked for.
   narrowCap: { maxWidth: { default: 'none', [breakpoints.phone]: '20rem' } },
+  // gives way to the foot, and hands what it is short of to the last row:
+  // the title keeps its lines and the description scrolls under it
   header: {
     display: 'grid',
     minHeight: 0,
     flexShrink: 1,
-    overflowY: 'auto',
-    gridTemplateRows: 'auto 1fr',
+    overflow: 'hidden',
+    gridTemplateRows: 'auto minmax(0, 1fr)',
     placeItems: 'center',
     gap: 6,
     textAlign: 'center',
@@ -120,11 +123,14 @@ const styles = stylex.create({
     textAlign: { default: 'left', [breakpoints.phone]: 'center' },
   },
   headerWithMedia: {
-    gridTemplateRows: 'auto auto 1fr',
+    gridTemplateRows: 'auto auto minmax(0, 1fr)',
     columnGap: 24,
   },
   headerRoomyWithMedia: {
-    gridTemplateRows: { default: 'auto 1fr', [breakpoints.phone]: 'auto auto 1fr' },
+    gridTemplateRows: {
+      default: 'auto minmax(0, 1fr)',
+      [breakpoints.phone]: 'auto auto minmax(0, 1fr)',
+    },
   },
   footer: {
     display: 'flex',
@@ -164,7 +170,12 @@ const styles = stylex.create({
   titleBeside: {
     gridColumnStart: { default: null, [breakpoints.tablet]: 2, [breakpoints.desktop]: 2 },
   },
+  // the one part of an alert that scrolls, filling the row it is given
   description: {
+    alignSelf: 'stretch',
+    minHeight: 0,
+    overflowY: 'auto',
+    overscrollBehavior: 'contain',
     fontSize: 14,
     lineHeight: '1.25rem',
     textWrap: { default: 'pretty', [breakpoints.phone]: 'balance' },
