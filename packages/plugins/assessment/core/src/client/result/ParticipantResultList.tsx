@@ -638,6 +638,360 @@ export function ParticipantResultList({
   const waitingColumn = useWaitingColumn(rows, waitingHead)
   const columns = `${numberColumn} ${personColumn} ${waitingColumn} ${tailColumns}`
 
+  const listSection = (
+    <section aria-label={format(m.participantResultsTab)} {...stylex.props(styles.listColumn)}>
+      <div {...stylex.props(styles.toolbar)}>
+        {narrow ? (
+          <button
+            type="button"
+            data-testid="roster-unit-switch"
+            data-unit={view.unit}
+            data-off-tree={offTree}
+            aria-label={`${format(m.rosterUnits)} ${unitWord}`}
+            aria-haspopup="dialog"
+            {...stylex.props(styles.unitSwitch)}
+            onClick={() => setUnitsOpen(true)}
+          >
+            <ListTreeIcon aria-hidden {...stylex.props(styles.unitSwitchIcon)} />
+            <span {...stylex.props(styles.unitSwitchName)}>{unitWord}</span>
+            <ChevronRightIcon aria-hidden {...stylex.props(styles.unitSwitchIcon)} />
+          </button>
+        ) : treeOpen ? (
+          <Button
+            size="icon"
+            variant="outline"
+            data-testid="roster-tree-toggle"
+            data-open="true"
+            aria-expanded
+            aria-label={format(m.rosterTreeHide)}
+            onClick={() => foldTree(false)}
+          >
+            <PanelLeftCloseIcon aria-hidden />
+          </Button>
+        ) : (
+          // folded away, the control still says which units the list
+          // is of, and brings the tree back
+          <button
+            type="button"
+            data-testid="roster-tree-toggle"
+            data-open="false"
+            data-unit={view.unit}
+            aria-expanded={false}
+            aria-label={`${format(m.rosterTreeShow)} ${unitWord}`}
+            {...stylex.props(styles.unitSwitch)}
+            onClick={() => foldTree(true)}
+          >
+            <PanelLeftOpenIcon aria-hidden {...stylex.props(styles.unitSwitchIcon)} />
+            <span {...stylex.props(styles.unitSwitchName)}>{unitWord}</span>
+          </button>
+        )}
+        <SearchField
+          name="roster-search"
+          value={draft}
+          onChange={setDraft}
+          label={format(m.rosterSearch, { businessNo })}
+          xstyle={styles.search}
+        />
+        <Select
+          value={view.status === '' ? ALL : view.status}
+          onValueChange={(next) =>
+            onView({ status: next === ALL ? '' : (next as 'active' | 'excluded') })
+          }
+        >
+          <SelectTrigger
+            aria-label={format(m.rosterStatusLabel)}
+            data-testid="roster-status"
+            xstyle={styles.choice}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>{format(m.rosterStatusAny)}</SelectItem>
+            <SelectItem value="active">{format(m.participantActive)}</SelectItem>
+            <SelectItem value="excluded">{format(m.excludedBadge)}</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select
+          value={view.waiting === '' ? ALL : view.waiting}
+          onValueChange={(next) =>
+            onView({ waiting: next === ALL ? '' : (next as 'any' | RosterWaiting) })
+          }
+        >
+          <SelectTrigger
+            aria-label={format(m.rosterWaitingLabel)}
+            data-testid="roster-waiting"
+            xstyle={styles.choice}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>{format(m.rosterWaitingAny)}</SelectItem>
+            <SelectItem value="any">{format(m.rosterWaitingSomething)}</SelectItem>
+            {ROSTER_WAITING.map((kind) => (
+              <SelectItem key={kind} value={kind}>
+                {format(WAITING_WORDS[kind])}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={view.sort}
+          onValueChange={(next) => onView({ sort: next as RosterView['sort'] })}
+        >
+          <SelectTrigger
+            aria-label={format(m.rosterSortLabel)}
+            data-testid="roster-sort"
+            xstyle={styles.choice}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="unit">{format(m.rosterSortUnit)}</SelectItem>
+            <SelectItem value="name">{format(m.rosterSortName)}</SelectItem>
+            <SelectItem value="business-no">
+              {format(m.rosterSortBusinessNo, { businessNo })}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+        {participants.isFetching && !participants.isPending && (
+          <Spinner
+            aria-label={format(commonMessages.loading)}
+            className={stylex.props(styles.busy).className}
+          />
+        )}
+      </div>
+      {offTree && (
+        <div
+          data-testid="roster-unit-off-tree"
+          data-unit={view.unit}
+          {...stylex.props(styles.offTree)}
+        >
+          <span {...stylex.props(styles.offTreeName)}>
+            {format(m.rosterUnitNarrowed, {
+              unit: unitName ?? format(m.rosterUnitChosen),
+            })}
+          </span>
+          <Button
+            size="xs"
+            variant="outline"
+            aria-label={format(m.rosterUnitClearLabel)}
+            onClick={() => onView({ unit: '' })}
+          >
+            {format(m.rosterUnitClear)}
+          </Button>
+        </div>
+      )}
+      {/* the rows stand without their totals; why, and the way to ask
+          for them again, said once above them rather than on each row */}
+      {scores.isError ? (
+        <ScoresNotice
+          cause="request"
+          reason={formatError(scores.error)}
+          busy={scores.isFetching}
+          onRetry={() => void scores.refetch()}
+        />
+      ) : (
+        serviceDown && (
+          <ScoresNotice
+            cause="scoring-unavailable"
+            reason={format(m.rosterScoreUnavailable)}
+            busy={scores.isFetching}
+            onRetry={() => void scores.refetch()}
+          />
+        )
+      )}
+      <AsyncSection
+        pending={participants.isPending}
+        error={participants.isError ? formatError(participants.error) : null}
+        loadingLabel={format(commonMessages.loading)}
+        retryLabel={format(commonMessages.retry)}
+        onRetry={() => void participants.refetch()}
+        skeleton={
+          <div {...stylex.props(styles.skFrame)}>
+            {['60%', '45%', '70%', '52%', '64%', '48%'].map((width, index) => (
+              <div key={index} {...stylex.props(styles.skRow, index === 0 && styles.skHead)}>
+                <Skeleton
+                  className={stylex.props(styles.skBone, styles.skWide).className}
+                  width="70%"
+                />
+                <Skeleton className={stylex.props(styles.skBone).className} width={width} />
+                <Skeleton className={stylex.props(styles.skChip, styles.skWide).className} />
+                <Skeleton className={stylex.props(styles.skBone).className} width="60%" />
+              </div>
+            ))}
+          </div>
+        }
+      >
+        <Card data-testid="roster">
+          <Table columns={columns}>
+            <TableHead>
+              <span>{businessNo}</span>
+              <span>{format(m.columnParticipant)}</span>
+              <span>{waitingHead}</span>
+              <span {...stylex.props(styles.headEnd)}>{format(m.rosterColumnScore)}</span>
+              <span />
+            </TableHead>
+            {rows.length === 0 ? (
+              <CardEmpty>{format(narrowed ? m.rosterNoMatch : m.rosterEmpty)}</CardEmpty>
+            ) : (
+              rows.map((row) => {
+                const { steps, path, unknown } = unitPath(row.anchorLineage)
+                const who = (
+                  <span data-testid="participant-who" {...stylex.props(styles.who)}>
+                    <span {...stylex.props(styles.nameWithMark)}>
+                      <span data-testid="participant-name" {...stylex.props(styles.name)}>
+                        {row.displayName}
+                      </span>
+                      {/* taking part is what a roster row is, so only
+                          the exception is said, beside the name it is
+                          about rather than in a column of its own */}
+                      {row.status === 'excluded' && (
+                        <span {...stylex.props(styles.mark)}>
+                          <Status tone="bad" data-testid="participant-excluded">
+                            {format(m.excludedBadge)}
+                          </Status>
+                        </span>
+                      )}
+                      <PlacementMark placement={row.placement} />
+                    </span>
+                    {/* said from the unit's own end: the class tells two
+                        people apart, the college above it rarely does */}
+                    {steps.length > 0 && (
+                      <span
+                        data-testid="participant-unit"
+                        data-unknown={unknown}
+                        title={path}
+                        {...stylex.props(styles.unitLine)}
+                      >
+                        <UnitPath steps={steps} title={path} />
+                      </span>
+                    )}
+                  </span>
+                )
+                return (
+                  <TableRow
+                    key={row.id}
+                    height="compact"
+                    nested
+                    onOpen={() => onOpen(row.id)}
+                    data-testid="participant-row"
+                    data-participant={row.id}
+                    data-participant-status={row.status}
+                  >
+                    {/* across a table the number leads, because that is
+                        what the list is scanned by; stacked, a row is a
+                        person with their facts under them */}
+                    {stacked ? (
+                      <>
+                        <Cell lead>{who}</Cell>
+                        <Cell numeric unlabelled tone={row.businessNo === null ? 'quiet' : 'muted'}>
+                          {row.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
+                        </Cell>
+                      </>
+                    ) : (
+                      <>
+                        <Cell lead numeric tone={row.businessNo === null ? 'quiet' : 'plain'}>
+                          {row.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
+                        </Cell>
+                        <Cell tone="plain" unlabelled>
+                          {who}
+                        </Cell>
+                      </>
+                    )}
+                    {/* in a column, nothing waiting is a dash; stacked
+                        under a name it is nothing at all, since a fact
+                        with no words would only leave its rule behind */}
+                    <Cell unlabelled>
+                      {stacked && !waitsOnAnything(row.filings) ? null : (
+                        <RosterFilings filings={row.filings} />
+                      )}
+                    </Cell>
+                    {/* the total is what the list is scanned by, so
+                        stacked it keeps the end of the row */}
+                    <Cell narrow="end" end unlabelled>
+                      <span {...stylex.props(styles.scoreSeat)}>
+                        <RosterScore
+                          batchId={batchId}
+                          participantId={row.id}
+                          name={row.displayName}
+                          answer={scored.get(row.id)}
+                          answeredAt={scores.dataUpdatedAt}
+                          waiting={scores.isPending && scores.fetchStatus !== 'idle'}
+                          movedAt={movedAt}
+                        />
+                      </span>
+                    </Cell>
+                    {/* the act on one person, where the person is */}
+                    <span {...stylex.props(styles.rowAct)}>
+                      {manageable && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              size="icon-xs"
+                              variant="ghost"
+                              data-testid="participant-actions"
+                              aria-label={format(m.rosterRowActions, { name: row.displayName })}
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              <EllipsisIcon aria-hidden />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onSelect={() => onOpen(row.id)}>
+                              {format(m.participantResultsOpen)}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              data-testid="participant-standing"
+                              onSelect={() =>
+                                row.status === 'excluded'
+                                  ? setStatus.mutate({
+                                      participantId: row.id,
+                                      status: 'active',
+                                    })
+                                  : setExcluding({ id: row.id, name: row.displayName })
+                              }
+                            >
+                              {format(row.status === 'excluded' ? m.restore : m.exclude)}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                    </span>
+                  </TableRow>
+                )
+              })
+            )}
+          </Table>
+          {total > 0 && (
+            <CardFoot>
+              <Pager
+                testId="roster-pager"
+                label={format(m.rosterPagerLabel)}
+                page={page}
+                pageSize={ROSTER_PAGE_SIZE}
+                total={total}
+                disabled={participants.isFetching}
+                summary={format(m.rosterPageSummary, {
+                  from: total === 0 ? 0 : (page - 1) * ROSTER_PAGE_SIZE + 1,
+                  to: (page - 1) * ROSTER_PAGE_SIZE + rows.length,
+                  total,
+                })}
+                onPage={(next) => {
+                  onView({ page: next })
+                  // the pager is at the foot of the list; the next page
+                  // is read from its top
+                  document
+                    .querySelector('[data-testid="roster"]')
+                    ?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+                }}
+              />
+            </CardFoot>
+          )}
+        </Card>
+      </AsyncSection>
+    </section>
+  )
+
   return (
     <div {...stylex.props(styles.panel)}>
       {/* The page's name, how many it holds and what can be done to it, on
@@ -678,382 +1032,31 @@ export function ParticipantResultList({
           onOpen={() => setReconciling(true)}
         />
       )}
-      <ResizableSplit
-        storageKey="qualy:assessment-roster-tree"
-        initial={260}
-        min={220}
-        max={TREE_MOST}
-        from={TWO_COLUMNS}
-        handleLabel={format(m.rosterUnitsResize)}
-        // With room for the tree beside the table, it is simply there,
-        // filling the window's height from where it stands, unless the
-        // reader folded it away. Narrower, it is one control in the
-        // toolbar and a sheet to change the unit - and no side at all, so
-        // no boundary is offered to drag.
-        side={
-          treeBeside ? (
+      {treeBeside ? (
+        <ResizableSplit
+          storageKey="qualy:assessment-roster-tree"
+          initial={260}
+          min={220}
+          max={TREE_MOST}
+          from={TWO_COLUMNS}
+          handleLabel={format(m.rosterUnitsResize)}
+          // with room for the tree beside the table, it is simply there,
+          // filling the window's height from where it stands
+          side={
             <aside {...stylex.props(styles.unitsAside)}>
               <StickyFill>{tree}</StickyFill>
             </aside>
-          ) : null
-        }
-      >
-        <section aria-label={format(m.participantResultsTab)} {...stylex.props(styles.listColumn)}>
-          <div {...stylex.props(styles.toolbar)}>
-            {narrow ? (
-              <button
-                type="button"
-                data-testid="roster-unit-switch"
-                data-unit={view.unit}
-                data-off-tree={offTree}
-                aria-label={`${format(m.rosterUnits)} ${unitWord}`}
-                aria-haspopup="dialog"
-                {...stylex.props(styles.unitSwitch)}
-                onClick={() => setUnitsOpen(true)}
-              >
-                <ListTreeIcon aria-hidden {...stylex.props(styles.unitSwitchIcon)} />
-                <span {...stylex.props(styles.unitSwitchName)}>{unitWord}</span>
-                <ChevronRightIcon aria-hidden {...stylex.props(styles.unitSwitchIcon)} />
-              </button>
-            ) : treeOpen ? (
-              <Button
-                size="icon"
-                variant="outline"
-                data-testid="roster-tree-toggle"
-                data-open="true"
-                aria-expanded
-                aria-label={format(m.rosterTreeHide)}
-                onClick={() => foldTree(false)}
-              >
-                <PanelLeftCloseIcon aria-hidden />
-              </Button>
-            ) : (
-              // folded away, the control still says which units the list
-              // is of, and brings the tree back
-              <button
-                type="button"
-                data-testid="roster-tree-toggle"
-                data-open="false"
-                data-unit={view.unit}
-                aria-expanded={false}
-                aria-label={`${format(m.rosterTreeShow)} ${unitWord}`}
-                {...stylex.props(styles.unitSwitch)}
-                onClick={() => foldTree(true)}
-              >
-                <PanelLeftOpenIcon aria-hidden {...stylex.props(styles.unitSwitchIcon)} />
-                <span {...stylex.props(styles.unitSwitchName)}>{unitWord}</span>
-              </button>
-            )}
-            <SearchField
-              name="roster-search"
-              value={draft}
-              onChange={setDraft}
-              label={format(m.rosterSearch, { businessNo })}
-              xstyle={styles.search}
-            />
-            <Select
-              value={view.status === '' ? ALL : view.status}
-              onValueChange={(next) =>
-                onView({ status: next === ALL ? '' : (next as 'active' | 'excluded') })
-              }
-            >
-              <SelectTrigger
-                aria-label={format(m.rosterStatusLabel)}
-                data-testid="roster-status"
-                xstyle={styles.choice}
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>{format(m.rosterStatusAny)}</SelectItem>
-                <SelectItem value="active">{format(m.participantActive)}</SelectItem>
-                <SelectItem value="excluded">{format(m.excludedBadge)}</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select
-              value={view.waiting === '' ? ALL : view.waiting}
-              onValueChange={(next) =>
-                onView({ waiting: next === ALL ? '' : (next as 'any' | RosterWaiting) })
-              }
-            >
-              <SelectTrigger
-                aria-label={format(m.rosterWaitingLabel)}
-                data-testid="roster-waiting"
-                xstyle={styles.choice}
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>{format(m.rosterWaitingAny)}</SelectItem>
-                <SelectItem value="any">{format(m.rosterWaitingSomething)}</SelectItem>
-                {ROSTER_WAITING.map((kind) => (
-                  <SelectItem key={kind} value={kind}>
-                    {format(WAITING_WORDS[kind])}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={view.sort}
-              onValueChange={(next) => onView({ sort: next as RosterView['sort'] })}
-            >
-              <SelectTrigger
-                aria-label={format(m.rosterSortLabel)}
-                data-testid="roster-sort"
-                xstyle={styles.choice}
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="unit">{format(m.rosterSortUnit)}</SelectItem>
-                <SelectItem value="name">{format(m.rosterSortName)}</SelectItem>
-                <SelectItem value="business-no">
-                  {format(m.rosterSortBusinessNo, { businessNo })}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            {participants.isFetching && !participants.isPending && (
-              <Spinner
-                aria-label={format(commonMessages.loading)}
-                className={stylex.props(styles.busy).className}
-              />
-            )}
-          </div>
-          {offTree && (
-            <div
-              data-testid="roster-unit-off-tree"
-              data-unit={view.unit}
-              {...stylex.props(styles.offTree)}
-            >
-              <span {...stylex.props(styles.offTreeName)}>
-                {format(m.rosterUnitNarrowed, {
-                  unit: unitName ?? format(m.rosterUnitChosen),
-                })}
-              </span>
-              <Button
-                size="xs"
-                variant="outline"
-                aria-label={format(m.rosterUnitClearLabel)}
-                onClick={() => onView({ unit: '' })}
-              >
-                {format(m.rosterUnitClear)}
-              </Button>
-            </div>
-          )}
-          {/* the rows stand without their totals; why, and the way to ask
-              for them again, said once above them rather than on each row */}
-          {scores.isError ? (
-            <ScoresNotice
-              cause="request"
-              reason={formatError(scores.error)}
-              busy={scores.isFetching}
-              onRetry={() => void scores.refetch()}
-            />
-          ) : (
-            serviceDown && (
-              <ScoresNotice
-                cause="scoring-unavailable"
-                reason={format(m.rosterScoreUnavailable)}
-                busy={scores.isFetching}
-                onRetry={() => void scores.refetch()}
-              />
-            )
-          )}
-          <AsyncSection
-            pending={participants.isPending}
-            error={participants.isError ? formatError(participants.error) : null}
-            loadingLabel={format(commonMessages.loading)}
-            retryLabel={format(commonMessages.retry)}
-            onRetry={() => void participants.refetch()}
-            skeleton={
-              <div {...stylex.props(styles.skFrame)}>
-                {['60%', '45%', '70%', '52%', '64%', '48%'].map((width, index) => (
-                  <div key={index} {...stylex.props(styles.skRow, index === 0 && styles.skHead)}>
-                    <Skeleton
-                      className={stylex.props(styles.skBone, styles.skWide).className}
-                      width="70%"
-                    />
-                    <Skeleton className={stylex.props(styles.skBone).className} width={width} />
-                    <Skeleton className={stylex.props(styles.skChip, styles.skWide).className} />
-                    <Skeleton className={stylex.props(styles.skBone).className} width="60%" />
-                  </div>
-                ))}
-              </div>
-            }
-          >
-            <Card data-testid="roster">
-              <Table columns={columns}>
-                <TableHead>
-                  <span>{businessNo}</span>
-                  <span>{format(m.columnParticipant)}</span>
-                  <span>{waitingHead}</span>
-                  <span {...stylex.props(styles.headEnd)}>{format(m.rosterColumnScore)}</span>
-                  <span />
-                </TableHead>
-                {rows.length === 0 ? (
-                  <CardEmpty>{format(narrowed ? m.rosterNoMatch : m.rosterEmpty)}</CardEmpty>
-                ) : (
-                  rows.map((row) => {
-                    const { steps, path, unknown } = unitPath(row.anchorLineage)
-                    const who = (
-                      <span data-testid="participant-who" {...stylex.props(styles.who)}>
-                        <span {...stylex.props(styles.nameWithMark)}>
-                          <span data-testid="participant-name" {...stylex.props(styles.name)}>
-                            {row.displayName}
-                          </span>
-                          {/* taking part is what a roster row is, so only
-                              the exception is said, beside the name it is
-                              about rather than in a column of its own */}
-                          {row.status === 'excluded' && (
-                            <span {...stylex.props(styles.mark)}>
-                              <Status tone="bad" data-testid="participant-excluded">
-                                {format(m.excludedBadge)}
-                              </Status>
-                            </span>
-                          )}
-                          <PlacementMark placement={row.placement} />
-                        </span>
-                        {/* said from the unit's own end: the class tells two
-                            people apart, the college above it rarely does */}
-                        {steps.length > 0 && (
-                          <span
-                            data-testid="participant-unit"
-                            data-unknown={unknown}
-                            title={path}
-                            {...stylex.props(styles.unitLine)}
-                          >
-                            <UnitPath steps={steps} title={path} />
-                          </span>
-                        )}
-                      </span>
-                    )
-                    return (
-                      <TableRow
-                        key={row.id}
-                        height="compact"
-                        nested
-                        onOpen={() => onOpen(row.id)}
-                        data-testid="participant-row"
-                        data-participant={row.id}
-                        data-participant-status={row.status}
-                      >
-                        {/* across a table the number leads, because that is
-                            what the list is scanned by; stacked, a row is a
-                            person with their facts under them */}
-                        {stacked ? (
-                          <>
-                            <Cell lead>{who}</Cell>
-                            <Cell
-                              numeric
-                              unlabelled
-                              tone={row.businessNo === null ? 'quiet' : 'muted'}
-                            >
-                              {row.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
-                            </Cell>
-                          </>
-                        ) : (
-                          <>
-                            <Cell lead numeric tone={row.businessNo === null ? 'quiet' : 'plain'}>
-                              {row.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
-                            </Cell>
-                            <Cell tone="plain" unlabelled>
-                              {who}
-                            </Cell>
-                          </>
-                        )}
-                        {/* in a column, nothing waiting is a dash; stacked
-                            under a name it is nothing at all, since a fact
-                            with no words would only leave its rule behind */}
-                        <Cell unlabelled>
-                          {stacked && !waitsOnAnything(row.filings) ? null : (
-                            <RosterFilings filings={row.filings} />
-                          )}
-                        </Cell>
-                        {/* the total is what the list is scanned by, so
-                            stacked it keeps the end of the row */}
-                        <Cell narrow="end" end unlabelled>
-                          <span {...stylex.props(styles.scoreSeat)}>
-                            <RosterScore
-                              batchId={batchId}
-                              participantId={row.id}
-                              name={row.displayName}
-                              answer={scored.get(row.id)}
-                              answeredAt={scores.dataUpdatedAt}
-                              waiting={scores.isPending && scores.fetchStatus !== 'idle'}
-                              movedAt={movedAt}
-                            />
-                          </span>
-                        </Cell>
-                        {/* the act on one person, where the person is */}
-                        <span {...stylex.props(styles.rowAct)}>
-                          {manageable && (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  size="icon-xs"
-                                  variant="ghost"
-                                  data-testid="participant-actions"
-                                  aria-label={format(m.rosterRowActions, { name: row.displayName })}
-                                  onClick={(event) => event.stopPropagation()}
-                                >
-                                  <EllipsisIcon aria-hidden />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onSelect={() => onOpen(row.id)}>
-                                  {format(m.participantResultsOpen)}
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  data-testid="participant-standing"
-                                  onSelect={() =>
-                                    row.status === 'excluded'
-                                      ? setStatus.mutate({
-                                          participantId: row.id,
-                                          status: 'active',
-                                        })
-                                      : setExcluding({ id: row.id, name: row.displayName })
-                                  }
-                                >
-                                  {format(row.status === 'excluded' ? m.restore : m.exclude)}
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          )}
-                        </span>
-                      </TableRow>
-                    )
-                  })
-                )}
-              </Table>
-              {total > 0 && (
-                <CardFoot>
-                  <Pager
-                    testId="roster-pager"
-                    label={format(m.rosterPagerLabel)}
-                    page={page}
-                    pageSize={ROSTER_PAGE_SIZE}
-                    total={total}
-                    disabled={participants.isFetching}
-                    summary={format(m.rosterPageSummary, {
-                      from: total === 0 ? 0 : (page - 1) * ROSTER_PAGE_SIZE + 1,
-                      to: (page - 1) * ROSTER_PAGE_SIZE + rows.length,
-                      total,
-                    })}
-                    onPage={(next) => {
-                      onView({ page: next })
-                      // the pager is at the foot of the list; the next page
-                      // is read from its top
-                      document
-                        .querySelector('[data-testid="roster"]')
-                        ?.scrollIntoView({ block: 'start', behavior: 'smooth' })
-                    }}
-                  />
-                </CardFoot>
-              )}
-            </Card>
-          </AsyncSection>
-        </section>
-      </ResizableSplit>
+          }
+        >
+          {listSection}
+        </ResizableSplit>
+      ) : (
+        // Folded away, or no room for it: the list alone, the whole width,
+        // with the unit said in the toolbar and a sheet to change it where
+        // the tree cannot come back beside the list. No side at all, so no
+        // boundary is offered to drag.
+        listSection
+      )}
 
       {narrow && (
         <DetailSheet

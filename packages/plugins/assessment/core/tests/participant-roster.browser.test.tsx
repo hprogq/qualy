@@ -1132,8 +1132,13 @@ describe('the room the roster gives its rows', () => {
     await open()
     const tree = page.getByRole('button', { name: '软件学院', exact: true })
     await expect.element(tree).toBeVisible()
+    const beside = page.getByTestId('roster').element().getBoundingClientRect().width
     await page.getByRole('button', { name: '收起组织树' }).click()
     await expect.element(tree).not.toBeInTheDocument()
+    // the list takes the room the tree gave up
+    await expect
+      .poll(() => page.getByTestId('roster').element().getBoundingClientRect().width)
+      .toBeGreaterThan(beside + 150)
     const fold = page.getByTestId('roster-tree-toggle')
     await expect.element(fold).toHaveAttribute('data-open', 'false')
     await expect.element(fold).toHaveAttribute('aria-expanded', 'false')
