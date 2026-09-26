@@ -1647,6 +1647,64 @@ describe('the band', () => {
     })
   }
 
+  // The path used to be the way back's own words, cut from the end: the
+  // group the question is in - the one worth reading - went first, and the
+  // button's name hid the whole path from a screen reader.
+  it('keeps the group a question is in on the line, and its path beside the way back', async () => {
+    const OUTER = '88888888-8888-4888-8888-8888888888e1'
+    const INNER = '88888888-8888-4888-8888-8888888888e2'
+    const group = (id: string, parentGroupId: string, name: string) => ({
+      id,
+      parentGroupId,
+      name,
+      cap: '20',
+      floor: null,
+      sortOrder: 0,
+      itemCount: 0,
+    })
+    await page.viewport(834, 900)
+    try {
+      await open({
+        groups: [
+          paper,
+          group(OUTER, PAPER_ID, '德育素质与思想政治表现综合评价'),
+          group(INNER, OUTER, '学生干部任职与班级社团工作履职情况'),
+        ],
+        items: [{ ...officerItem(), scoreGroupId: INNER }],
+        question: ITEM_ID,
+      })
+      await expect.element(backButton()).toBeVisible()
+      const trail = page.getByTestId('item-trail')
+      await expect.element(trail).toBeVisible()
+      await new Promise((settle) => setTimeout(settle, 300))
+      const box = trail.element().getBoundingClientRect()
+      // the outer groups gave way from the paper down; the group the
+      // question is in kept its whole name, inside the line
+      await expect.element(trail).not.toHaveAttribute('data-folded', '0')
+      const nearest = trail.element().querySelector<HTMLElement>(`[data-crumb="2"]`)!
+      const word = nearest.lastElementChild as HTMLElement
+      expect(word.textContent).toBe('学生干部任职与班级社团工作履职情况')
+      expect(word.scrollWidth).toBeLessThanOrEqual(word.clientWidth + 1)
+      expect(nearest.getBoundingClientRect().right).toBeLessThanOrEqual(box.right + 1)
+      // and the way back keeps its words
+      const back = backButton().element() as HTMLElement
+      expect(back.scrollWidth).toBeLessThanOrEqual(back.clientWidth + 1)
+      // beside the way back, not inside it, and the whole path read out
+      expect(back.contains(trail.element())).toBe(false)
+      expect(trail.element().closest('[aria-hidden="true"]')).toBeNull()
+      expect(trail.element().textContent).toContain(
+        '综合素质测评 / 德育素质与思想政治表现综合评价 / 学生干部任职与班级社团工作履职情况',
+      )
+
+      // with the room to say all of it, all of it is said
+      await page.viewport(1440, 900)
+      await vi.waitFor(() => expect(trail.element().getAttribute('data-folded')).toBe('0'))
+      expect(trail.element().querySelectorAll('[data-crumb]')).toHaveLength(3)
+    } finally {
+      await page.viewport(1280, 900)
+    }
+  })
+
   it('keeps the section heading in the band until a question arriving by address can take it', async () => {
     let release: (() => void) | undefined
     const held = new Promise<void>((resolve) => {

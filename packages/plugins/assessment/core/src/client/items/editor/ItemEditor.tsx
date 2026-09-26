@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { ChevronRightIcon, EllipsisVerticalIcon, EyeIcon } from 'lucide-react'
+import { EllipsisVerticalIcon, EyeIcon } from 'lucide-react'
 import { useApi, useRunApi, usePageQueryState, useUiCollection } from '@qualy/web-runtime'
 import { useI18n, useList } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -36,6 +36,7 @@ import { PreviewSheet } from './PreviewSheet.tsx'
 import { RecognitionSheet } from './RecognitionSheet.tsx'
 import { Dot, Tag } from './Rows.tsx'
 import { RulesTab } from './RulesTab.tsx'
+import { QuestionTrail } from './Trail.tsx'
 import { FailureList, FailureNotice } from './SaveFailure.tsx'
 import { ScoringTab, type ContractState } from './ScoringTab.tsx'
 import {
@@ -105,11 +106,8 @@ const styles = stylex.create({
   // the handling is said again in the first view, where it is changed; a
   // phone keeps the room for the name
   modeSeat: { display: { default: 'inline-flex', [breakpoints.phone]: 'none' }, flexShrink: 0 },
-  trail: { display: 'inline-flex', minWidth: 0, alignItems: 'center', gap: 6 },
-  trailWord: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  // where in the paper the question sits; a phone keeps only the way back
-  crumbWide: { display: { default: 'inline-flex', [breakpoints.phone]: 'none' } },
-  crumbRule: { width: 12, height: 12, flexShrink: 0 },
+  // the way back keeps its words; what gives way on a short line is the path
+  backSeat: { display: 'inline-flex', minWidth: 0, flexShrink: 0 },
   meta: {
     display: 'inline-flex',
     flexShrink: 0,
@@ -306,6 +304,8 @@ export function ItemEditor({
     onHold?.(draft)
   }, [draft, onHold])
 
+  // the band's own box, which is what the question's path measures its room by
+  const [band, setBand] = useState<HTMLDivElement | null>(null)
   const [panelParam, setPanelParam] = usePageQueryState('panel', 'basics', { history: 'replace' })
   const panelShown = panelHeld ?? panelParam
   const area: EditorArea = AREAS.includes(panelShown as EditorArea)
@@ -1299,7 +1299,7 @@ export function ItemEditor({
       data-panel={area}
     >
       <BatchBanner>
-        <div data-testid="item-band">
+        <div ref={setBand} data-testid="item-band">
           <PageHeader
             variant="banner"
             xstyle={styles.bandHead}
@@ -1331,20 +1331,15 @@ export function ItemEditor({
             }
             description={
               <>
-                <BannerBack label={format(m.itemsBack)} onBack={leave}>
-                  <span {...stylex.props(styles.trail)}>
-                    <span {...stylex.props(styles.trailWord)}>{format(m.itemsCrumbRoot)}</span>
-                    {trail.map((name, index) => (
-                      <span
-                        key={`${index}:${name}`}
-                        {...stylex.props(styles.trail, styles.crumbWide)}
-                      >
-                        <ChevronRightIcon aria-hidden {...stylex.props(styles.crumbRule)} />
-                        <span {...stylex.props(styles.trailWord)}>{name}</span>
-                      </span>
-                    ))}
-                  </span>
-                </BannerBack>
+                <span {...stylex.props(styles.backSeat)}>
+                  <BannerBack label={format(m.itemsBack)} onBack={leave}>
+                    {format(m.itemsCrumbRoot)}
+                  </BannerBack>
+                </span>
+                {/* where the question sits, beside the way back rather than
+                    inside it: the button is named for where it goes, and a
+                    path inside it was never read out */}
+                <QuestionTrail key={trail.join('\n')} groups={trail} room={band} />
                 <span
                   {...stylex.props(styles.meta)}
                   data-testid="item-meta"
