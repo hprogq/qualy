@@ -485,18 +485,22 @@ describe('reading somebody’s entries', () => {
     expect(givenUp()!.textContent).toContain(chip.textContent)
   })
 
-  it('reads a question left with only a withdrawn record as empty, the record a filter away', async () => {
+  // Nothing live left under it, the question opens on the record that was
+  // withdrawn rather than on an empty list with the record behind a filter.
+  it('opens a question left with only a withdrawn record on that record', async () => {
     await page.viewport(1440, 900)
     await screen({
       route: `${base}&view=entries&open=${RECORDED_ITEM}`,
       claims: [claim(3, RECORDED_ITEM, 'voided', { source: 'record' })],
     })
-    await expect.element(page.getByTestId('entries-tray')).toBeVisible()
-    expect(page.getByTestId('entries-no-match').elements()).toHaveLength(0)
-    await userEvent.click(document.querySelector('[data-chip="revoked"]')!)
     await expect
       .poll(() => rows().map((row) => row.getAttribute('data-entry')))
       .toEqual([entryId(3)])
+    expect(document.querySelector('[data-chip="revoked"]')?.getAttribute('aria-pressed')).toBe(
+      'true',
+    )
+    expect(page.getByTestId('entries-tray').elements()).toHaveLength(0)
+    expect(page.getByTestId('entries-no-match').elements()).toHaveLength(0)
   })
 
   // What waits on this reader is the server's queue, never a guess from the
