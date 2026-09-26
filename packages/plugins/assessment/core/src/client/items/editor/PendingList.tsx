@@ -3,6 +3,7 @@ import * as stylex from '@stylexjs/stylex'
 import { ChevronDownIcon, ChevronRightIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Popover, PopoverContent, PopoverTrigger } from '@qualy/ui/popover'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { Dot } from './Rows.tsx'
@@ -39,7 +40,21 @@ const styles = stylex.create({
   },
   capsulePending: { color: tokens.warningForeground },
   capsuleError: { color: tokens.danger },
-  capsuleOk: { color: tokens.mutedForeground, cursor: 'default', fontWeight: 400 },
+  // Nothing to do is said on a screen with room for it. A phone's row of
+  // views has none to spare, and the third view was the one pushed out of
+  // sight by a line saying all was well.
+  capsuleOk: {
+    display: { default: 'inline-flex', [breakpoints.phone]: 'none' },
+    color: tokens.mutedForeground,
+    cursor: 'default',
+    fontWeight: 400,
+  },
+  // a phone says how many; the whole sentence heads the list it opens
+  wordsWide: { display: { default: 'inline', [breakpoints.phone]: 'none' } },
+  countNarrow: {
+    display: { default: 'none', [breakpoints.phone]: 'inline' },
+    fontVariantNumeric: 'tabular-nums',
+  },
   panel: { padding: 0 },
   head: {
     display: 'flex',
@@ -190,9 +205,13 @@ export function PendingList({
           data-count={problems.length}
           data-tone={tone}
           data-failed={failed}
+          aria-label={words}
         >
           <Dot tone={tone} />
-          {words}
+          <span {...stylex.props(styles.wordsWide)}>{words}</span>
+          <span aria-hidden {...stylex.props(styles.countNarrow)}>
+            {problems.length}
+          </span>
           <ChevronDownIcon aria-hidden {...stylex.props(styles.icon12)} />
         </button>
       </PopoverTrigger>

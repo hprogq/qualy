@@ -26,8 +26,10 @@ const styles = stylex.create({
     display: 'grid',
     rowGap: 16,
     columnGap: 24,
+    // one column on a phone, and one the phone's width: left implicit, it
+    // took the width of the longest hint in it and ran off the screen
     gridTemplateColumns: {
-      default: null,
+      default: 'minmax(0, 1fr)',
       [breakpoints.tablet]: 'repeat(2, minmax(0, 1fr))',
       [breakpoints.desktop]: 'repeat(2, minmax(0, 1fr))',
     },

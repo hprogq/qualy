@@ -1399,6 +1399,26 @@ describe('the band', () => {
     })
   }
 
+  // A phone's row of views had room for two of the three once a line saying
+  // all was well took its end, and the first view's fields took the width
+  // of their longest hint and ran off the right of the screen.
+  it('keeps every view and every field of a question on a phone screen', async () => {
+    await page.viewport(390, 900)
+    try {
+      await open({ items: [officerItem()], question: ITEM_ID })
+      await expect.element(tab(/基本信息/)).toBeVisible()
+      for (const name of [/基本信息/, /表单与计分/, /记录与审核/]) {
+        const box = tab(name).element().getBoundingClientRect()
+        expect(box.right).toBeLessThanOrEqual(390)
+      }
+      const title = page.getByRole('textbox', { name: '项目名称' })
+      expect(title.element().getBoundingClientRect().right).toBeLessThanOrEqual(390)
+      expect(document.querySelector('[data-testid="pending-none"]')?.checkVisibility()).toBe(false)
+    } finally {
+      await page.viewport(1280, 900)
+    }
+  })
+
   it('keeps the section heading in the band until a question arriving by address can take it', async () => {
     let release: (() => void) | undefined
     const held = new Promise<void>((resolve) => {
