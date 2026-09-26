@@ -1031,3 +1031,163 @@ describe('the roster on the results page', () => {
     expect(addressNow()).not.toContain('list-page=2')
   })
 })
+
+// The roster is a page people work down, so the room it has goes to the
+// people: the waiting column is as wide as what it says, a unit is named
+// from its own end, and the tree beside the list folds away on request.
+describe('the room the roster gives its rows', () => {
+  const SCHOOL = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa10'
+  const GRADE = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa11'
+  const MAJOR = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa12'
+  const DEEP = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa13'
+  const deepUnits = () =>
+    Effect.succeed({
+      units: [
+        { id: SCHOOL, name: '示例大学', parentId: null },
+        { id: COLLEGE, name: '计算机与软件学院', parentId: SCHOOL },
+        { id: GRADE, name: '2023级', parentId: COLLEGE },
+        { id: MAJOR, name: '计算机科学与技术', parentId: GRADE },
+        { id: DEEP, name: '计算机科学与技术2023级1班', parentId: MAJOR },
+      ],
+      userTypes: [],
+    })
+  const deep = (n: number, over: Record<string, unknown> = {}) =>
+    person(n, {
+      anchorLineage: [DEEP, MAJOR, GRADE, COLLEGE, SCHOOL].map((nodeId) => ({
+        nodeId,
+        nodeTypeId: 'unit',
+      })),
+      ...over,
+    })
+  /** the waiting cell's own width, which is its column's */
+  const waitingWidth = () =>
+    page.getByTestId('participant-filings').first().element().parentElement!.getBoundingClientRect()
+      .width
+
+  it('says nothing waits with a dash a reader can hear, in a column only as wide as it needs', async () => {
+    await open({
+      listParticipantAccounts: (request: Request) => pageOf(request, [person(1), person(2)]),
+    })
+    const quiet = page.getByTestId('participant-filings').first()
+    await expect.element(quiet).toHaveAttribute('data-waiting', 'none')
+    // the dash is drawn for the eye; a reader hears words in its place
+    const dash = quiet.element().querySelector('[aria-hidden="true"]')!
+    expect(dash).not.toBeNull()
+    expect((quiet.element().textContent ?? '').replace(dash.textContent ?? '', '').trim()).not.toBe(
+      '',
+    )
+    // nobody on the page waits: the column keeps no more than its heading
+    expect(waitingWidth()).toBeLessThanOrEqual(60)
+  })
+
+  it('widens the waiting column to the page’s longest answer, and no further', async () => {
+    await open({
+      listParticipantAccounts: (request: Request) =>
+        pageOf(request, [
+          person(1, { filings: { ...NONE, inReview: 2, toSupplement: 1 } }),
+          person(2),
+        ]),
+    })
+    const busy = page.getByTestId('participant-filings').first()
+    await expect.element(busy).toHaveAttribute('data-waiting', 'some')
+    const counts = Array.from(busy.element().children).map((one) => one.getBoundingClientRect())
+    // the counts stand on one line, inside their cell
+    expect(new Set(counts.map((one) => Math.round(one.top))).size).toBe(1)
+    const cell = busy.element().parentElement!.getBoundingClientRect()
+    expect(counts.at(-1)!.right).toBeLessThanOrEqual(cell.right + 0.5)
+    expect(waitingWidth()).toBeGreaterThan(60)
+    expect(waitingWidth()).toBeLessThanOrEqual(144)
+  })
+
+  it('names a row’s unit from its own end, folding the parents that do not fit', async () => {
+    await open(
+      {
+        listRosterUnits: deepUnits,
+        listParticipantAccounts: (request: Request) => pageOf(request, [deep(1)]),
+      },
+      undefined,
+      1280 - 224 - 17,
+    )
+    const unit = page.getByTestId('participant-unit').first()
+    await expect
+      .element(unit)
+      .toHaveAttribute(
+        'title',
+        '计算机与软件学院 / 2023级 / 计算机科学与技术 / 计算机科学与技术2023级1班',
+      )
+    const path = unit.getByTestId('unit-path')
+    await expect.element(path).toHaveAttribute('data-clipped', 'true')
+    // the class is on the line; the college, first on the path, is what gave way
+    const line = path.element().getBoundingClientRect()
+    const onLine = (index: number) => {
+      const step = path.element().querySelector(`[data-path-step="${index}"]`)!
+      const box = step.getBoundingClientRect()
+      return box.top < line.bottom - 1 && box.bottom > line.top + 1
+    }
+    expect(onLine(3)).toBe(true)
+    expect(onLine(0)).toBe(false)
+  })
+
+  it('folds the unit tree away on request, and remembers that it did', async () => {
+    await open()
+    const tree = page.getByRole('button', { name: '软件学院', exact: true })
+    await expect.element(tree).toBeVisible()
+    await page.getByRole('button', { name: '收起组织树' }).click()
+    await expect.element(tree).not.toBeInTheDocument()
+    const fold = page.getByTestId('roster-tree-toggle')
+    await expect.element(fold).toHaveAttribute('data-open', 'false')
+    await expect.element(fold).toHaveAttribute('aria-expanded', 'false')
+    expect(localStorage.getItem('qualy:assessment-roster-tree-open')).toBe('0')
+  })
+
+  it('comes back to a folded tree folded, with the unit said in its place', async () => {
+    await open(
+      {},
+      `/assessment/batches/${BATCH_ID}/results?list-unit=${COLLEGE}`,
+      undefined,
+      'zh-CN',
+      { 'qualy:assessment-roster-tree-open': '0' },
+    )
+    await expect
+      .element(page.getByTestId('roster-tree-toggle'))
+      .toHaveAttribute('data-unit', COLLEGE)
+    expect(page.getByRole('button', { name: '软件学院', exact: true }).elements()).toHaveLength(0)
+    await page.getByTestId('roster-tree-toggle').click()
+    await expect.element(page.getByRole('button', { name: '软件学院', exact: true })).toBeVisible()
+  })
+
+  it('keeps each total against the row’s end, beside its menu', async () => {
+    await open()
+    const score = page.getByTestId('participant-score').first()
+    await expect.element(score).toHaveAttribute('data-score', '80.00')
+    // the total's seat, then the cell it stands in
+    const cell = score.element().parentElement!.parentElement!
+    expect(
+      cell.getBoundingClientRect().right - score.element().getBoundingClientRect().right,
+    ).toBeLessThan(2)
+  })
+
+  it('draws no count and no pages over a roster with nobody on it', async () => {
+    await open({ listParticipantAccounts: (request: Request) => pageOf(request, []) })
+    await expect.element(page.getByTestId('roster')).toBeVisible()
+    expect(page.getByTestId('roster-total').elements()).toHaveLength(0)
+    expect(page.getByTestId('roster-pager').elements()).toHaveLength(0)
+  })
+
+  it('leaves a phone row with nothing waiting without an empty fact', async () => {
+    await page.viewport(390, 844)
+    try {
+      await open({
+        listParticipantAccounts: (request: Request) =>
+          pageOf(request, [person(1, { filings: { ...NONE, inReview: 1 } }), person(2)]),
+      })
+      await expect.element(rows().nth(1)).toBeVisible()
+      expect(rows().nth(1).getByTestId('participant-filings').elements()).toHaveLength(0)
+      await expect
+        .element(rows().first().getByTestId('participant-filings'))
+        .toHaveAttribute('data-waiting', 'some')
+    } finally {
+      await page.viewport(1280, 800)
+    }
+  })
+})

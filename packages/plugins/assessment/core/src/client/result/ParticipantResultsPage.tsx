@@ -64,9 +64,10 @@ export default function ParticipantResultsPage() {
   return (
     <BatchScreen
       title={format(m.participantResultsTab)}
-      description={format(m.participantResultsHint)}
-      // an open account speaks through the band at the top, the way an open
-      // question does on the questions page
+      // A data-dense list takes the whole content area and says its own
+      // name in a line over it. An open account speaks through the band at
+      // the top, the way an open question does on the questions page.
+      chrome={participantId === '' ? 'bare' : 'band'}
       banner={participantId === '' ? 'section' : 'open'}
     >
       {(batch) => (

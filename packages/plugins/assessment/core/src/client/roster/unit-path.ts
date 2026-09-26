@@ -11,7 +11,9 @@
 export const UNNAMED = '…'
 
 export interface UnitPath {
-  /** the names from the top down, joined; '' where there is nothing to say */
+  /** the names from the top down, less the root; a nameless step keeps its place */
+  readonly steps: readonly string[]
+  /** the same names joined; '' where there is nothing to say */
   readonly path: string
   /** how many steps on it could not be named */
   readonly unknown: number
@@ -28,8 +30,20 @@ export const unitPathOf = (
 ): UnitPath => {
   const steps = [...lineage].reverse()
   const names = (steps.length > 1 ? steps.slice(1) : steps).map((step) => nameOf(step.nodeId))
+  const said = names.map((name) => name ?? UNNAMED)
   return {
-    path: names.map((name) => name ?? UNNAMED).join(' / '),
+    steps: said,
+    path: said.join(' / '),
     unknown: names.filter((name) => name === undefined).length,
   }
 }
+
+/**
+ * The whole chain, root included, for the panel that shows every level: the
+ * root is left off a line because everybody shares it, not because it is not
+ * where they stand.
+ */
+export const unitChainOf = (
+  lineage: readonly { readonly nodeId: string }[],
+  nameOf: (nodeId: string) => string | undefined,
+): readonly string[] => [...lineage].reverse().map((step) => nameOf(step.nodeId) ?? UNNAMED)

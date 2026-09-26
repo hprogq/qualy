@@ -943,7 +943,6 @@ const i18n = definePluginMessages({
     filterEnded: { id: 'assessment/batch/filter-ended', defaultMessage: 'Ended' },
     endedOn: { id: 'assessment/batch/ended-on', defaultMessage: 'Ended {date}' },
     tabPhases: { id: 'assessment/phase/tab', defaultMessage: 'Stages' },
-    tabRoster: { id: 'assessment/roster/tab', defaultMessage: 'Participants' },
     tabOverview: { id: 'assessment/overview/tab', defaultMessage: 'Overview' },
     overviewHint: {
       id: 'assessment/overview/hint',
@@ -1677,10 +1676,6 @@ const i18n = definePluginMessages({
       defaultMessage: 'Open the account',
     },
     rosterRowActions: rosterRowActionsMessage,
-    participantResultsHint: {
-      id: 'assessment/participant-results/hint',
-      defaultMessage: 'Who takes part, and what the round has decided about each of them.',
-    },
     participantResultsPick: {
       id: 'assessment/participant-results/pick',
       defaultMessage: 'Select a participant to see their account.',
@@ -5751,7 +5746,9 @@ const i18n = definePluginMessages({
     },
     /** the one line a phone gives the unit filter, and what it opens */
     rosterUnitsAll: { id: 'assessment/roster/units-all', defaultMessage: 'Every unit' },
-    rosterUnitsChange: { id: 'assessment/roster/units-change', defaultMessage: 'Change' },
+    /** folding the unit tree away beside the list, and bringing it back */
+    rosterTreeHide: { id: 'assessment/roster/tree-hide', defaultMessage: 'Hide the unit tree' },
+    rosterTreeShow: { id: 'assessment/roster/tree-show', defaultMessage: 'Show the unit tree' },
     rosterUnits: { id: 'assessment/roster/units', defaultMessage: 'Organization unit' },
     /** the unit the list is narrowed to, where the unit tree no longer holds it */
     rosterUnitNarrowed: defineMessage<{ unit: string }>()({
@@ -5938,8 +5935,15 @@ const i18n = definePluginMessages({
       defaultMessage: 'By {businessNo}',
     }),
     rosterColumnWaiting: { id: 'assessment/roster/column-waiting', defaultMessage: 'Waiting on' },
+    /** a row whose claims wait on nothing, as a reader hears the dash */
+    rosterWaitingNone: { id: 'assessment/roster/waiting-none', defaultMessage: 'Nothing waiting' },
     rosterColumnScore: { id: 'assessment/roster/column-score', defaultMessage: 'Current total' },
     rosterNoMatch: { id: 'assessment/roster/no-match', defaultMessage: 'Nobody matches' },
+    /** how many answer the question the list was narrowed by */
+    rosterMatchCount: defineMessage<{ count: number }>()({
+      id: 'assessment/roster/match-count',
+      defaultMessage: '{count, plural, one {# match} other {# matches}}',
+    }),
     rosterPagerLabel: { id: 'assessment/roster/pager', defaultMessage: 'Roster pages' },
     rosterPageSummary: defineMessage<{ from: number; to: number; total: number }>()({
       id: 'assessment/roster/page-summary',

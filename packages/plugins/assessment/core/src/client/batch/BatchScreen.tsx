@@ -106,6 +106,22 @@ const styles = stylex.create({
     flexDirection: 'column',
     gap: 16,
   },
+  // No band: the section says its own name in a line of its own and takes
+  // the whole content area, edge to edge, from the top. What the band's
+  // body would have said about the round - a draft, another clock - still
+  // stands above it, inset the way the section insets its own first line.
+  bareColumn: {
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+  },
+  bareNote: {
+    marginInline: { default: 24, [breakpoints.phone]: 16 },
+    marginTop: { default: 16, [breakpoints.phone]: 12 },
+  },
   draftNote: {
     borderRadius: tokens.radiusMd,
     backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
@@ -150,9 +166,12 @@ export function BatchScreen({
   /**
    * `none` drops the band and the page gutters: the section owns the whole
    * content area and draws its own edges. For a workbench that fills the
-   * screen, where a heading band would only push the work down.
+   * screen, where a heading band would only push the work down. `bare` is
+   * the same room for a section that says its own name in a line of its
+   * own, with what the band's body says about the round - a draft, another
+   * clock - kept above it.
    */
-  chrome?: 'band' | 'none'
+  chrome?: 'band' | 'none' | 'bare'
   /**
    * Which heading the band is showing. A section that opens one of its own
    * rows hands the band to it and says so here; anything it hands over is
@@ -181,6 +200,31 @@ export function BatchScreen({
     staleTime: 30_000,
   })
   const batch = detail.data?.batch
+
+  if (chrome === 'bare') {
+    return (
+      <AsyncSection
+        pending={detail.isPending}
+        error={detail.isError ? formatError(detail.error) : null}
+        loadingLabel={format(commonMessages.loading)}
+        retryLabel={format(commonMessages.retry)}
+        onRetry={() => void detail.refetch()}
+        xstyle={styles.fillColumn}
+      >
+        {batch && (
+          <Reveal className={stylex.props(styles.bareColumn).className}>
+            {batch.status === 'draft' && (
+              <p {...stylex.props(styles.draftNote, styles.bareNote)}>{format(m.draftBanner)}</p>
+            )}
+            <BatchZone zone={batch.timezone}>
+              <ZoneAwayNotice xstyle={styles.bareNote} />
+              {children(batch)}
+            </BatchZone>
+          </Reveal>
+        )}
+      </AsyncSection>
+    )
+  }
 
   if (chrome === 'none') {
     return (

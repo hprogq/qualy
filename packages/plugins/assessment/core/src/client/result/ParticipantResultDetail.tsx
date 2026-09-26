@@ -306,7 +306,7 @@ export function ParticipantResultDetail({
   const unitNames = new Map((units.data?.units ?? []).map((unit) => [unit.id, unit.name] as const))
   const where =
     participant === undefined || units.data === undefined
-      ? { path: '', unknown: 0 }
+      ? { steps: [], path: '', unknown: 0 }
       : unitPathOf(participant.anchorLineage, (nodeId) => unitNames.get(nodeId))
   const kind = (kinds.data?.userTypes ?? []).find((one) => one.id === participant?.userTypeId)
   const dayOf = (iso: string) =>

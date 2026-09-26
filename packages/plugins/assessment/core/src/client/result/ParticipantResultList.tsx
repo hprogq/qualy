@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { ChevronRightIcon, EllipsisIcon } from 'lucide-react'
+import {
+  ChevronRightIcon,
+  EllipsisIcon,
+  ListTreeIcon,
+  PanelLeftCloseIcon,
+  PanelLeftOpenIcon,
+} from 'lucide-react'
 import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
@@ -40,11 +46,12 @@ import { Spinner } from '@qualy/ui/spinner'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useIsBelow, useIsMobile } from '@qualy/ui/use-mobile'
+import { UnitPath } from '@qualy/ui/unit-path'
 import { AddPeopleDialog } from '../roster/AddPeopleDialog.tsx'
 import { ImportDialog } from '../roster/ImportDialog.tsx'
 import { PlacementDialog, type PlacementDecision } from '../roster/PlacementDialog.tsx'
 import { PlacementNotice } from '../roster/PlacementNotice.tsx'
-import { RosterFilings } from '../roster/RosterFilings.tsx'
+import { RosterFilings, useWaitingColumn, waitsOnAnything } from '../roster/RosterFilings.tsx'
 import { RosterScore } from '../roster/RosterScore.tsx'
 import { unitPathOf } from '../roster/unit-path.ts'
 import {
@@ -76,39 +83,58 @@ import type { BatchLiveEvent } from '../../api.ts'
 
 /**
  * The width from which the unit tree stands beside the list rather than
- * folding into one line above it.
+ * folding into one control in the toolbar.
  *
  * Counted from what the table needs, not from where two columns first fit:
- * a laptop's 1280 less the rail (224), the page's margins (48), the tree
- * (300) and the gap (20) leaves the list 688 pixels, which is the number,
- * name and waiting columns plus a total and a menu with room for a name. An
- * inch narrower and the name is what gives.
+ * a laptop's 1280 less the rail (224), a scrollbar's gutter (17), the page's
+ * margins (48), the tree (260) and the gap (20) leaves the list 711 pixels.
+ * The row takes its padding (32) and gaps (64), the number (104), a name
+ * with its unit (160 at least), the waiting counts (144 at most), a total
+ * (120) and a menu (32): 656. An inch narrower and the name is what gives.
  */
 const TWO_COLUMNS = 1280
 
 /**
  * The widest the reader may drag the unit tree.
  *
- * Bounded by the table, not by the tree: the list keeps the row's padding
- * (32) and gaps (64), the number (120), a name's floor (144), room for the
- * longest count's longest word (80), the total (136) and the menu (32), 608
- * in all. At the narrowest width the tree stands beside the list, that
- * leaves it 1280 less the rail (224), a scrollbar's gutter where the system
- * draws one (17), the page's margins (48) and the gap (20), less 608: 363. A
- * width stored in a wider window is held to this too, rather than squeezing
- * the counts out of their column.
+ * Bounded by the table, not by the tree: at the narrowest width the tree
+ * stands beside the list, 1280 less the rail (224), a scrollbar's gutter
+ * (17), the page's margins (48) and the gap (20), less the table's 656,
+ * leaves it 315. A width stored in a wider window is held to this too,
+ * rather than squeezing the menu out of the row.
  */
-const TREE_MOST = 360
+const TREE_MOST = 312
 
 /**
- * The roster's columns: the number it is scanned by, the person, what their
- * claims wait on, the total and the row's menu. The person has a floor and
- * the larger share of what is left, so the counts beside it can never
- * squeeze a name down to nothing. The total is wide enough for the longest
+ * The columns around the waiting one, which is as wide as the page's widest
+ * answer (RosterFilings). The person takes whatever is left over, so on a
+ * wide screen the room goes to the name and its unit rather than to a band
+ * of nothing before the total. The total is wide enough for the longest
  * reason there is none beside the button that asks again; a reason longer
  * still, in some language, takes a second line rather than the button.
  */
-const COLUMNS = '7.5rem minmax(9rem, 3fr) minmax(0, 2fr) 8.5rem 2rem'
+const numberColumn = '6.5rem'
+const personColumn = 'minmax(10rem, 1fr)'
+const tailColumns = '7.5rem 2rem'
+
+/** whether the reader keeps the unit tree open beside the list, remembered per browser */
+const TREE_OPEN_KEY = 'qualy:assessment-roster-tree-open'
+
+const readTreeOpen = (): boolean => {
+  try {
+    return window.localStorage.getItem(TREE_OPEN_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+
+const keepTreeOpen = (open: boolean) => {
+  try {
+    window.localStorage.setItem(TREE_OPEN_KEY, open ? '1' : '0')
+  } catch {
+    // a window that cannot remember starts with the tree open again
+  }
+}
 
 /**
  * A select cannot hold the empty string as a value, so "no narrowing" needs
@@ -147,7 +173,41 @@ const WAITING_WORDS: Record<RosterWaiting, (typeof m)[keyof typeof m]> = {
 const phone = '@media (max-width: 767.98px)'
 
 const styles = stylex.create({
-  panel: { display: 'flex', flexDirection: 'column', gap: 20 },
+  // The whole content area, from the top: the page says its own name on one
+  // line and the list starts under it, rather than under a band, a heading
+  // and a second heading over the list itself.
+  panel: {
+    display: 'flex',
+    minWidth: 0,
+    flexGrow: 1,
+    flexDirection: 'column',
+    gap: 12,
+    paddingInline: { default: 24, [breakpoints.phone]: 16 },
+    paddingTop: { default: 18, [breakpoints.phone]: 14 },
+    paddingBottom: 24,
+  },
+  head: {
+    display: 'flex',
+    minHeight: 34,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 12,
+    rowGap: 8,
+  },
+  title: {
+    margin: 0,
+    fontSize: { default: 18, [breakpoints.phone]: 17 },
+    lineHeight: '1.5rem',
+    fontWeight: 600,
+    letterSpacing: '-0.01em',
+  },
+  count: {
+    fontSize: 13,
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.mutedForeground,
+  },
+  spacer: { flexGrow: 1 },
+  actions: { display: 'flex', flexShrink: 0, alignItems: 'center', gap: 8 },
   unitsAside: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 8 },
   // stacked, it stands against the whole row beside what the row is scanned
   // by, rather than auto-placing itself on the first line; a reader with
@@ -160,36 +220,44 @@ const styles = stylex.create({
     gridRow: { default: null, [phone]: '1 / 3' },
   },
   unitsSeat: { display: 'flex', minHeight: 0, minWidth: 0, flexGrow: 1, flexDirection: 'column' },
-  // The same line the roster of people keeps, and a card like it: which
-  // units the list is of, and the way to change them.
+  // Which units the list is of, as one control in the toolbar: where the
+  // tree is folded away it says the unit and brings the tree back; where
+  // there is no room for a tree it opens it in a sheet. Shaped like the
+  // choices beside it, so the toolbar reads as one row of questions.
   unitSwitch: {
-    display: 'flex',
-    width: '100%',
-    minHeight: 48,
+    display: 'inline-flex',
+    height: 36,
+    maxWidth: { default: '16rem', [breakpoints.phone]: 'none' },
+    width: { default: 'auto', [breakpoints.phone]: '100%' },
+    flexShrink: 1,
+    minWidth: 0,
     alignItems: 'center',
-    gap: 10,
-    paddingInline: 14,
-    paddingBlock: 8,
-    borderWidth: 0,
-    borderRadius: 12,
-    backgroundColor: tokens.surface,
-    boxShadow: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
+    gap: 8,
+    paddingInline: 12,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    borderRadius: tokens.radiusMd,
+    backgroundColor: {
+      default: tokens.input,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 50%, ${tokens.input})`,
+    },
     fontFamily: 'inherit',
+    fontSize: 14,
     textAlign: 'start',
     color: 'inherit',
     cursor: 'pointer',
+    outline: 'none',
+    boxShadow: { default: 'none', ':focus-visible': `0 0 0 2px ${tokens.focusRing}` },
   },
-  unitSwitchWords: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 1 },
   unitSwitchName: {
+    minWidth: 0,
+    flexGrow: 1,
     overflow: 'hidden',
-    fontSize: 14,
-    fontWeight: 600,
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
-  unitSwitchNote: { fontSize: 11.5, color: tokens.mutedForeground },
-  unitSwitchGo: { flexShrink: 0, fontSize: 13, color: tokens.surfaceMutedForeground },
-  unitSwitchIcon: { width: 14, height: 14, flexShrink: 0, color: tokens.mutedForeground },
+  unitSwitchIcon: { width: 15, height: 15, flexShrink: 0, color: tokens.mutedForeground },
   // the unit the list is narrowed to, where the tree no longer holds it
   offTree: {
     display: 'flex',
@@ -204,37 +272,34 @@ const styles = stylex.create({
   treeWaiting: { display: 'flex', flexDirection: 'column', gap: 10, paddingBlock: 8 },
   bone: { height: 14, borderRadius: 4 },
   listColumn: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 10 },
-  listHead: { display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 8 },
-  listTitle: { fontSize: 14, fontWeight: 600 },
-  listCount: { fontSize: 12, fontVariantNumeric: 'tabular-nums', color: tokens.mutedForeground },
-  listSpacer: { flexGrow: 1 },
-  listActions: { display: 'flex', flexShrink: 0, alignItems: 'center', gap: 8 },
   // the search takes what the line has; on a phone the three choices share
   // the next line, each taking its part of it
   toolbar: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  // the search takes what the row leaves the choices, within reason
   search: {
-    width: { default: '15rem', [breakpoints.phone]: '100%' },
-    flexShrink: { default: 0, [breakpoints.phone]: 1 },
+    minWidth: { default: '9rem', [breakpoints.phone]: 0 },
+    maxWidth: { default: '20rem', [breakpoints.phone]: 'none' },
+    width: { default: 'auto', [breakpoints.phone]: '100%' },
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: { default: '10rem', [breakpoints.phone]: 'auto' },
   },
   choice: {
-    width: { default: '9.5rem', [breakpoints.phone]: 'auto' },
+    width: { default: '8.75rem', [breakpoints.phone]: 'auto' },
     flexGrow: { default: 0, [breakpoints.phone]: 1 },
     flexShrink: 0,
     flexBasis: { default: null, [breakpoints.phone]: '0%' },
   },
   busy: { width: 14, height: 14, flexShrink: 0, color: tokens.mutedForeground },
-  who: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 2 },
+  who: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 1, paddingBlock: 4 },
   nameWithMark: { display: 'inline-flex', minWidth: 0, alignItems: 'center', gap: 8 },
   name: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   mark: { display: 'inline-flex', flexShrink: 0 },
-  unitLine: {
-    overflow: 'hidden',
-    fontSize: 12,
-    fontWeight: 400,
-    color: tokens.mutedForeground,
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
+  unitLine: { display: 'flex', minWidth: 0, fontWeight: 400 },
+  // the total's own edge, which is the row's: the digits of every row line
+  // up against the menu, where the eye running down the column meets them
+  scoreSeat: { display: 'flex', minWidth: 0, justifyContent: 'flex-end' },
+  headEnd: { textAlign: 'end' },
   // the table's own shape, greyed: a head and rows of the widths a roster
   // actually has. One slab says only "something is coming".
   skFrame: {
@@ -249,18 +314,22 @@ const styles = stylex.create({
   skRow: {
     display: 'grid',
     alignItems: 'center',
-    gap: 12,
-    gridTemplateColumns: '7.5rem minmax(0, 3fr) minmax(0, 2fr) 8.5rem',
+    gap: 16,
+    gridTemplateColumns: {
+      default: '6.5rem minmax(0, 1fr) 6rem 7.5rem',
+      [breakpoints.phone]: 'minmax(0, 1fr) 4rem',
+    },
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.divider,
-    paddingInline: 14,
-    paddingBlock: 12,
+    paddingInline: 16,
+    paddingBlock: 14,
     ':last-child': { borderBottomWidth: 0 },
   },
-  skHead: { backgroundColor: tokens.surfaceInset },
+  skHead: { backgroundColor: tokens.surfaceInset, paddingBlock: 9 },
+  skWide: { display: { default: null, [breakpoints.phone]: 'none' } },
   skBone: { height: 13, borderRadius: 4 },
-  skChip: { height: 20, width: '4rem', borderRadius: 9999 },
+  skChip: { height: 13, width: '3rem', borderRadius: 4 },
 })
 
 export function ParticipantResultList({
@@ -294,6 +363,14 @@ export function ParticipantResultList({
   const narrow = useIsBelow(TWO_COLUMNS)
   const stacked = useIsMobile()
   const [unitsOpen, setUnitsOpen] = useState(false)
+  // Beside the list the tree can be folded away, for a reader who works
+  // down the whole roster and wants the room; the fold is remembered.
+  const [treeOpen, setTreeOpen] = useState(readTreeOpen)
+  const foldTree = (open: boolean) => {
+    setTreeOpen(open)
+    keepTreeOpen(open)
+  }
+  const treeBeside = !narrow && treeOpen
 
   // Typing does not fire a request per keystroke. What the box last asked
   // the address for is remembered, so an address that moves by itself - the
@@ -410,7 +487,7 @@ export function ParticipantResultList({
   /** a row's unit, said the way the heading over that person's account says it */
   const unitPath = (lineage: readonly { nodeId: string }[]) =>
     units.data === undefined
-      ? { path: '', unknown: 0 }
+      ? { steps: [], path: '', unknown: 0 }
       : unitPathOf(lineage, (nodeId) => byUnit.get(nodeId)?.name)
   const chosenUnit = view.unit === '' ? undefined : byUnit.get(view.unit)
 
@@ -555,98 +632,118 @@ export function ParticipantResultList({
   )
 
   const narrowed = view.q !== '' || view.unit !== '' || view.status !== '' || view.waiting !== ''
+  const unitWord =
+    view.unit === '' ? format(m.rosterUnitsAll) : (unitName ?? format(m.rosterUnitChosen))
+  const waitingHead = format(m.rosterColumnWaiting)
+  const waitingColumn = useWaitingColumn(rows, waitingHead)
+  const columns = `${numberColumn} ${personColumn} ${waitingColumn} ${tailColumns}`
 
   return (
     <div {...stylex.props(styles.panel)}>
+      {/* The page's name, how many it holds and what can be done to it, on
+          one line: the rail already says which section this is, and the bar
+          above it which round, so a band saying it again only pushed the
+          list down. */}
+      <header {...stylex.props(styles.head)}>
+        <h1 {...stylex.props(styles.title)}>{format(m.participantResultsTab)}</h1>
+        {/* how many the list holds, or how many answer what it was asked;
+            an empty list says so itself, below */}
+        {total > 0 && (
+          <span
+            data-testid="roster-total"
+            data-count={total}
+            data-narrowed={narrowed}
+            {...stylex.props(styles.count)}
+          >
+            {format(narrowed ? m.rosterMatchCount : m.participantCount, { count: total })}
+          </span>
+        )}
+        <span {...stylex.props(styles.spacer)} />
+        {manageable && (
+          <span {...stylex.props(styles.actions)}>
+            <Button size="sm" variant="outline" onClick={() => setImporting(true)}>
+              {format(m.importFromOrganization)}
+            </Button>
+            <Button size="sm" onClick={() => setAdding(true)}>
+              {format(m.addPeople)}
+            </Button>
+          </span>
+        )}
+      </header>
       <Feedback message={failure} />
+      {manageable && placements.data !== undefined && (
+        <PlacementNotice
+          changedTotal={placements.data.changedTotal}
+          unavailableTotal={placements.data.unavailableTotal}
+          onOpen={() => setReconciling(true)}
+        />
+      )}
       <ResizableSplit
         storageKey="qualy:assessment-roster-tree"
-        initial={300}
-        min={240}
+        initial={260}
+        min={220}
         max={TREE_MOST}
         from={TWO_COLUMNS}
         handleLabel={format(m.rosterUnitsResize)}
         // With room for the tree beside the table, it is simply there,
-        // filling the window's height from where it stands. Narrower, it is
-        // one line saying which units the list is of, and a sheet to change
-        // them - the shape the roster of people uses - and no side at all,
-        // so no boundary is offered to drag.
+        // filling the window's height from where it stands, unless the
+        // reader folded it away. Narrower, it is one control in the
+        // toolbar and a sheet to change the unit - and no side at all, so
+        // no boundary is offered to drag.
         side={
-          narrow ? null : (
+          treeBeside ? (
             <aside {...stylex.props(styles.unitsAside)}>
               <StickyFill>{tree}</StickyFill>
             </aside>
-          )
+          ) : null
         }
       >
         <section aria-label={format(m.participantResultsTab)} {...stylex.props(styles.listColumn)}>
-          <div {...stylex.props(styles.listHead)}>
-            <h3 {...stylex.props(styles.listTitle)}>{format(m.tabRoster)}</h3>
-            <span data-testid="roster-total" data-count={total} {...stylex.props(styles.listCount)}>
-              {format(m.participantCount, { count: total })}
-            </span>
-            <span {...stylex.props(styles.listSpacer)} />
-            {manageable && (
-              <span {...stylex.props(styles.listActions)}>
-                <Button size="sm" variant="outline" onClick={() => setImporting(true)}>
-                  {format(m.importFromOrganization)}
-                </Button>
-                <Button size="sm" onClick={() => setAdding(true)}>
-                  {format(m.addPeople)}
-                </Button>
-              </span>
-            )}
-          </div>
-          {manageable && placements.data !== undefined && (
-            <PlacementNotice
-              changedTotal={placements.data.changedTotal}
-              unavailableTotal={placements.data.unavailableTotal}
-              onOpen={() => setReconciling(true)}
-            />
-          )}
-          {narrow && (
-            <button
-              type="button"
-              data-testid="roster-unit-switch"
-              data-unit={view.unit}
-              data-off-tree={offTree}
-              {...stylex.props(styles.unitSwitch)}
-              onClick={() => setUnitsOpen(true)}
-            >
-              <span {...stylex.props(styles.unitSwitchWords)}>
-                <span {...stylex.props(styles.unitSwitchName)}>
-                  {view.unit === ''
-                    ? format(m.rosterUnitsAll)
-                    : (unitName ?? format(m.rosterUnitChosen))}
-                </span>
-                <span {...stylex.props(styles.unitSwitchNote)}>{format(m.rosterUnits)}</span>
-              </span>
-              <span {...stylex.props(styles.unitSwitchGo)}>{format(m.rosterUnitsChange)}</span>
-              <ChevronRightIcon aria-hidden {...stylex.props(styles.unitSwitchIcon)} />
-            </button>
-          )}
-          {offTree && (
-            <div
-              data-testid="roster-unit-off-tree"
-              data-unit={view.unit}
-              {...stylex.props(styles.offTree)}
-            >
-              <span {...stylex.props(styles.offTreeName)}>
-                {format(m.rosterUnitNarrowed, {
-                  unit: unitName ?? format(m.rosterUnitChosen),
-                })}
-              </span>
-              <Button
-                size="xs"
-                variant="outline"
-                aria-label={format(m.rosterUnitClearLabel)}
-                onClick={() => onView({ unit: '' })}
-              >
-                {format(m.rosterUnitClear)}
-              </Button>
-            </div>
-          )}
           <div {...stylex.props(styles.toolbar)}>
+            {narrow ? (
+              <button
+                type="button"
+                data-testid="roster-unit-switch"
+                data-unit={view.unit}
+                data-off-tree={offTree}
+                aria-label={`${format(m.rosterUnits)} ${unitWord}`}
+                aria-haspopup="dialog"
+                {...stylex.props(styles.unitSwitch)}
+                onClick={() => setUnitsOpen(true)}
+              >
+                <ListTreeIcon aria-hidden {...stylex.props(styles.unitSwitchIcon)} />
+                <span {...stylex.props(styles.unitSwitchName)}>{unitWord}</span>
+                <ChevronRightIcon aria-hidden {...stylex.props(styles.unitSwitchIcon)} />
+              </button>
+            ) : treeOpen ? (
+              <Button
+                size="icon"
+                variant="outline"
+                data-testid="roster-tree-toggle"
+                data-open="true"
+                aria-expanded
+                aria-label={format(m.rosterTreeHide)}
+                onClick={() => foldTree(false)}
+              >
+                <PanelLeftCloseIcon aria-hidden />
+              </Button>
+            ) : (
+              // folded away, the control still says which units the list
+              // is of, and brings the tree back
+              <button
+                type="button"
+                data-testid="roster-tree-toggle"
+                data-open="false"
+                data-unit={view.unit}
+                aria-expanded={false}
+                aria-label={`${format(m.rosterTreeShow)} ${unitWord}`}
+                {...stylex.props(styles.unitSwitch)}
+                onClick={() => foldTree(true)}
+              >
+                <PanelLeftOpenIcon aria-hidden {...stylex.props(styles.unitSwitchIcon)} />
+                <span {...stylex.props(styles.unitSwitchName)}>{unitWord}</span>
+              </button>
+            )}
             <SearchField
               name="roster-search"
               value={draft}
@@ -722,6 +819,27 @@ export function ParticipantResultList({
               />
             )}
           </div>
+          {offTree && (
+            <div
+              data-testid="roster-unit-off-tree"
+              data-unit={view.unit}
+              {...stylex.props(styles.offTree)}
+            >
+              <span {...stylex.props(styles.offTreeName)}>
+                {format(m.rosterUnitNarrowed, {
+                  unit: unitName ?? format(m.rosterUnitChosen),
+                })}
+              </span>
+              <Button
+                size="xs"
+                variant="outline"
+                aria-label={format(m.rosterUnitClearLabel)}
+                onClick={() => onView({ unit: '' })}
+              >
+                {format(m.rosterUnitClear)}
+              </Button>
+            </div>
+          )}
           {/* the rows stand without their totals; why, and the way to ask
               for them again, said once above them rather than on each row */}
           {scores.isError ? (
@@ -751,9 +869,12 @@ export function ParticipantResultList({
               <div {...stylex.props(styles.skFrame)}>
                 {['60%', '45%', '70%', '52%', '64%', '48%'].map((width, index) => (
                   <div key={index} {...stylex.props(styles.skRow, index === 0 && styles.skHead)}>
-                    <Skeleton className={stylex.props(styles.skBone).className} width="70%" />
+                    <Skeleton
+                      className={stylex.props(styles.skBone, styles.skWide).className}
+                      width="70%"
+                    />
                     <Skeleton className={stylex.props(styles.skBone).className} width={width} />
-                    <Skeleton className={stylex.props(styles.skChip).className} />
+                    <Skeleton className={stylex.props(styles.skChip, styles.skWide).className} />
                     <Skeleton className={stylex.props(styles.skBone).className} width="60%" />
                   </div>
                 ))}
@@ -761,19 +882,19 @@ export function ParticipantResultList({
             }
           >
             <Card data-testid="roster">
-              <Table columns={COLUMNS}>
+              <Table columns={columns}>
                 <TableHead>
                   <span>{businessNo}</span>
                   <span>{format(m.columnParticipant)}</span>
-                  <span>{format(m.rosterColumnWaiting)}</span>
-                  <span>{format(m.rosterColumnScore)}</span>
+                  <span>{waitingHead}</span>
+                  <span {...stylex.props(styles.headEnd)}>{format(m.rosterColumnScore)}</span>
                   <span />
                 </TableHead>
                 {rows.length === 0 ? (
                   <CardEmpty>{format(narrowed ? m.rosterNoMatch : m.rosterEmpty)}</CardEmpty>
                 ) : (
                   rows.map((row) => {
-                    const { path, unknown } = unitPath(row.anchorLineage)
+                    const { steps, path, unknown } = unitPath(row.anchorLineage)
                     const who = (
                       <span data-testid="participant-who" {...stylex.props(styles.who)}>
                         <span {...stylex.props(styles.nameWithMark)}>
@@ -792,14 +913,16 @@ export function ParticipantResultList({
                           )}
                           <PlacementMark placement={row.placement} />
                         </span>
-                        {path !== '' && (
+                        {/* said from the unit's own end: the class tells two
+                            people apart, the college above it rarely does */}
+                        {steps.length > 0 && (
                           <span
                             data-testid="participant-unit"
                             data-unknown={unknown}
                             title={path}
                             {...stylex.props(styles.unitLine)}
                           >
-                            {path}
+                            <UnitPath steps={steps} title={path} />
                           </span>
                         )}
                       </span>
@@ -838,21 +961,28 @@ export function ParticipantResultList({
                             </Cell>
                           </>
                         )}
+                        {/* in a column, nothing waiting is a dash; stacked
+                            under a name it is nothing at all, since a fact
+                            with no words would only leave its rule behind */}
                         <Cell unlabelled>
-                          <RosterFilings filings={row.filings} />
+                          {stacked && !waitsOnAnything(row.filings) ? null : (
+                            <RosterFilings filings={row.filings} />
+                          )}
                         </Cell>
                         {/* the total is what the list is scanned by, so
                             stacked it keeps the end of the row */}
                         <Cell narrow="end" end unlabelled>
-                          <RosterScore
-                            batchId={batchId}
-                            participantId={row.id}
-                            name={row.displayName}
-                            answer={scored.get(row.id)}
-                            answeredAt={scores.dataUpdatedAt}
-                            waiting={scores.isPending && scores.fetchStatus !== 'idle'}
-                            movedAt={movedAt}
-                          />
+                          <span {...stylex.props(styles.scoreSeat)}>
+                            <RosterScore
+                              batchId={batchId}
+                              participantId={row.id}
+                              name={row.displayName}
+                              answer={scored.get(row.id)}
+                              answeredAt={scores.dataUpdatedAt}
+                              waiting={scores.isPending && scores.fetchStatus !== 'idle'}
+                              movedAt={movedAt}
+                            />
+                          </span>
                         </Cell>
                         {/* the act on one person, where the person is */}
                         <span {...stylex.props(styles.rowAct)}>
@@ -895,29 +1025,31 @@ export function ParticipantResultList({
                   })
                 )}
               </Table>
-              <CardFoot>
-                <Pager
-                  testId="roster-pager"
-                  label={format(m.rosterPagerLabel)}
-                  page={page}
-                  pageSize={ROSTER_PAGE_SIZE}
-                  total={total}
-                  disabled={participants.isFetching}
-                  summary={format(m.rosterPageSummary, {
-                    from: total === 0 ? 0 : (page - 1) * ROSTER_PAGE_SIZE + 1,
-                    to: (page - 1) * ROSTER_PAGE_SIZE + rows.length,
-                    total,
-                  })}
-                  onPage={(next) => {
-                    onView({ page: next })
-                    // the pager is at the foot of the list; the next page
-                    // is read from its top
-                    document
-                      .querySelector('[data-testid="roster"]')
-                      ?.scrollIntoView({ block: 'start', behavior: 'smooth' })
-                  }}
-                />
-              </CardFoot>
+              {total > 0 && (
+                <CardFoot>
+                  <Pager
+                    testId="roster-pager"
+                    label={format(m.rosterPagerLabel)}
+                    page={page}
+                    pageSize={ROSTER_PAGE_SIZE}
+                    total={total}
+                    disabled={participants.isFetching}
+                    summary={format(m.rosterPageSummary, {
+                      from: total === 0 ? 0 : (page - 1) * ROSTER_PAGE_SIZE + 1,
+                      to: (page - 1) * ROSTER_PAGE_SIZE + rows.length,
+                      total,
+                    })}
+                    onPage={(next) => {
+                      onView({ page: next })
+                      // the pager is at the foot of the list; the next page
+                      // is read from its top
+                      document
+                        .querySelector('[data-testid="roster"]')
+                        ?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+                    }}
+                  />
+                </CardFoot>
+              )}
             </Card>
           </AsyncSection>
         </section>

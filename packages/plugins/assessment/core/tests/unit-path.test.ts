@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { unitPathOf } from '../src/client/roster/unit-path.ts'
+import { unitChainOf, unitPathOf } from '../src/client/roster/unit-path.ts'
 
 // Where somebody stands, said once for every screen that names it: from the
 // top down, without the root everybody on the round shares, and with a unit
@@ -19,6 +19,7 @@ describe('a participant’s unit path', () => {
     // stored from their own unit up to the root
     const lineage = ['class', 'grade', 'college', 'school'].map(step)
     expect(unitPathOf(lineage, nameOf)).toEqual({
+      steps: ['软件学院', '2023级', '软件2301班'],
       path: '软件学院 / 2023级 / 软件2301班',
       unknown: 0,
     })
@@ -26,10 +27,24 @@ describe('a participant’s unit path', () => {
 
   it('keeps a unit it cannot name in its place', () => {
     const lineage = ['gone', 'college', 'school'].map(step)
-    expect(unitPathOf(lineage, nameOf)).toEqual({ path: '软件学院 / …', unknown: 1 })
+    expect(unitPathOf(lineage, nameOf)).toEqual({
+      steps: ['软件学院', '…'],
+      path: '软件学院 / …',
+      unknown: 1,
+    })
   })
 
   it('names somebody who stands at the root itself', () => {
-    expect(unitPathOf([step('school')], nameOf)).toEqual({ path: '示例大学', unknown: 0 })
+    expect(unitPathOf([step('school')], nameOf)).toEqual({
+      steps: ['示例大学'],
+      path: '示例大学',
+      unknown: 0,
+    })
+  })
+
+  it('keeps the root on the whole chain, which every level is shown on', () => {
+    const lineage = ['class', 'grade', 'college', 'school'].map(step)
+    expect(unitChainOf(lineage, nameOf)).toEqual(['示例大学', '软件学院', '2023级', '软件2301班'])
+    expect(unitChainOf(['gone', 'school'].map(step), nameOf)).toEqual(['示例大学', '…'])
   })
 })
