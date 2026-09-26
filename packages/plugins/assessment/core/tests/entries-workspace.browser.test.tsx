@@ -894,4 +894,50 @@ describe('what a question’s row says at a glance', () => {
     // the one not looked at keeps its news
     expect(news(4)).not.toBeNull()
   })
+
+  // A section's fill is a small pie beside its figure, not a line along the foot
+  // of its row: a full line there is indistinguishable from the rule under it.
+  it('draws a section’s fill beside its figure, full in its own colour', async () => {
+    await page.viewport(1440, 900)
+    await workspace({
+      route: `${base}?open=${itemId(1)}`,
+      items: [question(1, '学业成绩', BAND_A), question(2, '志愿服务', BAND_B)],
+      groups: [group(BAND_A, null, '学业发展', 0), group(BAND_B, null, '思想品德', 1)],
+      stubs: {
+        getMyResult: () =>
+          Effect.succeed({
+            mode: 'provisional',
+            total: '25.00',
+            groups: [
+              { groupId: BAND_A, cap: '20.00', final: '20.00' },
+              { groupId: BAND_B, cap: '20.00', final: '5.00' },
+            ].map((one) => ({
+              ...one,
+              parentGroupId: null,
+              depth: 0,
+              name: one.groupId,
+              itemsTotal: one.final,
+              childrenTotal: '0.00',
+              raw: one.final,
+              floor: null,
+            })),
+            lines: [],
+          }),
+      },
+    })
+    const meter = (id: string) =>
+      document.querySelector(`[data-rail-row="${id}"] [data-testid="section-meter"]`)
+    await expect.poll(() => meter(BAND_A)?.getAttribute('data-full')).toBe('true')
+    expect(meter(BAND_A)?.getAttribute('data-share')).toBe('100')
+    expect(meter(BAND_B)?.getAttribute('data-full')).toBe('false')
+    expect(meter(BAND_B)?.getAttribute('data-share')).toBe('25')
+    // nothing is drawn along the foot of the section's row
+    const row = document.querySelector(`[data-rail-row="${BAND_A}"]`)!.closest('li')!
+    const foot = row.getBoundingClientRect().bottom
+    const lines = [...row.querySelectorAll('span')].filter((span) => {
+      const box = span.getBoundingClientRect()
+      return box.width > 60 && box.height <= 3 && Math.abs(box.bottom - foot) < 3
+    })
+    expect(lines).toHaveLength(0)
+  })
 })

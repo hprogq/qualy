@@ -10,7 +10,7 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { trimAmount } from '../model.ts'
 import type { StructureRow } from '../standing.ts'
-import { UnreadMark } from './marks.tsx'
+import { meterStyles, SectionMeter, UnreadMark } from './marks.tsx'
 import {
   dotOf,
   rowWordOf,
@@ -113,9 +113,7 @@ const styles = stylex.create({
     display: 'block',
     height: '100%',
     borderRadius: 3,
-    backgroundColor: tokens.foreground,
   },
-  segmentFull: { backgroundColor: tokens.warning },
   meta: { fontSize: 11.5, color: tokens.mutedForeground },
   stats: {
     display: 'grid',
@@ -319,15 +317,8 @@ const styles = stylex.create({
   },
   ledgerGot: { fontWeight: 600, color: tokens.successForeground },
   ledgerZero: { fontWeight: 600, color: tokens.mutedForeground },
-  // the section's fill, as a hairline along its foot
-  topBar: {
-    position: 'absolute',
-    left: 0,
-    bottom: -1,
-    height: 2,
-    backgroundColor: tokens.foreground,
-  },
-  topBarFull: { backgroundColor: tokens.warning },
+  // the pie and the figure it draws, side by side
+  ledgerSeat: { display: 'inline-flex', flexShrink: 0, alignItems: 'center', gap: 6 },
   word: {
     flexShrink: 0,
     maxWidth: 88,
@@ -488,13 +479,16 @@ export function StructureRail({
     const cap = capOf(row)
     const got = row.right === '' ? 0 : Number(row.right)
     return (
-      <span {...stylex.props(styles.ledger)} data-scored={scored}>
-        <span {...stylex.props(got === 0 || !scored ? styles.ledgerZero : styles.ledgerGot)}>
-          {scored ? short(row.right === '' ? '0' : row.right) : '–'}
+      <span {...stylex.props(styles.ledgerSeat)}>
+        {scored && cap !== null && cap > 0 && <SectionMeter got={got} cap={cap} />}
+        <span {...stylex.props(styles.ledger)} data-scored={scored}>
+          <span {...stylex.props(got === 0 || !scored ? styles.ledgerZero : styles.ledgerGot)}>
+            {scored ? short(row.right === '' ? '0' : row.right) : '–'}
+          </span>
+          {cap === null
+            ? ` ${format(m.myEntriesPaperUnit)}`
+            : ` / ${format(m.entriesPoints, { value: trimAmount(String(cap)) })}`}
         </span>
-        {cap === null
-          ? ` ${format(m.myEntriesPaperUnit)}`
-          : ` / ${format(m.entriesPoints, { value: trimAmount(String(cap)) })}`}
       </span>
     )
   }
@@ -520,8 +514,6 @@ export function StructureRail({
           const on = selectedId === row.id
           const indent = GUTTER + row.depth * INDENT
           if (row.kind === 'group') {
-            const cap = capOf(row)
-            const got = row.right === '' ? 0 : Number(row.right)
             const isFolded = folded.has(row.id)
             const top = row.depth === 0
             return (
@@ -581,13 +573,6 @@ export function StructureRail({
                   <span {...stylex.props(styles.spacer)} />
                   {ledgerOf(row)}
                 </button>
-                {top && cap !== null && cap > 0 && scored && (
-                  <span
-                    aria-hidden
-                    {...stylex.props(styles.topBar, got >= cap && styles.topBarFull)}
-                    style={{ width: `${Math.max(0, Math.min(100, (got / cap) * 100))}%` }}
-                  />
-                )}
               </li>
             )
           }
@@ -700,7 +685,10 @@ export function StructureRail({
                     style={{ flexGrow: cap, flexBasis: 0 }}
                   >
                     <span
-                      {...stylex.props(styles.segmentFill, full && styles.segmentFull)}
+                      {...stylex.props(
+                        styles.segmentFill,
+                        full ? meterStyles.full : meterStyles.fill,
+                      )}
                       style={{
                         width: `${scored ? Math.max(0, Math.min(100, (part / cap) * 100)) : 0}%`,
                       }}

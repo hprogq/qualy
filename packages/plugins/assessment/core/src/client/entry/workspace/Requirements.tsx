@@ -5,6 +5,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { recordedOnly, trimAmount, type EntryDto, type ItemDto } from '../model.ts'
 import { useCalcLine } from './calc.ts'
+import { meterStyles } from './marks.tsx'
 import { chainNamesOf, type StructureRow } from '../standing.ts'
 import { chainOf, short, two, type Outline } from './model.ts'
 
@@ -61,8 +62,7 @@ const styles = stylex.create({
     backgroundColor: tokens.surfaceMuted,
   },
   barThin: { height: 3 },
-  barFill: { borderRadius: 2, backgroundColor: tokens.foreground },
-  barFull: { backgroundColor: tokens.warning },
+  barFill: { display: 'block', borderRadius: 2 },
   chain: { display: 'flex', flexDirection: 'column', gap: 12 },
   section: {
     position: 'relative',
@@ -212,7 +212,7 @@ export function Requirements({
             </div>
             <span {...stylex.props(styles.bar)}>
               <span
-                {...stylex.props(styles.barFill)}
+                {...stylex.props(styles.barFill, meterStyles.fill)}
                 style={{ width: `${Math.min(100, (used / Math.max(1, item.maxEntries)) * 100)}%` }}
               />
             </span>
@@ -271,7 +271,10 @@ export function Requirements({
                   {cap !== null && cap > 0 && (
                     <span {...stylex.props(styles.bar, styles.barThin)}>
                       <span
-                        {...stylex.props(styles.barFill, full && styles.barFull)}
+                        {...stylex.props(
+                          styles.barFill,
+                          full ? meterStyles.full : meterStyles.fill,
+                        )}
                         style={{
                           width: `${scored ? Math.max(0, Math.min(100, (got / cap) * 100)) : 0}%`,
                         }}

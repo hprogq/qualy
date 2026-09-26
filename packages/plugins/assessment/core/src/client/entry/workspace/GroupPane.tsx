@@ -6,7 +6,7 @@ import { assessmentMessages as m } from '../../i18n.ts'
 import { trimAmount, type EntryDto } from '../model.ts'
 import type { StructureRow } from '../standing.ts'
 import { useCalcLine } from './calc.ts'
-import { UnreadMark } from './marks.tsx'
+import { meterStyles, SectionMeter, UnreadMark } from './marks.tsx'
 import {
   chainOf,
   dotOf,
@@ -95,9 +95,7 @@ const styles = stylex.create({
     display: 'block',
     height: '100%',
     borderRadius: 2,
-    backgroundColor: tokens.foreground,
   },
-  barFull: { backgroundColor: tokens.warning },
   facts: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -338,9 +336,9 @@ export function GroupPane({
           </span>
         </div>
         {cap !== null && cap > 0 && (
-          <span {...stylex.props(styles.bar)}>
+          <span {...stylex.props(styles.bar)} data-testid="section-bar" data-full={full}>
             <span
-              {...stylex.props(styles.barFill, full && styles.barFull)}
+              {...stylex.props(styles.barFill, full ? meterStyles.full : meterStyles.fill)}
               style={{ width: `${scored ? Math.max(0, Math.min(100, (got / cap) * 100)) : 0}%` }}
             />
           </span>
@@ -376,6 +374,9 @@ export function GroupPane({
                   <span {...stylex.props(styles.subNo)}>{outline.numbers.get(one.id)}</span>
                   <span {...stylex.props(styles.subName)}>{one.name}</span>
                   <span {...stylex.props(styles.spacer)} />
+                  {scored && subCap !== null && subCap > 0 && (
+                    <SectionMeter got={one.right === '' ? 0 : Number(one.right)} cap={subCap} />
+                  )}
                   <span {...stylex.props(styles.subLedger)} data-scored={scored}>
                     <b>{scored ? short(one.right === '' ? '0' : one.right) : '–'}</b>
                     <span {...stylex.props(styles.muted)}>

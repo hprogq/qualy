@@ -4,12 +4,21 @@ import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../../i18n.ts'
 
-// Small marks the workspace sets beside a row's name.
+// Two small marks the workspace sets beside a row's name.
 //
 // The dot at the head of a question's row says where it stands, and nothing
 // else: news the reader has not looked at is a word of its own after the
 // name, so opening the question takes the news away and leaves the standing
 // exactly as it was.
+//
+// A section's fill is a small pie beside its figure rather than a line under
+// its row: a line along the foot of a row reads as the rule between two
+// rows, and a full one reads as nothing else. A pie rather than a ring,
+// because a part-drawn ring is what a screen shows while it is loading.
+
+/** the wedge is drawn as a stroke as wide as its own radius, twice over */
+const WEDGE = 2.5
+const ROUND = 2 * Math.PI * WEDGE
 
 const styles = stylex.create({
   news: {
@@ -26,6 +35,10 @@ const styles = stylex.create({
     letterSpacing: '0.02em',
     color: tokens.danger,
   },
+  pie: { width: 14, height: 14, flexShrink: 0 },
+  rim: { stroke: `color-mix(in oklab, ${tokens.foreground} 45%, ${tokens.background})` },
+  wedge: { stroke: `color-mix(in oklab, ${tokens.foreground} 45%, ${tokens.background})` },
+  full: { stroke: tokens.success },
 })
 
 /** the one mark of news the reader has not looked at; the name carries the rest */
@@ -36,5 +49,53 @@ export function UnreadMark() {
       <span aria-hidden>{format(m.rowUnreadMark)}</span>
       <VisuallyHidden>{format(m.rowUnread)}</VisuallyHidden>
     </span>
+  )
+}
+
+/** the fill a bar is drawn in: full in the colour of what counts, the rest quiet */
+export const meterStyles = stylex.create({
+  fill: { backgroundColor: `color-mix(in oklab, ${tokens.foreground} 58%, ${tokens.background})` },
+  full: { backgroundColor: tokens.success },
+})
+
+/**
+ * How far a section has got against its limit, as a pie beside its figure.
+ * The figure itself is said in words next to it; the pie is that figure
+ * drawn, so it is hidden from assistive technology.
+ */
+export function SectionMeter({ got, cap }: { got: number; cap: number }) {
+  const share = cap <= 0 ? 0 : Math.max(0, Math.min(1, got / cap))
+  const full = got >= cap
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      aria-hidden
+      data-testid="section-meter"
+      data-share={Math.round(share * 100)}
+      data-full={full}
+      {...stylex.props(styles.pie)}
+    >
+      <circle
+        cx="7"
+        cy="7"
+        r="6"
+        fill="none"
+        strokeWidth="1.25"
+        {...stylex.props(styles.rim, full && styles.full)}
+      />
+      {share > 0 && (
+        <circle
+          cx="7"
+          cy="7"
+          r={WEDGE}
+          fill="none"
+          strokeWidth={WEDGE * 2}
+          strokeDasharray={ROUND}
+          strokeDashoffset={ROUND * (1 - share)}
+          transform="rotate(-90 7 7)"
+          {...stylex.props(styles.wedge, full && styles.full)}
+        />
+      )}
+    </svg>
   )
 }
