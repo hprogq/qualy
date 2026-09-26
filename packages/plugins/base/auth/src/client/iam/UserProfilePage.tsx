@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { PageLink, useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -7,6 +8,7 @@ import { authTerms } from '@qualy/auth-contract/terms'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
+import { Button } from '@qualy/ui/button'
 import {
   Card,
   CardEmpty,
@@ -24,6 +26,7 @@ import { iamMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
 import { PlacementPath } from './users/PlacementPath.tsx'
 import { EmailWithStanding } from './person-facts.tsx'
+import { AccountFieldDialog } from './users/AccountFieldDialog.tsx'
 
 // The person, stated: what the directory holds about them, and where each
 // of the other sections picks up. Editing is the banner's, because it edits
@@ -70,6 +73,19 @@ const styles = stylex.create({
     lineHeight: '1.25rem',
     color: tokens.mutedForeground,
   },
+  // what the line says, and at its far end the way to change it
+  valueLine: {
+    display: 'flex',
+    flexGrow: 1,
+    minWidth: 0,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 8,
+    rowGap: 4,
+  },
+  missing: { color: tokens.warningForeground },
+  lineActions: { display: 'flex', gap: 4, marginInlineStart: 'auto' },
+  aside: { fontSize: 12, color: tokens.mutedForeground },
   link: {
     fontSize: '0.75rem',
     lineHeight: '1rem',
@@ -90,6 +106,11 @@ export default function UserProfilePage() {
   const record = user.data?.user
   const path = user.data?.orgPath ?? []
   const roles = user.data?.roles ?? []
+  // the account's fields are set here only by somebody who may change the
+  // account, and never the system account's, which is provisioned
+  const system = user.data?.placement.mode === 'tenant-root'
+  const accountFields = (user.data?.accountManageable ?? false) && !system
+  const [setting, setSetting] = useState<'email' | 'businessNo' | null>(null)
   const when = (iso: string) =>
     new Intl.DateTimeFormat(locale, {
       month: 'long',
@@ -116,14 +137,61 @@ export default function UserProfilePage() {
                 <DefList>
                   <DefLine label={format(m.nameLabel)}>{record.displayName}</DefLine>
                   <DefLine label={businessNoWord}>
-                    {record.businessNo ??
-                      format(m.personNoBusinessNo, { businessNo: businessNoWord })}
+                    <span
+                      data-testid="profile-business-no"
+                      data-state={record.businessNo === null ? 'none' : 'set'}
+                      {...stylex.props(styles.valueLine)}
+                    >
+                      {record.businessNo === null ? (
+                        <span {...stylex.props(styles.missing)}>{format(m.fieldUnset)}</span>
+                      ) : (
+                        record.businessNo
+                      )}
+                      {record.businessNo === null && accountFields && (
+                        <span {...stylex.props(styles.lineActions)}>
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            onClick={() => setSetting('businessNo')}
+                          >
+                            {format(m.emailSetAction)}
+                          </Button>
+                        </span>
+                      )}
+                    </span>
                   </DefLine>
                   <DefLine label={format(m.emailLabel)}>
-                    <EmailWithStanding
-                      email={record.email}
-                      verified={record.emailVerifiedAt !== null}
-                    />
+                    <span
+                      data-testid="profile-email"
+                      data-email-state={
+                        record.email === null
+                          ? 'none'
+                          : record.emailVerifiedAt === null
+                            ? 'unverified'
+                            : 'verified'
+                      }
+                      {...stylex.props(styles.valueLine)}
+                    >
+                      {record.email === null ? (
+                        <span {...stylex.props(styles.missing)}>{format(m.fieldUnset)}</span>
+                      ) : (
+                        <EmailWithStanding
+                          email={record.email}
+                          verified={record.emailVerifiedAt !== null}
+                        />
+                      )}
+                      {accountFields ? (
+                        <span {...stylex.props(styles.lineActions)}>
+                          <Button size="xs" variant="ghost" onClick={() => setSetting('email')}>
+                            {format(record.email === null ? m.emailSetAction : m.emailChangeAction)}
+                          </Button>
+                        </span>
+                      ) : (
+                        system && (
+                          <span {...stylex.props(styles.aside)}>{format(m.emailSystemShort)}</span>
+                        )
+                      )}
+                    </span>
                   </DefLine>
                   <DefLine label={format(m.userTypeLabel)}>{record.userType.name}</DefLine>
                   <DefLine label={format(m.columnStatus)}>
@@ -191,6 +259,15 @@ export default function UserProfilePage() {
           </>
         )}
       </AsyncSection>
+      {setting !== null && record && (
+        <AccountFieldDialog
+          userId={userId}
+          field={setting}
+          current={setting === 'email' ? record.email : record.businessNo}
+          version={record.version}
+          onClose={() => setSetting(null)}
+        />
+      )}
     </div>
   )
 }

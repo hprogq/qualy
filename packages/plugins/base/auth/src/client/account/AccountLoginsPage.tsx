@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import {
+  PageLink,
   useApi,
   useApiQuery,
   usePageHref,
@@ -13,6 +14,7 @@ import {
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection, ConfirmDialog } from '@qualy/ui/admin'
 import { Alert, AlertTitle } from '@qualy/ui/alert'
 import {
@@ -50,6 +52,7 @@ const styles = stylex.create({
     gap: 4,
     marginInlineStart: { default: null, [breakpoints.phone]: 'auto' },
   },
+  quiet: { fontSize: 12, color: tokens.mutedForeground },
 })
 
 export default function AccountLoginsPage() {
@@ -62,6 +65,8 @@ export default function AccountLoginsPage() {
   const [releasing, setReleasing] = useState<Entrance | null>(null)
   const [searchParams] = useSearchParams()
   const here = usePageHref('auth/account-logins')
+  // where the reader sets their own address, when this assembly has the page
+  const securityHref = usePageHref('auth/account-security')
   // another way in is one for whoever holds the session: they show it is them first
   const reauthentication = useReauthentication(here)
   // only something shaped like a code is read from the address
@@ -133,6 +138,14 @@ export default function AccountLoginsPage() {
               </TableHead>
               {entrances.map((entrance) => {
                 const bound = entrance.bound
+                // a door that finds the reader by a field they do not have yet
+                const missing =
+                  entrance.resolution?.mode === 'user-field' &&
+                  (entrance.resolution.field === 'email'
+                    ? self.data?.email == null
+                    : self.data?.businessNo == null)
+                    ? entrance.resolution.field
+                    : null
                 return (
                   <TableRow
                     key={entrance.providerId}
@@ -164,6 +177,20 @@ export default function AccountLoginsPage() {
                         opposite the name rather than among the facts */}
                     <Cell narrow="end">
                       <span {...stylex.props(styles.end)}>
+                        {/* the reader sets their own address on the security
+                            page; their number is the directory's to give */}
+                        {missing === 'email' && securityHref !== undefined && (
+                          <Button size="xs" variant="ghost" asChild>
+                            <PageLink page="auth/account-security">
+                              {format(m.accountGoSet)}
+                            </PageLink>
+                          </Button>
+                        )}
+                        {missing === 'businessNo' && (
+                          <span {...stylex.props(styles.quiet)}>
+                            {format(m.accountAskAdministrator)}
+                          </span>
+                        )}
                         {entrance.bindHref !== null && (
                           <Button
                             size="xs"

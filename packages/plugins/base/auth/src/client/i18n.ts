@@ -53,6 +53,18 @@ const businessNoMissingMessage = defineMessage<{ businessNo: string }>()({
   id: 'auth/person/business-no-missing',
   defaultMessage: 'No {businessNo} yet',
 })
+const businessNoSetTitleMessage = defineMessage<{ businessNo: string }>()({
+  id: 'auth/person/business-no-set-title',
+  defaultMessage: 'Add {businessNo}',
+})
+const businessNoChangeTitleMessage = defineMessage<{ businessNo: string }>()({
+  id: 'auth/person/business-no-change-title',
+  defaultMessage: 'Change {businessNo}',
+})
+const businessNoChangeConsequenceMessage = defineMessage<{ businessNo: string }>()({
+  id: 'auth/person/business-no-change-consequence',
+  defaultMessage: 'Ways in by {businessNo} use the new value',
+})
 const jumpLabelMessage = defineMessage<{ businessNo: string }>()({
   id: 'auth/users/jump',
   defaultMessage: 'Name or {businessNo}',
@@ -838,6 +850,11 @@ const i18n = definePluginMessages({
     accountNotBound: { id: 'auth/account/not-bound', defaultMessage: 'Not bound yet' },
     accountUnbind: { id: 'auth/account/unbind', defaultMessage: 'Unbind' },
     accountBind: { id: 'auth/account/bind', defaultMessage: 'Bind' },
+    accountGoSet: { id: 'auth/account/go-set', defaultMessage: 'Add it' },
+    accountAskAdministrator: {
+      id: 'auth/account/ask-administrator',
+      defaultMessage: 'Ask an administrator',
+    },
     accountSecurity: { id: 'auth/account/security', defaultMessage: 'Security' },
     passwordSection: { id: 'auth/account/password', defaultMessage: 'Password' },
     currentPassword: { id: 'auth/account/current-password', defaultMessage: 'Current password' },
@@ -1078,10 +1095,16 @@ const i18n = definePluginMessages({
     },
     byBusinessNo: byBusinessNoMessage,
     businessNoMissing: businessNoMissingMessage,
-    emailMissing: {
-      id: 'auth/person/email-missing',
-      defaultMessage: 'No email yet; add one in the profile first',
+    emailMissing: { id: 'auth/person/email-missing', defaultMessage: 'No email yet' },
+    businessNoSetTitle: businessNoSetTitleMessage,
+    businessNoChangeTitle: businessNoChangeTitleMessage,
+    businessNoChangeConsequence: businessNoChangeConsequenceMessage,
+    emailChangeConsequence: {
+      id: 'auth/person/email-change-consequence',
+      defaultMessage: 'The new address needs verifying, and they may have to sign in again',
     },
+    fieldUnset: { id: 'auth/person/field-unset', defaultMessage: 'Not set' },
+    emailSystemShort: { id: 'auth/person/email-system', defaultMessage: 'Set by the deployment' },
     fromEmail: { id: 'auth/person/from-email', defaultMessage: 'the person’s email' },
     credentialSet: { id: 'auth/person/credential-set', defaultMessage: 'Password set' },
     credentialUnset: { id: 'auth/person/credential-unset', defaultMessage: 'No password yet' },

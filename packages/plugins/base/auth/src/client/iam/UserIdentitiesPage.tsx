@@ -12,6 +12,8 @@ import {
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import { useTerm } from '@qualy/plugin-settings/client/terms'
+import { authTerms } from '@qualy/auth-contract/terms'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection, ConfirmDialog, Feedback, Field, FormDialog } from '@qualy/ui/admin'
@@ -36,6 +38,7 @@ import { needsReauthentication, useReauthentication } from '../account/Reauthent
 import { PasswordChecklist } from '../password/PasswordChecklist.tsx'
 import { usePasswordChecks } from '../password/checks.ts'
 import { EntranceAccount } from './person-facts.tsx'
+import { AccountFieldDialog } from './users/AccountFieldDialog.tsx'
 import { instantWords } from '../when.ts'
 
 // How one person gets in, as somebody administering them reads it.
@@ -77,6 +80,9 @@ export default function UserIdentitiesPage() {
   const entrancesHref = usePageHref('auth/login-methods')
   const [editing, setEditing] = useState<Entrance | null>(null)
   const [revoking, setRevoking] = useState<Entrance | null>(null)
+  // a field a door finds the person by, being filled in where it was missing
+  const [filling, setFilling] = useState<'email' | 'businessNo' | null>(null)
+  const businessNoWord = useTerm(authTerms.businessNumber)
 
   const found = useQuery(query.identity.listUserEntrances.queryOptions({ params: { userId } }))
   // the fields a door may find the person by are the person's own
@@ -85,6 +91,8 @@ export default function UserIdentitiesPage() {
   const manageable = found.data?.manageable ?? false
   const record = person.data?.user
   const when = (iso: string) => instantWords(locale, iso)
+  // the system account's fields are provisioned, and never missing
+  const system = person.data?.placement.mode === 'tenant-root'
 
   const revoke = useMutation({
     mutationFn: (entrance: Entrance) =>
@@ -154,6 +162,16 @@ export default function UserIdentitiesPage() {
                   entrance.binding?.mode === 'managed' &&
                   resolution?.mode === 'user-field' &&
                   fieldValue(resolution.field) !== null
+                // the field it finds them by is not there yet: the way on is
+                // to fill it in, here, rather than on another page
+                const missing =
+                  manageable &&
+                  !system &&
+                  entrance.admits &&
+                  resolution?.mode === 'user-field' &&
+                  fieldValue(resolution.field) === null
+                    ? resolution.field
+                    : null
                 return (
                   <TableRow
                     key={entrance.providerId}
@@ -199,6 +217,13 @@ export default function UserIdentitiesPage() {
                         opposite the name rather than among the facts */}
                     <Cell narrow="end">
                       <span {...stylex.props(styles.end)}>
+                        {missing !== null && (
+                          <Button size="xs" variant="ghost" onClick={() => setFilling(missing)}>
+                            {missing === 'email'
+                              ? format(m.emailSetTitle)
+                              : format(m.businessNoSetTitle, { businessNo: businessNoWord })}
+                          </Button>
+                        )}
                         {settable && (
                           <Button size="xs" variant="ghost" onClick={() => setEditing(entrance)}>
                             {format(
@@ -239,6 +264,16 @@ export default function UserIdentitiesPage() {
                 : '',
           }}
           onClose={() => setEditing(null)}
+        />
+      )}
+
+      {filling !== null && record && (
+        <AccountFieldDialog
+          userId={userId}
+          field={filling}
+          current={null}
+          version={record.version}
+          onClose={() => setFilling(null)}
         />
       )}
 

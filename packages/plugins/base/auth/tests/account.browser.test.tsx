@@ -153,6 +153,54 @@ describe('the reader’s ways in', () => {
   })
 })
 
+describe('a way in waiting on a field the reader lacks', () => {
+  it('leads to where the reader sets their address, and names who sets their number', async () => {
+    const campus: Entrance = {
+      providerId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      name: '统一认证',
+      type: 'cas',
+      resolution: { mode: 'user-field', field: 'businessNo' },
+      binding: null,
+      lastSignInAt: null,
+      bound: null,
+      thisSession: false,
+      bindHref: null,
+      unbindable: false,
+    }
+    await renderScreen({
+      client: fakeClient({
+        ...stubs([{ ...password, bound: null }, campus]),
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              viewer: 'authenticated',
+              pages: [
+                { id: 'auth/account-security', path: '/account/security', layout: 'account' },
+              ],
+            }),
+        },
+        self: {
+          ...stubs([]).self,
+          getSelf: () =>
+            Effect.succeed(me({ email: null, emailVerified: false, businessNo: null })),
+          listSelfEntrances: () =>
+            Effect.succeed({ entrances: [{ ...password, bound: null }, campus] }),
+        },
+      }),
+      route: '/account/logins',
+      children: <AccountLoginsPage />,
+    })
+    const local = page.getByTestId('account-entrance').first()
+    await expect.element(local).toBeInTheDocument()
+    // the address is the reader's own to set, on the page where they set it
+    await expect.element(local.getByRole('link')).toHaveAttribute('href', '/account/security')
+    // the number is not theirs to set: no press on that row at all
+    const byNumber = page.getByTestId('account-entrance').nth(1)
+    expect(byNumber.element().querySelector('a, button')).toBeNull()
+  })
+})
+
 describe('the ways in on a phone', () => {
   it('lays the account and the last sign-in under the name, across the row', async () => {
     await page.viewport(390, 844)

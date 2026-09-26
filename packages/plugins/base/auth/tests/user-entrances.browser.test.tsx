@@ -137,10 +137,29 @@ describe('the ways in of one person', () => {
     expect(rowOf('cas').textContent).toContain('20230001')
   })
 
-  it('offers no password to somebody the door could not find', async () => {
-    await open([local()], true, {}, person({ email: null }))
+  it('offers the address, not a password, to somebody the door could not find', async () => {
+    const update = vi.fn(() => Effect.succeed({ ok: true as const }))
+    await open([local()], true, { updateUser: update }, person({ email: null }))
     await vi.waitFor(() => expect(rowOf('local')).toBeTruthy())
-    await vi.waitFor(() => expect(rowOf('local').querySelectorAll('button')).toHaveLength(0))
+    // no password for somebody the door cannot find, and the one press there
+    // is fills in what it finds them by, here rather than on another page
+    await vi.waitFor(() => expect(rowOf('local').querySelectorAll('button')).toHaveLength(1))
+    expect(page.getByRole('button', { name: '设置密码' }).query()).toBeNull()
+    await page.getByRole('button', { name: '设置邮箱' }).click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('textbox', { name: '邮箱' }).fill(' ada@school.edu ')
+    await dialog.getByRole('button', { name: '保存', exact: true }).click()
+    await vi.waitFor(() => expect(update).toHaveBeenCalledTimes(1))
+    expect(update).toHaveBeenCalledWith({
+      params: { userId: USER_ID },
+      payload: { version: 1, email: 'ada@school.edu' },
+    })
+  })
+
+  it('offers no field to fill in on an account beyond the reader', async () => {
+    await open([local()], false, {}, person({ email: null }))
+    await vi.waitFor(() => expect(rowOf('local')).toBeTruthy())
+    expect(rowOf('local').querySelectorAll('button')).toHaveLength(0)
   })
 
   it('asks only for the password, and sends what was typed', async () => {
