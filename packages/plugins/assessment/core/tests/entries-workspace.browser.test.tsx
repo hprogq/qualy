@@ -1255,17 +1255,55 @@ function FillProbe() {
 }
 
 describe('an address naming a claim', () => {
-  // A link to a claim that is gone - given up, or never this reader's - opens
-  // nothing: it used to open an empty form for a new claim in its place.
-  it('opens no form for a claim that is not there', async () => {
+  // A link to a claim that is not among the reader's - gone, mistyped, or
+  // never theirs - opens no form: it used to open an empty one for a new
+  // claim in its place. It says the claim is not there, and closing that
+  // takes the claim's name out of the address.
+  const missing = () =>
+    document.querySelector('[data-testid="claim-missing"] [data-slot="resource-state"]')
+
+  it('opens no form for a claim that is not there, and says so', async () => {
     await page.viewport(1440, 900)
     await workspace({
       route: `${base}?open=${itemId(1)}&entry=${entryId(9)}`,
       entries: [claim(1, itemId(1), 'approved')],
     })
     await expect.poll(() => rows().length).toBe(1)
-    await new Promise((resolve) => setTimeout(resolve, 200))
-    expect(document.querySelector('[role="dialog"]')).toBeNull()
+    await expect.poll(() => missing()?.getAttribute('data-state')).toBe('missing')
+    expect(document.querySelector('[role="dialog"] form, [role="dialog"] input')).toBeNull()
+    await page.getByTestId('claim-missing').getByRole('button').click()
+    await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull()
+    expect(addressNow()).not.toContain('entry=')
+    expect(addressNow()).toContain(`open=${itemId(1)}`)
+  })
+
+  it('says a claim the address opens in the drawer is not there, and clears it', async () => {
+    for (const width of [1440, 390]) {
+      await page.viewport(width, 900)
+      const { unmount } = await workspace({
+        route: `${base}?open=${itemId(1)}&detail=${entryId(9)}`,
+        entries: [claim(1, itemId(1), 'approved')],
+      })
+      await expect.poll(() => missing()?.getAttribute('data-state')).toBe('missing')
+      await page.getByRole('dialog').getByRole('button', { name: '关闭' }).click()
+      await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull()
+      expect({ width, address: addressNow().includes('detail=') }).toEqual({
+        width,
+        address: false,
+      })
+      await unmount()
+    }
+  })
+
+  // One the reader has, opened from the address, is simply opened.
+  it('opens a claim the address names in its drawer', async () => {
+    await page.viewport(1440, 900)
+    await workspace({
+      route: `${base}?open=${itemId(1)}&detail=${entryId(1)}`,
+      entries: [claim(1, itemId(1), 'approved')],
+    })
+    await expect.element(page.getByRole('dialog')).toBeVisible()
+    expect(missing()).toBeNull()
   })
 
   it('still opens the form for a new claim the address asks for', async () => {

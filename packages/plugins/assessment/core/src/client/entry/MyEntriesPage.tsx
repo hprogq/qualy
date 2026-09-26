@@ -24,6 +24,7 @@ import { AppealDialog } from './AppealDialog.tsx'
 import { SupplementAnswerDialog } from './SupplementAnswerDialog.tsx'
 import { EntryDialog } from './EntryDialog.tsx'
 import { EntrySheet } from './EntrySheet.tsx'
+import { MissingClaimSheet } from './MissingClaimSheet.tsx'
 import { useMarkEntryRead, useOwnClaimActs, useOwnFailure } from './own-acts.ts'
 import { standingRows } from './standing.ts'
 import type { EntryDto, FilingGateDto, ItemDto } from './model.ts'
@@ -330,6 +331,17 @@ function Body({
       : { entry: found, item: itemRow.item, trail: itemRow.trail }
   })()
   const lingeringDetail = useLingering(detailed)
+  // A claim the address names that is not among the reader's - a link gone
+  // stale, mistyped, or never theirs - is said so in the drawer it would
+  // have opened, once the list has been read afresh; closing it takes the
+  // name out of the address. Only a fresh read counts: a claim filed a
+  // moment ago elsewhere is not yet in a list kept from before.
+  const namedMissing =
+    mine.isFetchedAfterMount &&
+    items.data !== undefined &&
+    ((detail !== '' && detailed === null) ||
+      (filing !== '' && filing !== 'new' && writing === null))
+  const lingeringMissing = useLingering(namedMissing ? true : null)
 
   // A claim's news is read by opening that claim (§32.72, amended): its
   // drawer, or its form, which opens on the words it came back with. Opening
@@ -446,6 +458,12 @@ function Body({
           }}
           onStale={() => void items.refetch()}
           onChangedElsewhere={refresh}
+        />
+      )}
+      {lingeringMissing !== null && (
+        <MissingClaimSheet
+          open={namedMissing}
+          onClose={() => updateQuery({ detail: '', entry: '' }, { history: 'replace' })}
         />
       )}
       {/* the drawer that holds the whole claim; its account is a tab inside */}

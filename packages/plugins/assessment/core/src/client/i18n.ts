@@ -4543,6 +4543,14 @@ const i18n = definePluginMessages({
       id: 'assessment/entry-sheet/title',
       defaultMessage: 'Entry details',
     },
+    entryMissingTitle: {
+      id: 'assessment/entry-sheet/missing-title',
+      defaultMessage: 'This entry can’t be found',
+    },
+    entryMissingBack: {
+      id: 'assessment/entry-sheet/missing-back',
+      defaultMessage: 'Back to entries',
+    },
     entrySheetContent: {
       id: 'assessment/entry-sheet/content',
       defaultMessage: 'Submission content',
