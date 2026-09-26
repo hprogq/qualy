@@ -78,7 +78,7 @@
     "fast-xml-parser": "catalog:",
     "kysely": "catalog:",
     "lucide-react": "^0.552.0",
-    "motion": "^12.29.2",
+    "motion": "catalog:",
     "react-router": "catalog:",
     "undici": "catalog:"
   },

@@ -126,8 +126,9 @@ catalog:
   nodemailer: 10.0.10
   clsx: 2.1.1
   # the animation library behind @qualy/ui's motion primitives, and behind
-  # screens that animate something those primitives do not cover; the one
-  # version the ui packages already resolve, so the browser holds one copy
+  # screens that animate something those primitives do not cover. Every
+  # package that animates names it here, so the browser holds one copy and
+  # the ui's reduced-motion setting reaches every animated component
   motion: 12.43.0
   '@vitest/browser-playwright': 5.0.1
   'vitest-browser-react': 2.3.0

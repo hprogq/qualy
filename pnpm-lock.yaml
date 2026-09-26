@@ -1316,7 +1316,7 @@ importers:
         specifier: ^0.552.0
         version: 0.552.0(react@19.2.8)
       motion:
-        specifier: ^12.29.2
+        specifier: 'catalog:'
         version: 12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: 'catalog:'
@@ -1484,7 +1484,7 @@ importers:
         specifier: ^0.552.0
         version: 0.552.0(react@19.2.8)
       motion:
-        specifier: ^12.29.2
+        specifier: 'catalog:'
         version: 12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       pinyin-pro:
         specifier: 3.29.4
@@ -2038,7 +2038,7 @@ importers:
         specifier: 'catalog:'
         version: 4.0.0-rc.115
       motion:
-        specifier: ^12.29.2
+        specifier: 'catalog:'
         version: 12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
     devDependencies:
       '@qualy/plugin-database':
@@ -2645,7 +2645,7 @@ importers:
         specifier: ^0.552.0
         version: 0.552.0(react@19.2.8)
       motion:
-        specifier: ^12.29.2
+        specifier: 'catalog:'
         version: 12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: 'catalog:'

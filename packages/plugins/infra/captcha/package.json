@@ -29,7 +29,7 @@
     "@qualy/web-i18n": "workspace:*",
     "@stylexjs/stylex": "catalog:",
     "effect": "catalog:",
-    "motion": "^12.29.2"
+    "motion": "catalog:"
   },
   "devDependencies": {
     "@qualy/plugin-database": "workspace:*",
