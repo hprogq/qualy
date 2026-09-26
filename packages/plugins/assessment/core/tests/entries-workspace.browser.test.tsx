@@ -609,6 +609,17 @@ describe('reading one question’s claims', () => {
     expect(sort.element().parentElement!.querySelector('[data-position="right"]')).toBeNull()
     await sort.click()
     await expect.element(page.getByRole('option', { name: '最近更新在前' })).toBeVisible()
+    // the list opens from the key's end, over the claims rather than across
+    // into the requirements beside them
+    const listEnd = () =>
+      page.getByRole('listbox').element().closest('[data-slot="select-content"]')!
+    await expect
+      .poll(() =>
+        Math.abs(
+          listEnd().getBoundingClientRect().right - sort.element().getBoundingClientRect().right,
+        ),
+      )
+      .toBeLessThanOrEqual(1)
     // opening the list changes nothing by itself
     expect(rows()[0]!.getAttribute('data-entry')).toBe(entryId(45))
     await page.getByRole('option', { name: '最早在前' }).click()

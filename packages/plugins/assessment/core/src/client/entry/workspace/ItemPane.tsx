@@ -783,7 +783,9 @@ export function ItemPane({
             )}
           </span>
         </SelectTrigger>
-        <SelectContent>
+        {/* the key ends the toolbar: its list opens from that end, over the
+            claims, not across into the column beside them */}
+        <SelectContent align="end">
           <SelectItem value="newest">{format(m.entriesSortNewest)}</SelectItem>
           <SelectItem value="oldest">{format(m.entriesSortOldest)}</SelectItem>
         </SelectContent>
