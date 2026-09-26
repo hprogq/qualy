@@ -1318,7 +1318,7 @@ const i18n = definePluginMessages({
     backToUserTypes: { id: 'auth/user-types/back', defaultMessage: 'Back to user types' },
     userTypeGone: {
       id: 'auth/user-types/gone',
-      defaultMessage: 'This user type no longer exists.',
+      defaultMessage: 'This user type can’t be found',
     },
     roleCount: roleCountMessage,
     signInOwnerHint: {

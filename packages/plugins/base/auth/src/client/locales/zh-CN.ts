@@ -493,7 +493,7 @@ export default {
   'auth/state/enabled': '已启用',
   'auth/user-types/sign-in-none-short': '暂无适用的登录方式',
   'auth/user-types/back': '返回用户类型',
-  'auth/user-types/gone': '该用户类型已不存在',
+  'auth/user-types/gone': '找不到该用户类型',
   'auth/user-types/role-count': '{count} 个角色',
   'auth/user-types/sign-in-owner-hint': '由各登录方式的适用范围决定，请前往“登录方式”调整',
   'auth/user-types/open-roles-owner-hint': '由各角色的适用范围决定，请前往“角色设置”调整',

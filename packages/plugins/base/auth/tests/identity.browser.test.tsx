@@ -182,6 +182,38 @@ describe('user types screen', () => {
     expect(page.getByText('新建用户类型').elements()).toHaveLength(0)
   })
 
+  // A type the list does not hold is the whole page: said once, with the way
+  // back to the list, under no heading of a type.
+  it('says a type is not there instead of drawing its page', async () => {
+    await renderScreen({
+      client: fakeClient({
+        ...stubs({
+          identity: {
+            listUserTypes: () =>
+              Effect.succeed({ userTypes: [userType()], capabilities: { canManage: true } }),
+          },
+        }),
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              pages: [{ id: 'auth/user-types', path: '/admin/user-types', layout: 'admin' }],
+            }),
+        },
+      }),
+      route: `/admin/user-types/${SECOND_USER_ID}`,
+      path: '/admin/user-types/:typeId',
+      children: <UserTypePage />,
+    })
+    const state = () => document.querySelector('[data-slot="resource-state"]')
+    await expect.poll(() => state()?.getAttribute('data-state')).toBe('missing')
+    expect(state()?.getAttribute('data-size')).toBe('page')
+    expect(page.getByRole('button', { name: '重试' }).query()).toBeNull()
+    await expect
+      .element(page.getByRole('link', { name: '返回用户类型' }))
+      .toHaveAttribute('href', '/admin/user-types')
+  })
+
   it('shows no management controls to a reader who may not manage', async () => {
     await renderScreen({
       client: fakeClient(
