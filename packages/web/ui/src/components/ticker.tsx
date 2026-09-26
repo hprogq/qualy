@@ -1,5 +1,5 @@
-import { memo, useLayoutEffect, useRef, useState } from 'react'
-import { motion } from 'motion/react'
+import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { motion, useReducedMotion } from 'motion/react'
 import * as stylex from '@stylexjs/stylex'
 import type { StyleXStyles } from '@stylexjs/stylex'
 
@@ -29,6 +29,13 @@ import type { StyleXStyles } from '@stylexjs/stylex'
 // exists to remove - but it is the reason a lighthouse run reports these
 // spans as non-composited, and it is what to drop first if this ever costs a
 // frame on a long list.
+//
+// Only a change moves. The value a ticker is first drawn with is simply
+// there: a page whose every figure blurs in as it loads reads as unsettled,
+// and nothing about it changed. A reader who has asked for less motion gets
+// every change as a plain swap - the blur and the fade included, which the
+// app-wide reduced-motion setting leaves running because it only stops
+// movement.
 //
 // Text-free like the rest of this package: the caller has already decided
 // what the value says.
@@ -61,7 +68,7 @@ const styles = stylex.create({
     overflow: 'hidden',
     verticalAlign: 'bottom',
     transitionProperty: 'width',
-    transitionDuration: '300ms',
+    transitionDuration: { default: '300ms', '@media (prefers-reduced-motion: reduce)': '0s' },
     transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
   },
   line: {
@@ -99,6 +106,11 @@ export const Ticker = memo(function Ticker({
 }) {
   const line = useRef<HTMLSpanElement>(null)
   const [width, setWidth] = useState<number | null>(null)
+  const still = useReducedMotion() === true
+  // whether the first value has been drawn: a position that exists from the
+  // start shows its character as it is, one that appears later arrives
+  const [drawn, setDrawn] = useState(false)
+  useEffect(() => setDrawn(true), [])
   useLayoutEffect(() => {
     // The line is measured the moment the value changes, which is only right
     // because a leaving piece is out of the flow from its first frame (see
@@ -113,7 +125,7 @@ export const Ticker = memo(function Ticker({
     <span {...sx} style={width === null ? undefined : { ...sx.style, width }}>
       <span ref={line} {...stylex.props(styles.line)}>
         {pieces(value).map((piece, at) => (
-          <Piece key={at} text={piece} />
+          <Piece key={at} text={piece} still={still} original={!drawn} />
         ))}
       </span>
     </span>
@@ -130,12 +142,25 @@ const SWAP = { duration: 0.22, ease: [0.32, 0.72, 0, 1] } as const
  * absolute a frame later is a frame in which the line is twice as wide, and
  * whatever laid the line out has already measured it by then.
  */
-function Piece({ text }: { text: string }) {
+function Piece({
+  text,
+  still,
+  original,
+}: {
+  text: string
+  /** the reader asked for less motion: every change is a plain swap */
+  still: boolean
+  /** this position was part of the value the ticker was first drawn with */
+  original: boolean
+}) {
   const [shown, setShown] = useState(text)
   const [leaving, setLeaving] = useState<string | null>(null)
+  // what is shown here arrived by a change, rather than being there from the start
+  const [changed, setChanged] = useState(!original)
   if (text !== shown) {
-    setLeaving(shown)
+    setLeaving(still ? null : shown)
     setShown(text)
+    setChanged(true)
   }
 
   return (
@@ -143,13 +168,13 @@ function Piece({ text }: { text: string }) {
       <motion.span
         key={shown}
         className={stylex.props(styles.glyph).className}
-        initial={{ opacity: 0, y: 5, filter: 'blur(4px)' }}
+        initial={still || !changed ? false : { opacity: 0, y: 5, filter: 'blur(4px)' }}
         animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-        transition={SWAP}
+        transition={still ? { duration: 0 } : SWAP}
       >
         {shown}
       </motion.span>
-      {leaving !== null && (
+      {leaving !== null && !still && (
         <motion.span
           key={leaving}
           aria-hidden
