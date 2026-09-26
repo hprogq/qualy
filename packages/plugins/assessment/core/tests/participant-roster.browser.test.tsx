@@ -1149,6 +1149,32 @@ describe('the room the roster gives its rows', () => {
     }
   })
 
+  // Beside the rail on a laptop or a tablet held sideways, the unit, the
+  // search and the three choices share one row: the choices give a little
+  // rather than the last of them dropping to a line of its own.
+  it.each([1024, 1100])('keeps the toolbar on one row beside the rail at %i', async (width) => {
+    await page.viewport(width, 800)
+    try {
+      // the column the rail and a scrollbar's gutter leave the page
+      await open({}, undefined, width - 224 - 15)
+      const controls = [
+        page.getByTestId('roster-unit-switch'),
+        page.getByRole('searchbox'),
+        page.getByTestId('roster-status'),
+        page.getByTestId('roster-waiting'),
+        page.getByTestId('roster-sort'),
+      ]
+      for (const control of controls) await expect.element(control).toBeVisible()
+      const tops = controls.map((one) => Math.round(one.element().getBoundingClientRect().top))
+      expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(2)
+      // and the unit it names is said whole
+      const name = page.getByTestId('roster-unit-switch').element().querySelector('span')!
+      expect(name.scrollWidth).toBeLessThanOrEqual(name.clientWidth)
+    } finally {
+      await page.viewport(1280, 800)
+    }
+  })
+
   it('names a row’s unit from its own end, folding the parents that do not fit', async () => {
     await open(
       {

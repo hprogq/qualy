@@ -241,9 +241,12 @@ const styles = stylex.create({
   unitSwitch: {
     display: 'inline-flex',
     height: 36,
-    maxWidth: { default: '16rem', [breakpoints.phone]: 'none' },
+    maxWidth: { default: '16rem', [breakpoints.tablet]: '12rem', [breakpoints.phone]: 'none' },
     width: { default: 'auto', [breakpoints.phone]: '100%' },
-    flexShrink: 1,
+    // it says which units the list is of, so it keeps its words while the
+    // choices beside it, which have room to spare, give way first; a long
+    // unit's name is held to a width the row can always spare
+    flexShrink: 0,
     minWidth: 0,
     alignItems: 'center',
     gap: 8,
@@ -286,12 +289,19 @@ const styles = stylex.create({
   treeWaiting: { display: 'flex', flexDirection: 'column', gap: 10, paddingBlock: 8 },
   bone: { height: 14, borderRadius: 4 },
   listColumn: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 10 },
-  // the search takes what the line has; on a phone the three choices share
-  // the next line, each taking its part of it
-  toolbar: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  // One row from a tablet up, however narrow the list gets beside the rail:
+  // the choices and the search give a little rather than the last choice
+  // dropping to a line of its own. On a phone the search takes a line and
+  // the choices share the next.
+  toolbar: {
+    display: 'flex',
+    flexWrap: { default: 'nowrap', [breakpoints.phone]: 'wrap' },
+    alignItems: 'center',
+    gap: 8,
+  },
   // the search takes what the row leaves the choices, within reason
   search: {
-    minWidth: { default: '9rem', [breakpoints.phone]: 0 },
+    minWidth: { default: '8rem', [breakpoints.phone]: 0 },
     maxWidth: { default: '20rem', [breakpoints.phone]: 'none' },
     width: { default: 'auto', [breakpoints.phone]: '100%' },
     flexGrow: 1,
@@ -299,9 +309,10 @@ const styles = stylex.create({
     flexBasis: { default: '10rem', [breakpoints.phone]: 'auto' },
   },
   choice: {
-    width: { default: '8.75rem', [breakpoints.phone]: 'auto' },
+    width: { default: '8rem', [breakpoints.phone]: 'auto' },
+    minWidth: { default: '6.5rem', [breakpoints.phone]: 0 },
     flexGrow: { default: 0, [breakpoints.phone]: 1 },
-    flexShrink: 0,
+    flexShrink: 4,
     flexBasis: { default: null, [breakpoints.phone]: '0%' },
   },
   busy: { width: 14, height: 14, flexShrink: 0, color: tokens.mutedForeground },
