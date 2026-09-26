@@ -49,6 +49,7 @@ import { makeItemMethods, type ItemMethods, type ItemView } from '../item/servic
 import {
   activeItemChannelsOf,
   currentBatchConfigs,
+  itemsOf as itemRowsOf,
   liveBatchPayloads,
   liveBatchRecognitions,
   revisionsByIdOf,
@@ -311,6 +312,19 @@ interface AdministrativeEntryView {
 export interface MaterialRange {
   readonly start: string
   readonly end: string
+}
+
+/**
+ * A stage as a timeline says it, with what it narrows filing to: the items
+ * it alone opens (null when it opens every item) and whether it admits only
+ * some of the roster. The items are the ones anybody outside the office can
+ * see - a question still being composed has no name to give yet.
+ */
+export interface TimelineStage extends TimelineEntry {
+  readonly scope: {
+    readonly items: readonly { readonly id: string; readonly title: string }[] | null
+    readonly participantsLimited: boolean
+  }
 }
 
 /** a batch as a list shows it: the row, plus where the batch has got to */
@@ -1191,7 +1205,7 @@ export class Assessment extends Context.Service<
     readonly timeline: (
       tenantId: string,
       batchId: string,
-    ) => Effect.Effect<readonly TimelineEntry[], BatchNotFound>
+    ) => Effect.Effect<readonly TimelineStage[], BatchNotFound>
     readonly gate: (
       tenantId: string,
       batchId: string,
@@ -4991,11 +5005,40 @@ export const make = Effect.fn('Assessment.make')(function* () {
       if (!batch) return yield* new BatchNotFound()
       const now = yield* Clock.currentTimeMillis
       const plan = toSnapshots(yield* dieQuery(withDb(listPhaseRows(tenantId, batchId))))
-      return deriveTimeline(
+      const stages = deriveTimeline(
         plan,
         now,
         yield* dieQuery(withDb(effectivePhaseIndex(tenantId, batch, plan, now))),
       )
+      const scopes = yield* dieQuery(withDb(scopesForBatch(tenantId, batchId)))
+      const itemsOfPhase = groupBy(
+        scopes.items,
+        (entry) => entry.phaseId,
+        (entry) => entry.itemId,
+      )
+      const limited = new Set(scopes.participants.map((entry) => entry.phaseId))
+      // the paper, in its own order, only when some stage names a question
+      const paper =
+        scopes.items.length === 0
+          ? []
+          : (yield* dieQuery(withDb(itemRowsOf(tenantId, batchId)))).filter(
+              (item) => item.status !== 'draft',
+            )
+      return stages.map((stage): TimelineStage => {
+        const named = itemsOfPhase.get(stage.phaseId)
+        return {
+          ...stage,
+          scope: {
+            items:
+              named === undefined
+                ? null
+                : paper
+                    .filter((item) => named.includes(item.id))
+                    .map((item) => ({ id: item.id, title: item.title })),
+            participantsLimited: limited.has(stage.phaseId),
+          },
+        }
+      })
     }),
 
     gate: Effect.fn('Assessment.gate')(function* (tenantId, batchId, code, ctx) {
@@ -6932,6 +6975,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
               kind: entry.entry.kind,
               at: 'at' in entry.entry ? isoOf(entry.entry.at) : null,
             },
+            scope: entry.scope,
           })),
         }
       }),
