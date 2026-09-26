@@ -46,3 +46,17 @@
   2. **同步清除已被组织收回的接纳**（`applyAccessSync` 中 `lapsed` 清空了某条批次任命记录）：组织已经收回了批次接纳的全部权限，
      记录被清空后同样再无人能撤；这是组织侧已发生事实的收尾，不是批次管理员替组织做的新决定。
 - 两个豁免都只作用于该批次自己的记录，拒绝它们只会让授予在记录消失后永久存活。
+
+## 授予角色时列出的角色（2026-09-26 用户裁决 #5）
+
+- `GET /iam/role-grant-options` 在 `roles`（此刻可授予的）之外带 `refused`：**读者能任命、但不适合这个人或这个组织**的角色，
+  各附原因 `user-type`（用户类型不适用）、`org-type`（组织类型不适用）、`person-disabled`（该用户已停用）、`self-escalation`（自授会扩权）、
+  `unavailable`（并发中被停用或删除）。任命权不在读者手里的角色（`authority`）不列：那不是读者的问题，全列出来只会让整个角色目录出现在每个人面前。
+  草稿、停用、不可授予的角色也不列（候选本来就只取同 kind、active、assignable 的角色）。
+- **探测与写入同序**：逐角色先问任命权（`mayAdministerRole`、`mayAppointRole`），再问资格（`eligible`），最后是自授扩权，与 `grantRole`
+  的 `mayConfer` → `eligible` → 自授检查一致。此前先问资格，一个读者本来就不能任命的角色会以「用户类型不适用」出现，读起来像是换个人就能授。
+  `GRANT_NOT_ELIGIBLE` 按 reason 区分 `org-type` / `user-type` / `person-disabled`，不再一律说成用户类型。
+- 对外端口 `Rbac.listGrantableRoles`（assessment 人员权限的角色选择器在用）**契约不变**：仍是四个值，`org-type` 与 `person-disabled` 在端口处
+  映射回 `user-type`；assessment 若要说清组织类型，另起一轮扩契约。探测顺序的变化对端口同样生效。
+- `GET /iam/users/{userId}/role-grants` 带 `grantable: { tenant, organization }`（读者是否在任何地方持有 `iam.tenant-grant.manage` /
+  `iam.grant.manage`）：两者皆无时页面不给「授予角色」，只能授予一种范围时表单不给范围切换。
