@@ -1535,10 +1535,10 @@ describe('a round that moves while the page is open', () => {
     await expect.element(page.getByTestId('result-live')).toHaveAttribute('data-state', 'live')
   })
 
-  it('says it is reconnecting once the line has been down for a moment, and not before', async () => {
+  it('says it is reconnecting when the line cannot be held open', async () => {
     const paper = normal()
     let dials = 0
-    // the first connection says hello and drops; the next ones stay silent
+    // the first connection says hello and drops at once; the next ones stay silent
     const watchBatch = () => {
       dials += 1
       return Effect.succeed(dials === 1 ? Stream.make({ kind: 'sync' as const }) : Stream.never)
@@ -1546,11 +1546,97 @@ describe('a round that moves while the page is open', () => {
     await screen(paper, { watchBatch })
     const live = page.getByTestId('result-live')
     await expect.element(live).toBeInTheDocument()
-    // a stream that comes straight back is not worth a word
-    expect(['live', 'reconnecting']).toContain(live.element().getAttribute('data-state'))
     await expect
-      .poll(() => live.element().getAttribute('data-state'), { timeout: 6_000 })
+      .poll(() => live.element().getAttribute('data-state'), { timeout: 8_000 })
       .toBe('reconnecting')
+  })
+
+  it('keeps saying live across the planned end of a connection that served a while', async () => {
+    // how long a connection lived is read off the clock, so the test moves
+    // the clock rather than wait out a quarter of a minute
+    let skew = 0
+    const realNow = Date.now.bind(Date)
+    vi.spyOn(Date, 'now').mockImplementation(() => realNow() + skew)
+    try {
+      // every connection says hello and stays open until the server ends it
+      const ends: (() => void)[] = []
+      const watchBatch = () => {
+        let end = () => {}
+        const ended = new Promise<void>((resolve) => {
+          end = resolve
+        })
+        ends.push(end)
+        return Effect.succeed(
+          Stream.concat(
+            Stream.make({ kind: 'sync' as const }),
+            Stream.fromEffectDrain(Effect.promise(() => ended)),
+          ),
+        )
+      }
+      await screen(normal(), { watchBatch })
+      const live = page.getByTestId('result-live')
+      await expect.element(live).toHaveAttribute('data-state', 'live')
+      // every state the mark is in from here on, and whether it is there at all
+      const states: string[] = []
+      const watch = new MutationObserver(() =>
+        states.push(
+          document.querySelector('[data-testid="result-live"]')?.getAttribute('data-state') ??
+            'none',
+        ),
+      )
+      watch.observe(document.body, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ['data-state'],
+      })
+      // the server ends the connection after it has served a while, and the
+      // planned re-dial three seconds on is answered at once
+      const dialled = ends.length
+      skew = 16_000
+      ends.at(-1)?.()
+      await expect.poll(() => ends.length, { timeout: 6_000 }).toBe(dialled + 1)
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      watch.disconnect()
+      expect(states.filter((state) => state !== 'live')).toEqual([])
+      expect(live.element().getAttribute('data-state')).toBe('live')
+    } finally {
+      vi.restoreAllMocks()
+    }
+  })
+
+  it('says nothing of keeping current while a read beside the account is behind', async () => {
+    const paper = normal()
+    let down = false
+    let release = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await screen(paper, {
+      listMyEntries: () =>
+        down ? Effect.fail(apiError('ASSESSMENT_SCORING_UNAVAILABLE')) : filings(paper.entries),
+      watchBatch: () =>
+        Effect.succeed(
+          Stream.concat(
+            Stream.make({ kind: 'sync' as const }),
+            Stream.concat(
+              Stream.fromEffect(
+                Effect.promise(() => gate).pipe(Effect.as({ kind: 'entries-changed' as const })),
+              ),
+              Stream.never,
+            ),
+          ),
+        ),
+    })
+    await expect.element(page.getByTestId('result-live')).toHaveAttribute('data-state', 'live')
+    down = true
+    release()
+    await expect.element(page.getByTestId('result-stale')).toHaveAttribute('data-reason', 'entries')
+    // the line is still open, but the page no longer claims to be current
+    expect(page.getByTestId('result-live').elements()).toHaveLength(0)
+    down = false
+    await page.getByTestId('result-stale').getByRole('button').click()
+    await expect.element(page.getByTestId('result-live')).toHaveAttribute('data-state', 'live')
   })
 
   it('says nothing about keeping current on an account that has stopped moving', async () => {

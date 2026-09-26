@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -36,9 +36,6 @@ import { useMyEntriesQuery } from '../entry/my-entries.ts'
 // reached, and reading a claim behind a line without leaving - its drawer
 // opens here, with the owner's acts on it. Only rewriting a claim needs the
 // filing page, and the button that goes there says so.
-
-/** how long the stream may be down before the page says it is reconnecting */
-const RECONNECT_GRACE = 2_500
 
 export default function MyResultPage() {
   const { format } = useI18n()
@@ -115,25 +112,6 @@ const styles = stylex.create({
   staleWhy: { flexBasis: '100%', color: tokens.mutedForeground },
 })
 
-/**
- * Whether the page is keeping time with the round: live while the stream
- * holds, reconnecting once it has been down past a moment's grace - a
- * stream a proxy recycles every minute comes straight back, and saying so
- * each time would be noise. Until the line has carried anything, nothing is
- * said at all.
- */
-function useStreamState(live: boolean, heard: boolean): 'live' | 'reconnecting' | null {
-  const [lost, setLost] = useState(false)
-  if (live && lost) setLost(false)
-  useEffect(() => {
-    if (live || !heard) return
-    const timer = setTimeout(() => setLost(true), RECONNECT_GRACE)
-    return () => clearTimeout(timer)
-  }, [live, heard])
-  if (!heard) return null
-  return live || !lost ? 'live' : 'reconnecting'
-}
-
 function Standing({
   batchId,
   archived,
@@ -162,7 +140,7 @@ function Standing({
   // every connection opens with a catch-up signal, which the page's own
   // alarm clock never sends: the first one says the line has carried
   const [heard, setHeard] = useState(false)
-  const { live } = useBatchLive(batchId, (kind) => {
+  const { live, lost } = useBatchLive(batchId, (kind) => {
     if (kind === 'sync') setHeard(true)
     const stale = (key: readonly unknown[]) => void queryClient.invalidateQueries({ queryKey: key })
     switch (kind) {
@@ -211,7 +189,6 @@ function Standing({
   const gates = useMemo(() => (filing ?? []) as readonly FilingGateDto[], [filing])
   const offRoster = gates.length > 0 && gates.every((gate) => gate.create.state === 'hidden')
   const closed = archived ? 'archived' : offRoster ? 'excluded' : null
-  const stream = useStreamState(live, heard)
   // The timetable, read already by the page's live wake-ups under the same
   // key, says whether a question the stages keep shut has not opened yet or
   // has nothing left to open it. A harness without it leaves it unasked.
@@ -314,6 +291,12 @@ function Standing({
     if (items.error !== null) void items.refetch()
     if (mine.error !== null) void mine.refetch()
   }
+  // Whether the page is keeping time with the round. Until the line has
+  // carried anything nothing is said; a connection the server ends after
+  // serving a while is followed by a planned re-dial, which the stream does
+  // not count as lost. A read beside the account that failed has already
+  // said the page may be behind, which "live" would contradict.
+  const stream = !heard || stale !== null ? null : lost ? 'reconnecting' : 'live'
   const readFailedAgain = () => {
     if (result.error !== null) void result.refetch()
     readsAgain()

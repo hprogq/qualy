@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useApi, useApiQuery, useApiStream } from '@qualy/web-runtime'
+import { useApi, useApiQuery, useApiStream, type ApiStreamState } from '@qualy/web-runtime'
 import { assessmentApi } from './api.ts'
 import type { BatchLiveEvent } from '../api.ts'
 
@@ -18,7 +18,8 @@ import type { BatchLiveEvent } from '../api.ts'
 // and the alarm is the reader's own copy of the diary.
 //
 // `live` is the degrade signal - false means the screen should fall back to
-// its own polling cadence.
+// its own polling cadence; `lost` says the channel is down for real, for a
+// screen that tells its reader so.
 
 /** past this horizon no timer is set; a screen open for days re-reads anyway */
 const ALARM_HORIZON = 24 * 60 * 60 * 1000
@@ -29,7 +30,7 @@ const ALARM_MARGIN = 750
 export function useBatchLive(
   batchId: string,
   onEvent: (kind: BatchLiveEvent['kind']) => void,
-): { live: boolean } {
+): ApiStreamState {
   const api = useApi(assessmentApi)
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
