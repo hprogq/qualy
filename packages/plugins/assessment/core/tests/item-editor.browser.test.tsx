@@ -2073,6 +2073,36 @@ describe('the structure', () => {
     expect(shown()[2]!.name).toContain('学生干部任职')
   })
 
+  // Found by its own name, a section came alone: its questions out of reach,
+  // and no way to unfold it while the search stood.
+  it('finds a section by its name with everything in it, still held to the state chosen', async () => {
+    await withSections([
+      question('66666666-6666-4666-8666-6666666666d1', '学生干部任职', CLASSWORK),
+      question('66666666-6666-4666-8666-6666666666d2', '社会实践', MORAL, { status: 'draft' }),
+    ])
+    await vi.waitFor(() => expect(shown()).toHaveLength(4))
+    await page.getByRole('searchbox', { name: '搜索分组或项目' }).fill('德育')
+    await vi.waitFor(() =>
+      expect(shown().map((row) => [row.kind, row.context])).toEqual([
+        ['group', 'false'],
+        ['item', null],
+        ['group', 'false'],
+        ['item', null],
+      ]),
+    )
+    // what the state filter keeps out stays out, and the section stays as
+    // the place the rest is found in
+    await page.getByRole('combobox', { name: '状态' }).click()
+    await page.getByRole('option', { name: '未发布' }).click()
+    await vi.waitFor(() =>
+      expect(shown().map((row) => [row.kind, row.context])).toEqual([
+        ['group', 'true'],
+        ['item', null],
+      ]),
+    )
+    expect(shown()[1]!.name).toContain('社会实践')
+  })
+
   // The column read a single list off the stored policy, which has held two
   // routes for a long time, so it said nothing on every row.
   it('says how each question is reviewed from both of its routes, and when it is scored by a rule', async () => {

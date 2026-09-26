@@ -230,8 +230,10 @@ export interface ShownRow {
  *
  * A match keeps the groups above it, so a question found by name is still
  * read where it lives; lifted out of its group it was a name with nothing to
- * say which section it counts in. A search or a filter shows everything it
- * found, folded or not.
+ * say which section it counts in. A group found by name brings what is in
+ * it, still held to the state filter: shown alone, it was a heading with its
+ * questions out of reach, and a search leaves no way to unfold one. A search
+ * or a filter shows everything it found, folded or not.
  */
 export const shownRows = (
   rows: readonly StructureRow[],
@@ -248,14 +250,13 @@ export const shownRows = (
     const next = rows[index + 1]
     if (row.kind === 'group' && next !== undefined && next.depth > row.depth) holds.add(row.key)
   })
-  const matches = (row: StructureRow) => {
-    if (term !== '' && !row.name.toLowerCase().includes(term)) return false
-    if (filter.status === 'all') return true
-    return row.kind === 'item' && row.status === filter.status
-  }
+  const named = (row: StructureRow) => term === '' || row.name.toLowerCase().includes(term)
+  const stands = (row: StructureRow) =>
+    filter.status === 'all' || (row.kind === 'item' && row.status === filter.status)
   const shown: ShownRow[] = []
-  // the groups above the row being read, outermost first
-  const above: { row: StructureRow; placed: boolean }[] = []
+  // the groups above the row being read, outermost first, and whether the
+  // search found each by its own name
+  const above: { row: StructureRow; placed: boolean; found: boolean }[] = []
   let foldedAt: number | null = null
   for (const row of rows) {
     while (above.length > 0 && above[above.length - 1]!.row.depth >= row.depth) above.pop()
@@ -267,7 +268,8 @@ export const shownRows = (
       shown.push({ row, context: false, folded, holds: holds.has(row.key) })
       continue
     }
-    const hit = matches(row)
+    const inFound = term !== '' && above.some((group) => group.found)
+    const hit = stands(row) && (named(row) || inFound)
     if (hit) {
       for (const group of above) {
         if (group.placed) continue
@@ -275,7 +277,9 @@ export const shownRows = (
         shown.push({ row: group.row, context: true, folded: false, holds: true })
       }
     }
-    if (row.kind === 'group') above.push({ row, placed: hit })
+    if (row.kind === 'group') {
+      above.push({ row, placed: hit, found: term !== '' && named(row) })
+    }
     if (hit) shown.push({ row, context: false, folded: false, holds: holds.has(row.key) })
   }
   return shown
