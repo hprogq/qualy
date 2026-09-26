@@ -133,7 +133,9 @@ export default {
   'assessment/entry/refuse-item-voided': '项目已停用。',
   'assessment/entry/refuse-item-unconfigured': '项目尚未完成配置，请联系批次管理员。',
   'assessment/entry/refuse-review-level-missing':
-    '项目设置的审核层级与你所属组织不匹配，暂时无法提交，请联系批次管理员。',
+    '该项目的审核流程未覆盖你所在的组织，暂时无法送审，请联系批次管理员',
+  'assessment/entries/held-route':
+    '该项目的审核流程未覆盖你所在的组织，暂不能申报，请联系批次管理员',
   'assessment/entry/refuse-self-record': '与本人有关的记录需由其他工作人员处理',
   'assessment/entry/refuse-basis-required': '认定时必须填写认定理由。',
   'assessment/entry/refuse-not-participant': '你不在本批次参评名单中。',

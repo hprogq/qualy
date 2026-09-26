@@ -304,6 +304,30 @@ export const enterableFrom = (
   return null
 }
 
+/**
+ * Whether a route has anywhere to stand for somebody on this lineage, read
+ * off the configuration alone - without resolving it, and so without a
+ * query.
+ *
+ * The same answer as `enterableFrom(resolvePolicy(...), route, 0) !== null`
+ * (a test holds the two together): a `roleAt` step lands exactly when the
+ * frozen lineage has a unit of its kind, and a `nearestRole` step is always
+ * somewhere to stand - found, or vacant and waiting for an appointment. So a
+ * route nobody on this lineage can enter is a route every step of which is a
+ * `roleAt` for a level this person sits under none of: a configuration
+ * problem, which no later appointment mends. Screens ask it before anybody
+ * files, so a question a person cannot file into says so at the key rather
+ * than at the end of a filled form (ADR 0007's refusal, said early).
+ */
+export const routeReaches = (
+  stages: readonly PolicyStage[],
+  lineage: readonly { readonly nodeTypeId: string }[],
+): boolean =>
+  stages.some(({ selector }) => {
+    if (selector.kind === 'nearestRole') return true
+    return lineage.some((step) => step.nodeTypeId === selector.nodeTypeId)
+  })
+
 /** the next stage of the same route after this one, or nothing */
 export const nextAfter = (policy: ResolvedPolicy, stage: ResolvedStage): ResolvedStage | null =>
   enterableFrom(policy, stage.route, stage.index + 1)

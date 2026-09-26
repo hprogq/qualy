@@ -5,6 +5,7 @@ import type { ReservationInvalidReason, UploadRefusedReason } from '@qualy/plugi
 import { describe, expect, it } from 'vitest'
 import {
   entryRefusalReason,
+  filingHeldOf,
   holdOf,
   sayBlocked,
   sayEntryFailure,
@@ -255,5 +256,16 @@ describe('why a stage holds the owner’s act', () => {
       id: m.refuseNeedsRevision.id,
     })
     expect(read(sayBlocked('edit', null, during, words))).toEqual({ id: m.entryBlockedNow.id })
+  })
+
+  // A route with nowhere to stand for the reader is not the stage's doing,
+  // and waiting for another stage would not mend it: the place where the
+  // next claim would start says so, and who can mend it.
+  it('says a route with nowhere to stand where the next claim would start', () => {
+    expect(filingHeldOf('review-level-missing', during).message.id).toBe(m.entriesHeldRoute.id)
+    expect(filingHeldOf('review-level-missing', null).message.id).toBe(m.entriesHeldRoute.id)
+    expect(read(sayBlocked('appeal', 'review-level-missing', during, words))).toEqual({
+      id: m.refuseReviewLevelMissing.id,
+    })
   })
 })

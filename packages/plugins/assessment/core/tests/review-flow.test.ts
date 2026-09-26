@@ -1880,6 +1880,58 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     expect(result.card.submit.state).toBe('available')
   })
 
+  // An escalation route whose every step asks for a kind of unit the
+  // appellant sits under none of has nowhere to hear them either, and no
+  // appointment mends it: the card says so before the press, as the write
+  // does, rather than offering an appeal that comes back refused.
+  it('tells an appellant when the escalation route has nowhere to stand for them', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-appeal-no-level')
+          const assessment = yield* Assessment
+          const department = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into org_types (tenant_id, name) values (${f.t}, 'Department') returning id`),
+          ).id
+          const g = yield* runningBatch(f, {
+            profile: [...NO_DOUBTS, 'assessment.entry.appeal'],
+            escalation: [
+              {
+                id: 'department',
+                selector: { kind: 'roleAt', nodeTypeId: department, roleIds: [f.reviewRole] },
+                quorum: { type: 'any' },
+              },
+            ],
+          })
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          yield* assessment.decideReview(
+            f.t,
+            sent.currentReviewInstanceId!,
+            { decision: 'reject', comment: '材料不足' },
+            f.principal(f.reviewer),
+          )
+          const card = (yield* assessment.listMyEntries(f.t, g.batch.id, {}, s1)).entries[0]!
+          const detail = yield* assessment.getEntry(f.t, entry.id, s1)
+          const appealed = yield* Effect.exit(
+            assessment.appealEntry(f.t, entry.id, { reason: '请复核' }, s1),
+          )
+          return { card: card.capabilities, detail: detail.capabilities, appealed }
+        }),
+      ),
+    )
+    expect(refusalOf(result.appealed)?.reason).toBe('review-level-missing')
+    expect(result.card.appeal).toEqual({ state: 'blocked', reason: 'review-level-missing' })
+    expect(result.detail.appeal).toEqual({ state: 'blocked', reason: 'review-level-missing' })
+  })
+
   // Advice for the person who filed rides only a rejection that reaches
   // them. A judge standing mid-ladder writes to the judge above instead, so
   // the workbench must not offer them the suggestion grid - it used to, and

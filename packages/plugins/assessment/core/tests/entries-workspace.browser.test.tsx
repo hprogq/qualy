@@ -1752,6 +1752,17 @@ describe('where filing is shut', () => {
     expect(tray.element().querySelector('[data-testid="file-claim"]')).toBeNull()
   })
 
+  // A route with nowhere to stand for the reader is no stage's doing: the
+  // key's place says so from the first look, not after a filled-in form.
+  it('says a route with nowhere to stand for the reader, in place of its key', async () => {
+    await page.viewport(1440, 900)
+    await workspace({ route: `${base}?open=${itemId(2)}`, stubs: filing('review-level-missing') })
+    const tray = page.getByTestId('entries-tray')
+    await expect.element(tray).toHaveAttribute('data-reason', 'review-level-missing')
+    await expect.element(tray).toHaveAttribute('data-said', 'assessment/entries/held-route')
+    expect(tray.element().querySelector('[data-testid="file-claim"]')).toBeNull()
+  })
+
   it('says an archived round is why, and keeps no dead key at a phone’s foot', async () => {
     await page.viewport(390, 844)
     await workspace({

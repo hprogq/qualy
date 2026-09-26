@@ -1242,7 +1242,12 @@ const i18n = definePluginMessages({
     refuseReviewLevelMissing: {
       id: 'assessment/entry/refuse-review-level-missing',
       defaultMessage:
-        'The configured review level does not exist in your organization path, so the entry cannot be submitted. Contact a batch administrator.',
+        'This item’s review workflow doesn’t cover your unit, so it can’t be sent for review. Contact the batch administrator',
+    },
+    entriesHeldRoute: {
+      id: 'assessment/entries/held-route',
+      defaultMessage:
+        'This item’s review workflow doesn’t cover your unit, so you can’t file it yet. Contact the batch administrator',
     },
     refuseSelfRecord: {
       id: 'assessment/entry/refuse-self-record',

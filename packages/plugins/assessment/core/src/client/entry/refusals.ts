@@ -141,8 +141,9 @@ const FILING_HELD: Record<Exclude<Hold['why'], 'phase'>, MessageDescriptor> = {
  * Why a new claim cannot be started on a question, said about starting one.
  *
  * It stands in place of the way in, so it names the act and, where the round
- * says, the stage that shut it. The round's own limit on claims is the one
- * reason here that is not the phase gate's.
+ * says, the stage that shut it. Two reasons here are not the phase gate's:
+ * the round's own limit on claims, and a review route with nowhere to stand
+ * for this person, which only the batch's administrator can mend.
  */
 export const filingHeldOf = (reason: string | null, round: RoundState | null): Said => {
   const hold = holdOf(reason, round)
@@ -150,7 +151,9 @@ export const filingHeldOf = (reason: string | null, round: RoundState | null): S
   if (hold !== null) return { message: FILING_HELD[hold.why] }
   return reason === 'account-ceiling-reached'
     ? { message: m.entriesHeldRoundFull }
-    : { message: m.entriesHeldNow }
+    : reason === 'review-level-missing'
+      ? { message: m.entriesHeldRoute }
+      : { message: m.entriesHeldNow }
 }
 
 /** the owner's acts on a claim of theirs that a stage may hold */

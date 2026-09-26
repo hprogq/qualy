@@ -8,7 +8,12 @@ import {
 import { recordAdministrativeEntryTx, voidAdministrativeEntryTx } from './administrative-write.ts'
 import { accountRefusalOf, entryRefusalOf } from './limit.ts'
 import { bindCitedAttachments } from './bind-attachments.ts'
-import { questionFactsOf, type QuestionFacts } from './question-facts.ts'
+import {
+  appealRouteRefusal,
+  questionFactsOf,
+  submitRouteRefusal,
+  type QuestionFacts,
+} from './question-facts.ts'
 import { boundIssues } from '../issues.ts'
 import { provenRecognition } from '../scoring/proven-recognition.ts'
 import { recognitionHash, seedFromEvidence } from '../scoring/recognition.ts'
@@ -404,8 +409,9 @@ export interface EntryMethods {
       participantId: string
       entries: readonly EntryView[]
       /**
-       * The phase gate's word on filing into each active question, and on
-       * creating, the owner's own allowance in the round
+       * The phase gate's word on filing into each active question, whether
+       * its route has anywhere to stand for this person, and on creating,
+       * the owner's own allowance in the round
        */
       filing: readonly {
         itemId: string
@@ -799,6 +805,25 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           : act === 'appeal' && !question.appealRoute
             ? { allowed: false, layer: 'policy', reason: 'no-appeal-route' }
             : undefined
+    // A route with nowhere to stand for this person is one more of those
+    // facts: every step of it names a level they sit under none of, the
+    // write refuses it (`review-level-missing`), and no appointment mends it
+    // - so the key says so before the press rather than after (ADR 0007).
+    // The write asks it after the phase, and so does the key.
+    const lineage = participant?.anchorLineage ?? null
+    const routeRefusal = (act: 'submit' | 'appeal'): ActionDecision | undefined => {
+      if (question === undefined || lineage === null) return undefined
+      const reason =
+        act === 'submit'
+          ? submitRouteRefusal(question, lineage)
+          : appealRouteRefusal(question, lineage)
+      return reason === null ? undefined : { allowed: false, layer: 'policy', reason }
+    }
+    /** the first of these that says no, in the order the write asks them */
+    const firstRefusal = (
+      ...decisions: readonly (ActionDecision | undefined)[]
+    ): ActionDecision | undefined =>
+      decisions.find((decision) => decision !== undefined && !decision.allowed)
     // ownership and state say whether an act belongs on this claim at all;
     // the gate says whether this minute allows it. `hidden` is the first
     // kind of no, `blocked` the second - a blocked act renders disabled
@@ -882,7 +907,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             : when(
                 (entry.source === 'self' || entry.source === 'proxy') &&
                   (entry.status === 'draft' || entry.status === 'rejected'),
-                underway ?? refusedBy('submit') ?? gates?.submit,
+                firstRefusal(underway, refusedBy('submit'), gates?.submit, routeRefusal('submit')),
               ),
         // Taking work back to edit ends where review begins (§32.69): once
         // anybody has decided, escalated, asked for material or voted -
@@ -917,14 +942,14 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                   conclusion !== null,
                   conclusion?.exhausted === true
                     ? { allowed: false, layer: 'policy', reason: 'appeal-exhausted' }
-                    : (refusedBy('appeal') ?? gates?.appeal),
+                    : firstRefusal(refusedBy('appeal'), gates?.appeal, routeRefusal('appeal')),
                 )
               : when(
                   (entry.status === 'approved' || entry.status === 'rejected') &&
                     (entry.currentReviewInstanceId !== null ||
                       ((entry.source === 'record' || entry.source === 'import') &&
                         entry.currentRecognitionId !== null)),
-                  refusedBy('appeal') ?? gates?.appeal,
+                  firstRefusal(refusedBy('appeal'), gates?.appeal, routeRefusal('appeal')),
                 ),
         // Giving a claim up is open across the whole life of the claim,
         // approved included (§32.69): "the school recognized it" and "its
@@ -2076,9 +2101,10 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           // A withdrawn question takes no new work on the claims it leaves
           // behind, and one with no escalation step hears no appeal, whatever
           // the phase opens: read once for the page, said by the view the
-          // same way the detail says it
+          // same way the detail says it. The questions being asked now are
+          // read with them, for what filing into each would meet.
           const questions = yield* questionFactsOf(tenantId, [
-            ...new Set(pageRows.map((entry) => entry.itemId)),
+            ...new Set([...activeItems, ...pageRows.map((entry) => entry.itemId)]),
           ])
           const askedByEntry = new Map(
             (yield* openSupplementsOfEntries(
@@ -2134,29 +2160,56 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           // What filing into each question would meet, before any claim
           // exists. Discovery only, like the per-claim block: the act itself
           // is authorized again on the way in. These rows answer for the
-          // phase and for the owner's own allowance in the round, which the
-          // screen cannot count from one page of claims; the other structural
-          // reasons (the question's own quota, its doors, a voided item) stay
-          // with the screen. The phase is asked first, as the write asks it.
+          // phase, for a route with nowhere to stand for this person, and
+          // for the owner's own allowance in the round - none of which the
+          // screen can work out from one page of claims; the other
+          // structural reasons (the question's own quota, its doors, a
+          // voided item) stay with the screen. The phase is asked first, as
+          // the write asks it.
+          //
+          // The route is ADR 0007's refusal said before anything is filled
+          // in rather than at the end of it: every step names a level this
+          // person sits under none of, so the submission would be refused
+          // and no appointment mends it. Starting a claim that can never be
+          // handed on is not offered either; a draft already written stays
+          // the owner's to keep.
           const own = participant.userId === as.userId && participant.status === 'active'
-          const opening = (decision?: ActionDecision): ActionAvailability =>
+          const routeOf = (itemId: string): string | null => {
+            const question = questions.get(itemId)
+            if (question === undefined || !question.participantFiled) return null
+            return submitRouteRefusal(question, participant.anchorLineage)
+          }
+          const opening = (
+            decision?: ActionDecision,
+            route: string | null = null,
+          ): ActionAvailability =>
             !own
               ? { state: 'hidden', reason: null }
               : decision !== undefined && !decision.allowed
                 ? { state: 'blocked', reason: decision.reason }
-                : { state: 'available', reason: null }
+                : route !== null
+                  ? { state: 'blocked', reason: route }
+                  : { state: 'available', reason: null }
           const roundFull = own
             ? accountRefusalOf(yield* heldInRoundOf(tenantId, membership.id), 'participant')
             : null
-          const creating = (decision?: ActionDecision): ActionAvailability => {
-            const gated = opening(decision)
+          const creating = (
+            decision?: ActionDecision,
+            route: string | null = null,
+          ): ActionAvailability => {
+            const gated = opening(decision, route)
             return gated.state === 'available' && roundFull !== null
               ? { state: 'blocked', reason: roundFull }
               : gated
           }
           const filing = activeItems.map((itemId) => {
             const gate = gatesByItem.get(itemId)
-            return { itemId, create: creating(gate?.create), submit: opening(gate?.submit) }
+            const route = routeOf(itemId)
+            return {
+              itemId,
+              create: creating(gate?.create, route),
+              submit: opening(gate?.submit, route),
+            }
           })
           const last = pageRows[pageRows.length - 1]
           const lastIso =
