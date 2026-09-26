@@ -150,6 +150,11 @@ const scopePicked = defineMessage<{ count: number; total: number }>()({
   defaultMessage: '{count} of {total}',
 })
 
+const flowScopeItems = defineMessage<{ items: string }>()({
+  id: 'assessment/flow/scope-items',
+  defaultMessage: 'Only for {items}',
+})
+
 // what a batch is, in one line: who it assesses and which materials count
 const batchSummary = defineMessage<{ count: number; from: string; until: string }>()({
   id: 'assessment/batch/summary',
@@ -5922,6 +5927,12 @@ const i18n = definePluginMessages({
       defaultMessage: 'All participants',
     },
     scopePeopleKept,
+    flowScopeItems,
+    flowScopeSome: { id: 'assessment/flow/scope-some', defaultMessage: 'Only for some items' },
+    flowScopePeople: {
+      id: 'assessment/flow/scope-people',
+      defaultMessage: 'Only for some participants',
+    },
 
     // ------------------------------------------------------------------
     // participants

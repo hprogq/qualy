@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
+import { useI18n, useList } from '@qualy/web-i18n'
 import {
   ChevronsLeftIcon,
   ChevronsRightIcon,
+  FilterIcon,
   LocateFixedIcon,
   MoreVerticalIcon,
 } from 'lucide-react'
@@ -156,6 +157,25 @@ const styles = stylex.create({
   },
   quietNote: {
     fontSize: 14,
+    color: tokens.mutedForeground,
+  },
+  scopeLine: {
+    display: 'inline-flex',
+    alignItems: 'flex-start',
+    gap: 5,
+    color: tokens.foreground,
+  },
+  scopeWords: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 2,
+  },
+  scopeGlyph: {
+    width: 12,
+    height: 12,
+    flexShrink: 0,
+    marginTop: 2,
     color: tokens.mutedForeground,
   },
   zone: {
@@ -331,6 +351,7 @@ const STATUS = {
 function Stage({ stage, upright }: { stage: FlowStage; upright: boolean }) {
   const said = useSaid()
   const { format } = useI18n()
+  const listOf = useList()
   const faded = stage.status === 'ended'
   return (
     <>
@@ -372,6 +393,31 @@ function Stage({ stage, upright }: { stage: FlowStage; upright: boolean }) {
       >
         {said(stage)}
       </TimelineDate>
+      {/* who and what the stage is for, when that is not everybody and
+          everything: a stage that reopens one question is a different stage
+          from one that opens the paper, and it says so before anything else */}
+      {(stage.onlyItems !== null || stage.somePeople) && (
+        <TimelineContent
+          xstyle={[flow.note, faded && flow.faded]}
+          data-testid="stage-scope"
+          data-items={stage.onlyItems === null ? 'all' : String(stage.onlyItems.length)}
+          data-people={stage.somePeople ? 'limited' : 'all'}
+        >
+          <span {...stylex.props(styles.scopeLine)}>
+            <FilterIcon aria-hidden {...stylex.props(styles.scopeGlyph)} />
+            <span {...stylex.props(styles.scopeWords)}>
+              {stage.onlyItems !== null && (
+                <span>
+                  {stage.onlyItems.length === 0
+                    ? format(m.flowScopeSome)
+                    : format(m.flowScopeItems, { items: listOf(stage.onlyItems) })}
+                </span>
+              )}
+              {stage.somePeople && <span>{format(m.flowScopePeople)}</span>}
+            </span>
+          </span>
+        </TimelineContent>
+      )}
       {/* what it waits on first, then what it is for: one is about now and
           the other is about the stage whenever it happens */}
       {stage.note !== '' && (

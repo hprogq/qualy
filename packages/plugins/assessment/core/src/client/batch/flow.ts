@@ -4,6 +4,11 @@ import type { TimelineLike } from './progress.ts'
 export interface FlowEntry extends TimelineLike {
   readonly description: string
   readonly entryNote: string
+  /** what the stage narrows filing to; a reader that has none opens everything */
+  readonly scope?: {
+    readonly items: readonly { readonly id: string; readonly title: string }[] | null
+    readonly participantsLimited: boolean
+  }
 }
 
 // The round as the people in it read it: a run of stages, one of them now.
@@ -25,6 +30,13 @@ export interface FlowStage {
   readonly at: number | null
   /** when it gives way to the next one, which is the next one's start */
   readonly until: number | null
+  /**
+   * The items the stage alone opens, by name, or null when it opens every
+   * item. Empty is a stage limited to items nobody can see yet.
+   */
+  readonly onlyItems: readonly string[] | null
+  /** whether the stage admits only some of the round's participants */
+  readonly somePeople: boolean
 }
 
 /** the plan as stages with both of their edges filled in */
@@ -41,6 +53,8 @@ export const stagesOf = (timeline: readonly FlowEntry[]): readonly FlowStage[] =
       note: entry.entryNote,
       at: at !== null && Number.isNaN(at) ? null : at,
       until: until !== null && Number.isNaN(until) ? null : until,
+      onlyItems: entry.scope?.items?.map((item) => item.title) ?? null,
+      somePeople: entry.scope?.participantsLimited ?? false,
     }
   })
 

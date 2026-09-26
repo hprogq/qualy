@@ -910,6 +910,48 @@ describe('the batch overview', () => {
     await expect.element(page.getByRole('heading', { name: '预填报期' }).first()).toBeVisible()
   })
 
+  it('says which items a stage alone opens, and that it admits only some people', async () => {
+    await page.viewport(1280, 800)
+    await screen(
+      {
+        getBatch: () =>
+          Effect.succeed({ batch: batch({ status: 'active', currentPhaseId: ENTRY_PHASE_ID }) }),
+        getTimeline: () =>
+          Effect.succeed({
+            timeline: [
+              ...running(30 * HOUR),
+              {
+                phaseId: 'supplement',
+                displayName: '补充提交',
+                description: '',
+                entryNote: '',
+                status: 'future' as const,
+                entry: { kind: 'pending' as const, at: null },
+                scope: {
+                  items: [{ id: 'language', title: '语言技能证书' }],
+                  participantsLimited: true,
+                },
+              },
+            ],
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}`,
+    )
+
+    await vi.waitFor(() =>
+      expect(page.getByTestId('stage-scope').elements().length).toBeGreaterThan(0),
+    )
+    // only the stage that is limited says so; the rail and the phone strip
+    // draw the same stages, so every mark there is must be this one
+    const marks = page.getByTestId('stage-scope').elements()
+    expect(marks.map((node) => node.getAttribute('data-items'))).toEqual(marks.map(() => '1'))
+    expect(marks.map((node) => node.getAttribute('data-people'))).toEqual(
+      marks.map(() => 'limited'),
+    )
+    // the item by its name, which is the fixture's own
+    await expectVisibleText('语言技能证书')
+  })
+
   it('says what a stage with no time is waiting for', async () => {
     await page.viewport(1280, 800)
     await screen(
