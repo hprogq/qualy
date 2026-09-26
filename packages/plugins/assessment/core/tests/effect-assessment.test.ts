@@ -1547,7 +1547,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     const { roster, seenByStranger, openedByStranger, whileStaff, afterRevoke } = ok(exit)
     expect(roster).toEqual([])
     expect(seenByStranger).toEqual([])
-    expect(tagOf(openedByStranger)).toBe('ACCESS_DENIED')
+    expect(tagOf(openedByStranger)).toBe('ASSESSMENT_BATCH_NOT_FOUND')
     expect(whileStaff.map((row) => row.name)).toEqual(['Staffed'])
     // the acceptance record outlives the assignment on purpose; reading the
     // round does not
@@ -1686,7 +1686,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     // an empty roster contains everybody's reach vacuously; the frozen anchors
     // are what still says whose round this is
     expect(seenByOther).toEqual([])
-    expect(tagOf(openedByOther)).toBe('ACCESS_DENIED')
+    expect(tagOf(openedByOther)).toBe('ASSESSMENT_BATCH_NOT_FOUND')
     expect(tagOf(takenByOther)).toBe('ACCESS_DENIED')
     expect(Exit.isSuccess(filledByOwner)).toBe(true)
   })
@@ -3292,10 +3292,39 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
         const asStranger = yield* assessment.listBatches(f.tenant, page, stranger)
         const opened = yield* assessment.getBatch(f.tenant, running.id, student)
         const refused = yield* Effect.exit(assessment.getBatch(f.tenant, running.id, stranger))
-        return { asAdmin, asStudent, asStudentWhileScheduled, asStranger, opened, refused }
+        // what an id that names nothing at all is answered with, to compare
+        const nowhere = yield* Effect.exit(
+          assessment.getBatch(f.tenant, '0190ffff-ffff-7fff-bfff-ffffffffffff', stranger),
+        )
+        // the desk every screen of the round opens with, asked by the stranger
+        const desk = yield* Effect.exit(assessment.getMyOverview(f.tenant, running.id, stranger))
+        const story = yield* Effect.exit(
+          assessment.listMyActivity(f.tenant, running.id, {}, stranger),
+        )
+        return {
+          asAdmin,
+          asStudent,
+          asStudentWhileScheduled,
+          asStranger,
+          opened,
+          refused,
+          nowhere,
+          desk,
+          story,
+        }
       }),
     )
-    const { asAdmin, asStudent, asStudentWhileScheduled, asStranger, opened, refused } = ok(exit)
+    const {
+      asAdmin,
+      asStudent,
+      asStudentWhileScheduled,
+      asStranger,
+      opened,
+      refused,
+      nowhere,
+      desk,
+      story,
+    } = ok(exit)
     const names = (rows: readonly { name: string }[]) => rows.map((row) => row.name).sort()
 
     // the administrator sees the round being written as well as the one running
@@ -3307,9 +3336,14 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(names(asStudent)).toEqual(['Running'])
     expect(asStudent[0]!.manageable).toBe(false)
     expect(opened.name).toBe('Running')
-    // and somebody in neither sees nothing, by id or otherwise
+    // and somebody in neither sees nothing, by id or otherwise: the round
+    // they cannot see answers exactly as an id that names nothing (§32.94),
+    // so knowing the id does not tell them the round exists
     expect(asStranger).toEqual([])
-    expect(tagOf(refused)).toBe('ACCESS_DENIED')
+    expect(tagOf(refused)).toBe('ASSESSMENT_BATCH_NOT_FOUND')
+    expect(tagOf(nowhere)).toBe('ASSESSMENT_BATCH_NOT_FOUND')
+    expect(tagOf(desk)).toBe('ASSESSMENT_BATCH_NOT_FOUND')
+    expect(tagOf(story)).toBe('ASSESSMENT_BATCH_NOT_FOUND')
   })
 
   it('reopens an archived batch into a new phase, and says why in the record', async () => {

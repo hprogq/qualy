@@ -1088,10 +1088,7 @@ export class Assessment extends Context.Service<
       tenantId: string,
       batchId: string,
       as: Principal,
-    ) => Effect.Effect<
-      BatchDetail & { capabilities: BatchCapabilities },
-      BatchNotFound | AccessDenied
-    >
+    ) => Effect.Effect<BatchDetail & { capabilities: BatchCapabilities }, BatchNotFound>
     /**
      * Who this reader is in the round. `manageable` is the batch row's own
      * projection when the caller has read it; undefined, it is asked here,
@@ -1810,7 +1807,7 @@ export class Assessment extends Context.Service<
       batchId: string,
       page: { cursor?: string; limit?: string; perspective?: 'participant' | 'reviewer' },
       as: Principal,
-    ) => Effect.Effect<MyActivityPage, BatchNotFound | AccessDenied | BadRequest>
+    ) => Effect.Effect<MyActivityPage, BatchNotFound | BadRequest>
     readonly interveneOnEntry: EntryMethods['interveneOnEntry']
     /** the single review stage: a queue answered, a round closed exactly once */
     readonly listReviewInbox: ReviewMethods['listReviewInbox']
@@ -2584,7 +2581,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
   ) {
     const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
     if (!batch) return yield* new BatchNotFound()
-    yield* requireBatchVisible(tenantId, batchId, as)
+    yield* requireBatchSeen(tenantId, batchId, as)
     const membership = yield* dieQuery(withDb(participantRowByUser(tenantId, batchId, as.userId)))
     const authority = yield* batchAuthority(tenantId, batchId, as.userId)
     return { membership, review: authority.has('assessment.review.process') }
@@ -2597,6 +2594,21 @@ export const make = Effect.fn('Assessment.make')(function* () {
   ) {
     const visible = yield* dieQuery(withDb(batchVisibleTo(tenantId, batchId, yield* viewerOf(as))))
     if (!visible) return yield* new AccessDenied({ reason: 'cannot see this batch' })
+  })
+
+  /**
+   * The same door for the reads every screen of a batch opens with - the
+   * batch itself and the reader's desk on it - where a batch the reader
+   * cannot see answers exactly as one that is not there (§32.94): knowing
+   * an id is not being told that the round behind it exists.
+   */
+  const requireBatchSeen = Effect.fn('Assessment.requireBatchSeen')(function* (
+    tenantId: string,
+    batchId: string,
+    as: Principal,
+  ) {
+    const visible = yield* dieQuery(withDb(batchVisibleTo(tenantId, batchId, yield* viewerOf(as))))
+    if (!visible) return yield* new BatchNotFound()
   })
 
   // the one roster-reach predicate, shared with the configuration-access
@@ -3835,7 +3847,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
       // that reads it quietly disappeared
       const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId, yield* viewerOf(as))))
       if (!batch) return yield* new BatchNotFound()
-      yield* requireBatchVisible(tenantId, batchId, as)
+      yield* requireBatchSeen(tenantId, batchId, as)
       const detail = yield* dieQuery(withDb(readDetail(tenantId, batch)))
       const membership = yield* dieQuery(withDb(participantRowByUser(tenantId, batchId, as.userId)))
       const authority = yield* batchAuthority(tenantId, batchId, as.userId)

@@ -2221,7 +2221,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         ),
         nextCursor: Schema.NullOr(Schema.String),
       }),
-      error: [BatchNotFound, AccessDenied, BadRequest],
+      error: [BatchNotFound, BadRequest],
     }).middleware(Authenticated),
   )
   .add(
@@ -2809,10 +2809,11 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       success: HttpApiSchema.StreamSse({ data: batchLiveEvent }),
       error: [AccessDenied],
     }).middleware(Authenticated),
+    // a batch the reader cannot see answers as one that is not there (§32.94)
     HttpApiEndpoint.get('getBatch', '/assessment/batches/:batchId', {
       params: Schema.Struct({ batchId: uuidInput }),
       success: Schema.Struct({ batch: batchView }),
-      error: [BatchNotFound, AccessDenied],
+      error: [BatchNotFound],
     }).middleware(Authenticated),
   )
   .add(
