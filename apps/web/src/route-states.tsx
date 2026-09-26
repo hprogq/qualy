@@ -1,8 +1,8 @@
 import { useEffect, useMemo } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { Link } from 'react-router'
-import { surfaceLabel, type BrowserSurface } from '@qualy/ui-contract'
-import { Failure, type RouteSlots } from '@qualy/web-runtime'
+import { drawerSignOut, surfaceLabel, type BrowserSurface } from '@qualy/ui-contract'
+import { Failure, UiSlot, useManifest, type RouteSlots } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Button } from '@qualy/ui/button'
@@ -21,6 +21,12 @@ const styles = stylex.create({
   standalone: {
     minHeight: '100dvh',
   },
+  // the contribution is drawn at its own size, under the words rather than
+  // stretched across a phone's column
+  wayOut: {
+    display: 'flex',
+    justifyContent: 'center',
+  },
 })
 
 /**
@@ -30,6 +36,9 @@ const styles = stylex.create({
  */
 export function useRouteSlots(homePath: string | undefined): RouteSlots {
   const { format } = useI18n()
+  const manifest = useManifest()
+  const signedIn =
+    manifest.viewer === 'authenticated' && (manifest.slots[drawerSignOut.key]?.length ?? 0) > 0
   return useMemo<RouteSlots>(
     () => ({
       pageLoading: <PageLoading />,
@@ -70,17 +79,29 @@ export function useRouteSlots(homePath: string | undefined): RouteSlots {
           {...(standalone ? { xstyle: styles.standalone } : {})}
         />
       ),
-      // no page to open at all: there is no shell either, so this is the screen
+      // No page to open at all: there is no shell either, so this is the
+      // screen, and its one way out is the session's own - whoever owns
+      // sessions contributes it, and a visitor who is not signed in has
+      // nothing to leave.
       empty: (
         <ResourceState
           kind="denied"
           title={format(commonMessages.emptyPagesTitle)}
           description={format(commonMessages.emptyPagesHint)}
+          actions={
+            signedIn
+              ? [
+                  <div key="sign-out" {...stylex.props(styles.wayOut)}>
+                    <UiSlot token={drawerSignOut} />
+                  </div>,
+                ]
+              : []
+          }
           xstyle={styles.standalone}
         />
       ),
     }),
-    [format, homePath],
+    [format, homePath, signedIn],
   )
 }
 

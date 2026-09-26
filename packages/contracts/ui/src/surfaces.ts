@@ -283,7 +283,11 @@ export const drawerAccount = defineUiSlot({
   cardinality: 'one',
 })
 
-/** the way out, standing at the end of the drawer's last row */
+/**
+ * The way out, standing at the end of the drawer's last row. The host also
+ * offers it, alone, on the screen it draws when a signed-in reader has no
+ * page to open at all, where there is no shell and so no drawer.
+ */
 export const drawerSignOut = defineUiSlot({
   key: 'app-shell/drawer-sign-out',
   cardinality: 'one',

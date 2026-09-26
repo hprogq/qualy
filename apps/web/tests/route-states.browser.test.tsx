@@ -47,6 +47,19 @@ const registry = (): ComponentRegistry => ({
     'probe/home': lazy(() => Promise.resolve({ default: () => <p data-testid="home">home</p> })),
     'probe/broken': lazy(() => Promise.resolve({ default: Broken })),
   },
+  slots: {
+    'app-shell/drawer-sign-out': {
+      'probe/sign-out': lazy(() =>
+        Promise.resolve({
+          default: () => (
+            <button type="button" data-testid="sign-out">
+              out
+            </button>
+          ),
+        }),
+      ),
+    },
+  },
 })
 
 /** the host's route tree over `shown`, with the home the host resolved */
@@ -90,6 +103,37 @@ describe('a page whose own code failed', () => {
       .element(page.getByRole('link', { name: '返回首页' }))
       .toHaveAttribute('href', '/home')
     vi.restoreAllMocks()
+  })
+})
+
+describe('nothing to open at all', () => {
+  const nothing = (viewer: Manifest['viewer']): Manifest => ({
+    ...emptyManifest(),
+    viewer,
+    slots: { 'app-shell/drawer-sign-out': [{ id: 'probe/sign-out', order: 0 }] },
+  })
+
+  it('leaves a signed-in reader the way out of their session', async () => {
+    await page.viewport(390, 844)
+    try {
+      await mount(nothing('authenticated'), '/')
+      await vi.waitFor(() => expect(state()?.getAttribute('data-state')).toBe('denied'))
+      await expect.element(page.getByTestId('sign-out')).toBeVisible()
+      // one of the state's own ways out, not something standing beside it
+      expect(state()!.contains(page.getByTestId('sign-out').element())).toBe(true)
+      // drawn at its own size under the words, even across a phone's column
+      const way = page.getByTestId('sign-out').element().getBoundingClientRect()
+      expect(way.width).toBeLessThan(200)
+      expect((way.left + way.right) / 2).toBeCloseTo(390 / 2, -1)
+    } finally {
+      await page.viewport(1280, 800)
+    }
+  })
+
+  it('offers a visitor who is not signed in nothing to leave', async () => {
+    await mount(nothing('anonymous'), '/')
+    await vi.waitFor(() => expect(state()?.getAttribute('data-state')).toBe('denied'))
+    expect(state()!.querySelector('[data-slot="resource-state-actions"]')).toBeNull()
   })
 })
 
