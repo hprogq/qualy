@@ -605,6 +605,7 @@ export default {
   'auth/users/email-system-hint': '系统账户邮箱由部署配置，此处不可修改',
   'auth/users/last-sign-in': '最近登录',
   'auth/person/gone-title': '找不到该用户',
+  'auth/person/sheet-title': '用户信息',
   'auth/person/gone': '该用户已删除，或不在你的查看范围内',
   'auth/error/user-email-conflict': '该邮箱已被本机构的其他用户使用',
 } satisfies MessageCatalog

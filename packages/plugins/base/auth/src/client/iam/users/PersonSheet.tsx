@@ -1,12 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { PageLink, useApiQuery } from '@qualy/web-runtime'
+import { isRecordId, LoadFailure, PageLink, useApiQuery, useLoadFailure } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { Feedback } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { initialsOf } from '@qualy/ui/person'
 import { Skeleton } from '@qualy/ui/skeleton'
@@ -87,13 +86,23 @@ export function PersonSheet({
   onClose: () => void
 }) {
   const query = useApiQuery(authApi)
-  const { format, formatError, locale } = useI18n()
+  const { format, locale } = useI18n()
+  const describe = useLoadFailure()
   const businessNo = useTerm(authTerms.businessNumber)
+  // an address naming nobody is known to name nobody without asking
+  const addressable = isRecordId(userId)
   const detail = useQuery({
     ...query.identity.getUser.queryOptions({ params: { userId } }),
-    enabled: userId !== '',
+    enabled: userId !== '' && addressable,
   })
   const person = detail.data
+  // not there and not the reader's are one answer on purpose
+  const gone = {
+    missing: ['USER_NOT_FOUND'],
+    copy: { missing: { title: format(m.personGoneTitle), description: format(m.personGone) } },
+  }
+  const failure =
+    userId === '' ? null : addressable ? describe.subject(detail, gone) : describe.missing(gone)
   const whenWords = (iso: string) =>
     new Intl.DateTimeFormat(locale, {
       month: 'long',
@@ -107,15 +116,25 @@ export function PersonSheet({
       open={open}
       onClose={onClose}
       width="narrow"
-      title={person?.user.displayName ?? format(commonMessages.loading)}
-      titleAside={person === undefined ? undefined : <Tag>{person.user.userType.name}</Tag>}
+      title={
+        failure !== null
+          ? format(m.personSheetTitle)
+          : (person?.user.displayName ?? format(commonMessages.loading))
+      }
+      titleAside={
+        person === undefined || failure !== null ? undefined : (
+          <Tag>{person.user.userType.name}</Tag>
+        )
+      }
       lead={
-        <span aria-hidden {...stylex.props(styles.face)}>
-          {person === undefined ? '' : initialsOf(person.user.displayName)}
-        </span>
+        failure !== null ? undefined : (
+          <span aria-hidden {...stylex.props(styles.face)}>
+            {person === undefined ? '' : initialsOf(person.user.displayName)}
+          </span>
+        )
       }
       meta={
-        person === undefined ? undefined : (
+        person === undefined || failure !== null ? undefined : (
           // who, and nothing else: where they stand is said once, below
           <MetaLine
             items={[person.user.businessNo ?? format(m.personNoBusinessNo, { businessNo })]}
@@ -125,19 +144,29 @@ export function PersonSheet({
       closeLabel={format(commonMessages.close)}
       testId="person-sheet"
       footer={
-        <>
-          <FootNote>{format(m.quickViewHint)}</FootNote>
-          <Spacer />
-          <Button size="sm" asChild>
-            <PageLink page="auth/user-detail" params={{ userId }}>
-              {format(m.personOpenDetail)}
-            </PageLink>
-          </Button>
-        </>
+        // nobody to open: the way out is the sheet's own close
+        failure !== null ? undefined : (
+          <>
+            <FootNote>{format(m.quickViewHint)}</FootNote>
+            <Spacer />
+            <Button size="sm" asChild>
+              <PageLink page="auth/user-detail" params={{ userId }}>
+                {format(m.personOpenDetail)}
+              </PageLink>
+            </Button>
+          </>
+        )
       }
     >
-      {detail.isError ? (
-        <Feedback message={formatError(detail.error)} />
+      {failure !== null ? (
+        <div data-testid="person-sheet-absent">
+          <LoadFailure
+            size="section"
+            failure={failure}
+            onRetry={() => void detail.refetch()}
+            retrying={detail.isFetching}
+          />
+        </div>
       ) : person === undefined ? (
         <Card>
           <div {...stylex.props(styles.lines)}>

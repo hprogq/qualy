@@ -768,6 +768,7 @@ const i18n = definePluginMessages({
     },
     lastSignInLabel: { id: 'auth/users/last-sign-in', defaultMessage: 'Last sign-in' },
     personGoneTitle: { id: 'auth/person/gone-title', defaultMessage: 'This user can’t be found' },
+    personSheetTitle: { id: 'auth/person/sheet-title', defaultMessage: 'User' },
     personGone: {
       id: 'auth/person/gone',
       defaultMessage: 'Deleted, or outside what you can see',

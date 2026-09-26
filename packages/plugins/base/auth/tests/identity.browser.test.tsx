@@ -722,6 +722,25 @@ describe('users workspace', () => {
     )
   })
 
+  // A link naming somebody who is not there opens onto saying so, with
+  // nothing to open further and a retry only where one could help.
+  it('says in the panel that the person a link names is not there', async () => {
+    await renderScreen({
+      client: fakeClient(rosterStubs({ getUser: () => Effect.fail(apiError('USER_NOT_FOUND')) })),
+      route: `/admin/users?user=${SECOND_USER_ID}`,
+      children: <UsersPage />,
+    })
+    const sheet = page.getByTestId('person-sheet')
+    await expect.element(sheet).toBeVisible()
+    const absent = sheet.getByTestId('person-sheet-absent')
+    await expect.element(absent).toBeInTheDocument()
+    expect(absent.element().querySelector('[data-state]')?.getAttribute('data-state')).toBe(
+      'missing',
+    )
+    expect(sheet.getByRole('link', { name: '查看详情' }).query()).toBeNull()
+    expect(sheet.getByRole('button', { name: '重试' }).query()).toBeNull()
+  })
+
   it('asks the server for the unit the tree has selected', async () => {
     const list = vi.fn(() =>
       Effect.succeed({
