@@ -68,6 +68,28 @@ describe("a person's audit events", () => {
     expect(document.querySelectorAll('[data-testid="audit-row"]')).toHaveLength(0)
   })
 
+  // What was done to them is all about them: a column naming them on every
+  // row says nothing, and what they did names what they did it to.
+  it('names the object only where it varies', async () => {
+    await open(({ query }: { query: Record<string, string> }) =>
+      Effect.succeed({
+        items: [event(query['actorUserId'] === undefined ? 'about' : 'by')],
+        nextCursor: null,
+      }),
+    )
+    const row = page.getByTestId('audit-row')
+    await expect.element(row).toBeInTheDocument()
+    await expect.element(page.getByTestId('audit-head')).toHaveAttribute('data-columns', '5')
+    expect(row.element().querySelector('[data-cell="target"]')).toBeNull()
+    await page.getByRole('radio', { name: '该用户的操作' }).click()
+    await expect.element(page.getByTestId('audit-head')).toHaveAttribute('data-columns', '6')
+    await vi.waitFor(() =>
+      expect(
+        page.getByTestId('audit-row').element().querySelector('[data-cell="target"]'),
+      ).not.toBeNull(),
+    )
+  })
+
   it('opens a row into what the trail kept, and offers no narrowing to one actor here', async () => {
     await open(() =>
       Effect.succeed({

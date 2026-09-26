@@ -16,6 +16,8 @@ const MONO = "'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace"
 
 /** the six columns, stated once so the head and every row agree */
 const COLUMNS = '11rem minmax(0, 0.9fr) minmax(0, 1.3fr) minmax(0, 1.1fr) 4.5rem 8rem'
+/** the same without the object, for a reading that is all about one object */
+const COLUMNS_WITHOUT_TARGET = '11rem minmax(0, 0.9fr) minmax(0, 1.6fr) 4.5rem 8rem'
 
 const styles = stylex.create({
   ellipsis: {
@@ -52,6 +54,8 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
   },
   right: { textAlign: 'right' },
+  // one object's own events: the column that would name it on every row is dropped
+  withoutTarget: { gridTemplateColumns: COLUMNS_WITHOUT_TARGET },
   rowSeat: {
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
@@ -214,12 +218,15 @@ export function EventTable({
   rows,
   empty,
   onlyActor,
+  hideTarget = false,
 }: {
   rows: readonly EventRow[]
   /** what an empty table says */
   empty: string
   /** narrows the reading to one actor, where the reader can; absent, the press is not offered */
   onlyActor?: (actorUserId: string) => void
+  /** every row is about the same object, which the page already names */
+  hideTarget?: boolean
 }) {
   const { format, formatText, locale } = useI18n()
   const [openId, setOpenId] = useState('')
@@ -242,11 +249,15 @@ export function EventTable({
   return (
     <div {...stylex.props(styles.scroll)}>
       <div {...stylex.props(styles.measure)}>
-        <div {...stylex.props(styles.head)}>
+        <div
+          data-testid="audit-head"
+          data-columns={hideTarget ? 5 : 6}
+          {...stylex.props(styles.head, hideTarget && styles.withoutTarget)}
+        >
           <span>{format(m.columnTime)}</span>
           <span>{format(m.columnActor)}</span>
           <span>{format(m.columnAction)}</span>
-          <span>{format(m.columnTarget)}</span>
+          {!hideTarget && <span>{format(m.columnTarget)}</span>}
           <span>{format(m.columnOutcome)}</span>
           <span {...stylex.props(styles.right)}>{format(m.columnIp)}</span>
         </div>
@@ -262,7 +273,11 @@ export function EventTable({
                 data-event-outcome={row.outcome}
                 data-action={row.actionCode}
                 onClick={() => setOpenId(row.id === openId ? '' : row.id)}
-                {...stylex.props(styles.row, row.id === openId && styles.rowOpen)}
+                {...stylex.props(
+                  styles.row,
+                  hideTarget && styles.withoutTarget,
+                  row.id === openId && styles.rowOpen,
+                )}
               >
                 <span {...stylex.props(styles.ellipsis, styles.when)}>{when(row.occurredAt)}</span>
                 <span {...stylex.props(styles.ellipsis, styles.actor)}>
@@ -272,12 +287,14 @@ export function EventTable({
                   {actorOf(row)}
                 </span>
                 <span {...stylex.props(styles.ellipsis, styles.action)}>{actionOf(row)}</span>
-                <span {...stylex.props(styles.ellipsis, styles.target)}>
-                  <span aria-hidden {...stylex.props(styles.said)}>
-                    {format(m.columnTarget)}
+                {!hideTarget && (
+                  <span data-cell="target" {...stylex.props(styles.ellipsis, styles.target)}>
+                    <span aria-hidden {...stylex.props(styles.said)}>
+                      {format(m.columnTarget)}
+                    </span>
+                    {row.targetLabel ?? row.targetId ?? '—'}
                   </span>
-                  {row.targetLabel ?? row.targetId ?? '—'}
-                </span>
+                )}
                 <span {...stylex.props(styles.outcome)}>
                   <Status tone={row.outcome === 'success' ? 'plain' : 'bad'}>
                     {format(outcomeLabel[row.outcome])}

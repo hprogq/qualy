@@ -84,6 +84,8 @@ export default function UserAuditPage() {
           <EventTable
             rows={rows}
             empty={format(by ? m.userEventsEmptyBy : m.userEventsEmptyAbout)}
+            // what was done to them is all about them: their name on every row says nothing
+            hideTarget={!by}
           />
           {rows.length > 0 && (
             <CardFoot>
