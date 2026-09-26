@@ -48,6 +48,7 @@ import { inCatalogOrder, permissionLabel, permissionShort, type StaffCode } from
 import { ACCESS_PAGE_SIZE, accessQueryOf, narrowed, useAccessView } from './view.ts'
 import {
   adjustableOf,
+  whereOf,
   type AccessSelection,
   type AccessSource,
   type AccessSubject,
@@ -69,8 +70,14 @@ import {
 /** the grid's own width: below it the six columns would squeeze the names out */
 const MATRIX_AT = 1060
 
-/** person, role and scope, the six capabilities, and the way to change them */
-const MATRIX_COLUMNS = `minmax(8.5rem, 1fr) minmax(12rem, 1.5fr) repeat(${String(BATCH_STAFF_CODES.length)}, 4.75rem) 7rem`
+/**
+ * Person, role and scope, the six capabilities, and the way to change them.
+ *
+ * The capabilities take a mark each and no more room than their heads need:
+ * what the eye reads along a row is who somebody is and on whose authority,
+ * and that is where the width goes.
+ */
+const MATRIX_COLUMNS = `minmax(9rem, 1fr) minmax(13rem, 1.7fr) repeat(${String(BATCH_STAFF_CODES.length)}, 4.5rem) 7rem`
 /** person, role and scope, what it grants, and the way to change it */
 const LIST_COLUMNS = 'minmax(8.5rem, 0.9fr) minmax(0, 1.3fr) minmax(0, 1.2fr) 7rem'
 
@@ -94,8 +101,9 @@ const QUIET = `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`
 const styles = stylex.create({
   page: { display: 'flex', flexDirection: 'column', gap: 16 },
   section: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 12 },
-  // One row from a tablet up; on a phone the search takes a line, the three
-  // choices share the next and the way to add somebody the one after.
+  // One row from a tablet up; on a phone the search takes a line and the
+  // three choices and the way to add somebody pair off under it, two to a
+  // line, so none of them is squeezed past its own words.
   toolbar: {
     display: 'flex',
     flexWrap: { default: 'nowrap', [breakpoints.phone]: 'wrap' },
@@ -115,10 +123,11 @@ const styles = stylex.create({
     minWidth: { default: '6.5rem', [breakpoints.phone]: 0 },
     flexGrow: { default: 0, [breakpoints.phone]: 1 },
     flexShrink: 4,
-    flexBasis: { default: null, [breakpoints.phone]: '0%' },
+    flexBasis: { default: null, [breakpoints.phone]: 'calc(50% - 4px)' },
   },
   spacer: { flexGrow: 1, display: { default: 'block', [breakpoints.phone]: 'none' } },
-  add: { flexShrink: 0, width: { default: 'auto', [breakpoints.phone]: '100%' } },
+  // its own words' width, never less: the choice beside it gives way instead
+  add: { flexShrink: 0, flexGrow: { default: 0, [breakpoints.phone]: 1 } },
   addIcon: { width: 15, height: 15 },
 
   // ---- one person -----------------------------------------------------
@@ -126,39 +135,50 @@ const styles = stylex.create({
     display: 'flex',
     minWidth: 0,
     flexDirection: 'column',
-    gap: 4,
+    gap: 8,
     margin: 0,
     padding: 0,
     listStyleType: 'none',
   },
-  // the role, where it is held, and - only when it is not the rule - whose
-  // doing it was and why it grants nothing any more
-  source: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 8 },
+  // The role on a line of its own, and under it where it is held and - only
+  // when it is not the rule - whose doing it was and why it grants nothing
+  // any more. Side by side, the role kept its width and the unit gave up
+  // all of its own: one class's appointment and the next class's read the
+  // same.
+  source: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 1 },
   role: {
-    flexShrink: 0,
-    maxWidth: '100%',
+    minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     fontSize: 13,
+    lineHeight: 1.45,
     color: tokens.foreground,
   },
   roleSpent: { color: tokens.mutedForeground, textDecorationLine: 'line-through' },
-  unit: {
+  // the marks follow the unit while they fit and drop under it when they do
+  // not, so the unit only shortens against the column itself
+  where: {
+    display: 'flex',
     minWidth: 0,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 6,
+    rowGap: 3,
+    fontSize: 12,
+    lineHeight: 1.5,
+    color: QUIET,
+  },
+  unit: {
+    minWidth: 'min(8em, 100%)',
+    maxWidth: '100%',
     flexShrink: 1,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    fontSize: 12,
-    color: QUIET,
   },
-  rule: {
-    flexShrink: 0,
-    width: 1,
-    height: 10,
-    backgroundColor: `color-mix(in oklab, ${tokens.foreground} 12%, transparent)`,
-  },
+  // not a name: said in a lighter voice than one
+  unitUnnamed: { color: `color-mix(in oklab, ${tokens.mutedForeground} 70%, transparent)` },
   marks: { display: 'inline-flex', flexShrink: 0, alignItems: 'center', gap: 6 },
   // what somebody may do, as a line of words
   grants: {
@@ -182,7 +202,7 @@ const styles = stylex.create({
     height: 20,
   },
   granted: { width: 16, height: 16, color: tokens.primary },
-  withheld: { width: 14, height: 14, color: QUIET },
+  withheld: { width: 16, height: 16, color: tokens.mutedForeground },
   headWord: {
     display: 'block',
     minWidth: 0,
@@ -191,9 +211,18 @@ const styles = stylex.create({
     whiteSpace: 'nowrap',
     textAlign: 'center',
   },
-  // somebody who can do nothing here any more: still listed, a record to
-  // clear rather than a colleague to find, and drawn as one
-  idle: { opacity: 0.62 },
+  // Somebody who can do nothing here any more: still listed, a record to
+  // clear rather than a colleague to find, and drawn as one. A box of its
+  // own that gives way like the cell around it, or the name inside stops
+  // shortening with an ellipsis and is cut off mid-character instead.
+  idle: {
+    display: 'flex',
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    overflow: 'hidden',
+    opacity: 0.62,
+  },
   // a row carries a list of roles, not one word, so it takes the air a
   // floor alone would not give it
   roomy: { paddingBlock: 10 },
@@ -204,6 +233,8 @@ const styles = stylex.create({
     justifyContent: 'flex-end',
     gap: 2,
   },
+  // on a card the name gives way, never the button beside it
+  cardActs: { flexShrink: 0, whiteSpace: 'nowrap' },
   menuWhere: { marginInlineStart: 6, color: QUIET },
 
   // one person as a card of their own, where a row of columns is not a
@@ -222,6 +253,26 @@ const styles = stylex.create({
   cardWho: { display: 'flex', minWidth: 0, flexGrow: 1 },
   cardBlock: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 5 },
   cardLabel: { fontSize: 11.5, fontWeight: 500, color: QUIET },
+  // what the grid's two marks mean, once, at its foot
+  legend: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 14,
+    rowGap: 4,
+    margin: 0,
+    padding: 0,
+    listStyleType: 'none',
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  legendItem: { display: 'inline-flex', alignItems: 'center', gap: 5 },
+  legendMark: { width: 14, height: 14 },
+  legendRule: {
+    width: 1,
+    height: 12,
+    backgroundColor: tokens.divider,
+  },
   blank: { minHeight: '18rem', borderWidth: 0 },
 })
 
@@ -582,6 +633,26 @@ export function AccessPanel({
           </Table>
         )}
         <CardFoot>
+          {shape === 'matrix' && (
+            <>
+              {/* a mark alone says nothing to somebody who cannot hover it */}
+              <ul
+                aria-label={format(m.accessLegend)}
+                data-testid="access-legend"
+                {...stylex.props(styles.legend)}
+              >
+                <li data-mark="granted" {...stylex.props(styles.legendItem)}>
+                  <CheckIcon aria-hidden {...stylex.props(styles.legendMark, styles.granted)} />
+                  {format(m.accessLegendGranted)}
+                </li>
+                <li data-mark="withheld" {...stylex.props(styles.legendItem)}>
+                  <MinusIcon aria-hidden {...stylex.props(styles.legendMark, styles.withheld)} />
+                  {format(m.accessLegendWithheld)}
+                </li>
+              </ul>
+              <span aria-hidden {...stylex.props(styles.legendRule)} />
+            </>
+          )}
           <Pager
             testId="access-pager"
             label={format(m.accessPagerLabel)}
@@ -672,10 +743,20 @@ export function AccessPanel({
 
       <ConfirmDialog
         open={removing !== null}
-        title={format(m.accessRemoveTitle, {
-          name: removing?.subject.displayName ?? '',
-          role: removing?.source.roleName ?? '',
-        })}
+        // with the unit, where there is one to name: one role held in two
+        // classes is two appointments, and the question has to say which
+        title={
+          removing !== null && removing.source.orgNodeName !== null
+            ? format(m.accessRemoveTitleAt, {
+                name: removing.subject.displayName,
+                role: removing.source.roleName,
+                unit: removing.source.orgNodeName,
+              })
+            : format(m.accessRemoveTitle, {
+                name: removing?.subject.displayName ?? '',
+                role: removing?.source.roleName ?? '',
+              })
+        }
         description={format(othersRemain ? m.accessRemoveBodyKept : m.accessRemoveBody, {
           name: removing?.subject.displayName ?? '',
         })}
@@ -763,8 +844,10 @@ function SubjectRow({
             title={format(m.accessWithheldMark)}
             {...stylex.props(styles.grantOff)}
           >
-            {format(permissionLabel(code))}
-            <VisuallyHidden>{format(m.accessWithheldMark)}</VisuallyHidden>
+            <span aria-hidden>{format(permissionLabel(code))}</span>
+            <VisuallyHidden>
+              {format(m.accessPermissionWithheld, { name: format(permissionLabel(code)) })}
+            </VisuallyHidden>
           </span>
         ))}
         {inForce.length === 0 && (
@@ -776,7 +859,7 @@ function SubjectRow({
     )
 
   const acts = (
-    <span {...stylex.props(styles.acts)}>
+    <span {...stylex.props(styles.acts, shape === 'cards' && styles.cardActs)}>
       {adjustable && (
         <Button size="sm" variant={shape === 'cards' ? 'outline' : 'ghost'} onClick={onAdjust}>
           {format(m.accessAdjust)}
@@ -807,9 +890,9 @@ function SubjectRow({
                 onSelect={() => onRemove(source)}
               >
                 {format(m.accessRemoveSource, { role: source.roleName })}
-                {source.orgNodeName !== null && (
-                  <span {...stylex.props(styles.menuWhere)}>{source.orgNodeName}</span>
-                )}
+                <span {...stylex.props(styles.menuWhere)}>
+                  <Where source={source} />
+                </span>
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
@@ -869,8 +952,9 @@ function SubjectRow({
               {state === 'withheld' && <MinusIcon aria-hidden {...stylex.props(styles.withheld)} />}
               {state !== 'none' && (
                 <VisuallyHidden>
-                  {format(permissionLabel(code))}
-                  {state === 'withheld' ? format(m.accessWithheldMark) : ''}
+                  {state === 'withheld'
+                    ? format(m.accessPermissionWithheld, { name: format(permissionLabel(code)) })
+                    : format(permissionLabel(code))}
                 </VisuallyHidden>
               )}
             </span>
@@ -901,6 +985,7 @@ function SubjectRow({
 function SourceLine({ source }: { source: AccessSource }) {
   const { format } = useI18n()
   const role = source.roleName === '' ? format(m.accessRoleUnknown) : source.roleName
+  const where = whereOf(source)
   return (
     <li
       data-testid="access-source"
@@ -908,27 +993,38 @@ function SourceLine({ source }: { source: AccessSource }) {
       data-origin={source.origin}
       data-active={source.active}
       data-lapse={source.lapse ?? ''}
+      data-where={where.kind}
       {...stylex.props(styles.source)}
     >
       <span {...stylex.props(styles.role, !source.active && styles.roleSpent)} title={role}>
         {role}
       </span>
-      {source.orgNodeName !== null && (
-        <>
-          <span aria-hidden {...stylex.props(styles.rule)} />
-          <span {...stylex.props(styles.unit)} title={source.orgNodeName}>
-            {source.orgNodeName}
-          </span>
-        </>
-      )}
-      {(source.origin === 'explicit' || source.lapse !== null) && (
-        <span {...stylex.props(styles.marks)}>
-          {source.origin === 'explicit' && <Tag outline>{format(m.accessOriginExplicit)}</Tag>}
-          {source.lapse !== null && (
-            <Status tone="warn">{format(LAPSE_WORDS[source.lapse])}</Status>
-          )}
+      <span {...stylex.props(styles.where)}>
+        <span
+          data-testid="access-source-unit"
+          title={where.kind === 'unit' ? where.name : undefined}
+          {...stylex.props(styles.unit, where.kind !== 'unit' && styles.unitUnnamed)}
+        >
+          <Where source={source} />
         </span>
-      )}
+        {(source.origin === 'explicit' || source.lapse !== null) && (
+          <span {...stylex.props(styles.marks)}>
+            {source.origin === 'explicit' && <Tag outline>{format(m.accessOriginExplicit)}</Tag>}
+            {source.lapse !== null && (
+              <Status tone="warn">{format(LAPSE_WORDS[source.lapse])}</Status>
+            )}
+          </span>
+        )}
+      </span>
     </li>
   )
+}
+
+/** where a source is held, in words */
+function Where({ source }: { source: AccessSource }) {
+  const { format } = useI18n()
+  const where = whereOf(source)
+  return where.kind === 'unit'
+    ? where.name
+    : format(where.kind === 'everywhere' ? m.accessUnitEverywhere : m.accessUnitBeyond)
 }

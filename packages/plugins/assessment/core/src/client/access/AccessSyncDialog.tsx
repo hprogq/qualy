@@ -26,7 +26,7 @@ import { assessmentApi } from '../api.ts'
 import { DialogBlank } from '../DialogBlank.tsx'
 import { assessmentMessages as m } from '../i18n.ts'
 import { inCatalogOrder, permissionLabel } from './permissions.ts'
-import type { AccessChange, AccessSelection } from './model.ts'
+import { whereOf, type AccessChange, type AccessSelection } from './model.ts'
 
 // Choosing what to take from the organization, one capability at a time.
 //
@@ -300,6 +300,7 @@ function ChangeRow({
   const { format } = useI18n()
   const held = new Set(chosen)
   const settled = change.kind === 'lapsed'
+  const where = whereOf(change)
 
   return (
     <li {...stylex.props(styles.row)} data-testid="access-change" data-kind={change.kind}>
@@ -311,12 +312,14 @@ function ChangeRow({
       </div>
       {/* which appointment it is: the number, the role and where it is held,
           so two changes to one person in two classes do not read the same */}
-      <span data-testid="access-change-role" data-role={change.roleName}>
+      <span data-testid="access-change-role" data-role={change.roleName} data-where={where.kind}>
         <MetaLine
           items={[
             change.businessNo,
             change.roleName === '' ? format(m.accessRoleUnknown) : change.roleName,
-            change.orgNodeName,
+            where.kind === 'unit'
+              ? where.name
+              : format(where.kind === 'everywhere' ? m.accessUnitEverywhere : m.accessUnitBeyond),
           ]}
         />
       </span>

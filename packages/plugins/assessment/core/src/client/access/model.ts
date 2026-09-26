@@ -33,3 +33,17 @@ export interface AccessSelection {
 export const adjustableOf = (subject: Pick<AccessSubject, 'sources'>): string[] => [
   ...new Set(subject.sources.flatMap((source) => source.current)),
 ]
+
+/**
+ * Where a source is held, as a reader may be told it: a unit by name, the
+ * whole institution, or a unit outside what the reader manages - which the
+ * server leaves unnamed but still identifies.
+ */
+export const whereOf = (
+  source: Pick<AccessSource, 'orgNodeId' | 'orgNodeName'>,
+): { kind: 'unit'; name: string } | { kind: 'everywhere' } | { kind: 'beyond' } =>
+  source.orgNodeId === null
+    ? { kind: 'everywhere' }
+    : source.orgNodeName === null
+      ? { kind: 'beyond' }
+      : { kind: 'unit', name: source.orgNodeName }

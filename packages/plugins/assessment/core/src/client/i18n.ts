@@ -6442,6 +6442,28 @@ const i18n = definePluginMessages({
       id: 'assessment/access/withheld-mark',
       defaultMessage: 'turned off for this batch',
     },
+    /** one capability this batch turned off, as a screen reader hears it */
+    accessPermissionWithheld: defineMessage<{ name: string }>()({
+      id: 'assessment/access/permission-withheld',
+      defaultMessage: '{name}, turned off for this batch',
+    }),
+    /** what the grid's two marks mean, said once under it */
+    accessLegend: { id: 'assessment/access/legend', defaultMessage: 'Key' },
+    accessLegendGranted: { id: 'assessment/access/legend-granted', defaultMessage: 'In force' },
+    accessLegendWithheld: {
+      id: 'assessment/access/legend-withheld',
+      defaultMessage: 'Turned off for this batch',
+    },
+    /** where a role is held, for one held across the whole institution */
+    accessUnitEverywhere: {
+      id: 'assessment/access/unit-everywhere',
+      defaultMessage: 'Whole institution',
+    },
+    /** where a role is held, for a unit outside what the reader manages */
+    accessUnitBeyond: {
+      id: 'assessment/access/unit-beyond',
+      defaultMessage: 'A unit you don\u2019t manage',
+    },
     accessRowActions: defineMessage<{ name: string }>()({
       id: 'assessment/access/row-actions',
       defaultMessage: 'More for {name}',
@@ -6485,6 +6507,11 @@ const i18n = definePluginMessages({
     accessRemoveTitle: defineMessage<{ name: string; role: string }>()({
       id: 'assessment/access/remove-title',
       defaultMessage: 'Revoke {name}’s batch assignment as {role}?',
+    }),
+    /** the same, where the unit tells two of one role apart */
+    accessRemoveTitleAt: defineMessage<{ name: string; role: string; unit: string }>()({
+      id: 'assessment/access/remove-title-at',
+      defaultMessage: 'Revoke {name}’s batch assignment as {role} at {unit}?',
     }),
     accessRemoveBody: defineMessage<{ name: string }>()({
       id: 'assessment/access/remove-body',
