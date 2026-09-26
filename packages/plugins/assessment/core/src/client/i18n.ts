@@ -150,6 +150,11 @@ const flowScopeItems = defineMessage<{ items: string }>()({
   defaultMessage: 'Only for {items}',
 })
 
+const flowScopeFirst = defineMessage<{ count: number; items: string }>()({
+  id: 'assessment/flow/scope-first',
+  defaultMessage: '{count, plural, one {Only # item} other {Only # items}}: {items} and more',
+})
+
 // what a batch is, in one line: who it assesses and which materials count
 const batchSummary = defineMessage<{ count: number; from: string; until: string }>()({
   id: 'assessment/batch/summary',
@@ -6011,6 +6016,9 @@ const i18n = definePluginMessages({
     },
     scopePeopleKept,
     flowScopeItems,
+    flowScopeFirst,
+    flowScopeAll: { id: 'assessment/flow/scope-all', defaultMessage: 'Show all' },
+    flowScopeFewer: { id: 'assessment/flow/scope-fewer', defaultMessage: 'Show fewer' },
     flowScopeSome: { id: 'assessment/flow/scope-some', defaultMessage: 'Only for some items' },
     flowScopePeople: {
       id: 'assessment/flow/scope-people',

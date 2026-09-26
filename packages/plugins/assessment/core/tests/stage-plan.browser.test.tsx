@@ -1,5 +1,7 @@
 import BatchPhasesPage from '../src/client/BatchPhasesPage.tsx'
 import BatchSettingsPage from '../src/client/BatchSettingsPage.tsx'
+import { BatchFlow } from '../src/client/batch/BatchFlow.tsx'
+import { BatchZone } from '../src/client/batch/BatchZone.tsx'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
@@ -410,5 +412,64 @@ describe('the batch settings, being edited', () => {
     await vi.waitFor(() => expect(deleteBatch).toHaveBeenCalledTimes(1))
     await expect.element(page.getByTestId('batch-list')).toBeVisible()
     expect(page.getByRole('alertdialog').elements()).toHaveLength(0)
+  })
+})
+
+describe('the stage progress', () => {
+  const HOUR = 3600_000
+  const at = (ms: number) => new Date(Date.now() + ms).toISOString()
+  const names = ['学业成绩', '学科竞赛获奖', '志愿服务', '语言技能证书', '社会实践', '文体活动']
+  const flow = (count: number) => [
+    {
+      phaseId: 'entry',
+      displayName: '正式填报',
+      description: '',
+      entryNote: '',
+      status: 'current' as const,
+      entry: { kind: 'entered' as const, at: at(-HOUR) },
+    },
+    {
+      phaseId: 'supplement',
+      displayName: '补充提交',
+      description: '',
+      entryNote: '',
+      status: 'future' as const,
+      entry: { kind: 'pending' as const, at: null },
+      scope: {
+        items: names.slice(0, count).map((title, index) => ({ id: `i${index}`, title })),
+        participantsLimited: false,
+      },
+    },
+  ]
+  const mount = (count: number) =>
+    renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
+      children: (
+        <BatchZone zone="Asia/Shanghai">
+          <BatchFlow timeline={flow(count)} />
+        </BatchZone>
+      ),
+    })
+
+  it('names a few of the items a stage opens, and the rest on request', async () => {
+    await mount(6)
+    const items = page.getByTestId('stage-scope-items')
+    await expect.element(items).toHaveAttribute('data-count', '6')
+    await expect.element(items).toHaveAttribute('data-named', '3')
+    const toggle = items.getByRole('button')
+    await expect.element(toggle).toHaveAttribute('aria-expanded', 'false')
+
+    await toggle.click()
+    await expect.element(items).toHaveAttribute('data-named', '6')
+    await expect.element(toggle).toHaveAttribute('aria-expanded', 'true')
+    // the names are the fixture's own
+    expect(items.element().textContent).toContain(names.at(-1)!)
+  })
+
+  it('names every item when there are only a few', async () => {
+    await mount(3)
+    const items = page.getByTestId('stage-scope-items')
+    await expect.element(items).toHaveAttribute('data-named', '3')
+    expect(items.getByRole('button').elements()).toHaveLength(0)
   })
 })

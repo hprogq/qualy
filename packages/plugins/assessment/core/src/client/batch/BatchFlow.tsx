@@ -159,11 +159,30 @@ const styles = stylex.create({
     fontSize: 14,
     color: tokens.mutedForeground,
   },
+  // the colour of the notes around it, so an ended stage fades with the rest
+  // of its row; what makes it the first thing read is its weight
   scopeLine: {
     display: 'inline-flex',
     alignItems: 'flex-start',
     gap: 5,
-    color: tokens.foreground,
+    fontWeight: 500,
+  },
+  scopeToggle: {
+    marginInlineStart: 6,
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    fontFamily: 'inherit',
+    fontSize: 'inherit',
+    fontWeight: 400,
+    color: {
+      default: tokens.mutedForeground,
+      ':hover': tokens.foreground,
+    },
+    textDecorationLine: 'underline',
+    textDecorationColor: `color-mix(in oklab, ${tokens.mutedForeground} 40%, transparent)`,
+    textUnderlineOffset: 2,
+    cursor: 'pointer',
   },
   scopeWords: {
     display: 'flex',
@@ -347,11 +366,50 @@ const STATUS = {
   future: m.flowStatusFuture,
 } as const
 
+/**
+ * How many item names a stage says before the rest wait for a press. A
+ * stage that reopens one section can name a dozen questions, and a rail
+ * that spells them all out pushes every stage after it off the screen.
+ */
+const NAMED_ITEMS = 3
+
+/** the items a stage alone opens: a few by name, the rest on request */
+function ScopeItems({ names }: { names: readonly string[] }) {
+  const { format } = useI18n()
+  const listOf = useList()
+  const [whole, setWhole] = useState(false)
+  const folds = names.length > NAMED_ITEMS
+  const shown = folds && !whole ? names.slice(0, NAMED_ITEMS) : names
+  return (
+    <span
+      // how many the stage opens and how many of them are named, as facts
+      data-testid="stage-scope-items"
+      data-count={String(names.length)}
+      data-named={String(shown.length)}
+    >
+      {names.length === 0
+        ? format(m.flowScopeSome)
+        : shown.length < names.length
+          ? format(m.flowScopeFirst, { count: names.length, items: listOf(shown) })
+          : format(m.flowScopeItems, { items: listOf(shown) })}
+      {folds && (
+        <button
+          type="button"
+          aria-expanded={whole}
+          onClick={() => setWhole((open) => !open)}
+          {...stylex.props(styles.scopeToggle)}
+        >
+          {format(whole ? m.flowScopeFewer : m.flowScopeAll)}
+        </button>
+      )}
+    </span>
+  )
+}
+
 /** one stage, said the same way whichever direction the timeline runs */
 function Stage({ stage, upright }: { stage: FlowStage; upright: boolean }) {
   const said = useSaid()
   const { format } = useI18n()
-  const listOf = useList()
   const faded = stage.status === 'ended'
   return (
     <>
@@ -406,13 +464,7 @@ function Stage({ stage, upright }: { stage: FlowStage; upright: boolean }) {
           <span {...stylex.props(styles.scopeLine)}>
             <FilterIcon aria-hidden {...stylex.props(styles.scopeGlyph)} />
             <span {...stylex.props(styles.scopeWords)}>
-              {stage.onlyItems !== null && (
-                <span>
-                  {stage.onlyItems.length === 0
-                    ? format(m.flowScopeSome)
-                    : format(m.flowScopeItems, { items: listOf(stage.onlyItems) })}
-                </span>
-              )}
+              {stage.onlyItems !== null && <ScopeItems names={stage.onlyItems} />}
               {stage.somePeople && <span>{format(m.flowScopePeople)}</span>}
             </span>
           </span>
