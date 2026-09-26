@@ -23,11 +23,12 @@ import { assessmentMessages as m } from '../i18n.ts'
 // Nothing chosen here is authorized by having been chosen - the write proves
 // every id again.
 //
-// That list is read forwards by cursor, as a picker's list is, so the pages
-// are walked one at a time rather than numbered: the strip under it is the
-// numbered one's, holding the way back, the page being read and the way on.
-// Numbering it would mean counting the reach on every page for a list that
-// is searched far more often than it is paged through.
+// That list is read forwards by cursor, unlike the directory's and the
+// roster candidates', so its pages are walked one at a time rather than
+// numbered: the strip under it is the numbered one's, holding the way back,
+// the page being read and the way on. Numbering it would mean counting the
+// reach on every page for a list that is searched far more often than it is
+// paged through.
 
 const PAGE = 25
 
