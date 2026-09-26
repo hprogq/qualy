@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { claimActOf, claimFilesOf, claimNoteOf } from '../src/client/entry/claim-facts.ts'
 import type { EntryDto, ItemDto } from '../src/client/entry/model.ts'
+import { assessmentMessages as m } from '../src/client/i18n.ts'
 import type { Standing, StructureRow } from '../src/client/entry/standing.ts'
 import {
   chipsFor,
@@ -164,6 +166,72 @@ describe('a claim’s identity line', () => {
     )
     expect(line.lead).toBe('National')
     expect(line.sub).toBe('First|GPA=3.9')
+  })
+
+  // The filing page and the account list the same claim; what last happened
+  // to it, the reviewer's words on it and its files are one reading, and a
+  // claim its owner gave up is said to have been given up in both.
+  it('reads what last happened, the words on it and its files the way the account does', () => {
+    const words = {
+      figure: (label: string, value: string) => `${label} ${value}`,
+      join: (a: string, b: string) => `${a} ${b}`,
+    }
+    const withFile = {
+      ...item,
+      currentRevision: {
+        ...item.currentRevision!,
+        formConfig: { fields: [{ id: 'proof', key: 'proof', type: 'attachment', label: 'Proof' }] },
+      },
+    } as ItemDto
+    const filed = {
+      payload: { proof: ['f1', 'f2'] },
+      createdAt: '2026-04-03T00:00:00.000Z',
+    } as unknown as EntryDto['currentRevision']
+    const ask = (instructions: string) => ({
+      requestId: 'a',
+      instanceId: 'i',
+      requestNo: 1,
+      instructions,
+      requirements: [],
+      requestedByName: null,
+      requestedAt: '2026-04-05T00:00:00.000Z',
+    })
+    const claims = [
+      claim('given-up', { status: 'voided', currentRevision: filed } as Partial<EntryDto>),
+      claim('revoked', { status: 'voided', source: 'record' }),
+      claim('asked', {
+        supplement: ask('  a stamped copy  '),
+        currentRevision: filed,
+      } as Partial<EntryDto>),
+      claim('blank-ask', { supplement: ask('   ') }),
+      claim('returned', {
+        status: 'needs_revision',
+        refusal: { at: '2026-04-04T00:00:00.000Z', comment: null, reason: 'late' },
+      } as Partial<EntryDto>),
+    ]
+    for (const one of claims) {
+      const line = entryLineOf(one, withFile, null, words)
+      const { act, at } = claimActOf(one)
+      expect({ act: line.act, at: line.at }, one.id).toEqual({ act, at: at ?? one.createdAt })
+      expect(line.note, one.id).toEqual(claimNoteOf(one))
+      expect(line.files, one.id).toBe(claimFilesOf(one, withFile.currentRevision?.formConfig))
+    }
+    const said = (id: string) =>
+      entryLineOf(
+        claims.find((one) => one.id === id)!,
+        withFile,
+        null,
+        words,
+      )
+    // given up by its owner: the account's own word, not the one for a
+    // question taken out of the paper
+    expect(said('given-up').act).toBe('abandoned')
+    expect(said('given-up').action.id).toBe(m.resultActAbandoned.id)
+    expect(said('revoked').action.id).toBe(m.entriesActRevoked.id)
+    // an ask with nothing written in it carries no words to show
+    expect(said('asked').note).toEqual({ kind: 'ask', text: 'a stamped copy' })
+    expect(said('blank-ask').note).toBeNull()
+    expect(said('asked').files).toBe(2)
   })
 })
 

@@ -1890,7 +1890,8 @@ const i18n = definePluginMessages({
       id: 'assessment/result/add-away',
       defaultMessage: 'Add another in My entries',
     },
-    // a claim its owner gave up, in the word its chip uses
+    // a claim its owner gave up, in the word its chip uses, wherever a list
+    // of claims says what last happened to one
     resultActAbandoned: { id: 'assessment/result/act-abandoned', defaultMessage: 'abandoned' },
     // what a draft would come to: it has to be submitted first
     resultIfSubmitted: {
@@ -4067,10 +4068,6 @@ const i18n = definePluginMessages({
     entriesActSubmitted: {
       id: 'assessment/entries/act-submitted',
       defaultMessage: 'submitted',
-    },
-    entriesActVoided: {
-      id: 'assessment/entries/act-voided',
-      defaultMessage: 'voided',
     },
     entriesActSaved: {
       id: 'assessment/entries/act-saved',

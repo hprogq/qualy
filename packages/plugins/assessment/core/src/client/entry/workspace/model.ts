@@ -13,6 +13,13 @@ import {
 } from '../model.ts'
 import { eachWorth, mayFile, roomLeft, type Standing, type StructureRow } from '../standing.ts'
 import { filingHeldOf, type RoundState, type Said } from '../refusals.ts'
+import {
+  claimActOf,
+  claimFilesOf,
+  claimNoteOf,
+  type ClaimAct,
+  type ClaimNote,
+} from '../claim-facts.ts'
 
 // What the entries workspace draws, worked out away from the drawing.
 //
@@ -246,10 +253,28 @@ export interface EntryLine {
   readonly amountTone: 'ink' | 'pending' | 'muted' | 'negative'
   /** the last thing that happened to it, and when */
   readonly at: string
+  readonly act: ClaimAct
   readonly action: MessageDescriptor
   /** a reviewer's words the owner has to act on, carried on the row itself */
-  readonly note: { readonly kind: 'return' | 'ask' | 'refusal'; readonly text: string } | null
+  readonly note: ClaimNote | null
   readonly files: number
+}
+
+/**
+ * What last happened to a claim, in the words every list of claims uses.
+ * Giving a claim up is its owner's act and is said as such; voiding is what
+ * happens to a question, and revoking to a record the office took back.
+ */
+export const claimActWord: Readonly<Record<ClaimAct, MessageDescriptor>> = {
+  asked: m.entriesActAsked,
+  returned: m.entriesActReturned,
+  refused: m.entriesActRejected,
+  recorded: m.entriesActRecorded,
+  approved: m.entriesActApproved,
+  submitted: m.entriesActSubmitted,
+  revoked: m.entriesActRevoked,
+  abandoned: m.resultActAbandoned,
+  saved: m.entriesActSaved,
 }
 
 const NUMERIC = new Set(['integer', 'decimal'])
@@ -323,43 +348,9 @@ export const entryLineOf = (
   const said = [...texts, ...kept.map((part) => words.figure(part.label, part.value))]
   if (said.length === 0) said.push(figures[0]?.label ?? item.title)
 
-  const revised = entry.currentRevision?.createdAt ?? entry.createdAt
-  const [at, action] =
-    entry.supplement !== null
-      ? [entry.supplement.requestedAt, m.entriesActAsked]
-      : entry.status === 'needs_revision'
-        ? [entry.refusal?.at ?? revised, m.entriesActReturned]
-        : entry.status === 'rejected'
-          ? [entry.refusal?.at ?? entry.recognition?.createdAt ?? revised, m.entriesActRejected]
-          : entry.status === 'approved'
-            ? [
-                entry.recognition?.createdAt ?? revised,
-                administrative(entry) ? m.entriesActRecorded : m.entriesActApproved,
-              ]
-            : entry.status === 'in_review'
-              ? [revised, m.entriesActSubmitted]
-              : entry.status === 'voided'
-                ? [revised, administrative(entry) ? m.entriesActRevoked : m.entriesActVoided]
-                : [revised, m.entriesActSaved]
-
-  const refusalText =
-    entry.refusal === null ? '' : (entry.refusal.comment ?? entry.refusal.reason ?? '').trim()
-  const note: EntryLine['note'] =
-    entry.supplement !== null
-      ? { kind: 'ask', text: entry.supplement.instructions }
-      : entry.status === 'needs_revision' && refusalText !== ''
-        ? { kind: 'return', text: refusalText }
-        : entry.status === 'rejected' && refusalText !== ''
-          ? { kind: 'refusal', text: refusalText }
-          : null
-
-  const files = fields
-    .filter((field) => field.type === 'attachment')
-    .reduce(
-      (count, field) =>
-        count + (Array.isArray(payload[field.key]) ? (payload[field.key] as unknown[]).length : 0),
-      0,
-    )
+  // what last happened to it, the reviewer's words it carries and its files
+  // are read the way every list of claims reads them, the account's included
+  const { act, at } = claimActOf(entry)
 
   return {
     lead: said[0]!,
@@ -368,10 +359,11 @@ export const entryLineOf = (
     amount,
     amountWord,
     amountTone,
-    at,
-    action,
-    note,
-    files,
+    at: at ?? entry.createdAt,
+    act,
+    action: claimActWord[act],
+    note: claimNoteOf(entry),
+    files: claimFilesOf(entry, formConfig),
   }
 }
 

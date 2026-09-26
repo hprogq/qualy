@@ -1021,7 +1021,6 @@ export default {
   'assessment/entries/act-recorded': '认定',
   'assessment/entries/act-approved': '通过',
   'assessment/entries/act-submitted': '提交',
-  'assessment/entries/act-voided': '作废',
   'assessment/entries/act-saved': '保存',
   'assessment/entries/act-revoked': '撤销',
   'assessment/entries/chip-waiting': '待参评人处理',
