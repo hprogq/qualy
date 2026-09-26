@@ -260,6 +260,14 @@ describe('a claim’s identity line', () => {
     const gone = entryLineOf(claims[0]!, withdrawn, null, words)
     expect(gone.action.id).toBe(m.entriesActVoided.id)
     expect(gone.amountWord.id).toBe(m.entryStatusVoided.id)
+    // A claim that ended voided holds no time of its ending, only that of
+    // the last version filed: it is never said to have ended then. Every
+    // other act's time is its own.
+    expect(gone.dated).toBe(false)
+    expect(said('given-up').dated).toBe(false)
+    expect(said('revoked').dated).toBe(false)
+    expect(said('asked').dated).toBe(true)
+    expect(said('returned').dated).toBe(true)
     // an ask with nothing written in it carries no words to show
     expect(said('asked').note).toEqual({ kind: 'ask', text: 'a stamped copy' })
     expect(said('blank-ask').note).toBeNull()

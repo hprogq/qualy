@@ -263,27 +263,35 @@ export function EntryRow({
             </span>
           )}
         </span>
-        <span {...stylex.props(styles.second)}>
-          {compact && standing}
-          {awaitingMe && <span {...stylex.props(styles.mine)}>{format(m.entriesAwaitingYou)}</span>}
-          <span {...stylex.props(styles.keep)}>
-            {format(m.entriesWhen, { when, action: format(line.action) })}
-          </span>
-          {line.files > 0 && (
-            <>
-              <span aria-hidden {...stylex.props(styles.rule)} />
-              <span {...stylex.props(styles.keep)}>
-                {format(m.entriesFiles, { count: line.files })}
+        {/* a claim that ended says how in its standing, with no time to put
+            beside it: at a desk that can leave this line with nothing on it */}
+        {(compact || awaitingMe || line.dated || line.files > 0 || line.note !== null) && (
+          <span {...stylex.props(styles.second)}>
+            {compact && standing}
+            {awaitingMe && (
+              <span {...stylex.props(styles.mine)}>{format(m.entriesAwaitingYou)}</span>
+            )}
+            {line.dated && (
+              <span data-when="" {...stylex.props(styles.keep)}>
+                {format(m.entriesWhen, { when, action: format(line.action) })}
               </span>
-            </>
-          )}
-          {line.note !== null && !compact && (
-            <>
-              <span aria-hidden {...stylex.props(styles.rule)} />
-              {said}
-            </>
-          )}
-        </span>
+            )}
+            {line.files > 0 && (
+              <>
+                {line.dated && <span aria-hidden {...stylex.props(styles.rule)} />}
+                <span {...stylex.props(styles.keep)}>
+                  {format(m.entriesFiles, { count: line.files })}
+                </span>
+              </>
+            )}
+            {line.note !== null && !compact && (
+              <>
+                <span aria-hidden {...stylex.props(styles.rule)} />
+                {said}
+              </>
+            )}
+          </span>
+        )}
         {/* narrow, the reviewer's words get a line of their own: squeezed in
             after the status and the time there is no room left to read them */}
         {line.note !== null && compact && said}

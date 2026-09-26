@@ -595,7 +595,7 @@ export function EntryDetail({
                     </span>
                   </span>
                 )}
-                {summary !== undefined && (
+                {summary?.dated === true && (
                   <span data-head-fact="when" {...stylex.props(styles.headFact)}>
                     <span aria-hidden {...stylex.props(styles.headRule)} />
                     <span {...stylex.props(styles.versionNote)}>

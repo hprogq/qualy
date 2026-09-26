@@ -1546,14 +1546,20 @@ describe('what a question’s row says at a glance', () => {
     expect(document.querySelector('[data-testid="entries-tray"]')).toBeNull()
     const row = document.querySelector(`[data-testid="claim-row"][data-entry="${entryId(1)}"]`)!
     expect(row.getAttribute('data-unread')).toBe('true')
-    // went with its question: voided, not given up by its owner
+    // went with its question: voided, not given up by its owner - and with
+    // no time given for it, since the claim holds none of its ending
     expect(row.querySelector('[data-testid="entry-standing"]')?.getAttribute('data-ended')).toBe(
       'with-item',
     )
+    expect(row.querySelector('[data-when]')).toBeNull()
     await userEvent.click(row)
     await vi.waitFor(() => expect(looked).toHaveBeenCalledOnce())
     expect(looked.mock.calls[0]![0].params.entryId).toBe(entryId(1))
     await expect.poll(() => railRow(2).querySelector('[data-testid="unread-mark"]')).toBeNull()
+    // nor does the drawer's head
+    await expect.element(page.getByRole('dialog')).toBeVisible()
+    expect(document.querySelector('[data-head-fact="standing"]')).not.toBeNull()
+    expect(document.querySelector('[data-head-fact="when"]')).toBeNull()
 
     // the one its owner gave up under a live question sits under its own filter
     await userEvent.keyboard('{Escape}')

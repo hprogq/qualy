@@ -271,8 +271,15 @@ export interface EntryLine {
   readonly amount: string | null
   readonly amountWord: MessageDescriptor
   readonly amountTone: 'ink' | 'pending' | 'muted' | 'negative'
-  /** the last thing that happened to it, and when */
+  /** the last thing that happened to it, and when, for ordering a list by */
   readonly at: string
+  /**
+   * Whether `at` is when `action` happened, and so may be said beside it.
+   * A claim that ended voided carries no time of its ending - giving it up,
+   * its question withdrawn, its record taken back - only that of the last
+   * version filed, and says how it ended without a time.
+   */
+  readonly dated: boolean
   readonly act: ClaimAct
   readonly action: MessageDescriptor
   /** a reviewer's words the owner has to act on, carried on the row itself */
@@ -393,6 +400,7 @@ export const entryLineOf = (
     amountWord,
     amountTone,
     at: at ?? entry.createdAt,
+    dated: entry.status !== 'voided',
     act,
     action: voidedWithItem(entry, item) ? m.entriesActVoided : claimActWord[act],
     note: claimNoteOf(entry),
