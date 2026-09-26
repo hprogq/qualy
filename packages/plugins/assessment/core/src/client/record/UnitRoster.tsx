@@ -40,13 +40,17 @@ const styles = stylex.create({
   title: { margin: 0, fontSize: 13, fontWeight: 600 },
   spacer: { flexGrow: 1 },
   note: { fontSize: 12, color: tokens.mutedForeground, fontVariantNumeric: 'tabular-nums' },
+  // Names in columns, each with its number at the column's far edge, and a
+  // gutter between one column's number and the next column's name: without
+  // it the two read as one run of digits and characters.
   list: {
     display: 'grid',
     minHeight: 0,
     flexGrow: 1,
     alignContent: 'start',
-    gap: 2,
-    gridTemplateColumns: 'repeat(auto-fill, minmax(11rem, 1fr))',
+    columnGap: 20,
+    rowGap: 2,
+    gridTemplateColumns: 'repeat(auto-fill, minmax(10rem, 1fr))',
     margin: 0,
     padding: 0,
     overflowY: 'auto',
@@ -55,6 +59,7 @@ const styles = stylex.create({
   row: { display: 'flex', minWidth: 0, alignItems: 'baseline', gap: 8, paddingBlock: 3 },
   name: {
     minWidth: 0,
+    flexGrow: 1,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
@@ -133,7 +138,9 @@ export function UnitRoster({
         <ul {...stylex.props(styles.list)}>
           {rows.map((row) => (
             <li key={row.id} {...stylex.props(styles.row)} data-testid="unit-roster-row">
-              <span {...stylex.props(styles.name)}>{row.displayName}</span>
+              <span {...stylex.props(styles.name)} title={row.displayName}>
+                {row.displayName}
+              </span>
               {row.businessNo !== null && (
                 <span {...stylex.props(styles.no)}>{row.businessNo}</span>
               )}

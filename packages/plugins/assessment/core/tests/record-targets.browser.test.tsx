@@ -166,6 +166,48 @@ describe('choosing who a finding is about by unit', () => {
     expect(units.getByRole('checkbox', { name: '本科生' }).elements()).toHaveLength(0)
   })
 
+  // Side by side at a desk, the people it comes to stand in columns, and a
+  // number at the end of one column never runs into the name that starts
+  // the next.
+  it('keeps a gutter between the columns of people it comes to', async () => {
+    await page.viewport(1440, 900)
+    try {
+      const many = Array.from({ length: 12 }, (_, n) => ({
+        id: `p-${n}`,
+        userId: `u-${n}`,
+        displayName: n % 2 === 0 ? '欧阳子轩·阿卜杜拉·买买提艾力' : '司马明哲',
+        businessNo: `2023${String(n).padStart(6, '0')}`,
+        userTypeId: UNDERGRADUATE,
+        anchorNodeId: CLASS_A,
+        anchorPath: 'r.a.a1',
+        status: 'active',
+      }))
+      await open({ listParticipants: () => Effect.succeed({ items: many, nextCursor: null }) })
+      await page.getByRole('button', { name: '按组织选择' }).click()
+      await page.getByTestId('record-units').getByRole('checkbox', { name: '软件 2301 班' }).click()
+      await expect
+        .poll(() => document.querySelectorAll('[data-testid="unit-roster-row"]').length)
+        .toBe(12)
+
+      const lines = new Map<number, HTMLElement[]>()
+      for (const row of document.querySelectorAll<HTMLElement>('[data-testid="unit-roster-row"]')) {
+        const top = Math.round(row.getBoundingClientRect().top)
+        lines.set(top, [...(lines.get(top) ?? []), row])
+      }
+      const shared = [...lines.values()].filter((line) => line.length > 1)
+      expect(shared.length).toBeGreaterThan(0)
+      for (const line of shared) {
+        for (let at = 1; at < line.length; at += 1) {
+          const before = line[at - 1]!.lastElementChild!.getBoundingClientRect()
+          const after = line[at]!.firstElementChild!.getBoundingClientRect()
+          expect(after.left - before.right).toBeGreaterThanOrEqual(12)
+        }
+      }
+    } finally {
+      await page.viewport(1280, 800)
+    }
+  })
+
   // Stacked on a phone, the tree, the kinds and the people it comes to are
   // one column the dialog's body scrolls through, each below the last -
   // squeezed to the body's height, they were drawn over one another.
