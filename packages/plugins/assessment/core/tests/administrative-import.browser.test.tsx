@@ -616,7 +616,7 @@ describe('the record book and its histories across a screen', () => {
         // a column head over every fact the row shows
         const head = page.getByTestId(list).element().firstElementChild!
         expect(visible(head)).toHaveLength(visible(line.element()).length)
-        screen.unmount()
+        await screen.unmount()
 
         await page.viewport(390, 800)
         await open(`${base}${tab}`, {

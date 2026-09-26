@@ -2512,12 +2512,10 @@ describe('adjusting one person', () => {
       client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
       children: (
         <AccessAdjustDialog
-          subject={
-            subject({
-              sources: [source({ active: false, lapse: 'expired', current: [] })],
-              effective: [],
-            }) as never
-          }
+          subject={subject({
+            sources: [source({ active: false, lapse: 'expired', current: [] })],
+            effective: [],
+          })}
           archived={false}
           open
           pending={false}
@@ -2542,13 +2540,11 @@ describe('adjusting one person', () => {
       client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
       children: (
         <AccessAdjustDialog
-          subject={
-            subject({
-              sources: [source()],
-              denied: ['assessment.ranking.view'],
-              effective: ['assessment.review.process'],
-            }) as never
-          }
+          subject={subject({
+            sources: [source()],
+            denied: ['assessment.ranking.view'],
+            effective: ['assessment.review.process'],
+          })}
           archived={false}
           open
           pending={false}
