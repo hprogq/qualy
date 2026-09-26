@@ -35,3 +35,9 @@ export function useFinePointer(): boolean {
 export function useBeside(): boolean {
   return useMedia('(min-width: 64rem)', true)
 }
+
+/** how a scroll the reader did not ask for moves: at once, where they asked for less motion */
+export const scrollMotion = (): ScrollBehavior =>
+  typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ? 'auto'
+    : 'smooth'

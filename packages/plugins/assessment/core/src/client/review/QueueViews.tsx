@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
@@ -21,7 +21,7 @@ import {
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
-import { useBeside, useMedia } from './pointer.ts'
+import { scrollMotion, useBeside, useMedia } from './pointer.ts'
 import {
   groupByItem,
   groupByPerson,
@@ -68,13 +68,13 @@ const styles = stylex.create({
       '@media (min-width: 1440px)': '18rem minmax(0, 1fr)',
     },
   },
-  // the list stands while its picked one's filings are read and paged
+  // the list stands while its picked one's filings are read and paged; how
+  // tall it may grow is measured, so its foot is never below the window's
   masterSeat: {
     position: 'sticky',
     top: 16,
     display: 'flex',
     minWidth: 0,
-    maxHeight: 'calc(100dvh - 11rem)',
     flexDirection: 'column',
   },
   paneSeat: { minWidth: 0 },
@@ -279,6 +279,47 @@ const styles = stylex.create({
 /** what a row opens: the filing, walked as part of the named run */
 type OpenRow = (row: InboxItemDto, run: string) => void
 
+/** the page's own margin under the list, which the list stops short of */
+const PAGE_FOOT = 24
+
+/**
+ * The tallest the list beside the filings may be: to the window's foot from
+ * wherever it stands now, so it scrolls inside itself rather than growing
+ * the page. Measured again as the page scrolls it up to where it sticks.
+ */
+function useFitsTheWindow(node: HTMLElement | null) {
+  useLayoutEffect(() => {
+    if (node === null) return
+    let scroller: HTMLElement | null = node.parentElement
+    while (scroller !== null && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) {
+      scroller = scroller.parentElement
+    }
+    let frame = 0
+    const fit = () => {
+      frame = 0
+      const floor =
+        scroller === null
+          ? window.innerHeight
+          : Math.min(window.innerHeight, scroller.getBoundingClientRect().bottom)
+      const room = Math.floor(floor - node.getBoundingClientRect().top - PAGE_FOOT)
+      node.style.maxHeight = `${String(Math.max(240, room))}px`
+    }
+    const later = () => {
+      if (frame === 0) frame = requestAnimationFrame(fit)
+    }
+    fit()
+    const target: HTMLElement | Window = scroller ?? window
+    target.addEventListener('scroll', later, { passive: true })
+    window.addEventListener('resize', later)
+    return () => {
+      cancelAnimationFrame(frame)
+      target.removeEventListener('scroll', later)
+      window.removeEventListener('resize', later)
+      node.style.maxHeight = ''
+    }
+  }, [node])
+}
+
 /**
  * The list and the picked one's filings, beside each other or one after
  * the other.
@@ -305,10 +346,14 @@ function Split({
   if (seen.chosen !== chosen) {
     setSeen({ chosen, move: seen.chosen === null ? 'in' : chosen === null ? 'out' : 'none' })
   }
+  const [seat, setSeat] = useState<HTMLDivElement | null>(null)
+  useFitsTheWindow(beside ? seat : null)
   if (beside) {
     return (
       <div {...stylex.props(styles.split)}>
-        <div {...stylex.props(styles.masterSeat)}>{master}</div>
+        <div ref={setSeat} data-testid="queue-master-seat" {...stylex.props(styles.masterSeat)}>
+          {master}
+        </div>
         <div {...stylex.props(styles.paneSeat)}>{pane}</div>
       </div>
     )
@@ -504,7 +549,7 @@ export function PagerFoot({
           // from its top
           document
             .querySelector(`[data-testid="${anchor}"]`)
-            ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+            ?.scrollIntoView({ block: 'nearest', behavior: scrollMotion() })
         }}
       />
     </CardFoot>
