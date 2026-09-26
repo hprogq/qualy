@@ -1,9 +1,12 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { render } from 'vitest-browser-react'
+import { StrictMode, useState } from 'react'
+import { Link, Route, Routes, useNavigate } from 'react-router'
 import { Effect } from 'effect'
-import { useLeaveGuard } from '@qualy/web-runtime'
+import { I18nProvider } from '@qualy/web-i18n'
+import { UiProvider } from '@qualy/ui/provider'
+import { GuardedBrowserRouter, useLeaveGuard, useSessionTransition } from '@qualy/web-runtime'
 import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 // A page with changes on it asks before it is left - however the reader
@@ -160,6 +163,49 @@ describe('a page with unsaved changes', () => {
     expect(question().elements()).toHaveLength(0)
   })
 
+  it('lets a change of identity through without asking: the changes were the last identity’s', async () => {
+    function SignOut() {
+      const transition = useSessionTransition()
+      return (
+        <button
+          type="button"
+          onClick={() => void transition({ destination: { kind: 'page', page: 'auth/login' } })}
+        >
+          sign out
+        </button>
+      )
+    }
+    await renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              pages: [{ id: 'auth/login', path: '/login', layout: 'blank' }],
+            }),
+        },
+      }),
+      route: '/editor',
+      routes: [
+        {
+          path: '/editor',
+          element: (
+            <>
+              <Editor saves={false} />
+              <SignOut />
+            </>
+          ),
+        },
+        { path: '/login', element: <main data-testid="signed-out" /> },
+      ],
+    })
+    await edit()
+    await page.getByRole('button', { name: 'sign out' }).click()
+    await expect.element(page.getByTestId('signed-out')).toBeInTheDocument()
+    expect(question().elements()).toHaveLength(0)
+    expect(addressNow()).toBe('/login')
+  })
+
   it('has the browser ask before a reload or a closed tab takes the changes', async () => {
     await mount()
     const leaving = () => {
@@ -170,5 +216,71 @@ describe('a page with unsaved changes', () => {
     expect(leaving()).toBe(false)
     await edit()
     expect(leaving()).toBe(true)
+  })
+})
+
+describe('a page with unsaved changes, under the browser’s own history', () => {
+  // The router the application runs under, over this frame's real history:
+  // the browser's back arrives later, as a pop of its own, and is undone and
+  // taken again the same way - not the history in memory, which answers a
+  // step on the spot.
+  let origin = ''
+  beforeEach(() => {
+    origin = `${location.pathname}${location.search}${location.hash}`
+    localStorage.setItem('qualy.locale', 'zh-CN')
+    document.documentElement.dataset['locale'] = 'zh-CN'
+    window.history.replaceState(null, '', '/start')
+  })
+  afterEach(() => {
+    window.history.replaceState(null, '', origin)
+  })
+
+  const mountInBrowser = () =>
+    render(
+      <StrictMode>
+        <I18nProvider catalogs={[]} errorMessages={{}} fallback={null}>
+          <UiProvider scheme="light">
+            <GuardedBrowserRouter>
+              <Routes>
+                <Route path="/start" element={<Link to="/editor">open the editor</Link>} />
+                <Route path="/editor" element={<Editor saves={false} />} />
+              </Routes>
+            </GuardedBrowserRouter>
+          </UiProvider>
+        </I18nProvider>
+      </StrictMode>,
+    )
+
+  it('undoes the browser’s back while it asks, and takes it again once the reader goes', async () => {
+    const screen = await mountInBrowser()
+    await page.getByRole('link', { name: 'open the editor' }).click()
+    await vi.waitFor(() => expect(location.pathname).toBe('/editor'))
+    await edit()
+    window.history.back()
+    await expect.element(question()).toBeVisible()
+    // the step has been taken back: the address is the page's own again
+    await vi.waitFor(() => expect(location.pathname).toBe('/editor'))
+    // and the page under the question never moved
+    await expect.element(page.getByTestId('editor')).toHaveAttribute('data-dirty', 'true')
+    await page.getByRole('button', { name: '放弃修改' }).click()
+    await expect.element(page.getByRole('link', { name: 'open the editor' })).toBeVisible()
+    expect(location.pathname).toBe('/start')
+    await screen.unmount()
+  })
+
+  it('keeps the reader, the address and the changes when they stay', async () => {
+    const screen = await mountInBrowser()
+    await page.getByRole('link', { name: 'open the editor' }).click()
+    await edit()
+    window.history.back()
+    await expect.element(question()).toBeVisible()
+    await page.getByRole('button', { name: '继续编辑' }).click()
+    await expect.element(question()).not.toBeInTheDocument()
+    await vi.waitFor(() => expect(location.pathname).toBe('/editor'))
+    await expect.element(page.getByRole('textbox', { name: 'name' })).toHaveValue('草稿')
+    // and the next back is asked about again
+    window.history.back()
+    await expect.element(question()).toBeVisible()
+    await screen.unmount()
   })
 })
