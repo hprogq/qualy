@@ -141,7 +141,13 @@ const styles = stylex.create({
     flexShrink: 1,
     flexBasis: '0%',
     flexDirection: 'column',
+    transitionProperty: 'opacity',
+    transitionDuration: '150ms',
   },
+  // The rows on screen are the answer being replaced: they stay, so the
+  // table does not blank under the pointer, but read as stale. The fade
+  // waits a beat, so an answer that comes at once never flickers.
+  listStale: { opacity: 0.5, transitionDelay: '120ms' },
   // ---- the table ---------------------------------------------------------
   // The columns are shared out before anybody's words are read. Sized by
   // their contents, one long name or one long kind on a page took the width
@@ -403,7 +409,20 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
     )
   }
   const pageBox = replace !== undefined && open.length > 0
-  const offPage = context.value.filter((id) => !context.rows.some((row) => row.id === id)).length
+
+  // The rows on screen are the answer to the question being asked, on the
+  // page being asked for - only then is anything said about them as a
+  // whole: how many there are, and how many of the chosen are elsewhere.
+  // Waiting for a first answer, or failing to get one, there are no rows to
+  // be elsewhere from; waiting for a changed question, the count on screen
+  // is the old question's.
+  const answered = !context.pending && (context.error ?? null) === null
+  const settled = answered && context.waiting === undefined
+  const counted = answered && context.waiting !== 'question'
+  const offPage = settled
+    ? context.value.filter((id) => !context.rows.some((row) => row.id === id)).length
+    : 0
+  const busy = context.pending || context.waiting !== undefined
 
   // a press anywhere on a row is a press on its box; the box answers for
   // itself, and a row that may not be chosen answers nothing
@@ -541,7 +560,7 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
             onCheckedChange={(next) => takePage(next)}
           />
           <span>{format(m.pickerTakePage)}</span>
-          {context.paging !== undefined && (
+          {context.paging !== undefined && counted && (
             <span {...stylex.props(styles.pageBarTotal)}>
               {format(m.pickerTotal, { count: context.paging.total })}
             </span>
@@ -646,8 +665,22 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
   )
 
   const paging = context.paging
+  // a count that belongs to another question offers pages that are not
+  // this question's, so there are none to offer until it is answered
   const pager =
-    paging !== undefined ? (
+    paging === undefined ? (
+      <CursorPager
+        testId="people-picker-pager"
+        label={format(m.pagerLabel)}
+        previousLabel={format(m.pickerPrevious)}
+        nextLabel={format(m.pickerNext)}
+        page={context.position ?? (context.hasPrevious ? 2 : 1)}
+        hasNext={context.hasNext}
+        disabled={busy}
+        onPrevious={context.onPrevious}
+        onNext={context.onNext}
+      />
+    ) : counted ? (
       <Pager
         testId="people-picker-pager"
         label={format(m.pagerLabel)}
@@ -659,23 +692,11 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
         // the first, the last and the one being read: the strip shares
         // its line with how many are chosen
         compact
-        disabled={context.pending}
+        disabled={busy}
         {...(phone ? {} : { summary: format(m.pickerTotal, { count: paging.total }) })}
         onPage={paging.onPage}
       />
-    ) : (
-      <CursorPager
-        testId="people-picker-pager"
-        label={format(m.pagerLabel)}
-        previousLabel={format(m.pickerPrevious)}
-        nextLabel={format(m.pickerNext)}
-        page={context.position ?? (context.hasPrevious ? 2 : 1)}
-        hasNext={context.hasNext}
-        disabled={context.pending}
-        onPrevious={context.onPrevious}
-        onNext={context.onNext}
-      />
-    )
+    ) : null
 
   return (
     <div
@@ -747,9 +768,14 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
           {!folded && scopeToggle}
         </div>
 
-        <div {...stylex.props(styles.listBox)} data-testid="people-picker-list">
+        <div
+          {...stylex.props(styles.listBox)}
+          data-testid="people-picker-list"
+          aria-busy={busy}
+          data-waiting={context.waiting}
+        >
           <AsyncSection
-            xstyle={styles.listFill}
+            xstyle={[styles.listFill, context.waiting !== undefined && styles.listStale]}
             pending={context.pending}
             error={context.error ?? null}
             loadingLabel={format(commonMessages.loading)}
@@ -784,6 +810,7 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
             {...stylex.props(styles.chosen, context.value.length === 0 && styles.chosenNone)}
             data-testid="people-picker-count"
             data-count={context.value.length}
+            data-elsewhere={many ? offPage : 0}
           >
             {format(m.pickerChosen, { count: context.value.length })}
             {offPage > 0 && many && (

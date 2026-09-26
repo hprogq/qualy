@@ -57,13 +57,23 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
       },
     }),
     enabled: here !== null,
-    // the page being left stays up until the next one arrives, so turning a
-    // page does not blank the table under the pointer
+    // the answer being replaced stays up until the next one arrives, so
+    // turning a page does not blank the table under the pointer
     placeholderData: keepPreviousData,
   })
 
+  // Which question the rows on screen answer. A page kept up while the next
+  // page of the same question arrives is still its answer, and its count
+  // still holds; one kept up while a changed question is asked is not.
+  const [answered, setAnswered] = useState(question)
+  const kept = people.isPlaceholderData
+  if (people.data !== undefined && !kept && answered !== question) setAnswered(question)
+  const waiting = kept ? (answered === question ? 'page' : 'question') : undefined
+
   const total = people.data?.total ?? 0
-  const current = people.data?.page ?? page
+  // the page asked for until its answer arrives, then the one the server
+  // answered with: a page past the end comes back as the last one
+  const current = kept ? page : (people.data?.page ?? page)
   const pages = Math.max(1, Math.ceil(total / PAGE))
   const goTo = (next: number) => setPaging({ question, page: Math.min(Math.max(1, next), pages) })
 
@@ -94,6 +104,7 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
           ? {}
           : { disabled: context.disabled, disabledLabel: format(m.pickerAlreadyIn) }),
         pending: people.isPending && here !== null,
+        ...(waiting === undefined ? {} : { waiting }),
         error: people.isError ? formatError(people.error) : null,
         hasPrevious: current > 1,
         hasNext: current < pages,

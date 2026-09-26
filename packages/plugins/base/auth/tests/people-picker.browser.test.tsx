@@ -39,12 +39,11 @@ interface Request {
   query?: Record<string, string>
 }
 
-/** twenty people to a page, fifty-three of them, standing in three classes */
-const listUsers = vi.fn((request: Request) => {
-  const at = Number(request.query?.['page'] ?? '1')
+/** twenty people to a page, `total` of them, standing in three classes */
+const pageOf = (at: number, total = 53) => {
   const from = (at - 1) * 20
-  const count = Math.max(0, Math.min(20, 53 - from))
-  return Effect.succeed({
+  const count = Math.max(0, Math.min(20, total - from))
+  return {
     items: Array.from({ length: count }, (_, index) => {
       const n = from + index
       return {
@@ -53,7 +52,7 @@ const listUsers = vi.fn((request: Request) => {
         email: null,
         emailVerifiedAt: null,
         displayName: `同学${n}`,
-        status: 'active',
+        status: 'active' as const,
         version: 1,
         userType: { id: 'type-student', code: 'student', name: '本科生' },
         primaryOrgNode: { id: klass((n % 3) + 1), name: `软件工程 2301${(n % 3) + 1} 班` },
@@ -61,13 +60,17 @@ const listUsers = vi.fn((request: Request) => {
       }
     }),
     nextCursor: null,
-    total: 53,
+    total,
     page: at,
     pageSize: 20,
-  })
-})
+  }
+}
 
-const world = () =>
+const listUsers = vi.fn((request: Request) =>
+  Effect.succeed(pageOf(Number(request.query?.['page'] ?? '1'))),
+)
+
+const world = (list: (request: Request) => Effect.Effect<unknown> = listUsers) =>
   fakeClient({
     app: { getManifest: () => Effect.succeed(emptyManifest()) },
     identity: {
@@ -78,9 +81,18 @@ const world = () =>
           orgTypes: [],
           userTypes: [{ id: 'type-student', code: 'student', name: '本科生' }],
         }),
-      listUsers,
+      listUsers: list,
     },
   })
+
+/** an answer that arrives when the test says so */
+const held_back = () => {
+  let release = () => {}
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  return { gate, release: () => release() }
+}
 
 /** what the caller holds, read back through the page */
 function Harness({ start = [] }: { start?: readonly string[] }) {
@@ -174,6 +186,65 @@ describe('the people picker', () => {
     // and the count and the pages below the list never moved with it
     const foot = page.getByTestId('people-picker-pager').element().getBoundingClientRect()
     expect(foot.bottom).toBeLessThanOrEqual(window.innerHeight)
+  })
+
+  // Somebody on a slow line presses a page and sees it taken at once; the
+  // rows they were reading stay until the next ones arrive, and the strip
+  // holds still rather than being pressed again.
+  it('turns to the page asked for at once, and waits on it without blanking the table', async () => {
+    const slow = held_back()
+    const list = (request: Request) => {
+      const at = Number(request.query?.['page'] ?? '1')
+      const answer = Effect.succeed(pageOf(at))
+      return at === 2 ? Effect.promise(() => slow.gate).pipe(Effect.andThen(answer)) : answer
+    }
+    await renderScreen({ client: world(list), children: <Harness /> })
+    await expect.poll(() => rows().length).toBe(20)
+
+    const pager = page.getByTestId('people-picker-pager')
+    await pager.getByRole('button', { name: '2', exact: true }).click()
+    await expect.element(pager).toHaveAttribute('data-page', '2')
+    const box = page.getByTestId('people-picker-list')
+    await expect.element(box).toHaveAttribute('aria-busy', 'true')
+    await expect.element(box).toHaveAttribute('data-waiting', 'page')
+    await expect.element(pager.getByRole('button', { name: '3', exact: true })).toBeDisabled()
+    expect(rows()).toHaveLength(20)
+    expect(rows()[0]!.textContent).toContain('同学0')
+
+    slow.release()
+    await expect.element(box).toHaveAttribute('aria-busy', 'false')
+    await expect.poll(() => rows()[0]!.textContent).toContain('同学20')
+    await expect.element(pager.getByRole('button', { name: '3', exact: true })).toBeEnabled()
+  })
+
+  // A changed question has not been counted yet: the old count and the old
+  // pages would send a press to a page of the new question nobody has seen.
+  it('offers no pages of the question before while a changed one is answered', async () => {
+    const slow = held_back()
+    const list = (request: Request) => {
+      const answer = Effect.succeed(pageOf(Number(request.query?.['page'] ?? '1')))
+      return request.query?.['search'] === undefined
+        ? answer
+        : Effect.promise(() => slow.gate).pipe(Effect.andThen(Effect.succeed(pageOf(1, 7))))
+    }
+    await renderScreen({ client: world(list), children: <Harness start={[person(40)]} /> })
+    await expect.poll(() => rows().length).toBe(20)
+    await expect
+      .element(page.getByTestId('people-picker-count'))
+      .toHaveAttribute('data-elsewhere', '1')
+
+    await page.getByRole('textbox', { name: '姓名或学工号' }).fill('同学1')
+    const box = page.getByTestId('people-picker-list')
+    await expect.element(box).toHaveAttribute('data-waiting', 'question')
+    expect(page.getByTestId('people-picker-pager').elements()).toHaveLength(0)
+    await expect
+      .element(page.getByTestId('people-picker-count'))
+      .toHaveAttribute('data-elsewhere', '0')
+
+    slow.release()
+    await expect.poll(() => rows().length).toBe(7)
+    await expect.element(box).toHaveAttribute('aria-busy', 'false')
+    await expect.element(page.getByTestId('people-picker-pager')).toHaveAttribute('data-total', '7')
   })
 
   it('draws a phone a line per person rather than a table', async () => {
@@ -345,6 +416,36 @@ describe('the people picker over a list read forwards', () => {
     expect(onNext).toHaveBeenCalledTimes(1)
     await pager.getByRole('button', { name: '上一页' }).click()
     expect(onPrevious).toHaveBeenCalledTimes(1)
+  })
+
+  // Nobody is elsewhere from a page that is not there: while the first
+  // answer is awaited or has failed, the chosen are only counted.
+  it('says nobody is on another page until there is a page', async () => {
+    // waiting for the first answer, then failing to get one, then answered
+    const stages = [
+      view({ rows: [], value: ['x', 'y'], pending: true }),
+      view({ rows: [], value: ['x', 'y'], error: 'no line' }),
+      view({ value: ['a', 'x'] }),
+    ]
+    function Stages() {
+      const [at, setAt] = useState(0)
+      return (
+        <>
+          <button type="button" onClick={() => setAt((now) => now + 1)}>
+            on
+          </button>
+          <PeoplePickerView context={stages[at]!} />
+        </>
+      )
+    }
+    await renderScreen({ client: world(), children: <Stages /> })
+    const count = page.getByTestId('people-picker-count')
+    await expect.element(count).toHaveAttribute('data-count', '2')
+    await expect.element(count).toHaveAttribute('data-elsewhere', '0')
+    await page.getByRole('button', { name: 'on', exact: true }).click()
+    await expect.element(count).toHaveAttribute('data-elsewhere', '0')
+    await page.getByRole('button', { name: 'on', exact: true }).click()
+    await expect.element(count).toHaveAttribute('data-elsewhere', '1')
   })
 
   it('offers no whole-page choice to a caller that cannot take one', async () => {

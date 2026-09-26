@@ -504,6 +504,13 @@ export interface PeoplePickerViewContext {
   disabledLabel?: string
 
   pending: boolean
+  /**
+   * The rows on screen answer an earlier request while the next one is on
+   * its way: another page of the same question (`page`), or a question since
+   * changed (`question`), whose count no longer holds. The paging says the
+   * page asked for, not the one on screen.
+   */
+  waiting?: 'page' | 'question'
   /** why the page could not be read, already in the reader's language */
   error?: string | null
   hasPrevious: boolean
