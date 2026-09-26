@@ -1978,7 +1978,7 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
           })
           // never theirs to fill, and not for staff either: the reader's
           // question stops at the first, which is what it is told
-          yield* role('foreign', [tree], { userTypes: [], orgTypes: [unitType] })
+          const foreign = yield* role('foreign', [tree], { userTypes: [], orgTypes: [unitType] })
           for (const target of [counsellor, monitor]) {
             yield* runSql(sql`
               insert into role_grant_rules (tenant_id, granter_role_id, target_role_id)
@@ -1995,6 +1995,13 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
           yield* runSql(sql`
             insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
             values (${f.tenant}, ${f.anchored.userId}, ${collegeAdmin}, ${f.child}, 'subtree')`)
+          // held inside one object only, which makes nobody its holder in the
+          // organization
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage,
+                                     resource_namespace, resource_type, resource_id)
+            values (${f.tenant}, ${f.anchored.userId}, ${foreign}, ${f.child}, 'self',
+                    'assessment', 'batch', ${f.child})`)
           const offered = yield* access.grants.options(
             f.tenant,
             { userId: li, target: { kind: 'org-node', orgNodeId: f.child, coverage: 'self' } },
@@ -2015,6 +2022,7 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
           )
           return {
             refusals: Object.fromEntries(offered.map((role) => [role.code, role.refusal])),
+            held: Object.fromEntries(offered.map((role) => [role.code, role.held])),
             monitorWrite,
           }
         }),
@@ -2027,6 +2035,12 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
       expect(answer.monitorWrite).toBe('GRANT_NOT_ELIGIBLE')
       // asked in the write's own order: not theirs to fill comes first
       expect(answer.refusals['foreign']).toBe('authority')
+      // An office the reader holds and may not fill is one they will look
+      // for, and is marked so; one they neither hold nor fill is not.
+      expect(answer.refusals['college-admin']).toBe('authority')
+      expect(answer.held['college-admin']).toBe(true)
+      expect(answer.held['foreign']).toBe(false)
+      expect(answer.held['counsellor']).toBe(false)
     } finally {
       await db.dispose()
     }

@@ -31,9 +31,10 @@ import { accessApi } from './api.ts'
 // the place - the server answers with the offices this reader may fill, at
 // that anchor, for that person - so the place is chosen first and the role
 // list is a function of it. Offices the reader may fill that do not fit the
-// person or the place come back too, each with why, and are shown as such
-// rather than left for the reader to wonder about; offices that are not the
-// reader's to fill are none of their question and are not shown.
+// person or the place come back too, each with why, and so do offices the
+// reader holds without being the one to fill them: both are shown as such
+// rather than left for the reader to wonder about. Offices neither held nor
+// the reader's to fill are none of their question and are not shown.
 //
 // The unit is chosen through the picker whoever owns the organization
 // contributes: which units this reader may even see is that owner's
@@ -193,7 +194,9 @@ export function GrantRoleDialog({
             ? m.refusedPersonDisabled
             : refusal === 'self-escalation'
               ? m.refusedSelfEscalation
-              : m.refusedUnavailable,
+              : refusal === 'authority'
+                ? m.refusedAuthority
+                : m.refusedUnavailable,
     )
 
   const placeholder = !targeted

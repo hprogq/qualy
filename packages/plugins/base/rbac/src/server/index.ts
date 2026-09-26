@@ -803,10 +803,11 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
             .filter((role) => role.refusal === null)
             .map(({ id, code, name, kind }) => ({ id, code, name, kind })),
           // the offices the reader could fill, that do not fit this person
-          // or this place, each with why; an office that is not theirs to
-          // fill at all is no part of their question and is left out
+          // or this place, each with why, and the ones the reader holds
+          // without being the one to fill them; an office neither held nor
+          // theirs to fill is no part of their question and is left out
           refused: considered.flatMap((role) =>
-            role.refusal === null || role.refusal === 'authority'
+            role.refusal === null || (role.refusal === 'authority' && !role.held)
               ? []
               : [
                   {

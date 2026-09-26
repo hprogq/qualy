@@ -51,8 +51,12 @@
 
 - `GET /iam/role-grant-options` 在 `roles`（此刻可授予的）之外带 `refused`：**读者能任命、但不适合这个人或这个组织**的角色，
   各附原因 `user-type`（用户类型不适用）、`org-type`（组织类型不适用）、`person-disabled`（该用户已停用）、`self-escalation`（自授会扩权）、
-  `unavailable`（并发中被停用或删除）。任命权不在读者手里的角色（`authority`）不列：那不是读者的问题，全列出来只会让整个角色目录出现在每个人面前。
-  草稿、停用、不可授予的角色也不列（候选本来就只取同 kind、active、assignable 的角色）。
+  `unavailable`（并发中被停用或删除）；以及**读者自己持有、却没有任命边**的角色，原因 `authority`（「你没有任命该角色的权限」）。
+  「持有」按读者本人当前有效（未撤销、在有效期内）、非资源限定的授予算，服务端 `grants.options` 给每个候选带 `held`，处理器只放行
+  `held` 的 `authority`（2026-09-27 按决定 5 字面修正：学院管理员在授予表单里找自己的「学院管理员」时，应看到它和原因，而不是它凭空消失）。
+  既不持有、任命权也不在读者手里的角色不列：那不是读者的问题，全列出来只会让整个角色目录出现在每个人面前。
+  草稿、停用、不可授予的角色也不列（候选本来就只取同 kind、active、assignable 的角色）。处理器层的这条过滤与 `grantable` 由
+  `packages/plugins/base/rbac/tests/grant-handlers.test.ts` 经真实路由守住。
 - **探测与写入同序**：逐角色先问任命权（`mayAdministerRole`、`mayAppointRole`），再问资格（`eligible`），最后是自授扩权，与 `grantRole`
   的 `mayConfer` → `eligible` → 自授检查一致。此前先问资格，一个读者本来就不能任命的角色会以「用户类型不适用」出现，读起来像是换个人就能授。
   `GRANT_NOT_ELIGIBLE` 按 reason 区分 `org-type` / `user-type` / `person-disabled`，不再一律说成用户类型。

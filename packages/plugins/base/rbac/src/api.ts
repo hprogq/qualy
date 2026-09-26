@@ -453,8 +453,9 @@ export const accessApiGroup = HttpApiGroup.make('access')
         ),
         /**
          * Offices the caller could fill that do not fit this person or this
-         * place, each with why. Offices that are not the caller's to fill
-         * are not among them: those are no part of the caller's question.
+         * place, each with why, and offices the caller holds but may not
+         * fill (`authority`). An office neither held nor the caller's to
+         * fill is not among them: it is no part of the caller's question.
          */
         refused: Schema.Array(
           Schema.Struct({
@@ -467,6 +468,7 @@ export const accessApiGroup = HttpApiGroup.make('access')
               'org-type',
               'person-disabled',
               'self-escalation',
+              'authority',
               'unavailable',
             ]),
           }),

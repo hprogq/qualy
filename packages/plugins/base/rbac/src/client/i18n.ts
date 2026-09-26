@@ -226,6 +226,10 @@ const i18n = definePluginMessages({
       id: 'rbac/grants/refused-self-escalation',
       defaultMessage: 'Beyond your own authority',
     },
+    refusedAuthority: {
+      id: 'rbac/grants/refused-authority',
+      defaultMessage: 'You cannot appoint this role',
+    },
     refusedUnavailable: {
       id: 'rbac/grants/refused-unavailable',
       defaultMessage: 'Disabled or removed',

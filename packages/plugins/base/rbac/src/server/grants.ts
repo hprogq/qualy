@@ -338,6 +338,33 @@ const userForGrant = (tenantId: string, userId: string) =>
   )
 
 /**
+ * The roles one person holds in the organization right now: through a grant
+ * in force and not confined to one object. A confined grant is authority
+ * inside its object and says nothing about which offices the holder has in
+ * the organization.
+ */
+const heldRoleIds = (tenantId: string, userId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('RoleGrant as g')
+        .select('g.roleId')
+        .distinct()
+        .where('g.tenantId', '=', tenantId)
+        .where('g.userId', '=', userId)
+        .where('g.resourceId', 'is', null)
+        .where((eb) =>
+          inForce({
+            revokedAt: eb.ref('g.revokedAt'),
+            validFrom: eb.ref('g.validFrom'),
+            validUntil: eb.ref('g.validUntil'),
+          }),
+        )
+        .execute(),
+    )
+    .pipe(Effect.map((rows) => new Set(rows.map((row) => row.roleId))))
+
+/**
  * Whether the role admits this kind of person, and this kind of node.
  *
  * Asked of the role row so the mode is part of the answer: a role that admits
@@ -973,6 +1000,10 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
    * list. A missing user or node is deliberately not among them: it says the
    * request named something that does not exist, which is an answer of its
    * own.
+   *
+   * `held` says whether the caller holds the role themselves: an office one
+   * holds and may not fill is one they will look for in the list, where an
+   * office neither held nor theirs to fill is no part of their question.
    */
   const options: (
     tenantId: string,
@@ -985,6 +1016,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
       name: string
       kind: 'tenant' | 'org'
       refusal: RoleRefusal | null
+      held: boolean
     }[],
     GrantUserNotFound | GrantNodeNotFound,
     Orm
@@ -1008,6 +1040,14 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     const candidates = (yield* rolesOfTenant(tenantId).pipe(Effect.orDie)).filter(
       (role) => role.kind === wantedKind && role.status === 'active' && role.assignable,
     )
+    const mine = yield* heldRoleIds(tenantId, actor.userId).pipe(Effect.orDie)
+    const described = (role: (typeof candidates)[number]) => ({
+      id: role.id,
+      code: role.code,
+      name: role.name,
+      kind: role.kind,
+      held: mine.has(role.id),
+    })
     // Asked once, because it does not depend on the role: administering
     // grants of this reach at this place is the same question for every
     // candidate. It used to be left to the write, which meant the picker
@@ -1016,13 +1056,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     // find out by pressing.
     const reaches = yield* Effect.result(mayAdministerGrantsAt(actor, request.target))
     if (reaches._tag === 'Failure') {
-      return candidates.map((role) => ({
-        id: role.id,
-        code: role.code,
-        name: role.name,
-        kind: role.kind,
-        refusal: 'authority' as const,
-      }))
+      return candidates.map((role) => ({ ...described(role), refusal: 'authority' as const }))
     }
     const offered: {
       id: string
@@ -1030,6 +1064,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
       name: string
       kind: 'tenant' | 'org'
       refusal: RoleRefusal | null
+      held: boolean
     }[] = []
     for (const role of candidates) {
       const verdict = yield* transaction(
@@ -1087,13 +1122,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
         ),
         Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
       )
-      offered.push({
-        id: role.id,
-        code: role.code,
-        name: role.name,
-        kind: role.kind,
-        refusal: verdict === true ? null : verdict,
-      })
+      offered.push({ ...described(role), refusal: verdict === true ? null : verdict })
     }
     return offered
   })
