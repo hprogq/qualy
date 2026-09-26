@@ -2122,6 +2122,10 @@ const i18n = definePluginMessages({
       defaultMessage: 'They appear here once a finding is settled on several people at once',
     },
     recordActBack: { id: 'assessment/record/act-back', defaultMessage: 'Back to the bulk records' },
+    recordActMissing: {
+      id: 'assessment/record/act-missing',
+      defaultMessage: 'Bulk record not found',
+    },
     recordActTitle: { id: 'assessment/record/act-title', defaultMessage: 'Bulk record' },
     recordActDetailTitle: {
       id: 'assessment/record/act-detail-title',
@@ -2292,6 +2296,10 @@ const i18n = definePluginMessages({
     importAction: { id: 'assessment/record/import/action', defaultMessage: 'Import' },
     importTab: { id: 'assessment/record/import/tab', defaultMessage: 'Imports' },
     importBack: { id: 'assessment/record/import/back', defaultMessage: 'Back to the imports' },
+    importMissing: {
+      id: 'assessment/record/import/missing',
+      defaultMessage: 'Import not found',
+    },
     importTemplate: {
       id: 'assessment/record/import/template',
       defaultMessage: 'Download the template: {item}',

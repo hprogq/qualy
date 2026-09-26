@@ -2,7 +2,14 @@ import { Fragment, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon } from 'lucide-react'
-import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
+import {
+  LoadFailure,
+  isRecordId,
+  useApi,
+  useApiQuery,
+  useLoadFailure,
+  useRunApi,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
@@ -31,6 +38,11 @@ import { useWhen } from './when.ts'
 // units invites the reader to believe the act still means "class 1", which
 // is the one thing it does not mean (§32.78). What the act reaches is the
 // facts it wrote, and those are what a withdrawal walks.
+//
+// An act that is not there is said as that, with the way back to the acts.
+
+/** the one answer that means the act itself is not there for this reader */
+const RECORD_NOT_FOUND = 'ASSESSMENT_ADMINISTRATIVE_RECORD_NOT_FOUND'
 
 const styles = stylex.create({
   column: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 16 },
@@ -133,16 +145,20 @@ export function AdministrativeActDetail({
   const businessNo = useTerm(authTerms.businessNumber)
   const whenOf = useWhen()
   const [asking, setAsking] = useState(false)
+  const words = useLoadFailure()
+  // an address that cannot name an act is not asked about at all
+  const named = isRecordId(operationId)
 
   // the people an act reached arrive a page at a time: one act may name
   // thousands, and a list that stops without saying so is not the act
   const [rowsCursor, setRowsCursor] = useState<string | null>(null)
-  const detail = useQuery(
-    query.assessment.getAdministrativeRecord.queryOptions({
+  const detail = useQuery({
+    ...query.assessment.getAdministrativeRecord.queryOptions({
       params: { operationId },
       query: rowsCursor === null ? {} : { rowsCursor },
     }),
-  )
+    enabled: named,
+  })
 
   const reverse = useMutation({
     mutationFn: (reason: string) =>
@@ -180,10 +196,33 @@ export function AdministrativeActDetail({
 
   const found = detail.data
 
+  if (!named || detail.isError) {
+    const copy = { missing: { title: format(m.recordActMissing) } }
+    return (
+      <div data-testid="administrative-act-absent">
+        <LoadFailure
+          size="section"
+          failure={
+            named
+              ? words.of(detail.error, { missing: [RECORD_NOT_FOUND], copy })
+              : words.missing({ copy })
+          }
+          onRetry={() => void detail.refetch()}
+          retrying={detail.isFetching}
+          back={{
+            page: 'assessment/batch-record',
+            params: { batchId },
+            search: { tab: 'acts' },
+            label: format(m.recordActBack),
+          }}
+        />
+      </div>
+    )
+  }
+
   return (
     <AsyncSection
       pending={detail.isPending}
-      error={detail.isError ? formatError(detail.error) : null}
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
       onRetry={() => void detail.refetch()}

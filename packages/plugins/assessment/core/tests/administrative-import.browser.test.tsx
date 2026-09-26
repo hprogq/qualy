@@ -4,7 +4,7 @@ import { reasonText } from '../src/client/record/import/issues.ts'
 import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import { registerUploadDriver } from '@qualy/plugin-storage/client'
-import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The workbook door, from the recorder's side of the screen.
 //
@@ -541,6 +541,53 @@ describe('importing a workbook of administrative records', () => {
     await expect.element(card).toBeVisible()
     await expect.element(card).toHaveAttribute('data-source', 'review')
     expect((card.element() as HTMLElement).textContent ?? '').toContain('李老师')
+  })
+
+  // An import address that names nothing - a stale link, one of a round this
+  // reader may not record in - drew a warning triangle, the server's
+  // sentence and a retry that could only fail again.
+  it('says an import is not there, with the way back and no retry', async () => {
+    await open(`${base}?tab=imports&import=${NEW_IMPORT_ID}`, {
+      getAdministrativeImport: () =>
+        Effect.fail(apiError('ASSESSMENT_ADMINISTRATIVE_IMPORT_NOT_FOUND')),
+    })
+    const absent = page.getByTestId('administrative-import-absent')
+    await expect.element(absent).toBeVisible()
+    expect(
+      absent.element().querySelector('[data-slot="resource-state"]')?.getAttribute('data-state'),
+    ).toBe('missing')
+    expect(absent.getByRole('button', { name: '重试' }).elements()).toHaveLength(0)
+    await absent.getByRole('link', { name: '返回导入记录' }).click()
+    await expect.poll(() => addressNow()).not.toContain('import=')
+    expect(addressNow()).toContain('tab=imports')
+  })
+
+  it('does not ask about an import address that cannot name one', async () => {
+    const getAdministrativeImport = vi.fn(() => Effect.succeed(detail()))
+    await open(`${base}?tab=imports&import=not-an-import`, { getAdministrativeImport })
+    const absent = page.getByTestId('administrative-import-absent')
+    await expect.element(absent).toBeVisible()
+    expect(
+      absent.element().querySelector('[data-slot="resource-state"]')?.getAttribute('data-state'),
+    ).toBe('missing')
+    expect(getAdministrativeImport).not.toHaveBeenCalled()
+  })
+
+  it('says a bulk record is not there, with the way back to the others', async () => {
+    await open(`${base}?tab=acts&act=${NEW_IMPORT_ID}`, {
+      listAdministrativeRecords: () => Effect.succeed({ items: [], nextCursor: null }),
+      getAdministrativeRecord: () =>
+        Effect.fail(apiError('ASSESSMENT_ADMINISTRATIVE_RECORD_NOT_FOUND')),
+    })
+    const absent = page.getByTestId('administrative-act-absent')
+    await expect.element(absent).toBeVisible()
+    expect(
+      absent.element().querySelector('[data-slot="resource-state"]')?.getAttribute('data-state'),
+    ).toBe('missing')
+    expect(absent.getByRole('button', { name: '重试' }).elements()).toHaveLength(0)
+    await absent.getByRole('link', { name: '返回批量认定' }).click()
+    await expect.poll(() => addressNow()).not.toContain('act=')
+    expect(addressNow()).toContain('tab=acts')
   })
 
   it('goes back from one import to the imports it was opened from', async () => {

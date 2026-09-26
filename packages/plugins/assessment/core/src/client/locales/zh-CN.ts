@@ -449,6 +449,7 @@ export default {
   'assessment/record/acts-empty': '暂无批量认定记录',
   'assessment/record/acts-empty-hint': '进行多人批量认定后，相关记录将在此展示',
   'assessment/record/act-back': '返回批量认定',
+  'assessment/record/act-missing': '找不到该批量认定',
   'assessment/record/act-title': '批量认定',
   'assessment/record/act-detail-title': '批量认定详情',
   'assessment/record/import/detail-heading': '导入详情',
@@ -513,6 +514,7 @@ export default {
   'assessment/record/import/action': '批量导入',
   'assessment/record/import/tab': '导入记录',
   'assessment/record/import/back': '返回导入记录',
+  'assessment/record/import/missing': '找不到该导入记录',
   'assessment/record/import/template': '下载模板：{item}',
   'assessment/record/import/template-title': '下载模板',
   'assessment/record/import/template-hint':

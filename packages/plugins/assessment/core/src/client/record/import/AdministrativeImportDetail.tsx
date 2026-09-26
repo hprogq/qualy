@@ -3,7 +3,15 @@ import * as stylex from '@stylexjs/stylex'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronRightIcon, DownloadIcon } from 'lucide-react'
 import { choiceLabel, displayTitle, kindOf, type AtomicSchema } from '@qualy/value-schema'
-import { cursorPages, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
+import {
+  LoadFailure,
+  cursorPages,
+  isRecordId,
+  useApi,
+  useApiQuery,
+  useLoadFailure,
+  useRunApi,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
@@ -30,8 +38,16 @@ import { sayEntryFailure } from '../../entry/refusals.ts'
 //
 // Withdrawing what is left is offered only when the server says it could
 // work, and it is all or nothing: the confirmation says what stays.
+//
+// One that is not there - a stale link, an import of a round this reader
+// may not record in, an address typed wrong - is said as that, in the room
+// the import would have had, with the way back to the imports rather than
+// a retry that can only fail again.
 
 const PAGE = 50
+
+/** the one answer that means the import itself is not there for this reader */
+const IMPORT_NOT_FOUND = 'ASSESSMENT_ADMINISTRATIVE_IMPORT_NOT_FOUND'
 
 const styles = stylex.create({
   column: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 16 },
@@ -167,10 +183,14 @@ export function AdministrativeImportDetail({
   const zone = useBatchZone()
   const businessNo = useTerm(authTerms.businessNumber)
   const [asking, setAsking] = useState(false)
+  const words = useLoadFailure()
+  // an address that cannot name an import is not asked about at all
+  const named = isRecordId(importId)
 
-  const detail = useQuery(
-    query.assessment.getAdministrativeImport.queryOptions({ params: { importId } }),
-  )
+  const detail = useQuery({
+    ...query.assessment.getAdministrativeImport.queryOptions({ params: { importId } }),
+    enabled: named,
+  })
   const rows = useInfiniteQuery({
     queryKey: [
       ...query.assessment.listAdministrativeImportRows.key({ params: { importId }, query: {} }),
@@ -187,6 +207,7 @@ export function AdministrativeImportDetail({
         }),
       ),
     ...cursorPages,
+    enabled: named,
   })
   const lines = useMemo(() => rows.data?.pages.flatMap((page) => page.items) ?? [], [rows.data])
 
@@ -285,10 +306,33 @@ export function AdministrativeImportDetail({
 
   const found = detail.data
 
+  if (!named || detail.isError) {
+    const copy = { missing: { title: format(m.importMissing) } }
+    return (
+      <div data-testid="administrative-import-absent">
+        <LoadFailure
+          size="section"
+          failure={
+            named
+              ? words.of(detail.error, { missing: [IMPORT_NOT_FOUND], copy })
+              : words.missing({ copy })
+          }
+          onRetry={() => void detail.refetch()}
+          retrying={detail.isFetching}
+          back={{
+            page: 'assessment/batch-record',
+            params: { batchId },
+            search: { tab: 'imports' },
+            label: format(m.importBack),
+          }}
+        />
+      </div>
+    )
+  }
+
   return (
     <AsyncSection
       pending={detail.isPending}
-      error={detail.isError ? formatError(detail.error) : null}
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
       onRetry={() => void detail.refetch()}
