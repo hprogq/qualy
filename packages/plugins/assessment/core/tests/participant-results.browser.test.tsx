@@ -831,6 +831,16 @@ describe('the participant results screen', () => {
     expect(card.element().textContent ?? '').not.toContain('dddddddd')
   })
 
+  it('says so where the name would be when the person cannot be read', async () => {
+    await screen(
+      { getParticipant: () => Effect.fail(apiError('ASSESSMENT_PARTICIPANT_NOT_FOUND')) },
+      `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}`,
+    )
+    await expect.element(page.getByTestId('participant-unreadable')).toBeVisible()
+    // and the way back to the list stands beside it
+    await expect.element(page.getByRole('button', { name: '返回参评人员' })).toBeVisible()
+  })
+
   it('says a score cannot be read rather than showing an old one', async () => {
     await screen(
       {

@@ -303,6 +303,7 @@ const styles = stylex.create({
     paddingBottom: 32,
   },
   zone: { margin: 0 },
+  unreadable: { margin: 0, fontSize: 14, color: tokens.danger },
   // the same shape the name and the number take, so nothing moves when the
   // words arrive
   nameBone: { height: 22, width: 128 },
@@ -574,9 +575,18 @@ export function ParticipantResultDetail({
       </span>
     )
 
+  // who this is could not be read, and nothing was read before: said where
+  // the name would be, rather than an outline that never fills
+  const unreadablePerson = participant === undefined && who.error !== null
   const name =
     participant === undefined ? (
-      <Skeleton className={stylex.props(styles.nameBone).className} />
+      unreadablePerson ? (
+        <p role="alert" data-testid="participant-unreadable" {...stylex.props(styles.unreadable)}>
+          {formatError(who.error)}
+        </p>
+      ) : (
+        <Skeleton className={stylex.props(styles.nameBone).className} />
+      )
     ) : (
       <h1 {...stylex.props(styles.name, !beside && styles.headName)}>{participant.displayName}</h1>
     )
@@ -621,7 +631,7 @@ export function ParticipantResultDetail({
         {chips}
       </div>
       {participant === undefined ? (
-        <Skeleton className={stylex.props(styles.numberBone).className} />
+        !unreadablePerson && <Skeleton className={stylex.props(styles.numberBone).className} />
       ) : (
         <dl {...stylex.props(styles.facts)}>
           <dt {...stylex.props(styles.factName)}>{businessNo}</dt>
@@ -718,7 +728,7 @@ export function ParticipantResultDetail({
         </span>
       </div>
       {participant === undefined ? (
-        <Skeleton className={stylex.props(styles.numberBone).className} />
+        !unreadablePerson && <Skeleton className={stylex.props(styles.numberBone).className} />
       ) : (
         <div {...stylex.props(styles.line)}>
           <span data-fact="number" {...stylex.props(styles.lineFact, styles.numeric)}>
