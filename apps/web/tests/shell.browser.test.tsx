@@ -1018,7 +1018,7 @@ describe('the rail’s column, lent to the open screen', () => {
     return (
       <div data-testid="lending" data-offered={offered}>
         {holding && (
-          <ScreenAside>
+          <ScreenAside label="郭航旗">
             <div data-testid="lent-content">郭航旗</div>
           </ScreenAside>
         )}
@@ -1054,6 +1054,16 @@ describe('the rail’s column, lent to the open screen', () => {
     await page.getByRole('button', { name: 'give back' }).click()
     await expect.element(column).not.toHaveAttribute('data-lent')
     await expect.element(column.getByRole('link', { name: '阶段安排' })).toBeVisible()
+  })
+
+  it('names the column after what the screen holding it put there', async () => {
+    await page.viewport(1280, 800)
+    await mount()
+    // a landmark a reader can find by the person it is about
+    await expect.element(page.getByRole('complementary', { name: '郭航旗' })).toBeVisible()
+    await page.getByRole('button', { name: 'give back' }).click()
+    await expect.element(page.getByTestId('workspace-rail')).not.toHaveAttribute('data-lent')
+    await expect.element(page.getByTestId('workspace-rail')).not.toHaveAttribute('aria-label')
   })
 
   it('runs the open screen to the window’s edge while it holds the column', async () => {

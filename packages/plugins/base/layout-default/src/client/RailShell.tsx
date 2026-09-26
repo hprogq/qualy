@@ -1304,6 +1304,8 @@ function CapableRailShell({
           <aside
             data-testid="workspace-rail"
             data-lent={lent.claimed || undefined}
+            // named after what the screen holding it put there
+            aria-label={lent.label}
             // fully out of reach while folded: clipped is not gone, and the
             // keyboard would still walk into the toggle behind the fold
             {...(narrow ? { inert: true, 'aria-hidden': true } : {})}
