@@ -1798,8 +1798,10 @@ const ruleOf = (item: LedgerItemView): { kind: 'person' | 'each'; value: string 
  * waiting on the participant - are reached from it too: from the fold when
  * the question has lines to open, from the row itself when it has none.
  *
- * Read claim by claim, any question with a claim opens in place, one claim
- * or many, and the fold holds all of them: nothing on the row leads away.
+ * Read claim by claim, a question with several claims opens in place and
+ * the fold holds all of them; a question with one claim is that claim, and
+ * pressing the row opens it where the reader is, since a fold would only
+ * repeat the row. Nothing on the row leads away.
  */
 function ItemRow({
   item,
@@ -1847,20 +1849,28 @@ function ItemRow({
   const claims = inPlace
     ? [...item.open, ...item.lines.filter((line) => line.kind !== 'derived')]
     : item.lines
+  // read claim by claim, the one claim a question holds, where the reader
+  // holds it and it can be opened
+  const sole =
+    inPlace && claims.length === 1 && claims[0]!.claim !== null && claims[0]!.entryId !== null
+      ? claims[0]
+      : undefined
   // a withdrawn question is one line that says so, and nothing opens under it
   const expandable =
     !item.voided &&
     (inPlace
-      ? claims.length >= 1
+      ? claims.length >= 2 ||
+        (claims.length === 1 && (sole === undefined || onEntryOpen === undefined))
       : item.lines.length >= 2 || (item.lines.length === 1 && toAside !== null))
   const only = item.lines.length === 1 ? item.lines[0] : undefined
+  const pressed = sole ?? only
   const follow =
     !expandable &&
-    !inPlace &&
-    only !== undefined &&
-    only.entryId !== null &&
+    !item.voided &&
+    pressed !== undefined &&
+    pressed.entryId !== null &&
     onEntryOpen !== undefined
-      ? only.entryId
+      ? pressed.entryId
       : null
   // nothing on the account yet, and claims to go to
   const lead = item.lines.length === 0 ? toAside : null
@@ -1874,13 +1884,13 @@ function ItemRow({
   const nothing = item.lines.length === 0 && item.cents === 0
   const inset = { paddingInlineStart: 16 + item.depth * INDENT }
   const lineData =
-    only === undefined
+    pressed === undefined
       ? {}
       : {
-          'data-line-kind': only.kind,
-          'data-standing': only.standing,
-          'data-revoked': only.revoked ? 'true' : undefined,
-          'data-entry': only.entryId ?? undefined,
+          'data-line-kind': pressed.kind,
+          'data-standing': pressed.standing,
+          'data-revoked': pressed.revoked ? 'true' : undefined,
+          'data-entry': pressed.entryId ?? undefined,
         }
   const cells = (
     <>

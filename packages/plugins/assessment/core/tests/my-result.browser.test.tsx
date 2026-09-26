@@ -787,23 +787,28 @@ describe('the rows of the account', () => {
     expect(rule('q3')).toBe('each')
   })
 
-  it('opens a question with one claim in place too', async () => {
+  it('opens a question’s only claim straight from its row, without leaving', async () => {
     await page.viewport(1440, 900)
     await screen(normal())
     await expect.element(page.getByTestId('result-total')).toBeVisible()
+    // one record by the office: a fold would only say the row again
     const row = itemRow('q6')
     expect(row.getAttribute('data-value')).toBe('9.50')
-    await userEvent.click(row.querySelector('button[aria-expanded]') as HTMLElement)
-    const fold = row.querySelector('[data-testid="ledger-lines"]') as HTMLElement
-    await expect.poll(() => fold.getAttribute('data-open')).toBe('true')
-    const claim = fold.querySelector('[data-testid="ledger-line"]') as HTMLElement
+    expect(row.querySelector('[aria-expanded]')).toBeNull()
+    expect(row.querySelector('[data-testid="ledger-lines"]')).toBeNull()
+    const claim = row.querySelector('[data-testid="ledger-line"]') as HTMLElement
     expect(claim.getAttribute('data-entry')).toBe('q6-a')
-    // the office's record says it was recorded, not approved
-    expect(claim.getAttribute('data-act')).toBe('recorded')
     await userEvent.click(claim)
     await expect.element(page.getByRole('dialog')).toBeVisible()
     expect(addressNow()).toContain('detail=q6-a')
     expect(page.getByTestId('entries-page').elements()).toHaveLength(0)
+    // one still on its way, alone on its question, opens the same way
+    await userEvent.keyboard('{Escape}')
+    await expect.poll(() => addressNow().includes('detail=')).toBe(false)
+    const draft = itemRow('q9').querySelector('[data-testid="ledger-line"]') as HTMLElement
+    expect(draft.getAttribute('data-entry')).toBe('q9-a')
+    await userEvent.click(draft)
+    await expect.poll(() => addressNow()).toContain('detail=q9-a')
   })
 
   it('writes no middle dot anywhere on the page', async () => {
@@ -967,17 +972,18 @@ describe('the rows of the account', () => {
 
   it('says a draft counts once it is submitted and approved, not only approved', async () => {
     await page.viewport(1440, 900)
-    await screen(normal())
+    const paper = normal()
+    // a draft beside a refused claim and one given up
+    await screen({ ...paper, entries: [...paper.entries, entry('q10-c', 'q10', 'draft')] })
     await expect.element(page.getByTestId('result-total')).toBeVisible()
-    for (const itemId of ['q3', 'q9']) {
-      const toggle = itemRow(itemId).querySelector<HTMLElement>('button[aria-expanded]')
-      if (toggle !== null) await userEvent.click(toggle)
+    for (const itemId of ['q3', 'q10']) {
+      await userEvent.click(itemRow(itemId).querySelector('button[aria-expanded]') as HTMLElement)
     }
     const once = (entryId: string) =>
       document
         .querySelector(`[data-entry="${entryId}"] [data-testid="ledger-line-figure"]`)
         ?.getAttribute('data-counts-once') ?? null
-    expect(once('q9-a')).toBe('submitted')
+    expect(once('q10-c')).toBe('submitted')
     expect(once('q3-d')).toBe('approved')
     // what is on the account already says no more than its figure
     expect(once('q3-a')).toBeNull()
@@ -1514,9 +1520,12 @@ describe('an account that has stopped moving', () => {
 
   it('promises nothing of an archived batch', async () => {
     await page.viewport(1440, 900)
-    await screen(normal(), {
-      getBatch: () => Effect.succeed({ batch: { ...batch, status: 'archived' } }),
-    })
+    const paper = normal()
+    // a draft among other claims, so its line is listed under its question
+    await screen(
+      { ...paper, entries: [...paper.entries, entry('q10-c', 'q10', 'draft')] },
+      { getBatch: () => Effect.succeed({ batch: { ...batch, status: 'archived' } }) },
+    )
     const moving = page.getByTestId('result-moving')
     await expect.element(moving).toHaveAttribute('data-closed', 'archived')
     // the claims still count where they stopped
@@ -1546,7 +1555,10 @@ describe('an account that has stopped moving', () => {
     expect(stoppedOf('q4-a')).toBe('undecided')
     expect(stoppedOf('q3-h')).toBe('unrevised')
     expect(stoppedOf('q7-ask')).toBe('unsupplied')
-    expect(stoppedOf('q9-a')).toBe('unsent')
+    await userEvent.click(itemRow('q10').querySelector('button[aria-expanded]') as HTMLElement)
+    expect(stoppedOf('q10-c')).toBe('unsent')
+    // a draft alone on its question says where it stopped on the row itself
+    expect(madeOf('q9')).toBe('unsettled')
     // what was decided keeps its own word
     expect(stoppedOf('q3-a')).toBeNull()
   })
