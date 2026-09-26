@@ -490,6 +490,12 @@ export const runTerm = (input: {
         if (entry.instanceId === null) return
         const judge = yield* judgeOf(entry.instanceId, entry.student)
         if (judge === null) return
+        // A claim moved onto a changed route is looked at both by the review
+        // scheduled when it was sent and by the one the move schedules, so
+        // one of them can find it already passed up. The escalation route is
+        // decideEscalated's: a refusal there is one step's opinion and the
+        // claim stays under review, so it is nothing to file again.
+        if (judge.round.chain.route !== 'normal') return
         const roll = random.next()
         const beforeDeadline = queue.now.getTime() < deadline.getTime() - 6 * 3_600_000
         if (roll < 0.07) {
@@ -503,7 +509,17 @@ export const runTerm = (input: {
           entry.status = 'rejected'
           if (beforeDeadline && random.chance(0.65)) {
             const when = addMinutes(queue.now, random.int(120, 26 * 60))
-            if (when < deadline) queue.at(when, 'revise', () => revise(entry))
+            // filed again only while it still stands refused
+            if (when < deadline) {
+              queue.at(when, 'revise', () =>
+                Effect.gen(function* () {
+                  const standing = (yield* runSql(
+                    sql`select status from entries where id = ${entry.entryId}`,
+                  )) as { rows: { status: string }[] }
+                  if (standing.rows[0]?.status === 'rejected') yield* revise(entry)
+                }),
+              )
+            }
           }
           return
         }
