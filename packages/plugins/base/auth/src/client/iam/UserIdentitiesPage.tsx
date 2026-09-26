@@ -231,6 +231,13 @@ export default function UserIdentitiesPage() {
           key={editing.providerId}
           userId={userId}
           entrance={editing}
+          person={{
+            name: record?.displayName ?? '',
+            account:
+              editing.resolution?.mode === 'user-field'
+                ? (fieldValue(editing.resolution.field) ?? '')
+                : '',
+          }}
           onClose={() => setEditing(null)}
         />
       )}
@@ -258,10 +265,13 @@ export default function UserIdentitiesPage() {
 function PasswordDialog({
   userId,
   entrance,
+  person,
   onClose,
 }: {
   userId: string
   entrance: Entrance
+  /** who the password is for, and the account they sign in by: said under the title */
+  person: { name: string; account: string }
   onClose: () => void
 }) {
   const api = useApi(authApi)
@@ -319,8 +329,10 @@ function PasswordDialog({
     <>
       <FormDialog
         open
-        title={format(m.passwordDialogTitle, { name: entrance.name })}
-        {...(replacing ? { description: format(m.identityResetBody) } : {})}
+        // what the dialog does, never the door's own name: a door called
+        // "email and password" made "set the email and password password"
+        title={format(replacing ? m.passwordResetTitle : m.passwordSetTitle)}
+        description={format(replacing ? m.passwordResetFor : m.passwordFor, person)}
         onClose={onClose}
         footer={
           <>

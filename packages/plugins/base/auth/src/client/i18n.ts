@@ -37,9 +37,13 @@ const userTypeLastForRoleMessage = defineMessage<{ roleCount: number }>()({
   defaultMessage:
     '{roleCount, plural, one {# role allows} other {# roles allow}} this user type and no other.',
 })
-const passwordDialogTitleMessage = defineMessage<{ name: string }>()({
-  id: 'auth/person/password-title',
-  defaultMessage: 'Set the {name} password',
+const passwordForMessage = defineMessage<{ name: string; account: string }>()({
+  id: 'auth/person/password-for',
+  defaultMessage: '{name} ({account})',
+})
+const passwordResetForMessage = defineMessage<{ name: string; account: string }>()({
+  id: 'auth/person/password-reset-for',
+  defaultMessage: '{name} ({account}) is signed out everywhere once this is saved',
 })
 const byBusinessNoMessage = defineMessage<{ businessNo: string }>()({
   id: 'auth/person/by-business-no',
@@ -1088,11 +1092,16 @@ const i18n = definePluginMessages({
     passwordSet: { id: 'auth/person/password-set', defaultMessage: 'Set password' },
     passwordReset: { id: 'auth/person/password-reset', defaultMessage: 'Reset password' },
     identityRevoke: { id: 'auth/person/identity-revoke', defaultMessage: 'Withdraw' },
-    passwordDialogTitle: passwordDialogTitleMessage,
-    identityResetBody: {
-      id: 'auth/person/identity-reset-body',
-      defaultMessage: 'Saving signs them out everywhere.',
+    passwordSetTitle: {
+      id: 'auth/person/password-set-title',
+      defaultMessage: 'Set sign-in password',
     },
+    passwordResetTitle: {
+      id: 'auth/person/password-reset-title',
+      defaultMessage: 'Reset sign-in password',
+    },
+    passwordFor: passwordForMessage,
+    passwordResetFor: passwordResetForMessage,
     identityRevokeTitle: {
       id: 'auth/person/identity-revoke-title',
       defaultMessage: 'Withdraw this way in?',

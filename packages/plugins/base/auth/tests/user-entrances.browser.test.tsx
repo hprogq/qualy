@@ -167,6 +167,29 @@ describe('the ways in of one person', () => {
     })
   })
 
+  it('names the dialog for what it does and says whose password it is', async () => {
+    const withPassword = local({
+      bound: {
+        id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+        subject: null,
+        displayLabel: null,
+        boundAt: '2026-09-01T00:00:00.000Z',
+        lastUsedAt: null,
+        hasCredential: true,
+      },
+    })
+    await open([withPassword], true)
+    await page.getByRole('button', { name: '重置密码' }).click()
+    // the title is the act, not the door's own name glued to the word
+    // "password": a door called 邮箱密码 made 设置邮箱密码密码
+    const dialog = page.getByRole('dialog', { name: '重置登录密码' })
+    await expect.element(dialog).toBeInTheDocument()
+    expect(dialog.element().textContent).not.toContain('邮箱密码')
+    // and the person and the account it is for, so nobody resets the wrong one
+    expect(dialog.element().textContent).toContain('张三')
+    expect(dialog.element().textContent).toContain('ada@school.edu')
+  })
+
   it('withdraws only after asking', async () => {
     const remove = vi.fn(() => Effect.succeed({ ok: true as const }))
     await open([oauth], true, { deleteUserAuthBinding: remove })
