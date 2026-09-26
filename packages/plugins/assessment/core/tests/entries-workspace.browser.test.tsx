@@ -1147,6 +1147,44 @@ describe('the head of the structure', () => {
   })
 })
 
+describe('a question arriving', () => {
+  // The pane steps in from a little way below when the reader goes to the
+  // next question. That reach past the room it arrives in must never become
+  // room to scroll into: it flashed a scroll bar up for every step down.
+  it('never lets the pane’s arrival make its column scroll', async () => {
+    await commands.emulateMedia({ reducedMotion: 'no-preference' })
+    try {
+      await expect.poll(() => matchMedia('(prefers-reduced-motion: reduce)').matches).toBe(false)
+      for (let frame = 0; frame < 3; frame += 1) {
+        await new Promise((resolve) => requestAnimationFrame(resolve))
+      }
+      await page.viewport(1440, 900)
+      await workspace({
+        route: `${base}?open=${itemId(1)}`,
+        entries: [claim(1, itemId(1), 'approved'), claim(2, itemId(2), 'approved')],
+      })
+      await expect.poll(() => rows().length).toBe(1)
+      // the middle column's own scroller, the nearest one above the pane
+      let column = document.querySelector('[data-testid="item-pane"]')!.parentElement!
+      while (getComputedStyle(column).overflowY !== 'auto') column = column.parentElement!
+      let most = 0
+      let watching = true
+      const watch = () => {
+        most = Math.max(most, column.scrollHeight - column.clientHeight)
+        if (watching) requestAnimationFrame(watch)
+      }
+      requestAnimationFrame(watch)
+      await page.getByRole('button', { name: /下一项/ }).click()
+      await expect.poll(() => openItem()).toBe(itemId(2))
+      await new Promise((resolve) => setTimeout(resolve, 400))
+      watching = false
+      expect(most).toBeLessThanOrEqual(0)
+    } finally {
+      await commands.emulateMedia({ reducedMotion: 'reduce' })
+    }
+  })
+})
+
 describe('the figures under the total', () => {
   // They take a good part of a short window. The reader may put them away,
   // this browser remembers, and nothing is lost: what waits on the reader is

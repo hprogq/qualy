@@ -73,7 +73,14 @@ const styles = stylex.create({
   // one question on a phone: at least the screen tall, so the bar at its
   // foot sits at the foot however little the question holds
   phoneScreen: { minHeight: '100%' },
-  phoneBody: { display: 'flex', flexGrow: 1, flexDirection: 'column' },
+  // The pane arrives from a little way off - below it when the reader steps
+  // on, beside it when they go in - and for that moment it reaches past the
+  // room it arrives in. Clipped, that reach never becomes room to scroll
+  // into, which flashed a scroll bar up for the length of every step down.
+  // `clip` and not `hidden`: hidden would make this the scroller its sticky
+  // filters pin to, and they would stop pinning.
+  phoneBody: { display: 'flex', flexGrow: 1, flexDirection: 'column', overflow: 'clip' },
+  arrival: { display: 'flex', minHeight: '100%', flexDirection: 'column', overflow: 'clip' },
   // the pane as it arrives: as tall as the room it arrives in, like the pane
   arrived: { display: 'flex', minHeight: '100%', flexGrow: 1, flexDirection: 'column' },
   columns: {
@@ -819,13 +826,15 @@ function Workspace({
         <div {...stylex.props(styles.rail)}>{rail('column')}</div>
         <div {...stylex.props(styles.main)}>
           <div ref={scroller} {...stylex.props(styles.mainScroll)}>
-            <Drill
-              move={arrival}
-              drillKey={selected?.id ?? ''}
-              className={stylex.props(styles.arrived).className}
-            >
-              {pane}
-            </Drill>
+            <div {...stylex.props(styles.arrival)}>
+              <Drill
+                move={arrival}
+                drillKey={selected?.id ?? ''}
+                className={stylex.props(styles.arrived).className}
+              >
+                {pane}
+              </Drill>
+            </div>
           </div>
           {item !== null && (previous !== null || next !== null) && (
             <nav aria-label={format(m.entriesStepLabel)} {...stylex.props(styles.stepper)}>
