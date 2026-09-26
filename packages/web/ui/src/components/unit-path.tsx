@@ -22,7 +22,9 @@ import { Button } from './button.tsx'
 // clipped away, which is how "as many whole steps as fit, counted from the
 // end" is said without measuring every name: whatever does not fit the first
 // line is simply not on it. Whether anything wrapped is the one thing read
-// back from the layout, to decide whether the mark is shown.
+// back from the layout, to decide whether the mark is shown. The reverse is
+// the layout's alone: the steps stand in the document root first, so a
+// screen reader and the tab key go down the chain the way the eye reads it.
 //
 // Three ways to hold one: said and nothing more; each step a way to look at
 // that unit; or the whole chain a press away, every level on a line of its
@@ -64,6 +66,9 @@ const styles = stylex.create({
     alignItems: 'center',
     gap: 4,
   },
+  // where a step is laid out, counted from the unit itself: the first laid
+  // out are the ones that keep the line
+  fromEnd: (order: number) => ({ order }),
   slash: {
     flexShrink: 0,
     color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
@@ -305,43 +310,41 @@ function PathLine({
         </span>
       )}
       <span ref={seat} {...stylex.props(styles.steps)}>
-        {steps
-          .map((name, index) => ({ name, index }))
-          .reverse()
-          .map(({ name, index }) => (
-            <span key={index} data-path-step={index} {...stylex.props(styles.step)}>
-              {/* the slash belongs to the step after it, so a step that is
-                  left off takes its slash along */}
-              {index !== 0 && (
-                <span aria-hidden {...stylex.props(styles.slash)}>
-                  /
-                </span>
-              )}
-              {onPick === undefined ? (
-                <span
-                  {...stylex.props(
-                    styles.name,
-                    emphasis === 'last' && index === last && styles.last,
-                  )}
-                >
-                  {name}
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  aria-label={pickLabel === undefined ? name : `${pickLabel} ${name}`}
-                  {...stylex.props(
-                    styles.name,
-                    styles.pick,
-                    emphasis === 'last' && index === last && styles.last,
-                  )}
-                  onClick={() => onPick(index)}
-                >
-                  {name}
-                </button>
-              )}
-            </span>
-          ))}
+        {steps.map((name, index) => (
+          <span
+            key={index}
+            data-path-step={index}
+            {...stylex.props(styles.step, styles.fromEnd(last - index))}
+          >
+            {/* the slash belongs to the step after it, so a step that is
+                left off takes its slash along */}
+            {index !== 0 && (
+              <span aria-hidden {...stylex.props(styles.slash)}>
+                /
+              </span>
+            )}
+            {onPick === undefined ? (
+              <span
+                {...stylex.props(styles.name, emphasis === 'last' && index === last && styles.last)}
+              >
+                {name}
+              </span>
+            ) : (
+              <button
+                type="button"
+                aria-label={pickLabel === undefined ? name : `${pickLabel} ${name}`}
+                {...stylex.props(
+                  styles.name,
+                  styles.pick,
+                  emphasis === 'last' && index === last && styles.last,
+                )}
+                onClick={() => onPick(index)}
+              >
+                {name}
+              </button>
+            )}
+          </span>
+        ))}
       </span>
       {trail !== undefined && (
         <span

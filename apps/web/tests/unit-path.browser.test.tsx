@@ -25,7 +25,48 @@ const shown = (index: number) => {
   return step.top < line.bottom - 1 && step.bottom > line.top + 1
 }
 
+/** the words a screen reader meets, in the order it meets them */
+const spoken = (root: Element): string[] => {
+  const words: string[] = []
+  const walk = (node: Node) => {
+    if (node instanceof Element && node.getAttribute('aria-hidden') === 'true') return
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent?.trim() ?? ''
+      if (text !== '') words.push(text)
+    }
+    node.childNodes.forEach(walk)
+  }
+  walk(root)
+  return words
+}
+
 describe('a unit path', () => {
+  it('is read from the root down, though the line keeps the end', async () => {
+    await mount(<UnitPath steps={STEPS} />, 300)
+    const path = page.getByTestId('unit-path')
+    await expect.element(path).toHaveAttribute('data-clipped', 'true')
+    // the eye is shown the unit and its parent, the front folded away
+    expect(shown(4)).toBe(true)
+    expect(shown(0)).toBe(false)
+    // a screen reader goes down the chain, not up it
+    expect(spoken(path.element())).toEqual(STEPS)
+  })
+
+  it('offers its steps to the keyboard from the root down', async () => {
+    await mount(<UnitPath steps={STEPS} onPick={() => {}} pickLabel="查看" />, 900)
+    const names = page
+      .getByRole('button')
+      .elements()
+      .map((button) => button.getAttribute('aria-label'))
+    expect(names).toEqual(STEPS.map((name) => `查看 ${name}`))
+    // and the order the tab key takes is the order on the line
+    const left = page
+      .getByRole('button')
+      .elements()
+      .map((button) => button.getBoundingClientRect().left)
+    expect(left).toEqual([...left].sort((a, b) => a - b))
+  })
+
   it('keeps the unit and as many parents as fit, folding the front', async () => {
     await mount(<UnitPath steps={STEPS} />, 300)
     const path = page.getByTestId('unit-path')
