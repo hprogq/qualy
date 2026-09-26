@@ -681,6 +681,31 @@ describe('reading one question’s claims', () => {
     expect(whole()).toBe(true)
   })
 
+  // The filters, the search and the order are one row of keys: one height,
+  // one middle line.
+  it('stands the search, the order and the filters at one height', async () => {
+    for (const width of [1440, 1920]) {
+      await page.viewport(width, 900)
+      const { unmount } = await workspace({ route: `${base}?open=${TAIL}`, entries: lot })
+      await expect.element(page.getByTestId('entries-toolbar')).toHaveAttribute('data-shape', 'row')
+      const box = (element: Element) => element.getBoundingClientRect()
+      const search = box(page.getByTestId('entries-search').element())
+      const sort = box(page.getByTestId('entries-sort').element())
+      const filters = box(document.querySelector('[data-chip="all"]')!.parentElement!)
+      for (const other of [sort, filters]) {
+        expect({ width, height: Math.round(search.height) }).toEqual({
+          width,
+          height: Math.round(other.height),
+        })
+        expect({ width, top: Math.round(search.top) }).toEqual({
+          width,
+          top: Math.round(other.top),
+        })
+      }
+      await unmount()
+    }
+  })
+
   it('filters the claims by where they stand, and finds one by what it says', async () => {
     await page.viewport(1440, 900)
     await workspace({ route: `${base}?open=${TAIL}`, entries: lot })

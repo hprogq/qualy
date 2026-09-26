@@ -304,7 +304,8 @@ const styles = stylex.create({
     flexBasis: 220,
     alignItems: 'center',
     gap: 6,
-    height: 30,
+    // the height of the order key and the filters beside it
+    height: 32,
     borderRadius: 8,
     boxShadow: `inset 0 0 0 1px ${tokens.border}`,
     paddingLeft: 9,
@@ -315,7 +316,7 @@ const styles = stylex.create({
   searchInput: {
     minWidth: 0,
     flexGrow: 1,
-    height: 28,
+    height: 30,
     borderWidth: 0,
     outline: 'none',
     backgroundColor: 'transparent',
@@ -742,7 +743,7 @@ export function ItemPane({
       </div>
       {wide && <span {...stylex.props(styles.spacer)} />}
       {searchOpen || search !== '' || wide ? (
-        <label {...stylex.props(styles.search)}>
+        <label data-testid="entries-search" {...stylex.props(styles.search)}>
           <SearchIcon aria-hidden {...stylex.props(styles.searchIcon)} />
           <input
             type="search"
