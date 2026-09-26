@@ -335,7 +335,10 @@ const styles = stylex.create({
   },
   foldNote: { flexShrink: 0, fontSize: 11, color: tokens.mutedForeground },
   word: {
-    flexShrink: 0,
+    // next to nothing, so it keeps its room while the name gives up its own,
+    // and gives it up once the name is down to its floor
+    flexShrink: 0.01,
+    minWidth: 0,
     maxWidth: 88,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -344,11 +347,11 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
   },
   wordUrgent: { fontWeight: 500, color: tokens.warningForeground },
-  // one column down the right of every question, whether or not it holds a
-  // figure, so the words before it stand in a column too
+  // drawn only where there is a figure, set against the row's right edge so
+  // every figure ends in the same place; an empty column would take the
+  // room a question's name needs on a narrow rail
   score: {
     flexShrink: 0,
-    minWidth: 44,
     textAlign: 'right',
     whiteSpace: 'nowrap',
     fontSize: 12.5,
@@ -397,6 +400,26 @@ const DOT: Record<Dot, stylex.StyleXStyles> = dotStyles
 
 const INDENT = 16
 const GUTTER = 20
+
+/** how many characters of a question's name stay in sight however narrow its row */
+const NAME_FLOOR = 5
+
+const WIDE_CHARACTER =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\u3000-\u303f\uff00-\uffef]/u
+
+/**
+ * The room the first few characters of a name take, in ems of its own type:
+ * a wide character (Chinese, Japanese, Korean, full-width forms) about one,
+ * anything else a little over half. A floor that overshoots a short name by
+ * a hair only moves what follows it by that hair.
+ */
+const nameFloor = (name: string): string => {
+  let ems = 0
+  for (const character of [...name].slice(0, NAME_FLOOR)) {
+    ems += WIDE_CHARACTER.test(character) ? 1 : 0.6
+  }
+  return `${String(ems)}em`
+}
 
 export function StructureRail({
   heading,
@@ -634,7 +657,13 @@ export function StructureRail({
                   data-dot={dotOf(row)}
                   {...stylex.props(styles.dot, DOT[dotOf(row)])}
                 />
-                <span {...stylex.props(styles.name, on && styles.nameOn, gone && styles.nameGone)}>
+                <span
+                  data-rail-name=""
+                  {...stylex.props(styles.name, on && styles.nameOn, gone && styles.nameGone)}
+                  // a question's name gives up its room first, down to its
+                  // first few characters, and only then the word after it
+                  style={{ minWidth: nameFloor(row.name) }}
+                >
                   {row.name}
                 </span>
                 {row.unread > 0 && <UnreadCount count={row.unread} />}
@@ -649,12 +678,14 @@ export function StructureRail({
                 ) : (
                   word !== null && <VisuallyHidden>{format(word)}</VisuallyHidden>
                 )}
-                <span
-                  data-amount={figured ? two(score) : ''}
-                  {...stylex.props(styles.score, score < 0 && styles.scoreNegative)}
-                >
-                  {figured ? two(score) : null}
-                </span>
+                {figured && (
+                  <span
+                    data-amount={two(score)}
+                    {...stylex.props(styles.score, score < 0 && styles.scoreNegative)}
+                  >
+                    {two(score)}
+                  </span>
+                )}
                 {layout === 'screen' && (
                   <ChevronRightIcon aria-hidden {...stylex.props(styles.chevron)} />
                 )}

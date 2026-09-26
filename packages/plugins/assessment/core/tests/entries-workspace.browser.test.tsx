@@ -1615,16 +1615,14 @@ describe('what a question’s row says at a glance', () => {
       expect(railRow(Number(n)).querySelector('[data-word]')).toBeNull()
       expect(railRow(Number(n)).textContent).toContain(word)
     }
-    // figures to two places, in one column down the right
+    // figures to two places, ending at one edge down the right; a question
+    // with none keeps no empty column for one
     expect(railRow(2).querySelector('[data-amount]')?.getAttribute('data-amount')).toBe('1.00')
-    expect(railRow(3).querySelector('[data-amount]')?.getAttribute('data-amount')).toBe('')
-    const cells = [1, 2, 3, 4, 5].map((n) =>
+    for (const n of [3, 4, 5]) expect(railRow(n).querySelector('[data-amount]')).toBeNull()
+    const cells = [1, 2].map((n) =>
       railRow(n).querySelector('[data-amount]')!.getBoundingClientRect(),
     )
-    for (const cell of cells) {
-      expect(Math.round(cell.right)).toBe(Math.round(cells[0]!.right))
-      expect(Math.round(cell.width)).toBe(Math.round(cells[0]!.width))
-    }
+    expect(Math.round(cells[1]!.right)).toBe(Math.round(cells[0]!.right))
     // a section's figure: two places, with its limit where it has one
     const figure = (id: string) =>
       document
@@ -1634,6 +1632,63 @@ describe('what a question’s row says at a glance', () => {
     expect(figure(BAND_A).querySelector('[data-testid="section-meter"]')).not.toBeNull()
     expect(figure(DEEP_B).getAttribute('data-got')).toBe('0.00')
     expect(figure(DEEP_B).querySelector('[data-testid="section-meter"]')).toBeNull()
+  })
+
+  // On a tablet's narrow structure a long English word, a count and a figure
+  // all ask for room beside a question's name; the name is what the row is,
+  // so it keeps its first characters and the word gives way after it.
+  it('keeps a question’s name in sight beside a long word on a tablet', async () => {
+    await page.viewport(834, 900)
+    const filed = [claim(1, itemId(1), 'needs_revision'), claim(2, itemId(1), 'approved')]
+    await workspace({
+      route: `${base}?open=${itemId(2)}`,
+      locale: 'en-US',
+      // two sections deep, where the row is narrowest
+      items: [question(1, '学生干部任职情况', SUB_B), question(2, '品德题目 2', BAND_A)],
+      groups: [
+        group(BAND_A, null, '品德行为表现', 0),
+        group(BAND_B, null, '学业发展', 1),
+        group(SUB_B, BAND_B, '学科竞赛', 0),
+      ],
+      entries: filed,
+      stubs: {
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: filed,
+            nextCursor: null,
+            attention: { unreadEntryIds: [entryId(1)] },
+          }),
+        getMyResult: () =>
+          Effect.succeed({
+            mode: 'provisional',
+            total: '2.00',
+            groups: [],
+            lines: [
+              {
+                lineId: `entry:${entryId(2)}`,
+                kind: 'entry',
+                label: '',
+                value: '2',
+                itemId: itemId(1),
+                provenance: { entryId: entryId(2) },
+              },
+            ],
+          }),
+      },
+    })
+    await expect
+      .poll(() => railRow(1).querySelector('[data-amount]')?.getAttribute('data-amount'))
+      .toBe('2.00')
+    expect(railRow(1).querySelector('[data-word]')).not.toBeNull()
+    expect(railRow(1).querySelector('[data-testid="unread-mark"]')).not.toBeNull()
+    const name = railRow(1).querySelector('[data-rail-name]') as HTMLElement
+    const size = Number.parseFloat(getComputedStyle(name).fontSize)
+    // five characters of it at least, each as wide as the type is high
+    expect(name.clientWidth).toBeGreaterThanOrEqual(5 * size - 1)
+    // a question with neither word nor figure keeps no empty room for them
+    const plain = railRow(2).querySelector('[data-rail-name]') as HTMLElement
+    expect(plain.clientWidth).toBe(plain.scrollWidth)
   })
 
   // A section's fill is a small pie beside its figure, not a line along the foot
