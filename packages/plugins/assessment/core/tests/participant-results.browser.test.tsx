@@ -1027,6 +1027,34 @@ describe('one account beside its person', () => {
     }
   })
 
+  it('sets what stands in for the claims in from the column and the window’s edge', async () => {
+    await page.viewport(1280, 800)
+    const cases = [
+      { state: 'loading', stubs: { listParticipantEntries: () => Effect.never } },
+      {
+        state: 'failed',
+        stubs: { listItems: () => Effect.fail(apiError('ASSESSMENT_BATCH_NOT_FOUND')) },
+      },
+      // a round whose paper has no questions yet
+      {
+        state: 'ready',
+        stubs: { listItems: () => Effect.succeed({ items: [], version: 1 }) },
+      },
+    ] as const
+    for (const { state, stubs } of cases) {
+      const { unmount } = await shelled(open, 'zh-CN', stubs)
+      const seat = page.getByTestId('participant-entries')
+      await expect.element(seat).toHaveAttribute('data-state', state)
+      const main = page.getByRole('main').element().getBoundingClientRect()
+      const drawn = seat.element().firstElementChild!.getBoundingClientRect()
+      expect(drawn.width).toBeGreaterThan(0)
+      expect(drawn.left - main.left).toBeGreaterThanOrEqual(16)
+      expect(main.right - drawn.right).toBeGreaterThanOrEqual(16)
+      expect(drawn.top - main.top).toBeGreaterThanOrEqual(16)
+      await unmount()
+    }
+  })
+
   it('opens the whole chain of where they stand, from the school down', async () => {
     await page.viewport(1280, 800)
     await shelled(open)

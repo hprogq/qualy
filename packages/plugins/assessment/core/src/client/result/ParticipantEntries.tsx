@@ -18,6 +18,7 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { toast } from '@qualy/ui/toast'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { ManagedEntrySheet } from '../entry/ManagedEntrySheet.tsx'
@@ -57,6 +58,24 @@ const styles = stylex.create({
     paddingBlock: 8,
   },
   waitingWords: { flexGrow: 1, fontSize: 13, color: tokens.surfaceMutedForeground },
+  // The workspace runs to the edges of the room it is given; what stands in
+  // for it - its outline while it loads, why it could not be read, a paper
+  // with no questions - is set in from them the way a page is, or it reads
+  // as the layout having broken against the column beside it.
+  seat: {
+    display: 'flex',
+    minWidth: 0,
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+  },
+  inset: {
+    paddingInline: { default: 24, [breakpoints.phone]: 16 },
+    paddingTop: { default: 20, [breakpoints.phone]: 16 },
+    paddingBottom: 24,
+  },
   skeleton: {
     display: 'grid',
     gap: 16,
@@ -67,6 +86,9 @@ const styles = stylex.create({
   skBone: { height: 14, borderRadius: 4 },
   skBlock: { height: 56, borderRadius: tokens.radiusMd },
   empty: {
+    marginInline: { default: 24, [breakpoints.phone]: 16 },
+    marginTop: { default: 20, [breakpoints.phone]: 16 },
+    marginBottom: 24,
     borderRadius: tokens.radiusLg,
     backgroundColor: tokens.surface,
     boxShadow: tokens.elevation1,
@@ -257,20 +279,26 @@ export function ParticipantEntries({
   const scoreless = result.data === undefined && result.error !== null
   const scoreStale = result.data !== undefined && result.isError
 
+  const pending = entries.isPending || items.isPending || groups.isPending
+  // A read that failed with nothing to show is the section's failure - the
+  // groups too, or the structure would draw as a paper with no sections at
+  // all. One that failed later keeps what it showed.
+  const failure =
+    [entries, items, groups]
+      .map((read) =>
+        read.data === undefined && read.error !== null ? formatError(read.error) : null,
+      )
+      .find((said) => said !== null) ?? null
+
   return (
-    <>
+    <div
+      data-testid="participant-entries"
+      data-state={pending ? 'loading' : failure !== null ? 'failed' : 'ready'}
+      {...stylex.props(styles.seat, (pending || failure !== null) && styles.inset)}
+    >
       <AsyncSection
-        pending={entries.isPending || items.isPending || groups.isPending}
-        // A read that failed with nothing to show is the section's failure -
-        // the groups too, or the structure would draw as a paper with no
-        // sections at all. One that failed later keeps what it showed.
-        error={
-          [entries, items, groups]
-            .map((read) =>
-              read.data === undefined && read.error !== null ? formatError(read.error) : null,
-            )
-            .find((said) => said !== null) ?? null
-        }
+        pending={pending}
+        error={failure}
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => {
@@ -420,6 +448,6 @@ export function ParticipantEntries({
           )}
         />
       )}
-    </>
+    </div>
   )
 }
