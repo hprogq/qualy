@@ -9,33 +9,34 @@ import { entryRefusalMessage } from './refusals.ts'
 import { answerOf, fieldsOf, type EntryDto, type ItemDto } from './model.ts'
 
 // The owner's three acts on a claim of their own - handing it on, taking it
-// back, giving it up - for a page other than the filing page that shows the
-// claim's drawer. Each is said out loud when it lands, and a refusal over the
-// claim's fields names those fields and what is wrong with each, since no
-// form is open to show them. Beside them, the look that marks a question's
-// news as seen.
+// back, giving it up - for every page that shows the claim's drawer. Each is
+// said out loud when it lands, and a refusal over the claim's fields names
+// those fields and what is wrong with each, since no form is open to show
+// them. Beside them, the look that marks a question's news as seen.
 
 export type OwnStatus = 'in_review' | 'draft' | 'voided'
 
-export function useOwnClaimActs({
-  items,
-  entries,
-  materialRange,
-}: {
+/** what an owner's act needs to say its own failure */
+interface OwnClaims {
   /** the questions, for the names of a refused claim's fields */
   items: readonly ItemDto[]
   entries: readonly EntryDto[]
   /** the round's material window, which decides how a refused date is said */
   materialRange: { start: string; end: string } | undefined
-}) {
-  const api = useApi(assessmentApi)
-  const query = useApiQuery(assessmentApi)
-  const run = useRunApi()
-  const queryClient = useQueryClient()
+}
+
+/**
+ * What to tell the owner about an act of theirs that failed.
+ *
+ * No form is open where these acts are pressed, so a refusal over the
+ * claim's fields names those fields and what is wrong with each, rather
+ * than reporting a save nobody made. The claim is named where the press was
+ * about one; a claim not written yet carried nothing to name.
+ */
+export function useOwnFailure({ items, entries, materialRange }: OwnClaims) {
   const { format, formatError } = useI18n()
   const listJoin = useList()
-
-  const sayFailure = (error: unknown, itemId: string, entryId: string): string => {
+  return (error: unknown, itemId: string, entryId?: string): string => {
     const issues = payloadIssuesOf(error)
     if (issues !== null) {
       const fields = fieldsOf(items.find((one) => one.id === itemId)?.currentRevision?.formConfig)
@@ -54,6 +55,15 @@ export function useOwnClaimActs({
     const refusal = entryRefusalMessage(error)
     return refusal === null ? formatError(error) : format(refusal)
   }
+}
+
+export function useOwnClaimActs({ items, entries, materialRange }: OwnClaims) {
+  const api = useApi(assessmentApi)
+  const query = useApiQuery(assessmentApi)
+  const run = useRunApi()
+  const queryClient = useQueryClient()
+  const { format } = useI18n()
+  const sayFailure = useOwnFailure({ items, entries, materialRange })
 
   const setStatus = useMutation({
     mutationFn: (input: {
@@ -97,12 +107,12 @@ export function useOwnClaimActs({
 }
 
 /**
- * The owner has seen what changed on one question.
+ * The owner has seen what changed on one question: the filing page records
+ * it when the question is shown, the account when one of its claims is read.
  *
- * The same look the filing page records when a question is shown, for a
- * page that shows the question's claims some other way: looking is not a
- * business change, so the cached list is corrected in place and nothing is
- * read again or announced.
+ * Looking is not a business change, so the cached list is corrected in
+ * place - everything else it says about what needs attention kept - and
+ * nothing is read again or announced.
  */
 export function useMarkItemRead(batchId: string) {
   const api = useApi(assessmentApi)

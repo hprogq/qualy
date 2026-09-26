@@ -8,7 +8,7 @@ import {
   usePageQueryUpdate,
   useRunApi,
 } from '@qualy/web-runtime'
-import { useI18n, useList } from '@qualy/web-i18n'
+import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
@@ -18,16 +18,15 @@ import { useLingering } from '@qualy/ui/use-lingering'
 import { assessmentApi } from '../api.ts'
 import { useBatchLive } from '../live.ts'
 import { useMyEntriesQuery } from './my-entries.ts'
-import { entryRefusalMessage } from './refusals.ts'
-import { issueSentence, payloadIssuesOf } from './issues.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { AppealDialog } from './AppealDialog.tsx'
 import { SupplementAnswerDialog } from './SupplementAnswerDialog.tsx'
 import { EntryDialog } from './EntryDialog.tsx'
 import { EntrySheet } from './EntrySheet.tsx'
+import { useMarkItemRead, useOwnClaimActs, useOwnFailure } from './own-acts.ts'
 import { standingRows } from './standing.ts'
-import { answerOf, fieldsOf, type EntryDto, type FilingGateDto, type ItemDto } from './model.ts'
+import type { EntryDto, FilingGateDto, ItemDto } from './model.ts'
 import { EntriesWorkspace } from './workspace/EntriesWorkspace.tsx'
 import { StandingNotice } from './workspace/StandingNotice.tsx'
 import { useLineWords } from './workspace/calc.ts'
@@ -223,37 +222,12 @@ function Body({
     void queryClient.invalidateQueries({ queryKey: query.assessment.key() })
   }
 
-  // A press made from the list or the drawer has no form open, so a refusal
-  // over the claim's fields (a date outside the round, found only when the
-  // claim is handed on) is said by those fields' names and what is wrong
-  // with each - not as a failed save.
-  const listJoin = useList()
   const lineWords = useLineWords()
-  const sayFailure = (
-    error: unknown,
-    itemId: string,
-    /** what the refused claim carried, where the press sent one */
-    payload: Readonly<Record<string, unknown>> = {},
-  ): string => {
-    const issues = payloadIssuesOf(error)
-    if (issues !== null) {
-      const asked = (items.data?.items ?? []).find((one) => one.id === itemId) as
-        | ItemDto
-        | undefined
-      const fields = fieldsOf(asked?.currentRevision?.formConfig)
-      const said = issues.map((issue) => {
-        const field = fields.find((one) => one.key === issue.field)
-        const sentence = issueSentence(issue.reason, field, {
-          value: answerOf(payload, issue.field),
-          materialRange,
-        })
-        return `${field?.label ?? issue.field} ${format(sentence)}`
-      })
-      return format(m.entryListIssues, { issues: listJoin(said) })
-    }
-    const refusal = entryRefusalMessage(error)
-    return refusal === null ? formatError(error) : format(refusal)
-  }
+  // the owner's acts from the list and the drawer, said the way every page
+  // with the drawer says them
+  const questions = useMemo(() => (items.data?.items ?? []) as readonly ItemDto[], [items.data])
+  const acts = useOwnClaimActs({ items: questions, entries, materialRange })
+  const sayFailure = useOwnFailure({ items: questions, entries, materialRange })
 
   /**
    * A declaration filed in its one press: created and handed on in the same
@@ -265,8 +239,7 @@ function Body({
       if (mine.data === undefined) throw new Error('roster not loaded')
       // a declaration has no fields, but its worth and its route are still
       // the question's current version - the press names what it saw
-      const seen = (items.data?.items ?? []).find((one) => one.id === input.itemId)?.currentRevision
-        ?.id
+      const seen = questions.find((one) => one.id === input.itemId)?.currentRevision?.id
       const created = await run(
         api.assessment.createEntry({
           payload: {
@@ -297,62 +270,10 @@ function Body({
     onError: (error: unknown, input) => toast.error(sayFailure(error, input.itemId)),
   })
 
-  const setStatus = useMutation({
-    mutationFn: (input: {
-      entryId: string
-      /** the question it answers, so a refusal can name the question's fields */
-      itemId: string
-      status: 'in_review' | 'draft' | 'voided'
-      expectedItemRevisionId?: string
-      expectedEntryRevisionId?: string
-    }) =>
-      run(
-        api.assessment.setEntryStatus({
-          params: { entryId: input.entryId },
-          payload: {
-            status: input.status,
-            ...(input.expectedItemRevisionId === undefined
-              ? {}
-              : { expectedItemRevisionId: input.expectedItemRevisionId }),
-            ...(input.expectedEntryRevisionId === undefined
-              ? {}
-              : { expectedEntryRevisionId: input.expectedEntryRevisionId }),
-          },
-        }),
-      ),
-    // said out loud, per act: three different things just happened to the
-    // claim, and a silently refreshed list reports none of them
-    onSuccess: (_result, input) => {
-      toast.success(
-        format(
-          input.status === 'in_review'
-            ? m.entrySubmittedToast
-            : input.status === 'draft'
-              ? m.entryWithdrawnToast
-              : m.entryAbandonedToast,
-        ),
-      )
-      refresh()
-    },
-    onError: (error: unknown, input) =>
-      toast.error(
-        sayFailure(
-          error,
-          input.itemId,
-          (entries.find((one) => one.id === input.entryId)?.currentRevision?.payload ??
-            {}) as Record<string, unknown>,
-        ),
-      ),
-  })
-
   // Every question of the round this person takes part in, whoever fills it
   // in: one the school records is still theirs to read. A question still
   // being composed is the only one nobody outside the paper can see.
-  const visible = useMemo(
-    () =>
-      ((items.data?.items ?? []) as readonly ItemDto[]).filter((item) => item.status !== 'draft'),
-    [items.data],
-  )
+  const visible = useMemo(() => questions.filter((item) => item.status !== 'draft'), [questions])
   const unreadItems = useMemo(
     () => new Set(mine.data?.attention?.unreadItemIds ?? []),
     [mine.data?.attention?.unreadItemIds],
@@ -369,28 +290,9 @@ function Body({
     [groups.data, visible, entriesByItem, standing.data, unreadItems],
   )
 
-  // Looking silences the dot (§32.72): a question on screen is a question
-  // looked at. The cache is corrected locally: a look is not a business
-  // change, so no refetch and no announcement ride on it.
-  const listKey = query.assessment.listMyEntries.key({ params: { batchId }, query: {} })
-  const markRead = useMutation({
-    mutationFn: (itemId: string) =>
-      run(api.assessment.markMyEntryRead({ params: { batchId, itemId } })),
-    onSuccess: (_result, itemId) => {
-      queryClient.setQueryData(
-        listKey,
-        (old: { attention: { unreadItemIds: readonly string[] } } | undefined) =>
-          old === undefined
-            ? old
-            : {
-                ...old,
-                attention: {
-                  unreadItemIds: old.attention.unreadItemIds.filter((id) => id !== itemId),
-                },
-              },
-      )
-    },
-  })
+  // Looking silences the news (§32.72): a question on screen is a question
+  // looked at.
+  const markRead = useMarkItemRead(batchId)
 
   // The claim being written, resolved from the address: 'new' is one about
   // to exist on the open question, anything else is one of that question's
@@ -512,7 +414,7 @@ function Body({
           onOpen={(id, how) => updateQuery({ open: id }, { history: how })}
           gates={gates}
           round={round}
-          busy={setStatus.isPending || declare.isPending}
+          busy={acts.isPending || declare.isPending}
           refreshing={anyFetching}
           onRefresh={refetchAll}
           openEntryId={detail}
@@ -561,13 +463,13 @@ function Body({
           item={lingeringDetail.item}
           resubmit={gates.get(lingeringDetail.item.id)?.submit}
           trail={lingeringDetail.trail}
-          busy={setStatus.isPending || declare.isPending}
+          busy={acts.isPending || declare.isPending}
           onClose={() => setDetail('')}
           onEdit={() => openAndFile(lingeringDetail.item.id, lingeringDetail.entry.id)}
           onStatus={(status, expectedItemRevisionId) => {
             // the version the sheet is showing is the one handed on
             const shownRevision = (detailed?.entry ?? lingeringDetail.entry).currentRevision?.id
-            setStatus.mutate({
+            acts.mutate({
               entryId: lingeringDetail.entry.id,
               itemId: lingeringDetail.item.id,
               status,
