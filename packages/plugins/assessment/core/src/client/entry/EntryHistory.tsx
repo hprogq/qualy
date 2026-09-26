@@ -10,6 +10,7 @@ import { AsyncSection, SidePanel } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { inZone, useBatchZone, yearOf } from '../batch/zone.ts'
@@ -199,24 +200,36 @@ const styles = stylex.create({
     backgroundColor: tokens.surfaceMuted,
     padding: 12,
   },
+  // A field's name beside what was filed under it, the names one column as
+  // wide as the longest of them needs, up to a limit past which a long name
+  // wraps rather than being cut: a name that ends in "…" is a field nobody
+  // can tell apart from its neighbour. On a phone the name stands over its
+  // value, the way the claim's own details read.
   grid: {
-    display: 'grid',
-    gridTemplateColumns: '4rem minmax(0, 1fr)',
-    columnGap: 12,
-    rowGap: 6,
+    display: { default: 'grid', [breakpoints.phone]: 'flex' },
+    flexDirection: { default: null, [breakpoints.phone]: 'column' },
+    gridTemplateColumns: 'fit-content(9rem) minmax(0, 1fr)',
+    columnGap: 16,
+    rowGap: { default: 8, [breakpoints.phone]: 10 },
     fontSize: 14,
+    lineHeight: 1.5,
   },
   gridRow: {
     gridColumn: 'span 2',
-    display: 'grid',
+    display: { default: 'grid', [breakpoints.phone]: 'flex' },
+    flexDirection: { default: null, [breakpoints.phone]: 'column' },
+    gap: { default: null, [breakpoints.phone]: 2 },
     gridTemplateColumns: 'subgrid',
   },
   term: {
-    whiteSpace: 'nowrap',
+    minWidth: 0,
+    overflowWrap: 'anywhere',
+    textWrap: 'pretty',
     color: tokens.mutedForeground,
   },
   detail: {
     minWidth: 0,
+    overflowWrap: 'anywhere',
   },
   softNote: {
     fontSize: 12,
@@ -241,9 +254,8 @@ const styles = stylex.create({
   },
   filedTerm: {
     minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
+    overflowWrap: 'anywhere',
+    textWrap: 'pretty',
     color: tokens.mutedForeground,
   },
   filedFiles: {

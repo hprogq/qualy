@@ -1117,6 +1117,94 @@ describe('filing a claim', () => {
     await page.viewport(414, 896)
   })
 
+  // A long field name in the account is read whole: beside its value where
+  // there is room, wrapping past a limit rather than cut off with "…", and
+  // over its value on a phone.
+  const LONG = '前三学年平均学分绩（含辅修与第二专业课程）'
+  const accountWithLongName = async () => {
+    const form = {
+      fields: [
+        { key: 'gpa', type: 'text', label: LONG, required: true },
+        { key: 'rank', type: 'text', label: '排名', required: true },
+      ],
+    }
+    const long = item({ currentRevision: { ...item().currentRevision!, formConfig: form } })
+    const filed = entry({
+      status: 'approved',
+      currentRevision: { ...entry().currentRevision!, payload: { gpa: '98.2', rank: '6' } },
+    })
+    await screen(
+      {
+        listItems: () => Effect.succeed({ items: [long], capabilities: { canManage: false } }),
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [filed],
+            nextCursor: null,
+            attention: { unreadEntryIds: [] },
+          }),
+        getEntryHistory: () =>
+          Effect.succeed({
+            entry: filed,
+            events: [],
+            revisions: [
+              {
+                id: REVISION_ID,
+                revisionNo: 1,
+                itemRevisionId: REVISION_ID,
+                payload: { gpa: '98.2', rank: '6' },
+                note: null,
+                source: 'self',
+                actorId: PARTICIPANT_ID,
+                subjectId: PARTICIPANT_ID,
+                attachments: [],
+                createdAt: '2026-03-02T00:00:00.000Z',
+                formConfig: form,
+              },
+            ],
+            rounds: [],
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}&detail=${ENTRY_ID}`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+    await page.getByRole('button', { name: /审核记录/ }).click()
+    await vi.waitFor(() =>
+      expect(
+        page
+          .getByText(LONG)
+          .elements()
+          .some((one) => one.tagName === 'DT'),
+      ).toBe(true),
+    )
+    const term = page
+      .getByText(LONG)
+      .elements()
+      .find((one) => one.tagName === 'DT')!
+    return { term, value: term.nextElementSibling! }
+  }
+
+  it('reads a long field name in the account whole, beside its value at a desk', async () => {
+    await page.viewport(1440, 900)
+    const { term, value } = await accountWithLongName()
+    // nothing clipped: the whole name is drawn, over more than one line
+    expect(term.scrollWidth).toBeLessThanOrEqual(term.clientWidth)
+    expect(getComputedStyle(term).textOverflow).not.toBe('ellipsis')
+    const line = parseFloat(getComputedStyle(term).lineHeight)
+    expect(term.getBoundingClientRect().height).toBeGreaterThan(line * 1.5)
+    // and its value stands beside it
+    expect(value.getBoundingClientRect().left).toBeGreaterThan(term.getBoundingClientRect().right)
+  })
+
+  it('stands a long field name in the account over its value on a phone', async () => {
+    await page.viewport(390, 844)
+    const { term, value } = await accountWithLongName()
+    expect(term.scrollWidth).toBeLessThanOrEqual(term.clientWidth)
+    expect(value.getBoundingClientRect().top).toBeGreaterThanOrEqual(
+      term.getBoundingClientRect().bottom - 1,
+    )
+  })
+
   it('shows the whole account, with the reviewer’s advice read-only', async () => {
     await screen(
       {
