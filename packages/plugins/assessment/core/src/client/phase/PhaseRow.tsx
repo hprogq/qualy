@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useId, type ReactNode } from 'react'
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -63,11 +63,16 @@ const styles = stylex.create({
     flexDirection: 'column',
     gap: 2,
   },
+  // the tags keep whole words and take a line of their own when the column
+  // is too narrow for them beside the prose, rather than being cut off at
+  // the column's edge
   nameLine: {
     display: 'flex',
     minWidth: 0,
+    flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 6,
+    columnGap: 6,
+    rowGap: 4,
     margin: 0,
   },
   name: {
@@ -87,11 +92,16 @@ const styles = stylex.create({
   },
   tags: {
     display: 'inline-flex',
-    flexShrink: 0,
+    minWidth: 0,
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 4,
   },
   descriptionLine: {
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '8rem',
     margin: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -168,6 +178,15 @@ const styles = stylex.create({
     display: 'flex',
     alignItems: 'baseline',
     gap: 10,
+  },
+  // a stage whose name and its standing are both worth saying: the one it is
+  // in, and that it has an edit not saved yet, under it rather than instead
+  standing: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 3,
   },
   inlineAction: {
     flexShrink: 0,
@@ -347,6 +366,17 @@ function useParts(props: PhaseRowProps) {
   const listOf = useList()
   const zone = useBatchZone()
   const { draft, phase, index, shape, total, editing, readOnly } = props
+  // what the row is called is its stage's name; what it says about the
+  // stage - where it stands, when it runs, what it is limited to, what was
+  // refused - is read after it rather than instead of it
+  const base = useId()
+  const ids = {
+    name: `${base}-name`,
+    standing: `${base}-standing`,
+    when: `${base}-when`,
+    scope: `${base}-scope`,
+    refused: `${base}-refused`,
+  }
   const entered = phase?.actualEntryAt ?? null
   const planned = phase?.plannedEntryAt ?? null
   const current = index === shape.currentIndex
@@ -380,18 +410,23 @@ function useParts(props: PhaseRowProps) {
 
   const itemsLimited = draft.itemScope.length > 0
   const peopleLimited = draft.participantScope.length > 0
+  const named = props.scopeTitles.length > 0 ? listOf(props.scopeTitles) : undefined
   const scope = (itemsLimited || peopleLimited) && (
     <span
+      id={ids.scope}
       // what the stage narrows filing to, said as facts: how many items, and
       // whether it admits only some of the roster
       data-testid="phase-scope"
       data-items={String(draft.itemScope.length)}
       data-people={peopleLimited ? 'limited' : 'all'}
-      title={props.scopeTitles.length > 0 ? listOf(props.scopeTitles) : undefined}
+      title={named}
       {...stylex.props(styles.tags)}
     >
       {itemsLimited && <Tag>{format(m.scopeItemsTag, { count: draft.itemScope.length })}</Tag>}
       {peopleLimited && <Tag>{format(m.scopePeopleTag)}</Tag>}
+      {/* the names a pointer reads by resting on the tags, for a reader
+          with no pointer to rest; the panel the row opens lists them too */}
+      {named !== undefined && <span hidden>{named}</span>}
     </span>
   )
 
@@ -399,7 +434,10 @@ function useParts(props: PhaseRowProps) {
     <span {...stylex.props(styles.nameRow)}>
       <span {...stylex.props(styles.ordinal, current && styles.ordinalCurrent)}>{index + 1}</span>
       <span {...stylex.props(styles.nameCol)}>
-        <span {...stylex.props(styles.name, draft.displayName === '' && styles.nameAbsent)}>
+        <span
+          id={ids.name}
+          {...stylex.props(styles.name, draft.displayName === '' && styles.nameAbsent)}
+        >
           {name}
         </span>
         {/* the name has its line to itself; what the stage is limited to
@@ -417,7 +455,7 @@ function useParts(props: PhaseRowProps) {
   )
 
   const refused = props.refusals.length > 0 && (
-    <ul {...stylex.props(styles.refusals)}>
+    <ul id={ids.refused} {...stylex.props(styles.refusals)}>
       {props.refusals.map((refusal, at) => (
         // the ground it was refused on, beside the sentence that says it:
         // which refusal landed on which stage is the fact
@@ -442,9 +480,19 @@ function useParts(props: PhaseRowProps) {
     </button>
   )
 
+  // a stage further down than the one that may take a time next has no way
+  // to take one yet; said where the time would be, since the button that
+  // the row above has is exactly what this one lacks
+  const waiting = !readOnly && !editing && shape.frontier !== -1 && index > shape.frontier && !isNew
+
   const when =
     entered !== null ? (
-      <span data-testid="phase-when" data-when="entered" {...stylex.props(styles.whenCol)}>
+      <span
+        id={ids.when}
+        data-testid="phase-when"
+        data-when="entered"
+        {...stylex.props(styles.whenCol)}
+      >
         <span {...stylex.props(styles.whenLine)}>
           <CircleCheckIcon
             aria-hidden
@@ -457,7 +505,12 @@ function useParts(props: PhaseRowProps) {
         <span {...stylex.props(styles.whenRelative)}>{relative(entered)}</span>
       </span>
     ) : planned !== null ? (
-      <span data-testid="phase-when" data-when="planned" {...stylex.props(styles.whenCol)}>
+      <span
+        id={ids.when}
+        data-testid="phase-when"
+        data-when="planned"
+        {...stylex.props(styles.whenCol)}
+      >
         <span {...stylex.props(styles.whenLine)}>
           <CalendarClockIcon aria-hidden {...stylex.props(styles.whenGlyph)} />
           <span data-slot="phase-time" {...stylex.props(styles.whenTime)}>
@@ -471,16 +524,29 @@ function useParts(props: PhaseRowProps) {
       </span>
     ) : (
       <span {...stylex.props(styles.whenRow)}>
-        <span data-testid="phase-when" data-when="unscheduled" {...stylex.props(styles.whenCol)}>
+        <span
+          id={ids.when}
+          data-testid="phase-when"
+          data-when="unscheduled"
+          data-waits={waiting ? 'earlier' : undefined}
+          {...stylex.props(styles.whenCol)}
+        >
           <span {...stylex.props(styles.whenLine, styles.whenQuiet)}>
             <CircleDashedIcon aria-hidden {...stylex.props(styles.whenGlyph)} />
             {format(m.notScheduled)}
           </span>
-          {/* what participants are told it waits on, where its time will be */}
-          {draft.entryNote !== '' && (
+          {/* what participants are told it waits on, where its time will be;
+              without one, what the administrator has to do first */}
+          {draft.entryNote !== '' ? (
             <span title={draft.entryNote} {...stylex.props(styles.whenRelative, styles.whenNote)}>
               {draft.entryNote}
             </span>
+          ) : (
+            waiting && (
+              <span {...stylex.props(styles.whenRelative, styles.whenNote)}>
+                {format(m.waitsForEarlier)}
+              </span>
+            )
           )}
         </span>
         {!readOnly && !editing && index === shape.frontier && (
@@ -508,19 +574,20 @@ function useParts(props: PhaseRowProps) {
           : 'locked'
   const status = (
     <span
+      id={ids.standing}
       // which standing this stage is in, said as a fact: the word beside the
       // dot is copy, "this stage is the current one" is not
       data-testid="phase-standing"
       data-standing={standing}
       data-unsaved={props.unsaved}
+      {...stylex.props(styles.standing)}
     >
-      {props.unsaved ? (
-        <Status tone="warn">{format(m.newBadge)}</Status>
-      ) : current ? (
+      {current ? (
         <Status tone="ok">{format(m.flowStatusCurrent)}</Status>
       ) : (
         <Status>{format(ended ? m.flowStatusEnded : m.flowStatusFuture)}</Status>
       )}
+      {props.unsaved && <Status tone="warn">{format(m.newBadge)}</Status>}
     </span>
   )
 
@@ -561,8 +628,16 @@ function useParts(props: PhaseRowProps) {
     </span>
   )
 
+  const described = [
+    ids.standing,
+    ids.when,
+    ...(scope ? [ids.scope] : []),
+    ...(refused ? [ids.refused] : []),
+  ].join(' ')
+
   return {
-    name,
+    ids,
+    described,
     stage,
     refused,
     opens,
@@ -575,13 +650,14 @@ function useParts(props: PhaseRowProps) {
 }
 
 export function PhaseRow(props: PhaseRowProps) {
-  const { format } = useI18n()
-  const { name, stage, refused, opens, when, status, actions, ended, wrong } = useParts(props)
+  const { ids, described, stage, refused, opens, when, status, actions, ended, wrong } =
+    useParts(props)
   return (
     <TableRow
       nested
       onOpen={props.onDetails}
-      aria-label={format(m.openStage, { name })}
+      aria-labelledby={ids.name}
+      aria-describedby={described}
       data-testid="phase-row"
       data-phase-key={props.draft.phaseKey}
       xstyle={[styles.row, ended && styles.rowEnded, wrong && styles.rowWrong]}
@@ -603,7 +679,8 @@ export function PhaseRow(props: PhaseRowProps) {
 /** the same row where there is no room for columns */
 export function PhaseCard(props: PhaseRowProps) {
   const { format } = useI18n()
-  const { name, stage, refused, opens, when, status, actions, ended, wrong } = useParts(props)
+  const { ids, described, stage, refused, opens, when, status, actions, ended, wrong } =
+    useParts(props)
   const line = (label: string, body: ReactNode) => (
     <div {...stylex.props(styles.cardLine)}>
       <span {...stylex.props(styles.cardLineLabel)}>{label}</span>
@@ -618,7 +695,8 @@ export function PhaseCard(props: PhaseRowProps) {
     >
       <button
         type="button"
-        aria-label={format(m.openStage, { name })}
+        aria-labelledby={ids.name}
+        aria-describedby={described}
         onClick={props.onDetails}
         {...stylex.props(styles.cardHead)}
       >

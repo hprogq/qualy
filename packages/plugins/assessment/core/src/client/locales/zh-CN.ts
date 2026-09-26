@@ -1718,7 +1718,7 @@ export default {
   'assessment/plan/move-up': '上移',
   'assessment/plan/move-down': '下移',
   'assessment/plan/pending-short': '{count} 项修改未保存',
-  'assessment/plan/open-stage': '阶段详情：{name}',
+  'assessment/plan/waits-for-earlier': '先为上一阶段设置开始时间',
   'assessment/plan/scope-items-tag': '仅开放 {count} 个项目',
   'assessment/plan/scope-people-tag': '部分参评人',
   'assessment/phase/scope-legend': '开放范围',

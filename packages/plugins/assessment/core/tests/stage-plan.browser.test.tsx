@@ -238,6 +238,79 @@ describe('the stage plan, being edited', () => {
   })
 })
 
+describe('the stage plan, read', () => {
+  it('names a row by its stage, and says where it stands after the name', async () => {
+    await page.viewport(1280, 800)
+    await screen({
+      getPhases: () =>
+        Effect.succeed({
+          phases: [
+            phase({ id: ENTRY_ID, phaseKey: 'entry', displayName: '正式填报' }),
+            phase({
+              id: REVIEW_ID,
+              phaseKey: 'review',
+              ordinal: 1,
+              displayName: '审核整理',
+              itemScope: ['some-item'],
+            }),
+          ],
+          planFingerprint: 'plan-two',
+        }),
+    })
+
+    // the stage's own name, not a sentence wrapped around it
+    const row = page.getByRole('link', { name: '审核整理', exact: true })
+    await expect.element(row).toBeVisible()
+    // what it is limited to is part of what is said about it
+    const scope = row.getByTestId('phase-scope').element()
+    expect(row.element().getAttribute('aria-describedby')?.split(' ')).toContain(scope.id)
+  })
+
+  it('keeps saying which stage is in hand while it has an edit not saved', async () => {
+    await page.viewport(1280, 800)
+    await screen({
+      getBatch: () =>
+        Effect.succeed({ batch: batch({ status: 'active', currentPhaseId: ENTRY_ID }) }),
+      getPhases: () =>
+        Effect.succeed({
+          ...threeStages,
+          phases: threeStages.phases.map((one) =>
+            one.id === ENTRY_ID ? { ...one, actualEntryAt: '2026-03-01T00:00:00.000Z' } : one,
+          ),
+        }),
+    })
+    await vi.waitFor(() => expect(keys()).toHaveLength(3))
+
+    await page.getByTestId('phase-row').first().getByText('正式填报').click()
+    const panel = page.getByRole('dialog')
+    await panel.getByLabelText('阶段名称').fill('正式填报期')
+    await panel.getByRole('button', { name: '完成' }).click()
+
+    const standing = page.getByTestId('phase-standing').first()
+    await expect.element(standing).toHaveAttribute('data-unsaved', 'true')
+    await expect.element(standing).toHaveAttribute('data-standing', 'current')
+    // both are drawn: the stage in hand, and the edit not saved
+    expect(
+      [...standing.element().querySelectorAll('[data-tone]')].map((node) =>
+        node.getAttribute('data-tone'),
+      ),
+    ).toEqual(['ok', 'warn'])
+  })
+
+  it('says of a stage behind the next to be scheduled that it waits on the one before', async () => {
+    await page.viewport(1280, 800)
+    await screen()
+    await vi.waitFor(() => expect(keys()).toHaveLength(3))
+
+    // the first may take a time; the two behind it wait for the one before
+    const waits = page
+      .getByTestId('phase-when')
+      .elements()
+      .map((node) => node.getAttribute('data-waits'))
+    expect(waits).toEqual([null, 'earlier', 'earlier'])
+  })
+})
+
 describe('the batch settings, being edited', () => {
   it('asks before the page is left with changes, and saves them on the way out', async () => {
     await page.viewport(1280, 800)

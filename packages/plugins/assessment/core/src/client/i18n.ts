@@ -129,11 +129,6 @@ const pendingShort = defineMessage<{ count: number }>()({
   defaultMessage: '{count} unsaved',
 })
 
-const openStage = defineMessage<{ name: string }>()({
-  id: 'assessment/plan/open-stage',
-  defaultMessage: 'Stage details: {name}',
-})
-
 // what a stage narrows filing to: the plan's rows, the stage panel, the flow
 const scopeItemsTag = defineMessage<{ count: number }>()({
   id: 'assessment/plan/scope-items-tag',
@@ -5879,7 +5874,10 @@ const i18n = definePluginMessages({
       defaultMessage: 'The following stages are not yet scheduled',
     },
     insertHere: { id: 'assessment/plan/insert-here', defaultMessage: 'Add stage here' },
-    openStage,
+    waitsForEarlier: {
+      id: 'assessment/plan/waits-for-earlier',
+      defaultMessage: 'Schedule the stage before it first',
+    },
     saveShort: { id: 'assessment/plan/save-short', defaultMessage: 'Save' },
     moveUp: { id: 'assessment/plan/move-up', defaultMessage: 'Move up' },
     moveDown: { id: 'assessment/plan/move-down', defaultMessage: 'Move down' },

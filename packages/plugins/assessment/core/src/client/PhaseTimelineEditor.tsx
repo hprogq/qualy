@@ -47,7 +47,10 @@ import { ZoneNote } from './batch/BatchZone.tsx'
 // The columns a stage is read in, and the one more an edit needs for the
 // controls that move and remove it. The head and every row take the same
 // template, so a column cannot drift out of line with its heading.
-const COLUMNS = 'minmax(0, 1.9fr) minmax(0, 0.95fr) minmax(0, 1.4fr) 5.5rem'
+//
+// The start time keeps the room a whole date and time need: it is what the
+// page is read for, and the column an edit adds is taken from the others.
+const COLUMNS = 'minmax(0, 1.9fr) minmax(0, 0.95fr) minmax(10.5rem, 1.4fr) 5.5rem'
 const EDITING_COLUMNS = `${COLUMNS} 6rem`
 
 const styles = stylex.create({
