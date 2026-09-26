@@ -1525,6 +1525,66 @@ describe.runIf(postgresAvailable)('an email address', () => {
     }
   })
 
+  // Asked from one's own record rather than one's own page, a link to one's
+  // own address is still the person's own asking, and says so.
+  it('words a link to one’s own address as one’s own, from one’s own record over the api', async () => {
+    const db = await createTestContext('email-verify-own-record-http')
+    const mail = memoryMailBackend()
+    const scope = await Effect.runPromise(Scope.make())
+    try {
+      const f = await seed(db.url)
+      const services = stack(db.url, mail.backend)
+      const application = HttpRouter.serve(
+        HttpApiBuilder.layer(Api.local(identityApiGroup)).pipe(
+          Layer.provide(
+            identityApiHandlers.pipe(Layer.provide(sessionLayer.pipe(Layer.provide(services)))),
+          ),
+        ),
+        { middleware: requestContext() },
+      ).pipe(
+        Layer.provide(services),
+        Layer.provide(NodeHttpServer.layer(createServer, { port: adminPort })),
+      )
+      await Effect.runPromise(Layer.buildWithScope(application, scope))
+      const token = 'administrator-own-record'
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const role = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status, permission_mode, system_key)
+              values (${f.tenant}, 'admin', 'Admin', 'tenant', 'active', 'all-active', 'tenant-admin')
+              returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id)
+            values (${f.tenant}, ${f.admin}, ${role})`)
+          yield* runSql(sql`update users set email_verified_at = null where id = ${f.admin}`)
+          yield* runSql(sql`
+            insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at)
+            values (${f.tenant}, ${f.admin}, ${f.local}, ${hashSessionToken(token)},
+                    now() + interval '1 day')`)
+        }).pipe(Effect.provide(databaseFor(db.url, { migrations: 'off', entities: authClosure }))),
+      )
+      const asked = await fetch(
+        `http://127.0.0.1:${adminPort}${QUALY_API_PREFIX}/iam/users/${f.admin}/email-verifications`,
+        {
+          method: 'POST',
+          headers: {
+            cookie: `qualy_session=${token}`,
+            'accept-language': 'zh-CN,zh;q=0.9',
+          },
+        },
+      )
+      expect(asked.status).toBe(200)
+      const link = await tokenFrom(mail, 'root@school.edu')
+      // the person's own wording, not the one that says an administrator asked
+      expect(link.subject).toBe('验证您的邮箱')
+    } finally {
+      await Effect.runPromise(Scope.close(scope, Exit.void))
+      await db.dispose()
+    }
+  })
+
   it('says an address is somebody else’s only as often as it would send a link', async () => {
     const db = await createTestContext('email-change-probe')
     const mail = memoryMailBackend()

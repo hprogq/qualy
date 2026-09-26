@@ -1054,6 +1054,16 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const flows = yield* EmailFlows
         const principal = yield* CurrentUser
         const request = yield* HttpServerRequest.HttpServerRequest
+        // One's own address, reached through one's own record, is proven the
+        // way one proves it from one's own page: the mail says the person
+        // asked for it, which is what happened, and not that an
+        // administrator did.
+        if (params.userId === principal.userId) {
+          return yield* flows.requestVerification(
+            principal,
+            mailLocaleOf(request.headers['accept-language']),
+          )
+        }
         // the address is the account's, so it is asked of whoever may
         // administer the account, inside the lock the link is written under
         return yield* flows.requestVerificationFor(
