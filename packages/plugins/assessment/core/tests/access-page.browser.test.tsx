@@ -7,7 +7,7 @@ import { AccessAdjustDialog } from '../src/client/access/AccessAdjustDialog.tsx'
 import { AccessSyncDialog } from '../src/client/access/AccessSyncDialog.tsx'
 import { appointSearch } from '../src/client/access/view.ts'
 import zh from '../src/client/locales/zh-CN.ts'
-import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // How one round's staff reads at the widths people actually use: a role and
 // where it is held, never one squeezing the other out; a name that runs
@@ -376,6 +376,77 @@ describe('the changes from the organization', () => {
     await expect
       .element(page.getByTestId('access-change-role'))
       .toHaveAttribute('data-where', 'beyond')
+  })
+})
+
+// A staff list or a list of changes that could not be read says why, in
+// the terms that decide what to do next: refused is not worth a retry, a
+// server that cannot answer now is. On the page's ground the answer is a
+// pane under the page's title; in the dialog, under the dialog's.
+describe('a staff reading that failed', () => {
+  it('says a list the reader may not read as that, with no retry', async () => {
+    await renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              pages: [
+                {
+                  id: 'assessment/batch-access',
+                  path: '/assessment/batches/:batchId/access',
+                  layout: 'admin',
+                },
+              ],
+            }),
+        },
+        assessment: {
+          getBatch: () => Effect.succeed({ batch }),
+          listAccess: () => Effect.fail(apiError('ACCESS_DENIED')),
+          previewAccessSync: () =>
+            Effect.succeed({ items: [], nextCursor: null, pendingTotal: 0, lapsedTotal: 0 }),
+          staffOptions: () => Effect.succeed({ nodes: [], roles: [] }),
+          listScopeOptions: () => Effect.succeed({ nodes: [] }),
+          listUserTypeOptions: () => Effect.succeed({ userTypes: [] }),
+          listParticipantCandidates: () =>
+            Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }),
+        },
+      }),
+      routes: [{ path: '/assessment/batches/:batchId/access', element: <BatchAccessPage /> }],
+      route: `/assessment/batches/${BATCH_ID}/access`,
+    })
+    const state = page.getByRole('status').filter({ has: page.getByRole('heading') })
+    await expect.element(state).toHaveAttribute('data-state', 'denied')
+    await expect.element(state.getByRole('heading', { level: 2 })).toBeVisible()
+    expect(state.getByRole('button', { name: '重试' }).elements()).toHaveLength(0)
+  })
+
+  it('says the changes could not be read now, under the dialog, with a retry', async () => {
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed(emptyManifest()) },
+        assessment: {
+          previewAccessSync: () => Effect.fail(apiError('SERVICE_UNAVAILABLE')),
+        },
+      }),
+      children: (
+        <AccessSyncDialog
+          batchId={BATCH_ID}
+          archived={false}
+          open
+          pending={false}
+          onMerge={() => {}}
+          onClose={() => {}}
+        />
+      ),
+    })
+    const state = page
+      .getByRole('dialog')
+      .getByRole('status')
+      .filter({ has: page.getByRole('heading') })
+    await expect.element(state).toHaveAttribute('data-state', 'unavailable')
+    await expect.element(state.getByRole('heading', { level: 3 })).toBeVisible()
+    await expect.element(state.getByRole('button', { name: '重试' })).toBeVisible()
   })
 })
 

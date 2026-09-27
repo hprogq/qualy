@@ -4,7 +4,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckIcon, EllipsisIcon, MinusIcon, PlusIcon, SearchXIcon, UsersIcon } from 'lucide-react'
-import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
+import { UiSlot, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
@@ -313,6 +313,7 @@ export function AccessPanel({
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
+  const failures = useLoadFailure()
   const businessNo = useTerm(authTerms.businessNumber)
   const [failure, setFailure] = useState<string | null>(null)
   const [adjusting, setAdjusting] = useState<string | null>(null)
@@ -705,7 +706,8 @@ export function AccessPanel({
         {toolbar}
         <AsyncSection
           pending={access.isPending}
-          error={access.isError ? formatError(access.error) : null}
+          error={access.isError ? failures.of(access.error) : null}
+          framed
           loadingLabel={format(commonMessages.loading)}
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void access.refetch()}

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { useQuery } from '@tanstack/react-query'
-import { useApiQuery } from '@qualy/web-runtime'
+import { useApiQuery, useLoadFailure } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
@@ -44,7 +44,8 @@ export function ManualRecordView({
   onDone?: () => void
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format, formatError } = useI18n()
+  const { format } = useI18n()
+  const failures = useLoadFailure()
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
   const [itemId, setItemId] = useState('')
   const [at, setAt] = useState(0)
@@ -71,7 +72,7 @@ export function ManualRecordView({
   return (
     <AsyncSection
       pending={items.isPending}
-      error={items.error ? formatError(items.error) : null}
+      error={items.isError ? failures.of(items.error) : null}
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
       onRetry={() => void items.refetch()}

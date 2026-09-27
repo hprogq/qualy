@@ -3,7 +3,7 @@ import * as stylex from '@stylexjs/stylex'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { DownloadIcon, FileSpreadsheetIcon } from 'lucide-react'
 import { displayTitle, type AtomicSchema } from '@qualy/value-schema'
-import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
+import { useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
@@ -225,6 +225,7 @@ export function AdministrativeImportView({
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
   const { format, formatError, locale } = useI18n()
+  const failures = useLoadFailure()
   const businessNo = useTerm(authTerms.businessNumber)
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
 
@@ -378,7 +379,7 @@ export function AdministrativeImportView({
   return (
     <AsyncSection
       pending={items.isPending}
-      error={items.error ? formatError(items.error) : null}
+      error={items.isError ? failures.of(items.error) : null}
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
       onRetry={() => void items.refetch()}

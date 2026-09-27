@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon } from 'lucide-react'
-import { cursorPages, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
+import { cursorPages, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
@@ -163,7 +163,8 @@ export function AdministrativeActHistory({
   const api = useApi(assessmentApi)
   const run = useRunApi()
   const query = useApiQuery(assessmentApi)
-  const { format, formatError } = useI18n()
+  const { format } = useI18n()
+  const failures = useLoadFailure()
   const whenOf = useWhen()
 
   const history = useInfiniteQuery({
@@ -192,7 +193,8 @@ export function AdministrativeActHistory({
   return (
     <AsyncSection
       pending={history.isPending}
-      error={history.isError ? formatError(history.error) : null}
+      error={history.isError ? failures.of(history.error) : null}
+      framed
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
       onRetry={() => void history.refetch()}

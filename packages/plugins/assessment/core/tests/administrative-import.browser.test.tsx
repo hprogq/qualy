@@ -613,6 +613,33 @@ describe('importing a workbook of administrative records', () => {
     expect(addressNow()).toContain('tab=imports')
   })
 
+  // A list that could not be read says why, the way the reader can act on
+  // it: a book this reader may not read offers no retry that could only be
+  // refused again, and stands on a card of its own on the page's ground.
+  it('says a record book the reader may not read as that, with no retry', async () => {
+    await open(base, {
+      listAdministrativeEntries: () => Effect.fail(apiError('ACCESS_DENIED')),
+    })
+    const state = page.getByRole('status').filter({ has: page.getByRole('heading') })
+    await expect.element(state).toHaveAttribute('data-state', 'denied')
+    await expect.element(state.getByRole('heading', { level: 2 })).toBeVisible()
+    expect(state.getByRole('button', { name: '重试' }).elements()).toHaveLength(0)
+  })
+
+  // Inside the errand's dialog the same failure is a pane under the
+  // dialog's own title, and a server that cannot answer now is worth
+  // asking again.
+  it('says the questions could not be read inside the errand, with a retry', async () => {
+    await open(`${base}?mode=manual`, {
+      listItems: () => Effect.fail(apiError('SERVICE_UNAVAILABLE')),
+    })
+    const dialog = page.getByRole('dialog')
+    const state = dialog.getByRole('status').filter({ has: page.getByRole('heading') })
+    await expect.element(state).toHaveAttribute('data-state', 'unavailable')
+    await expect.element(state.getByRole('heading', { level: 3 })).toBeVisible()
+    await expect.element(state.getByRole('button', { name: '重试' })).toBeVisible()
+  })
+
   // A withdrawal asks for the import again; when that second reading fails
   // for a reason another try could change, the import the recorder was
   // just reading is still the answer, not a failure in its place.

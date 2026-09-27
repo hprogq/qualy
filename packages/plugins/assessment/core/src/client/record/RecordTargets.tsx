@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { ShieldQuestionIcon } from 'lucide-react'
 import { orgNodePickerView } from '@qualy/ui-contract'
-import { UiSlot, useApiQuery } from '@qualy/web-runtime'
+import { UiSlot, useApiQuery, useLoadFailure } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, CheckboxGroup } from '@qualy/ui/admin'
@@ -235,7 +235,8 @@ function RosterUnits({
   onChange: (next: { orgNodeIds: readonly string[]; userTypeIds: readonly string[] }) => void
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format, formatError } = useI18n()
+  const { format } = useI18n()
+  const failures = useLoadFailure()
   const heading = useId()
   const roster = useQuery(
     query.assessment.listRosterUnits.queryOptions({
@@ -248,7 +249,7 @@ function RosterUnits({
     <div {...stylex.props(styles.unitsSide)} data-testid="record-units">
       <AsyncSection
         pending={false}
-        error={roster.isError ? formatError(roster.error) : null}
+        error={roster.isError ? failures.of(roster.error) : null}
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void roster.refetch()}
