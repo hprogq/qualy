@@ -271,6 +271,41 @@ describe('importing users from a spreadsheet', () => {
     expect(stateIn('import-body')!.querySelector('h3')).not.toBeNull()
     expect(keysIn(stateIn('import-body'))).toContain('重试')
   })
+
+  // A refusal that is the file's own - a header row past the sheet's end -
+  // comes back the same however often it is asked: no retry, and the way
+  // out is another file (or another row, in the field above).
+  const refusedWith = async (error: Error, kind: string) => {
+    await open({ inspectUserImportUpload: () => Effect.fail(error) })
+    await pickFile()
+    await expect.poll(() => stateIn('import-body')?.getAttribute('data-state')).toBe(kind)
+    return keysIn(stateIn('import-body'))
+  }
+
+  it('offers another file, not a retry, for a file it cannot read', async () => {
+    const keys = await refusedWith(
+      apiError('USER_IMPORT_INVALID', {
+        issues: [
+          { rowNo: null, field: null, severity: 'error', reason: 'header-row-out-of-range' },
+        ],
+      }),
+      'failed',
+    )
+    expect(keys).not.toContain('重试')
+    expect(keys).toContain('更换文件')
+  })
+
+  it('offers another file, not a retry, for an upload that is gone', async () => {
+    const keys = await refusedWith(apiError('USER_IMPORT_SOURCE_UNAVAILABLE'), 'missing')
+    expect(keys).not.toContain('重试')
+    expect(keys).toContain('更换文件')
+  })
+
+  it('offers a retry while other files are being read', async () => {
+    const keys = await refusedWith(apiError('USER_IMPORT_BUSY'), 'unavailable')
+    expect(keys).toContain('重试')
+    expect(keys).not.toContain('更换文件')
+  })
 })
 
 // Past imports this reader may not read: said as that, with no retry that

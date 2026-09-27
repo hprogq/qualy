@@ -11,7 +11,7 @@ import {
   XIcon,
 } from 'lucide-react'
 import { UiSlot, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { getApiErrorCode, useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import { upload } from '@qualy/plugin-storage/client'
@@ -28,12 +28,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Spinner } from '@qualy/ui/spinner'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { Pager } from '@qualy/ui/pager'
+import type { ResourceFailure } from '@qualy/ui/resource-state'
 import { toast } from '@qualy/ui/toast'
 import { directoryApi } from './api.ts'
 import { FlowFrame, type FlowAction } from './flow.tsx'
 import { directoryImportMessages as m } from './i18n.ts'
 import { csvOf } from './take-away.ts'
-import { issueText } from './words.ts'
+import { issueText, type IssueLike } from './words.ts'
 
 // People from a spreadsheet, in five short steps: the file, the sheet, the
 // columns, what the check found, and the record it became. The server does
@@ -527,6 +528,14 @@ const XLSX = {
 /** problems of a checked file to a page */
 const ISSUES_PER_PAGE = 10
 
+/** the problems an invalid-import refusal lists, read without trusting its shape */
+const issuesOf = (error: unknown): readonly IssueLike[] =>
+  typeof error === 'object' && error !== null && 'issues' in error && Array.isArray(error.issues)
+    ? error.issues.filter(isIssue)
+    : []
+const isIssue = (one: unknown): one is IssueLike =>
+  typeof one === 'object' && one !== null && 'reason' in one && typeof one.reason === 'string'
+
 const PHONE = 768
 
 /** a size as a reader reads one, which is never in bytes past a kilobyte */
@@ -592,6 +601,43 @@ export function ImportWizard({
   })
   const table = inspect.data?.table
   const headers = useMemo(() => table?.headers ?? [], [table])
+  // Why the sheet step could not read the file. Most of its refusals are
+  // the file's own - not a workbook, a header row past its end, a file
+  // gone from storage - and asking again changes nothing there, while
+  // choosing another file or another row might.
+  const inspectCode = inspect.isError ? getApiErrorCode(inspect.error) : undefined
+  const fileAtFault =
+    inspectCode === 'USER_IMPORT_INVALID' || inspectCode === 'USER_IMPORT_SOURCE_UNAVAILABLE'
+  const inspectFailure = (error: unknown): ResourceFailure => {
+    const code = getApiErrorCode(error)
+    if (code === 'USER_IMPORT_INVALID') {
+      const first = issuesOf(error)[0]
+      return {
+        kind: 'failed',
+        title: format(m.sheetUnreadableTitle),
+        description:
+          first === undefined ? formatError(error) : issueText(format, first, businessNo),
+        retryable: false,
+      }
+    }
+    if (code === 'USER_IMPORT_SOURCE_UNAVAILABLE') {
+      return {
+        kind: 'missing',
+        title: format(m.sheetSourceGoneTitle),
+        description: formatError(error),
+        retryable: false,
+      }
+    }
+    if (code === 'USER_IMPORT_BUSY') {
+      return {
+        ...failures.of(error),
+        kind: 'unavailable',
+        description: formatError(error),
+        retryable: true,
+      }
+    }
+    return failures.of(error)
+  }
 
   const uploading = useMutation({
     mutationFn: async (file: File) => {
@@ -1043,7 +1089,14 @@ export function ImportWizard({
             </div>
             <AsyncSection
               pending={inspect.isPending}
-              error={inspect.isError ? failures.of(inspect.error) : null}
+              error={inspect.isError ? inspectFailure(inspect.error) : null}
+              errorAction={
+                fileAtFault ? (
+                  <Button variant="outline" size="sm" onClick={restart}>
+                    {format(m.replaceFile)}
+                  </Button>
+                ) : undefined
+              }
               loadingLabel={format(m.checking)}
               retryLabel={format(m.retry)}
               onRetry={() => void inspect.refetch()}

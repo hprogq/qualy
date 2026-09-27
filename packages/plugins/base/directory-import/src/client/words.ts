@@ -10,7 +10,15 @@ export interface IssueLike {
   readonly field: string | null
   readonly reason: string
   readonly detail?: string | undefined
+  /** the row a cell-level refusal points at, when the engine says */
+  readonly rowNo?: number | null | undefined
 }
+
+/** the cell a refusal points at, as a spreadsheet names it, or none */
+const cellOf = (issue: IssueLike): string =>
+  issue.field !== null && issue.rowNo !== null && issue.rowNo !== undefined
+    ? `${issue.field}${String(issue.rowNo)}`
+    : 'none'
 
 const FIELD_WORDS = {
   displayName: m.fieldDisplayName,
@@ -39,6 +47,29 @@ export const issueText = (format: Format, issue: IssueLike, businessNo: string):
       return format(m.issueControlCharacter)
     case 'too-many-cells':
       return format(m.issueTooManyCells)
+    case 'not-xlsx':
+      return format(m.issueNotXlsx)
+    case 'file-too-large':
+    case 'source-too-large':
+      return format(m.issueFileTooLarge)
+    case 'too-many-sheets':
+      return format(m.issueTooManySheets)
+    case 'sheet-missing':
+      return format(m.issueSheetMissing)
+    case 'too-many-rows':
+      return format(m.issueTooManyRows)
+    case 'too-many-columns':
+      return format(m.issueTooManyColumns)
+    case 'cell-too-long':
+      return format(m.issueCellTooLong, { cell: cellOf(issue) })
+    case 'formula-not-allowed':
+      return format(m.issueFormula, { cell: cellOf(issue) })
+    case 'cell-error':
+      return format(m.issueCellError, { cell: cellOf(issue) })
+    case 'header-row-out-of-range':
+      return format(m.issueHeaderRowOutOfRange)
+    case 'unreadable':
+      return format(m.issueUnreadable)
     case 'user-conflict':
       return format(m.issueUserConflict, {
         businessNo,

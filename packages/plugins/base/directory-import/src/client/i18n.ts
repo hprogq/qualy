@@ -67,6 +67,22 @@ const issuePlacementOutOfReach = defineMessage<{ path: string }>()({
   id: 'directory-import/issue/placement-out-of-reach',
   defaultMessage: 'You cannot add people to {path}',
 })
+// a cell's refusal names the cell when the engine says which one
+const issueCellTooLong = defineMessage<{ cell: string }>()({
+  id: 'directory-import/issue/cell-too-long',
+  defaultMessage:
+    '{cell, select, none {A cell} other {Cell {cell}}} holds more text than a field takes',
+})
+const issueFormula = defineMessage<{ cell: string }>()({
+  id: 'directory-import/issue/formula-not-allowed',
+  defaultMessage:
+    '{cell, select, none {A cell} other {Cell {cell}}} holds a formula. Paste the sheet as values and upload it again',
+})
+const issueCellError = defineMessage<{ cell: string }>()({
+  id: 'directory-import/issue/cell-error',
+  defaultMessage:
+    '{cell, select, none {A cell} other {Cell {cell}}} shows an error value such as #N/A. Correct it and upload again',
+})
 const issueOther = defineMessage<{ reason: string }>()({
   id: 'directory-import/issue/other',
   defaultMessage: 'Could not be read ({reason})',
@@ -324,6 +340,52 @@ const i18n = definePluginMessages({
       id: 'directory-import/issue/too-many-cells',
       defaultMessage:
         'The workbook holds more cells than one import reads. Delete the sheets and rows you are not importing',
+    },
+    // what the spreadsheet engine refuses a file for, said where the sheet
+    // step tells the reader why the file could not be read
+    issueNotXlsx: {
+      id: 'directory-import/issue/not-xlsx',
+      defaultMessage: 'The file is not an .xlsx workbook. Save it as .xlsx and upload it again',
+    },
+    issueFileTooLarge: {
+      id: 'directory-import/issue/file-too-large',
+      defaultMessage:
+        'The file is too large to import. Split it, or delete what you are not importing',
+    },
+    issueTooManySheets: {
+      id: 'directory-import/issue/too-many-sheets',
+      defaultMessage: 'The workbook has too many sheets. Keep only the one you are importing',
+    },
+    issueSheetMissing: {
+      id: 'directory-import/issue/sheet-missing',
+      defaultMessage: 'The chosen sheet is not in the file. Choose another',
+    },
+    issueTooManyRows: {
+      id: 'directory-import/issue/too-many-rows',
+      defaultMessage: 'The sheet has more rows than one import reads. Split it into several files',
+    },
+    issueTooManyColumns: {
+      id: 'directory-import/issue/too-many-columns',
+      defaultMessage: 'The sheet has too many columns. Delete the ones you are not importing',
+    },
+    issueCellTooLong,
+    issueFormula,
+    issueCellError,
+    issueHeaderRowOutOfRange: {
+      id: 'directory-import/issue/header-row-out-of-range',
+      defaultMessage: 'The header row is past the end of the sheet. Check the row number',
+    },
+    issueUnreadable: {
+      id: 'directory-import/issue/unreadable',
+      defaultMessage: 'The file could not be opened. Make sure it is an intact .xlsx workbook',
+    },
+    sheetUnreadableTitle: {
+      id: 'directory-import/sheet/unreadable-title',
+      defaultMessage: 'This file cannot be read',
+    },
+    sheetSourceGoneTitle: {
+      id: 'directory-import/sheet/source-gone-title',
+      defaultMessage: 'The uploaded file is gone',
     },
     issueUserConflict,
     issueBusinessNoTaken,

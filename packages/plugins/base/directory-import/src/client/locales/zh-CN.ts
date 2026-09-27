@@ -82,6 +82,22 @@ export default {
   'directory-import/issue/org-name-too-long': '组织名称过长',
   'directory-import/issue/control-character': '单元格中含有换行或不可见字符',
   'directory-import/issue/too-many-cells': '工作簿中的单元格过多，请删除不需要导入的工作表和行',
+  'directory-import/issue/not-xlsx': '文件不是 .xlsx 格式的工作簿，请另存为 .xlsx 后重新上传',
+  'directory-import/issue/file-too-large': '文件过大，请拆分，或删除不需要导入的内容后重新上传',
+  'directory-import/issue/too-many-sheets': '工作簿中的工作表过多，请只保留要导入的那一张',
+  'directory-import/issue/sheet-missing': '所选工作表不在文件中，请重新选择',
+  'directory-import/issue/too-many-rows': '工作表行数超出单次导入的上限，请拆分为几个文件',
+  'directory-import/issue/too-many-columns': '工作表列数过多，请删除不需要导入的列',
+  'directory-import/issue/cell-too-long':
+    '{cell, select, none {有单元格} other {{cell} 单元格}}的内容超出了字段能容纳的长度',
+  'directory-import/issue/formula-not-allowed':
+    '{cell, select, none {有单元格} other {{cell} 单元格}}含有公式，请将表格粘贴为数值后重新上传',
+  'directory-import/issue/cell-error':
+    '{cell, select, none {有单元格} other {{cell} 单元格}}是错误值（如 #N/A），请修正后重新上传',
+  'directory-import/issue/header-row-out-of-range': '表头所在行超出了工作表的行数，请检查行号',
+  'directory-import/issue/unreadable': '无法打开该文件，请确认它是完好的 .xlsx 工作簿',
+  'directory-import/sheet/unreadable-title': '无法读取该文件',
+  'directory-import/sheet/source-gone-title': '上传的文件已失效',
   'directory-import/issue/user-conflict': '该{businessNo}已存在，且{fields}与现有人员信息不一致',
   'directory-import/issue/business-no-taken': '该{businessNo}已被他人使用',
   'directory-import/issue/node-type-conflict': '{path} 已存在，但组织类型不一致',
