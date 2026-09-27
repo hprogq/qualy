@@ -2204,7 +2204,7 @@ const i18n = definePluginMessages({
     recordActReverseHint: {
       id: 'assessment/record/act-reverse-hint',
       defaultMessage:
-        'Every record of this act that still counts stops counting. What was already withdrawn is left alone, and the history is kept.',
+        'Records of this act that still count will stop counting; those already withdrawn are left alone, and the history is kept',
     },
     recordActReversed: {
       id: 'assessment/record/act-reversed',
@@ -2753,7 +2753,7 @@ const i18n = definePluginMessages({
     importReverseHint: {
       id: 'assessment/record/import/reverse-hint',
       defaultMessage:
-        'Records from this import that are still in effect will stop counting. The records and their history stay.',
+        'Records from this import that are still in effect will stop counting; the records and their history stay',
     },
     importReversed: {
       id: 'assessment/record/import/reversed',

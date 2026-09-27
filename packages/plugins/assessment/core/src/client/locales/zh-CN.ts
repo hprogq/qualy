@@ -466,7 +466,7 @@ export default {
   'assessment/record/act-reverse': '撤销本次认定',
   'assessment/record/act-reverse-title': '撤销本次批量认定？',
   'assessment/record/act-reverse-hint':
-    '本次认定中仍有效的记录将不再计入成绩。已单独撤销的不受影响，记录与历史保留。',
+    '本次认定中仍有效的记录将不再计入成绩，已单独撤销的不受影响，记录与历史会保留',
   'assessment/record/act-reversed':
     '{count, plural, =0 {没有需要撤销的认定。} other {已撤销 {count} 条认定。}}',
   'assessment/record/act-events': '撤销记录',
@@ -630,7 +630,7 @@ export default {
   'assessment/record/import/reverse': '撤销本次导入',
   'assessment/record/import/reverse-title': '撤销本次导入？',
   'assessment/record/import/reverse-hint':
-    '本次导入中仍有效的认定将不再计入成绩，原记录及历史会保留。',
+    '本次导入中仍有效的认定将不再计入成绩，原记录及历史会保留',
   'assessment/record/import/reversed':
     '{count, plural, =0 {没有需要撤销的认定。} other {已撤销 {count} 条认定。}}',
   'assessment/record/import/reverse-refused':
