@@ -4,7 +4,7 @@ import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { vi } from 'vitest'
-import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The library of formulas other people offered you.
 //
@@ -61,6 +61,8 @@ const open = (
     detail?: Record<string, unknown>
     copied?: { name: string; description?: string }[]
     route?: string
+    /** how copying is answered, when not with a new formula */
+    copy?: () => unknown
   } = {},
 ) =>
   renderScreen({
@@ -84,7 +86,7 @@ const open = (
           }),
         copyFormulaTemplate: (call: { payload: { name: string; description?: string } }) => {
           had.copied?.push(call.payload)
-          return Effect.succeed({ function: { id: NEW_FUNCTION_ID } })
+          return had.copy?.() ?? Effect.succeed({ function: { id: NEW_FUNCTION_ID } })
         },
       },
     }),
@@ -140,6 +142,22 @@ describe('the formula template library', () => {
     await expect
       .element(page.getByTestId('address'))
       .toHaveTextContent(`/assessment/formulas/${NEW_FUNCTION_ID}`)
+  })
+
+  // A copy the server refused says so under the fields, the way every other
+  // form here does, and leaves the reader where they were.
+  it('says a refused copy the way every form says a refusal', async () => {
+    await open({
+      route: `/assessment/formula-templates/${VERSION_ID}`,
+      copy: () => Effect.fail(apiError('ASSESSMENT_FORMULA_TEMPLATE_NOT_FOUND')),
+    })
+    await expect.element(page.getByTestId('template-detail')).toBeVisible()
+    await page.getByRole('button', { name: '复制到我的公式' }).first().click()
+    await page.getByTestId('template-copy-confirm').click()
+    const refusal = page.getByRole('dialog').getByTestId('feedback')
+    await expect.element(refusal).toBeVisible()
+    await expect.element(refusal).toHaveAttribute('data-tone', 'error')
+    expect(addressNow()).toBe(`/assessment/formula-templates/${VERSION_ID}`)
   })
 
   it('opens the examples the version was published with', async () => {

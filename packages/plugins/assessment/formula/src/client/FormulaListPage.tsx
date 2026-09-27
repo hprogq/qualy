@@ -26,7 +26,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@qualy/ui/empty'
-import { AsyncSection, Field, FormDialog } from '@qualy/ui/admin'
+import { AsyncSection, Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { ChevronRightIcon, PlusIcon, SigmaIcon } from 'lucide-react'
 import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
@@ -160,7 +160,8 @@ function NewFormulaDialog({
           />
         )}
       </Field>
-      {failure === null ? null : <p role="alert">{failure}</p>}
+      {/* the same refusal every form in the product says under its fields */}
+      <Feedback message={failure} />
     </FormDialog>
   )
 }

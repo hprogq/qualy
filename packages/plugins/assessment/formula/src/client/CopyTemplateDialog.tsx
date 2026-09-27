@@ -5,7 +5,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { Textarea } from '@qualy/ui/textarea'
-import { Field, FormDialog } from '@qualy/ui/admin'
+import { Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
 
@@ -97,7 +97,8 @@ export function CopyTemplateDialog({
           />
         )}
       </Field>
-      {failure === null ? null : <p role="alert">{failure}</p>}
+      {/* the same refusal every form in the product says under its fields */}
+      <Feedback message={failure} />
     </FormDialog>
   )
 }
