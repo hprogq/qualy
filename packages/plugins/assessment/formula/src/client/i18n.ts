@@ -730,6 +730,11 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/editor/gone-back',
       defaultMessage: 'Back to scoring formulas',
     },
+    /** the formula went away while the page held edits nobody saved */
+    formulaGoneEditsKept: {
+      id: 'assessment-formula/editor/gone-edits-kept',
+      defaultMessage: 'Your unsaved changes are still here. Download or copy them before you leave',
+    },
     templateGoneTitle: {
       id: 'assessment-formula/templates/gone-title',
       defaultMessage: 'Template not found',

@@ -765,6 +765,10 @@ export default function FormulaEditorPage() {
         copy: { missing: gone },
       })
     : loadFailure.missing({ copy: { missing: gone } })
+  // Gone while the page was already showing it - deleted from another tab,
+  // or no longer the reader's. Only a read that finds it missing or refused
+  // is an answer once something was shown; any other failure keeps the page.
+  const vanished = absent !== null && fn !== undefined
   const latestNo = fn?.latestVersionNo ?? null
   const latestRelease = useQuery({
     ...query.assessmentFormula.getFormulaVersion.queryOptions({
@@ -1413,7 +1417,8 @@ export default function FormulaEditorPage() {
   // api-failure copy (measured: it read as "something went wrong" with no
   // request ever sent, which explained nothing)
   const saveDraft = () => {
-    if (view.kind !== 'draft') return
+    // nothing to save into: the edits stay on screen to be taken away
+    if (view.kind !== 'draft' || vanished) return
     // the draft moved under these edits: saving waits for the choice the
     // notice above offers, rather than writing over it unasked
     if (remoteMoved) {
@@ -1773,9 +1778,12 @@ export default function FormulaEditorPage() {
     return () => window.removeEventListener('keydown', onKey, true)
   }, [])
 
-  // a read that fails after the formula arrived keeps the page; one that
-  // finds it gone, or a first read that fails, replaces it
-  if (absent !== null) {
+  // A read that fails after the formula arrived keeps the page; one that
+  // finds it gone, or a first read that fails, replaces it - unless the
+  // page holds edits nobody saved. Those stay where they can still be
+  // copied or downloaded, under a line saying the formula is gone, rather
+  // than vanishing with the workbench.
+  if (absent !== null && !(vanished && dirty())) {
     return (
       <LoadFailure
         failure={absent}
@@ -2144,7 +2152,7 @@ export default function FormulaEditorPage() {
         ? 'dirty'
         : 'clean'
 
-  const canPublish = !archived && !busy && !blank
+  const canPublish = !archived && !vanished && !busy && !blank
 
   const openPublish = () => {
     setPublishFailure(null)
@@ -2321,7 +2329,7 @@ export default function FormulaEditorPage() {
         variant="outline"
         size={narrow ? 'lg' : 'sm'}
         data-testid="formula-save"
-        disabled={archived || busy || !dirty()}
+        disabled={archived || vanished || busy || !dirty()}
         onClick={saveDraft}
         className={narrow ? stylex.props(styles.wide).className : undefined}
       >
@@ -2481,6 +2489,25 @@ export default function FormulaEditorPage() {
 
   const notices = (
     <>
+      {vanished ? (
+        <div
+          role="alert"
+          data-testid="formula-gone"
+          {...stylex.props(styles.notice, styles.noticeWarning)}
+        >
+          <span {...stylex.props(styles.noticeWords)}>
+            <span {...stylex.props(styles.noticeTitle)}>{format(m.formulaGoneTitle)}</span>
+            {format(m.formulaGoneEditsKept)}
+          </span>
+          <span {...stylex.props(w.spring)} />
+          <Button variant="outline" size="xs" onClick={downloadCurrent}>
+            {format(m.downloadCurrent)}
+          </Button>
+          <Button variant="outline" size="xs" onClick={() => goto('assessment-formula/list')}>
+            {format(m.formulaGoneBack)}
+          </Button>
+        </div>
+      ) : null}
       {failure === null ? null : (
         <div
           role="alert"

@@ -5,9 +5,12 @@ import TemplatesPage from '../src/client/FormulaTemplatesPage.tsx'
 import CalculatorEditor from '../src/client/CalculatorEditor.tsx'
 import type { ReactNode } from 'react'
 import { Effect } from 'effect'
+import { monaco } from '@qualy/plugin-assessment-formula/client/monaco-setup'
+import { forgetLocalDraft } from '../src/client/local-draft.ts'
+import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
-import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // A formula or a template the address names and the reader cannot have: the
 // page says so in place of itself, with the way back to where such things
@@ -215,4 +218,148 @@ describe('a formula library that could not be read', () => {
     expect(state()?.querySelectorAll('button')).toHaveLength(0)
     expect(page.getByTestId('template-list-empty').elements()).toHaveLength(0)
   })
+})
+
+describe('a formula that goes away while it is open', () => {
+  /** this block's own formula, apart from the one above: kept edits are stored by id */
+  const OPEN_ID = '01a04f4b-83a1-763f-9fbc-bfa53bc98e0b'
+  const SAVED = 'const saved_by_hand = 1\n'
+  const contract = {
+    sourceSha256: 'a'.repeat(64),
+    contractSha256: 'b'.repeat(64),
+    inputSchema: normalizeInputSchema({
+      type: 'object',
+      properties: { bonus: { type: 'integer', minimum: 0, maximum: 5 } },
+      required: ['bonus'],
+      additionalProperties: false,
+      'x-qualy-order': ['bonus'],
+    }),
+    outputSchema: normalizeAtomicSchema({
+      type: 'string',
+      format: 'qualy-decimal',
+      'x-qualy-maxScale': 2,
+    }),
+  }
+  const draft = (published: boolean) => ({
+    id: OPEN_ID,
+    name: '认定分值',
+    description: null,
+    authorUserId: '01920000-0000-7000-8000-0000000000a1',
+    status: 'active',
+    draftRevision: 3,
+    latestVersionNo: published ? 1 : null,
+    latestReleaseName: published ? '秋季规则' : null,
+    updatedAt: new Date().toISOString(),
+    draftSourceTs: SAVED,
+    draftTests: [],
+  })
+
+  /** the editor over a formula that is there until `gone` says otherwise */
+  const openFormula = (state: { gone: boolean; published: boolean }) =>
+    renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+        assessmentFormula: {
+          getFormulaFunction: () =>
+            state.gone
+              ? Effect.fail(apiError('ASSESSMENT_FORMULA_FUNCTION_NOT_FOUND'))
+              : Effect.succeed({
+                  function: draft(state.published),
+                  versions: [],
+                  copiedFrom: null,
+                }),
+          getFormulaVersion: () =>
+            Effect.succeed({
+              version: { versionNo: 1, releaseName: '秋季规则', sourceTs: SAVED, tests: [] },
+            }),
+          previewFormulaDraft: () => Effect.succeed(contract),
+          listFormulaShareOptions: { nodes: [], truncated: false },
+          listFormulaDraftRevisions: { items: [], nextCursor: null },
+          setFormulaFunctionStatus: () =>
+            Effect.succeed({ function: { ...draft(state.published), status: 'archived' } }),
+          deleteFormulaFunction: () => {
+            state.gone = true
+            return Effect.succeed({ deleted: true })
+          },
+        },
+      }),
+      route: `/assessment/formulas/${OPEN_ID}`,
+      routes: [
+        { path: '/assessment/formulas/:functionId', element: <FormulaEditorPage /> },
+        { path: '/assessment/formulas', element: <div data-testid="formula-list-page" /> },
+      ],
+    })
+
+  const draftModel = async (): Promise<monaco.editor.ITextModel> => {
+    let found: monaco.editor.ITextModel | null = null
+    await vi.waitFor(
+      () => {
+        found =
+          monaco.editor
+            .getEditors()
+            .map((editor) => editor.getModel())
+            .find((model) => model?.uri.toString().endsWith('/draft/formula.ts') === true) ?? null
+        if (found === null) throw new Error('no draft editor yet')
+      },
+      { timeout: 10_000 },
+    )
+    return found!
+  }
+
+  // Deleted from another tab while this one held edits nobody saved: taking
+  // the workbench away took the edits with it, with no chance to copy them.
+  it('keeps unsaved edits on screen, and says the formula is gone', async () => {
+    await page.viewport(1280, 800)
+    const state = { gone: false, published: true }
+    const view = await openFormula(state)
+    try {
+      const model = await draftModel()
+      model.setValue('const typed_and_unsaved = 2\n')
+      await expect
+        .element(page.getByTestId('formula-save-state'))
+        .toHaveAttribute('data-state', 'dirty')
+      // the next look finds it gone: archiving reads the formula again
+      state.gone = true
+      await page.getByTestId('formula-more').click()
+      await page.getByRole('menuitem', { name: '归档公式' }).click()
+      await page.getByRole('button', { name: '归档', exact: true }).click()
+      await expect.element(page.getByTestId('formula-gone')).toBeVisible()
+      expect(document.querySelector('[data-slot="resource-state"]')).toBeNull()
+      expect(model.isDisposed()).toBe(false)
+      expect(model.getValue()).toBe('const typed_and_unsaved = 2\n')
+      // and nothing is offered that could only be refused
+      await expect.element(page.getByTestId('formula-save')).toBeDisabled()
+      await expect.element(page.getByTestId('formula-publish-open')).toBeDisabled()
+    } finally {
+      await view.unmount()
+      await forgetLocalDraft(OPEN_ID)
+    }
+  }, 60_000)
+
+  // Deleting it here leaves first and reads again after: read while the
+  // page still stood, the formula just deleted would answer "not found"
+  // over it on the way out.
+  it('leaves for the formulas after deleting one, without saying on the way that it is gone', async () => {
+    await page.viewport(1280, 800)
+    const state = { gone: false, published: false }
+    const view = await openFormula(state)
+    const seen: string[] = []
+    const watch = new MutationObserver(() => {
+      for (const one of document.querySelectorAll('[data-slot="resource-state"]'))
+        seen.push(one.getAttribute('data-state') ?? '')
+    })
+    try {
+      await draftModel()
+      await page.getByTestId('formula-more').click()
+      await page.getByTestId('formula-delete').click()
+      watch.observe(document.body, { childList: true, subtree: true })
+      await page.getByRole('button', { name: '删除', exact: true }).click()
+      await expect.element(page.getByTestId('formula-list-page')).toBeInTheDocument()
+      expect(addressNow()).toBe('/assessment/formulas')
+      expect(seen).toEqual([])
+    } finally {
+      watch.disconnect()
+      await view.unmount()
+    }
+  }, 60_000)
 })

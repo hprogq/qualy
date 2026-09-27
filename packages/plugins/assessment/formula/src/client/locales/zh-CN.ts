@@ -195,6 +195,7 @@ export default {
   'assessment-formula/editor/gone-title': '找不到该公式',
   'assessment-formula/editor/gone-hint': '公式可能已删除，或链接有误',
   'assessment-formula/editor/gone-back': '返回计分公式',
+  'assessment-formula/editor/gone-edits-kept': '未保存的修改仍在编辑器里，离开前可下载或复制',
   'assessment-formula/templates/gone-title': '找不到该模板',
   'assessment-formula/templates/gone-hint': '模板可能已不再共享给你，或链接有误',
   'assessment-formula/templates/gone-back': '返回公式模板',
