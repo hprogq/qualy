@@ -130,6 +130,57 @@ describe.runIf(postgresAvailable)('a vacant step', () => {
     ])
   })
 
+  // Read by the unit's own name, a class of the second college whose name
+  // happens to come first was listed before the first college's classes, and
+  // two classes of one name stood in no order at all.
+  it('lists where review waits from the root down, not by the unit name alone', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-alert-order')
+          const assessment = yield* Assessment
+          const counsellor = yield* vacantRole(f)
+          const classB = one<{ id: string }>(
+            yield* runSql(
+              sql`select id from org_nodes where tenant_id = ${f.t} and name = 'Class B1'`,
+            ),
+          ).id
+          yield* runSql(sql`update org_nodes set name = 'Zeta' where id = ${f.classA}`)
+          yield* runSql(sql`update org_nodes set name = 'Alpha' where id = ${classB}`)
+          const g = yield* runningBatch(f, {
+            profile: REVIEW_OPEN,
+            stages: [
+              {
+                id: 'class',
+                selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [counsellor] },
+                quorum: { type: 'any' },
+              },
+            ],
+          })
+          // one filing waits in each college's class
+          for (const [userId, participantId] of [
+            [f.s3, g.p3],
+            [f.s1, g.p1],
+          ] as const) {
+            const who = f.principal(userId)
+            const entry = yield* assessment.createEntry(
+              f.t,
+              { itemId: g.item.id, participantId, payload: {} },
+              who,
+            )
+            yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', who)
+          }
+          return yield* assessment.reviewAlerts(f.t, g.batch.id, f.principal(f.admin))
+        }),
+      ),
+    )
+    expect(result.groups.map((group) => group.unitPath)).toEqual([
+      ['Root', 'College A', 'Zeta'],
+      ['Root', 'College B', 'Alpha'],
+    ])
+  })
+
   it('takes a submission whose first step nobody holds, and lets it be taken back', async () => {
     const result = ok(
       await run(

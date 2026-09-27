@@ -1182,7 +1182,9 @@ export const blockedGroups = (tenantId: string, batchId: string) =>
         left join org_nodes n on n.tenant_id = ri.tenant_id and n.id = ri.current_node_id
         where ri.tenant_id = ${tenantId} and e.batch_id = ${batchId} and ri.state = 'blocked'
         group by ri.current_node_id, n.name, n.path, ri.current_role_ids, ri.blocked_reason
-        order by n.name nulls first
+        -- read from the root down, so the classes of one college stand
+        -- together and two classes of one name keep one order between them
+        order by unit_path nulls first, node_id, role_ids, reason
       `.execute(k),
     )
     .pipe(
