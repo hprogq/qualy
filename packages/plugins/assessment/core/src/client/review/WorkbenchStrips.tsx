@@ -27,7 +27,6 @@ import type { ReviewDto } from './model.ts'
 import { PART_LABEL, WORKBENCH_PARTS, type WorkbenchPart } from './Pane.tsx'
 
 const lg = '@media (min-width: 1024px)'
-const belowLg = '@media (max-width: 1023.98px)'
 
 const styles = stylex.create({
   // ---- where the run stands, drawn along the bar's own lower edge ----
@@ -92,14 +91,6 @@ const styles = stylex.create({
   queueKeyIcon: {
     width: 14,
     height: 14,
-  },
-  queueKeyCount: {
-    display: {
-      default: null,
-      [belowLg]: 'none',
-    },
-    color: tokens.mutedForeground,
-    fontVariantNumeric: 'tabular-nums',
   },
   // the initial is a face for the bar, and on a phone the name's own room
   // is worth more than a face: the name and the number keep the line
@@ -320,14 +311,15 @@ const styles = stylex.create({
  * The run is said once, on the run's own terms: which filing of the whole
  * sitting this is, the ones dealt with behind it included. It used to be
  * said twice - a strip above counting the sitting and this bar counting
- * what was left - and "4/12" over "1/9" on one screen read as two runs. Its
- * segments ride the bar's lower edge, filled behind the reader and marked
- * at the one they are on, rather than taking a band of their own.
+ * what was left - and "4/12" over "1/9" on one screen read as two runs; so
+ * did a count of what was left on the key to the queue beside "11 of 23".
+ * The key is named for where it leads and carries no figure. Its segments
+ * ride the bar's lower edge, filled behind the reader and marked at the one
+ * they are on, rather than taking a band of their own.
  */
 export function PersonStrip({
   review,
   run,
-  remaining,
   canPrev,
   canNext,
   onMove,
@@ -338,8 +330,6 @@ export function PersonStrip({
   review: ReviewDto
   /** which filing of the run is on screen, counting from one, of how many, and how many are dealt with */
   run: { at: number; total: number; done: number } | null
-  /** how many of the run are still to be dealt with, this one included */
-  remaining: number
   canPrev: boolean
   canNext: boolean
   onMove: (step: 1 | -1) => void
@@ -446,13 +436,11 @@ export function PersonStrip({
         variant="ghost"
         size="sm"
         data-testid="queue-key"
-        data-count={remaining}
         className={stylex.props(styles.queueKey).className}
         onClick={onQueue}
       >
         <ListIcon aria-hidden className={stylex.props(styles.queueKeyIcon).className} />
         {format(m.reviewQueueKey)}
-        <span {...stylex.props(styles.queueKeyCount)}>{remaining}</span>
         {fine && <Kbd>Q</Kbd>}
       </Button>
       {/* the keys panel belongs to a keyboard; without one the letters are

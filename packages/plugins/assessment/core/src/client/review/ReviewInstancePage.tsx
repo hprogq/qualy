@@ -1299,7 +1299,6 @@ function Workbench({ batch }: { batch: BatchDto }) {
                           done: handled.length,
                         }
                   }
-                  remaining={remaining.length}
                   canPrev={currentIndex > 0}
                   canNext={currentIndex !== -1 && currentIndex < remaining.length - 1}
                   onMove={move}

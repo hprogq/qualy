@@ -424,9 +424,31 @@ describe('one workbench, three widths', () => {
     await expect.element(place).toHaveAttribute('data-at', '2')
     await expect.element(place).toHaveAttribute('data-done', '1')
     await expect.element(place).toHaveAttribute('data-total', '2')
-    await expect.element(page.getByTestId('queue-key')).toHaveAttribute('data-count', '1')
     expect(page.getByTestId('run-position').elements()).toHaveLength(1)
+    // the key to the rest of the queue is named for where it leads, and
+    // carries no second count to set against the place
+    expect(page.getByTestId('queue-key').element().textContent).not.toMatch(/\d/)
   })
+
+  // Narrow, the place is said in figures and the key keeps its name: a
+  // lone word beside a list mark read as a direction, not as the queue.
+  for (const width of [390, 834]) {
+    it(`keeps one place and a named key at ${String(width)}`, async () => {
+      await page.viewport(width, 844)
+      await open()
+      await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
+      const place = page.getByTestId('run-position')
+      await expect.element(place).toBeVisible()
+      expect(place.element().textContent).toContain('1')
+      const key = page.getByTestId('queue-key')
+      await expect.element(key).toBeVisible()
+      const text = key.element().textContent ?? ''
+      expect(text.trim()).not.toBe('')
+      expect(text).not.toMatch(/\d/)
+      await key.click()
+      await expect.element(page.getByTestId('queue-sheet')).toBeVisible()
+    })
+  }
 
   it('keeps the queue inside the width it is given', async () => {
     await page.viewport(390, 844)
@@ -1190,9 +1212,16 @@ describe('the queue, a page at a time', () => {
 
     // a row on the second page opens the run over the whole question
     await rows().first().click()
-    await expect.element(page.getByTestId('queue-key')).toHaveAttribute('data-count', '23')
     await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-total', '23')
     await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-at', '11')
+    // the place is the one count on the bar, and the queue it opens lists
+    // what the place counts: the whole question, none of it dealt with yet
+    expect(page.getByTestId('queue-key').element().textContent).not.toMatch(/\d/)
+    await page.getByTestId('queue-key').click()
+    await expect.element(page.getByTestId('queue-sheet')).toBeVisible()
+    expect(page.getByTestId('queue-row').elements()).toHaveLength(23)
+    await userEvent.keyboard('{Escape}')
+    await expect.poll(() => document.querySelector('[data-testid="queue-sheet"]')).toBeNull()
 
     // and the way back finds the queue on the page it was left on
     await page.getByTestId('queue-back').click()
@@ -1206,7 +1235,6 @@ describe('the queue, a page at a time', () => {
     await page.viewport(1440, 900)
     await withBench(both(), `?item=${OTHER_ITEM}`)
     await page.getByTestId('review-start').click()
-    await expect.element(page.getByTestId('queue-key')).toHaveAttribute('data-count', '25')
     await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-total', '25')
     await expect.element(page.getByTestId('run-position')).toHaveAttribute('data-at', '1')
   })

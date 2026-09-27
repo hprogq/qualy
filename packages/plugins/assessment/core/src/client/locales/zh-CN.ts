@@ -819,7 +819,7 @@ export default {
   'assessment/review/insight': '智能辅助审核',
   'assessment/review/insight-soon': '暂无辅助提示。',
   'assessment/review/about-section': '评审依据',
-  'assessment/review/queue-key': '剩余',
+  'assessment/review/queue-key': '待审核',
   'assessment/review/stage-veiled': '后续审核步骤',
   'assessment/review/resize-flow': '调整审核过程栏宽度',
   'assessment/review/resize-about': '调整参考信息栏宽度',

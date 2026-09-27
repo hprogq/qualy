@@ -3308,7 +3308,7 @@ const i18n = definePluginMessages({
       id: 'assessment/review/about-section',
       defaultMessage: 'About this question',
     },
-    reviewQueueKey: { id: 'assessment/review/queue-key', defaultMessage: 'Left' },
+    reviewQueueKey: { id: 'assessment/review/queue-key', defaultMessage: 'Queue' },
     reviewStageVeiled: { id: 'assessment/review/stage-veiled', defaultMessage: 'A later step' },
     reviewResizeFlow: {
       id: 'assessment/review/resize-flow',
