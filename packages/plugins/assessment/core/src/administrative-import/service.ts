@@ -21,10 +21,11 @@ import {
 } from '../errors.ts'
 import type { AttachmentDescriptor } from '../attachment/service.ts'
 import {
-  recordAdministrativeEntryTx,
+  recordAdministrativeEntriesTx,
   voidAdministrativeEntryTx,
+  type AdministrativeWrite,
 } from '../entry/administrative-write.ts'
-import type { EntryStatus } from '../entry/db.ts'
+import { STATISTICS_REFRESH_AT, refreshEntryStatistics, type EntryStatus } from '../entry/db.ts'
 import { entryRefusalOf, heldWith, NOTHING_HELD } from '../entry/limit.ts'
 import { itemOf, revisionOf as itemRevisionOf, revisionsByIdOf } from '../item/db.ts'
 import { opensTo } from '../item/channels.ts'
@@ -1082,7 +1083,7 @@ export const makeAdministrativeImportMethods = (
 
       // Everything inside is deterministic writing plus the second look at
       // whatever could have moved while the file was being read.
-      return yield* withDb(
+      const done = yield* withDb(
         transaction(
           Effect.gen(function* () {
             const locked = yield* lockBatch(tenantId, batchId)
@@ -1140,10 +1141,12 @@ export const makeAdministrativeImportMethods = (
               .pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', Effect.die))
             const takenHere = new Map<string, number>()
 
-            const written: {
+            // every row judged first, then all of them written at once: the
+            // batch is locked for as long as this takes
+            const accepted: {
+              write: AdministrativeWrite
               sourceRowNo: number
               participantId: string
-              entryId: string
               businessNoSnapshot: string | null
               displayNameSnapshot: string | null
             }[] = []
@@ -1205,32 +1208,39 @@ export const makeAdministrativeImportMethods = (
                 )
               }
 
-              const { entryId } = yield* recordAdministrativeEntryTx({
-                tenantId,
-                batchId,
-                itemId: ready.item.id,
-                itemRevisionId: ready.revision.id,
-                participantId: person.participantId,
-                subjectUserId: person.userId,
-                actorUserId: as.userId,
-                payload: row.payloadPreview,
-                // `{}` for a question that determines nothing, never
-                // absent: an approved fact always carries a determination
-                recognition: row.recognitionPreview,
-                basis: row.basis,
-                // the provenance of the fact and of its determination are
-                // one thing: an import writes 'import' on both
-                source: 'import',
-                attachments: [],
-              })
-              written.push({
+              accepted.push({
+                write: {
+                  tenantId,
+                  batchId,
+                  itemId: ready.item.id,
+                  itemRevisionId: ready.revision.id,
+                  participantId: person.participantId,
+                  subjectUserId: person.userId,
+                  actorUserId: as.userId,
+                  payload: row.payloadPreview,
+                  // `{}` for a question that determines nothing, never
+                  // absent: an approved fact always carries a determination
+                  recognition: row.recognitionPreview,
+                  basis: row.basis,
+                  // the provenance of the fact and of its determination are
+                  // one thing: an import writes 'import' on both
+                  source: 'import',
+                  attachments: [],
+                },
                 sourceRowNo: row.rowNo,
                 participantId: person.participantId,
-                entryId,
                 businessNoSnapshot: row.businessNo,
                 displayNameSnapshot: row.displayNameFromFile || null,
               })
             }
+            const entries = yield* recordAdministrativeEntriesTx(accepted.map((one) => one.write))
+            const written = accepted.map((one, index) => ({
+              sourceRowNo: one.sourceRowNo,
+              participantId: one.participantId,
+              entryId: entries[index]!.entryId,
+              businessNoSnapshot: one.businessNoSnapshot,
+              displayNameSnapshot: one.displayNameSnapshot,
+            }))
 
             // the original file enters history in the same transaction the
             // facts do, so a committed import always has the workbook it
@@ -1270,6 +1280,14 @@ export const makeAdministrativeImportMethods = (
           }),
         ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
       )
+      if (done.importedCount >= STATISTICS_REFRESH_AT) {
+        yield* withDb(refreshEntryStatistics).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning('could not refresh the entry statistics after an import', cause),
+          ),
+        )
+      }
+      return done
     })
 
   const listAdministrativeImports: AdministrativeImportMethods['listAdministrativeImports'] =

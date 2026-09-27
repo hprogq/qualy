@@ -15,7 +15,11 @@ import { backend, ok, one, run, runningBatch, seed } from './support/round.ts'
 // of the code. What this holds is that a file this size still goes in as one
 // transaction and comes out whole - the place where a per-row read, a bind
 // parameter ceiling or a statement that grows with the file shows up first.
-// The measured cost lives in STATUS.md.
+// The facts are written a few hundred to a statement, so a thousand rows also
+// crosses the seam between two of those: every fact has to come out standing
+// on its own revision and determination, and every row of the import has to
+// name the entry written for its own person. The measured cost lives in
+// STATUS.md.
 
 const ROWS = 1000
 
@@ -133,12 +137,37 @@ describe.runIf(postgresAvailable)('an administrative import at scale', () => {
               sql`select count(*)::int as n from entries where tenant_id = ${f.t} and source = 'import'`,
             ),
           ).n
-          return { summary: preview.summary, done, written }
+          // approved on its own revision and determination, marked for its owner
+          const standing = one<{ n: number }>(
+            yield* runSql(sql`
+              select count(*)::int as n
+                from entries e
+                join entry_revisions r
+                  on r.id = e.current_revision_id and r.entry_id = e.id and r.revision_no = 1
+                join entry_recognitions c
+                  on c.id = e.current_recognition_id and c.entry_id = e.id
+                 and c.entry_revision_id = r.id and c.source = 'import'
+               where e.tenant_id = ${f.t} and e.source = 'import' and e.status = 'approved'
+                 and e.participant_attention_revision = 1`),
+          ).n
+          // every row of the import names the entry written for its own person
+          const matched = one<{ n: number }>(
+            yield* runSql(sql`
+              select count(*)::int as n
+                from administrative_entry_import_rows ir
+                join entries e on e.id = ir.entry_id and e.participant_id = ir.participant_id
+                join batch_participants p on p.id = ir.participant_id
+                join users u on u.id = p.user_id and u.business_no = ir.business_no_snapshot
+               where ir.tenant_id = ${f.t}`),
+          ).n
+          return { summary: preview.summary, done, written, standing, matched }
         }),
       ),
     )
     expect(found.summary).toEqual({ rows: ROWS, valid: ROWS, warnings: 0, errors: 0 })
     expect(found.done.importedCount).toBe(ROWS)
     expect(found.written).toBe(ROWS)
+    expect(found.standing).toBe(ROWS)
+    expect(found.matched).toBe(ROWS)
   }, 600_000)
 })

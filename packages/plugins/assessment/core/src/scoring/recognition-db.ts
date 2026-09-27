@@ -56,6 +56,38 @@ export const insertRecognition = (input: RecognitionWrite) =>
     )
     .pipe(Effect.map((row) => String(row.id)))
 
+/** determinations, many at once, under ids their writer chose (entry/uuid-v7.ts) */
+export const insertRecognitionsWithIds = (
+  rows: readonly (RecognitionWrite & { readonly id: string })[],
+) =>
+  rows.length === 0
+    ? Effect.void
+    : db.query((k) =>
+        k
+          .insertInto('EntryRecognition')
+          .values(
+            rows.map(
+              (row) =>
+                ({
+                  id: row.id,
+                  tenantId: row.tenantId,
+                  batchId: row.batchId,
+                  entryId: row.entryId,
+                  entryRevisionId: row.entryRevisionId,
+                  itemId: row.itemId,
+                  itemRevisionId: row.itemRevisionId,
+                  values: jsonb(row.values),
+                  source: row.source,
+                  reviewInstanceId: row.reviewInstanceId ?? null,
+                  reviewEventId: row.reviewEventId ?? null,
+                  supersedesId: row.supersedesId ?? null,
+                  createdBy: row.createdBy ?? null,
+                }) as never,
+            ),
+          )
+          .execute(),
+      )
+
 export interface RecognitionRow {
   readonly id: string
   readonly values: Record<string, unknown>

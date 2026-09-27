@@ -234,6 +234,55 @@ export const insertEntry = (input: {
     )
     .pipe(Effect.map((row) => String((row as { id: unknown }).id)))
 
+/** how many facts one write has to have added for the planner's picture of them to be refreshed */
+export const STATISTICS_REFRESH_AT = 200
+
+/**
+ * The planner's picture of the entry tables, taken again.
+ *
+ * A write that adds a few thousand facts to one round leaves the statistics
+ * describing a table without them until autovacuum next analyzes it, which on
+ * a large table is far away: meanwhile every query about that round is planned
+ * for the handful of rows the statistics remember, and the first readers of a
+ * fresh import paid for it on every page. Run after the write has committed,
+ * never inside it: it takes no lock a writer waits for, but a transaction has
+ * no business holding the batch while it samples.
+ */
+export const refreshEntryStatistics = db.query((k) =>
+  sql`analyze entries, entry_revisions, entry_recognitions`.execute(k),
+)
+
+/** new entries, many at once, under ids their writer chose (entry/uuid-v7.ts) */
+export const insertEntriesWithIds = (
+  rows: readonly {
+    readonly id: string
+    readonly tenantId: string
+    readonly batchId: string
+    readonly itemId: string
+    readonly participantId: string
+    readonly source: EntrySource
+    readonly status: EntryStatus
+  }[],
+) =>
+  rows.length === 0
+    ? Effect.void
+    : db.query((k) =>
+        k
+          .insertInto('Entry')
+          .values(
+            rows.map((row) => ({
+              id: row.id,
+              tenantId: row.tenantId,
+              batchId: row.batchId,
+              itemId: row.itemId,
+              participantId: row.participantId,
+              source: row.source,
+              status: row.status,
+            })),
+          )
+          .execute(),
+      )
+
 export interface EntryRevisionRow {
   id: string
   revisionNo: number
@@ -326,6 +375,85 @@ export const insertEntryRevision = (input: {
         .executeTakeFirstOrThrow(),
     )
     .pipe(Effect.map((row) => String((row as { id: unknown }).id)))
+
+/** first revisions, many at once, under ids their writer chose */
+export const insertEntryRevisionsWithIds = (
+  rows: readonly {
+    readonly id: string
+    readonly tenantId: string
+    readonly entryId: string
+    readonly itemId: string
+    readonly itemRevisionId: string
+    readonly revisionNo: number
+    readonly payload: unknown
+    readonly actorId: string
+    readonly subjectId: string
+    readonly source: EntrySource
+    readonly note: string | null
+  }[],
+) =>
+  rows.length === 0
+    ? Effect.void
+    : db.query((k) =>
+        k
+          .insertInto('EntryRevision')
+          .values(
+            rows.map(
+              (row) =>
+                ({
+                  id: row.id,
+                  tenantId: row.tenantId,
+                  entryId: row.entryId,
+                  itemId: row.itemId,
+                  itemRevisionId: row.itemRevisionId,
+                  revisionNo: row.revisionNo,
+                  payload: jsonb(row.payload),
+                  actorId: row.actorId,
+                  subjectId: row.subjectId,
+                  source: row.source,
+                  note: row.note,
+                }) as never,
+            ),
+          )
+          .execute(),
+      )
+
+/**
+ * New entries, drafts until now, approved on the revision and determination
+ * written for them - in the one statement the table requires, since an
+ * approved entry without a determination is refused - and marked for their
+ * owners' attention. For entries that have exactly the one revision and at
+ * most the one determination just written, which is what makes the lookups
+ * below unambiguous. Answers how many it moved.
+ */
+export const approveNewEntries = (tenantId: string, entryIds: readonly string[]) =>
+  entryIds.length === 0
+    ? Effect.succeed(0)
+    : db
+        .query((k) =>
+          k
+            .updateTable('Entry')
+            .set((eb) => ({
+              status: 'approved',
+              updatedAt: sql`now()`,
+              currentRevisionId: eb
+                .selectFrom('EntryRevision as r')
+                .select('r.id')
+                .whereRef('r.tenantId', '=', 'Entry.tenantId')
+                .whereRef('r.entryId', '=', 'Entry.id'),
+              currentRecognitionId: eb
+                .selectFrom('EntryRecognition as c')
+                .select('c.id')
+                .whereRef('c.tenantId', '=', 'Entry.tenantId')
+                .whereRef('c.entryId', '=', 'Entry.id'),
+              participantAttentionRevision: sql`participant_attention_revision + 1`,
+            }))
+            .where('tenantId', '=', tenantId)
+            .where('id', 'in', [...entryIds])
+            .where('status', '=', 'draft')
+            .executeTakeFirst(),
+        )
+        .pipe(Effect.map((result) => Number(result.numUpdatedRows)))
 
 export const insertRevisionAttachments = (
   tenantId: string,

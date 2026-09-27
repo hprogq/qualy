@@ -36,13 +36,14 @@ import { frozenCalculatorOf } from '../scoring/plan.ts'
 import { readScoringPlan } from '../scoring/plan.ts'
 import { provenRecognition } from '../scoring/proven-recognition.ts'
 import {
-  recordAdministrativeEntryTx,
+  recordAdministrativeEntriesTx,
   voidAdministrativeEntryTx,
 } from '../entry/administrative-write.ts'
 import { bindCitedAttachments, type CitedAttachmentStorage } from '../entry/bind-attachments.ts'
 import { announce } from '../live/events.ts'
 import { effectiveEntryCounts } from '../administrative-import/db.ts'
 import { entryRefusalOf, NOTHING_HELD } from '../entry/limit.ts'
+import { STATISTICS_REFRESH_AT, refreshEntryStatistics } from '../entry/db.ts'
 import { lockBatch, oneBatch, resolveRecordTargets } from '../server/db.ts'
 import {
   eventsOfOperation,
@@ -682,7 +683,7 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
           if (refused.length > 0)
             return yield* new AdministrativeRecordRefused({ blocked: refused })
 
-          // before the first revision cites them: recordAdministrativeEntryTx
+          // before the first revision cites them: recordAdministrativeEntriesTx
           // writes the citation and leaves binding to its caller. Files are
           // refused above one person, so this is one entry's worth.
           yield* bindCitedAttachments(deps.storage, {
@@ -692,9 +693,9 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
             refs: shape.files,
           })
 
-          const rows: { participantId: string; entryId: string }[] = []
-          for (const person of targets) {
-            const { entryId } = yield* recordAdministrativeEntryTx({
+          // everybody at once: the batch is locked for as long as this takes
+          const entries = yield* recordAdministrativeEntriesTx(
+            targets.map((person) => ({
               tenantId,
               batchId,
               itemId: shape.item.id,
@@ -707,11 +708,14 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
               basis: input.basis.trim(),
               // settled in the product, not brought in on a file: the
               // number of people it reached does not change that (§32.78)
-              source: 'record',
+              source: 'record' as const,
               attachments: shape.files,
-            })
-            rows.push({ participantId: person.id, entryId })
-          }
+            })),
+          )
+          const rows = targets.map((person, index) => ({
+            participantId: person.id,
+            entryId: entries[index]!.entryId,
+          }))
 
           const operationId = yield* insertRecordOperation({
             tenantId,
@@ -745,6 +749,17 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
       ),
     )
 
+    // many new facts at once: the planner's picture of the entry tables is
+    // taken again once they are committed (entry/db.ts)
+    if (!written.replayed && written.recordedCount >= STATISTICS_REFRESH_AT) {
+      yield* deps
+        .withDb(refreshEntryStatistics)
+        .pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning('could not refresh the entry statistics after a bulk record', cause),
+          ),
+        )
+    }
     return { operationId: written.operationId, recordedCount: written.recordedCount }
   })
 

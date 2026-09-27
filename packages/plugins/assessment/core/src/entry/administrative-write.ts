@@ -1,17 +1,19 @@
 import { Effect } from 'effect'
-import { insertRecognition } from '../scoring/recognition-db.ts'
+import { insertRecognitionsWithIds } from '../scoring/recognition-db.ts'
 import {
+  approveNewEntries,
   bumpParticipantAttention,
   cancelReviewInstance,
-  insertEntry,
+  insertEntriesWithIds,
   insertEntryEvent,
-  insertEntryRevision,
+  insertEntryRevisionsWithIds,
   insertReviewEvent,
   insertRevisionAttachments,
   setEntryState,
   type EntrySource,
   type EntryStatus,
 } from './db.ts'
+import { uuidv7 } from './uuid-v7.ts'
 
 // Writing one administrative fact, inside a transaction somebody else opened.
 //
@@ -47,73 +49,121 @@ export interface AdministrativeWrite {
   readonly attachments: readonly { readonly attachmentId: string }[]
 }
 
+/** how many facts go into one statement: well under the protocol's parameter limit */
+const WRITE_CHUNK = 500
+
 /**
- * The write, and the entry id it produced.
+ * The write for many facts at once, and the ids each produced, in order.
+ *
+ * A fixed handful of statements per chunk, however many facts: the entries
+ * as drafts, their revisions, the files they cite, their determinations, and
+ * one update approving them all on what was just written. An import of two
+ * thousand rows used to be ten thousand round trips with the batch locked,
+ * and every other write to the batch waited behind them. The ids are chosen
+ * here because the statements after the first need them, and a multi-row
+ * insert does not promise which row it answers first.
  *
  * The caller is responsible for having bound any attachments before calling:
  * binding takes its own locks and reads history, which is the caller's
  * transaction's business rather than this statement sequence's.
  */
-export const recordAdministrativeEntryTx = (input: AdministrativeWrite) =>
+export const recordAdministrativeEntriesTx = (inputs: readonly AdministrativeWrite[]) =>
   Effect.gen(function* () {
-    const entryId = yield* insertEntry({
-      tenantId: input.tenantId,
-      batchId: input.batchId,
-      itemId: input.itemId,
-      participantId: input.participantId,
-      source: input.source,
-      status: 'draft',
-    })
-    const revisionId = yield* insertEntryRevision({
-      tenantId: input.tenantId,
-      entryId,
-      itemId: input.itemId,
-      itemRevisionId: input.itemRevisionId,
-      revisionNo: 1,
-      payload: input.payload,
-      actorId: input.actorUserId,
-      subjectId: input.subjectUserId,
-      source: input.source,
-      note: input.basis.trim() || null,
-    })
-    yield* insertRevisionAttachments(
-      input.tenantId,
-      revisionId,
-      input.attachments.map((ref, position) => ({ attachmentId: ref.attachmentId, position })),
-    )
-    const recognitionId =
-      input.recognition === undefined
-        ? undefined
-        : yield* insertRecognition({
-            tenantId: input.tenantId,
-            batchId: input.batchId,
-            entryId,
-            entryRevisionId: revisionId,
-            itemId: input.itemId,
-            itemRevisionId: input.itemRevisionId,
-            values: input.recognition,
-            // the provenance of the determination is the provenance of the
-            // fact: a record's determination is a record's, an import's is an
-            // import's, and a row that says one on the entry and the other on
-            // the recognition has split its own history
-            source: input.source,
-            createdBy: input.actorUserId,
-          })
-    yield* setEntryState({
-      tenantId: input.tenantId,
-      entryId,
-      from: ['draft'],
-      to: 'approved',
-      currentRevisionId: revisionId,
-      ...(recognitionId === undefined ? {} : { currentRecognitionId: recognitionId }),
-    })
-    // a fact somebody else just added to their account is exactly what the
-    // unread marker exists for: the broadcast reaches whoever is looking,
-    // this reaches whoever is not. Per entry even in bulk, because it is
-    // durable state on the owner's own row rather than a notification.
-    yield* bumpParticipantAttention(input.tenantId, entryId)
-    return { entryId, revisionId }
+    const planned = inputs.map((input) => ({
+      input,
+      entryId: uuidv7(),
+      revisionId: uuidv7(),
+      recognitionId: input.recognition === undefined ? undefined : uuidv7(),
+    }))
+    for (let start = 0; start < planned.length; start += WRITE_CHUNK) {
+      const chunk = planned.slice(start, start + WRITE_CHUNK)
+      yield* insertEntriesWithIds(
+        chunk.map(({ input, entryId }) => ({
+          id: entryId,
+          tenantId: input.tenantId,
+          batchId: input.batchId,
+          itemId: input.itemId,
+          participantId: input.participantId,
+          source: input.source,
+          status: 'draft' as const,
+        })),
+      )
+      yield* insertEntryRevisionsWithIds(
+        chunk.map(({ input, entryId, revisionId }) => ({
+          id: revisionId,
+          tenantId: input.tenantId,
+          entryId,
+          itemId: input.itemId,
+          itemRevisionId: input.itemRevisionId,
+          revisionNo: 1,
+          payload: input.payload,
+          actorId: input.actorUserId,
+          subjectId: input.subjectUserId,
+          source: input.source,
+          note: input.basis.trim() || null,
+        })),
+      )
+      for (const { input, revisionId } of chunk) {
+        yield* insertRevisionAttachments(
+          input.tenantId,
+          revisionId,
+          input.attachments.map((ref, position) => ({ attachmentId: ref.attachmentId, position })),
+        )
+      }
+      yield* insertRecognitionsWithIds(
+        chunk.flatMap(({ input, entryId, revisionId, recognitionId }) =>
+          recognitionId === undefined || input.recognition === undefined
+            ? []
+            : [
+                {
+                  id: recognitionId,
+                  tenantId: input.tenantId,
+                  batchId: input.batchId,
+                  entryId,
+                  entryRevisionId: revisionId,
+                  itemId: input.itemId,
+                  itemRevisionId: input.itemRevisionId,
+                  values: input.recognition,
+                  // the provenance of the determination is the provenance of
+                  // the fact: a record's determination is a record's, an
+                  // import's is an import's, and a row that says one on the
+                  // entry and the other on the recognition has split its own
+                  // history
+                  source: input.source,
+                  createdBy: input.actorUserId,
+                },
+              ],
+        ),
+      )
+      // a fact somebody else just added to their account is exactly what the
+      // unread marker exists for: the broadcast reaches whoever is looking,
+      // the marker whoever is not - per entry, because it is durable state on
+      // the owner's own row rather than a notification
+      const tenants = new Set(chunk.map(({ input }) => input.tenantId))
+      for (const tenantId of tenants) {
+        const ids = chunk
+          .filter(({ input }) => input.tenantId === tenantId)
+          .map(({ entryId }) => entryId)
+        const approved = yield* approveNewEntries(tenantId, ids)
+        if (approved !== ids.length) {
+          return yield* Effect.die(
+            new Error(
+              `approved ${String(approved)} of ${String(ids.length)} new administrative entries`,
+            ),
+          )
+        }
+      }
+    }
+    return planned.map(({ entryId, revisionId }) => ({ entryId, revisionId }))
   })
+
+/**
+ * One fact: the same statements as many, for a single member of staff
+ * recording on a single person. Kept as the one sequence rather than a copy
+ * of it, because the order is load-bearing and two copies would drift.
+ */
+export const recordAdministrativeEntryTx = (input: AdministrativeWrite) =>
+  Effect.map(recordAdministrativeEntriesTx([input]), (written) => written[0]!)
 
 /**
  * Withdrawing one administrative fact, inside a transaction somebody else
