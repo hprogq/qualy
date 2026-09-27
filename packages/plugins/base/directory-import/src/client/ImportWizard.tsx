@@ -19,7 +19,7 @@ import { orgNodePicker, type OrgNodePickerContext, type PickedOrgNode } from '@q
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { AsyncSection, Field, Feedback, FormDialog } from '@qualy/ui/admin'
+import { AsyncSection, Field, Feedback, FormDialog, RequiredMark } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Dropzone } from '@qualy/ui/dropzone'
@@ -809,9 +809,12 @@ export function ImportWizard({
   )
 
   /** a name beside what it names, which is a phone's shape for a short form */
-  const said = (label: string, control: ReactNode) => (
+  const said = (label: string, control: ReactNode, required = false) => (
     <label {...stylex.props(styles.said)}>
-      <span {...stylex.props(styles.saidWord)}>{label}</span>
+      <span {...stylex.props(styles.saidWord)}>
+        {label}
+        {required && <RequiredMark />}
+      </span>
       <span {...stylex.props(styles.saidSeat)}>{control}</span>
     </label>
   )
@@ -822,10 +825,10 @@ export function ImportWizard({
     onChange: (column: string) => void,
     testId: string,
   ) => (
-    <Field label={label}>
-      {(id) => (
+    <Field label={label} required>
+      {(id, control) => (
         <Select value={value === '' ? undefined : value} onValueChange={onChange}>
-          <SelectTrigger id={id} data-testid={testId}>
+          <SelectTrigger id={id} {...control} data-testid={testId}>
             <SelectValue placeholder={format(m.columnUnset)} />
           </SelectTrigger>
           <SelectContent>
@@ -1161,6 +1164,7 @@ export function ImportWizard({
                     <SelectTrigger
                       data-testid="column-name"
                       xstyle={styles.wide}
+                      aria-required
                       aria-label={format(m.displayNameLabel)}
                     >
                       <SelectValue placeholder={format(m.columnUnset)} />
@@ -1173,6 +1177,7 @@ export function ImportWizard({
                       ))}
                     </SelectContent>
                   </Select>,
+                  true,
                 )}
                 {said(
                   businessNo,
@@ -1183,6 +1188,7 @@ export function ImportWizard({
                     <SelectTrigger
                       data-testid="column-business"
                       xstyle={styles.wide}
+                      aria-required
                       aria-label={businessNo}
                     >
                       <SelectValue placeholder={format(m.columnUnset)} />
@@ -1195,6 +1201,7 @@ export function ImportWizard({
                       ))}
                     </SelectContent>
                   </Select>,
+                  true,
                 )}
                 {said(
                   format(m.userTypeLabel),
@@ -1205,6 +1212,7 @@ export function ImportWizard({
                     <SelectTrigger
                       data-testid="user-type"
                       xstyle={styles.wide}
+                      aria-required
                       aria-label={format(m.userTypeLabel)}
                     >
                       <SelectValue placeholder={format(m.userTypeUnset)} />
@@ -1217,6 +1225,7 @@ export function ImportWizard({
                       ))}
                     </SelectContent>
                   </Select>,
+                  true,
                 )}
               </div>
               <div {...stylex.props(styles.card, styles.cardPad)}>
@@ -1275,13 +1284,13 @@ export function ImportWizard({
                     setBusinessNoColumn,
                     'column-business',
                   )}
-                  <Field label={format(m.userTypeLabel)}>
-                    {(id) => (
+                  <Field label={format(m.userTypeLabel)} required>
+                    {(id, control) => (
                       <Select
                         value={userTypeId === '' ? undefined : userTypeId}
                         onValueChange={setUserTypeId}
                       >
-                        <SelectTrigger id={id} data-testid="user-type">
+                        <SelectTrigger id={id} {...control} data-testid="user-type">
                           <SelectValue placeholder={format(m.userTypeUnset)} />
                         </SelectTrigger>
                         <SelectContent>
