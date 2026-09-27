@@ -265,7 +265,7 @@ const i18n = definePluginMessages({
     },
     grantReachUnitOnly: {
       id: 'rbac/grants/reach-unit-only',
-      defaultMessage: 'Here you can grant for that unit only',
+      defaultMessage: 'At this unit you may grant for the unit alone',
     },
     grantReachUseSelf: {
       id: 'rbac/grants/reach-use-self',
