@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, type Path } from 'react-router'
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { EllipsisVerticalIcon, EyeIcon } from 'lucide-react'
@@ -951,6 +952,15 @@ export function ItemEditor({
   // ---- saving -------------------------------------------------------------
   /** a save made on the way out of the page, which stays where the reader is going */
   const leavingNow = useRef(false)
+  /**
+   * Where the reader was going when a save on the way out had first to ask
+   * something - a reason, what the change does to what stands - and so
+   * could not go straight through: once that save does, the reader goes on.
+   */
+  const leaveAfter = useRef<Path | null>(null)
+  /** the move the page was last held on, which is where "save and leave" leaves for */
+  const heldFor = useRef<Path | null>(null)
+  const navigate = useNavigate()
   const save = useMutation({
     mutationFn: ({
       reason,
@@ -1033,11 +1043,23 @@ export function ItemEditor({
       }
       // saved on the way out of the page: opening the question again would
       // move the address back to this page under the reader who is leaving
-      if (leavingNow.current) void onReload?.()
+      const going = leaveAfter.current
+      leaveAfter.current = null
+      if (going !== null) {
+        void onReload?.()
+        bypass(() => void navigate(going))
+      } else if (leavingNow.current) void onReload?.()
       else onSaved(result.item.id)
     },
     onError: (error: unknown) => {
       const said = error as { _tag?: string; issues?: readonly Issue[] } & ChangeImpact
+      // Asked for a reason or for what the change does, the save on the way
+      // out is still going; refused outright, the reader stays to read why.
+      const stillAsking =
+        said?._tag === 'ASSESSMENT_ITEM_CHANGE_DECISION_REQUIRED' ||
+        (said?._tag === 'ASSESSMENT_ITEM_CONFIG_INVALID' &&
+          (said.issues ?? []).some((one) => one.reason === 'reason-required'))
+      if (!stillAsking) leaveAfter.current = null
       if (said?._tag === 'ASSESSMENT_ITEM_CHANGE_DECISION_REQUIRED') {
         setAskingReason(false)
         setImpact({
@@ -1123,11 +1145,18 @@ export function ItemEditor({
   // back to somewhere else - with changes here asks first, with a way to
   // save on the way out; a reload or a closed tab asks in the browser's own
   // words. Moving between questions is a move inside this page, which the
-  // page holds itself. A save that cannot go straight through - something
-  // left unfinished, a reason it needs, somebody else's version - stays,
-  // and says why here.
-  useLeaveGuard({
+  // page holds itself. A save that cannot go through - something left
+  // unfinished, somebody else's version - stays, and says why here. One that
+  // needs a reason first asks for it here, and once the reason is given and
+  // the save goes through, the reader is taken on to where they were going:
+  // the button said "save and leave".
+  const { bypass } = useLeaveGuard({
     when: dirty || composedHere,
+    blocks: (from, to) => {
+      const leaves = from.pathname !== to.pathname
+      if (leaves) heldFor.current = to
+      return leaves
+    },
     onSave: async () => {
       setAttempted(true)
       const first = problems[0]
@@ -1137,6 +1166,7 @@ export function ItemEditor({
       }
       setRefused(null)
       if (needsReason) {
+        leaveAfter.current = heldFor.current
         setAskingReason(true)
         return false
       }
@@ -1821,7 +1851,10 @@ export function ItemEditor({
           description={format(m.itemsReasonHint)}
           busy={save.isPending}
           onConfirm={(reason) => save.mutate({ reason })}
-          onClose={() => setAskingReason(false)}
+          onClose={() => {
+            leaveAfter.current = null
+            setAskingReason(false)
+          }}
         />
       )}
       {lingeringImpact !== null && (
@@ -1830,7 +1863,10 @@ export function ItemEditor({
           impact={lingeringImpact}
           busy={save.isPending}
           onConfirm={(effects) => save.mutate({ reason: draftReason, effects })}
-          onClose={() => setImpact(null)}
+          onClose={() => {
+            leaveAfter.current = null
+            setImpact(null)
+          }}
         />
       )}
     </div>

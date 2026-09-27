@@ -407,6 +407,8 @@ const open = (
     reach?: readonly unknown[]
     /** the units a step's roles are held at, and by how many */
     coverage?: readonly unknown[]
+    /** where the round stands, when not being set up */
+    status?: string
     /** inside the workspace shell the product draws, its rail open */
     inShell?: boolean
   } = {},
@@ -457,6 +459,7 @@ const open = (
           Effect.succeed({
             batch: {
               ...batch(),
+              ...(had.status === undefined ? {} : { status: had.status }),
               capabilities: { ...batch().capabilities, manage: had.manage ?? true },
             },
           }),
@@ -862,6 +865,65 @@ describe('choosing how a question is handled', () => {
     await page.getByRole('alertdialog').getByRole('button', { name: '放弃修改' }).click()
     await expect.element(page.getByTestId('elsewhere')).toBeVisible()
     expect(saved).toHaveLength(0)
+  })
+
+  // "Save and leave" on a change a running round wants a reason for asked
+  // the reason and then stayed on the question, the press to leave gone.
+  it('asks the reason a running round wants on the way out, then leaves once saved', async () => {
+    const saved: Record<string, unknown>[] = []
+    await open({
+      items: [officerItem()],
+      groups: [paper, { ...paper, id: SECTION_ID, parentGroupId: PAPER_ID, name: '学生工作' }],
+      question: ITEM_ID,
+      status: 'active',
+      saved,
+      elsewhere: true,
+    })
+    await page.getByRole('combobox', { name: '所属分组' }).click()
+    await page.getByRole('option', { name: '综合素质测评' }).click()
+    await page.getByRole('link', { name: 'elsewhere' }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '保存后离开' }).click()
+    // asked here, where the question is, and nothing saved or left yet
+    const asked = page.getByRole('dialog', { name: '变更原因' })
+    await expect.element(asked).toBeVisible()
+    expect(addressNow()).toContain('/items')
+    expect(saved).toHaveLength(0)
+    await asked.getByRole('textbox').fill('并入总分')
+    await asked.getByRole('button', { name: '保存' }).click()
+    await expect.element(page.getByTestId('elsewhere')).toBeVisible()
+    expect(saved).toHaveLength(1)
+    expect(saved[0]).toMatchObject({ scoreGroupId: PAPER_ID, reason: '并入总分' })
+    await new Promise((settle) => setTimeout(settle, 300))
+    expect(addressNow()).toContain('/access')
+  })
+
+  it('stays on the question when the reason is not given, and does not leave on a later save', async () => {
+    const saved: Record<string, unknown>[] = []
+    await open({
+      items: [officerItem()],
+      groups: [paper, { ...paper, id: SECTION_ID, parentGroupId: PAPER_ID, name: '学生工作' }],
+      question: ITEM_ID,
+      status: 'active',
+      saved,
+      elsewhere: true,
+    })
+    await page.getByRole('combobox', { name: '所属分组' }).click()
+    await page.getByRole('option', { name: '综合素质测评' }).click()
+    await page.getByRole('link', { name: 'elsewhere' }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '保存后离开' }).click()
+    const asked = page.getByRole('dialog', { name: '变更原因' })
+    await expect.element(asked).toBeVisible()
+    await asked.getByRole('button', { name: '取消' }).click()
+    await vi.waitFor(() => expect(page.getByRole('dialog').elements()).toHaveLength(0))
+    // saved on its own afterwards, the question stays where it is
+    await page.getByTestId('item-save').click()
+    const again = page.getByRole('dialog', { name: '变更原因' })
+    await again.getByRole('textbox').fill('并入总分')
+    await again.getByRole('button', { name: '保存' }).click()
+    await vi.waitFor(() => expect(saved).toHaveLength(1))
+    await new Promise((settle) => setTimeout(settle, 300))
+    expect(addressNow()).toContain('/items')
+    await expect.element(editor()).toBeVisible()
   })
 
   it('lets the page go without asking when nothing was changed', async () => {
