@@ -176,7 +176,14 @@ const serve = (
   })
   const shell = sirv(current.root, {
     dev: true,
-    etag: true,
+    // No validator, so never a 304. sirv answers a matching If-None-Match
+    // before it calls setHeaders, with no headers at all, and a browser keeps
+    // the headers it cached with the 200: the content security policy and
+    // frame refusal of whatever deployment it last loaded the shell from.
+    // Those change without the file changing - a QUALY_CSP_MODE switch, a
+    // storage origin - so a revalidated shell went on enforcing the old
+    // policy. The shell is a few kilobytes, compressed, fetched on a load.
+    etag: false,
     brotli: true,
     gzip: true,
     // spa fallback: extension-less GET/HEAD navigations get index.html,

@@ -261,6 +261,26 @@ describe('the shell against the api mount', () => {
     expect(asset.headers.get('x-frame-options')).toBeNull()
   })
 
+  it('answers a revalidated shell with the whole shell and its headers, never a bare 304', async () => {
+    // A 304 carries none of the headers it revalidates, and a browser keeps
+    // the ones it cached with the 200: a policy changed by the environment
+    // alone never reached a visitor coming back. The file server's validator
+    // as it used to hand it out, sent back.
+    const shell = fs.statSync(path.join(assetRoot, 'releases', 'test-release', 'index.html'))
+    const first = await fetch(`${base}/`, { headers: { 'accept-encoding': 'identity' } })
+    expect(first.headers.get('etag')).toBeNull()
+    const again = await fetch(`${base}/`, {
+      headers: {
+        'accept-encoding': 'identity',
+        'if-none-match': `W/"${String(shell.size)}-${String(shell.mtime.getTime())}"`,
+        'if-modified-since': first.headers.get('last-modified') ?? new Date().toUTCString(),
+      },
+    })
+    expect(again.status).toBe(200)
+    expect(again.headers.get('content-security-policy-report-only')).toBe("default-src 'self'")
+    expect(again.headers.get('x-frame-options')).toBe('DENY')
+  })
+
   it('never hands out the shell without its document headers, whatever the path looks like', async () => {
     // The fallback serves the shell for any path its own rule does not take
     // for a file, and the headers used to follow a different rule: a path

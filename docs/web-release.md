@@ -25,6 +25,7 @@
 ## 生产服务(`@qualy/plugin-web`)
 
 - boot 读一次 `current.json` → 校验 release metadata、index.html、`resolutionHash == AssemblyInfo` → **pin 到进程生命周期**;之后 pointer 改变不影响本进程。设了 `QUALY_WEB_RELEASE_STORE` 时从部署 store 服务,并先核对它的 current 就是 asset root(镜像)里的那个 release,不是或 store 为空即拒启,提示先跑部署任务;没设时 asset root 就是 store。
+- shell 与 public 文件**不带 ETag**(2026-09-27):sirv 对匹配的 `If-None-Match` 在调用 `setHeaders` 之前直接写 304,不带任何头,浏览器沿用缓存里的 CSP 与 frame 拒绝,只改环境变量(`QUALY_CSP_MODE`、存储来源)的部署因此到不了回访的浏览器。shell 只有几 KB,每次加载完整返回;哈希资源仍带 ETag 且 immutable。
 - `/assets/*` 从共享目录服务,`public,max-age=31536000,immutable`,缺文件 404 绝不回 shell;其余从 pinned release 目录服务(SPA fallback),`Cache-Control: no-cache`,仅 html 导航带 document-only 头(X-Frame-Options / COOP / CSP / Reporting-Endpoints);favicon 等 public 文件 no-cache。两套都逐请求查盘(sirv `dev: true`),asset 在运行期被 GC 后是 404 而不是进程崩溃;隐藏路径(`/.`)一律 404。
 - `GET /__qualy/release`:pinned release 的 `ReleaseProbe`(`{schema: 2, releaseId}`,只有身份),`no-store`,不鉴权,在 `/api` 之外。开发态由 `qualyRelease()` 的 Vite 中间件答同一端点,后端不实现。**探针不再答 `mode` 与 `serverProtocol` 窗口**(2026-09-15,最小披露,见 docs/browser-public-surface.md):页面在这里只问「服务端换 release 了吗」,能不能继续通话由 API 在第一个真实请求上回答。因此探针文档有自己的代次(`RELEASE_PROBE_SCHEMA = 2`),私有三份文档仍是 `RELEASE_SCHEMA = 1`。
 

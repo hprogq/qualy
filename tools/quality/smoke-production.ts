@@ -106,6 +106,27 @@ await check('/x.', async (response) => {
   }
   return undefined
 })
+// A browser coming back revalidates the shell, and a 304 carries none of the
+// headers it revalidates: the browser keeps the policy it cached with the
+// 200, so a policy changed by the environment alone never reached it. The
+// shell offers no validator, and a conditional request is answered whole.
+{
+  const first = await fetch(`${base}/`)
+  if (first.headers.get('etag') !== null) {
+    fail(`/: the shell carries a validator (etag ${first.headers.get('etag')!})`)
+  }
+  const again = await fetch(`${base}/`, {
+    headers: {
+      'if-none-match': '*',
+      'if-modified-since': first.headers.get('last-modified') ?? new Date().toUTCString(),
+    },
+  })
+  if (again.status !== 200) fail(`/ revalidated: status ${again.status}, expected 200`)
+  if (again.headers.get('content-security-policy-report-only') === null) {
+    fail('/ revalidated: no content-security-policy-report-only')
+  }
+  console.log('smoke: / revalidated whole, with its policy')
+}
 // the live channel, answered like any authenticated endpoint: no session,
 // no stream - and the route resolving at all means the listener layer
 // assembled with the rest of the production graph
