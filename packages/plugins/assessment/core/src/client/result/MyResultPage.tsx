@@ -10,6 +10,7 @@ import {
   useLoadFailure,
   usePageNavigate,
   usePageQueryState,
+  usePageQueryUpdate,
 } from '@qualy/web-runtime'
 import { isApiErrorCode, useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -22,6 +23,7 @@ import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import type { EntryDto, FilingGateDto, ItemDto } from '../entry/model.ts'
 import { EntrySheet } from '../entry/EntrySheet.tsx'
+import { MissingClaimSheet } from '../entry/MissingClaimSheet.tsx'
 import { AppealDialog } from '../entry/AppealDialog.tsx'
 import { SupplementAnswerDialog } from '../entry/SupplementAnswerDialog.tsx'
 import { useMarkEntryRead, useOwnClaimActs } from '../entry/own-acts.ts'
@@ -180,6 +182,7 @@ function Standing({
   const [detail, setDetail] = usePageQueryState('detail', '', {
     history: phone ? 'push' : 'replace',
   })
+  const updateQuery = usePageQueryUpdate()
 
   // Wake-ups say "read again" and name what moved: a decision moves the
   // account, a filing moves the counts beside it, and a change to the paper
@@ -288,6 +291,13 @@ function Standing({
   }, [detail, entries, questions, groups])
   const lingering = useLingering(detailed)
   const opener = useFocusBack(detailed !== null)
+  // A claim the address names that is not among the reader's is said so in
+  // the drawer it would have opened, once the claims have been read afresh
+  // (a claim filed a moment ago is not in a list kept from before); closing
+  // it takes the name out of the address.
+  const namedMissing =
+    detail !== '' && detailed === null && mine.isFetchedAfterMount && items.data !== undefined
+  const lingeringMissing = useLingering(namedMissing ? true : null)
   // A claim read in its drawer is read, as on the filing page: what changed
   // on it is no longer news anywhere. Its neighbours keep theirs.
   const markRead = useMarkEntryRead(batchId).mutate
@@ -524,6 +534,14 @@ function Standing({
           }}
           onAppeal={() => setAppealing(lingering.entry)}
           onSupplement={() => setAnswering(lingering.entry)}
+        />
+      )}
+      {lingeringMissing !== null && (
+        <MissingClaimSheet
+          open={namedMissing}
+          back={format(m.entryMissingBackResult)}
+          // a name that led nowhere leaves the address, and no step behind it
+          onClose={() => updateQuery({ detail: '' }, { history: 'replace' })}
         />
       )}
       {lingeringAppeal !== null && (

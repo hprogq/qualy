@@ -45,7 +45,16 @@ const styles = stylex.create({
   },
 })
 
-export function MissingClaimSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function MissingClaimSheet({
+  open,
+  back,
+  onClose,
+}: {
+  open: boolean
+  /** where closing it leaves the reader, said on its key; the list of claims by default */
+  back?: string
+  onClose: () => void
+}) {
   const { format } = useI18n()
   const phone = useWorkspaceMode() === 'phone'
   const failure = useLoadFailure().missing({
@@ -74,7 +83,7 @@ export function MissingClaimSheet({ open, onClose }: { open: boolean; onClose: (
             failure={failure}
             extra={
               <Button variant="outline" size="sm" onClick={onClose}>
-                {format(m.entryMissingBack)}
+                {back ?? format(m.entryMissingBack)}
               </Button>
             }
           />

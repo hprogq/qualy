@@ -1166,6 +1166,7 @@ export default {
   'assessment/entry-sheet/title': '申报详情',
   'assessment/entry-sheet/missing-title': '找不到该申报',
   'assessment/entry-sheet/missing-back': '返回申报列表',
+  'assessment/entry-sheet/missing-back-result': '返回我的成绩',
   'assessment/entry-sheet/content': '申报内容',
   'assessment/entry-sheet/trail': '审核记录',
   'assessment/entry-sheet/content-count': '{count} 项',

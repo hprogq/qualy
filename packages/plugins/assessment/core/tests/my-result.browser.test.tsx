@@ -1671,6 +1671,48 @@ describe('a claim read in its drawer on the score page', () => {
     await expect.element(drawer).toBeVisible()
     await expect.element(drawer.getByText('证书扫描件模糊').first()).toBeVisible()
   })
+
+  // A link to a claim that is not among the reader's opens its drawer all
+  // the same, to say so and to take the name out of the address - never
+  // nothing at all, with the stale name left standing.
+  it('says a claim the address names is not there, and clears it', async () => {
+    for (const width of [1440, 390]) {
+      await page.viewport(width, 900)
+      const { unmount } = await renderScreen({
+        client: fakeClient({
+          app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+          assessment: {
+            getBatch: () => Effect.succeed({ batch }),
+            getMyResult: () => Effect.succeed(paper().result),
+            getEntryHistory: () => Effect.succeed({ revisions: [], events: [], rounds: [] }),
+            listItems: () =>
+              Effect.succeed({ items: paper().items, capabilities: { canManage: false } }),
+            listMyEntries: () =>
+              Effect.succeed({
+                participantId: PARTICIPANT_ID,
+                entries: paper().entries,
+                nextCursor: null,
+                attention: { unreadEntryIds: [] },
+              }),
+          },
+        }),
+        routes: [{ path: '/assessment/batches/:batchId/my-result', element: <MyResultPage /> }],
+        route: `/assessment/batches/${BATCH_ID}/my-result?detail=gone`,
+      })
+      const missing = () =>
+        document.querySelector('[data-testid="claim-missing"] [data-slot="resource-state"]')
+      await expect.poll(() => missing()?.getAttribute('data-state')).toBe('missing')
+      await page.getByTestId('claim-missing').getByRole('button').click()
+      await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull()
+      expect({ width, address: addressNow().includes('detail=') }).toEqual({
+        width,
+        address: false,
+      })
+      // the account is still there under it
+      expect(page.getByTestId('result-total').elements()).toHaveLength(1)
+      await unmount()
+    }
+  })
 })
 
 describe('a score page that could not be read', () => {
