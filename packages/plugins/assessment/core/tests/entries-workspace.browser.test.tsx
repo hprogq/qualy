@@ -1636,6 +1636,10 @@ describe('what a question’s row says at a glance', () => {
       'with-item',
     )
     expect(row.querySelector('[data-when]')).toBeNull()
+    // how it ended is said once, by its standing: what it counts for says
+    // something else
+    const ended = row.querySelector('[data-testid="entry-standing"]')!.textContent
+    expect(row.querySelector('[data-amount]')!.textContent).not.toContain(ended)
     await userEvent.click(row)
     await vi.waitFor(() => expect(looked).toHaveBeenCalledOnce())
     expect(looked.mock.calls[0]![0].params.entryId).toBe(entryId(1))

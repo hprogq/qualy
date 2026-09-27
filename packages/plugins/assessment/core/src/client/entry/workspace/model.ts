@@ -338,11 +338,9 @@ export const entryLineOf = (
   let amountWord: MessageDescriptor = m.entryScoreIfApproved
   let amountTone: EntryLine['amountTone'] = 'pending'
   if (entry.status === 'voided') {
-    amountWord = administrative(entry)
-      ? m.recordStandingWithdrawn
-      : voidedWithItem(entry, item)
-        ? m.entryStatusVoided
-        : m.entryStatusAbandoned
+    // how it ended is its standing's to say, beside this; what it counts
+    // for is all this column adds
+    amountWord = m.entriesAmountNotCounted
     amountTone = 'muted'
   } else if (item.status === 'voided' || entry.status === 'rejected') {
     amountWord = m.entriesAmountNotCounted

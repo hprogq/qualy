@@ -254,12 +254,15 @@ describe('a claim’s identity line', () => {
     expect(said('given-up').act).toBe('abandoned')
     expect(said('given-up').action.id).toBe(m.resultActAbandoned.id)
     expect(said('revoked').action.id).toBe(m.entriesActRevoked.id)
-    // one that went with its question it was filed under: voided, in the
-    // row's word and its amount's, never given up
+    // one that went with its question it was filed under: voided, never
+    // given up. How any of them ended is the standing's word; the amount
+    // beside it says only that it does not count, never the same word twice
     const withdrawn: ItemDto = { ...withFile, status: 'voided' }
     const gone = entryLineOf(claims[0]!, withdrawn, null, words)
     expect(gone.action.id).toBe(m.entriesActVoided.id)
-    expect(gone.amountWord.id).toBe(m.entryStatusVoided.id)
+    expect(gone.amountWord.id).toBe(m.entriesAmountNotCounted.id)
+    expect(said('given-up').amountWord.id).toBe(m.entriesAmountNotCounted.id)
+    expect(said('revoked').amountWord.id).toBe(m.entriesAmountNotCounted.id)
     // A claim that ended voided holds no time of its ending, only that of
     // the last version filed: it is never said to have ended then. Every
     // other act's time is its own.
