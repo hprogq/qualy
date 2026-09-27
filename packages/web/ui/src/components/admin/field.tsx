@@ -1,5 +1,5 @@
 import { FieldFill } from '../field-fill.ts'
-import { useId, type ReactNode } from 'react'
+import { useEffect, useId, useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '../../theme/tokens.stylex.ts'
 import { breakpoints } from '../../theme/breakpoints.stylex.ts'
@@ -9,6 +9,7 @@ import { EmptyField } from '../empty-field.tsx'
 import {
   Field as FormField,
   FieldDescription as FormFieldDescription,
+  FieldError as FormFieldError,
   FieldLabel as FormFieldLabel,
 } from '../field.tsx'
 import { RadioGroup as RadioGroupRoot, RadioGroupItem } from '../radio-group.tsx'
@@ -188,9 +189,22 @@ export function RequiredMark() {
   )
 }
 
+/**
+ * What a field's control carries for whoever reads it aloud: that it must be
+ * filled, that what it holds was refused, and where the words about it are.
+ * Spread onto the control by the caller, which is the one that knows what
+ * the control is.
+ */
+export interface FieldControl {
+  readonly 'aria-required'?: true
+  readonly 'aria-invalid'?: true
+  readonly 'aria-describedby'?: string
+}
+
 export function Field({
   label,
   hint,
+  error,
   required = false,
   aside,
   note,
@@ -218,9 +232,25 @@ export function Field({
    * ask for.
    */
   required?: boolean
-  children: (id: string) => ReactNode
+  /**
+   * Why what the field holds was refused - a format it does not have, a
+   * value somebody else already holds - said under the field it is about
+   * rather than over the whole form. Only for what a reader can fix here;
+   * what they cannot is the form's to say.
+   */
+  error?: ReactNode
+  children: (id: string, control: FieldControl) => ReactNode
 }) {
   const id = useId()
+  const errorId = `${id}-error`
+  const hintId = `${id}-hint`
+  const said = error !== undefined && error !== null && error !== false && error !== ''
+  const describedBy = [said ? errorId : null, hint ? hintId : null].filter(Boolean).join(' ')
+  const control: FieldControl = {
+    ...(required ? { 'aria-required': true as const } : {}),
+    ...(said ? { 'aria-invalid': true as const } : {}),
+    ...(describedBy === '' ? {} : { 'aria-describedby': describedBy }),
+  }
   return (
     <FormField>
       <FormFieldLabel
@@ -241,8 +271,13 @@ export function Field({
           </>
         )}
       </FormFieldLabel>
-      <FieldFill value>{children(id)}</FieldFill>
-      {hint && <FormFieldDescription>{hint}</FormFieldDescription>}
+      <FieldFill value>{children(id, control)}</FieldFill>
+      {said && (
+        <FormFieldError id={errorId} data-testid="field-error">
+          {error}
+        </FormFieldError>
+      )}
+      {hint && <FormFieldDescription id={hintId}>{hint}</FormFieldDescription>}
     </FormField>
   )
 }
@@ -266,6 +301,7 @@ export function CheckboxGroup({
   emptyHint,
   emptyAction,
   hideLegend = false,
+  required = false,
 }: {
   legend: string
   options: readonly CheckboxOption[]
@@ -286,6 +322,8 @@ export function CheckboxGroup({
    * fieldset still needs a name; what it does not need is to say it twice.
    */
   hideLegend?: boolean
+  /** at least one must be ticked: the legend wears the mark a required field's label does */
+  required?: boolean
 }) {
   const chosen = new Set(selected)
   const toggle = (value: string) => {
@@ -304,6 +342,7 @@ export function CheckboxGroup({
         )}
       >
         {legend}
+        {required && !hideLegend && <RequiredMark />}
       </legend>
       {options.length === 0 ? (
         <EmptyField
@@ -429,4 +468,28 @@ export function RadioGroup({
       </RadioGroupRoot>
     </fieldset>
   )
+}
+
+/**
+ * A check on what is being typed, said once the typing has settled: after a
+ * pause, or on leaving the field - never at the first character, when every
+ * address is still an invalid one. Nothing is said about an empty field;
+ * whether one may be empty is the form's to decide.
+ */
+export function useSettledCheck(
+  value: string,
+  check: (value: string) => string | null,
+  pause = 700,
+): { readonly error: string | null; readonly onBlur: () => void } {
+  const [settled, setSettled] = useState(value)
+  const [left, setLeft] = useState(false)
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(value), pause)
+    return () => clearTimeout(timer)
+  }, [value, pause])
+  const judged = left ? value : settled
+  return {
+    error: judged.trim() === '' ? null : check(judged),
+    onBlur: () => setLeft(true),
+  }
 }

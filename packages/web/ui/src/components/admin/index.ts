@@ -6,5 +6,13 @@
 // structure, async states, form fields, overlays.
 export { BannerBack, PageHeader, Panel } from './page.tsx'
 export { AsyncSection, Feedback } from './async.tsx'
-export { RequiredMark, Field, CheckboxGroup, RadioGroup, type CheckboxOption } from './field.tsx'
+export {
+  RequiredMark,
+  Field,
+  CheckboxGroup,
+  RadioGroup,
+  useSettledCheck,
+  type CheckboxOption,
+  type FieldControl,
+} from './field.tsx'
 export { FormDialog, SidePanel, ConfirmDialog } from './dialog.tsx'

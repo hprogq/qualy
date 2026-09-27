@@ -3,7 +3,7 @@
 import * as React from 'react'
 import type { StyleXStyles } from '@stylexjs/stylex'
 import * as stylex from '@stylexjs/stylex'
-import { Input as MInput } from '@mantine/core'
+import { Input as MInput, InputWrapperContext } from '@mantine/core'
 
 // The Qualy text input. The public API stays "a native input's props":
 // name, value, onChange, placeholder, type, aria-* and data-* all reach the
@@ -44,6 +44,7 @@ function Input({
   tail,
   size,
   'aria-invalid': ariaInvalid,
+  'aria-describedby': describedBy,
   ...props
 }: React.ComponentProps<'input'> & {
   wrapperClassName?: string
@@ -58,24 +59,38 @@ function Input({
   // its own error prop and would otherwise overwrite the attribute
   const invalid = ariaInvalid === true || ariaInvalid === 'true'
   const sx = stylex.props(wrapperXstyle)
+  // the widget takes the words that describe it from the wrapper it expects
+  // to sit in, and overwrites whatever it was handed: so the words are handed
+  // to it as that wrapper would, and a field's hint and refusal stay attached
   return (
-    <MInput
-      className={
-        wrapperClassName === undefined
-          ? sx.className
-          : `${sx.className ?? ''} ${wrapperClassName}`.trim()
-      }
-      style={sx.style}
-      classNames={{ input: className ?? '' }}
-      {...(lead === undefined ? {} : { leftSection: lead, leftSectionPointerEvents: 'none' })}
-      {...(tail === undefined ? {} : { rightSection: tail, rightSectionPointerEvents: 'none' })}
-      // the native size attribute; the visual size is the theme's business
-      {...(size === undefined ? {} : { inputSize: String(size) })}
-      {...(invalid ? { error: true } : {})}
-      data-slot="input"
-      {...(props.type === 'search' ? LOOKUP : {})}
-      {...props}
-    />
+    <InputWrapperContext
+      value={{
+        offsetTop: false,
+        offsetBottom: false,
+        describedBy,
+        inputId: undefined,
+        labelId: undefined,
+        getStyles: null,
+      }}
+    >
+      <MInput
+        className={
+          wrapperClassName === undefined
+            ? sx.className
+            : `${sx.className ?? ''} ${wrapperClassName}`.trim()
+        }
+        style={sx.style}
+        classNames={{ input: className ?? '' }}
+        {...(lead === undefined ? {} : { leftSection: lead, leftSectionPointerEvents: 'none' })}
+        {...(tail === undefined ? {} : { rightSection: tail, rightSectionPointerEvents: 'none' })}
+        // the native size attribute; the visual size is the theme's business
+        {...(size === undefined ? {} : { inputSize: String(size) })}
+        {...(invalid ? { error: true } : {})}
+        data-slot="input"
+        {...(props.type === 'search' ? LOOKUP : {})}
+        {...props}
+      />
+    </InputWrapperContext>
   )
 }
 

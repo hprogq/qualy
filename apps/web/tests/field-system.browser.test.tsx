@@ -3,7 +3,11 @@ import { page } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 import { useState } from 'react'
 import { Field, FieldContent, FieldDescription, FieldLabel } from '@qualy/ui/field'
-import { Field as AdminField, RadioGroup as AdminRadioGroup } from '@qualy/ui/admin'
+import {
+  Field as AdminField,
+  RadioGroup as AdminRadioGroup,
+  useSettledCheck,
+} from '@qualy/ui/admin'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Input } from '@qualy/ui/input'
 import { UiProvider } from '@qualy/ui/provider'
@@ -21,6 +25,82 @@ describe('the admin field wires its label', () => {
     await mount(<AdminField label="批次名称">{(id) => <Input id={id} name="title" />}</AdminField>)
     // reachable by accessible name is the entire point of the wiring
     await expect.element(page.getByLabelText('批次名称')).toBeVisible()
+  })
+
+  it('hands the control what it must say: required, refused, and where the words are', async () => {
+    await mount(
+      <AdminField label="邮箱" required hint="用于找回密码" error="该邮箱已被占用">
+        {(id, control) => <Input id={id} {...control} />}
+      </AdminField>,
+    )
+    const input = page.getByRole('textbox', { name: '邮箱' })
+    await expect.element(input).toHaveAttribute('aria-required', 'true')
+    await expect.element(input).toHaveAttribute('aria-invalid', 'true')
+    const error = page.getByTestId('field-error')
+    await expect.element(error).toBeVisible()
+    // the refusal is read first, then the hint
+    const described = input.element().getAttribute('aria-describedby')!.split(' ')
+    expect(described).toHaveLength(2)
+    expect(described[0]).toBe(error.element().id)
+  })
+
+  it('says nothing of a field that is neither required nor refused', async () => {
+    await mount(
+      <AdminField label="备注">{(id, control) => <Input id={id} {...control} />}</AdminField>,
+    )
+    const input = page.getByRole('textbox', { name: '备注' }).element()
+    expect(input.hasAttribute('aria-required')).toBe(false)
+    expect(input.hasAttribute('aria-invalid')).toBe(false)
+    expect(input.hasAttribute('aria-describedby')).toBe(false)
+  })
+})
+
+describe('a check on what is typed waits for the typing to settle', () => {
+  // long enough that a loaded machine does not settle it between two steps
+  const PAUSE = 1500
+  const settled = { timeout: PAUSE * 4 }
+  function Probe() {
+    const [value, setValue] = useState('')
+    const check = useSettledCheck(value, (typed) => (typed.includes('@') ? null : 'bad'), PAUSE)
+    return (
+      <>
+        <input
+          aria-label="probe"
+          value={value}
+          onBlur={check.onBlur}
+          onChange={(e) => setValue(e.target.value)}
+        />
+        <output data-testid="said">{check.error ?? ''}</output>
+      </>
+    )
+  }
+
+  it('says nothing at the first character, and says it once the typing stops', async () => {
+    await mount(<Probe />)
+    const input = page.getByRole('textbox', { name: 'probe' })
+    await input.fill('a')
+    expect(page.getByTestId('said').element().textContent).toBe('')
+    await expect.poll(() => page.getByTestId('said').element().textContent, settled).toBe('bad')
+    // fixed, and the next settle takes the refusal back
+    await input.fill('a@b')
+    await expect.poll(() => page.getByTestId('said').element().textContent, settled).toBe('')
+  })
+
+  it('says it at once when the field is left', async () => {
+    await mount(<Probe />)
+    const input = page.getByRole('textbox', { name: 'probe' })
+    await input.fill('a')
+    ;(input.element() as HTMLInputElement).blur()
+    await expect.poll(() => page.getByTestId('said').element().textContent).toBe('bad')
+  })
+
+  it('judges nothing of an empty field', async () => {
+    await mount(<Probe />)
+    const input = page.getByRole('textbox', { name: 'probe' })
+    await input.fill('')
+    ;(input.element() as HTMLInputElement).blur()
+    await new Promise((resolve) => setTimeout(resolve, PAUSE + 200))
+    expect(page.getByTestId('said').element().textContent).toBe('')
   })
 })
 
