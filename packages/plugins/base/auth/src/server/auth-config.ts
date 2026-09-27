@@ -21,6 +21,12 @@ export class AuthConfig extends Context.Service<
     /** the tenant an anonymous visitor is offered a way into */
     readonly defaultTenantSlug: string
     readonly sessionTtlSeconds: number
+    /**
+     * How long a session may go unused before it ends, however long it had
+     * left to run. Absent means no idle limit, which is what a test stack
+     * composed by hand gets; a deployment's comes from the environment.
+     */
+    readonly sessionIdleSeconds?: number
     readonly secureCookies: boolean
     /** the one cookie name this process reads and writes; `__Host-` prefixed when secure */
     readonly sessionCookieName: string
@@ -64,6 +70,26 @@ export class AuthConfig extends Context.Service<
  */
 export const PRIVATE_ALLOWLIST_MALFORMED =
   'QUALY_AUTH_PRIVATE_PROVIDER_ALLOWLIST must be a comma-separated list of hostnames, addresses or CIDR blocks'
+
+export const SESSION_IDLE_MALFORMED =
+  'QUALY_SESSION_IDLE_SECONDS must be a whole number of seconds, at least 600, or 0 for no idle limit'
+
+/** a session unused for this long ends, unless the deployment says otherwise */
+export const DEFAULT_SESSION_IDLE_SECONDS = 7_200
+
+/**
+ * The idle limit a deployment asked for: undefined for none, and nothing
+ * shorter than ten minutes - use is recorded at most every five, so a shorter
+ * limit would end sessions that are in use.
+ */
+export const sessionIdleFrom = (raw: string): number | undefined | 'malformed' => {
+  const value = raw.trim()
+  if (value === '') return DEFAULT_SESSION_IDLE_SECONDS
+  if (!/^\d{1,9}$/.test(value)) return 'malformed'
+  const seconds = Number(value)
+  if (seconds === 0) return undefined
+  return seconds < 600 ? 'malformed' : seconds
+}
 
 export const PUBLIC_URL_MALFORMED =
   'QUALY_PUBLIC_URL must be an absolute http(s) origin with no path, such as https://qualy.example.edu'
@@ -153,6 +179,10 @@ export const config = (
       if (!allowlisted.every(allowlistEntryValid)) {
         return yield* Effect.die(new Error(PRIVATE_ALLOWLIST_MALFORMED))
       }
+      const sessionIdle = sessionIdleFrom(
+        yield* Config.String('QUALY_SESSION_IDLE_SECONDS').pipe(Config.withDefault('')),
+      )
+      if (sessionIdle === 'malformed') return yield* Effect.die(new Error(SESSION_IDLE_MALFORMED))
       const demoAccounts = parseDemoAccounts(
         yield* Config.String('QUALY_DEMO_ACCOUNTS').pipe(Config.withDefault('')),
       )
@@ -171,6 +201,7 @@ export const config = (
         sessionTtlSeconds: yield* Config.Number('QUALY_SESSION_TTL_SECONDS').pipe(
           Config.withDefault(604_800),
         ),
+        ...(sessionIdle === undefined ? {} : { sessionIdleSeconds: sessionIdle }),
         secureCookies,
         sessionCookieName: sessionCookieNameFor(secureCookies),
         strictBoot: secureCookies,

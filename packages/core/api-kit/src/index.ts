@@ -66,6 +66,14 @@ export const HEALTH_READY_PATH = '/health/ready'
  */
 export const QUALY_REQUEST_ID_HEADER = 'x-qualy-request-id'
 
+/**
+ * Set to `1` by the browser on a request nobody at the keyboard asked for just
+ * now: a poll, a refetch a live wake-up caused, a page left open in a hidden
+ * tab. A session is kept alive by its reader's activity, not by the page's
+ * own traffic, so such a request is served without counting as use.
+ */
+export const QUALY_BACKGROUND_HEADER = 'x-qualy-background'
+
 // --- pagination ---
 
 // Keyset pagination, in the kit because the alternative is what every list

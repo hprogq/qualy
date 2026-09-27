@@ -42,9 +42,15 @@ Cookie + 不透明 session token(库存 sha256),不用 JWT/localStorage:
 - 原始 token = 32 字节 CSPRNG(base64url 43 字符),仅存在于 Cookie;
 - 库存 sha256(token) hex 64 位(sessions.token_hash char(64) unique);
 - Cookie:HttpOnly + SameSite=Lax + Path=/,无 Domain;生产(`secureCookies`,即 `NODE_ENV === 'production'`)加 Secure 且名字带 `__Host-` 前缀——见下节「Cookie 名」;
-- TTL 默认 7 天(sessionTtlSeconds),Cookie maxAge 与之对齐;
-- last_used_at 节流 900s(touchIntervalSeconds)才写;
-- 校验链:session 存在 → 未过期(过期即删行,回 SESSION_EXPIRED)→ user.enabled
+- TTL 默认 7 天(sessionTtlSeconds),Cookie maxAge 与之对齐;这是绝对上限;
+- **空闲上限**(2026-09-27,外部审计 P2-1):`QUALY_SESSION_IDLE_SECONDS`,默认 7200(2 小时),`0` 关闭,小于 600 拒启。
+  从 `coalesce(last_used_at, created_at)` 算,由库的 `now()` 判定;超过即与过期同样处理(删行、清 Cookie、回 SESSION_EXPIRED)。
+  机房、共用电脑上关掉浏览器而会话还在,是这条要挡的;
+- last_used_at 节流 300s 才写(`TOUCH_INTERVAL_MS`),所以空闲判定有 5 分钟松弛:1 小时 55 分前记下的使用仍有效,2 小时 05 分前的一定过期;
+- **后台请求不算使用**:浏览器在标签页隐藏或读者一分钟内没有按键、点按、触摸、滚动时发出的请求带 `x-qualy-background: 1`
+  (`@qualy/api-kit` 的 `QUALY_BACKGROUND_HEADER`,由 web-runtime 的 transport 逐个请求判定),服务端照常服务、不改 last_used_at,
+  否则开着不管的页面靠轮询与实时通道重连就能永远续命;
+- 校验链:session 存在 → 未过期且未超过空闲上限(否则删行,回 SESSION_EXPIRED)→ user.enabled
   → user_type.enabled → tenant.enabled 且未过 expires_at;
 - allowLocalLogin 只在登录入口检查,不参与已有 session 校验(撤销手段=禁用 user/type/tenant)。
 
@@ -570,6 +576,12 @@ smtp 后端对着 Mailpit 跑同一套,CI 设 `QUALY_REQUIRE_MAILPIT_TESTS=1`,�
   且只在当前 manifest 为 `authenticated` 时触发(匿名访客收到这两个码是常态,否则会死循环)。流程:取消在途请求 → 重置除 manifest 外的全部缓存(上一身份的数据不留) →
   重取 manifest → 仍为 `authenticated`(别处续了会话)就停 → 否则让仍在屏上的页面以匿名身份重问。**runtime 不知道登录页在哪**:当前地址在匿名 manifest 里还能定位
   (PUBLIC 页)就原地不动,不能定位才由路由兜底送去登录。多个请求同时 401 只跑一次。
+- **原地重新登录**(2026-09-27):上面的流程只在读者选择退出、或没有身份键时才发生。manifest 对已登录者带 `identity`(租户与用户 id 的 sha256
+  截断,同一人跨会话相同、不同人不同,不暴露 id);所有 API 调用经 web-runtime 的 `browserRuntime`,调用遇 `AUTH_REQUIRED` / `SESSION_EXPIRED`
+  且 manifest 为已登录时先挂起(`session-recovery.ts`),约 300ms 宽限后仍不是主动切换身份(`useSessionTransition` 期间或切换已完成)才弹对话框:
+  「在新标签页登录」「退出登录」「稍后」。本页每 3 秒及回到本页时直接问 manifest:同一人回来 → 被挂起的调用原样再跑一次(被拒的调用在认证中间件处
+  就停了,重跑安全),页面与未保存的输入都在;换了别人 → 不可关闭的「已有其他账号登录」,只能重新载入,绝不以新身份提交上一个人的内容;
+  「退出登录」→ 调用按原样失败,走上面的流程。实时通道同样经过这里,重连在恢复后继续。
 - **已登录访问 `/login`**:有 `next` 去 `next`,否则回首页(`replace`)。判定用进页面后新发的一次 `GET /auth/session`(以 `isFetchedAfterMount` 为准),
   不用 30 秒保鲜的身份缓存,防过期会话在登录页与首页之间来回弹;判定前显示骨架屏。换账号就是先退出,不做多账号与「切换账号」入口。
 - `/reset-password`、`/confirm-email` 不跳:邮件链接可能在另一个账号已登录时打开,流程只认 token;已登录却忘了当前密码的人只能走找回。

@@ -1,5 +1,6 @@
 import { Effect, Layer } from 'effect'
 import { HttpServerRequest } from 'effect/unstable/http'
+import { QUALY_BACKGROUND_HEADER } from '@qualy/api-kit'
 import { bindSessionId } from '@qualy/api-kit/request'
 import { withDatabase } from '@qualy/plugin-database/server'
 import { db } from './db.ts'
@@ -38,13 +39,17 @@ import { hashSessionToken } from '../session.ts'
 // handler remembers to something its signature states.
 
 /**
- * The session behind a token, with the two questions that decide its fate.
+ * The session behind a token, with the questions that decide its fate.
  *
  * The aliases are worth reading slowly: `t` is the USER TYPE and `n` is the
  * TENANT. Checking `t.enabled` and forgetting `n.enabled` leaves a disabled
  * tenant's sessions working, which is what this expression got wrong once.
+ *
+ * `idle` is the deployment's idle limit, measured from the last use recorded,
+ * or from the start for a session never used since; the database's clock
+ * decides it, as it decides the absolute expiry beside it.
  */
-const sessionByToken = (tokenHash: string) =>
+const sessionByToken = (tokenHash: string, idleSeconds: number | undefined) =>
   db.query((k) =>
     k
       .selectFrom('Session as s')
@@ -62,6 +67,10 @@ const sessionByToken = (tokenHash: string) =>
         's.userId',
         's.lastUsedAt',
         sql<boolean>`${eb.ref('s.expiresAt')} <= now()`.as('expired'),
+        (idleSeconds === undefined
+          ? sql<boolean>`false`
+          : sql<boolean>`coalesce(${eb.ref('s.lastUsedAt')}, ${eb.ref('s.createdAt')}) <= now() - make_interval(secs => ${idleSeconds})`
+        ).as('idle'),
         sql<boolean>`
           ${eb.ref('u.enabled')} and ${eb.ref('t.enabled')} and ${eb.ref('n.enabled')}
           and (${eb.ref('n.expiresAt')} is null or ${eb.ref('n.expiresAt')} > now())
@@ -83,8 +92,26 @@ const touchSession = (id: string) =>
       .execute(),
   )
 
-/** how long a session may go unused before its last-used stamp is rewritten */
-const TOUCH_INTERVAL_MS = 5 * 60 * 1000
+/**
+ * How long a session may go unused before its last-used stamp is rewritten.
+ *
+ * Also the slack in the idle limit: use within the last five minutes may not
+ * have been recorded yet, so a session idle for the limit minus this may
+ * already count as idle, and one idle for the limit always does.
+ */
+export const TOUCH_INTERVAL_MS = 5 * 60 * 1000
+
+/**
+ * Whether the request is the page's own traffic rather than its reader's.
+ *
+ * A poll, a refetch a live wake-up caused, anything from a hidden tab: served
+ * like any other request, but not use - otherwise a page left open on a
+ * shared computer keeps its session alive forever by itself.
+ */
+const backgroundRequest = Effect.map(
+  HttpServerRequest.HttpServerRequest,
+  (request) => request.headers[QUALY_BACKGROUND_HEADER] === '1',
+)
 
 const staleness = (lastUsedAt: Date | string | null) => {
   if (lastUsedAt === null) return Number.POSITIVE_INFINITY
@@ -115,10 +142,13 @@ const presentedToken = (name: string) =>
 const resolve = Effect.fn('Auth.resolveSession')(function* (
   clear: () => Effect.Effect<void, never, HttpServerRequest.HttpServerRequest>,
   token: string,
+  idleSeconds: number | undefined,
 ) {
-  const session = yield* sessionByToken(hashSessionToken(token)).pipe(Effect.orDie)
+  const session = yield* sessionByToken(hashSessionToken(token), idleSeconds).pipe(Effect.orDie)
   if (!session) return { state: 'absent' as const }
-  if (session.expired) {
+  // gone unused for longer than the deployment allows is the same end as
+  // running out: the row goes, and the browser is told to drop the cookie
+  if (session.expired || session.idle) {
     yield* deleteSession(session.id).pipe(Effect.orDie)
     yield* clear()
     return { state: 'expired' as const }
@@ -129,7 +159,7 @@ const resolve = Effect.fn('Auth.resolveSession')(function* (
     yield* clear()
     return { state: 'absent' as const }
   }
-  if (staleness(session.lastUsedAt) > TOUCH_INTERVAL_MS) {
+  if (staleness(session.lastUsedAt) > TOUCH_INTERVAL_MS && !(yield* backgroundRequest)) {
     yield* touchSession(session.id).pipe(Effect.orDie)
   }
   // the request now has a session; whoever records the request - the audit
@@ -166,7 +196,10 @@ export const viewerLayer = Layer.effect(
       withDb(
         Effect.gen(function* () {
           const token = yield* presentedToken(config.sessionCookieName)
-          const found = token === '' ? { state: 'absent' as const } : yield* resolve(clear, token)
+          const found =
+            token === ''
+              ? { state: 'absent' as const }
+              : yield* resolve(clear, token, config.sessionIdleSeconds)
           return yield* Effect.provideService(httpEffect, CurrentViewer, {
             principal: found.state === 'valid' ? found.principal : undefined,
           })
@@ -193,10 +226,13 @@ export const layer = Layer.effect(
           // no token is the commonest way to be unauthenticated, and the one
           // that costs nothing to answer: it never reaches the database
           if (token === '') return yield* new AuthRequired()
-          const session = yield* sessionByToken(hashSessionToken(token)).pipe(Effect.orDie)
+          const session = yield* sessionByToken(
+            hashSessionToken(token),
+            config.sessionIdleSeconds,
+          ).pipe(Effect.orDie)
           // an unknown token is the same answer
           if (!session) return yield* new AuthRequired()
-          if (session.expired) {
+          if (session.expired || session.idle) {
             yield* deleteSession(session.id).pipe(Effect.orDie)
             yield* clear()
             return yield* new SessionExpired()
@@ -208,7 +244,7 @@ export const layer = Layer.effect(
             return yield* new AuthRequired()
           }
 
-          if (staleness(session.lastUsedAt) > TOUCH_INTERVAL_MS) {
+          if (staleness(session.lastUsedAt) > TOUCH_INTERVAL_MS && !(yield* backgroundRequest)) {
             yield* touchSession(session.id).pipe(Effect.orDie)
           }
 
