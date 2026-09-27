@@ -274,11 +274,13 @@ describe('a batch that is not there for the reader', () => {
       route: `/assessment/batches/${BATCH_ID}`,
       routes: [{ path: '/assessment/batches/:batchId', element: <BatchOverviewPage /> }],
     })
-    const state = page.getByRole('heading', { level: 1 })
-    await expect.element(state).toBeVisible()
-    const seat = state.element().closest('[data-slot="resource-state"]')
-    expect(seat?.getAttribute('data-state')).toBe('missing')
-    expect(seat?.getAttribute('data-size')).toBe('page')
+    // the pane itself, not the first page heading to arrive: on a slow
+    // machine another one can be drawn before the refusal lands
+    const seat = page.getByResourceState()
+    await expect.element(seat).toHaveAttribute('data-state', 'missing')
+    await expect.element(seat).toHaveAttribute('data-size', 'page')
+    // and the page's own heading is the pane's
+    expect(seat.element().querySelector('h1')).not.toBeNull()
     expect(page.getByTestId('batch-band').elements()).toHaveLength(0)
   })
 })
