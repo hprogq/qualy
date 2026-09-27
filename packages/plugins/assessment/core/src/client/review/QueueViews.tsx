@@ -1873,6 +1873,8 @@ function SpreadRows({
                         <span {...stylex.props(styles.answerLabel)}>{pair.label}</span>
                         <span
                           data-testid="inbox-row-value"
+                          // the whole answer on hover, where its lines run out
+                          title={pair.files === null ? pair.value : undefined}
                           {...stylex.props(
                             styles.answerValue,
                             pair.files === 0 && styles.quietFiled,

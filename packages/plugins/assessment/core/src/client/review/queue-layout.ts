@@ -219,13 +219,19 @@ interface SpreadAnswer {
   readonly files: number | null
 }
 
+/** the least a column of a filing laid out whole is given where its answer has to wrap */
+const SPREAD_FLOOR = 160
+
 /**
- * The columns a filing laid out whole gives its answers, where every one of
- * them fits on one line: each as wide as its label or its longest answer,
- * whichever is wider, and the room left over shared by the same measure.
- * Filings of one question are measured together, so their answers line up
- * under each other. Null where they do not fit, and the answers wrap to as
- * many lines as they need instead.
+ * The columns a filing laid out whole gives its answers, side by side: each
+ * as wide as its label or its longest answer, whichever is wider, and the
+ * room left over shared by the same measure. Where a long answer cannot
+ * have its whole line, it wraps inside a column that takes the room the
+ * short ones beside it do not need, rather than every answer being given
+ * the same narrow share. Filings of one question are measured together, so
+ * their answers line up under each other. Null where even the short ones
+ * cannot stand side by side, and the answers wrap to as many lines as they
+ * need instead.
  */
 export const spreadColumnsOf = (
   filings: readonly (readonly SpreadAnswer[])[],
@@ -249,7 +255,14 @@ export const spreadColumnsOf = (
       ),
     ),
   )
-  const total = needs.reduce((sum, need) => sum + need, 0) + ANSWER_GAP * (count - 1)
-  if (total > room - 2 * SPREAD_INSET) return null
-  return needs.map((need) => `minmax(${String(need)}px, ${String(need)}fr)`).join(' ')
+  const inner = room - 2 * SPREAD_INSET
+  const gaps = ANSWER_GAP * (count - 1)
+  const floors =
+    needs.reduce((sum, need) => sum + need, 0) + gaps <= inner
+      ? needs
+      : needs.map((need) => Math.min(need, SPREAD_FLOOR))
+  if (floors.reduce((sum, floor) => sum + floor, 0) + gaps > inner) return null
+  return needs
+    .map((need, index) => `minmax(${String(floors[index]!)}px, ${String(need)}fr)`)
+    .join(' ')
 }

@@ -444,6 +444,41 @@ describe('a question or a person of a few, open in a longer queue', () => {
     })
   }
 
+  // A long answer wraps inside a column that takes the room the short ones
+  // beside it do not need, and says all of itself on hover.
+  it('gives a long answer the room the short ones beside it leave', async () => {
+    await page.viewport(1440, 900)
+    const long =
+      '基于多模态大模型的校园安全隐患智能识别与预警系统研发，本人负责数据标注流程设计、模型微调与评测，并撰写结题报告全文约两万字'
+    await shelled([
+      ...[0, 1].map((n) =>
+        filing(n, {
+          values: [
+            { label: '项目名称与本人承担的工作', value: long, files: null },
+            { label: '级别', value: '国家级', files: null },
+            { label: '证明材料', value: '', files: 1 },
+          ],
+        }),
+      ),
+      volunteering(2),
+      volunteering(5),
+    ])
+    // the question open beside the list, in the pane's narrower room
+    await expect.element(layout()).toHaveAttribute('data-layout', 'split')
+    await expect.element(rows().first()).toBeVisible()
+    const row = rows().first().element()
+    expect(row.getAttribute('data-answers-line')).toBe('one')
+    const [first, grade] = [...row.querySelectorAll<HTMLElement>('[data-testid="inbox-row-value"]')]
+    expect(first!.getAttribute('title')).toBe(long)
+    expect(first!.getBoundingClientRect().width).toBeGreaterThan(
+      3 * grade!.getBoundingClientRect().width,
+    )
+    // on the same line as the short ones, not a row of its own
+    expect(Math.round(first!.getBoundingClientRect().top)).toBe(
+      Math.round(grade!.getBoundingClientRect().top),
+    )
+  })
+
   it('lines the answers of one question up under each other', async () => {
     await page.viewport(1440, 900)
     await shelled(sparse(), `?item=${ITEM_ID}`)
