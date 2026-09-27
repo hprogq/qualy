@@ -3,7 +3,7 @@ import BatchSettingsPage from '../src/client/BatchSettingsPage.tsx'
 import MyEntriesPage from '../src/client/entry/MyEntriesPage.tsx'
 import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
 import { lazy, type ReactNode } from 'react'
-import { Route, Routes } from 'react-router'
+import { Route, Routes, useNavigate } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
@@ -127,6 +127,7 @@ const PAGES = [
   { id: 'assessment/batch-access', path: '/assessment/batches/:batchId/access' },
   { id: 'assessment/batch-settings', path: '/assessment/batches/:batchId/settings' },
   { id: 'assessment/batch-my-entries', path: '/assessment/batches/:batchId/my-entries' },
+  { id: 'assessment/batch-reviews', path: '/assessment/batches/:batchId/reviews' },
 ].map((entry) => ({ ...entry, layout: 'admin' }))
 
 const manifest = () => ({
@@ -628,6 +629,64 @@ describe('the administration lane of the overview', () => {
     expect(row('admin-unreadable')).toBeNull()
     // the handle inside the row is the row's own door: one press, one read
     expect(asked - before).toBe(1)
+  })
+})
+
+describe('a row on the desk', () => {
+  /** where the row leads, with the browser's own way back */
+  function Reviews() {
+    const navigate = useNavigate()
+    return (
+      <button type="button" onClick={() => void navigate(-1)}>
+        back
+      </button>
+    )
+  }
+
+  // The row is the door and its verb is the handle on it: pressed, the
+  // handle must not also open the door, or the move is made twice and one
+  // press of back leaves the reader where they were.
+  it('goes once for a press of its verb, so one step back returns to the overview', async () => {
+    await page.viewport(1280, 800)
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed(manifest()) },
+        assessment: stubs({
+          getBatch: () =>
+            Effect.succeed({
+              batch: batch({
+                manageable: false,
+                capabilities: {
+                  personal: false,
+                  review: true,
+                  record: false,
+                  manage: false,
+                  redetermine: false,
+                },
+              }),
+            }),
+          getMyOverview: () =>
+            Effect.succeed({
+              participant: null,
+              reviewer: { pendingCount: 2, answeredAskCount: 0, queueGroups: [], answeredAsks: [] },
+            }),
+        }),
+      }),
+      route: `/assessment/batches/${BATCH_ID}`,
+      routes: [
+        { path: '/assessment/batches/:batchId', element: <BatchOverviewPage /> },
+        { path: '/assessment/batches/:batchId/reviews', element: <Reviews /> },
+      ],
+    })
+    await expect.element(page.getByTestId('overview-actions')).toBeVisible()
+    page
+      .getByTestId('overview-actions')
+      .element()
+      .querySelector('[data-action="review-pending"] button')!
+      .click()
+    await vi.waitFor(() => expect(addressNow()).toBe(`/assessment/batches/${BATCH_ID}/reviews`))
+    await page.getByRole('button', { name: 'back' }).click()
+    await vi.waitFor(() => expect(addressNow()).toBe(`/assessment/batches/${BATCH_ID}`))
   })
 })
 
