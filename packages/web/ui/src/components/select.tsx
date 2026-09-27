@@ -23,6 +23,14 @@ import { CheckIcon } from 'lucide-react'
 // Escape layering: focus stays on the trigger while the list is open (the
 // combobox pattern), so the trigger stops a handled Escape from travelling
 // on to a modal's window listener - one press, one layer.
+//
+// One lit row, the one Enter picks. The widget keeps the row its keys are on
+// as an index in its store and as a mark in the list, and the pointer moves
+// both (SelectItem). A list opens with the choice in force lit, so the keys
+// start from it and Enter on a list just opened keeps that choice; it closes
+// with the index cleared. The index outlives the list's rows - a closed list
+// leaves the document - so a row the pointer crossed before the list closed
+// was otherwise what Enter took on the next opening, with nothing lit.
 
 interface SelectState {
   value: string | undefined
@@ -33,8 +41,19 @@ interface SelectState {
   toggle: () => void
   /** make an option the one Enter picks, as the pointer comes onto it */
   highlight: (option: HTMLElement) => void
+  /**
+   * The ref of the list's options element: as the list enters the document
+   * it lights the choice in force and starts saying which row is lit.
+   */
+  listed: (list: HTMLElement | null) => (() => void) | undefined
 }
 const SelectCtx = React.createContext<SelectState | null>(null)
+/**
+ * The id of the lit row, said to assistive technology as the active one. Its
+ * own context, read by the trigger alone: it moves with every key press, and
+ * the options have no need to render again each time it does.
+ */
+const LitCtx = React.createContext<string | undefined>(undefined)
 
 function useSelect(): SelectState {
   const ctx = React.use(SelectCtx)
@@ -108,13 +127,75 @@ function Select(props: {
   const [opened, setOpened] = React.useState(false)
   // the modal panel the trigger sits in, found as the list opens
   const [bound, setBound] = React.useState<Element | null>(null)
+  const [lit, setLit] = React.useState<string | undefined>(undefined)
   const store = useCombobox({
     onDropdownOpen: () => {
       setBound(store.targetRef.current?.closest(MODAL_PANEL) ?? null)
       setOpened(true)
     },
-    onDropdownClose: () => setOpened(false),
+    onDropdownClose: () => {
+      // the widget's own select does the same: the next opening starts from
+      // the choice, not from the row the pointer last crossed
+      store.resetSelectedOption()
+      setOpened(false)
+    },
   })
+  const { updateSelectedOptionIndex } = store
+  // Stable, because it is the options element's ref: a new one each render
+  // would detach and reattach the list, lighting the choice again after
+  // every key press.
+  const listed = React.useCallback(
+    (list: HTMLElement | null) => {
+      if (list === null) return undefined
+      const options = [...list.querySelectorAll<HTMLElement>('[data-combobox-option]')]
+      const current = options.findIndex(
+        (option) =>
+          option.hasAttribute('data-combobox-active') &&
+          !option.hasAttribute('data-combobox-disabled'),
+      )
+      if (current !== -1) {
+        const option = options[current]!
+        option.setAttribute('data-combobox-selected', 'true')
+        updateSelectedOptionIndex(current)
+        // Into view within the list alone. The list enters the document
+        // before it is placed, and asking the row itself to come into view
+        // would scroll whatever else it takes to get there, the page too.
+        const box = list.closest<HTMLElement>('[data-slot="select-content"]')
+        if (box !== null) {
+          const at =
+            option.getBoundingClientRect().top -
+            box.getBoundingClientRect().top -
+            box.clientTop +
+            box.scrollTop
+          const end = at + option.offsetHeight
+          if (at < box.scrollTop) box.scrollTop = at
+          else if (end > box.scrollTop + box.clientHeight) box.scrollTop = end - box.clientHeight
+        }
+      }
+      // Every way a row gets lit - keys, pointer, opening - moves the mark,
+      // so the mark is what the trigger reports as the active row. Selected
+      // stays the choice in force: the widget's keys also say the row they
+      // are on as selected, which left two rows claiming it, or none.
+      const report = () => {
+        for (const option of list.querySelectorAll('[data-combobox-option]')) {
+          option.setAttribute('aria-selected', String(option.hasAttribute('data-combobox-active')))
+        }
+        setLit(list.querySelector('[data-combobox-selected]')?.id || undefined)
+      }
+      report()
+      const watch = new MutationObserver(report)
+      watch.observe(list, {
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['data-combobox-selected'],
+      })
+      return () => {
+        watch.disconnect()
+        setLit(undefined)
+      }
+    },
+    [updateSelectedOptionIndex],
+  )
   const chosen = controlled ? value : inner
   const items = new Map<string, React.ReactNode>()
   collectItems(children, items)
@@ -133,19 +214,16 @@ function Select(props: {
         if (list === null) return
         const options = [...list.querySelectorAll<HTMLElement>('[data-combobox-option]')]
         for (const other of options) {
-          if (other === option || !other.hasAttribute('data-combobox-selected')) continue
-          other.removeAttribute('data-combobox-selected')
-          // the widget's keys also say the row they are on as selected; a
-          // row left behind says again only whether it is the choice
-          other.setAttribute('aria-selected', String(other.hasAttribute('data-combobox-active')))
+          if (other !== option) other.removeAttribute('data-combobox-selected')
         }
         option.setAttribute('data-combobox-selected', 'true')
         store.updateSelectedOptionIndex(options.indexOf(option))
       },
+      listed,
     }),
     // the item map is rebuilt each render by design; identity is not stable
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [chosen, onValueChange, disabled, opened, children],
+    [chosen, onValueChange, disabled, opened, listed, children],
   )
   return (
     <Combobox
@@ -187,15 +265,23 @@ function Select(props: {
       transitionProps={dropIn}
       disabled={disabled}
       onOptionSubmit={(next) => {
-        // an uncontrolled select keeps its own answer; a controlled one is
-        // told what it holds, and writing here too would leave a stale copy
-        // to fall back on
-        if (!controlled) setInner(next)
-        onValueChange?.(next)
+        // Picking the choice already in force changes nothing and says
+        // nothing: Enter on a list just opened lands on it, and a caller
+        // that goes back to its first page on a new filter must not do so
+        // for the same one.
+        if (next !== chosen) {
+          // an uncontrolled select keeps its own answer; a controlled one is
+          // told what it holds, and writing here too would leave a stale
+          // copy to fall back on
+          if (!controlled) setInner(next)
+          onValueChange?.(next)
+        }
         store.closeDropdown()
       }}
     >
-      <SelectCtx value={state}>{children}</SelectCtx>
+      <SelectCtx value={state}>
+        <LitCtx value={opened ? lit : undefined}>{children}</LitCtx>
+      </SelectCtx>
     </Combobox>
   )
 }
@@ -342,6 +428,7 @@ function SelectTrigger({
   xstyle?: StyleXStyles
 }) {
   const { disabled, opened, toggle } = useSelect()
+  const lit = React.use(LitCtx)
   // the product marks invalid controls with aria-invalid; the widget wants
   // its own error prop
   const invalid = ariaInvalid === true || ariaInvalid === 'true'
@@ -363,7 +450,11 @@ function SelectTrigger({
     //
     // A prop given to Target lands in the rest it spreads AFTER the config,
     // so this one wins, and `opened` is the state the product already keeps.
-    <Combobox.Target aria-expanded={opened}>
+    //
+    // The active row is said the same way. The widget's own value moves with
+    // its keys only, so it went on naming the row the keys had left while
+    // the pointer lit another, and outlived the list it named.
+    <Combobox.Target aria-expanded={opened} aria-activedescendant={lit}>
       <MInputBase
         component="button"
         type="button"
@@ -426,6 +517,7 @@ function SelectContent({
    */
   align?: ContentAlign
 }) {
+  const { listed } = useSelect()
   return (
     <Combobox.Dropdown
       data-slot="select-content"
@@ -437,7 +529,7 @@ function SelectContent({
       onTouchStart={(event) => event.stopPropagation()}
       {...seatOf(stylex.props(panel.material, styles.content), className)}
     >
-      <Combobox.Options>{children}</Combobox.Options>
+      <Combobox.Options ref={listed}>{children}</Combobox.Options>
     </Combobox.Dropdown>
   )
 }

@@ -88,6 +88,44 @@ const LONG_OPTIONS = [
 const listBox = () => () =>
   document.querySelector('[data-slot="select-content"]')!.getBoundingClientRect()
 
+/** a field of five options, a to e, with the choice in force if any */
+function Five({ value, onPick }: { value?: string; onPick: (next: string) => void }) {
+  return (
+    <UiProvider scheme="light">
+      <Select {...(value === undefined ? {} : { value })} onValueChange={onPick}>
+        <SelectTrigger aria-label="unit" style={{ width: 200 }}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {['a', 'b', 'c', 'd', 'e'].map((option) => (
+            <SelectItem key={option} value={option}>
+              {`option ${option}`}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </UiProvider>
+  )
+}
+
+/** the rows drawn lit, by their words */
+const lit = () =>
+  [...document.querySelectorAll('[data-slot="select-item"]')]
+    .filter((row) => getComputedStyle(row).backgroundColor !== 'rgba(0, 0, 0, 0)')
+    .map((row) => row.textContent)
+
+/** the rows that say they are the choice, by their words */
+const chosenRows = () =>
+  [...document.querySelectorAll('[data-slot="select-item"][aria-selected="true"]')].map(
+    (row) => row.textContent,
+  )
+
+/** the words of the row a trigger names as active */
+const active = (trigger: { element: () => Element }) => () => {
+  const id = trigger.element().getAttribute('aria-activedescendant')
+  return id === null ? null : (document.getElementById(id)?.textContent ?? null)
+}
+
 describe('a select’s open list', () => {
   it('stays inside the window under a trigger narrower than it', async () => {
     await page.viewport(390, 844)
@@ -314,39 +352,121 @@ describe('a select’s open list', () => {
   // press and a pointer left two rows lit alike, and Enter took the arrow's.
   it('lights one row at a time, the one Enter picks', async () => {
     const picked: string[] = []
-    await render(
-      <UiProvider scheme="light">
-        <Select value="a" onValueChange={(next) => picked.push(next)}>
-          <SelectTrigger aria-label="unit" style={{ width: 200 }}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {['a', 'b', 'c', 'd', 'e'].map((value) => (
-              <SelectItem key={value} value={value}>
-                {`option ${value}`}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </UiProvider>,
-    )
-    await page.getByRole('combobox', { name: 'unit' }).click()
+    await render(<Five value="a" onPick={(next) => picked.push(next)} />)
+    const trigger = page.getByRole('combobox', { name: 'unit' })
+    await trigger.click()
     await expect.element(page.getByRole('listbox')).toBeVisible()
-    const lit = () =>
-      [...document.querySelectorAll('[data-slot="select-item"]')]
-        .filter((row) => getComputedStyle(row).backgroundColor !== 'rgba(0, 0, 0, 0)')
-        .map((row) => row.textContent)
     await userEvent.keyboard('{ArrowDown}')
     await expect.poll(lit).toHaveLength(1)
     await page.getByRole('option', { name: 'option d' }).hover()
     await expect.poll(lit).toEqual(['option d'])
+    // the trigger names the lit row as the active one, whoever lit it
+    await expect.poll(active(trigger)).toBe('option d')
     // the keys go on from where the pointer left the mark
     await userEvent.keyboard('{ArrowUp}')
     await expect.poll(lit).toEqual(['option c'])
+    await expect.poll(active(trigger)).toBe('option c')
+    // and the row lit is not thereby the choice: that is still the one in force
+    expect(chosenRows()).toEqual(['option a'])
     await page.getByRole('option', { name: 'option e' }).hover()
     await expect.poll(lit).toEqual(['option e'])
     await userEvent.keyboard('{Enter}')
     expect(picked).toEqual(['e'])
+  })
+
+  // The widget keeps the row Enter picks as an index that outlived the list:
+  // a row the pointer crossed before the list closed was what Enter took on
+  // the next opening, with no row lit to say so.
+  it('opens on the choice in force, whatever the pointer crossed before it closed', async () => {
+    const picked: string[] = []
+    await render(<Five value="a" onPick={(next) => picked.push(next)} />)
+    const trigger = page.getByRole('combobox', { name: 'unit' })
+    await trigger.click()
+    await page.getByRole('option', { name: 'option d' }).hover()
+    await expect.poll(lit).toEqual(['option d'])
+    await userEvent.keyboard('{Escape}')
+    await expect.poll(() => document.querySelector('[data-slot="select-content"]')).toBeNull()
+
+    await trigger.click()
+    await expect.element(page.getByRole('listbox')).toBeVisible()
+    await expect.poll(lit).toEqual(['option a'])
+    await expect.poll(active(trigger)).toBe('option a')
+    // Enter on a list just opened keeps the choice, and says nothing
+    await userEvent.keyboard('{Enter}')
+    await expect.poll(() => document.querySelector('[data-slot="select-content"]')).toBeNull()
+    expect(picked).toEqual([])
+    expect(trigger.element().hasAttribute('aria-activedescendant')).toBe(false)
+
+    // the keys start from the choice
+    await trigger.click()
+    await expect.poll(lit).toEqual(['option a'])
+    await userEvent.keyboard('{ArrowDown}')
+    await expect.poll(lit).toEqual(['option b'])
+    await userEvent.keyboard('{Enter}')
+    expect(picked).toEqual(['b'])
+  })
+
+  // A long list opens at the choice in force, and only the list moves to
+  // show it: the list enters the document before it is placed, and bringing
+  // the row into view there scrolled the page under it too.
+  it('opens a long list at the choice in force, and leaves the page where it was', async () => {
+    const units = Array.from({ length: 40 }, (_, index) => `unit ${index + 1}`)
+    await render(
+      <UiProvider scheme="light">
+        <div style={{ height: 2400 }} />
+        <Select value="unit 33">
+          <SelectTrigger aria-label="unit" style={{ width: 200 }}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {units.map((unit) => (
+              <SelectItem key={unit} value={unit}>
+                {unit}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div style={{ height: 2400 }} />
+      </UiProvider>,
+    )
+    const trigger = page.getByRole('combobox', { name: 'unit' })
+    await expect.element(trigger).toBeInTheDocument()
+    trigger.element().scrollIntoView({ block: 'center' })
+    const before = window.scrollY
+    expect(before).toBeGreaterThan(1000)
+    await trigger.click()
+    await expect.poll(lit).toEqual(['unit 33'])
+    expect(window.scrollY).toBe(before)
+    const list = document.querySelector('[data-slot="select-content"]')!
+    await expect
+      .poll(() => {
+        const row = page.getByRole('option', { name: 'unit 33' }).element().getBoundingClientRect()
+        const box = list.getBoundingClientRect()
+        return row.top >= box.top && row.bottom <= box.bottom
+      })
+      .toBe(true)
+    expect(list.scrollTop).toBeGreaterThan(0)
+    await userEvent.keyboard('{Escape}')
+  })
+
+  it('opens with no row lit when nothing is chosen, and Enter only closes it', async () => {
+    const picked: string[] = []
+    await render(<Five onPick={(next) => picked.push(next)} />)
+    const trigger = page.getByRole('combobox', { name: 'unit' })
+    await trigger.click()
+    await page.getByRole('option', { name: 'option c' }).hover()
+    await expect.poll(lit).toEqual(['option c'])
+    await userEvent.keyboard('{Escape}')
+    await expect.poll(() => document.querySelector('[data-slot="select-content"]')).toBeNull()
+
+    // from the keys alone: Enter opens, and Enter again closes
+    ;(trigger.element() as HTMLElement).focus()
+    await userEvent.keyboard('{Enter}')
+    await expect.element(page.getByRole('listbox')).toBeVisible()
+    expect(lit()).toEqual([])
+    await userEvent.keyboard('{Enter}')
+    await expect.poll(() => document.querySelector('[data-slot="select-content"]')).toBeNull()
+    expect(picked).toEqual([])
   })
 
   it('says which option is the one in force', async () => {
