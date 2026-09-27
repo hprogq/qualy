@@ -570,7 +570,19 @@ const i18n = definePluginMessages({
     pickerNext: { id: 'auth/picker/next', defaultMessage: 'Next' },
     importUnits: { id: 'auth/picker/import-units', defaultMessage: 'Units to take people from' },
     importTypes: { id: 'auth/picker/import-types', defaultMessage: 'Kinds of person' },
-    importNoTypes: { id: 'auth/picker/import-no-types', defaultMessage: 'No types available.' },
+    importNoTypes: {
+      id: 'auth/picker/import-no-types',
+      defaultMessage: 'No kind of person to choose',
+    },
+    importNoTypesHint: {
+      id: 'auth/picker/import-no-types-hint',
+      defaultMessage: 'Create or enable one under user types first',
+    },
+    importNoTypesAsk: {
+      id: 'auth/picker/import-no-types-ask',
+      defaultMessage: 'Ask an administrator to create or enable a user type',
+    },
+    importOpenTypes: { id: 'auth/picker/import-open-types', defaultMessage: 'Open user types' },
     importAllTypes: { id: 'auth/picker/import-all-types', defaultMessage: 'Select all' },
     importClearTypes: { id: 'auth/picker/import-clear-types', defaultMessage: 'Clear' },
     nodeSearch: { id: 'auth/picker/node-search', defaultMessage: 'Search units' },

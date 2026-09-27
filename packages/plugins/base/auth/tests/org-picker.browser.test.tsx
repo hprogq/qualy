@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import OrgNodePicker from '../src/client/iam/OrgNodePicker.tsx'
 import OrgNodePickerView from '../src/client/iam/OrgNodePickerView.tsx'
+import PeopleImportPicker from '../src/client/iam/PeopleImportPicker.tsx'
 import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
@@ -84,6 +85,26 @@ describe('the unit picker', () => {
     await expect.poll(() => document.querySelector('[data-slot="empty"]')).not.toBeNull()
     expect(document.querySelector('[data-slot="empty"]')?.getAttribute('data-size')).toBe('compact')
     expect(page.getByRole('radio').elements()).toHaveLength(0)
+  })
+
+  // The set-of-units shape says the same thing in its own box: what is
+  // missing and what to do about it, not the words alone.
+  it('says why a set of units cannot be chosen, and what to do', async () => {
+    await renderScreen({
+      client: fakeClient({
+        ...world(),
+        identity: {
+          getUserOptions: () =>
+            Effect.succeed({ truncated: false, nodes: [], orgTypes: [], userTypes: [] }),
+        },
+      }),
+      children: <Harness single={false} />,
+    })
+    await expect
+      .poll(() =>
+        document.querySelector('[data-slot="empty-field"] [data-slot="empty-field-hint"]'),
+      )
+      .not.toBeNull()
   })
 
   it('points at one unit without marks when nothing asks for them', async () => {
@@ -218,5 +239,46 @@ describe('the unit tree over units the caller supplies', () => {
     await expect.element(page.getByRole('checkbox', { name: /软件工程 2301 班/ })).toBeVisible()
     await expect.element(page.getByRole('checkbox', { name: /软件工程 2302 班/ })).toBeVisible()
     expect(page.getByRole('checkbox', { name: /软件学院/ }).elements()).toHaveLength(0)
+  })
+})
+
+// A slice of the organization with no kind of person to take: said with why,
+// and with the way to where kinds are made for the reader who may go there.
+describe('choosing a slice with no kind of person on offer', () => {
+  function Slice() {
+    const [value, setValue] = useState<{
+      orgNodeIds: readonly string[]
+      userTypeIds: readonly string[]
+    }>({ orgNodeIds: [], userTypeIds: [] })
+    return <PeopleImportPicker context={{ value, onChange: setValue }} />
+  }
+  const kinds = () =>
+    [...document.querySelectorAll('[data-slot="empty-field"]')].find(
+      (box) => box.querySelector('[data-slot="empty-field-hint"]') !== null,
+    )
+
+  it('offers the way to user types to a reader who may open them', async () => {
+    await renderScreen({
+      client: fakeClient({
+        ...world(),
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              pages: [{ id: 'auth/user-types', path: '/organization/user-types', layout: 'admin' }],
+            }),
+        },
+      }),
+      children: <Slice />,
+    })
+    await expect
+      .poll(() => kinds()?.querySelector('a')?.getAttribute('href'))
+      .toBe('/organization/user-types')
+  })
+
+  it('says whom to ask when the reader may not open them', async () => {
+    await renderScreen({ client: fakeClient(world()), children: <Slice /> })
+    await expect.poll(() => kinds()).toBeDefined()
+    expect(kinds()?.querySelector('a')).toBeNull()
   })
 })

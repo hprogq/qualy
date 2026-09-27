@@ -406,6 +406,7 @@ export function OrgNodeChooser({
             onChange={announce}
             nodes={nodes}
             emptyLabel={format(m.pickerNoUnits)}
+            emptyHint={format(m.pickerNoUnitsHint)}
             meta={badge}
           />
         )}

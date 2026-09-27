@@ -1,7 +1,7 @@
 import type { PeopleImportContext } from '@qualy/ui-contract'
 import * as stylex from '@stylexjs/stylex'
 import { useQuery } from '@tanstack/react-query'
-import { useApiQuery } from '@qualy/web-runtime'
+import { PageLink, useApiQuery, usePageHref } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { CheckboxGroup } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -42,6 +42,8 @@ export default function PeopleImportPicker({ context }: { context: PeopleImportC
   const { format } = useI18n()
   const options = useQuery(query.identity.getUserOptions.queryOptions({ query: {} }))
   const types = options.data?.userTypes ?? []
+  // where kinds of person are made, for the reader who may go there
+  const typesReachable = usePageHref('auth/user-types') !== undefined
   const allChosen =
     types.length > 0 && types.every((type) => context.value.userTypeIds.includes(type.id))
 
@@ -87,6 +89,16 @@ export default function PeopleImportPicker({ context }: { context: PeopleImportC
           selected={[...context.value.userTypeIds]}
           onChange={(userTypeIds) => context.onChange({ ...context.value, userTypeIds })}
           emptyLabel={format(m.importNoTypes)}
+          emptyHint={format(typesReachable ? m.importNoTypesHint : m.importNoTypesAsk)}
+          {...(typesReachable
+            ? {
+                emptyAction: (
+                  <Button asChild size="sm" variant="outline">
+                    <PageLink page="auth/user-types">{format(m.importOpenTypes)}</PageLink>
+                  </Button>
+                ),
+              }
+            : {})}
         />
       </div>
     </div>
