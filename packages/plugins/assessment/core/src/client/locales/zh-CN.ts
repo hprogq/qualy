@@ -453,6 +453,7 @@ export default {
   'assessment/record/acts-empty-hint': '进行多人批量认定后，相关记录将在此展示',
   'assessment/record/act-back': '返回批量认定',
   'assessment/record/act-missing': '找不到该批量认定',
+  'assessment/record/missing-hint': '链接有误，或你没有查看权限',
   'assessment/record/act-title': '批量认定',
   'assessment/record/act-detail-title': '批量认定详情',
   'assessment/record/import/detail-heading': '导入详情',

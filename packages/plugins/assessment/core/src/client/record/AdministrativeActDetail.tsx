@@ -196,17 +196,21 @@ export function AdministrativeActDetail({
 
   const found = detail.data
 
-  if (!named || detail.isError) {
-    const copy = { missing: { title: format(m.recordActMissing) } }
+  // A bulk record shown already stays up through a reading that failed
+  // after it; only one that turned out not to be there, or not the
+  // reader's, takes its place.
+  const copy = {
+    missing: { title: format(m.recordActMissing), description: format(m.recordMissingHint) },
+  }
+  const failure = named
+    ? words.subject(detail, { missing: [RECORD_NOT_FOUND], copy })
+    : words.missing({ copy })
+  if (failure !== null) {
     return (
       <div data-testid="administrative-act-absent">
         <LoadFailure
           size="section"
-          failure={
-            named
-              ? words.of(detail.error, { missing: [RECORD_NOT_FOUND], copy })
-              : words.missing({ copy })
-          }
+          failure={failure}
           onRetry={() => void detail.refetch()}
           retrying={detail.isFetching}
           back={{

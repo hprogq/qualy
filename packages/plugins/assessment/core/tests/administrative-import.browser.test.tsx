@@ -613,6 +613,75 @@ describe('importing a workbook of administrative records', () => {
     expect(addressNow()).toContain('tab=imports')
   })
 
+  // A withdrawal asks for the import again; when that second reading fails
+  // for a reason another try could change, the import the recorder was
+  // just reading is still the answer, not a failure in its place.
+  it('keeps an import on the screen when reading it again fails', async () => {
+    let reversed = false
+    let askedSince = 0
+    await open(`${base}?import=${IMPORT_ID}`, {
+      getAdministrativeImport: () => {
+        if (!reversed) return Effect.succeed(detail())
+        askedSince += 1
+        return Effect.fail(apiError('SERVICE_UNAVAILABLE'))
+      },
+      reverseAdministrativeImport: () => {
+        reversed = true
+        return Effect.succeed({ affectedCount: 118 })
+      },
+    })
+    await expect.element(page.getByTestId('administrative-import-detail')).toBeVisible()
+    await page.getByTestId('import-reverse').click()
+    await page.getByRole('dialog').getByRole('textbox').fill('文件已撤回')
+    await page.getByRole('dialog').getByRole('button', { name: '撤销本次导入' }).click()
+    await vi.waitFor(() => expect(askedSince).toBeGreaterThan(0))
+    // the second answer lands, and the screen has had its turn to redraw
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    await expect.element(page.getByTestId('administrative-import-detail')).toBeVisible()
+    expect(page.getByTestId('administrative-import-absent').elements()).toHaveLength(0)
+  })
+
+  it('keeps a bulk record on the screen when reading it again fails', async () => {
+    let reversed = false
+    let askedSince = 0
+    const record = {
+      id: NEW_IMPORT_ID,
+      batchId: BATCH_ID,
+      itemId: ITEM_ID,
+      itemTitle: '优秀学生干部',
+      itemRevisionId: REVISION_ID,
+      targetKind: 'people',
+      recordedCount: 2,
+      voidedCount: 0,
+      createdAt: '2026-09-16T10:22:00.000Z',
+      actorName: '张老师',
+      rowsNextCursor: null,
+      rows: [],
+      events: [],
+    }
+    await open(`${base}?tab=acts&act=${NEW_IMPORT_ID}`, {
+      listAdministrativeRecords: () => Effect.succeed({ items: [], nextCursor: null }),
+      getAdministrativeRecord: () => {
+        if (!reversed) return Effect.succeed(record)
+        askedSince += 1
+        return Effect.fail(apiError('SERVICE_UNAVAILABLE'))
+      },
+      reverseAdministrativeRecord: () => {
+        reversed = true
+        return Effect.succeed({ affectedCount: 2 })
+      },
+    })
+    await expect.element(page.getByTestId('administrative-act-detail')).toBeVisible()
+    await page.getByTestId('act-reverse').click()
+    await page.getByRole('dialog').getByRole('textbox').fill('名单有误')
+    await page.getByRole('dialog').getByRole('button', { name: '撤销本次认定' }).click()
+    await vi.waitFor(() => expect(askedSince).toBeGreaterThan(0))
+    // the second answer lands, and the screen has had its turn to redraw
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    await expect.element(page.getByTestId('administrative-act-detail')).toBeVisible()
+    expect(page.getByTestId('administrative-act-absent').elements()).toHaveLength(0)
+  })
+
   it('does not ask about an import address that cannot name one', async () => {
     const getAdministrativeImport = vi.fn(() => Effect.succeed(detail()))
     await open(`${base}?tab=imports&import=not-an-import`, { getAdministrativeImport })

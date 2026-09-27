@@ -2168,6 +2168,13 @@ const i18n = definePluginMessages({
       id: 'assessment/record/act-missing',
       defaultMessage: 'Bulk record not found',
     },
+    // neither an import nor a bulk record is ever deleted: one the address
+    // cannot find was never there, or belongs to a batch the reader does
+    // not record in
+    recordMissingHint: {
+      id: 'assessment/record/missing-hint',
+      defaultMessage: 'The link may be wrong, or you may not have access',
+    },
     recordActTitle: { id: 'assessment/record/act-title', defaultMessage: 'Bulk record' },
     recordActDetailTitle: {
       id: 'assessment/record/act-detail-title',
