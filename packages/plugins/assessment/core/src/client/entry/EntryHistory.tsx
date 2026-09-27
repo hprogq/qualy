@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { useApiQuery } from '@qualy/web-runtime'
+import { useApiQuery, useLoadFailure } from '@qualy/web-runtime'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { useI18n } from '@qualy/web-i18n'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
@@ -313,8 +313,9 @@ export function EntryHistory({
   onClose: () => void
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format, formatError } = useI18n()
+  const { format } = useI18n()
   const history = useQuery(query.assessment.getEntryHistory.queryOptions({ params: { entryId } }))
+  const failure = useHistoryFailure(history.error)
   const data = history.data
   const asks =
     data === undefined
@@ -339,7 +340,8 @@ export function EntryHistory({
     >
       <AsyncSection
         pending={history.isPending}
-        error={history.error ? formatError(history.error) : null}
+        error={failure}
+        retrying={history.isFetching}
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void history.refetch()}
@@ -350,6 +352,26 @@ export function EntryHistory({
     </SidePanel>
   )
 }
+
+/**
+ * Why a claim's account could not be read, worded for the reader: a claim
+ * that is not there (or no longer theirs to read) is said to be missing,
+ * with nothing to try again; anything else is a reading that may go through
+ * on another try. Both hosts put it inside a panel of their own.
+ */
+function useHistoryFailure(error: unknown) {
+  const { format } = useI18n()
+  const failures = useLoadFailure()
+  return error === null || error === undefined
+    ? null
+    : failures.of(error, {
+        missing: [ENTRY_MISSING],
+        copy: { missing: { title: format(m.entryMissingTitle) } },
+      })
+}
+
+/** the code a claim's account answers with where the claim is not there */
+const ENTRY_MISSING = 'ASSESSMENT_ENTRY_NOT_FOUND'
 
 /**
  * The account alone, for a host that brings its own shell: the detail
@@ -364,12 +386,14 @@ export function EntryTrail({
   subject?: string | undefined
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format, formatError } = useI18n()
+  const { format } = useI18n()
   const history = useQuery(query.assessment.getEntryHistory.queryOptions({ params: { entryId } }))
+  const failure = useHistoryFailure(history.error)
   return (
     <AsyncSection
       pending={history.isPending}
-      error={history.error ? formatError(history.error) : null}
+      error={failure}
+      retrying={history.isFetching}
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
       onRetry={() => void history.refetch()}

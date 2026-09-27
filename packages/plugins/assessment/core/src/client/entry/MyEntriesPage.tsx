@@ -5,6 +5,7 @@ import {
   useApi,
   useApiQuery,
   useClaimScreenFill,
+  useLoadFailure,
   usePageQueryState,
   usePageQueryUpdate,
   useRunApi,
@@ -93,7 +94,8 @@ function Body({
   const query = useApiQuery(assessmentApi)
   const api = useApi(assessmentApi)
   const run = useRunApi()
-  const { format, formatError } = useI18n()
+  const { format } = useI18n()
+  const failures = useLoadFailure()
   const queryClient = useQueryClient()
   const mode = useWorkspaceMode()
   // Every layer lives in the address - which question is open, which claim
@@ -385,12 +387,20 @@ function Body({
   // a read that failed only in the background keeps what it last showed:
   // replacing the page would take an open form down with it
   const failed = (read: { error: unknown; data: unknown }) =>
-    read.data === undefined && read.error !== null ? formatError(read.error) : null
+    read.data === undefined && read.error !== null ? read.error : null
+  const failure = failed(items) ?? failed(groups) ?? failed(mine)
 
   return (
     <AsyncSection
       pending={items.isPending || mine.isPending || groups.isPending || standing.isPending}
-      error={failed(items) ?? failed(groups) ?? failed(mine)}
+      // The whole of the page's room, which the workbench fills edge to
+      // edge: a frame round it would only trace the room's own edges, so the
+      // state stands on the ground, with the page's own rank of heading. The
+      // batch it is in has been read already, so what failed is a reading,
+      // never a batch gone.
+      error={failure === null ? null : failures.of(failure)}
+      retrying={items.isFetching || groups.isFetching || mine.isFetching}
+      headingLevel={2}
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
       onRetry={() => {

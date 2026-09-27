@@ -1673,6 +1673,30 @@ describe('a claim read in its drawer on the score page', () => {
   })
 })
 
+describe('a score page that could not be read', () => {
+  // The account on its own ground: a failure says what kind it is under a
+  // heading of its own, and offers another try only where that can help.
+  it('says what kept the account from loading, and asks again only where that can help', async () => {
+    for (const [code, kind, retries] of [
+      ['SERVICE_UNAVAILABLE', 'unavailable', 1],
+      ['ACCESS_DENIED', 'denied', 0],
+    ] as const) {
+      await page.viewport(1440, 900)
+      const { unmount } = await screen(normal(), {
+        getMyResult: () => Effect.fail(apiError(code)),
+      })
+      const state = () => document.querySelector('[data-slot="resource-state"]')
+      await expect.poll(() => state()?.getAttribute('data-state')).toBe(kind)
+      expect({
+        code,
+        heading: state()!.querySelector('h2') !== null,
+        retries: state()!.querySelectorAll('[data-slot="resource-state-actions"] button').length,
+      }).toEqual({ code, heading: true, retries })
+      await unmount()
+    }
+  })
+})
+
 describe('an account that has stopped moving', () => {
   const tagOf = (itemId: string) =>
     itemRow(itemId).querySelector('[data-tag]')?.getAttribute('data-tag') ?? null

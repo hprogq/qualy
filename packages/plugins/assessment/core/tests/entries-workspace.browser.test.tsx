@@ -6,7 +6,7 @@ import { ScreenFillScope, useScreenFillClaimed } from '@qualy/web-runtime'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { commands, page, userEvent } from 'vitest/browser'
 import { Effect, Stream } from 'effect'
-import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 import zhCN from '../src/client/locales/zh-CN.ts'
 
 // The entries workspace as a reader moves through it: the structure down
@@ -1356,6 +1356,56 @@ describe('an address naming a claim', () => {
     await page.viewport(1440, 900)
     await workspace({ route: `${base}?open=${itemId(1)}&entry=new` })
     await expect.poll(() => document.querySelector('[role="dialog"]')).not.toBeNull()
+  })
+})
+
+describe('a reading that failed', () => {
+  const state = () => document.querySelector('[data-slot="resource-state"]')
+  const retry = () =>
+    [...document.querySelectorAll('[data-slot="resource-state-actions"] button')].length
+
+  // The page is a workbench on its own ground: a failure stands there with
+  // its own heading, says what kind of failure it is, and offers another
+  // try only where another try can bring another answer.
+  it('says what kept the page from loading, and asks again only where that can help', async () => {
+    for (const [code, kind, retries] of [
+      ['SERVICE_UNAVAILABLE', 'unavailable', 1],
+      ['ACCESS_DENIED', 'denied', 0],
+    ] as const) {
+      await page.viewport(1440, 900)
+      const { unmount } = await workspace({
+        route: base,
+        stubs: { listItems: () => Effect.fail(apiError(code)) },
+      })
+      await expect.poll(() => state()?.getAttribute('data-state')).toBe(kind)
+      expect({ code, retries: retry() }).toEqual({ code, retries })
+      expect(state()!.querySelector('h2')).not.toBeNull()
+      expect(document.querySelector('[data-testid="entries-workspace"]')).toBeNull()
+      await unmount()
+    }
+  })
+
+  // A claim's account that cannot be read in its drawer says so inside the
+  // drawer, under the drawer's own title; one that is not there is not
+  // asked for again.
+  it('says in the drawer a claim’s account that is not there, with nothing to try again', async () => {
+    await page.viewport(1440, 900)
+    await workspace({
+      route: `${base}?open=${itemId(1)}&detail=${entryId(1)}`,
+      entries: [claim(1, itemId(1), 'approved')],
+      stubs: { getEntryHistory: () => Effect.fail(apiError('ASSESSMENT_ENTRY_NOT_FOUND')) },
+    })
+    const drawer = page.getByRole('dialog')
+    await expect.element(drawer).toBeVisible()
+    await drawer
+      .getByRole('button', { name: new RegExp(zhCN['assessment/entry-sheet/trail']) })
+      .click()
+    const failed = () => drawer.element().querySelector('[data-slot="resource-state"]')
+    await expect.poll(() => failed()?.getAttribute('data-state')).toBe('missing')
+    expect(failed()!.querySelector('h3')).not.toBeNull()
+    expect(failed()!.querySelectorAll('[data-slot="resource-state-actions"] button')).toHaveLength(
+      0,
+    )
   })
 })
 

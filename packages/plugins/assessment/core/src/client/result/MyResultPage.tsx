@@ -4,7 +4,13 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { layout } from '@qualy/ui/theme/layout.stylex'
-import { useApi, useApiQuery, usePageNavigate, usePageQueryState } from '@qualy/web-runtime'
+import {
+  useApi,
+  useApiQuery,
+  useLoadFailure,
+  usePageNavigate,
+  usePageQueryState,
+} from '@qualy/web-runtime'
 import { isApiErrorCode, useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
@@ -166,6 +172,7 @@ function Standing({
   const queryClient = useQueryClient()
   const navigate = usePageNavigate()
   const { format, formatError } = useI18n()
+  const failures = useLoadFailure()
   const lineWords = useLineWords()
   // on a phone the drawer is somewhere the back key leaves; at a desk it is
   // furniture over the page, and closing it is not a step back
@@ -377,7 +384,11 @@ function Standing({
   return (
     <AsyncSection
       pending={result.isPending || items.isPending || mine.isPending}
-      error={error ? formatError(error) : null}
+      // the whole of the page's room: on its ground, unframed, with the
+      // page's own rank of heading, as the filing page says it
+      error={error ? failures.of(error) : null}
+      retrying={result.isFetching || items.isFetching || mine.isFetching}
+      headingLevel={2}
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
       onRetry={() => {
