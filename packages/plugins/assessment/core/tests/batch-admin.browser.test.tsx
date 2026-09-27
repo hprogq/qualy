@@ -361,6 +361,46 @@ describe('the batch list', () => {
     expect(page.getByRole('radio', { name: '草稿' }).elements()).toHaveLength(0)
   })
 
+  // A list that could not be read says what happened, on a card of its own
+  // on the page's bare ground, under the page's own heading: another try
+  // where one can help, and none for a reading the reader may not make.
+  it('says a list it could not read by what went wrong, and reads it again on the word', async () => {
+    let reachable = false
+    await screen(
+      {
+        listBatches: () =>
+          reachable
+            ? Effect.succeed({
+                items: [listRow()],
+                nextCursor: null,
+                total: 1,
+                capabilities: { create: true },
+              })
+            : Effect.fail(apiError('SERVICE_UNAVAILABLE')),
+      },
+      '/assessment/batches',
+    )
+    const state = () => document.querySelector('[data-slot="resource-state"]')
+    await vi.waitFor(() => expect(state()?.getAttribute('data-state')).toBe('unavailable'), {
+      timeout: 8_000,
+    })
+    expect(state()?.querySelector('h2')).not.toBeNull()
+    reachable = true
+    await page.getByRole('button', { name: '重试' }).click()
+    await expect.element(page.getByText('2026 春季综测')).toBeVisible()
+    expect(state()).toBeNull()
+  })
+
+  it('offers no other try for a list the reader may not read', async () => {
+    await screen(
+      { listBatches: () => Effect.fail(apiError('ACCESS_DENIED')) },
+      '/assessment/batches',
+    )
+    const state = () => document.querySelector('[data-slot="resource-state"]')
+    await vi.waitFor(() => expect(state()?.getAttribute('data-state')).toBe('denied'))
+    expect(state()?.querySelectorAll('button')).toHaveLength(0)
+  })
+
   // The lines above the table are drawn from the reader's standing in the
   // round, not from the counts: the counts say WHAT a line says, the
   // standing says WHETHER there is one. Asserted through the rows' own

@@ -1,7 +1,13 @@
 import { useEffect, useState, type MouseEvent } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { PageLink, useApiQuery, usePageNavigate, usePageTitle } from '@qualy/web-runtime'
+import {
+  PageLink,
+  useApiQuery,
+  useLoadFailure,
+  usePageNavigate,
+  usePageTitle,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -564,7 +570,8 @@ export default function BatchListPage() {
   const narrow = useIsMobile()
   const [searchOpen, setSearchOpen] = useState(false)
   const searchInRow = narrow && searchOpen
-  const { format, formatError, locale } = useI18n()
+  const { format, locale } = useI18n()
+  const failure = useLoadFailure()
   // the shell repeats this once the heading itself has scrolled away
   const titleRef = usePageTitle(format(m.batchesTitle))
   const navigate = usePageNavigate()
@@ -831,7 +838,10 @@ export default function BatchListPage() {
 
         <AsyncSection
           pending={batches.isPending}
-          error={batches.isError ? formatError(batches.error) : null}
+          // a list already on the page stays through a later look that failed
+          error={batches.isError && batches.data === undefined ? failure.of(batches.error) : null}
+          framed
+          retrying={batches.isFetching}
           loadingLabel={format(commonMessages.loading)}
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void batches.refetch()}
