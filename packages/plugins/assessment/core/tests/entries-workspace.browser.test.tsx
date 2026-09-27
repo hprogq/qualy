@@ -1692,6 +1692,35 @@ describe('what a question’s row says at a glance', () => {
     expect(pressed()).toBe('revoked')
   })
 
+  // A question the office records, left with nothing but a record it took
+  // back, still says after that record what the empty question would have:
+  // the next record is the office's to make, and lands here.
+  it('says a recorded question still waits on the office after a record taken back', async () => {
+    await page.viewport(1440, 900)
+    const fields = [{ key: 'gpa', type: 'decimal', label: '学分绩' }]
+    const filed = [
+      claim(1, itemId(10), 'voided', { source: 'record' }),
+      claim(2, itemId(11), 'voided', { source: 'record' }),
+      claim(3, itemId(11), 'approved', { source: 'record' }),
+    ]
+    await workspace({
+      route: `${base}?open=${itemId(10)}`,
+      items: [recorded(10, '课程学习成绩', fields), recorded(11, '体育测试成绩', fields)],
+      entries: filed,
+    })
+    await expect.poll(() => rows().length).toBe(1)
+    const pending = document.querySelector('[data-testid="entries-record-pending"]')
+    expect(pending).not.toBeNull()
+    expect(rows()[0]!.compareDocumentPosition(pending!) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+    // with a record in force there is nothing to wait on
+    await userEvent.click(railRow(11))
+    await expect.poll(openItem).toBe(itemId(11))
+    await expect.poll(() => rows().length).toBe(1)
+    expect(document.querySelector('[data-testid="entries-record-pending"]')).toBeNull()
+  })
+
   // Where the list opened holds only while nothing live stands under the
   // question: the reader's own new draft, filed from under a claim they gave
   // up, is in the list they come back to, not behind a filter.

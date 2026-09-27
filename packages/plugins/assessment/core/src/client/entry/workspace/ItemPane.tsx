@@ -1034,6 +1034,17 @@ export function ItemPane({
             </Trailing>
           )}
           {addRow !== null && <Trailing still={still}>{addRow}</Trailing>}
+          {/* a question the office records, with nothing standing under it
+              but a record taken back: what the empty question would have
+              said, after the one that ended */}
+          {recordedOnly(item) && !voided && entries.length > 0 && live === 0 && (
+            <Trailing still={still}>
+              <p data-testid="entries-record-pending" {...stylex.props(styles.heldRow, inset)}>
+                <ClockIcon aria-hidden {...stylex.props(styles.heldIcon)} />
+                {format(viewer === 'owner' ? m.entriesRecordedHint : m.paperEmptyRecordedHint)}
+              </p>
+            </Trailing>
+          )}
           {filing !== null && filing.full && listed.length > 0 && (
             <Trailing still={still}>
               <div {...stylex.props(styles.note)} data-testid="entries-full">
