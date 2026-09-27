@@ -569,7 +569,8 @@ export function ParticipantResultList({
   // with it; otherwise the dialog closes on a toast, as it always has.
   const [added, setAdded] = useState<AdmissionOutcomeFacts | null>(null)
   const [imported, setImported] = useState<AdmissionOutcomeFacts | null>(null)
-  const warns = (facts: AdmissionOutcomeFacts) => facts.cannotSubmit > 0 || facts.systemAccounts > 0
+  const warns = (facts: AdmissionOutcomeFacts) =>
+    (facts.cannotSubmit ?? 0) > 0 || (facts.systemAccounts ?? 0) > 0
   const addPeople = useMutation({
     mutationFn: (userIds: readonly string[]) =>
       run(

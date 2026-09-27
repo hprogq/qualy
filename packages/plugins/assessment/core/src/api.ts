@@ -565,6 +565,16 @@ const admissionWarnings = Schema.Struct({
   systemAccounts: Schema.Number,
 })
 
+/**
+ * The same, as a write that has already admitted them reports it: null in
+ * both where they could not be read once the write was done. The people
+ * are on the roster either way.
+ */
+const admittedWarnings = Schema.Struct({
+  cannotSubmit: Schema.NullOr(Schema.Number),
+  systemAccounts: Schema.NullOr(Schema.Number),
+})
+
 /** somebody on the roster a review route has nowhere to stand for */
 const unreachableParticipantView = Schema.Struct({
   participantId: Schema.String,
@@ -3827,7 +3837,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       success: Schema.Struct({
         added: Schema.Number,
         skipped: Schema.Number,
-        ...admissionWarnings.fields,
+        ...admittedWarnings.fields,
       }),
       error: [BatchNotFound, BatchReadOnly, ParticipantInvalid, AccessDenied],
     }).middleware(Authenticated),
@@ -3852,7 +3862,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     HttpApiEndpoint.post('importParticipants', '/assessment/batches/:batchId/participant-imports', {
       params: Schema.Struct({ batchId: uuidInput }),
       payload: importSelection,
-      success: Schema.Struct({ added: Schema.Number, ...admissionWarnings.fields }),
+      success: Schema.Struct({ added: Schema.Number, ...admittedWarnings.fields }),
       error: [
         BatchNotFound,
         BatchReadOnly,

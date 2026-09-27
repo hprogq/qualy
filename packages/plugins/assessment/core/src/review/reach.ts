@@ -131,6 +131,19 @@ export const admissionWarningsOf = (
   systemAccounts: groups.reduce((sum, group) => sum + group.system, 0),
 })
 
+/**
+ * The same, as a write that has already admitted them reports it: read once
+ * the write is done, and null in both where that reading failed - the
+ * people are on the roster either way, and a warning that could not be read
+ * is left unsaid rather than turning a write that happened into a failure.
+ */
+export interface AdmittedWarnings {
+  readonly cannotSubmit: number | null
+  readonly systemAccounts: number | null
+}
+
+export const UNREAD_WARNINGS: AdmittedWarnings = { cannotSubmit: null, systemAccounts: null }
+
 /** the unit kinds on one frozen lineage, once each and in a stable order */
 const lineageLevels = sql<string[]>`coalesce((
   select array_agg(distinct step.value->>'nodeTypeId' order by step.value->>'nodeTypeId')

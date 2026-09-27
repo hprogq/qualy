@@ -335,6 +335,51 @@ describe.runIf(postgresAvailable)('routes with nowhere to stand', () => {
     expect(result.readded).toEqual({ added: 1, skipped: 0, cannotSubmit: 1, systemAccounts: 0 })
   })
 
+  // What they leave the roster with is read once the write has happened. A
+  // reading that fails then is left unsaid: answered as a failure, a write
+  // that did happen would send the reader to add the same people again.
+  it('admits them and leaves unsaid what it could not read after the write', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('reach-unread')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const g = yield* runningBatch(f)
+          const late = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.t}, 'Late', ${f.studentType}, ${f.classA}) returning id`),
+          ).id
+          // a step that does not say where it looks: what the routes ask
+          // for cannot be read, and nothing about the write reads it
+          yield* runSql(sql`
+            update assessment_item_revisions
+            set review_policy = ${JSON.stringify({
+              normal: { stages: [{ id: 'unreadable' }] },
+              escalation: { stages: [] },
+            })}::jsonb
+            where id = (select current_revision_id from assessment_items where id = ${g.item.id})`)
+          const added = yield* assessment.addParticipants(f.t, g.batch.id, [late], admin)
+          const onRoster = one<{ n: string }>(
+            yield* runSql(sql`
+              select count(*) as n from batch_participants
+              where batch_id = ${g.batch.id} and user_id = ${late} and status = 'active'`),
+          )
+          return { added, onRoster: Number(onRoster.n) }
+        }),
+      ),
+    )
+    expect(result.added).toEqual({
+      added: 1,
+      skipped: 0,
+      cannotSubmit: null,
+      systemAccounts: null,
+    })
+    expect(result.onRoster).toBe(1)
+  })
+
   // Taking in where the organization has somebody now can leave them under
   // no unit a question's ordinary route asks for; the difference says so
   // before anybody decides, by the same rule the roster is counted by.

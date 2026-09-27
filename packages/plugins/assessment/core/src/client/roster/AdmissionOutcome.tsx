@@ -11,11 +11,14 @@ import { assessmentMessages as m } from '../i18n.ts'
 // the list either way (§32.93); this is the moment the reader who put them
 // there is told, with the way to the questions concerned.
 
-/** what a roster write reports beside its count */
+/**
+ * What a roster write reports beside its count: null where the write went
+ * through but what it left could not be read, which is left unsaid.
+ */
 export interface AdmissionOutcomeFacts {
   readonly added: number
-  readonly cannotSubmit: number
-  readonly systemAccounts: number
+  readonly cannotSubmit: number | null
+  readonly systemAccounts: number | null
 }
 
 const styles = stylex.create({
@@ -57,12 +60,14 @@ export function AdmissionOutcome({
   onReview?: () => void
 }) {
   const { format } = useI18n()
+  const cannotSubmit = facts.cannotSubmit ?? 0
+  const systemAccounts = facts.systemAccounts ?? 0
   return (
     <div
       data-testid="admission-outcome"
       data-added={facts.added}
-      data-cannot-submit={facts.cannotSubmit}
-      data-system-accounts={facts.systemAccounts}
+      data-cannot-submit={cannotSubmit}
+      data-system-accounts={systemAccounts}
       {...stylex.props(styles.root)}
     >
       <div {...stylex.props(styles.head)}>
@@ -70,11 +75,11 @@ export function AdmissionOutcome({
         <p {...stylex.props(styles.title)}>{format(m.admittedTitle, { count: facts.added })}</p>
       </div>
       <ul {...stylex.props(styles.warnings)}>
-        {facts.cannotSubmit > 0 && (
+        {cannotSubmit > 0 && (
           <li data-warning="cannot-submit" {...stylex.props(styles.warning)}>
             <TriangleAlertIcon aria-hidden {...stylex.props(styles.mark)} />
             <span {...stylex.props(styles.words)}>
-              {format(m.admittedCannotSubmit, { count: facts.cannotSubmit })}
+              {format(m.admittedCannotSubmit, { count: cannotSubmit })}
             </span>
             {onReview !== undefined && (
               <Button size="xs" variant="outline" onClick={onReview}>
@@ -83,11 +88,11 @@ export function AdmissionOutcome({
             )}
           </li>
         )}
-        {facts.systemAccounts > 0 && (
+        {systemAccounts > 0 && (
           <li data-warning="system-accounts" {...stylex.props(styles.warning)}>
             <TriangleAlertIcon aria-hidden {...stylex.props(styles.mark)} />
             <span {...stylex.props(styles.words)}>
-              {format(m.admittedSystem, { count: facts.systemAccounts })}
+              {format(m.admittedSystem, { count: systemAccounts })}
             </span>
           </li>
         )}

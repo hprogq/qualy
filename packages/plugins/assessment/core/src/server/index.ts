@@ -118,7 +118,9 @@ import {
   unreachableOf,
   unreachablePage,
   unreachableTotal,
+  UNREAD_WARNINGS,
   type AdmissionWarnings,
+  type AdmittedWarnings,
 } from '../review/reach.ts'
 import { reviewersVeiled, unnamedUnlessOwn } from '../review/veil.ts'
 import { makeScoringMethods, type ScoringMethods } from '../scoring/service.ts'
@@ -1580,7 +1582,7 @@ export class Assessment extends Context.Service<
       userIds: readonly string[],
       as: Principal,
     ) => Effect.Effect<
-      { added: number; skipped: number } & AdmissionWarnings,
+      { added: number; skipped: number } & AdmittedWarnings,
       BatchNotFound | BatchReadOnly | ParticipantInvalid | AccessDenied
     >
     /** how many people a set of units and types would add, and what they would leave, before adding them */
@@ -1597,7 +1599,7 @@ export class Assessment extends Context.Service<
       selection: { orgNodeIds: readonly string[]; userTypeIds: readonly string[] },
       as: Principal,
     ) => Effect.Effect<
-      { added: number } & AdmissionWarnings,
+      { added: number } & AdmittedWarnings,
       BatchNotFound | BatchReadOnly | BatchReferenceInvalid | ParticipantInvalid | AccessDenied
     >
     /** what was imported, when, and on what grounds; history, never a rule */
@@ -2360,25 +2362,32 @@ export const make = Effect.fn('Assessment.make')(function* () {
   /**
    * What the people a roster write just admitted leave it with (§32.93),
    * read once the write is done: the batch's lock is the front door for
-   * filing and deciding, and a warning is not worth holding it for.
+   * filing and deciding, and a warning is not worth holding it for. The
+   * write has happened by now, so a reading that fails is logged and left
+   * unsaid; answering it as a failure would have the reader add the same
+   * people again.
    */
   const admittedWarnings = (
     tenantId: string,
     batchId: string,
     participantIds: readonly string[],
-  ) =>
-    participantIds.length === 0
+  ): Effect.Effect<AdmittedWarnings> => {
+    const unread = (cause: unknown) =>
+      Effect.logWarning('admission warnings could not be read', cause).pipe(
+        Effect.annotateLogs({ tenantId, batchId }),
+        Effect.as(UNREAD_WARNINGS),
+      )
+    return participantIds.length === 0
       ? Effect.succeed({ cannotSubmit: 0, systemAccounts: 0 })
-      : dieQuery(
-          withDb(
-            Effect.gen(function* () {
-              return admissionWarningsOf(
-                yield* routeDemandsOf(tenantId, batchId),
-                yield* admittedGroupsOf(tenantId, participantIds),
-              )
-            }),
-          ),
-        )
+      : withDb(
+          Effect.gen(function* () {
+            return admissionWarningsOf(
+              yield* routeDemandsOf(tenantId, batchId),
+              yield* admittedGroupsOf(tenantId, participantIds),
+            )
+          }),
+        ).pipe(Effect.catch(unread), Effect.catchDefect(unread))
+  }
 
   /**
    * The record of an admission, one line per person admitted.
