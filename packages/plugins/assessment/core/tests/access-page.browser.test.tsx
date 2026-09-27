@@ -554,6 +554,24 @@ describe('appointing at a seat the address names', () => {
     await expect.poll(() => addressNow()).not.toContain('appoint')
   })
 
+  // a seat several roles could fill names the unit and leaves the role open
+  it('opens at the unit alone when no one role is named', async () => {
+    await appoint(
+      new URLSearchParams(appointSearch({ roleId: null, orgNodeId: NODE_ID })).toString(),
+      [NODE_ID],
+    )
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('button', { name: 'pick people' }).click()
+    await dialog.getByRole('button', { name: '下一步' }).click()
+    await expect.element(page.getByTestId('units-chosen')).toHaveAttribute('data-value', NODE_ID)
+    await dialog.getByRole('button', { name: '下一步' }).click()
+    await expect.element(dialog.getByRole('radio').first()).toBeVisible()
+    for (const radio of dialog.getByRole('radio').elements()) {
+      expect(radio.getAttribute('aria-checked')).toBe('false')
+    }
+    await expect.element(dialog.getByRole('button', { name: '添加' })).toBeDisabled()
+  })
+
   it('does not appoint at a unit the round does not offer', async () => {
     await appoint(appointQuery(ROLE_ID, NODE_ID), [OTHER_NODE])
     const dialog = page.getByRole('dialog')

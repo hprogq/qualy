@@ -81,11 +81,15 @@ const ANY_ROLE = 'any'
  * give it as the `search` of a link to `assessment/batch-access`.
  */
 export const appointSearch = (seat: {
-  readonly roleId?: string
-  readonly orgNodeId?: string
+  /** the role to appoint as; none when the seat could be filled by several */
+  readonly roleId?: string | null | undefined
+  /** the unit to appoint at; none when it is not one unit */
+  readonly orgNodeId?: string | null | undefined
 }): Record<string, string> => ({
   [APPOINT.role]: seat.roleId ?? ANY_ROLE,
-  ...(seat.orgNodeId === undefined ? {} : { [APPOINT.unit]: seat.orgNodeId }),
+  ...(seat.orgNodeId === undefined || seat.orgNodeId === null
+    ? {}
+    : { [APPOINT.unit]: seat.orgNodeId }),
 })
 
 /**
