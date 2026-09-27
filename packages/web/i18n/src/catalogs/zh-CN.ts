@@ -67,6 +67,7 @@ export default {
   'common/layout/missing': 'Qualy 暂时无法显示，请重试。',
   'common/page/empty-title': '暂无可用页面',
   'common/page/empty-hint': '你的账号目前没有可访问的内容',
+  'common/page/empty-signed-in-hint': '如需访问请联系管理员，或退出后换一个账号登录',
   'common/component/page-failed': '该页面无法显示',
   'common/component/layout-failed': 'Qualy 暂时无法显示',
   'common/page/not-found-title': '页面无法访问',

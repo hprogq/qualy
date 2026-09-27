@@ -1,7 +1,9 @@
 import { LogOutIcon } from 'lucide-react'
 import { useApi, useRunApi, useSessionTransition } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import type { DrawerSignOutContext } from '@qualy/ui-contract'
 import * as stylex from '@stylexjs/stylex'
+import { Button } from '@qualy/ui/button'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { toast } from '@qualy/ui/toast'
 import { authApi } from './api.ts'
@@ -35,7 +37,8 @@ const styles = stylex.create({
   },
 })
 
-export default function DrawerSignOut() {
+// the slot hands its context over as one prop; the drawer gives none
+export default function DrawerSignOut({ context }: { context?: DrawerSignOutContext }) {
   const api = useApi(authApi)
   const run = useRunApi()
 
@@ -43,19 +46,25 @@ export default function DrawerSignOut() {
   const endSession = useSessionTransition()
   const me = useIdentity()
   if (!me.isSuccess) return null
+  // only the server can end the session: the cookie is HttpOnly, so a failed
+  // request leaves the identity intact and must say so instead of pretending
+  // to have signed the user out
+  const signOut = () =>
+    void run(api.auth.endSession())
+      .then(() => endSession({ destination: { kind: 'page', page: 'auth/login' } }))
+      .catch((error: unknown) => toast.error(formatError(error)))
+  // the one thing left to do on a screen with nothing else: its action,
+  // drawn as every other screen's is
+  if (context?.standalone === true) {
+    return (
+      <Button onClick={signOut}>
+        <LogOutIcon aria-hidden />
+        {format(m.signOut)}
+      </Button>
+    )
+  }
   return (
-    <button
-      type="button"
-      {...stylex.props(styles.wayOut)}
-      onClick={() => {
-        // only the server can end the session: the cookie is HttpOnly, so a
-        // failed request leaves the identity intact and must say so instead
-        // of pretending to have signed the user out
-        void run(api.auth.endSession())
-          .then(() => endSession({ destination: { kind: 'page', page: 'auth/login' } }))
-          .catch((error: unknown) => toast.error(formatError(error)))
-      }}
-    >
+    <button type="button" {...stylex.props(styles.wayOut)} onClick={signOut}>
       <LogOutIcon aria-hidden className={stylex.props(styles.glyph).className} />
       {format(m.signOut)}
     </button>

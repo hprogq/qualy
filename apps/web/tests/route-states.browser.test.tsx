@@ -3,6 +3,7 @@ import { page } from 'vitest/browser'
 import { lazy } from 'react'
 import { Outlet } from 'react-router'
 import { Effect } from 'effect'
+import type { DrawerSignOutContext } from '@qualy/ui-contract'
 import { emptyComponentRegistry, ManifestRoutes, type ComponentRegistry } from '@qualy/web-runtime'
 import { useRouteSlots } from '../src/route-states.tsx'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
@@ -51,8 +52,12 @@ const registry = (): ComponentRegistry => ({
     'app-shell/drawer-sign-out': {
       'probe/sign-out': lazy(() =>
         Promise.resolve({
-          default: () => (
-            <button type="button" data-testid="sign-out">
+          default: ({ context }: { context?: DrawerSignOutContext }) => (
+            <button
+              type="button"
+              data-testid="sign-out"
+              data-standalone={context?.standalone === true}
+            >
               out
             </button>
           ),
@@ -118,22 +123,43 @@ describe('nothing to open at all', () => {
     try {
       await mount(nothing('authenticated'), '/')
       await vi.waitFor(() => expect(state()?.getAttribute('data-state')).toBe('denied'))
-      await expect.element(page.getByTestId('sign-out')).toBeVisible()
-      // one of the state's own ways out, not something standing beside it
-      expect(state()!.contains(page.getByTestId('sign-out').element())).toBe(true)
-      // drawn at its own size under the words, even across a phone's column
-      const way = page.getByTestId('sign-out').element().getBoundingClientRect()
-      expect(way.width).toBeLessThan(200)
-      expect((way.left + way.right) / 2).toBeCloseTo(390 / 2, -1)
+      const way = page.getByTestId('sign-out')
+      await expect.element(way).toBeVisible()
+      // one of the state's own ways out, not something standing beside it,
+      // and told so: drawn as the screen's action rather than the drawer's
+      expect(state()!.contains(way.element())).toBe(true)
+      await expect.element(way).toHaveAttribute('data-standalone', 'true')
+      // across a phone's column, as every state's actions are
+      const box = way.element().getBoundingClientRect()
+      expect(box.width).toBeGreaterThan(300)
+      expect((box.left + box.right) / 2).toBeCloseTo(390 / 2, -1)
     } finally {
       await page.viewport(1280, 800)
     }
   })
 
+  // Not only at the origin: a stale link, a bookmark or a reload of a page
+  // since taken away lands on the address that leads nowhere, with no shell
+  // and no home to offer - the way out of the session is all there is.
+  it('leaves the same way out at an address that leads nowhere', async () => {
+    await mount(nothing('authenticated'), '/assessment/batches/0192')
+    await vi.waitFor(() => expect(state()?.getAttribute('data-state')).toBe('missing'))
+    const way = page.getByTestId('sign-out')
+    await expect.element(way).toBeVisible()
+    expect(state()!.contains(way.element())).toBe(true)
+    await expect.element(way).toHaveAttribute('data-standalone', 'true')
+  })
+
   it('offers a visitor who is not signed in nothing to leave', async () => {
-    await mount(nothing('anonymous'), '/')
-    await vi.waitFor(() => expect(state()?.getAttribute('data-state')).toBe('denied'))
-    expect(state()!.querySelector('[data-slot="resource-state-actions"]')).toBeNull()
+    for (const [route, kind] of [
+      ['/', 'denied'],
+      ['/somewhere', 'missing'],
+    ] as const) {
+      const { unmount } = await mount(nothing('anonymous'), route)
+      await vi.waitFor(() => expect(state()?.getAttribute('data-state')).toBe(kind))
+      expect(state()!.querySelector('[data-slot="resource-state-actions"]')).toBeNull()
+      await unmount()
+    }
   })
 })
 

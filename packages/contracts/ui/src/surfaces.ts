@@ -285,13 +285,23 @@ export const drawerAccount = defineUiSlot({
 
 /**
  * The way out, standing at the end of the drawer's last row. The host also
- * offers it, alone, on the screen it draws when a signed-in reader has no
- * page to open at all, where there is no shell and so no drawer.
+ * offers it, alone, on the screens it draws when a signed-in reader has no
+ * page to open at all, where there is no shell and so no drawer; there it
+ * says so in the context (`DrawerSignOutContext`).
  */
 export const drawerSignOut = defineUiSlot({
   key: 'app-shell/drawer-sign-out',
   cardinality: 'one',
 })
+
+/**
+ * What the host hands the way out. Absent in the drawer. `standalone` when it
+ * is the one action of a screen that has nothing else to offer, drawn as that
+ * screen's other ways out are: a button, across the column on a phone.
+ */
+export interface DrawerSignOutContext {
+  readonly standalone?: boolean
+}
 
 /**
  * What is being worked on, said by whoever knows: the workspace shell renders

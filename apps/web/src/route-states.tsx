@@ -1,7 +1,12 @@
 import { useEffect, useMemo } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { Link } from 'react-router'
-import { drawerSignOut, surfaceLabel, type BrowserSurface } from '@qualy/ui-contract'
+import {
+  drawerSignOut,
+  surfaceLabel,
+  type BrowserSurface,
+  type DrawerSignOutContext,
+} from '@qualy/ui-contract'
 import { Failure, UiSlot, useManifest, type RouteSlots } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -21,13 +26,10 @@ const styles = stylex.create({
   standalone: {
     minHeight: '100dvh',
   },
-  // the contribution is drawn at its own size, under the words rather than
-  // stretched across a phone's column
-  wayOut: {
-    display: 'flex',
-    justifyContent: 'center',
-  },
 })
+
+/** told to the way out that it is a screen's one action, not the drawer's last word */
+const STANDALONE: DrawerSignOutContext = { standalone: true }
 
 /**
  * The route-level states, in the reader's language, for the home the
@@ -37,10 +39,16 @@ const styles = stylex.create({
 export function useRouteSlots(homePath: string | undefined): RouteSlots {
   const { format } = useI18n()
   const manifest = useManifest()
+  // With no shell there is no drawer, and so no way out of the session but
+  // the one a screen offers itself: whoever owns sessions contributes it, and
+  // a visitor who is not signed in has nothing to leave.
   const signedIn =
     manifest.viewer === 'authenticated' && (manifest.slots[drawerSignOut.key]?.length ?? 0) > 0
-  return useMemo<RouteSlots>(
-    () => ({
+  return useMemo<RouteSlots>(() => {
+    const signOut = signedIn
+      ? [<UiSlot key="sign-out" token={drawerSignOut} context={STANDALONE} />]
+      : []
+    return {
       pageLoading: <PageLoading />,
       layoutLoading: <LoadingScreen />,
       // A page's code that failed is drawn as any page that cannot be shown
@@ -66,43 +74,36 @@ export function useRouteSlots(homePath: string | undefined): RouteSlots {
       ),
       // The way out of a mistyped address is the home the route builder
       // resolved - one resolution, the same one the origin redirects to - so
-      // a viewer with any page to open is always offered it; one with none
-      // has nowhere to be sent, and the shell's own header still offers
-      // whatever the session allows. The same state a page draws for a
-      // record that is not there, since an address that leads nowhere is one.
+      // a viewer with any page to open is always offered it. One with none
+      // has no home and no shell around the state either - a stale link, a
+      // bookmark, a reload of a page since taken away - and is offered the
+      // session's own way out, as on the screen the origin shows them. The
+      // same state a page draws for a record that is not there, since an
+      // address that leads nowhere is one.
       notFound: ({ homePath: home, standalone }) => (
         <ResourceState
           kind="missing"
           title={format(commonMessages.notFoundTitle)}
           description={format(commonMessages.notFoundHint)}
-          actions={home === undefined ? [] : [<HomeLink key="home" to={home} primary />]}
+          actions={home === undefined ? signOut : [<HomeLink key="home" to={home} primary />]}
           {...(standalone ? { xstyle: styles.standalone } : {})}
         />
       ),
       // No page to open at all: there is no shell either, so this is the
-      // screen, and its one way out is the session's own - whoever owns
-      // sessions contributes it, and a visitor who is not signed in has
-      // nothing to leave.
+      // screen, and its one way out is the session's own.
       empty: (
         <ResourceState
           kind="denied"
           title={format(commonMessages.emptyPagesTitle)}
-          description={format(commonMessages.emptyPagesHint)}
-          actions={
-            signedIn
-              ? [
-                  <div key="sign-out" {...stylex.props(styles.wayOut)}>
-                    <UiSlot token={drawerSignOut} />
-                  </div>,
-                ]
-              : []
-          }
+          description={format(
+            signedIn ? commonMessages.emptyPagesSignedInHint : commonMessages.emptyPagesHint,
+          )}
+          actions={signOut}
           xstyle={styles.standalone}
         />
       ),
-    }),
-    [format, homePath, signedIn],
-  )
+    }
+  }, [format, homePath, signedIn])
 }
 
 /** home, as a way out of a state that is not a page */

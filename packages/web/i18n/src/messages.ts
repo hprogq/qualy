@@ -108,6 +108,12 @@ export const commonMessages = {
     id: 'common/page/empty-hint',
     defaultMessage: 'Nothing is available to your account yet',
   },
+  // the same screen for somebody signed in, whose one way out is to sign
+  // out: what to do next, in the order most readers want it
+  emptyPagesSignedInHint: {
+    id: 'common/page/empty-signed-in-hint',
+    defaultMessage: 'Ask an administrator for access, or sign out and use another account',
+  },
   goHome: { id: 'common/action/go-home', defaultMessage: 'Go to the home page' },
   notFoundTitle: { id: 'common/page/not-found-title', defaultMessage: "This page can't be opened" },
   pageFailed: {
