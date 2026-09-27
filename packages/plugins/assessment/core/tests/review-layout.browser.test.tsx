@@ -2,6 +2,8 @@ import ReviewInstancePage from '../src/client/review/ReviewInstancePage.tsx'
 import ReviewInboxPage from '../src/client/review/ReviewInboxPage.tsx'
 import QueueBadge from '../src/client/review/QueueBadge.tsx'
 import { UNNAMED } from '../src/client/roster/unit-path.ts'
+import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
+import { Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect, Stream } from 'effect'
@@ -589,6 +591,68 @@ describe('the history under the flow pane', () => {
     // and the card itself holds everything, clock included
     const card = grounds.closest('[data-testid="prior-round-card"]') as HTMLElement
     expect(card.scrollWidth).toBeLessThanOrEqual(card.clientWidth + 1)
+  })
+})
+
+// The claim above, read by the shell the product actually draws around the
+// workbench: with the rail open at a desk width, the page scroller keeps no
+// strip for a scrollbar the workbench never needs.
+describe('the workbench inside the workspace shell', () => {
+  it('stands inside the shell\u2019s main and gives up the scrollbar strip beside it', async () => {
+    await page.viewport(1440, 900)
+    await renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              pages: PAGES,
+              collections: {
+                'app-shell/navigation-groups': [],
+                'app-shell/navigation-primary': [],
+                'workspace-shell/navigation': [
+                  {
+                    id: 'assessment/batch-reviews/rail',
+                    label: { kind: 'literal', value: '审核工作' },
+                    target: {
+                      kind: 'page',
+                      pageId: 'assessment/batch-reviews',
+                      path: '/assessment/batches/:batchId/reviews',
+                    },
+                    order: 10,
+                  },
+                ],
+              },
+            }),
+        },
+        assessment: {
+          getBatch: () => Effect.succeed({ batch: batch() }),
+          listReviewInbox: () =>
+            Effect.succeed({ items: [inboxRow()], nextCursor: null, handledToday: 0 }),
+          getReviewInstance: () => Effect.succeed({ review }),
+          getEntryHistory: () => Effect.succeed({ revisions: [], events: [], rounds: [] }),
+        },
+      }),
+      route: `/assessment/batches/${BATCH_ID}/reviews/${INSTANCE_ID}`,
+      children: (
+        <Routes>
+          <Route element={<WorkspaceShell />}>
+            <Route
+              path="/assessment/batches/:batchId/reviews/:instanceId"
+              element={<ReviewInstancePage />}
+            />
+          </Route>
+        </Routes>
+      ),
+    })
+    await expect.element(page.getByTestId('workspace-rail')).toBeVisible()
+    await expect.element(page.getByTestId('queue-key')).toBeVisible()
+    // one place called the page's content: the shell's, with the filing a
+    // named part of it rather than a second main inside the first
+    expect(page.getByRole('main').elements()).toHaveLength(1)
+    await expect.element(page.getByRole('region', { name: '申报内容' })).toBeInTheDocument()
+    const main = page.getByRole('main').element()
+    await expect.poll(() => getComputedStyle(main).scrollbarGutter).toBe('auto')
   })
 })
 

@@ -23,7 +23,7 @@ import {
 } from './model.ts'
 import { useBatchZone } from '../batch/zone.ts'
 import { useFinePointer } from './pointer.ts'
-import { Pane, type WorkbenchPart } from './Pane.tsx'
+import { PART_LABEL, Pane, type WorkbenchPart } from './Pane.tsx'
 
 const belowLg = '@media (max-width: 1023.98px)'
 const lg = '@media (min-width: 1024px)'
@@ -484,8 +484,9 @@ export const FilingColumn = memo(function FilingColumn({
   }
   return (
     <Pane
-      as="main"
+      as="section"
       part="filing"
+      label={format(PART_LABEL.filing)}
       xstyle={styles.frame}
       innerXstyle={styles.inner}
       footer={

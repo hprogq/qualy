@@ -75,14 +75,22 @@ const styles = stylex.create({
 export function Pane({
   as: As,
   part,
+  label,
   xstyle,
   innerXstyle,
   footer,
   children,
 }: {
-  as: 'main' | 'section' | 'aside'
+  /**
+   * Never `main`: the workbench stands inside the shell's own main, and a
+   * second one inside it leaves a screen reader two places called the
+   * page's content.
+   */
+  as: 'section' | 'aside'
   /** which part of the workbench this is, for the strip that anchors to it */
   part: WorkbenchPart
+  /** the part's name, for a reader moving between the parts by landmark */
+  label?: string
   /** the pane frame: width, borders */
   xstyle?: stylex.StyleXStyles
   /** the content column: padding and gap */
@@ -92,7 +100,7 @@ export function Pane({
   children: ReactNode
 }) {
   return (
-    <As data-workbench-part={part} {...stylex.props(styles.pane, xstyle)}>
+    <As data-workbench-part={part} aria-label={label} {...stylex.props(styles.pane, xstyle)}>
       <ScrollArea className={stylex.props(styles.scroller).className}>
         <div {...stylex.props(styles.column, innerXstyle)}>{children}</div>
       </ScrollArea>
