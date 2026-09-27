@@ -132,7 +132,7 @@ export const commonMessages = {
   loadMissingTitle: { id: 'common/load/missing-title', defaultMessage: "This can't be found" },
   loadMissingHint: {
     id: 'common/load/missing-hint',
-    defaultMessage: 'May have been removed, or the link may be wrong',
+    defaultMessage: 'The link may be out of date or mistyped',
   },
   loadDeniedTitle: { id: 'common/load/denied-title', defaultMessage: "You can't view this" },
   loadDeniedHint: {

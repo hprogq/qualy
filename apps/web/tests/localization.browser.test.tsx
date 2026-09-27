@@ -374,9 +374,11 @@ describe('a thing that is not there', () => {
   }
 
   it('says what may have happened without a pronoun, in both languages', async () => {
+    // English has no subject to leave out, so it speaks of the link alone:
+    // true under a person's heading and a thing's alike
     for (const [locale, sentence] of [
       ['zh-CN', '可能已被删除，或链接有误'],
-      ['en-US', 'May have been removed, or the link may be wrong'],
+      ['en-US', 'The link may be out of date or mistyped'],
     ] as const) {
       const { unmount } = await renderScreen({
         client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
