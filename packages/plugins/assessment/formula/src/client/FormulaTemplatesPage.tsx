@@ -6,6 +6,7 @@ import {
   cursorPages,
   useApi,
   useApiQuery,
+  useLoadFailure,
   usePageNavigate,
   usePageTitle,
   useRunApi,
@@ -58,7 +59,8 @@ export default function FormulaTemplatesPage() {
   const api = useApi(formulaApi)
   const runApi = useRunApi()
   const query = useApiQuery(formulaApi)
-  const { format, formatError, locale } = useI18n()
+  const { format, locale } = useI18n()
+  const failure = useLoadFailure()
   const titleRef = usePageTitle(format(m.templatesTitle))
   const navigate = usePageNavigate()
 
@@ -100,7 +102,13 @@ export default function FormulaTemplatesPage() {
 
           <AsyncSection
             pending={templates.isPending}
-            error={templates.isError ? formatError(templates.error) : null}
+            // what is already listed stays through a later page that failed:
+            // its way to more is still there to press
+            error={
+              templates.isError && templates.data === undefined ? failure.of(templates.error) : null
+            }
+            framed
+            retrying={templates.isFetching}
             loadingLabel={format(commonMessages.loading)}
             retryLabel={format(commonMessages.retry)}
             onRetry={() => void templates.refetch()}

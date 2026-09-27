@@ -1,6 +1,9 @@
 import FormulaEditorPage from '../src/client/FormulaEditorPage.tsx'
+import FormulaListPage from '../src/client/FormulaListPage.tsx'
 import TemplatePage from '../src/client/FormulaTemplatePage.tsx'
+import TemplatesPage from '../src/client/FormulaTemplatesPage.tsx'
 import CalculatorEditor from '../src/client/CalculatorEditor.tsx'
+import type { ReactNode } from 'react'
 import { Effect } from 'effect'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
@@ -160,5 +163,56 @@ describe('a list of formulas to choose from that could not be read', () => {
     reachable = true
     await unreadable.getByRole('button', { name: '重试' }).click()
     await expect.element(page.getByTestId('formula-picker-empty')).toBeVisible()
+  })
+})
+
+describe('a formula library that could not be read', () => {
+  const library = (stubs: Record<string, Stub>, route: string, element: ReactNode) =>
+    renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+        assessmentFormula: stubs,
+      }),
+      route,
+      path: route,
+      children: element,
+    })
+  const state = () => document.querySelector('[data-slot="resource-state"]')
+
+  // Said by what happened, on a card of its own on the page's bare ground:
+  // another try where one can help, and none for a reading the reader may
+  // not make - not one line of red with a retry whatever it was.
+  it('says my formulas could not be read, and reads them again on the word', async () => {
+    await page.viewport(1280, 800)
+    let reachable = false
+    await library(
+      {
+        listFormulaFunctions: () =>
+          reachable
+            ? Effect.succeed({ items: [], nextCursor: null })
+            : Effect.fail(apiError('SERVICE_UNAVAILABLE')),
+      },
+      '/assessment/formulas',
+      <FormulaListPage />,
+    )
+    await vi.waitFor(() => expect(state()?.getAttribute('data-state')).toBe('unavailable'), {
+      timeout: 8_000,
+    })
+    expect(state()?.querySelector('h2')).not.toBeNull()
+    reachable = true
+    await page.getByRole('button', { name: '重试' }).click()
+    await expect.element(page.getByTestId('formula-list-empty')).toBeVisible()
+  })
+
+  it('offers no other try for templates the reader may not read', async () => {
+    await page.viewport(390, 844)
+    await library(
+      { listFormulaTemplates: () => Effect.fail(apiError('ACCESS_DENIED')) },
+      '/assessment/formula-templates',
+      <TemplatesPage />,
+    )
+    await vi.waitFor(() => expect(state()?.getAttribute('data-state')).toBe('denied'))
+    expect(state()?.querySelectorAll('button')).toHaveLength(0)
+    expect(page.getByTestId('template-list-empty').elements()).toHaveLength(0)
   })
 })

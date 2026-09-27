@@ -6,6 +6,7 @@ import {
   cursorPages,
   useApi,
   useApiQuery,
+  useLoadFailure,
   usePageNavigate,
   usePageTitle,
   useRunApi,
@@ -170,7 +171,8 @@ export default function FormulaListPage() {
   const api = useApi(formulaApi)
   const runApi = useRunApi()
   const query = useApiQuery(formulaApi)
-  const { format, formatError, locale } = useI18n()
+  const { format, locale } = useI18n()
+  const failure = useLoadFailure()
   const titleRef = usePageTitle(format(m.listTitle))
   const navigate = usePageNavigate()
   const [creating, setCreating] = useState(false)
@@ -232,7 +234,13 @@ export default function FormulaListPage() {
 
           <AsyncSection
             pending={functions.isPending}
-            error={functions.isError ? formatError(functions.error) : null}
+            // what is already listed stays through a later page that failed:
+            // its way to more is still there to press
+            error={
+              functions.isError && functions.data === undefined ? failure.of(functions.error) : null
+            }
+            framed
+            retrying={functions.isFetching}
             loadingLabel={format(commonMessages.loading)}
             retryLabel={format(commonMessages.retry)}
             onRetry={() => void functions.refetch()}
