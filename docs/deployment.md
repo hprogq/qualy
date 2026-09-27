@@ -52,7 +52,7 @@
    (闭包由 pnpm 现算,不手写清单;删闭包外的包、tests、`./testkit` 导出目标、`src/client`、`*.tsx`、tsconfig、vitest 配置、tools、docs)
    → 拷入 staged client-dist。
 3. final:`node:24.20.0-bookworm-slim@sha256:…`(argon2 只有 glibc 预编译包)、`USER node`、`NODE_ENV=production`、HEALTHCHECK `/health/live`、
-   预建 `/var/lib/qualy/storage` 与两个 socket 目录(归 node,命名卷首次挂载继承所有权)。
+   预建 `/var/lib/qualy/storage`、`/var/lib/qualy/web` 与两个 socket 目录(归 node,命名卷首次挂载继承所有权)。
 
 服务端**以 TS 源码 + node strip-types 运行,这是正式的生产执行模型**(2026-09-17 裁决,不是过渡方案),与 sandbox 镜像同一做法:
 仓库没有 emit 步骤,workspace 包必须是 node_modules 之外的真实目录。选它的理由:开发、测试、镜像是同一套模块结构与包解析,
@@ -95,9 +95,14 @@ devDependencies 里的包,在每个开发机上都能解析,在镜像第一次�
 
 ### 2.4 一次部署改变什么
 
-只有 database 能力有 deploy 副作用,而它的 migration ledger 本身就是实例的 applied state,所以没有第二份「已部署」记录(P4.5 删除了
-deployed lock)。这个前提由 `tools/tests/deploy-capabilities.test.ts` 钉住:枚举仓库全部插件的能力 provider,实现 `deploy` 的只能是
-database。出现第二种有持久部署副作用的能力时,先设计启动如何验证它执行过,再改这张表。
+有 deploy 副作用的能力有两个,每个都有一样启动时拿来与镜像比对的东西,所以仍然没有第二份「已部署」记录(P4.5 删除了 deployed lock):
+
+- `database`:migration ledger 就是实例的 applied state;启动对落后于镜像 lineage 的库拒绝。
+- `web-release`(2026-09-27 加入,`@qualy/plugin-web`):部署自己的 web release store(compose 的 `web_releases` 卷,
+  `QUALY_WEB_RELEASE_STORE`);deploy 把镜像带的 release 装进去并设为 current,启动对「current 不是本镜像的 release」的 store 拒绝。
+
+这个前提由 `tools/tests/deploy-capabilities.test.ts` 钉住:枚举仓库全部插件的能力 provider,实现 `deploy` 的只能是这两个。
+出现第三种有持久部署副作用的能力时,先设计启动如何验证它执行过,再改这张表。
 
 ## 3. 部署(`deploy/`)
 
@@ -106,11 +111,12 @@ database。出现第二种有持久部署副作用的能力时,先设计启动�
 服务:
 
 - `postgres`(pgvector pg18):命名卷 `pg_data`、`pg_backups`;不发布端口,只在 compose 网络内可达。
-- `migrate`(profile `deploy`):server 镜像跑 `deploy`,`docker compose run --rm migrate` 按需运行;migrator 持数据库级 advisory lock,
-  第二个 writer 排队后发现无事可做;失败的迁移不进 ledger,job 非零退出,旧 server 继续跑。
+- `migrate`(profile `deploy`):server 镜像跑 `deploy`,`docker compose run --rm migrate` 按需运行。先按 ledger 应用迁移
+  (migrator 持数据库级 advisory lock,第二个 writer 排队后发现无事可做;失败的迁移不进 ledger,job 非零退出,旧 server 继续跑),
+  再把镜像带的 web release 装进 `web_releases` 卷(可写挂载,`QUALY_WEB_RELEASE_STORE=/var/lib/qualy/web`,见 §3.1)。
 - `server`:`env_file: .env`,容器内路径由 compose 覆盖(`PORT`、存储根、两条 socket 路径、`QUALY_VERSION=<release>`);
   只发布到 `127.0.0.1:3000`(边缘代理见 `ops/reverse-proxy/`);`read_only` 根 + tmpfs `/tmp`;卷:`storage`(附件)、
-  `sandbox_runtime`、`sandbox_authoring`(**只读挂载**:server 只 connect;Linux 对只读挂载的 EROFS 写检查不覆盖 unix socket,实测 `:ro` 客户端照常连通、写文件报 EROFS;创建与删除 socket 归沙箱自己的读写挂载)。
+  `web_releases`(**只读挂载**,从这里服务 shell 与资源)、`sandbox_runtime`、`sandbox_authoring`(**只读挂载**:server 只 connect;Linux 对只读挂载的 EROFS 写检查不覆盖 unix socket,实测 `:ro` 客户端照常连通、写文件报 EROFS;创建与删除 socket 归沙箱自己的读写挂载)。
 - `sandbox-runtime` / `sandbox-authoring`:按 `docs/sandbox-process-isolation.md`:`network_mode: none`、只读根、`cap_drop: ALL`、
   非 root、pids / mem / cpu 限额、各自一个卷;**不给 `.env`**——沙箱环境只有自己的 socket 路径与限额,没有业务 secret。
   两个卷分开,runtime 看不到 authoring 的 socket,反之亦然。没有 TCP fallback:socket 不可达时公式发布 / 计分失败,不退回主进程。
@@ -207,12 +213,25 @@ Resend 答 400/422 算这封信被拒,429/409/5xx/超时算暂不可用;401/403 
 系统账户缺邮箱或缺密码即拒启并点名租户——顺序固定为 migrate → seed → boot。把本地入口改为邮箱登录的那次升级(迁移
 `20260922164042_user-auth-bindings.sql`)必须走这一步:迁移后旧系统账户没有邮箱,seed 以 `QUALY_ADMIN_EMAIL` 补上(已有不同邮箱视为漂移报错)。
 该迁移遇到「同一租户第二个仍在使用的密码入口」会直接失败并点名租户与入口 code,需人工清理后重跑,不做合并。
-server 与 web release 是同一 deployment unit(同一镜像),不存在「只更新 server、复用旧 web」的部署;旧 tab 在下一次请求拿到
-release 不匹配后自行 reload。
+**Web release 与开着的旧 tab**(2026-09-27 纠正 2026-09-17 的裁决):server 与 web release 仍是同一 deployment unit——镜像里带着
+构建它时的那个 release,不存在「只更新 server、复用旧 web」的部署。变的是 release 住在哪:09-17 定为「store 随镜像、只装当前 release」,
+当时只考虑了进程(一个进程一套 api 与一个 shell),没考虑还开着的浏览器——换镜像后旧 tab 的下一次请求带着旧 release id,新进程在自己的
+store 里查不到,答 409 `release`,整屏接管,未保存的输入丢失且绕过离开提示;不需要用户操作就会触发(轮询与实时通道的重连都算请求)。
+现在部署把 release 放在比镜像活得久的 `web_releases` 卷里:`migrate` 把镜像带的 release 装进去(已有则只移指针,幂等),
+按保留策略留下之前的(最近 `QUALY_WEB_RELEASE_RETAIN_COUNT`(默认 5)个 ∪ 最近 `QUALY_WEB_RELEASE_RETAIN_HOURS`(默认 72)小时,
+current 永不删);server 从卷里服务,旧 tab 照样取到自己的 chunk,插件选择与 surface 不变时它的请求照常被接受,只在右下角看到
+「有新版本」的提示,刷新由读者决定。插件启停或 surface 变化的 release 仍对旧 tab 答 409 `assembly`,那是正确的——旧 tab 的屏幕
+可能已经没有对应的 api。**server 启动时核对卷的 current 就是本镜像的 release**,不是(或卷是空的)就拒启并提示先跑 `migrate`,
+与「库落后于镜像就拒启」对称;启动本身不装、不修。没设 `QUALY_WEB_RELEASE_STORE` 时(开发机、`pnpm start`、裸跑镜像)
+server 照旧服务镜像或 checkout 自带的 store,deploy 这一步什么都不做。
 
 ### 3.2 镜像回滚 ≠ schema 回滚
 
-把 `QUALY_RELEASE` 改回去再 `up -d`,回滚的是**代码**。已应用的迁移留在库里,旧代码面对的是新 schema。
+把 `QUALY_RELEASE` 改回去、`docker compose run --rm migrate`、再 `up -d`,回滚的是**代码**。回滚也要跑 `migrate`:旧镜像的
+deploy 对领先于自己的库无事可做(上游 migrator 只挑「文件在、账本里没有」的迁移,账本里多出来的名字不理会,
+`repos/mikro-orm/packages/core/src/utils/AbstractMigrator.ts` 的 `filterUp`),但会把旧 release 重新设为 `web_releases` 的
+current,旧镜像的 server 要这一步才肯启动;旧 release 已被保留策略收走时从旧镜像重新装一份。回滚到本机制之前构建的 release 时,
+那个 server 不认识 `QUALY_WEB_RELEASE_STORE`,照旧服务镜像自带的 store。已应用的迁移留在库里,旧代码面对的是新 schema。
 
 - 迁移只做加法(加表、加列、加索引、backfill 写新列)时,旧代码看不见新列,回滚安全。这正是「先 expand、等一个 release 再 contract」
   的理由:一条 contract(删列、改类型、收紧约束)必须等到依赖它的 release 已经稳定、不会再被回滚之后才提交。
@@ -240,10 +259,13 @@ release 不匹配后自行 reload。
 | 11  | Sandbox RPC / ABI 冒烟                                                         | `qualy sandbox status`:从 server 容器内对两条 socket 取 capabilities,核对 rpc / abi 版本;`release-smoke.ts` 在 compose 栈上执行它                                                                                                                                                                                                                                                                                                                                                                        |
 | 12  | 备份 → 恢复 → 启动                                                             | `release-smoke.ts`:`pg_dump -Fc` → dropdb/createdb → `pg_restore` → `migrate`(up to date)→ server 重启到 ready                                                                                                                                                                                                                                                                                                                                                                                           |
 | 13  | 文档:镜像回滚 ≠ schema 回滚                                                    | 本文 §3.2                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| 14  | 发版后开着的旧 tab 仍取得到自己的 chunk,启动不越过部署                         | `release-store.test.ts`「promoting」(下一个镜像进来后上一个 release 与资源仍在、同镜像重跑幂等、回滚把旧 release 设回 current)+ `web-release-deploy.test.ts`(deploy 步骤)+ `effect-web.test.ts`(卷里 current 不是本镜像的 release 或卷为空即拒启、从卷服务并认得之前的 release)+ `release-smoke.ts`(见下)                                                                                                                                                                                                |
 
 `tools/quality/release-smoke.ts <release>` 在一个一次性的 compose project 上驾驭 `deploy/compose.yaml`:
-postgres 起 → **未迁移就启动 server 必须被拒**(项 9 的另一半)→ `migrate` → server + 两个 sandbox 起 → `/health/ready` →
-shell / manifest / 哈希资源 → `qualy sandbox status` → 第二次 `migrate` 报 up to date → 备份、销库、恢复、`migrate`、重启到 ready → `down -v`。
+postgres 起 → **未迁移就启动 server 必须被拒**(项 9 的另一半)→ `migrate`(迁移 + 把 web release 装进 `web_releases`)→
+server + 两个 sandbox 起 → `/health/ready` → `/__qualy/release` 就是 `migrate` 装的那个 → shell / manifest / 哈希资源 →
+**指向没装过本 release 的 store 启动必须被拒**(项 14)→ `qualy sandbox status` → 第二次 `migrate` 报 up to date 且 release 已装 →
+备份、销库、恢复、`migrate`、重启到 ready → `down -v`。
 CI 的 `image` job 构建三个镜像后跑它。
 
 ## 5. 明确不做

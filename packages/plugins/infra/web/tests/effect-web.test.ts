@@ -4,7 +4,7 @@ import {
   clientAssemblyLayer,
   type ReleaseStanding,
 } from '@qualy/api-kit/client-assembly'
-import { Context, Effect, Exit, Layer, Logger, Schema, Scope } from 'effect'
+import { Cause, Context, Effect, Exit, Layer, Logger, Schema, Scope } from 'effect'
 import { HttpRouter, HttpServerResponse } from 'effect/unstable/http'
 import fs from 'node:fs'
 import { createServer } from 'node:http'
@@ -486,5 +486,89 @@ describe("vite's logger, adapted", () => {
     })
     expect(lines).toEqual(['Warn:same'])
     expect(logger!.hasWarned).toBe(true)
+  })
+})
+
+// A deployment keeps its releases in a store that outlives images, and the
+// deploy job installs each image's release there (src/assembly). The image
+// still carries its own store: that is how a start knows which release it was
+// built with, and so whether the deploy job ran for it.
+describe('a deployment that keeps its releases apart from the image', () => {
+  const imageRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-web-image-'))
+  installFixture(imageRoot)
+  const stores: string[] = []
+  const deploymentStore = () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-web-deployment-'))
+    stores.push(root)
+    return root
+  }
+  afterAll(() => {
+    for (const root of [imageRoot, ...stores]) fs.rmSync(root, { recursive: true, force: true })
+  })
+
+  /** a start against the deployment's store, and what it then says about a release a page claims */
+  const start = async (releaseStore: string, claimed: readonly string[] = []) => {
+    const scope = await Effect.runPromise(Scope.make())
+    try {
+      const registry = await Effect.runPromise(Layer.buildWithScope(clientAssemblyLayer, scope))
+      const assembly = Context.getUnsafe(registry, ClientAssembly)
+      const exit = await Effect.runPromiseExit(
+        Layer.buildWithScope(
+          routes.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.succeed(
+                  WebConfig,
+                  WebConfig.of({
+                    assetRoot: imageRoot,
+                    sourceRoot: imageRoot,
+                    releaseStore,
+                    cspMode: 'report',
+                  }),
+                ),
+                Layer.sync(NodeServer, () => createServer()),
+                assemblyInfo,
+                policy,
+                Layer.succeed(ClientAssembly, assembly),
+                HttpRouter.layer,
+              ),
+            ),
+          ),
+          scope,
+        ),
+      )
+      return {
+        refusal: Exit.isFailure(exit) ? Cause.pretty(exit.cause) : undefined,
+        standings: claimed.map((releaseId) => assembly.standingOf(releaseId)),
+      }
+    } finally {
+      await Effect.runPromise(Scope.close(scope, Exit.void))
+    }
+  }
+
+  it("refuses to start until the deploy job has made this image's release the current one", async () => {
+    const empty = await start(deploymentStore())
+    expect(empty.refusal).toContain('deploy job')
+
+    // the last deploy's release, still current: this image's was never installed
+    const stale = deploymentStore()
+    installFixture(stale, { releaseId: 'last-release' })
+    const behind = await start(stale)
+    expect(behind.refusal).toContain('last-release')
+    expect(behind.refusal).toContain('test-release')
+    expect(behind.refusal).toContain('deploy job')
+
+    const relative = await start('web-releases')
+    expect(relative.refusal).toContain('absolute')
+  })
+
+  it("serves from the deployment's store, which knows the releases before this one", async () => {
+    const store = deploymentStore()
+    installFixture(store, { releaseId: 'last-release' })
+    installFixture(store)
+    // the earlier release is in the deployment's store only, never in the image
+    const started = await start(store, ['test-release', 'last-release', 'r_neverInstalled'])
+    expect(started.refusal).toBeUndefined()
+    expect(started.standings).toEqual(['compatible', 'compatible', 'unknown'])
   })
 })

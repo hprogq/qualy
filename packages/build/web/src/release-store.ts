@@ -35,7 +35,8 @@ import { BROWSER_SURFACE_MAP, PRIVATE_BUILD_FILES, WEB_BUILD_METADATA } from './
 // release that is not entirely there. Retention is a union of the newest
 // few and everything recent; collection removes what no retained release
 // names, and never the current one. Node's fs only, with no framework: the
-// build runs this, a deployment's installer will, and a host reads it.
+// build installs into it, a deployment promotes the image's release into its
+// own, and a host reads it.
 
 export const CURRENT_POINTER = 'current.json'
 export const RELEASE_METADATA = '.qualy-release.json'
@@ -379,6 +380,126 @@ const sameRelease = (a: InstalledWebRelease, b: InstalledWebRelease) =>
   a.assets.length === b.assets.length &&
   a.assets.every((asset, index) => asset === b.assets[index])
 
+/** what a release brings into a store, wherever it comes from */
+interface Arrival {
+  readonly release: InstalledWebRelease
+  /** the directory its shell files are in, and which ones, compressed twins aside */
+  readonly shellDir: string
+  readonly shellFiles: readonly string[]
+  /** the directory its hashed assets are in, and which ones, relative to it, twins aside */
+  readonly assetsDir: string
+  readonly assetFiles: readonly string[]
+}
+
+/** a file and whichever compressed twins of it the source already has */
+const withTwins = (from: string, to: string) => {
+  copyAtomically(from, to)
+  for (const twin of TWINS) {
+    if (fs.existsSync(`${from}${twin}`) && !fs.existsSync(`${to}${twin}`)) {
+      copyAtomically(`${from}${twin}`, `${to}${twin}`)
+    }
+  }
+}
+
+/**
+ * The installation proper, in the order that makes a failure harmless:
+ * assets first, then the shell in a temporary directory moved into place
+ * whole, then the pointer, and only then collection. Twins the source
+ * already has are copied rather than computed again; any it lacks are made.
+ */
+const place = async (
+  store: ReleaseStore,
+  arrival: Arrival,
+  options: { readonly now: () => Date; readonly retention: RetentionPolicy | false },
+): Promise<InstallResult> => {
+  const { release, shellDir, shellFiles, assetsDir, assetFiles } = arrival
+  const root = resolveReleaseRoot(store, release.releaseId)
+
+  // the same id twice is fine when it is the same release, and refused when it is not
+  let reused = false
+  if (fs.existsSync(root)) {
+    const existing = readInstalledRelease(store, release.releaseId)
+    const same =
+      sameRelease(existing, release) &&
+      shellFiles.every(
+        (file) =>
+          fs.existsSync(path.join(root, file)) &&
+          sameBytes(path.join(shellDir, file), path.join(root, file)),
+      )
+    if (!same) {
+      throw new Error(
+        `release ${release.releaseId} is already installed with different content; a release id names one build`,
+      )
+    }
+    reused = true
+  }
+
+  // the flat layout this store replaced, cleared before the first install
+  if (!fs.existsSync(path.join(store.root, CURRENT_POINTER))) {
+    for (const legacy of LEGACY_FLAT_FILES)
+      fs.rmSync(path.join(store.root, legacy), { force: true })
+  }
+
+  // assets first: a name already there must carry the same bytes
+  const placedAssets: string[] = []
+  for (const file of assetFiles) {
+    const from = path.join(assetsDir, file)
+    const to = path.join(store.root, SHARED_ASSETS, file)
+    if (fs.existsSync(to)) {
+      if (!sameBytes(from, to)) {
+        throw new Error(
+          `${SHARED_ASSETS}/${file} is already in the store with different bytes: a hashed name arrived with new content, so the content hash invariant is broken`,
+        )
+      }
+    } else {
+      withTwins(from, to)
+    }
+    placedAssets.push(to)
+  }
+  await compressAll(placedAssets)
+
+  // the shell, whole, then in place
+  if (!reused) {
+    fs.mkdirSync(path.join(store.root, RELEASES), { recursive: true })
+    const staging = path.join(store.root, RELEASES, `.tmp-${release.releaseId}-${nonce()}`)
+    try {
+      const placedShell: string[] = []
+      for (const file of shellFiles) {
+        const to = path.join(staging, file)
+        fs.mkdirSync(path.dirname(to), { recursive: true })
+        withTwins(path.join(shellDir, file), to)
+        placedShell.push(to)
+      }
+      await compressAll(placedShell)
+      fs.writeFileSync(
+        path.join(staging, RELEASE_METADATA),
+        `${JSON.stringify(release, null, 2)}\n`,
+      )
+      fs.renameSync(staging, root)
+    } finally {
+      fs.rmSync(staging, { recursive: true, force: true })
+    }
+  }
+
+  // the pointer, last
+  writeAtomically(
+    path.join(store.root, CURRENT_POINTER),
+    `${JSON.stringify({ schema: RELEASE_SCHEMA, releaseId: release.releaseId }, null, 2)}\n`,
+  )
+
+  // and only then, what is no longer needed
+  const gc =
+    options.retention === false
+      ? undefined
+      : gcWebReleases(store, { ...options.retention, now: options.now })
+  return {
+    release: reused ? readInstalledRelease(store, release.releaseId) : release,
+    root,
+    reused,
+    gc,
+  }
+}
+
 export const installWebRelease = async (options: InstallOptions): Promise<InstallResult> => {
   const { source, store } = options
   const now = options.now ?? (() => new Date())
@@ -427,87 +548,70 @@ export const installWebRelease = async (options: InstallOptions): Promise<Instal
     installedAt: now().toISOString(),
     assets: assetFiles.map((file) => `${SHARED_ASSETS}/${file}`),
   }
-  const root = resolveReleaseRoot(store, built.releaseId)
-
-  // 3. the same id twice is fine when it is the same release, and refused when it is not
-  let reused = false
-  if (fs.existsSync(root)) {
-    const existing = readInstalledRelease(store, built.releaseId)
-    const same =
-      sameRelease(existing, release) &&
-      shellFiles.every(
-        (file) =>
-          fs.existsSync(path.join(root, file)) &&
-          sameBytes(path.join(source, file), path.join(root, file)),
-      )
-    if (!same) {
-      throw new Error(
-        `release ${built.releaseId} is already installed with different content; a release id names one build`,
-      )
-    }
-    reused = true
-  }
-
-  // the flat layout this store replaced, cleared before the first install
-  if (!fs.existsSync(path.join(store.root, CURRENT_POINTER))) {
-    for (const legacy of LEGACY_FLAT_FILES)
-      fs.rmSync(path.join(store.root, legacy), { force: true })
-  }
-
-  // 4. assets first: a name already there must carry the same bytes
-  const assetTwins: string[] = []
-  for (const file of assetFiles) {
-    const from = path.join(source, SHARED_ASSETS, file)
-    const to = path.join(store.root, SHARED_ASSETS, file)
-    if (fs.existsSync(to)) {
-      if (!sameBytes(from, to)) {
-        throw new Error(
-          `${SHARED_ASSETS}/${file} is already in the store with different bytes: a hashed name arrived with new content, so the content hash invariant is broken`,
-        )
-      }
-    } else {
-      copyAtomically(from, to)
-    }
-    assetTwins.push(to)
-  }
-  await compressAll(assetTwins)
-
-  // 5-7. the shell, whole, then in place
-  if (!reused) {
-    fs.mkdirSync(path.join(store.root, RELEASES), { recursive: true })
-    const staging = path.join(store.root, RELEASES, `.tmp-${built.releaseId}-${nonce()}`)
-    try {
-      const shellTwins: string[] = []
-      for (const file of shellFiles) {
-        const to = path.join(staging, file)
-        fs.mkdirSync(path.dirname(to), { recursive: true })
-        fs.copyFileSync(path.join(source, file), to)
-        shellTwins.push(to)
-      }
-      await compressAll(shellTwins)
-      fs.writeFileSync(
-        path.join(staging, RELEASE_METADATA),
-        `${JSON.stringify(release, null, 2)}\n`,
-      )
-      fs.renameSync(staging, root)
-    } finally {
-      fs.rmSync(staging, { recursive: true, force: true })
-    }
-  }
-
-  // 8. the pointer, last
-  writeAtomically(
-    path.join(store.root, CURRENT_POINTER),
-    `${JSON.stringify({ schema: RELEASE_SCHEMA, releaseId: built.releaseId }, null, 2)}\n`,
+  return place(
+    store,
+    {
+      release,
+      shellDir: source,
+      shellFiles,
+      assetsDir: path.join(source, SHARED_ASSETS),
+      assetFiles,
+    },
+    { now, retention: options.retention ?? DEFAULT_RETENTION },
   )
+}
 
-  // 9. and only then, what is no longer needed
-  const retention = options.retention ?? DEFAULT_RETENTION
-  const gc = retention === false ? undefined : gcWebReleases(store, { ...retention, now })
-  return {
-    release: reused ? readInstalledRelease(store, built.releaseId) : release,
-    root,
-    reused,
-    gc,
+export interface PromoteOptions {
+  /** the store the release comes from: its current release is the one installed */
+  readonly from: ReleaseStore
+  readonly to: ReleaseStore
+  readonly now?: () => Date
+  /** what to keep afterwards in the store it arrives in; `false` collects nothing */
+  readonly retention?: RetentionPolicy | false
+}
+
+/**
+ * The release one store serves, installed into another.
+ *
+ * An image carries its own release in a store of its own, and a deployment
+ * keeps its releases in a store that outlives images: that one is where a
+ * browser still on the previous release goes on finding its chunks after this
+ * one starts. The release crosses over with everything it was installed with -
+ * its assembly, its surfaces, its revision, its compressed twins - and with the
+ * same guarantees as an installation. Its installation time is the arrival,
+ * which is what retention in the destination counts from.
+ */
+export const promoteWebRelease = async (options: PromoteOptions): Promise<InstallResult> => {
+  const now = options.now ?? (() => new Date())
+  if (path.resolve(options.from.root) === path.resolve(options.to.root)) {
+    throw new Error(`${options.from.root} is both the source and the destination`)
   }
+  const source = readCurrentWebRelease(options.from)
+  if (source === undefined) {
+    throw new Error(`no web release is installed at ${options.from.root}; there is none to promote`)
+  }
+  const assetsDir = path.join(options.from.root, SHARED_ASSETS)
+  const assetFiles = source.release.assets.map((asset) => {
+    const file = asset.slice(`${SHARED_ASSETS}/`.length)
+    if (!asset.startsWith(`${SHARED_ASSETS}/`) || !fs.existsSync(path.join(assetsDir, file))) {
+      throw new Error(
+        `release ${source.releaseId} names ${asset}, which is not in ${options.from.root}`,
+      )
+    }
+    return file
+  })
+  const shellFiles = walk(source.root).filter(
+    (file) => file !== RELEASE_METADATA && !isTwin(file) && !isDebugArtifact(file),
+  )
+  return place(
+    options.to,
+    {
+      release: { ...source.release, installedAt: now().toISOString() },
+      shellDir: source.root,
+      shellFiles,
+      assetsDir,
+      assetFiles,
+    },
+    { now, retention: options.retention ?? DEFAULT_RETENTION },
+  )
 }

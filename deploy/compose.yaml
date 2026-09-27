@@ -11,7 +11,8 @@
 #
 #   docker compose up -d postgres            the database, once
 #   docker compose run --rm migrate          apply the release's committed
-#                                            lineage - one writer, once per
+#                                            lineage and install its web
+#                                            release - one writer, once per
 #                                            release, before the server
 #   docker compose up -d                     the server and both sandboxes
 #   curl -sf http://127.0.0.1:3000/health/ready
@@ -74,12 +75,16 @@ services:
       retries: 5
       start_period: 20s
 
-  # The one-off migration job: the same image as the server, running the
-  # deploy CLI once. `docker compose run --rm migrate` starts it on demand
-  # (its profile keeps `up` from starting it); the migrator takes the
-  # database's migration lock, so a second run waits and then finds nothing
-  # to do. A failed migration is not recorded and the job exits non-zero;
-  # nothing else is started until it passes.
+  # The one-off deploy job: the same image as the server, running the deploy
+  # CLI once. `docker compose run --rm migrate` starts it on demand (its
+  # profile keeps `up` from starting it). It applies the release's migrations
+  # - the migrator takes the database's migration lock, so a second run waits
+  # and then finds nothing to do - and then installs the web release the image
+  # carries into `web_releases`, beside the releases before it, so tabs still
+  # running the previous one keep finding their chunks. A failed step is not
+  # recorded and the job exits non-zero; nothing else is started until it
+  # passes, and a server whose release is not the store's current one refuses
+  # to start.
   migrate:
     image: qualy-server:${QUALY_RELEASE:?set in .env}
     profiles: [deploy]
@@ -90,6 +95,10 @@ services:
     # the deployment's own settings; the release smoke points this at a file
     # of its own, a deployment leaves it at .env
     env_file: ${QUALY_ENV_FILE:-.env}
+    environment:
+      QUALY_WEB_RELEASE_STORE: /var/lib/qualy/web
+    volumes:
+      - web_releases:/var/lib/qualy/web
     read_only: true
     tmpfs:
       - /tmp:size=16m,noexec,nosuid,nodev
@@ -112,6 +121,7 @@ services:
       # the container's own view of the deployment; these win over .env
       PORT: '3000'
       QUALY_STORAGE_LOCAL_ROOT: /var/lib/qualy/storage
+      QUALY_WEB_RELEASE_STORE: /var/lib/qualy/web
       QUALY_SANDBOX_RUNTIME_SOCKET: /run/qualy-sandbox/runtime/runtime.sock
       QUALY_SANDBOX_AUTHORING_SOCKET: /run/qualy-sandbox/authoring/authoring.sock
       QUALY_VERSION: ${QUALY_RELEASE}
@@ -120,6 +130,8 @@ services:
       - '${QUALY_BIND:-127.0.0.1}:${QUALY_PORT:-3000}:3000'
     volumes:
       - storage:/var/lib/qualy/storage
+      # the web releases the deploy job installed; the server only reads them
+      - web_releases:/var/lib/qualy/web:ro
       # The sandbox sockets, read-only: the server only connects, and Linux
       # lets a unix socket on a read-only mount be connected to (the EROFS
       # check on write covers files, directories and links, not sockets;
@@ -201,5 +213,8 @@ volumes:
   pg_backups: {}
   # attachments written by @qualy/plugin-storage-local
   storage: {}
+  # the web releases the deploy job installs, the current one and those
+  # before it (QUALY_WEB_RELEASE_RETAIN_COUNT / _HOURS in .env)
+  web_releases: {}
   sandbox_runtime: {}
   sandbox_authoring: {}

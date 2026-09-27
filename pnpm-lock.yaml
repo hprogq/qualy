@@ -2464,6 +2464,9 @@ importers:
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
+      '@qualy/assembly-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/assembly
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:../../../core/plugin-kit

@@ -117,7 +117,7 @@ const clearLog = () => {
 
 describe('an assembly with no database in it', () => {
   it('resolves, plans and generates its modules without loading a provider', async () => {
-    const workspace = createWorkspace(['@qualy/plugin-web', '@qualy/plugin-layout-default'])
+    const workspace = createWorkspace(['@qualy/plugin-ui-registry', '@qualy/plugin-layout-default'])
     try {
       const resolution = await resolveWorkspace(workspace)
       expect([...resolution.providers.keys()]).toEqual([])

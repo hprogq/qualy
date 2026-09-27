@@ -15,15 +15,22 @@ import { isPluginDescriptor, type PluginDescriptor } from '@qualy/plugin-kit'
 // the instance's applied state, and a start compares it with the lineage the
 // image carries.
 //
-// That argument is a fact about today's providers, and the capability contract
-// still lets any provider define `deploy`. A second one - a search index, an
-// object store bucket - would be run by `qualy deploy` and never checked by a
-// start, because nothing records that it ran. So the fact is held here: a
-// provider with deploy work is the database's, and a second one is the moment
-// to design how a start verifies it, not a line to add to this list.
+// That argument is a fact about each provider, and the capability contract
+// lets any provider define `deploy`. One whose work no start checks would be
+// run by `qualy deploy` and never verified, because nothing records that it
+// ran. So each provider with deploy work is listed here with the thing a start
+// compares against the image:
+//
+//   database     the migration ledger; a start refuses a database behind the
+//                lineage the image carries
+//   web-release  the deployment's release store; a start refuses a store whose
+//                current release is not the one the image carries
+//
+// A new one is the moment to design how a start verifies it, not a line to
+// add to this list.
 
 const ROOT = path.resolve(import.meta.dirname, '../..')
-const DEPLOYS_WITH_A_LEDGER = new Set(['database'])
+const DEPLOYS_A_START_VERIFIES = new Set(['database', 'web-release'])
 
 /** every plugin package in the repository, whether or not the manifest selects it */
 const pluginDescriptors = async (): Promise<Map<string, PluginDescriptor>> => {
@@ -43,17 +50,18 @@ const pluginDescriptors = async (): Promise<Map<string, PluginDescriptor>> => {
 }
 
 describe('what a deployment changes', () => {
-  it('is only the database, whose ledger records what it applied', async () => {
+  it('is only work whose result a start checks against the image', async () => {
     const descriptors = await pluginDescriptors()
     expect(descriptors.size).toBeGreaterThan(10)
     const providers = await loadProviders(descriptors)
     const deploying = [...providers]
       .filter(([, loaded]) => typeof loaded.provider.deploy === 'function')
       .map(([key, loaded]) => `${key} (${loaded.pluginId})`)
-    // not vacuous: the one that is allowed does deploy
+    // not vacuous: the ones that are allowed do deploy
     expect(deploying).toContain('database (@qualy/plugin-database)')
+    expect(deploying).toContain('web-release (@qualy/plugin-web)')
     expect(
-      deploying.filter((one) => !DEPLOYS_WITH_A_LEDGER.has(one.split(' ')[0]!)),
+      deploying.filter((one) => !DEPLOYS_A_START_VERIFIES.has(one.split(' ')[0]!)),
       'a capability with deploy work that no start verifies; decide how a start knows it ran before adding it',
     ).toEqual([])
   })

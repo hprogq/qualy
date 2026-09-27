@@ -13,6 +13,18 @@ import { Schema } from 'effect'
 // Paths in a manifest are relative to the manifest. Anchoring them here is
 // what keeps the host from needing to know this plugin serves files at all.
 
+/**
+ * Where a deployment keeps its web releases, when it keeps them apart from the
+ * image: an absolute path, set for the deploy job and the server alike.
+ *
+ * Unset, the server serves the release its asset root holds, which is how a
+ * checkout and a bare image run. Set, the deploy job installs the image's
+ * release there and the server serves from there, so the releases before it
+ * stay beside it for the tabs still running them. A per-deployment fact, so
+ * it comes from the environment and never from the manifest.
+ */
+export const RELEASE_STORE_VARIABLE = 'QUALY_WEB_RELEASE_STORE'
+
 /** anchored at this package, never at whatever directory a process started in */
 export const defaultAssetRoot = fileURLToPath(new URL('../client-dist/', import.meta.url))
 export const defaultSourceRoot = fileURLToPath(new URL('../../../../../apps/web/', import.meta.url))

@@ -11,6 +11,7 @@ import {
   ensureCompressed,
   gcWebReleases,
   installWebRelease,
+  promoteWebRelease,
   readCurrentWebRelease,
   resolveReleaseRoot,
   retentionFromEnv,
@@ -348,6 +349,103 @@ describe('installing', () => {
     )
     expect(() => readCurrentWebRelease(store)).toThrow()
     expect(() => resolveReleaseRoot(store, 'a/b')).toThrow(/not a release id/)
+  })
+})
+
+// A deployment's store outlives the images: each image carries its own
+// release in a store of its own, and the deploy job moves it across, so the
+// store a server reads from still holds the release the tabs already open
+// were loaded from.
+describe('promoting', () => {
+  /** an image: a store holding the one release it was built with */
+  const image = async (releaseId: string, options: Parameters<typeof install>[2] = {}) => {
+    const store = storeAt(temp('qualy-image-'))
+    await install(store, releaseId, options)
+    return store
+  }
+  const promote = (
+    from: ReturnType<typeof storeAt>,
+    to: ReturnType<typeof storeAt>,
+    when: string,
+  ) => promoteWebRelease({ from, to, now: at(when) })
+
+  it("installs the image's release as it was built, twins included, stamped with its arrival", async () => {
+    const carried = await image('A')
+    const deployment = storeAt(temp('qualy-deployment-'))
+    const result = await promote(carried, deployment, '2026-09-15T08:00:00.000Z')
+    expect(result.reused).toBe(false)
+    const built = readCurrentWebRelease(carried)!.release
+    const arrived = readCurrentWebRelease(deployment)!
+    expect(arrived.releaseId).toBe('A')
+    expect(arrived.release).toEqual({ ...built, installedAt: '2026-09-15T08:00:00.000Z' })
+    expect(fs.readFileSync(path.join(arrived.root, 'index.html'), 'utf8')).toContain(
+      '<title>A</title>',
+    )
+    expect(exists(arrived.root, 'favicon.svg')).toBe(true)
+    // the twins the build paid for travel with their files
+    for (const file of ['index-A.js', 'index-A.js.br', 'index-A.js.gz', 'tiny-A.js']) {
+      expect(fs.readFileSync(path.join(deployment.root, 'assets', file))).toEqual(
+        fs.readFileSync(path.join(carried.root, 'assets', file)),
+      )
+    }
+  })
+
+  it('keeps the previous release and its chunks when the next image arrives', async () => {
+    const deployment = storeAt(temp('qualy-deployment-'))
+    await promote(await image('A'), deployment, '2026-09-15T08:00:00.000Z')
+    await promote(
+      await image('B', { when: '2026-09-15T09:00:00.000Z' }),
+      deployment,
+      '2026-09-15T10:00:00.000Z',
+    )
+    expect(currentId(deployment)).toBe('B')
+    for (const id of ['A', 'B']) {
+      expect(exists(resolveReleaseRoot(deployment, id), 'index.html')).toBe(true)
+      expect(exists(deployment.root, 'assets', `index-${id}.js`)).toBe(true)
+    }
+  })
+
+  it('takes the same image again as a no-op, and an earlier one back as a rollback', async () => {
+    const deployment = storeAt(temp('qualy-deployment-'))
+    const first = await image('A')
+    await promote(first, deployment, '2026-09-15T08:00:00.000Z')
+    await promote(await image('B'), deployment, '2026-09-15T09:00:00.000Z')
+    // the deploy job run again for the image it already installed
+    const again = await promote(first, deployment, '2026-09-15T10:00:00.000Z')
+    expect(again.reused).toBe(true)
+    // the release keeps the arrival it was first installed with
+    expect(again.release.installedAt).toBe('2026-09-15T08:00:00.000Z')
+    expect(currentId(deployment)).toBe('A')
+    expect(exists(resolveReleaseRoot(deployment, 'B'), 'index.html')).toBe(true)
+  })
+
+  it('refuses another build under an id the deployment already holds', async () => {
+    const deployment = storeAt(temp('qualy-deployment-'))
+    await promote(await image('A'), deployment, '2026-09-15T08:00:00.000Z')
+    await expect(
+      promote(
+        await image('A', { shell: '<!doctype html><title>other</title>' }),
+        deployment,
+        '2026-09-15T09:00:00.000Z',
+      ),
+    ).rejects.toThrow(/different content/)
+    expect(
+      fs.readFileSync(path.join(readCurrentWebRelease(deployment)!.root, 'index.html'), 'utf8'),
+    ).toContain('<title>A</title>')
+  })
+
+  it('refuses an empty image store, a store promoted into itself, and a release missing an asset', async () => {
+    const deployment = storeAt(temp('qualy-deployment-'))
+    await expect(promote(storeAt(temp('qualy-image-')), deployment, WHEN)).rejects.toThrow(
+      /no web release is installed/,
+    )
+    const carried = await image('A')
+    await expect(promote(carried, carried, WHEN)).rejects.toThrow(
+      /both the source and the destination/,
+    )
+    fs.rmSync(path.join(carried.root, 'assets', 'tiny-A.js'))
+    await expect(promote(carried, deployment, WHEN)).rejects.toThrow(/assets\/tiny-A\.js/)
+    expect(readCurrentWebRelease(deployment)).toBeUndefined()
   })
 })
 

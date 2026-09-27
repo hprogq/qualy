@@ -5,8 +5,9 @@ import { config, layer, routes } from './server/index.ts'
 
 // The web shell, as a description: one raw-routes contribution - the browser
 // shell is a wildcard handler, not an api endpoint - the config channel the
-// manifest block arrives through, and the development server this plugin
-// wants running beside the backend while somebody is working on the ui.
+// manifest block arrives through, the deploy step that installs the image's
+// release into a deployment's own store, and the development server this
+// plugin wants running beside the backend while somebody is working on the ui.
 //
 // The dev service is the browser's entry point in development, and it is
 // declared rather than started here: nothing in the serving runtime reads it.
@@ -18,6 +19,7 @@ const plugin = Plugin.define(
   // the shell's content security policy, frozen at the barrier from what
   // the other plugins registered
   Plugin.layer(layer),
+  Plugin.capability('web-release', () => import('./assembly/index.ts')),
   Dev.service({ id: 'web', module: './dev' }),
 )
 

@@ -57,6 +57,8 @@ const REGISTERED: Record<string, string> = {
   'packages/plugins/infra/database/src/index.ts':
     'a capability module and a CLI command, both loaded by the assembly tooling rather than by a running server',
   'packages/plugins/base/rbac/src/index.ts': 'a capability module, loaded by the assembly tooling',
+  'packages/plugins/infra/web/src/index.ts':
+    'a capability module whose one step is deploy, loaded by the assembly tooling',
   'packages/plugins/assessment/core/src/index.ts':
     'a runtime-tier CLI command, loaded by the command runner rather than by a running server',
   'packages/plugins/infra/rum-tencent/src/index.ts':

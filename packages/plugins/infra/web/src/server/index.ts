@@ -20,7 +20,7 @@ import {
   type ReleaseStore,
 } from '@qualy/web-build/release-store'
 import { decodePluginConfig } from '@qualy/plugin-kit/config'
-import { WebManifestConfig, rootsFrom } from '../config.ts'
+import { RELEASE_STORE_VARIABLE, WebManifestConfig, rootsFrom } from '../config.ts'
 import { addReportRoute } from './csp-reports.ts'
 import {
   CSP_HEADER,
@@ -55,6 +55,11 @@ export class WebConfig extends Context.Service<
     readonly sourceRoot: string
     readonly assetRoot: string
     /**
+     * The deployment's own release store, when it keeps one apart from the
+     * image (RELEASE_STORE_VARIABLE); otherwise the asset root is the store.
+     */
+    readonly releaseStore?: string | undefined
+    /**
      * Whether the shell's content security policy is enforced or only
      * reported. `report` until the reports have been quiet long enough
      * (docs/notes/auth-security.md); switching is a deployment setting,
@@ -81,7 +86,15 @@ export const config = (
       const cspMode = yield* Schema.decodeUnknownEffect(CspModeSetting)(
         yield* Config.String('QUALY_CSP_MODE').pipe(Config.withDefault('report')),
       )
-      return WebConfig.of({ ...rootsFrom(declared, context.manifestDir), cspMode })
+      // the same kind of setting: where this deployment keeps its releases
+      const releaseStore = (yield* Config.String(RELEASE_STORE_VARIABLE).pipe(
+        Config.withDefault(''),
+      )).trim()
+      return WebConfig.of({
+        ...rootsFrom(declared, context.manifestDir),
+        releaseStore: releaseStore === '' ? undefined : releaseStore,
+        cspMode,
+      })
     }),
   )
 
@@ -226,28 +239,69 @@ const servableRange = (header: string | undefined): boolean => {
   return parts[2] === '' || Number(parts[1]) <= Number(parts[2])
 }
 
+/** a store's current release; a store that cannot be read refuses the start */
+const currentOf = (store: ReleaseStore) =>
+  Effect.try({
+    try: () => readCurrentWebRelease(store),
+    catch: (error) =>
+      new WebUnservable({
+        message: `the web release store at ${store.root} is unreadable: ${error instanceof Error ? error.message : String(error)}`,
+      }),
+  }).pipe(Effect.orDie)
+
+/** the deploy command, as an operator of the shipped compose file runs it */
+const DEPLOY_JOB =
+  "the deploy job for this image ('docker compose run --rm migrate', which runs 'qualy deploy')"
+
 const production = Effect.fn('Web.production')(function* (
-  assetRoot: string,
+  roots: { readonly assetRoot: string; readonly releaseStore?: string | undefined },
   policy: ShellPolicySetting,
 ) {
   // The store's pointer is read once, here, and the release it names is
   // pinned for the life of this process: an installer moving the pointer
   // later changes nothing a running host serves. One process is one api
   // assembly and one web shell, until it is replaced.
-  const store = storeAt(assetRoot)
-  const current = yield* Effect.try({
-    try: () => readCurrentWebRelease(store),
-    catch: (error) =>
-      new WebUnservable({
-        message: `the web release store at ${assetRoot} is unreadable: ${error instanceof Error ? error.message : String(error)}`,
-      }),
-  }).pipe(Effect.orDie)
-  if (current === undefined) {
+  const { assetRoot, releaseStore } = roots
+  const carried = yield* currentOf(storeAt(assetRoot))
+  if (carried === undefined) {
     return yield* Effect.die(
       new WebUnservable({
         message: `no web release is installed at ${assetRoot}; run 'pnpm build' first, or disable @qualy/plugin-web for a headless deployment`,
       }),
     )
+  }
+  // A deployment that keeps its releases apart from the image serves from
+  // there, and only once the deploy job has made this image's release the
+  // current one. Starting anyway would serve whatever release the last deploy
+  // left behind - or nothing - and the deploy job is not something a start
+  // may do in its place, any more than it may apply a migration.
+  let store = storeAt(assetRoot)
+  let current = carried
+  if (releaseStore !== undefined) {
+    if (!path.isAbsolute(releaseStore)) {
+      return yield* Effect.die(
+        new WebUnservable({
+          message: `${RELEASE_STORE_VARIABLE} must be an absolute path, not ${releaseStore}`,
+        }),
+      )
+    }
+    store = storeAt(releaseStore)
+    const installed = yield* currentOf(store)
+    if (installed === undefined) {
+      return yield* Effect.die(
+        new WebUnservable({
+          message: `no web release is installed in the deployment's store at ${releaseStore}; run ${DEPLOY_JOB}`,
+        }),
+      )
+    }
+    if (installed.releaseId !== carried.releaseId) {
+      return yield* Effect.die(
+        new WebUnservable({
+          message: `the deployment's web release store at ${releaseStore} serves release ${installed.releaseId}, but this image carries ${carried.releaseId}; run ${DEPLOY_JOB}`,
+        }),
+      )
+    }
+    current = installed
   }
   if (!fs.existsSync(path.join(current.root, 'index.html'))) {
     return yield* Effect.die(
@@ -403,7 +457,7 @@ export const routes: Layer.Layer<
     }
     // built after the barrier, so the frozen policy is there to read
     const policy = yield* ShellPolicyHeader
-    const { current, middleware, standingOf } = yield* production(config.assetRoot, {
+    const { current, middleware, standingOf } = yield* production(config, {
       header: CSP_HEADER[config.cspMode],
       value: policy.value(),
     })

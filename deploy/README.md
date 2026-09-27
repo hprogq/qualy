@@ -45,7 +45,7 @@ docker save qualy-server:<release> qualy-sandbox-runtime:<release> qualy-sandbox
 cp .env.example .env         # then fill it in: QUALY_RELEASE, the database password, DATABASE_URL, QUALY_PUBLIC_URL
 openssl rand -base64 32      # QUALY_SECRETS_MASTER_KEY: required, and kept with the backups
 docker compose up -d postgres
-docker compose run --rm migrate          # applies the release's committed migrations, once
+docker compose run --rm migrate          # applies the release's migrations and installs its web release, once
 docker compose up -d                     # server, sandbox-runtime, sandbox-authoring
 curl -sf http://127.0.0.1:3000/health/ready
 ```
@@ -82,7 +82,10 @@ always migrate, then seed when it is needed, then start.
 The first `migrate` builds the whole schema on the empty database. The
 server never migrates on its own: its production command keeps
 `QUALY_MIGRATIONS` off, and a start against a database that is behind its
-release refuses with the pending migrations named.
+release refuses with the pending migrations named. The same goes for the
+browser application: `migrate` installs the release's web bundle into the
+`web_releases` volume, and a server whose release is not the one installed
+there last refuses to start and says to run `migrate`.
 
 ## Upgrading
 
@@ -102,13 +105,27 @@ until the seed gives it one), run it between `migrate` and `up -d`.
 a second copy waits and then finds nothing to do; a migration that fails is
 not recorded, the job exits non-zero, and the old server keeps running until
 it is fixed forward. `up -d` then recreates the containers whose image
-changed. Browser tabs of the previous release reload themselves when the
-server answers their first request with the release mismatch.
+changed.
+
+`migrate` also installs the new release's web bundle into `web_releases`,
+beside the ones before it: the newest five and everything installed in the
+last 72 hours stay (`QUALY_WEB_RELEASE_RETAIN_COUNT` and
+`QUALY_WEB_RELEASE_RETAIN_HOURS` in `.env`). A tab still running the previous
+release keeps loading its chunks from there, and when the release did not
+change which plugins are enabled its requests are answered as before; it is
+offered the new release in a notice and moves when its reader chooses. A
+release that enabled or disabled a plugin is the exception: tabs of the
+previous one are asked to reload on their next request, because the screens
+they carry may no longer have an api behind them.
 
 ## Rolling back
 
-Setting `QUALY_RELEASE` back and running `docker compose up -d` rolls the
-**image** back. It does not roll the **schema** back: applied migrations
+Setting `QUALY_RELEASE` back, running `docker compose run --rm migrate` and
+then `docker compose up -d` rolls the **image** back. The `migrate` step
+finds no migration to apply (the database is ahead of the older release,
+and applied migrations it does not know are left alone) and makes the older
+release's web bundle the current one again, which its server requires
+before it starts. None of this rolls the **schema** back: applied migrations
 stay applied, and the older code now runs against the newer schema. That is
 safe when the release's migrations only added (columns, tables, indexes),
 which is what a reviewed migration should be until the release that

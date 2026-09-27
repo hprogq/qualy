@@ -134,6 +134,14 @@ expectOut(
   'test -f /app/packages/plugins/infra/web/client-dist/current.json && echo present',
   'present',
 )
+// where a deployment mounts its own release store: a fresh named volume takes
+// the ownership of the directory it is mounted over, and the deploy job,
+// running as node, has to be able to install into it
+expectOut(
+  "the deployment's web release store is there for the runtime user",
+  'stat -c %U /var/lib/qualy/web',
+  'node',
+)
 
 // --- what a release is not: tests, browser sources, the dev toolchain, the repository
 expectOut(

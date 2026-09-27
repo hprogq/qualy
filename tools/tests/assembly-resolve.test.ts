@@ -247,7 +247,7 @@ describe('resolution', () => {
   it('resolves an assembly that needs no capability at all', async () => {
     // this is what "the database plugin is optional" means: a selection whose
     // plugins own nothing never loads a provider and never mentions one
-    const workspace = createWorkspace(['@qualy/plugin-web', '@qualy/plugin-layout-default'])
+    const workspace = createWorkspace(['@qualy/plugin-ui-registry', '@qualy/plugin-layout-default'])
     try {
       const lock = lockFromResolution(await commit(workspace.manifestPath))
       expect(lock.capabilities).toEqual({})

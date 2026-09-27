@@ -68,11 +68,12 @@ LABEL org.opencontainers.image.title="qualy-server" \
       org.opencontainers.image.revision="${QUALY_REVISION}" \
       org.opencontainers.image.licenses="AGPL-3.0-only"
 COPY --from=runtime --chown=node:node /app /app
-# The paths a deployment mounts (deploy/compose.yaml): the attachment store
-# and the two sandbox socket directories. Created here and owned by the
-# runtime user so that a fresh named volume takes that ownership on its
-# first mount instead of arriving root-owned and unwritable.
-RUN mkdir -p /var/lib/qualy/storage /run/qualy-sandbox/runtime /run/qualy-sandbox/authoring \
+# The paths a deployment mounts (deploy/compose.yaml): the attachment store,
+# the web release store the deploy job installs each image's release into, and
+# the two sandbox socket directories. Created here and owned by the runtime
+# user so that a fresh named volume takes that ownership on its first mount
+# instead of arriving root-owned and unwritable.
+RUN mkdir -p /var/lib/qualy/storage /var/lib/qualy/web /run/qualy-sandbox/runtime /run/qualy-sandbox/authoring \
  && chown -R node:node /var/lib/qualy /run/qualy-sandbox
 USER node
 WORKDIR /app

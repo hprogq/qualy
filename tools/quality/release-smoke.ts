@@ -14,12 +14,15 @@ import { repoRoot } from '../lib/manifest.ts'
 // The images qualy-server:<release>, qualy-sandbox-runtime:<release> and
 // qualy-sandbox-authoring:<release> must exist (pnpm release:build). In
 // order: the database comes up; a server started before the migration job
-// refuses; the job applies the lineage; the server and both sandboxes come
-// up and the server reports ready; the shell, the manifest and one hashed
-// asset are served; both sandboxes answer the RPC handshake from inside the
-// server container; a second migration run finds nothing to do; the
-// database is dumped, dropped, restored, brought up to date and served
-// again with its data intact. Then everything, volumes included, is removed.
+// refuses; the job applies the lineage and installs the image's web release
+// into the deployment's release store; the server and both sandboxes come
+// up and the server reports ready, serving that release; the shell, the
+// manifest and one hashed asset are served; a server pointed at a store its
+// release was never installed in refuses, naming the job; both sandboxes
+// answer the RPC handshake from inside the server container; a second
+// migration run finds nothing to do; the database is dumped, dropped,
+// restored, brought up to date and served again with its data intact. Then
+// everything, volumes included, is removed.
 
 const release = process.argv[2]
 if (!release) {
@@ -166,12 +169,17 @@ try {
     step('a server started before the migration job refuses, naming the job')
   }
 
-  // --- the migration job
+  // --- the migration job: the lineage, then the web release into its store
+  let installed = ''
   {
     const ran = compose(['run', '--rm', 'migrate'])
     expectCode('migrate', ran, 0)
     expectIn('migrate', ran.out, /applied \d+ migration\(s\)/)
     step(`migrate: ${ran.out.split('\n').find((line) => line.includes('applied')) ?? 'applied'}`)
+    installed =
+      /web-release: (\S+) installed into \/var\/lib\/qualy\/web/.exec(ran.out)?.[1] ??
+      refuse(`migrate installed no web release:\n${ran.out.slice(-2000)}`)
+    step(`migrate: web release ${installed} installed into the deployment's store`)
   }
 
   // --- the server and the sandboxes
@@ -182,8 +190,14 @@ try {
   )
   await waitReady('first start')
 
-  // --- what it serves: the shell, one hashed asset, the manifest
+  // --- what it serves: the release the job installed, the shell, one hashed asset, the manifest
   {
+    const probe = await fetch(`${base}/__qualy/release`)
+    if (probe.status !== 200) refuse(`GET /__qualy/release status ${String(probe.status)}`)
+    const served = ((await probe.json()) as { releaseId?: unknown }).releaseId
+    if (served !== installed)
+      refuse(`the server serves ${String(served)}, the job installed ${installed}`)
+    step(`serving web release ${installed}`)
     const shell = await fetch(`${base}/`)
     if (shell.status !== 200) refuse(`GET / status ${String(shell.status)}`)
     const html = await shell.text()
@@ -198,6 +212,17 @@ try {
     const body = (await manifest.json()) as { pages?: unknown[] }
     if (!Array.isArray(body.pages)) refuse('the manifest carries no pages')
     step(`manifest: ${String(body.pages.length)} page(s) for an anonymous visitor`)
+  }
+
+  // --- a store the image's release was never installed in: refused, naming the job
+  {
+    const ran = compose(
+      ['run', '--rm', '--no-deps', '-e', 'QUALY_WEB_RELEASE_STORE=/tmp', 'server'],
+      { timeoutMs: 120_000 },
+    )
+    if (ran.code === 0) refuse('a server whose release store lacks its release did not refuse')
+    expectIn('start without its web release', ran.out, 'run the deploy job')
+    step('a server whose release was never installed in its store refuses, naming the job')
   }
 
   // --- the sandbox pair, over their sockets, from inside the server
@@ -222,7 +247,8 @@ try {
     const ran = compose(['run', '--rm', 'migrate'])
     expectCode('migrate again', ran, 0)
     expectIn('migrate again', ran.out, 'is up to date')
-    step('migrate again: up to date')
+    expectIn('migrate again', ran.out, `web-release: ${installed} was already installed`)
+    step('migrate again: up to date, the web release already installed')
   }
 
   // --- backup, destroy, restore, serve again
