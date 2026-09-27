@@ -592,6 +592,79 @@ describe('the history under the flow pane', () => {
   })
 })
 
+// Opened cold from an address - a bookmark, a link in a message, a round
+// somebody else settled since - the round may not be there at all. Said in
+// the room the workbench would have taken, with the way back to the queue,
+// and never with a retry that cannot bring a different answer.
+describe('a round the address names that is not there', () => {
+  it('says so where the workbench would stand, and leads back to the queue', async () => {
+    await page.viewport(1440, 900)
+    await open({
+      getReviewInstance: () => Effect.fail(apiError('ASSESSMENT_REVIEW_NOT_FOUND')),
+    })
+    const failure = page.getByTestId('review-failure')
+    const state = failure.locator('[data-slot="resource-state"]')
+    await expect.element(state).toHaveAttribute('data-state', 'missing')
+    await expect.element(state).toHaveAttribute('data-size', 'section')
+    // nothing another try could change
+    expect(failure.getByRole('button', { name: /重试/ }).elements()).toHaveLength(0)
+    expect(page.getByTestId('queue-key').elements()).toHaveLength(0)
+    const back = failure.getByRole('link', { name: '返回待审核列表' })
+    await expect.element(back).toBeVisible()
+    await back.click()
+    // to the queue as this tab last left it
+    await expect.poll(() => addressNow()).not.toContain(INSTANCE_ID)
+    expect(addressNow()).toMatch(new RegExp(`^/assessment/batches/${BATCH_ID}/reviews(\\?|$)`))
+  })
+
+  it('does not ask about an address that cannot name a round', async () => {
+    await page.viewport(1440, 900)
+    const asked = vi.fn(() => Effect.succeed({ review }))
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+        assessment: {
+          getBatch: () => Effect.succeed({ batch: batch() }),
+          listReviewInbox: () =>
+            Effect.succeed({ items: [inboxRow()], nextCursor: null, handledToday: 0 }),
+          getReviewInstance: asked,
+        },
+      }),
+      routes: [
+        {
+          path: '/assessment/batches/:batchId/reviews/:instanceId',
+          element: <ReviewInstancePage />,
+        },
+      ] as never,
+      route: `/assessment/batches/${BATCH_ID}/reviews/not-a-round`,
+    })
+    await expect
+      .element(page.getByTestId('review-failure').locator('[data-slot="resource-state"]'))
+      .toHaveAttribute('data-state', 'missing')
+    expect(asked).not.toHaveBeenCalled()
+  })
+
+  it('offers another try where the connection failed', async () => {
+    await page.viewport(1440, 900)
+    let reachable = false
+    await open({
+      getReviewInstance: () =>
+        reachable
+          ? Effect.succeed({ review })
+          : Effect.fail({ _tag: 'HttpClientError', reason: { _tag: 'TransportError' } }),
+    })
+    const state = page.getByTestId('review-failure').locator('[data-slot="resource-state"]')
+    await expect.element(state).toHaveAttribute('data-state', 'offline')
+    reachable = true
+    await page
+      .getByTestId('review-failure')
+      .getByRole('button', { name: /重试/ })
+      .click()
+    await expect.element(page.getByTestId('queue-key')).toBeVisible()
+    expect(page.getByTestId('review-failure').elements()).toHaveLength(0)
+  })
+})
+
 describe('the round moving on mid-thought', () => {
   it('keeps the workbench up, says what happened, and offers the way on', async () => {
     await page.viewport(1440, 900)

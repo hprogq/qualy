@@ -3545,6 +3545,15 @@ const i18n = definePluginMessages({
       id: 'assessment/review/back-to-queue',
       defaultMessage: 'Back to pending reviews',
     },
+    /** a review round the address names that is not there, opened cold */
+    reviewMissingTitle: {
+      id: 'assessment/review/missing-title',
+      defaultMessage: "This review can't be found",
+    },
+    reviewMissingHint: {
+      id: 'assessment/review/missing-hint',
+      defaultMessage: 'It may have been settled or withdrawn',
+    },
     /** a level of where somebody stands whose unit has since left the organization */
     reviewUnitGone: {
       id: 'assessment/review/unit-gone',

@@ -870,6 +870,8 @@ export default {
   'assessment/review/comment-placeholder-advise': '填写审核意见',
   'assessment/review/undo': '撤回',
   'assessment/review/back-to-queue': '返回待审核列表',
+  'assessment/review/missing-title': '找不到该审核任务',
+  'assessment/review/missing-hint': '它可能已处理完毕或已撤回',
   'assessment/review/unit-gone': '已不存在的单位',
   'assessment/review/run-start': '开始审核',
   'assessment/review/filed': '申报内容',

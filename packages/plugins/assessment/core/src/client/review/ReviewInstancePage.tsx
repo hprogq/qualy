@@ -2,8 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckIcon, CornerUpLeftIcon, InfoIcon } from 'lucide-react'
 import {
+  isRecordId,
+  LoadFailure,
   useApi,
   useApiQuery,
+  useLoadFailure,
   usePageNavigate,
   useClaimScreenFill,
   useClaimScreenFoot,
@@ -717,8 +720,12 @@ function Workbench({ batch }: { batch: BatchDto }) {
     ...useReviewQueueQuery(batch.id),
     refetchInterval: live ? 60_000 : 30_000,
   })
+  // an address that cannot name a round is not asked about at all: the
+  // client would refuse to send it, and say so as if the reading had failed
+  const addressable = isRecordId(instanceId)
   const detail = useQuery({
     ...query.assessment.getReviewInstance.queryOptions({ params: { instanceId } }),
+    enabled: addressable,
     // never zero: `live` proves the browser-to-server hop, not the
     // server-to-database one, and a wake-up lost between them must decay
     // into a late poll rather than a blind screen
@@ -1220,14 +1227,46 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // a screenful at every width: the parts scroll inside it, never the page
   useClaimScreenFill(true)
 
+  // The round the address names is not there, not this reader's, or could
+  // not be read before anything was shown: said in the room the workbench
+  // would have taken, with the way back to the queue as it was left. A
+  // round this sitting decided stops being this reviewer's to read the
+  // moment the decision lands, and one lost mid-thought keeps its
+  // workbench; neither is a failure to show here.
+  const failed = useLoadFailure()
+  const reviewAbsence = {
+    missing: ['ASSESSMENT_REVIEW_NOT_FOUND'],
+    copy: {
+      missing: { title: format(m.reviewMissingTitle), description: format(m.reviewMissingHint) },
+    },
+  }
+  const failure = !addressable
+    ? failed.missing(reviewAbsence)
+    : settledHere || lostTurn
+      ? null
+      : failed.subject(detail, reviewAbsence)
+  if (failure !== null) {
+    return (
+      <div data-testid="review-failure" {...stylex.props(styles.fill)}>
+        <LoadFailure
+          size="section"
+          failure={failure}
+          retrying={detail.isFetching}
+          onRetry={() => void detail.refetch()}
+          back={{
+            page: 'assessment/batch-reviews',
+            params: { batchId: batch.id },
+            search: queuePlaceOf(batch.id),
+            label: format(m.reviewBackToQueue),
+          }}
+        />
+      </div>
+    )
+  }
+
   return (
     <AsyncSection
       pending={inbox.isPending && detail.isPending}
-      // A round this sitting decided stops being this reviewer's to read
-      // the moment the decision lands, and the refetch behind the done
-      // screen comes back not-found. That is the access rule working, not
-      // an error to show over the reader's own closing screen.
-      error={detail.error && !settledHere && !lostTurn ? formatError(detail.error) : null}
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
       onRetry={() => {
