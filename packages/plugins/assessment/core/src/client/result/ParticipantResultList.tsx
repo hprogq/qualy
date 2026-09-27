@@ -57,8 +57,7 @@ import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { AddPeopleDialog } from '../roster/AddPeopleDialog.tsx'
 import { ImportDialog } from '../roster/ImportDialog.tsx'
 import { PlacementDialog, type PlacementDecision } from '../roster/PlacementDialog.tsx'
-import { PlacementNotice } from '../roster/PlacementNotice.tsx'
-import { UnreachableNotice } from '../roster/UnreachableNotice.tsx'
+import { RosterNotices } from '../roster/RosterNotices.tsx'
 import { UnreachableDialog } from '../roster/UnreachableDialog.tsx'
 import type { AdmissionOutcomeFacts } from '../roster/AdmissionOutcome.tsx'
 import { RosterFilings } from '../roster/RosterFilings.tsx'
@@ -1151,17 +1150,12 @@ export function ParticipantResultList({
         )}
       </header>
       <Feedback message={failure} />
-      {manageable && placements.data !== undefined && (
-        <PlacementNotice
-          changedTotal={placements.data.changedTotal}
-          unavailableTotal={placements.data.unavailableTotal}
-          onOpen={() => setReconciling(true)}
-        />
-      )}
-      {manageable && reach.data !== undefined && (
-        <UnreachableNotice
-          cannotSubmit={reach.data.unreachable.cannotSubmit}
-          onOpen={() => setUnreachableOpen(true)}
+      {manageable && (
+        <RosterNotices
+          placements={placements.data ?? null}
+          cannotSubmit={reach.data?.unreachable.cannotSubmit ?? null}
+          onPlacements={() => setReconciling(true)}
+          onUnreachable={() => setUnreachableOpen(true)}
         />
       )}
       {treeBeside ? (

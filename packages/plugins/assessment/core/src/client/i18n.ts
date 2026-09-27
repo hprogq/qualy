@@ -6287,12 +6287,12 @@ const i18n = definePluginMessages({
     placementPrompt: {
       id: 'assessment/placement/prompt',
       defaultMessage:
-        'Organization details changed for {count, plural, one {# person} other {# people}}.',
+        "{count, plural, one {# person's} other {# people's}} organization details changed",
     },
     placementUnavailablePrompt: {
       id: 'assessment/placement/unavailable-prompt',
       defaultMessage:
-        '{count, plural, one {# person has} other {# people have}} no place in the organization any more.',
+        '{count, plural, one {# person has} other {# people have}} no place in the organization any more',
     },
     placementOpen: { id: 'assessment/placement/open', defaultMessage: 'Review changes' },
     placementTitle: { id: 'assessment/placement/title', defaultMessage: 'Organization changes' },

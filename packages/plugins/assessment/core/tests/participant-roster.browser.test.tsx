@@ -1408,6 +1408,39 @@ describe('people the review steps find nowhere', () => {
     expect(page.getByTestId('unreachable-notice').elements()).toHaveLength(0)
   })
 
+  // Two things waiting on the administrator are one box over the list, not
+  // two notices stacked above it: side by side where there is room, one
+  // under the other on a phone, and marked alike where both wait on a
+  // decision.
+  it('holds what the roster waits on in one box, a line each', async () => {
+    const moved = () =>
+      Effect.succeed({ items: [], nextCursor: null, changedTotal: 2, unavailableTotal: 0 })
+    for (const [wide, high, beside] of [
+      [1280, 800, true],
+      [390, 844, false],
+    ] as const) {
+      await page.viewport(wide, high)
+      const { unmount } = await open({
+        reviewAlerts: alerts(12),
+        listParticipantPlacements: moved,
+      })
+      const box = page.getByTestId('roster-notices')
+      await expect.element(box.getByTestId('placement-notice')).toBeVisible()
+      await expect.element(box.getByTestId('unreachable-notice')).toBeVisible()
+      const placed = box.getByTestId('placement-notice').element().getBoundingClientRect()
+      const stuck = box.getByTestId('unreachable-notice').element().getBoundingClientRect()
+      if (beside) expect(stuck.top).toBe(placed.top)
+      else expect(stuck.top).toBeGreaterThanOrEqual(placed.bottom)
+      // both wait on a decision, and say so in the same colour
+      const mark = (line: Element) => getComputedStyle(line.querySelector('svg')!).color
+      expect(mark(box.getByTestId('placement-notice').element())).toBe(
+        mark(box.getByTestId('unreachable-notice').element()),
+      )
+      await unmount()
+    }
+    await page.viewport(1280, 800)
+  })
+
   it('asks nothing of a reader who only re-determines', async () => {
     const asked = vi.fn(alerts(3))
     await open({
