@@ -18,7 +18,7 @@ import {
 import { ConfirmDialog } from '@qualy/ui/admin'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { createLeaveGate, leavesThePage, type LeaveGate } from './leave-gate.ts'
+import { createLeaveGate, leavesThePage, navigationSteps, type LeaveGate } from './leave-gate.ts'
 import { sharedContext } from './shared-context.ts'
 
 // The router the application runs under, with a gate on its history (see
@@ -34,9 +34,14 @@ import { sharedContext } from './shared-context.ts'
 
 const Gate = sharedContext<LeaveGate | null>('leave-gate', null)
 
-/** the application's router, over the browser's own history */
+/**
+ * The application's router, over the browser's own history and what the
+ * browser can say about where a step through it lands.
+ */
 export function GuardedBrowserRouter({ children }: { children: ReactNode }) {
-  const [gate] = useState(() => createLeaveGate(createBrowserHistory({ v5Compat: true })))
+  const [gate] = useState(() =>
+    createLeaveGate(createBrowserHistory({ v5Compat: true }), navigationSteps(window)),
+  )
   return (
     <HistoryRouter history={gate.history}>
       <LeaveQuestion gate={gate}>{children}</LeaveQuestion>

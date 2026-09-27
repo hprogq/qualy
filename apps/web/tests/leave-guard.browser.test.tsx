@@ -235,7 +235,7 @@ describe('a page with unsaved changes, under the browser’s own history', () =>
     window.history.replaceState(null, '', origin)
   })
 
-  const mountInBrowser = () =>
+  const mountInBrowser = (editor: React.ReactNode = <Editor saves={false} />) =>
     render(
       <StrictMode>
         <I18nProvider catalogs={[]} errorMessages={{}} fallback={null}>
@@ -243,7 +243,7 @@ describe('a page with unsaved changes, under the browser’s own history', () =>
             <GuardedBrowserRouter>
               <Routes>
                 <Route path="/start" element={<Link to="/editor">open the editor</Link>} />
-                <Route path="/editor" element={<Editor saves={false} />} />
+                <Route path="/editor" element={editor} />
               </Routes>
             </GuardedBrowserRouter>
           </UiProvider>
@@ -281,6 +281,48 @@ describe('a page with unsaved changes, under the browser’s own history', () =>
     // and the next back is asked about again
     window.history.back()
     await expect.element(question()).toBeVisible()
+    await screen.unmount()
+  })
+
+  // A page that leaves its changes on purpose steps back itself, and that
+  // step arrives as a pop like the reader's own. The browser says which
+  // entry the step lands on, so the pop is known for the page's however
+  // long it is in coming - here, behind a task that holds the thread for
+  // longer than any wait for it would have lasted.
+  it('lets the page’s own step back through however late the browser answers it', async () => {
+    function Leaving() {
+      const [draft, setDraft] = useState('')
+      const navigate = useNavigate()
+      const { bypass } = useLeaveGuard({ when: draft !== '' })
+      return (
+        <div data-testid="editor" data-dirty={draft !== ''}>
+          <input
+            aria-label="name"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              bypass(() => void navigate(-1))
+              const until = performance.now() + 1_200
+              let spins = 0
+              while (performance.now() < until) spins += 1
+              expect(spins).toBeGreaterThan(0)
+            }}
+          >
+            discard and go back
+          </button>
+        </div>
+      )
+    }
+    const screen = await mountInBrowser(<Leaving />)
+    await page.getByRole('link', { name: 'open the editor' }).click()
+    await edit()
+    await page.getByRole('button', { name: 'discard and go back' }).click()
+    await expect.element(page.getByRole('link', { name: 'open the editor' })).toBeVisible()
+    expect(location.pathname).toBe('/start')
+    expect(question().elements()).toHaveLength(0)
     await screen.unmount()
   })
 })

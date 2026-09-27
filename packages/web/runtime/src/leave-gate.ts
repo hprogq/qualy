@@ -22,6 +22,16 @@ import { parsePath, type HistoryRouterProps, type Path, type To } from 'react-ro
 // move is held while any of them would lose something by it. The question
 // is then asked once for all of them: saving saves every one, in turn, and
 // is only offered when every one can.
+//
+// A step through history the page takes itself - after its own save, or
+// leaving its changes on purpose - also arrives as a pop, and must not be
+// asked about when it does. Which pop is the page's is known exactly where
+// the browser says which entry a step lands on (the navigation entries it
+// keeps): the pop that lands there. Where it cannot say, the pop that
+// arrives soon after with the same distance is taken for it; a step past
+// either end of the history is never answered at all, so it is only waited
+// for a while, lest the reader's own next step of that distance be taken
+// for it.
 
 type History = HistoryRouterProps['history']
 type Listener = Parameters<History['listen']>[0]
@@ -32,6 +42,22 @@ export interface LeaveGuard {
   readonly blocks: (from: Path, to: Path) => boolean
   /** saves what would be lost; true once leaving is safe */
   readonly save?: () => Promise<boolean> | boolean
+}
+
+/**
+ * What the platform can say about a step through history before it is
+ * answered.
+ */
+export interface HistorySteps {
+  /**
+   * The entry a step of `delta` from where the history stands lands on,
+   * when it is one of this document's: a pop follows. Null when the step
+   * lands on none of them - past either end, or in another document - and
+   * no pop follows here. Undefined when the platform cannot say.
+   */
+  readonly target: (delta: number) => string | null | undefined
+  /** the entry the history stands on, once a pop has landed */
+  readonly current: () => string | undefined
 }
 
 /** a move that is waiting for the reader's answer */
@@ -65,10 +91,11 @@ export interface LeaveGate {
 }
 
 /**
- * How long a step through history the page took itself is waited for.
- * The browser answers a step with the pop within a frame or two; a step
- * past either end of the history is never answered at all, and must not
- * leave the next step the reader takes waved through unasked.
+ * How long a step through history the page took itself is waited for, where
+ * the platform cannot say where it lands. The browser answers a step with
+ * the pop within a frame or two; a step past either end of the history is
+ * never answered at all, and must not leave the next step the reader takes
+ * waved through unasked.
  */
 const WAVE_MS = 1000
 
@@ -79,7 +106,12 @@ interface Move {
   answered: boolean
 }
 
-export function createLeaveGate(base: History): LeaveGate {
+/** a pop nobody is asked about, on its way */
+type Waved =
+  | { readonly delta: number; readonly entry: string }
+  | { readonly delta: number; readonly until: number }
+
+export function createLeaveGate(base: History, steps?: HistorySteps): LeaveGate {
   const guards = new Set<LeaveGuard>()
   const watchers = new Set<() => void>()
   // the move behind each question put, so an answer given to an earlier
@@ -94,8 +126,9 @@ export function createLeaveGate(base: History): LeaveGate {
   // made meanwhile: made once it lands, from the entry the page is really on
   let undoing: { readonly landed: () => void; readonly after: (() => void)[] } | null = null
   // a pop nobody is asked about, on its way: a held one taken again, or one
-  // the page made itself past the guards - by how far, and until when
-  let waved: { readonly delta: number; readonly until: number } | null = null
+  // the page made itself past the guards - by how far, and where it lands
+  // or, where that cannot be known, until when it is waited for
+  let waved: Waved | null = null
 
   const notify = () => {
     for (const watcher of watchers) watcher()
@@ -141,8 +174,22 @@ export function createLeaveGate(base: History): LeaveGate {
     }
   }
   const wave = (delta: number) => {
-    waved = { delta, until: performance.now() + WAVE_MS }
+    const entry = steps?.target(delta)
+    // a step that lands on none of this document's entries brings no pop to
+    // wave through: the next pop is the reader's, whenever it comes
+    waved =
+      entry === null
+        ? null
+        : entry === undefined
+          ? { delta, until: performance.now() + WAVE_MS }
+          : { delta, entry }
   }
+  const isWaved = (expected: Waved | null, delta: number | null): boolean =>
+    expected !== null &&
+    expected.delta === delta &&
+    ('entry' in expected
+      ? steps?.current() === expected.entry
+      : performance.now() <= expected.until)
   const pathOf = (to: To): Path => {
     const path = typeof to === 'string' ? parsePath(to) : to
     return {
@@ -185,6 +232,14 @@ export function createLeaveGate(base: History): LeaveGate {
     push: guarded('push'),
     replace: guarded('replace'),
     go(delta) {
+      // The browser is still stepping back to the page's own entry: a step
+      // asked for now would be measured from the entry being undone, or
+      // dropped by a browser still busy with the first.
+      if (undoing !== null) {
+        const bypassed = passing > 0
+        undoing.after.push(() => (bypassed ? bypass(() => history.go(delta)) : history.go(delta)))
+        return
+      }
       // a step through history the page itself takes lands later, as a
       // pop; it is waved through when it does
       if (passing > 0) wave(delta)
@@ -203,12 +258,8 @@ export function createLeaveGate(base: History): LeaveGate {
             for (const move of after) move()
             return
           }
-          const expected = waved
+          const through = isWaved(waved, update.delta)
           waved = null
-          const through =
-            expected !== null &&
-            expected.delta === update.delta &&
-            performance.now() <= expected.until
           // A pop with no known distance came from outside the router - an
           // address typed over, an entry pushed by hand - and cannot be
           // undone by stepping back; it goes through, as the router's own
@@ -272,6 +323,27 @@ export function createLeaveGate(base: History): LeaveGate {
       if (held !== null && moves.get(held) === move) drop()
       move.replay()
     },
+  }
+}
+
+/**
+ * The browser's own account of where a step lands, from the navigation
+ * entries it keeps; none where it keeps none.
+ */
+export function navigationSteps(view: Window): HistorySteps | undefined {
+  const navigation = (view as Partial<Pick<Window, 'navigation'>>).navigation
+  if (navigation === undefined) return undefined
+  return {
+    target(delta) {
+      const current = navigation.currentEntry
+      if (current === null || current.index < 0) return undefined
+      // Only this origin's entries around this one are listed, so a step
+      // past them leaves the document or goes nowhere; one onto an entry of
+      // another document loads that document: no pop follows here either.
+      const entry = navigation.entries()[current.index + delta]
+      return entry?.sameDocument === true ? entry.key : null
+    },
+    current: () => navigation.currentEntry?.key,
   }
 }
 

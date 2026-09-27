@@ -4,7 +4,7 @@ import {
   type HistoryRouterProps,
   type Location,
 } from 'react-router'
-import { createLeaveGate, leavesThePage } from '../src/leave-gate.ts'
+import { createLeaveGate, leavesThePage, navigationSteps } from '../src/leave-gate.ts'
 
 // The gate over the history the router reads, driven the way the router
 // drives it: pushes and replaces from links and navigate(), pops from the
@@ -179,11 +179,17 @@ describe('more than one guard at once', () => {
 type History = HistoryRouterProps['history']
 
 // A history that answers a step through it the way the browser does: later,
-// as a pop of its own, and not at all for a step past either end.
-const browserLike = (entries: string[]) => {
+// as a pop of its own, and not at all for a step past either end - measured
+// from the entry the browser is on when asked, which is not yet the one a
+// step still on its way leads to. With `says`, the browser also says which
+// entry a step lands on, as one keeping navigation entries does.
+const browserLike = (entries: string[], { says = false }: { says?: boolean } = {}) => {
   const memory = createMemoryHistory({ initialEntries: entries, v5Compat: true })
   let length = entries.length
   let index = length - 1
+  // one name per entry, as the browser keeps them
+  let named = entries.map((_, at) => `entry-${at}`)
+  let made = entries.length
   const due: (() => void)[] = []
   const base: History = {
     get action() {
@@ -199,6 +205,7 @@ const browserLike = (entries: string[]) => {
       // a push drops whatever lay ahead
       index += 1
       length = index + 1
+      named = [...named.slice(0, index), `entry-${made++}`]
       memory.push(to, state)
     },
     replace: (to, state) => memory.replace(to, state),
@@ -215,7 +222,15 @@ const browserLike = (entries: string[]) => {
   const settle = () => {
     for (const step of due.splice(0)) step()
   }
-  const gate = createLeaveGate(base)
+  const gate = createLeaveGate(
+    base,
+    says
+      ? {
+          target: (delta) => named[index + delta] ?? null,
+          current: () => named[index],
+        }
+      : undefined,
+  )
   const told: string[] = []
   gate.history.listen((update) => told.push(`${update.location.pathname}${update.location.search}`))
   return { base, gate, told, settle }
@@ -260,6 +275,22 @@ describe('the gate over a history that answers later', () => {
     expect(gate.held()?.to.pathname).toBe('/a')
   })
 
+  it('takes a step the page makes while a step back is being undone from the page’s own entry', () => {
+    const { base, gate, told, settle } = browserLike(['/a', '/b'])
+    gate.guard(guardPath)
+    // the reader's back arrives, and is being undone
+    base.go(-1)
+    settle()
+    expect(gate.held()?.to.pathname).toBe('/a')
+    // the page leaves on its own before the undo has landed: asked for now,
+    // the step would be measured from the entry being undone, past the start
+    gate.bypass(() => gate.history.go(-1))
+    settle()
+    settle()
+    expect(told).toEqual(['/a'])
+    expect(base.location.pathname).toBe('/a')
+  })
+
   it('still asks about the same step once the page’s own has long gone unanswered', () => {
     const { base, gate, told, settle } = browserLike(['/a', '/b'])
     gate.guard(guardPath)
@@ -275,5 +306,64 @@ describe('the gate over a history that answers later', () => {
     settle()
     expect(told).toEqual(['/b?tab=2'])
     expect(gate.held()?.to.pathname).toBe('/a')
+  })
+})
+
+describe('the gate over a history that says where a step lands', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('asks about the reader’s step at once after the page’s own went nowhere', () => {
+    const { base, gate, told, settle } = browserLike(['/a', '/b'], { says: true })
+    gate.guard(guardPath)
+    // two steps back from the second entry: past the start, and the browser
+    // has said so before anything else happens
+    gate.bypass(() => gate.history.go(-2))
+    settle()
+    // the page moves on inside itself, and the reader takes the same two
+    // steps from there straight away
+    gate.history.push('/b?tab=2')
+    base.go(-2)
+    settle()
+    expect(told).toEqual(['/b?tab=2'])
+    expect(gate.held()?.to.pathname).toBe('/a')
+  })
+
+  it('lets the page’s own step through however late the browser answers it', () => {
+    const { gate, told, settle } = browserLike(['/a', '/b'], { says: true })
+    gate.guard(guardPath)
+    const now = vi.spyOn(performance, 'now').mockReturnValue(1_000)
+    gate.bypass(() => gate.history.go(-1))
+    // a browser busy for long enough that no wait would have held out
+    now.mockReturnValue(60_000)
+    settle()
+    expect(told).toEqual(['/a'])
+    expect(gate.held()).toBeNull()
+  })
+
+  it('reads the browser’s navigation entries, and nothing where it keeps none', () => {
+    const entry = (key: string, index: number, sameDocument = true) => ({
+      key,
+      index,
+      sameDocument,
+    })
+    const entries = [entry('x', 0, false), entry('a', 1), entry('b', 2)]
+    let current: ReturnType<typeof entry> | null = entries[2]!
+    const view = { navigation: { currentEntry: current, entries: () => entries } }
+    Object.defineProperty(view.navigation, 'currentEntry', { get: () => current })
+    const steps = navigationSteps(view as unknown as Window)!
+    // a step onto one of this document's entries lands on it
+    expect(steps.target(-1)).toBe('a')
+    // onto another document's, or past either end: no pop here
+    expect(steps.target(-2)).toBeNull()
+    expect(steps.target(1)).toBeNull()
+    expect(steps.target(-3)).toBeNull()
+    current = entries[1]!
+    expect(steps.current()).toBe('a')
+    // an entry the browser cannot place says nothing either way
+    current = entry('lost', -1)
+    expect(steps.target(-1)).toBeUndefined()
+    expect(navigationSteps({} as Window)).toBeUndefined()
   })
 })
