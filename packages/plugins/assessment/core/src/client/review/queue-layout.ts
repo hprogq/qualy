@@ -8,6 +8,14 @@ import type { InboxItemDto } from './model.ts'
 // them - the answers squeezed to nothing, a column head one character a
 // line.
 
+/**
+ * As many filings as the queue shows whole, every answer under its own
+ * label, rather than as rows of a table: a table of one or two rows is a
+ * strip across an empty page, and the few that are waiting are all there is
+ * to read.
+ */
+export const SPREAD_MOST = 3
+
 /** below this, the list and the picked one's filings are one screen after the other */
 export const BESIDE_MIN = 880
 

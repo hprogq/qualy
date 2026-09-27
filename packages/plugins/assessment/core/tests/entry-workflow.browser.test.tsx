@@ -2269,7 +2269,7 @@ describe('judging a submission', () => {
     unitName: '软件2023级2班',
     roundNo: 1,
     route: 'normal' as const,
-    values: [{ label: '事项说明', value: '入伍经历与退役时间' }],
+    values: [{ label: '事项说明', value: '入伍经历与退役时间', files: null }],
     attachmentCount: 0,
     submittedAt: '2026-03-03T00:00:00.000Z',
     ...over,
@@ -2309,13 +2309,10 @@ describe('judging a submission', () => {
       ],
     )
 
-    // the queue shows this batch's work and nobody else's
-    await expect.element(page.getByRole('button', { name: /退役复学/ })).toBeVisible()
-    expect(page.getByText('不该出现').elements()).toHaveLength(0)
-
-    // on a phone the question is a step in from the list of questions
-    await page.getByRole('button', { name: /退役复学/ }).click()
+    // the queue shows this batch's work and nobody else's, and one filing
+    // is laid out whole under its question, with no list to step through
     await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
+    expect(page.getByText('不该出现').elements()).toHaveLength(0)
 
     // the row itself opens the workbench; the filed answer stands under its
     // own label in the reading pane

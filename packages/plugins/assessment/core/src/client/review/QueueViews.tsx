@@ -23,6 +23,7 @@ import { assessmentMessages as m } from '../i18n.ts'
 import { scrollMotion, useBeside, useMedia, useWidthOf } from './pointer.ts'
 import {
   BESIDE_MIN,
+  SPREAD_MOST,
   WHEN_WIDTH,
   WHO_MIN,
   answerFloorOf,
@@ -50,6 +51,10 @@ import {
 // both, the two are one screen after the other - the list first, the picked
 // one's filings a step in - the way "my entries" goes from its structure
 // into a question. By time the queue is one table, oldest first.
+//
+// A list of one is no list: a queue with one question (or one person) in it
+// is that question's filings, full width, with nothing to pick. And a queue
+// of a few filings is laid out whole, every answer under its own label.
 //
 // Pages are cut from the whole queue, which is read in full (queue.ts): the
 // counts, the search and the run a reviewer walks are all about the whole
@@ -303,6 +308,117 @@ const styles = stylex.create({
     overflowWrap: 'anywhere',
     lineHeight: 1.45,
   },
+  // ---- a few filings, laid out whole ----
+  spread: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 16 },
+  spreadList: { margin: 0, padding: 0, listStyleType: 'none' },
+  spreadItem: {
+    borderBottomWidth: { default: 1, ':last-child': 0 },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+  },
+  spreadRow: {
+    display: 'flex',
+    width: '100%',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 12,
+    borderWidth: 0,
+    paddingInline: 16,
+    paddingTop: 14,
+    paddingBottom: 16,
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 55%, transparent)`,
+    },
+    fontFamily: 'inherit',
+    textAlign: 'start',
+    color: 'inherit',
+    cursor: 'pointer',
+    transitionProperty: 'background-color',
+    transitionDuration: '120ms',
+  },
+  spreadTop: {
+    display: 'flex',
+    width: '100%',
+    minWidth: 0,
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  spreadLead: {
+    display: 'flex',
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+    gap: 3,
+  },
+  spreadTitle: {
+    overflowWrap: 'anywhere',
+    fontSize: 14,
+    lineHeight: 1.45,
+    fontWeight: 600,
+    color: tokens.foreground,
+  },
+  spreadNote: {
+    minWidth: 0,
+    overflowWrap: 'anywhere',
+    fontSize: 12,
+    lineHeight: 1.45,
+    color: tokens.mutedForeground,
+  },
+  spreadSide: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 10,
+    fontSize: 12,
+    fontVariantNumeric: 'tabular-nums',
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  spreadChevron: { width: 14, height: 14, flexShrink: 0 },
+  // every answer under its own label, as many to a line as the card has
+  // room for; the filings of one question line their answers up. A phone
+  // has room for one answer a line, so there the label stands beside it
+  // rather than over it, and a filing is as many lines as it has answers
+  answers: {
+    display: 'grid',
+    width: '100%',
+    gridTemplateColumns: {
+      default: 'repeat(auto-fill, minmax(min(100%, 12rem), 1fr))',
+      [breakpoints.phone]: 'fit-content(7.5em) minmax(0, 1fr)',
+    },
+    alignItems: { default: null, [breakpoints.phone]: 'baseline' },
+    columnGap: { default: 24, [breakpoints.phone]: 12 },
+    rowGap: { default: 10, [breakpoints.phone]: 6 },
+  },
+  answer: {
+    display: { default: 'flex', [breakpoints.phone]: 'contents' },
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 2,
+  },
+  answerLabel: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 11.5,
+    lineHeight: 1.4,
+    color: tokens.mutedForeground,
+  },
+  answerValue: {
+    display: '-webkit-box',
+    minWidth: 0,
+    overflow: 'hidden',
+    WebkitBoxOrient: 'vertical',
+    WebkitLineClamp: 3,
+    overflowWrap: 'anywhere',
+    fontSize: { default: 13.5, [breakpoints.phone]: 13 },
+    lineHeight: 1.5,
+    color: tokens.foreground,
+  },
   // ---- the queue's shape while it is read ----
   skHead: {
     display: 'flex',
@@ -341,7 +457,7 @@ type OpenRow = (row: InboxItemDto, run: string) => void
 type Choose = (key: string, drills: boolean) => void
 
 /** how the queue was laid out, for the hooks a test reads it by */
-type Layout = 'split' | 'drill' | 'table'
+type Layout = 'split' | 'drill' | 'single' | 'spread' | 'table'
 
 /**
  * The room the queue has, measured, around whatever it is laid out as. Its
@@ -597,7 +713,7 @@ function PaneHead({
           <h2 {...stylex.props(styles.paneTitle)}>{title}</h2>
           {facts}
         </div>
-        <span {...stylex.props(styles.paneAction)}>{action}</span>
+        {action !== null && <span {...stylex.props(styles.paneAction)}>{action}</span>}
       </div>
     </div>
   )
@@ -832,11 +948,62 @@ export function ItemQueue({
   const phone = usePhone()
   const since = useDayClock()
   const groups = groupByItem(rows)
+  const spread = rows.length <= SPREAD_MOST
+  const single = !spread && groups.length === 1
   const named = pickedOf(groups, (group) => group.itemId, chosen)
-  // at a desk something is always open: the question that has waited longest
-  const open = named ?? (beside ? groups[0] : undefined)
-  const layout: Layout = beside ? 'split' : 'drill'
-  const paneWidth = paneWidthOf(room, beside)
+  // at a desk something is always open: the question that has waited
+  // longest; and a question alone in the queue is open at any width
+  const open = named ?? (beside || single ? groups[0] : undefined)
+  const layout: Layout = spread ? 'spread' : single ? 'single' : beside ? 'split' : 'drill'
+  const paneWidth = paneWidthOf(room, layout === 'split')
+
+  if (spread) {
+    return (
+      <QueueRoom layout={layout} seat={seat} width={width}>
+        <div {...stylex.props(styles.spread)}>
+          {groups.map((group) => {
+            const run = writeRunScope({ kind: 'item', itemId: group.itemId })
+            return (
+              <Card
+                key={group.itemId}
+                data-testid="queue-spread"
+                data-key={group.itemId}
+                data-count={group.rows.length}
+              >
+                <PaneHead
+                  back={null}
+                  title={group.itemTitle}
+                  facts={
+                    <Facts
+                      items={[
+                        format(m.reviewGroupCount, { count: group.rows.length }),
+                        format(m.reviewOldest, { when: since(group.rows[0]!.submittedAt) }),
+                      ]}
+                    />
+                  }
+                  action={
+                    // one filing is its own way in; the run over the
+                    // question is worth a key only where it has several
+                    group.rows.length > 1 ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className={stylex.props(styles.paneAction).className}
+                        onClick={() => onOpen(group.rows[0]!, run)}
+                      >
+                        {format(m.reviewStartItem)}
+                      </Button>
+                    ) : null
+                  }
+                />
+                <SpreadRows rows={group.rows} lead="who" onOpen={(row) => onOpen(row, run)} />
+              </Card>
+            )
+          })}
+        </div>
+      </QueueRoom>
+    )
+  }
 
   const master = (
     <MasterCard
@@ -960,13 +1127,17 @@ export function ItemQueue({
 
   return (
     <QueueRoom layout={layout} seat={seat} width={width}>
-      <Split
-        room={room}
-        beside={beside}
-        chosen={named?.itemId ?? null}
-        master={master}
-        pane={pane}
-      />
+      {single ? (
+        pane
+      ) : (
+        <Split
+          room={room}
+          beside={beside}
+          chosen={named?.itemId ?? null}
+          master={master}
+          pane={pane}
+        />
+      )}
     </QueueRoom>
   )
 }
@@ -994,10 +1165,60 @@ export function PersonQueue({
   const { seat, width, room, beside } = useQueueRoom()
   const phone = usePhone()
   const people = groupByPerson(rows)
+  const spread = rows.length <= SPREAD_MOST
+  const single = !spread && people.length === 1
   const named = pickedOf(people, (person) => person.key, chosen)
-  const open = named ?? (beside ? people[0] : undefined)
-  const layout: Layout = beside ? 'split' : 'drill'
-  const paneWidth = paneWidthOf(room, beside)
+  const open = named ?? (beside || single ? people[0] : undefined)
+  const layout: Layout = spread ? 'spread' : single ? 'single' : beside ? 'split' : 'drill'
+  const paneWidth = paneWidthOf(room, layout === 'split')
+
+  if (spread) {
+    return (
+      <QueueRoom layout={layout} seat={seat} width={width}>
+        <div {...stylex.props(styles.spread)}>
+          {people.map((person) => {
+            const run = writeRunScope({ kind: 'person', businessNo: person.key })
+            return (
+              <Card
+                key={person.key}
+                data-testid="queue-spread"
+                data-key={person.key}
+                data-count={person.rows.length}
+              >
+                <PaneHead
+                  back={null}
+                  face={<Face name={person.name} />}
+                  title={person.name}
+                  facts={
+                    <Facts
+                      items={[
+                        person.businessNo,
+                        person.unitName,
+                        format(m.reviewGroupCount, { count: person.rows.length }),
+                      ]}
+                    />
+                  }
+                  action={
+                    person.rows.length > 1 ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className={stylex.props(styles.paneAction).className}
+                        onClick={() => onOpen(person.rows[0]!, run)}
+                      >
+                        {format(m.reviewStartPerson)}
+                      </Button>
+                    ) : null
+                  }
+                />
+                <SpreadRows rows={person.rows} lead="item" onOpen={(row) => onOpen(row, run)} />
+              </Card>
+            )
+          })}
+        </div>
+      </QueueRoom>
+    )
+  }
 
   const master = (
     <MasterCard
@@ -1101,7 +1322,17 @@ export function PersonQueue({
 
   return (
     <QueueRoom layout={layout} seat={seat} width={width}>
-      <Split room={room} beside={beside} chosen={named?.key ?? null} master={master} pane={pane} />
+      {single ? (
+        pane
+      ) : (
+        <Split
+          room={room}
+          beside={beside}
+          chosen={named?.key ?? null}
+          master={master}
+          pane={pane}
+        />
+      )}
     </QueueRoom>
   )
 }
@@ -1121,6 +1352,7 @@ export function TimeQueue({
   const { format } = useI18n()
   const { seat, width, room } = useQueueRoom()
   const phone = usePhone()
+  const spread = rows.length <= SPREAD_MOST
   const list = pageOf(rows, page, TIME_PAGE)
   const columns = [
     `minmax(${String(WHO_MIN)}px, 11rem)`,
@@ -1129,48 +1361,136 @@ export function TimeQueue({
     `${String(WHEN_WIDTH)}px`,
   ].join(' ')
   return (
-    <QueueRoom layout="table" seat={seat} width={width}>
-      <Card data-testid="queue-pane" data-key="" data-count={rows.length}>
-        <Table columns={columns} openable>
-          <TableHead>
-            <span>{format(m.reviewColumnParticipant)}</span>
-            <span>{format(m.reviewColumnItem)}</span>
-            <span>{format(m.reviewColumnSummary)}</span>
-            <span>{format(m.reviewColumnWhen)}</span>
-          </TableHead>
-          {list.rows.map((row) => (
-            <TableRow
-              key={row.instanceId}
-              // the whole queue is the run: pressing any row walks on from it
-              onOpen={() => onOpen(row, '')}
+    <QueueRoom layout={spread ? 'spread' : 'table'} seat={seat} width={width}>
+      {spread ? (
+        <Card data-testid="queue-spread" data-key="" data-count={rows.length}>
+          {/* the whole queue is the run: pressing any of them walks on from it */}
+          <SpreadRows rows={rows} lead="both" onOpen={(row) => onOpen(row, '')} />
+        </Card>
+      ) : (
+        <Card data-testid="queue-pane" data-key="" data-count={rows.length}>
+          <Table columns={columns} openable>
+            <TableHead>
+              <span>{format(m.reviewColumnParticipant)}</span>
+              <span>{format(m.reviewColumnItem)}</span>
+              <span>{format(m.reviewColumnSummary)}</span>
+              <span>{format(m.reviewColumnWhen)}</span>
+            </TableHead>
+            {list.rows.map((row) => (
+              <TableRow
+                key={row.instanceId}
+                // the whole queue is the run: pressing any row walks on from it
+                onOpen={() => onOpen(row, '')}
+                data-testid="inbox-row"
+                data-instance={row.instanceId}
+              >
+                <Cell lead>
+                  <Who row={row} />
+                </Cell>
+                <Cell tone="plain" unlabelled title={row.itemTitle}>
+                  {row.itemTitle}
+                </Cell>
+                {/* stacked, the question is what the row is scanned by; its
+                    answers are the workbench's to show */}
+                <Cell narrow="drop" unlabelled>
+                  <AnswerRun row={row} files={false} />
+                </Cell>
+                <Cell narrow="end" numeric unlabelled>
+                  <When row={row} />
+                </Cell>
+              </TableRow>
+            ))}
+          </Table>
+          <PagerFoot
+            list={list}
+            size={TIME_PAGE}
+            onPage={onPage}
+            compact={phone || room < PAGER_ROOM}
+          />
+        </Card>
+      )}
+    </QueueRoom>
+  )
+}
+
+/**
+ * A few filings, each laid out whole: who (or which question), when, where
+ * the round stands, and every answer under its own label. The whole block
+ * opens the filing, as a row of the table would.
+ */
+function SpreadRows({
+  rows,
+  lead,
+  onOpen,
+}: {
+  rows: readonly InboxItemDto[]
+  /** what names each filing: who filed it, the question it is on, or both */
+  lead: 'who' | 'item' | 'both'
+  onOpen: (row: InboxItemDto) => void
+}) {
+  const { format } = useI18n()
+  const clock = useQueueClock()
+  return (
+    <ul {...stylex.props(styles.spreadList)}>
+      {rows.map((row) => {
+        const answers = row.values.filter((pair) => pair.files !== null || pair.value !== '')
+        return (
+          <li key={row.instanceId} {...stylex.props(styles.spreadItem)}>
+            <button
+              type="button"
               data-testid="inbox-row"
               data-instance={row.instanceId}
+              data-answers={answers.length}
+              onClick={() => onOpen(row)}
+              {...stylex.props(styles.spreadRow)}
             >
-              <Cell lead>
-                <Who row={row} />
-              </Cell>
-              <Cell tone="plain" unlabelled title={row.itemTitle}>
-                {row.itemTitle}
-              </Cell>
-              {/* stacked, the question is what the row is scanned by; its
-                  answers are the workbench's to show */}
-              <Cell narrow="drop" unlabelled>
-                <AnswerRun row={row} files={false} />
-              </Cell>
-              <Cell narrow="end" numeric unlabelled>
-                <When row={row} />
-              </Cell>
-            </TableRow>
-          ))}
-        </Table>
-        <PagerFoot
-          list={list}
-          size={TIME_PAGE}
-          onPage={onPage}
-          compact={phone || room < PAGER_ROOM}
-        />
-      </Card>
-    </QueueRoom>
+              <span {...stylex.props(styles.spreadTop)}>
+                <span {...stylex.props(styles.spreadLead)}>
+                  {lead === 'item' ? (
+                    <span {...stylex.props(styles.spreadTitle)}>{row.itemTitle}</span>
+                  ) : (
+                    <>
+                      <Who row={row} />
+                      {lead === 'both' ? (
+                        <span {...stylex.props(styles.spreadNote)}>{row.itemTitle}</span>
+                      ) : (
+                        row.unitName !== null && (
+                          <span {...stylex.props(styles.spreadNote)}>{row.unitName}</span>
+                        )
+                      )}
+                    </>
+                  )}
+                </span>
+                <span {...stylex.props(styles.spreadSide)}>
+                  <RoundMark row={row} />
+                  <span>{clock(row.submittedAt)}</span>
+                  <ChevronRightIcon
+                    aria-hidden
+                    className={stylex.props(styles.spreadChevron).className}
+                  />
+                </span>
+              </span>
+              {answers.length > 0 && (
+                <span data-testid="inbox-row-answers" {...stylex.props(styles.answers)}>
+                  {answers.map((pair, index) => (
+                    <span key={index} {...stylex.props(styles.answer)}>
+                      <span {...stylex.props(styles.answerLabel)}>{pair.label}</span>
+                      <span
+                        {...stylex.props(styles.answerValue, pair.files === 0 && styles.quietFiled)}
+                      >
+                        {pair.files === null
+                          ? pair.value
+                          : format(m.reviewFilesCount, { count: pair.files })}
+                      </span>
+                    </span>
+                  ))}
+                </span>
+              )}
+            </button>
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 

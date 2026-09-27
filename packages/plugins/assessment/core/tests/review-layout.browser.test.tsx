@@ -150,7 +150,7 @@ const inboxRow = (over: Record<string, unknown> = {}) => ({
   unitName: '软件2023级2班',
   roundNo: 1,
   route: 'normal' as const,
-  values: [{ label: '竞赛名称', value: '中国机器人大赛' }],
+  values: [{ label: '竞赛名称', value: '中国机器人大赛', files: null }],
   attachmentCount: 0,
   submittedAt: '2026-03-03T00:00:00.000Z',
   ...over,

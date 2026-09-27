@@ -275,3 +275,78 @@ describe('the queue beside the rail', () => {
     }
   })
 })
+
+describe('a queue of a few', () => {
+  // One or two filings are all there is to read, so they are laid out
+  // whole - every answer under its label - rather than as a strip of table
+  // across an empty page, and a phone does not make the reader step into
+  // a list of one to see them.
+  for (const [width, height] of [
+    [390, 844],
+    [834, 1112],
+    [1440, 900],
+  ] as const) {
+    it(`lays two filings out whole at ${String(width)}`, async () => {
+      await page.viewport(width, height)
+      await shelled([filing(0), filing(1)])
+      await expect.element(layout()).toHaveAttribute('data-layout', 'spread')
+      await expect.element(rows().first()).toBeVisible()
+      expect(rows().elements()).toHaveLength(2)
+      expect(page.getByTestId('queue-master-row').elements()).toHaveLength(0)
+      // every answer the filing has, each with its own label
+      for (const row of rows().elements()) {
+        expect(row.getAttribute('data-answers')).toBe('4')
+        expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth + 1)
+      }
+    })
+  }
+
+  it('lays a few out whole whichever way the queue is read', async () => {
+    await page.viewport(1280, 800)
+    for (const [view, groups] of [
+      ['time', 1],
+      ['person', 2],
+    ] as const) {
+      const shown = await shelled([filing(0), volunteering(1)], `?view=${view}`)
+      await expect.element(layout()).toHaveAttribute('data-layout', 'spread')
+      expect(page.getByTestId('queue-spread').elements()).toHaveLength(groups)
+      expect(
+        rows()
+          .elements()
+          .map((row) => row.getAttribute('data-answers')),
+      ).toEqual(['4', '2'])
+      await shown.unmount()
+    }
+  })
+
+  it('groups a few filings by question, and opens one on a press', async () => {
+    await page.viewport(1440, 900)
+    await shelled([filing(0), volunteering(1)])
+    const groups = page.getByTestId('queue-spread')
+    await expect.element(groups.first()).toBeVisible()
+    expect(groups.elements().map((group) => group.getAttribute('data-key'))).toEqual([
+      ITEM_ID,
+      OTHER_ITEM,
+    ])
+    await rows().nth(1).click()
+    await expect.poll(() => addressNow()).toContain(rowId(1))
+    expect(addressNow()).toContain(`run=item%3A${OTHER_ITEM}`)
+  })
+
+  // A queue of one question is that question's filings, with nothing to
+  // pick them from: full width at a desk, and no step in on a phone.
+  for (const [width, height] of [
+    [390, 844],
+    [1440, 900],
+  ] as const) {
+    it(`opens the only question straight away at ${String(width)}`, async () => {
+      await page.viewport(width, height)
+      await shelled(Array.from({ length: 12 }, (_, n) => filing(n)))
+      await expect.element(layout()).toHaveAttribute('data-layout', 'single')
+      await expect.element(rows().first()).toBeVisible()
+      expect(page.getByTestId('queue-master-row').elements()).toHaveLength(0)
+      expect(page.getByTestId('queue-pane-back').elements()).toHaveLength(0)
+      expect(rows().elements()).toHaveLength(10)
+    })
+  }
+})
