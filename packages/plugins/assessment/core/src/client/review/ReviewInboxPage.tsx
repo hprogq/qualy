@@ -5,6 +5,7 @@ import * as stylex from '@stylexjs/stylex'
 import { FileTextIcon, SearchIcon, ShieldIcon } from 'lucide-react'
 import {
   useApiQuery,
+  useLoadFailure,
   usePageNavigate,
   usePageQueryState,
   usePageQueryUpdate,
@@ -214,6 +215,9 @@ const styles = stylex.create({
 
 type View = 'item' | 'time' | 'person' | 'asked'
 
+/** the batch went while its queue was being read */
+const BATCH_NOT_FOUND = 'ASSESSMENT_BATCH_NOT_FOUND'
+
 const VIEWS: readonly View[] = ['item', 'time', 'person', 'asked']
 
 const viewOf = (raw: string): View =>
@@ -382,7 +386,8 @@ function QueueBody({
   queue: Queue
   onOpen: (row: InboxItemDto, run: string) => void
 }) {
-  const { format, formatError } = useI18n()
+  const { format } = useI18n()
+  const loadFailure = useLoadFailure()
   const location = useLocation()
   const navigate = useNavigate()
   const update = usePageQueryUpdate()
@@ -469,8 +474,13 @@ function QueueBody({
       // a read that failed only in the background keeps the queue it last
       // showed: the page is somebody's place in their work
       error={
-        queue.inbox.data === undefined && queue.inbox.error ? formatError(queue.inbox.error) : null
+        queue.inbox.data === undefined && queue.inbox.error
+          ? loadFailure.of(queue.inbox.error, { missing: [BATCH_NOT_FOUND] })
+          : null
       }
+      retrying={queue.inbox.isFetching}
+      // on the page's own ground, under its title, where the queue would stand
+      framed
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
       onRetry={() => void queue.inbox.refetch()}

@@ -1126,6 +1126,28 @@ describe('the version picker', () => {
     await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
     await expect.poll(() => rows().length).toBe(0)
   })
+
+  // The versions could not be read: said inside the sheet, under its own
+  // title, with another try only where one could bring them.
+  it.each([
+    ['ASSESSMENT_ENTRY_NOT_FOUND', 'missing', false],
+    ['SERVICE_UNAVAILABLE', 'unavailable', true],
+  ] as const)('says a %s reading of the versions inside the sheet', async (code, state, retry) => {
+    await open({
+      getEntryHistory: () => Effect.fail(apiError(code)),
+      getReviewInstance: () =>
+        Effect.succeed({ review: { ...review, revision: { ...review.revision, revisionNo: 3 } } }),
+    })
+    await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
+    await userEvent.keyboard('{Shift>}D{/Shift}')
+    const sheet = page.getByRole('dialog')
+    const failure = sheet.element().querySelector('[data-slot="resource-state"]')
+    await expect.poll(() => failure?.getAttribute('data-state') ?? null).toBe(state)
+    // under the sheet's own title
+    expect(failure?.querySelector('h3')).not.toBeNull()
+    expect(failure?.querySelector('h2')).toBeNull()
+    expect(failure?.querySelectorAll('button')).toHaveLength(retry ? 1 : 0)
+  })
 })
 
 describe('a queue longer than one page', () => {
@@ -1205,6 +1227,64 @@ describe('a queue longer than one page', () => {
 
     await expect.element(page.getByTestId('queue-badge')).toHaveAttribute('data-count', '2')
     expect(seen).toEqual([])
+  })
+
+  // Read for the first time and failed, the queue says why where it would
+  // stand, on a card of its own under the page's title; another try is
+  // offered where one could bring a different answer, and brings the queue.
+  it('says a queue that could not be read where it would stand', async () => {
+    await page.viewport(1280, 800)
+    let reachable = false
+    const seen: (string | undefined)[] = []
+    const base = stubs(seen)
+    const listed = paged(seen)
+    await renderScreen({
+      client: fakeClient({
+        ...base,
+        assessment: {
+          ...base.assessment,
+          listReviewInbox: (input: { query: { cursor?: string } }) =>
+            reachable ? listed(input) : Effect.fail(apiError('SERVICE_UNAVAILABLE')),
+        },
+      }),
+      routes: [
+        { path: '/assessment/batches/:batchId/reviews', element: <ReviewInboxPage /> },
+      ] as never,
+      route: `/assessment/batches/${BATCH_ID}/reviews`,
+    })
+    const failure = page
+      .getByRole('status')
+      .filter({ has: page.getByRole('heading', { level: 2 }) })
+    await expect.element(failure).toBeVisible()
+    const seat = failure.element()
+    expect(seat.getAttribute('data-state')).toBe('unavailable')
+    // standing on the page's ground, not a hole in it
+    expect(getComputedStyle(seat).boxShadow).not.toBe('none')
+    reachable = true
+    await failure.getByRole('button', { name: /重试/ }).click()
+    await expect.element(page.getByTestId('review-stats')).toHaveAttribute('data-pending', '2')
+  })
+
+  it('offers no other try for a queue whose batch has gone', async () => {
+    await page.viewport(1280, 800)
+    const seen: (string | undefined)[] = []
+    const base = stubs(seen)
+    await renderScreen({
+      client: fakeClient({
+        ...base,
+        assessment: {
+          ...base.assessment,
+          listReviewInbox: () => Effect.fail(apiError('ASSESSMENT_BATCH_NOT_FOUND')),
+        },
+      }),
+      routes: [
+        { path: '/assessment/batches/:batchId/reviews', element: <ReviewInboxPage /> },
+      ] as never,
+      route: `/assessment/batches/${BATCH_ID}/reviews`,
+    })
+    const state = () => document.querySelector('[data-slot="resource-state"]')
+    await expect.poll(() => state()?.getAttribute('data-state') ?? null).toBe('missing')
+    expect(state()?.querySelectorAll('button')).toHaveLength(0)
   })
 
   it('keeps the queue it showed when a later read of it fails', async () => {

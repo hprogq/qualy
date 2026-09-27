@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import { useLoadFailure } from '@qualy/web-runtime'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
@@ -24,6 +25,9 @@ import { useFinePointer } from './pointer.ts'
 // who filed it and whoever is judging it read the same rendering of it
 // (entry/EntryHistory). This is the other half of that - the list of what
 // there is to compare against, which only a reviewer ever needs.
+
+/** the claim went while its versions were being read */
+const ENTRY_NOT_FOUND = 'ASSESSMENT_ENTRY_NOT_FOUND'
 
 /** the shape the entry-history endpoint answers with, as these screens read it */
 type History = {
@@ -266,7 +270,8 @@ export function VersionPicker({
   onPick: (revisionId: string) => void
   onClose: () => void
 }) {
-  const { format, formatError, locale } = useI18n()
+  const { format, locale } = useI18n()
+  const loadFailure = useLoadFailure()
   const zone = useBatchZone()
   // a phone gets the sheet where the thumb is; a keyboard gets the digits
   const narrow = useIsBelow(640)
@@ -371,7 +376,10 @@ export function VersionPicker({
           <div {...stylex.props(styles.body)}>
             <AsyncSection
               pending={history.isPending}
-              error={history.error ? formatError(history.error) : null}
+              error={
+                history.error ? loadFailure.of(history.error, { missing: [ENTRY_NOT_FOUND] }) : null
+              }
+              retrying={history.isFetching}
               loadingLabel={format(commonMessages.loading)}
               retryLabel={format(commonMessages.retry)}
               onRetry={() => void history.refetch()}
