@@ -1247,7 +1247,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
       : failed.subject(detail, reviewAbsence)
   if (failure !== null) {
     return (
-      <div data-testid="review-failure" {...stylex.props(styles.fill)}>
+      <div data-testid="review-failure" data-state={failure.kind} {...stylex.props(styles.fill)}>
         <LoadFailure
           size="section"
           failure={failure}

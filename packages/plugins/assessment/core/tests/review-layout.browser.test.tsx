@@ -668,9 +668,10 @@ describe('a round the address names that is not there', () => {
       getReviewInstance: () => Effect.fail(apiError('ASSESSMENT_REVIEW_NOT_FOUND')),
     })
     const failure = page.getByTestId('review-failure')
-    const state = failure.locator('[data-slot="resource-state"]')
-    await expect.element(state).toHaveAttribute('data-state', 'missing')
-    await expect.element(state).toHaveAttribute('data-size', 'section')
+    await expect.element(failure).toHaveAttribute('data-state', 'missing')
+    // a pane's state inside the page, not the page's own heading
+    await expect.element(failure.getByRole('heading', { level: 2 })).toBeVisible()
+    expect(failure.getByRole('heading', { level: 1 }).elements()).toHaveLength(0)
     // nothing another try could change
     expect(failure.getByRole('button', { name: /重试/ }).elements()).toHaveLength(0)
     expect(page.getByTestId('queue-key').elements()).toHaveLength(0)
@@ -704,7 +705,7 @@ describe('a round the address names that is not there', () => {
       route: `/assessment/batches/${BATCH_ID}/reviews/not-a-round`,
     })
     await expect
-      .element(page.getByTestId('review-failure').locator('[data-slot="resource-state"]'))
+      .element(page.getByTestId('review-failure'))
       .toHaveAttribute('data-state', 'missing')
     expect(asked).not.toHaveBeenCalled()
   })
@@ -718,8 +719,9 @@ describe('a round the address names that is not there', () => {
           ? Effect.succeed({ review })
           : Effect.fail({ _tag: 'HttpClientError', reason: { _tag: 'TransportError' } }),
     })
-    const state = page.getByTestId('review-failure').locator('[data-slot="resource-state"]')
-    await expect.element(state).toHaveAttribute('data-state', 'offline')
+    await expect
+      .element(page.getByTestId('review-failure'))
+      .toHaveAttribute('data-state', 'offline')
     reachable = true
     await page
       .getByTestId('review-failure')
