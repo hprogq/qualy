@@ -878,6 +878,35 @@ const i18n = definePluginMessages({
     batchSummary,
     batchSummaryDraft,
     backToList: { id: 'assessment/batch/back', defaultMessage: 'All rounds' },
+    // a batch that is not there for this reader, and a screen of one that is
+    // not for them (§32.94)
+    batchGoneTitle: { id: 'assessment/batch/gone-title', defaultMessage: 'Batch not found' },
+    batchGoneHint: {
+      id: 'assessment/batch/gone-hint',
+      defaultMessage: 'It may have been deleted, or you may not have access to it',
+    },
+    batchGoneBack: { id: 'assessment/batch/gone-back', defaultMessage: 'Back to all rounds' },
+    batchDeniedPersonal: {
+      id: 'assessment/batch/denied-personal',
+      defaultMessage: "You're not on this batch's participant list",
+    },
+    batchDeniedReview: {
+      id: 'assessment/batch/denied-review',
+      defaultMessage: "You don't review in this batch",
+    },
+    batchDeniedManage: {
+      id: 'assessment/batch/denied-manage',
+      defaultMessage: "You don't manage this batch",
+    },
+    batchDeniedResults: {
+      id: 'assessment/batch/denied-results',
+      defaultMessage: "You can't view this batch's participants",
+    },
+    batchDeniedHint: {
+      id: 'assessment/batch/denied-hint',
+      defaultMessage: 'Contact the batch administrator if this seems wrong',
+    },
+    batchDeniedBack: { id: 'assessment/batch/denied-back', defaultMessage: 'Back to overview' },
 
     // the batch form
     nameLabel: { id: 'assessment/batch/name', defaultMessage: 'Name' },

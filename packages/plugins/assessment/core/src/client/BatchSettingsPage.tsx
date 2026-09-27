@@ -7,7 +7,11 @@ import { assessmentMessages as m } from './i18n.ts'
 export default function BatchSettingsPage() {
   const { format } = useI18n()
   return (
-    <BatchScreen title={format(m.tabSettings)} description={format(m.settingsHint)}>
+    <BatchScreen
+      title={format(m.tabSettings)}
+      description={format(m.settingsHint)}
+      requires="manage"
+    >
       {(batch) => <BatchSettingsForm batch={batch} />}
     </BatchScreen>
   )

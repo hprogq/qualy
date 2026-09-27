@@ -42,7 +42,7 @@ export default function MyResultPage() {
   const { format } = useI18n()
   return (
     // no band: the ledger carries its own head, with the total in it
-    <BatchScreen title={format(m.resultTab)} size="full" chrome="none">
+    <BatchScreen title={format(m.resultTab)} size="full" chrome="none" requires="personal">
       {(batch) => (
         <Standing
           batchId={batch.id}

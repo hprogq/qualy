@@ -3,7 +3,10 @@ import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { ArrowLeftIcon, ChevronRightIcon } from 'lucide-react'
 import {
+  LoadFailure,
   PageLink,
+  SubjectAbsence,
+  isRecordId,
   useApiQuery,
   usePageRouteParams,
   usePublishWorkspaceCapabilities,
@@ -21,6 +24,7 @@ import { BatchFlow } from './BatchFlow.tsx'
 import { BatchZone } from './BatchZone.tsx'
 import { BatchProgress } from './BatchProgress.tsx'
 import { BatchSwitcher } from './BatchSwitcher.tsx'
+import { useBatchAbsence } from './absence.ts'
 
 /** where the band stops being one line and becomes the window's own head */
 const HEAD_BREAKPOINT = 768
@@ -216,18 +220,26 @@ const styles = stylex.create({
 // do. What may happen to the batch as a whole is not here - archiving and
 // deleting ask twice and happen once, and a row of them across the top of
 // every section made each section look like the smaller subject.
+//
+// It is also the one that says when there is no batch to be about: the
+// shell folds the rail and the band away and seats what this hands it where
+// the page would have been, keeping the product's own bar as the way out.
 export default function BatchContextBar() {
   const { batchId } = usePageRouteParams('batchId')
   const query = useApiQuery(assessmentApi)
   const { format } = useI18n()
   const head = useIsBelow(HEAD_BREAKPOINT)
   const [flowOpen, setFlowOpen] = useState(false)
+  // an address that cannot name a batch is not asked about
+  const shaped = isRecordId(batchId)
 
   const detail = useQuery({
     ...query.assessment.getBatch.queryOptions({ params: { batchId } }),
     staleTime: 30_000,
+    enabled: shaped,
   })
   const batch = detail.data?.batch
+  const absent = useBatchAbsence(batchId, detail)
   // the workspace speaks for itself: who this reader is in the open batch,
   // straight from the server's projection, withdrawn while a batch loads so
   // gated rail entries never flash before the answer arrives
@@ -250,6 +262,7 @@ export default function BatchContextBar() {
   const plan = useQuery({
     ...query.assessment.getTimeline.queryOptions({ params: { batchId } }),
     staleTime: 30_000,
+    enabled: shaped,
   })
   const stages = plan.data?.timeline ?? []
   // Whether the strip has a stage and a clock to show at all. A round whose
@@ -258,6 +271,19 @@ export default function BatchContextBar() {
   const running = stages.some(
     (stage) => stage.status === 'current' || stage.entry.kind === 'planned',
   )
+
+  if (absent !== null) {
+    return (
+      <SubjectAbsence>
+        <LoadFailure
+          failure={absent}
+          back={{ page: 'assessment/batches', label: format(m.batchGoneBack) }}
+          onRetry={() => void detail.refetch()}
+          retrying={detail.isFetching}
+        />
+      </SubjectAbsence>
+    )
+  }
 
   return (
     <div {...stylex.props(styles.bar)}>

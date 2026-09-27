@@ -68,7 +68,7 @@ export default function MyEntriesPage() {
   return (
     // no band: the rail carries the page's own name and numbers, and the
     // workspace fills whatever the shell gives it
-    <BatchScreen title={format(m.myEntriesTab)} size="full" chrome="none">
+    <BatchScreen title={format(m.myEntriesTab)} size="full" chrome="none" requires="personal">
       {(batch) => (
         <Body
           batchId={batch.id}

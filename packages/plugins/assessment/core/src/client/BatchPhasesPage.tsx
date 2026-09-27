@@ -9,7 +9,7 @@ export default function BatchPhasesPage() {
   // one editor per batch: the switcher keeps this page mounted, and a draft
   // begun on one batch is never laid over the plan of the next
   return (
-    <BatchScreen title={format(m.tabPhases)} description={format(m.phasesHint)}>
+    <BatchScreen title={format(m.tabPhases)} description={format(m.phasesHint)} requires="manage">
       {(batch) => <PhaseTimelineEditor key={batch.id} batch={batch} />}
     </BatchScreen>
   )

@@ -12,7 +12,12 @@ import { assessmentMessages as m } from './i18n.ts'
 export default function BatchAccessPage() {
   const { format } = useI18n()
   return (
-    <BatchScreen title={format(m.tabAccess)} description={format(m.accessHint)} size="wide">
+    <BatchScreen
+      title={format(m.tabAccess)}
+      description={format(m.accessHint)}
+      size="wide"
+      requires="manage"
+    >
       {(batch) => <AccessPanel batchId={batch.id} archived={batch.status === 'archived'} />}
     </BatchScreen>
   )

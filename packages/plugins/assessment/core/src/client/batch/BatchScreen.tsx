@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
+import { LoadFailure, isRecordId, useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
@@ -14,6 +14,7 @@ import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import type { BatchDto } from '../phase/model.ts'
 import { BatchZone, ZoneAwayNotice } from './BatchZone.tsx'
+import { holdsStanding, useBatchAbsence, type BatchStanding } from './absence.ts'
 
 // What every section of a batch needs and none of them should fetch twice:
 // the batch itself, and the clock its times are read on.
@@ -122,9 +123,29 @@ const styles = stylex.create({
     lineHeight: '1.25rem',
     color: tokens.mutedForeground,
   },
+  // a screen of the batch that is not for this reader: the answer in the
+  // room the screen would have had, a little above the middle
+  notYours: {
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    paddingBottom: '8vh',
+  },
 })
 
 const BannerSlot = createContext<HTMLElement | null>(null)
+
+/** what a reader is told on a screen of the batch that is for somebody else */
+const DENIED = {
+  personal: m.batchDeniedPersonal,
+  review: m.batchDeniedReview,
+  manage: m.batchDeniedManage,
+  results: m.batchDeniedResults,
+} as const satisfies Record<BatchStanding, unknown>
 
 /**
  * The screen's entrance, or the same box without one: decided once, when
@@ -169,6 +190,7 @@ export function BatchScreen({
   chrome = 'band',
   banner,
   notes,
+  requires,
   children,
 }: {
   /** which of the batch's pages this is; the bar above says which batch */
@@ -201,12 +223,18 @@ export function BatchScreen({
    * under the thing when it arrives.
    */
   notes?: boolean
+  /**
+   * Who in the batch this screen is for, when not everybody who can open
+   * the batch: anybody else is told so here, with the way to the overview,
+   * rather than meeting whatever the screen's own reads refuse them with.
+   */
+  requires?: BatchStanding
   /** rendered once the batch is loaded, because a section without one is blank */
   children: (batch: BatchDto) => ReactNode
 }) {
   const { batchId } = usePageRouteParams('batchId')
   const query = useApiQuery(assessmentApi)
-  const { format, formatError } = useI18n()
+  const { format } = useI18n()
   const [slot, setSlot] = useState<HTMLDivElement | null>(null)
   // the section's own name is what shows unless it says otherwise
   const showing = banner ?? 'section'
@@ -217,8 +245,11 @@ export function BatchScreen({
     // a section is a route away, not a reload: what changes the batch
     // invalidates this key explicitly and is not waiting on the clock
     staleTime: 30_000,
+    // an address that cannot name a batch is not asked about
+    enabled: isRecordId(batchId),
   })
   const batch = detail.data?.batch
+  const absent = useBatchAbsence(batchId, detail)
   // Whether this screen has shown its batch yet. A screen that moves
   // between a bare section and one that draws its own edges - a list and
   // the person opened from it - is moving inside itself, and makes its
@@ -228,11 +259,49 @@ export function BatchScreen({
     if (batch !== undefined && !shown) setShown(true)
   }, [batch, shown])
 
+  // No batch to be a screen of. Inside the workspace shell the bar above
+  // has already said so and the shell has folded this screen away; this is
+  // what stands where no shell folds for it. No band either way: a heading
+  // naming a section of nothing is a heading that is not true.
+  if (absent !== null) {
+    return (
+      <LoadFailure
+        failure={absent}
+        back={{ page: 'assessment/batches', label: format(m.batchGoneBack) }}
+        onRetry={() => void detail.refetch()}
+        retrying={detail.isFetching}
+      />
+    )
+  }
+  if (
+    batch !== undefined &&
+    requires !== undefined &&
+    !holdsStanding(batch.capabilities, requires)
+  ) {
+    return (
+      <div
+        data-testid="batch-standing-missing"
+        data-requires={requires}
+        {...stylex.props(styles.notYours)}
+      >
+        <LoadFailure
+          size="section"
+          failure={{
+            kind: 'denied',
+            title: format(DENIED[requires]),
+            description: format(m.batchDeniedHint),
+            retryable: false,
+          }}
+          back={{ page: 'assessment/batch', params: { batchId }, label: format(m.batchDeniedBack) }}
+        />
+      </div>
+    )
+  }
+
   if (chrome === 'bare') {
     return (
       <AsyncSection
         pending={detail.isPending}
-        error={detail.isError ? formatError(detail.error) : null}
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void detail.refetch()}
@@ -257,7 +326,6 @@ export function BatchScreen({
     return (
       <AsyncSection
         pending={detail.isPending}
-        error={detail.isError ? formatError(detail.error) : null}
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void detail.refetch()}
@@ -321,7 +389,6 @@ export function BatchScreen({
       <PageContainer size={size} xstyle={styles.bodyColumn}>
         <AsyncSection
           pending={detail.isPending}
-          error={detail.isError ? formatError(detail.error) : null}
           loadingLabel={format(commonMessages.loading)}
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void detail.refetch()}

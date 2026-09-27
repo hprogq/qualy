@@ -55,6 +55,7 @@ export default function ParticipantResultsPage() {
       // own name in a line over it, and an open account stands who it is
       // beside the work, in the column the rail gives up for it.
       chrome={participantId === '' ? 'bare' : 'none'}
+      requires="results"
     >
       {(batch) => <Results batch={batch} participantId={participantId} />}
     </BatchScreen>
