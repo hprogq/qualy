@@ -122,6 +122,13 @@ export type RoleRefusal =
   | 'unavailable'
 
 /**
+ * Whether the caller administers grants of the asked reach at the asked
+ * place, which does not depend on the role: `unit-only` is a caller who may
+ * give authority over that unit alone and was asked about its whole subtree.
+ */
+export type GrantReach = 'within' | 'unit-only' | 'outside'
+
+/**
  * Whether a grant is inside a scope, for a query that has outer-joined its node.
  *
  * Takes expressions rather than a builder, so it composes into both the filter
@@ -688,23 +695,40 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
    * at one node alone must not be able to create, or quietly revoke, a grant
    * that reaches its whole subtree.
    */
-  const mayAdministerGrantsAt = Effect.fn('Rbac.grants.mayAdministerAt')(function* (
+  const grantReach = Effect.fn('Rbac.grants.reach')(function* (
     actor: Principal,
     target: GrantTarget,
   ) {
     const authority = authorityFor(actor)
+    let verdict: GrantReach
     if (target.kind === 'tenant') {
       const codes = yield* authority.tenantWide
-      if (!codes.has('iam.tenant-grant.manage')) {
-        return yield* new AccessDenied({ reason: 'not allowed to administer tenant-wide grants' })
-      }
-      return
+      verdict = codes.has('iam.tenant-grant.manage') ? 'within' : 'outside'
+    } else {
+      const mine = (yield* authority.reachAt(target.orgNodeId)).get('iam.grant.manage')
+      verdict =
+        mine === undefined
+          ? 'outside'
+          : REACH_RANK[mine] < REACH_RANK[target.coverage as Reach]
+            ? 'unit-only'
+            : 'within'
     }
-    const reach = yield* authority.reachAt(target.orgNodeId)
-    const mine = reach.get('iam.grant.manage')
-    if (mine === undefined || REACH_RANK[mine] < REACH_RANK[target.coverage as Reach]) {
-      return yield* new AccessDenied({ reason: 'not allowed to administer grants of that reach' })
-    }
+    return verdict
+  })
+
+  // The decision is the explanation's own answer, so a form told "only for
+  // the unit itself" and a write refused for its reach cannot disagree.
+  const mayAdministerGrantsAt = Effect.fn('Rbac.grants.mayAdministerAt')(function* (
+    actor: Principal,
+    target: GrantTarget,
+  ) {
+    if ((yield* grantReach(actor, target)) === 'within') return
+    return yield* new AccessDenied({
+      reason:
+        target.kind === 'tenant'
+          ? 'not allowed to administer tenant-wide grants'
+          : 'not allowed to administer grants of that reach',
+    })
   })
 
   /**
@@ -1057,6 +1081,10 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     // offered roles the write then answered 403 to - and this list exists
     // precisely so somebody can see WHY a role is out of reach rather than
     // find out by pressing.
+    //
+    // Outside that reach every candidate is the caller's to leave: a screen
+    // asks `reach` first and says which of the two it is, and the port
+    // keeps its four words.
     const reaches = yield* Effect.result(mayAdministerGrantsAt(actor, request.target))
     if (reaches._tag === 'Failure') {
       return candidates.map((role) => ({ ...described(role), refusal: 'authority' as const }))
@@ -1280,6 +1308,9 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
       ),
 
     options,
+
+    /** whether the caller administers grants of this reach there, said rather than refused */
+    reach: grantReach,
 
     /** a resource-confined grant: the same road, with the resource named */
     scoped: (input: {

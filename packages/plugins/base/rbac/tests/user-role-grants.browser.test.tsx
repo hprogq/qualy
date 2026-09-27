@@ -65,6 +65,9 @@ const roleOptions = [
   { id: ROLE_ID, code: 'counsellor', name: '辅导员', kind: 'org' as const, administrator: false },
 ]
 
+// the place asked about is within the reader's reach
+const within = { reach: 'within' as const }
+
 // a reader who may give roles across the tenant and in the tree
 const everywhere = { tenant: true, organization: true }
 
@@ -79,7 +82,7 @@ const open = (
       access: {
         getUserRoleGrants: () =>
           Effect.succeed({ grants: [grant(), confined()], grantable: everywhere }),
-        getRoleGrantOptions: () => Effect.succeed({ roles: roleOptions, refused: [] }),
+        getRoleGrantOptions: () => Effect.succeed({ ...within, roles: roleOptions, refused: [] }),
         ...stubs,
       },
     }),
@@ -210,6 +213,7 @@ describe('the grants of one person', () => {
     await open({
       getRoleGrantOptions: () =>
         Effect.succeed({
+          ...within,
           roles: [
             {
               id: OTHER_ROLE_ID,
@@ -243,7 +247,7 @@ describe('the grants of one person', () => {
 
   it('asks the server again for the unit picked, and sends the unit it asked about', async () => {
     const create = vi.fn(() => Effect.succeed({ id: 'created-grant' }))
-    const options = vi.fn(() => Effect.succeed({ roles: roleOptions, refused: [] }))
+    const options = vi.fn(() => Effect.succeed({ ...within, roles: roleOptions, refused: [] }))
     const asked = vi.fn()
     // the unit picker is the organization owner's contribution; here a
     // stand-in that offers one unit
@@ -300,7 +304,7 @@ describe('the grants of one person', () => {
     await open({
       getUserRoleGrants: () =>
         Effect.succeed({ grants: [grant()], grantable: { tenant: true, organization: false } }),
-      getRoleGrantOptions: () => Effect.succeed({ roles: [], refused: [] }),
+      getRoleGrantOptions: () => Effect.succeed({ ...within, roles: [], refused: [] }),
     })
     await page.getByRole('button', { name: '授予角色' }).click()
     // one scope the reader may give in: no choice of scope is offered
@@ -318,6 +322,7 @@ describe('the grants of one person', () => {
       {
         getRoleGrantOptions: () =>
           Effect.succeed({
+            ...within,
             roles: [],
             refused: [
               { ...refusedRole('monitor', '班长'), refusal: 'org-type' as const },
@@ -350,6 +355,7 @@ describe('the grants of one person', () => {
       {
         getRoleGrantOptions: () =>
           Effect.succeed({
+            ...within,
             roles: [],
             refused: [
               { ...refusedRole('monitor', '班长'), refusal: 'user-type' as const },
@@ -373,6 +379,7 @@ describe('the grants of one person', () => {
       {
         getRoleGrantOptions: () =>
           Effect.succeed({
+            ...within,
             roles: [],
             refused: [{ ...refusedRole('monitor', '学院管理员'), refusal: 'authority' as const }],
           }),
@@ -389,12 +396,60 @@ describe('the grants of one person', () => {
       .toHaveAttribute('data-refusal', 'authority')
   })
 
+  // Administering grants over one unit and asking about its subtree: one
+  // answer for every office, and the one change in the form that helps.
+  it('says the reach stands in the way, and offers the reach that does not', async () => {
+    const options = vi.fn(({ query }: { query: { coverage?: string } }) =>
+      Effect.succeed(
+        query.coverage === 'subtree'
+          ? { reach: 'unit-only' as const, roles: [], refused: [] }
+          : { ...within, roles: roleOptions, refused: [] },
+      ),
+    )
+    await open(
+      { getRoleGrantOptions: options },
+      unitPicker.manifest,
+      unitPicker.registry(PickBranch),
+    )
+    await page.getByRole('button', { name: '授予角色' }).click()
+    await page.getByRole('button', { name: '分部' }).click()
+    const nothing = page.getByTestId('grant-nothing-offered')
+    await expect.element(nothing).toHaveAttribute('data-summary', 'unit-only')
+    // no office is listed as beyond the reader: none of them is what is in the way
+    expect(nothing.element().querySelector('[data-testid="grant-refused"]')).toBeNull()
+    await nothing.getByRole('button').click()
+    await expect.element(page.getByRole('radio', { name: '仅该组织' })).toBeChecked()
+    await expect.element(page.getByRole('combobox', { name: '角色' })).toBeEnabled()
+    expect(options).toHaveBeenLastCalledWith({
+      query: { userId: USER_ID, target: 'org-node', orgNodeId: BRANCH_NODE_ID, coverage: 'self' },
+    })
+  })
+
+  it('sends the reader to another unit when the unit is outside their reach', async () => {
+    await open(
+      {
+        getRoleGrantOptions: () =>
+          Effect.succeed({ reach: 'outside' as const, roles: [], refused: [] }),
+      },
+      unitPicker.manifest,
+      unitPicker.registry(PickBranch),
+    )
+    await page.getByRole('button', { name: '授予角色' }).click()
+    await page.getByRole('button', { name: '分部' }).click()
+    await expect
+      .element(page.getByTestId('grant-nothing-offered'))
+      .toHaveAttribute('data-summary', 'outside')
+    // another unit may be within it: the form stays open to one
+    await expect.element(page.getByRole('button', { name: '授予', exact: true })).toBeDisabled()
+  })
+
   it('keeps only the way out when nothing the form can change would help', async () => {
     await open({
       getUserRoleGrants: () =>
         Effect.succeed({ grants: [grant()], grantable: { tenant: true, organization: false } }),
       getRoleGrantOptions: () =>
         Effect.succeed({
+          ...within,
           roles: [],
           refused: [{ ...refusedRole('monitor', '班长'), refusal: 'person-disabled' as const }],
         }),
@@ -413,6 +468,7 @@ describe('the grants of one person', () => {
       {
         getRoleGrantOptions: () =>
           Effect.succeed({
+            ...within,
             roles: [
               ...roleOptions,
               {

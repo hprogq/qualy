@@ -172,13 +172,16 @@ const seed = (url: string) =>
       const dean = yield* person('Dean')
       const desk = yield* person('Desk')
       const li = yield* person('Li')
+      // gives authority over one unit only: the reach it holds is the unit
+      const clerk = yield* person('Clerk')
       yield* runSql(sql`
         insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
-        values (${tenant}, ${dean}, ${collegeAdmin}, ${root}, 'subtree')`)
+        values (${tenant}, ${dean}, ${collegeAdmin}, ${root}, 'subtree'),
+               (${tenant}, ${clerk}, ${collegeAdmin}, ${child}, 'self')`)
       yield* runSql(sql`
         insert into role_grants (tenant_id, user_id, role_id)
         values (${tenant}, ${desk}, ${tenantDesk})`)
-      return { tenant, child, head, dean, desk, li }
+      return { tenant, root, child, head, dean, desk, li, clerk }
     }).pipe(Effect.provide(databaseFor(url, { entities: closure }))),
   )
 
@@ -223,15 +226,78 @@ describe.runIf(postgresAvailable)('the grant form, as served', () => {
       )
       expect(answer.status).toBe(200)
       const body = answer.body as {
+        reach: string
         roles: { code: string }[]
         refused: { code: string; refusal: string }[]
       }
+      expect(body.reach).toBe('within')
       expect(body.roles.map((role) => role.code)).toEqual(['counsellor'])
       // the dean's own office is one they will look for, and is said to be
       // beyond them; an office they neither hold nor fill is no part of it
       expect(body.refused).toEqual([
         expect.objectContaining({ code: 'college-admin', refusal: 'authority' }),
       ])
+    } finally {
+      await letGo()
+      await db.dispose()
+    }
+  })
+
+  // Administering grants over one unit and asking about its subtree is not
+  // a question of which offices the reader may appoint: it is one answer for
+  // all of them, and "you cannot appoint this office" would be the wrong one.
+  it('says the reach stands in the way rather than naming offices beyond the reader', async () => {
+    const db = await createTestContext('rbac-grant-options-reach-http')
+    try {
+      const f = ok(await seed(db.url))
+      const ask = serve(db.url, f.tenant)
+      const at = (node: string, coverage: 'self' | 'subtree') =>
+        ask(
+          `/iam/role-grant-options?userId=${f.li}&target=org-node&orgNodeId=${node}&coverage=${coverage}`,
+          f.clerk,
+        )
+      const subtree = await at(f.child, 'subtree')
+      expect(subtree.status).toBe(200)
+      expect(subtree.body).toEqual({ reach: 'unit-only', roles: [], refused: [] })
+      // over the unit alone the clerk appoints what the office appoints, and
+      // the office itself, which appoints nothing like it, is theirs to hold
+      // and not to fill
+      const self = await at(f.child, 'self')
+      expect(self.status).toBe(200)
+      const body = self.body as {
+        reach: string
+        roles: { code: string }[]
+        refused: { code: string; refusal: string }[]
+      }
+      expect(body.reach).toBe('within')
+      expect(body.roles.map((role) => role.code)).toEqual(['counsellor'])
+      expect(body.refused).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: 'college-admin', refusal: 'authority' }),
+        ]),
+      )
+      // above the unit nothing of the clerk's reaches
+      expect((await at(f.root, 'self')).body).toMatchObject({ reach: 'outside', roles: [] })
+    } finally {
+      await letGo()
+      await db.dispose()
+    }
+  })
+
+  // Somebody who gives no authority here is not the one to learn who is there.
+  it('asks the reach before the person, as the write does', async () => {
+    const db = await createTestContext('rbac-grant-options-probe-http')
+    try {
+      const f = ok(await seed(db.url))
+      const ask = serve(db.url, f.tenant)
+      const nobody = '00000000-0000-7000-8000-000000000000'
+      const outsider = await ask(`/iam/role-grant-options?userId=${nobody}&target=tenant`, f.li)
+      expect(outsider.status).toBe(200)
+      expect(outsider.body).toEqual({ reach: 'outside', roles: [], refused: [] })
+      // one who does is told there is nobody there
+      const insider = await ask(`/iam/role-grant-options?userId=${nobody}&target=tenant`, f.desk)
+      expect(insider.status).toBe(404)
+      expect(insider.body).toMatchObject({ _tag: 'GRANT_USER_NOT_FOUND' })
     } finally {
       await letGo()
       await db.dispose()

@@ -442,6 +442,13 @@ export const accessApiGroup = HttpApiGroup.make('access')
         coverage: Schema.optional(coverage),
       }),
       success: Schema.Struct({
+        /**
+         * Whether the caller may give authority of this reach here at all,
+         * which is one answer for every office: `unit-only` may give it over
+         * the unit alone, `outside` not here. Anything but `within` comes
+         * with no offices, since none of them is what stands in the way.
+         */
+        reach: Schema.Literals(['within', 'unit-only', 'outside']),
         /** what may be given this person here, now */
         roles: Schema.Array(
           Schema.Struct({

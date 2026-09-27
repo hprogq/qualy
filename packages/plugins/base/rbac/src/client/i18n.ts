@@ -259,6 +259,18 @@ const i18n = definePluginMessages({
       id: 'rbac/grants/none-refused-unit',
       defaultMessage: 'The roles below do not fit here; try another unit',
     },
+    grantReachUnitOnly: {
+      id: 'rbac/grants/reach-unit-only',
+      defaultMessage: 'Here you can grant for that unit only',
+    },
+    grantReachUseSelf: {
+      id: 'rbac/grants/reach-use-self',
+      defaultMessage: 'Grant for that unit only',
+    },
+    grantReachOutside: {
+      id: 'rbac/grants/reach-outside',
+      defaultMessage: 'You cannot grant roles at this unit; try another',
+    },
     grantNoneTenant: {
       id: 'rbac/grants/none-tenant',
       defaultMessage: 'You have no role to grant across the whole tenant',

@@ -164,6 +164,7 @@ export function GrantRoleDialog({
   })
   const roles = options.data?.roles ?? []
   const refused = options.data?.refused ?? []
+  const reach = options.data?.reach ?? 'within'
   // One office on offer is the answer already; among several, the reader
   // says which, and nothing is given until they do. The administrator role
   // is never the answer on the reader's behalf: it is everything at once,
@@ -217,7 +218,10 @@ export function GrantRoleDialog({
         ? format(m.grantRolesNone)
         : format(m.grantRoleChoose)
 
-  const summary = summarize(refused)
+  // Where the reader may not give authority of this reach, that is said
+  // once, above every office, and nothing is listed under it.
+  const summary: RefusalSummary | 'unit-only' | 'outside' =
+    reach === 'within' ? summarize(refused) : reach
   // Nothing the reader can change in this form would put an office on offer:
   // the person is out of service, or the one scope the reader has has none.
   // The form then keeps only the way out.
@@ -246,7 +250,10 @@ export function GrantRoleDialog({
     authority: m.grantNoneRefusedAuthority,
     mixed: m.grantNoneRefusedMixed,
     none: scope === 'tenant' ? m.grantNoneTenant : m.grantNoneUnit,
+    'unit-only': m.grantReachUnitOnly,
+    outside: scope === 'tenant' ? m.grantNoneTenant : m.grantReachOutside,
   }[summary]
+  const listed = summary !== 'person-disabled' && refused.length > 0
 
   return (
     <>
@@ -359,21 +366,27 @@ export function GrantRoleDialog({
                 description={format(said)}
                 xstyle={styles.nothing}
                 action={
-                  summary !== 'person-disabled' &&
-                  refused.length > 0 && (
-                    <ul {...stylex.props(styles.refusals)}>
-                      {refused.map((role) => (
-                        <li
-                          key={role.id}
-                          data-testid="grant-refused"
-                          data-refusal={role.refusal}
-                          {...stylex.props(styles.refusal)}
-                        >
-                          <span {...stylex.props(styles.refusalName)}>{role.name}</span>
-                          <span {...stylex.props(styles.refusalWhy)}>{why(role.refusal)}</span>
-                        </li>
-                      ))}
-                    </ul>
+                  summary === 'unit-only' ? (
+                    // the one change in this form that puts offices back on offer
+                    <Button variant="outline" size="sm" onClick={() => setCoverage('self')}>
+                      {format(m.grantReachUseSelf)}
+                    </Button>
+                  ) : (
+                    listed && (
+                      <ul {...stylex.props(styles.refusals)}>
+                        {refused.map((role) => (
+                          <li
+                            key={role.id}
+                            data-testid="grant-refused"
+                            data-refusal={role.refusal}
+                            {...stylex.props(styles.refusal)}
+                          >
+                            <span {...stylex.props(styles.refusalName)}>{role.name}</span>
+                            <span {...stylex.props(styles.refusalWhy)}>{why(role.refusal)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )
                   )
                 }
               />

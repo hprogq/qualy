@@ -793,12 +793,21 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
                 orgNodeId: query.orgNodeId!,
                 coverage: query.coverage!,
               } as const)
+        // Where the reader may not give authority of this reach, that is the
+        // whole answer: it is the same for every office, and naming offices
+        // one by one would put it as "you cannot appoint these", which is
+        // not what stands in the way. Asked before the person is looked up,
+        // as the write asks it, so somebody who administers no grants here
+        // learns nothing about who is there.
+        const reach = yield* access.grants.reach(principal, target)
+        if (reach !== 'within') return { reach, roles: [], refused: [] }
         const considered = yield* access.grants.options(
           principal.tenantId,
           { userId: query.userId, target },
           principal,
         )
         return {
+          reach,
           roles: considered
             .filter((role) => role.refusal === null)
             .map(({ id, code, name, kind, administrator }) => ({
