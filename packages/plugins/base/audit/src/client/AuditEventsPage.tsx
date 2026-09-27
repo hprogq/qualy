@@ -5,12 +5,13 @@ import { peoplePicker, type PeoplePickerContext } from '@qualy/ui-contract'
 import * as stylex from '@stylexjs/stylex'
 import {
   UiSlot,
+  cursorPages,
   useApi,
   useApiQuery,
+  useLoadFailure,
   useManifest,
   usePageQueryState,
   useRunApi,
-  cursorPages,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -58,6 +59,7 @@ export default function AuditEventsPage() {
   const runApi = useRunApi()
   const query = useApiQuery(auditApi)
   const { format, formatText } = useI18n()
+  const failures = useLoadFailure()
   const [action, setAction] = usePageQueryState('action')
   const [outcome, setOutcome] = usePageQueryState('outcome')
   const [actor, setActor] = usePageQueryState('actor')
@@ -149,7 +151,8 @@ export default function AuditEventsPage() {
 
       <AsyncSection
         pending={events.isPending}
-        error={events.isError ? format(m.loadFailed) : undefined}
+        error={events.isError ? failures.of(events.error) : undefined}
+        framed
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void events.refetch()}

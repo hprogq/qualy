@@ -2,7 +2,7 @@ import AuditEventsPage from '../src/client/AuditEventsPage.tsx'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
-import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The whole trail: a row opens into what the trail kept, and one actor's
 // operations are one press away from any of theirs.
@@ -85,5 +85,27 @@ describe('the audit log', () => {
 
     await trail({ 'iam/people-picker': [{ id: 'auth/people-picker', order: 0 }] })
     await expect.element(page.getByRole('button', { name: '全部操作人' })).toBeVisible()
+  })
+
+  // A trail that could not be read said one fixed sentence with a retry,
+  // whatever the reason; one the reader may not read is not worth a retry,
+  // and the answer is a pane under the page's own title.
+  it('says a trail the reader may not read as that, with no retry', async () => {
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed(emptyManifest()) },
+        audit: {
+          listAuditEvents: () => Effect.fail(apiError('ACCESS_DENIED')),
+          getAuditEventOptions: () => Effect.succeed({ actions: [] }),
+        },
+      }),
+      route: '/organization/audit',
+      path: '/organization/audit',
+      children: <AuditEventsPage />,
+    })
+    const state = page.getByRole('status').filter({ has: page.getByRole('heading') })
+    await expect.element(state).toHaveAttribute('data-state', 'denied')
+    await expect.element(state.getByRole('heading', { level: 2 })).toBeVisible()
+    expect(state.getByRole('button', { name: '重试' }).elements()).toHaveLength(0)
   })
 })

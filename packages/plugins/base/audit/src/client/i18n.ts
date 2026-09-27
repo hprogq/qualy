@@ -91,10 +91,6 @@ const i18n = definePluginMessages({
     detailReason: { id: 'audit/events/detail-reason', defaultMessage: 'Reason' },
     detailUserAgent: { id: 'audit/events/detail-user-agent', defaultMessage: 'Browser' },
     detailDetails: { id: 'audit/events/detail-details', defaultMessage: 'Details' },
-    loadFailed: {
-      id: 'audit/events/load-failed',
-      defaultMessage: 'The audit log could not be loaded.',
-    },
   },
   locales: {
     'zh-CN': () => import('./locales/zh-CN.ts'),

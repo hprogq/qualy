@@ -42,5 +42,4 @@ export default {
   'audit/events/detail-reason': '原因',
   'audit/events/detail-user-agent': '浏览器',
   'audit/events/detail-details': '详情',
-  'audit/events/load-failed': '审计日志加载失败。',
 } satisfies MessageCatalog
