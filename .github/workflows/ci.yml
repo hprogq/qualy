@@ -255,13 +255,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
           node-version: 24.20.0
-          # setup-node reads packageManager from package.json and would run
-          # pnpm to key a cache; there is no pnpm on this runner and nothing
-          # to cache
-          package-manager-cache: false
+          cache: pnpm
+      # The images build from the repository alone, but the smoke seeds the
+      # deployment from this checkout, as deploy/README.md does: that is a
+      # source checkout with its dependencies installed.
+      - run: pnpm install --frozen-lockfile
       - name: build the release images, and inspect the server image
         run: node tools/release/build-images.ts ci --check
       - name: the release deploys, migrates, serves, backs up and restores
