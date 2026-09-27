@@ -584,6 +584,9 @@ describe('the stage plan, read', () => {
     // a reading that failed, of a kind another try can mend
     const state = editor.element().querySelector('[data-slot="resource-state"]')
     expect(state?.getAttribute('data-state')).toBe('unavailable')
+    // headed under the section it stands in (a third-rank heading in a
+    // panel titled at the second), not beside it
+    expect(state?.querySelector('h1, h2, h3, h4, h5, h6')?.tagName).toBe('H4')
     const asked = listItems.mock.calls.length
     await editor.getByRole('button', { name: '重试' }).click()
     await vi.waitFor(() => expect(listItems.mock.calls.length).toBeGreaterThan(asked))

@@ -151,10 +151,12 @@ function ScopeFields({
       )}
       {failure !== null && (some || !idle) && (
         // the paper could not be read: said as a reading that failed, with
-        // another try, rather than as a batch with no items in it
+        // another try, rather than as a batch with no items in it. Its
+        // heading ranks under the section's own, in the panel's title
         <AsyncSection
           pending={false}
           error={failure}
+          headingLevel={4}
           retrying={retrying}
           onRetry={onRetry}
           loadingLabel={format(commonMessages.loading)}
