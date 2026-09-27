@@ -449,6 +449,8 @@ export const accessApiGroup = HttpApiGroup.make('access')
          * with no offices, since none of them is what stands in the way.
          */
         reach: Schema.Literals(['within', 'unit-only', 'outside']),
+        /** who would receive it, named for the question asked again before the administrator role */
+        holder: Schema.NullOr(Schema.Struct({ displayName: Schema.String })),
         /** what may be given this person here, now */
         roles: Schema.Array(
           Schema.Struct({

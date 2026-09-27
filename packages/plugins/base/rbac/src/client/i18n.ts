@@ -14,9 +14,9 @@ const permissionCountMessage = defineMessage<{ count: number }>()({
   defaultMessage: '{count, plural, one {# permission} other {# permissions}}',
 })
 
-const grantAdministratorTitleMessage = defineMessage<{ role: string }>()({
+const grantAdministratorTitleMessage = defineMessage<{ role: string; name: string }>()({
   id: 'rbac/grants/administrator-title',
-  defaultMessage: 'Grant {role}?',
+  defaultMessage: 'Grant {role} to {name}?',
 })
 
 const grantDoneMessage = defineMessage<{ role: string }>()({

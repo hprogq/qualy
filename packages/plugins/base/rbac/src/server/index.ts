@@ -20,7 +20,12 @@ import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/ap
 import { BadRequest, codeFrom, cursorUnusable, pageNumber, pageSize } from '@qualy/api-kit/schema'
 import type { Audit } from '@qualy/audit-contract/effect'
 import { accessApiGroup } from '../api.ts'
-import { holdsCanonicalAdmin, make as makeGrants, type GrantRow } from './grants.ts'
+import {
+  GrantUserNotFound,
+  holdsCanonicalAdmin,
+  make as makeGrants,
+  type GrantRow,
+} from './grants.ts'
 import { REACH_RANK, type Reach } from './authorization.ts'
 import {
   administratorSurvivors,
@@ -807,14 +812,17 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
         // as the write asks it, so somebody who administers no grants here
         // learns nothing about who is there.
         const reach = yield* access.grants.reach(principal, target)
-        if (reach !== 'within') return { reach, roles: [], refused: [] }
+        if (reach !== 'within') return { reach, holder: null, roles: [], refused: [] }
         const considered = yield* access.grants.options(
           principal.tenantId,
           { userId: query.userId, target },
           principal,
         )
+        const displayName = yield* access.grants.holder(principal.tenantId, query.userId)
+        if (displayName === null) return yield* new GrantUserNotFound()
         return {
           reach,
+          holder: { displayName },
           roles: considered
             .filter((role) => role.refusal === null)
             .map(({ id, code, name, kind, administrator }) => ({

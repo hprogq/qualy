@@ -240,10 +240,12 @@ describe.runIf(postgresAvailable)('the grant form, as served', () => {
       expect(answer.status).toBe(200)
       const body = answer.body as {
         reach: string
+        holder: { displayName: string } | null
         roles: { code: string }[]
         refused: { code: string; refusal: string }[]
       }
       expect(body.reach).toBe('within')
+      expect(body.holder).toEqual({ displayName: 'Li' })
       expect(body.roles.map((role) => role.code)).toEqual(['counsellor'])
       // the dean's own office is one they will look for, and is said to be
       // beyond them; an office closed to new grants is said to be closed to
@@ -275,7 +277,7 @@ describe.runIf(postgresAvailable)('the grant form, as served', () => {
         )
       const subtree = await at(f.child, 'subtree')
       expect(subtree.status).toBe(200)
-      expect(subtree.body).toEqual({ reach: 'unit-only', roles: [], refused: [] })
+      expect(subtree.body).toEqual({ reach: 'unit-only', holder: null, roles: [], refused: [] })
       // over the unit alone the clerk appoints what the office appoints, and
       // the office itself, which appoints nothing like it, is theirs to hold
       // and not to fill
@@ -310,7 +312,7 @@ describe.runIf(postgresAvailable)('the grant form, as served', () => {
       const nobody = '00000000-0000-7000-8000-000000000000'
       const outsider = await ask(`/iam/role-grant-options?userId=${nobody}&target=tenant`, f.li)
       expect(outsider.status).toBe(200)
-      expect(outsider.body).toEqual({ reach: 'outside', roles: [], refused: [] })
+      expect(outsider.body).toEqual({ reach: 'outside', holder: null, roles: [], refused: [] })
       // one who does is told there is nobody there
       const insider = await ask(`/iam/role-grant-options?userId=${nobody}&target=tenant`, f.desk)
       expect(insider.status).toBe(404)

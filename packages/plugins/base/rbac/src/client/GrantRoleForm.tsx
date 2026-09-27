@@ -437,7 +437,10 @@ export function GrantRoleDialog({
       </FormDialog>
       <ConfirmDialog
         open={confirming}
-        title={format(m.grantAdministratorTitle, { role: chosen?.name ?? '' })}
+        title={format(m.grantAdministratorTitle, {
+          role: chosen?.name ?? '',
+          name: options.data?.holder?.displayName ?? '',
+        })}
         description={format(m.grantAdministratorBody)}
         confirmLabel={format(m.grantSubmit)}
         cancelLabel={format(commonMessages.cancel)}

@@ -65,8 +65,8 @@ const roleOptions = [
   { id: ROLE_ID, code: 'counsellor', name: '辅导员', kind: 'org' as const, administrator: false },
 ]
 
-// the place asked about is within the reader's reach
-const within = { reach: 'within' as const }
+// the place asked about is within the reader's reach, and the person is named
+const within = { reach: 'within' as const, holder: { displayName: '张三' } }
 
 // a reader who may give roles across the tenant and in the tree
 const everywhere = { tenant: true, organization: true }
@@ -237,6 +237,8 @@ describe('the grants of one person', () => {
     await page.getByRole('button', { name: '授予', exact: true }).click()
     const asked = page.getByRole('alertdialog')
     await expect.element(asked).toBeVisible()
+    // the question names who would receive everything, not only what
+    await expect.element(asked).toHaveAccessibleName(/张三/)
     expect(create).not.toHaveBeenCalled()
     await asked.getByTestId('confirm-accept').click()
     await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1))
@@ -402,7 +404,7 @@ describe('the grants of one person', () => {
     const options = vi.fn(({ query }: { query: { coverage?: string } }) =>
       Effect.succeed(
         query.coverage === 'subtree'
-          ? { reach: 'unit-only' as const, roles: [], refused: [] }
+          ? { reach: 'unit-only' as const, holder: null, roles: [], refused: [] }
           : { ...within, roles: roleOptions, refused: [] },
       ),
     )
@@ -429,7 +431,7 @@ describe('the grants of one person', () => {
     await open(
       {
         getRoleGrantOptions: () =>
-          Effect.succeed({ reach: 'outside' as const, roles: [], refused: [] }),
+          Effect.succeed({ reach: 'outside' as const, holder: null, roles: [], refused: [] }),
       },
       unitPicker.manifest,
       unitPicker.registry(PickBranch),

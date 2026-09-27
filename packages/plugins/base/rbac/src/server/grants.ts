@@ -37,6 +37,7 @@ import {
   rolePermissionMode,
   rolesOfTenant,
   ruleAllowsAppointment,
+  userDisplayName,
   userExists,
 } from './db.ts'
 import { REACH_RANK, type Reach } from './authorization.ts'
@@ -1329,6 +1330,15 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
 
     /** whether the caller administers grants of this reach there, said rather than refused */
     reach: grantReach,
+
+    /**
+     * Who a grant would go to, by name, for the one question asked again
+     * before giving it. Asked only of a caller already told the place is
+     * within their reach, which is the caller the write itself would name
+     * the person to.
+     */
+    holder: (tenantId: string, userId: string) =>
+      withDb(userDisplayName(tenantId, userId).pipe(Effect.orDie)),
 
     /** a resource-confined grant: the same road, with the resource named */
     scoped: (input: {

@@ -49,6 +49,20 @@ export const userExists = (tenantId: string, userId: string) =>
     )
     .pipe(Effect.map((row) => row !== undefined))
 
+/** what a live person is called, for a screen that asks before giving them something */
+export const userDisplayName = (tenantId: string, userId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('User')
+        .select('displayName')
+        .where('tenantId', '=', tenantId)
+        .where('id', '=', userId)
+        .where('deletedAt', 'is', null)
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row?.displayName ?? null))
+
 /**
  * Withdraws every live grant one person holds, in one statement.
  *
