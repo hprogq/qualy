@@ -1106,8 +1106,11 @@ describe('filing a claim', () => {
     expect(looked).not.toHaveBeenCalled()
     expect(count()?.getAttribute('data-count')).toBe('1')
 
-    // opening the claim reads it, once, and that claim alone
-    await userEvent.click(claimRow(ENTRY_ID)!)
+    // opening the claim reads it, once, and that claim alone. Pressed by
+    // what it says, not by the name its row reads out: that name follows the
+    // row's shape, which the pane settles by its own width, and a press
+    // aimed at the name of one shape waits forever for a row in the other
+    await page.getByTestId('claim-row').filter({ hasText: '无偿献血 400 毫升' }).click()
     await vi.waitFor(() => expect(looked).toHaveBeenCalledOnce())
     expect(looked.mock.calls[0]![0].params.entryId).toBe(ENTRY_ID)
     await expect.poll(() => count()).toBeNull()
