@@ -1995,6 +1995,39 @@ describe('the band', () => {
       }
     })
 
+    // The band's second line holds the way back, the path and the keys; with
+    // changes unsaved, the mark of them must not run under the keys.
+    for (const width of [360, 390, 430]) {
+      it(`keeps the unsaved mark clear of the keys at ${width} in ${locale}`, async () => {
+        await page.viewport(width, 900)
+        try {
+          await open({ items: [officerItem()], question: ITEM_ID, locale })
+          await expect.element(page.getByTestId('item-tabs')).toBeVisible()
+          const title = document.querySelector<HTMLInputElement>(
+            '[data-testid="item-editor"] input',
+          )!
+          await userEvent.type(title, 'x')
+          const mark = page.getByTestId('item-unsaved')
+          await expect.element(mark).toBeVisible()
+          // still said to whoever reads the page aloud
+          expect(mark.element().textContent?.trim()).not.toBe('')
+          const box = mark.element().getBoundingClientRect()
+          for (const key of document.querySelectorAll<HTMLElement>('button')) {
+            if (!key.checkVisibility()) continue
+            const other = key.getBoundingClientRect()
+            const apart =
+              box.right <= other.left ||
+              other.right <= box.left ||
+              box.bottom <= other.top ||
+              other.bottom <= box.top
+            expect(apart, key.getAttribute('aria-label') ?? key.textContent ?? '').toBe(true)
+          }
+        } finally {
+          await page.viewport(1280, 900)
+        }
+      })
+    }
+
     // With something left to do, its count takes the end of the row too.
     it(`keeps every view on a phone beside what is left to do, in ${locale}`, async () => {
       await page.viewport(390, 900)

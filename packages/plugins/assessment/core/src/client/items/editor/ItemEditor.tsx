@@ -156,6 +156,17 @@ const styles = stylex.create({
     color: tokens.foreground,
   },
   metaUnsavedWords: { display: 'inline-flex', alignItems: 'center', gap: 6 },
+  // A phone's second line holds the way back, the path and the keys: the
+  // words would run under the keys in a longer language, so there the dot
+  // says it and the words are left to whoever reads the page aloud.
+  metaUnsavedText: {
+    position: { default: null, [breakpoints.phone]: 'absolute' },
+    width: { default: null, [breakpoints.phone]: 1 },
+    height: { default: null, [breakpoints.phone]: 1 },
+    overflow: { default: null, [breakpoints.phone]: 'hidden' },
+    clipPath: { default: null, [breakpoints.phone]: 'inset(50%)' },
+    whiteSpace: 'nowrap',
+  },
   wideOnly: { display: { default: 'inline-flex', [breakpoints.phone]: 'none' } },
   // The views of the question, and what is left before it can be saved. It
   // stays in reach while a long form scrolls under it; a phone scrolls it
@@ -1473,7 +1484,9 @@ export function ItemEditor({
                     <span aria-hidden {...stylex.props(styles.metaRule, styles.wideOnly)} />
                     <span {...stylex.props(styles.metaUnsavedWords)}>
                       <Dot tone="pending" />
-                      {format(m.itemsUnsaved)}
+                      <span {...stylex.props(styles.metaUnsavedText)}>
+                        {format(m.itemsUnsaved)}
+                      </span>
                     </span>
                   </span>
                 )}
