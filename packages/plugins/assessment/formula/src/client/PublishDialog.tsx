@@ -96,23 +96,18 @@ export function PublishDialog({
         </>
       }
     >
-      <Field label={format(m.releaseNameLabel)} required>
-        {(id) => (
+      <Field label={format(m.releaseNameLabel)} required error={nameProblem}>
+        {(id, control) => (
           <Input
             id={id}
+            {...control}
             value={name}
             maxLength={RELEASE_NAME_LIMIT}
             placeholder={format(m.releaseNamePlaceholder)}
-            aria-invalid={nameProblem !== null}
             onChange={(event) => setName(event.target.value)}
           />
         )}
       </Field>
-      {nameProblem === null ? null : (
-        <p role="alert" {...stylex.props(styles.failure)}>
-          {nameProblem}
-        </p>
-      )}
       <Field label={format(m.releaseNotesLabel)}>
         {(id) => (
           <Textarea

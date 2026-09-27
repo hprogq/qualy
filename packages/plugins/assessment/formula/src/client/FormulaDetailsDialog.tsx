@@ -111,10 +111,11 @@ export function FormulaDetailsDialog({
       }
     >
       <div data-testid="formula-details" {...stylex.props(styles.fields)}>
-        <Field label={format(m.nameLabel)}>
-          {(id) => (
+        <Field label={format(m.nameLabel)} required>
+          {(id, control) => (
             <Input
               id={id}
+              {...control}
               value={written}
               maxLength={255}
               autoFocus

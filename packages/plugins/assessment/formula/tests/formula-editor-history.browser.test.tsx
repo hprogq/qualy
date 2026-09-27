@@ -260,8 +260,11 @@ describe('a formula’s draft and its history', () => {
         releaseNotes: '按学院新规调整',
       })
 
-      // the name is the dialog's to fix, so the dialog stays
-      await expect.element(page.getByRole('alert')).toBeVisible()
+      // the name is the dialog's to fix, so the dialog stays and says so under it
+      await expect.element(page.getByTestId('field-error')).toBeVisible()
+      await expect
+        .element(page.getByRole('textbox', { name: '版本名称' }))
+        .toHaveAttribute('aria-invalid', 'true')
       await page.getByRole('textbox', { name: '版本名称' }).fill('2026 秋季修订')
       await confirm.click()
       await vi.waitFor(() => expect(wire.publishes.length).toBe(2), { timeout: 5_000 })
