@@ -7,6 +7,7 @@ import { EPISODE_DOORS, EPISODE_KINDS, EPISODES, TRIAL_NOTICE } from '../seed/ep
 import { SELECTION_DESCRIPTION, SELECTION_PHASES } from '../seed/selection.ts'
 import {
   STAGING,
+  descriptionsOf,
   minutesOf,
   openingDescription,
   shutDoors,
@@ -58,20 +59,31 @@ describe('the plan of each term', () => {
     const batches = [
       ...plans.map(({ term, staging }) => ({
         name: term,
-        description: openingDescription(staging, EPISODES[term]),
-        stages: stagesOf(staging),
+        descriptions: descriptionsOf(staging, EPISODES[term]),
+        // as planned and as renamed
+        stages: [...staging.stages, ...stagesOf(staging)],
       })),
-      { name: 'selection', description: SELECTION_DESCRIPTION, stages: SELECTION_PHASES },
+      { name: 'selection', descriptions: [SELECTION_DESCRIPTION], stages: SELECTION_PHASES },
     ]
-    for (const { name, description, stages } of batches) {
-      for (const stage of stages) {
-        const shared = sharedRun(description, stage.description)
-        expect(shared.length, `${name} ${stage.phaseKey}: ${shared}`).toBeLessThanOrEqual(
-          SHARED_AT_MOST,
-        )
-        // the stages are named beside it; a sentence naming them says it twice
-        expect(description, `${name} names ${stage.displayName}`).not.toContain(stage.displayName)
+    for (const { name, descriptions, stages } of batches) {
+      for (const description of descriptions) {
+        for (const stage of stages) {
+          const shared = sharedRun(description, stage.description)
+          expect(shared.length, `${name} ${stage.phaseKey}: ${shared}`).toBeLessThanOrEqual(
+            SHARED_AT_MOST,
+          )
+          // the stages are named beside it; a sentence naming them says it twice
+          expect(description, `${name} names ${stage.displayName}`).not.toContain(stage.displayName)
+        }
       }
+    }
+  })
+
+  it('leaves the times of its stages to the stages themselves', () => {
+    // the overview shows when each stage began and ended beside what it says
+    const stages = [...plans.flatMap(({ staging }) => stagesOf(staging)), ...SELECTION_PHASES]
+    for (const stage of stages) {
+      expect(stage.description, stage.phaseKey).not.toMatch(/\d{1,2}[:：]\d{2}/)
     }
   })
 
@@ -185,6 +197,28 @@ describe('the doors an episode walks through', () => {
     expect(hosts.map(({ term }) => term)).toEqual(
       plans.filter(({ staging }) => staging.scoped === undefined).map(({ term }) => term),
     )
+  })
+})
+
+describe('a stage amended once the term is under way', () => {
+  const amending = plans.filter(({ staging }) => staging.amended !== undefined)
+
+  it('is amended in one term', () => {
+    expect(amending.map(({ term }) => term)).toEqual(['24-25-1'])
+  })
+
+  it('is renamed while it is current, and the batch says why at the end of its description', () => {
+    for (const { term, staging } of amending) {
+      const amended = staging.amended!
+      expect(keyAt(staging, amended.at), term).toBe(amended.phaseKey)
+      const planned = staging.stages.find((stage) => stage.phaseKey === amended.phaseKey)!
+      expect(amended.displayName, term).not.toBe(planned.displayName)
+      expect(stagesOf(staging).map((stage) => stage.displayName)).toContain(amended.displayName)
+      const said = descriptionsOf(staging, EPISODES[term])
+      expect(said.at(-1)!.split('\n').at(-1), term).toBe(amended.notice)
+      expect(said[0], term).not.toContain(amended.notice)
+      expect(amended.reason.trim(), term).not.toBe('')
+    }
   })
 })
 

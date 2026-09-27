@@ -8,9 +8,10 @@ import { EPISODE_DOORS, TRIAL_NOTICE, type Episode, type EpisodeKind } from './e
 //
 // No two terms are staged alike, the way no two terms of a real college's
 // calendar are: the first term in the system; one that splits review in
-// two; one whose appeals stay open longer; one that publishes its rules
-// before filing opens; one that settles appeals inside the appeal stage; and
-// one that reopens filing, after filing has closed, for a single question.
+// two; one whose appeals are extended once they are open; one that publishes
+// its rules before filing opens; one that settles appeals inside the appeal
+// stage; and one that reopens filing, after filing has closed, for a single
+// question.
 //
 // Whatever the plan, the story keeps its own moments: filing opens at D 08:00
 // and closes at D+5 00:00, appeals open at D+9 09:00 and are all in by
@@ -101,6 +102,21 @@ export interface ScopedStage {
   }
 }
 
+/**
+ * A stage the lead renames once the term is under way, and the line the
+ * batch description gains to say why. Both go into the batch's history.
+ */
+export interface Amendment {
+  /** when the lead makes it, while the stage is current */
+  readonly at: Moment
+  readonly phaseKey: string
+  readonly displayName: string
+  /** the line added to the batch description */
+  readonly notice: string
+  /** why, as the lead gives it for the batch's history */
+  readonly reason: string
+}
+
 export interface Staging {
   /**
    * The batch's own description, shown at the top of its overview above the
@@ -110,15 +126,17 @@ export interface Staging {
   readonly descriptionMd: string
   readonly stages: readonly Stage[]
   readonly scoped?: ScopedStage
+  readonly amended?: Amendment
 }
 
 /** the stages a term's plan ends up with, in the order the batch enters them */
 export const stagesOf = (staging: Staging): readonly Stage[] => {
-  const scoped = staging.scoped
-  if (scoped === undefined) return staging.stages
-  return staging.stages.flatMap((stage) =>
-    stage.phaseKey === scoped.after ? [stage, scoped.stage] : [stage],
-  )
+  const { scoped, amended } = staging
+  return staging.stages
+    .flatMap((stage) => (stage.phaseKey === scoped?.after ? [stage, scoped.stage] : [stage]))
+    .map((stage) =>
+      stage.phaseKey === amended?.phaseKey ? { ...stage, displayName: amended.displayName } : stage,
+    )
 }
 
 /** a moment as minutes from the day filing opens, for putting moments in order */
@@ -160,6 +178,24 @@ export const openingDescription = (staging: Staging, episodes: readonly Episode[
 export const voidedDescription = (description: string) =>
   description.replace(TRIAL_NOTICE.tried, TRIAL_NOTICE.voided)
 
+/** the description once a stage is amended, saying why at its end */
+export const amendedDescription = (description: string, amendment: Amendment) =>
+  `${description}\n${amendment.notice}`
+
+/**
+ * Every description a term's batch carries, from the one it is created with:
+ * the tried question is voided on the second day of filing, and a stage is
+ * amended later still.
+ */
+export const descriptionsOf = (staging: Staging, episodes: readonly Episode[]) => {
+  const said = [openingDescription(staging, episodes)]
+  if (episodes.some((episode) => episode.kind === 'item-void')) {
+    said.push(voidedDescription(said.at(-1)!))
+  }
+  if (staging.amended !== undefined) said.push(amendedDescription(said.at(-1)!, staging.amended))
+  return said
+}
+
 const SEASONS: Readonly<Record<Term, string>> = {
   '23-24-1': '2023年秋季学期',
   '23-24-2': '2024年春季学期',
@@ -185,13 +221,13 @@ const review: Stage = {
   enters: [5, '00:00'],
 }
 
-const appeal = (more = ''): Stage => ({
+const appeal: Stage = {
   phaseKey: 'appeal',
   displayName: '结果申诉',
-  description: `审核结果已公布，对某条申报的结论有异议的，在本阶段内提出申诉并写明理由。${more}`,
+  description: '审核结果已公布，对某条申报的结论有异议的，在本阶段内提出申诉并写明理由。',
   permissionProfile: APPEAL,
   enters: [9, '09:00'],
-})
+}
 
 const settling = (enters: Moment = [11, '17:00']): Stage => ({
   phaseKey: 'appeal-review',
@@ -218,7 +254,7 @@ export const STAGING: Readonly<Record<Term, Staging>> = {
   '23-24-1': {
     descriptionMd:
       '本学期起综合素质测评改在系统内填报与审核，不再收取纸质材料，证明请拍照或扫描后上传。',
-    stages: [filing('23-24-1'), review, appeal(), settling(), archive],
+    stages: [filing('23-24-1'), review, appeal, settling(), archive],
   },
   // review split in two: the class leads' own, then what is left over
   '23-24-2': {
@@ -238,21 +274,23 @@ export const STAGING: Readonly<Record<Term, Staging>> = {
         permissionProfile: REVIEW,
         enters: [7, '18:00'],
       },
-      appeal(),
+      appeal,
       settling(),
       archive,
     ],
   },
-  // appeals stay open until the next day's noon, and the plan says so by name
+  // appeals, once open, are extended until the next day's noon: the lead
+  // renames the stage and says why on the batch
   '24-25-1': {
-    descriptionMd: '转专业的同学按新专业参评。\n因学院春季运动会，结果申诉的截止时间顺延。',
-    stages: [
-      filing('24-25-1'),
-      review,
-      { ...appeal('截止时间顺延至3月15日 12:00。'), displayName: '结果申诉（顺延）' },
-      settling([12, '12:00']),
-      archive,
-    ],
+    descriptionMd: '转专业的同学按新专业参评。',
+    stages: [filing('24-25-1'), review, appeal, settling([12, '12:00']), archive],
+    amended: {
+      at: [10, '09:10'],
+      phaseKey: 'appeal',
+      displayName: '结果申诉（顺延）',
+      notice: '因学院春季运动会，申诉截止时间顺延。',
+      reason: '学院春季运动会期间顺延申诉截止时间',
+    },
   },
   // the rules are published three days before filing opens
   '24-25-2': {
@@ -261,14 +299,13 @@ export const STAGING: Readonly<Record<Term, Staging>> = {
       {
         phaseKey: 'rules',
         displayName: '细则公示',
-        description:
-          '学院公示本学期综测细则与各项材料要求，请对照细则准备证明材料；9月1日 08:00开放填报。',
+        description: '学院公示本学期综测细则与各项材料要求，请对照细则准备证明材料。',
         permissionProfile: [],
         enters: [-3, '16:30'],
       },
       filing('24-25-2'),
       review,
-      appeal(),
+      appeal,
       settling(),
       archive,
     ],
@@ -281,7 +318,7 @@ export const STAGING: Readonly<Record<Term, Staging>> = {
       filing('25-26-1'),
       review,
       {
-        ...appeal(),
+        ...appeal,
         displayName: '结果公示与申诉',
         description: '公示审核结果并受理申诉，已提出的申诉在公示期内处理完毕。',
       },
@@ -291,7 +328,7 @@ export const STAGING: Readonly<Record<Term, Staging>> = {
   // the new language question reopened for the certificates that came late
   '25-26-2': {
     descriptionMd: '本学期起「职业技能证书」改为「语言技能证书」，青年大学习不再计入。',
-    stages: [filing('25-26-2'), review, appeal(), settling(), archive],
+    stages: [filing('25-26-2'), review, appeal, settling(), archive],
     scoped: {
       after: 'review',
       added: [5, '15:20'],

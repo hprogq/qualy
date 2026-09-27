@@ -15,7 +15,13 @@ import { stageProof, stageWorkbook } from './files.ts'
 import { buildTermItems, reviewPolicyOf, scoringConfigOf, type Versions } from './items.ts'
 import { EventQueue } from './queue.ts'
 import { reviewAtRandom } from './random-review.ts'
-import { STAGING, openingDescription, voidedDescription, type Stage } from './stages.ts'
+import {
+  STAGING,
+  amendedDescription,
+  openingDescription,
+  voidedDescription,
+  type Stage,
+} from './stages.ts'
 import type { Student, World } from './world.ts'
 
 // One term, from the batch being set up to its archive.
@@ -166,7 +172,8 @@ export const runTerm = (input: {
   Effect.gen(function* () {
     const { world, plan, episodes, versions, story, random, persona } = input
     const staging = STAGING[plan.term]
-    const description = openingDescription(staging, episodes)
+    // what the batch says of itself, as the lead changes it over the term
+    let description = openingDescription(staging, episodes)
     const scoped = staging.scoped
     const assessment = yield* Assessment
     const t = world.tenantId
@@ -278,6 +285,29 @@ export const runTerm = (input: {
         }),
       )
       enter(scoped.stage, false)
+    }
+    const amended = staging.amended
+    if (amended !== undefined) {
+      // a stage renamed while it is current, and the batch saying why
+      queue.at(at(...amended.at), 'phase', () =>
+        Effect.gen(function* () {
+          const current = yield* assessment.getPlan(t, batch.id, lead)
+          const specs = current.map((phase) => ({
+            id: phase.id,
+            phaseKey: phase.phaseKey,
+            displayName:
+              phase.phaseKey === amended.phaseKey ? amended.displayName : phase.displayName,
+          }))
+          yield* assessment.replacePlan(t, batch.id, { specs }, lead)
+          description = amendedDescription(description, amended)
+          yield* assessment.updateBatch(
+            t,
+            batch.id,
+            { descriptionMd: description, reason: amended.reason },
+            lead,
+          )
+        }),
+      )
     }
 
     // --- who can decide a round now ---------------------------------------
@@ -1546,13 +1576,11 @@ export const runTerm = (input: {
                 },
                 lead,
               )
+              description = voidedDescription(description)
               yield* assessment.updateBatch(
                 t,
                 batch.id,
-                {
-                  descriptionMd: voidedDescription(description),
-                  reason: '试行题目已停用，同步更新批次说明',
-                },
+                { descriptionMd: description, reason: '试行题目已停用，同步更新批次说明' },
                 lead,
               )
             }),
