@@ -292,7 +292,14 @@ function PathLine({
     read()
     const watch = new ResizeObserver(read)
     watch.observe(node)
-    return () => watch.disconnect()
+    // the product's own font replacing the fallback changes how wide the
+    // words are without resizing the box they sit in
+    const fonts = document.fonts
+    fonts.addEventListener('loadingdone', read)
+    return () => {
+      watch.disconnect()
+      fonts.removeEventListener('loadingdone', read)
+    }
   }, [whole])
 
   const last = steps.length - 1
