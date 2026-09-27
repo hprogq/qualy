@@ -453,6 +453,34 @@ describe('one workbench, three widths', () => {
     })
   }
 
+  // One list, one name for it in each language: the key to it, the sheet
+  // it opens and the way back to it all say the same word, and the key's
+  // word is whole on a phone and a tablet.
+  for (const locale of ['zh-CN', 'en-US'] as const) {
+    for (const width of [390, 834]) {
+      it(`names the queue one way throughout at ${String(width)} in ${locale}`, async () => {
+        await page.viewport(width, 844)
+        await open({}, locale)
+        const key = page.getByTestId('queue-key')
+        await expect.element(key).toBeVisible()
+        const seat = key.element() as HTMLElement
+        // the key's own word, without the letter that presses it
+        const bare = seat.cloneNode(true) as HTMLElement
+        for (const letter of bare.querySelectorAll('kbd')) letter.remove()
+        const word = (bare.textContent ?? '').trim().toLowerCase()
+        expect(word).not.toBe('')
+        expect(seat.scrollWidth).toBeLessThanOrEqual(seat.clientWidth + 1)
+        const back = page.getByTestId('queue-back').element().getAttribute('aria-label') ?? ''
+        expect(back.toLowerCase()).toContain(word)
+        await key.click()
+        const sheet = page.getByTestId('queue-sheet')
+        await expect.element(sheet).toBeVisible()
+        const title = sheet.getByRole('heading').first().element().textContent ?? ''
+        expect(title.toLowerCase()).toContain(word)
+      })
+    }
+  }
+
   it('keeps the queue inside the width it is given', async () => {
     await page.viewport(390, 844)
     // a phone opens on the list of questions; the filings are a step in

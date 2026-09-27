@@ -3341,7 +3341,7 @@ const i18n = definePluginMessages({
       defaultMessage: 'Contact a batch administrator to be assigned an appropriate review role.',
     },
     // the workbench: one submission, judged in a run
-    reviewQueueTitle: { id: 'assessment/review/queue-title', defaultMessage: 'Pending reviews' },
+    reviewQueueTitle: { id: 'assessment/review/queue-title', defaultMessage: 'Queue' },
     reviewRunPosition: {
       id: 'assessment/review/run-position',
       defaultMessage: '{at} of {count}',
@@ -3417,7 +3417,7 @@ const i18n = definePluginMessages({
       id: 'assessment/review/queue-empty',
       defaultMessage: 'Nothing else is waiting',
     },
-    reviewKeyQueue: { id: 'assessment/review/key-queue', defaultMessage: 'Pending reviews' },
+    reviewKeyQueue: { id: 'assessment/review/key-queue', defaultMessage: 'Queue' },
     timeYesterday: { id: 'assessment/time/yesterday', defaultMessage: 'Yesterday' },
     timeYesterdayAt: { id: 'assessment/time/yesterday-at', defaultMessage: 'Yesterday {time}' },
     entrySubmittedToast: {
@@ -3635,7 +3635,7 @@ const i18n = definePluginMessages({
     reviewUndo: { id: 'assessment/review/undo', defaultMessage: 'Undo' },
     reviewBackToQueue: {
       id: 'assessment/review/back-to-queue',
-      defaultMessage: 'Back to pending reviews',
+      defaultMessage: 'Back to the queue',
     },
     /** a review round the address names that is not there, opened cold */
     reviewMissingTitle: {
@@ -3947,11 +3947,11 @@ const i18n = definePluginMessages({
     reviewKeysHint: { id: 'assessment/review/keys-hint', defaultMessage: 'Keyboard shortcuts ?' },
     reviewQueueFold: {
       id: 'assessment/review/queue-fold',
-      defaultMessage: 'Collapse pending reviews',
+      defaultMessage: 'Collapse the queue',
     },
     reviewQueueUnfold: {
       id: 'assessment/review/queue-unfold',
-      defaultMessage: 'Expand pending reviews',
+      defaultMessage: 'Expand the queue',
     },
     /** the key on the decision bar, which has half a phone's width */
     reviewSupplementAsk: {
@@ -4922,7 +4922,7 @@ const i18n = definePluginMessages({
     },
     reviewDoneBack: {
       id: 'assessment/review/done-back',
-      defaultMessage: 'Back to pending reviews',
+      defaultMessage: 'Back to the queue',
     },
     reviewDoneLeft: {
       id: 'assessment/review/done-left',
