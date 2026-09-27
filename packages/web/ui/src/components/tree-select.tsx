@@ -117,7 +117,10 @@ export function TreeSelect({
   const selection = new Set(value)
   if (shape.roots.length === 0) {
     return (
+      // A tree draws no box of its own: its callers keep it in a scrolling
+      // frame, and the empty answer takes that frame as its box.
       <EmptyField
+        framed={false}
         title={emptyLabel}
         {...(emptyHint === undefined ? {} : { hint: emptyHint })}
         {...(emptyAction === undefined ? {} : { action: emptyAction })}

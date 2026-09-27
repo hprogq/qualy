@@ -68,6 +68,11 @@ const styles = stylex.create({
   legendSpaced: {
     marginBottom: 8,
   },
+  // over a box standing in for the choices, the gap a field's label keeps
+  // from its control; the rows of choices bring their own air
+  legendOverBox: {
+    marginBottom: 12,
+  },
   optionGrid: {
     display: 'grid',
     gap: 4,
@@ -291,7 +296,13 @@ export function CheckboxGroup({
   }
   return (
     <fieldset {...stylex.props(styles.group)} disabled={disabled}>
-      <legend {...stylex.props(hideLegend ? a11yStyles.visuallyHidden : styles.legend)}>
+      <legend
+        {...stylex.props(
+          hideLegend
+            ? a11yStyles.visuallyHidden
+            : [styles.legend, options.length === 0 && styles.legendOverBox],
+        )}
+      >
         {legend}
       </legend>
       {options.length === 0 ? (

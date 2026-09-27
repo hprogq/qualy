@@ -15,6 +15,15 @@ import { tokens } from '../theme/tokens.stylex.ts'
 // It says what is missing in the field's own type, may say why and what to
 // do about it underneath, and may carry the way out. Zero copy: the words
 // are the caller's.
+//
+// A field whose caller already draws the box - a tree kept in a scrolling
+// frame, say - takes that box for its own (`framed={false}`): a second
+// border four pixels inside the first read as a box within a box, with the
+// frame's height left empty under it. Unframed it stands in the middle of
+// whatever height the frame gives it.
+//
+// Its title is set in the body's weight, so the label above it stays the
+// heading and this line reads as the answer under it.
 
 const styles = stylex.create({
   root: {
@@ -32,6 +41,15 @@ const styles = stylex.create({
     paddingBlock: 10,
     paddingInline: 12,
   },
+  // the caller's frame is the box: no edge or ground of its own, and the
+  // words in the middle of the height it is given
+  bare: {
+    height: '100%',
+    justifyContent: 'center',
+    alignContent: 'center',
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+  },
   said: {
     display: 'flex',
     minWidth: 0,
@@ -40,6 +58,11 @@ const styles = stylex.create({
     flexBasis: '12rem',
     alignItems: 'flex-start',
     gap: 10,
+  },
+  // in the middle, as one group with its way out
+  saidBare: {
+    flexGrow: 0,
+    flexBasis: 'auto',
   },
   glyph: {
     display: 'inline-flex',
@@ -58,7 +81,7 @@ const styles = stylex.create({
     margin: 0,
     fontSize: 14,
     lineHeight: '1.25rem',
-    fontWeight: 500,
+    fontWeight: 400,
     color: tokens.foreground,
     overflowWrap: 'anywhere',
   },
@@ -74,6 +97,9 @@ const styles = stylex.create({
     flexShrink: 0,
     marginLeft: 'auto',
   },
+  actionBare: {
+    marginLeft: 0,
+  },
 })
 
 function EmptyField({
@@ -81,6 +107,7 @@ function EmptyField({
   hint,
   action,
   icon,
+  framed = true,
   xstyle,
 }: {
   /** what is missing, said in the field's own type */
@@ -91,11 +118,17 @@ function EmptyField({
   action?: React.ReactNode
   /** the glyph before the words; an inbox unless the caller has a truer one */
   icon?: React.ReactNode
+  /** false where the caller already draws the field's box around it */
+  framed?: boolean
   xstyle?: StyleXStyles
 }) {
   return (
-    <div data-slot="empty-field" {...stylex.props(styles.root, xstyle)}>
-      <div {...stylex.props(styles.said)}>
+    <div
+      data-slot="empty-field"
+      data-framed={framed}
+      {...stylex.props(styles.root, !framed && styles.bare, xstyle)}
+    >
+      <div {...stylex.props(styles.said, !framed && styles.saidBare)}>
         <span aria-hidden data-slot="empty-field-icon" {...stylex.props(styles.glyph)}>
           {icon ?? <InboxIcon size={16} />}
         </span>
@@ -110,7 +143,9 @@ function EmptyField({
           )}
         </div>
       </div>
-      {action !== undefined && <div {...stylex.props(styles.action)}>{action}</div>}
+      {action !== undefined && (
+        <div {...stylex.props(styles.action, !framed && styles.actionBare)}>{action}</div>
+      )}
     </div>
   )
 }
