@@ -271,8 +271,8 @@ describe('the reader’s security', () => {
     // in a dialog over the page, not unfolded into it
     await expect.element(page.getByRole('dialog')).toBeInTheDocument()
     expect(document.querySelector('[data-testid="password-card"] form')).toBeNull()
-    await page.getByLabelText('当前密码').fill('old password here')
-    await page.getByLabelText('新密码', { exact: true }).fill('new password here')
+    await page.getByLabelText(/^当前密码/).fill('old password here')
+    await page.getByLabelText(/^新密码/).fill('new password here')
     // held to the same list as every other form that sets a password
     await expect
       .element(
@@ -282,7 +282,7 @@ describe('the reader’s security', () => {
           .querySelector<HTMLElement>('[data-check="unguessable"]')!,
       )
       .toHaveAttribute('data-state', 'met')
-    await page.getByLabelText('再次输入新密码').fill('new password here')
+    await page.getByLabelText(/^再次输入新密码/).fill('new password here')
     await page.getByRole('button', { name: '保存' }).click()
     await vi.waitFor(() => expect(put).toHaveBeenCalledTimes(1))
     expect(put).toHaveBeenCalledWith({
@@ -314,10 +314,48 @@ describe('the reader’s security', () => {
     await vi.waitFor(() => expect(verify).toHaveBeenCalledTimes(1))
 
     await page.getByRole('button', { name: '更改' }).click()
-    await page.getByLabelText('新邮箱').fill('zhang.new@school.edu')
+    await page.getByRole('textbox', { name: '新邮箱' }).fill('zhang.new@school.edu')
     await page.getByRole('button', { name: '发送确认邮件' }).click()
     await vi.waitFor(() => expect(change).toHaveBeenCalledTimes(1))
     expect(change).toHaveBeenCalledWith({ payload: { newEmail: 'zhang.new@school.edu' } })
+  })
+
+  it('says under the address what is wrong with it, once the typing has settled', async () => {
+    const change = vi.fn(() => Effect.fail(apiError('USER_EMAIL_CONFLICT')))
+    await renderScreen({
+      client: client({
+        self: { ...records, getSelf: () => Effect.succeed(me()), createSelfEmailChange: change },
+      }),
+      route: '/account/security',
+      children: <AccountSecurityPage />,
+    })
+    await page.getByRole('button', { name: '更改' }).click()
+    const dialog = page.getByRole('dialog')
+    const address = dialog.getByRole('textbox', { name: '新邮箱' })
+    const send = dialog.getByRole('button', { name: '发送确认邮件' })
+    await expect.element(address).toHaveAttribute('aria-required', 'true')
+
+    // not an address: said once it has settled, and not sent
+    await address.fill('zhang.new')
+    await expect.element(dialog.getByTestId('field-error')).toBeVisible()
+    await expect.element(send).toBeDisabled()
+
+    // somebody else's: said under the address too, not above the form
+    await address.fill('taken@school.edu')
+    await expect.element(send).toBeEnabled()
+    await send.click()
+    await vi.waitFor(() => expect(change).toHaveBeenCalledTimes(1))
+    await expect.element(dialog.getByTestId('field-error')).toBeVisible()
+    await expect.element(address).toHaveAttribute('aria-invalid', 'true')
+
+    // put away, it keeps nothing for the next time
+    await dialog.getByRole('button', { name: '取消' }).click()
+    await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull()
+    await page.getByRole('button', { name: '更改' }).click()
+    await expect
+      .element(page.getByRole('dialog').getByRole('textbox', { name: '新邮箱' }))
+      .toHaveValue('')
+    expect(document.querySelector('[data-testid="field-error"]')).toBeNull()
   })
 })
 
@@ -353,7 +391,7 @@ describe('showing it is you before the account changes hands', () => {
     expect(prove).toHaveBeenCalledWith({
       payload: { method: 'password', password: 'current password here' },
     })
-    await page.getByLabelText('新邮箱').fill('zhang.new@school.edu')
+    await page.getByRole('textbox', { name: '新邮箱' }).fill('zhang.new@school.edu')
     await page.getByRole('button', { name: '发送确认邮件' }).click()
     await vi.waitFor(() => expect(change).toHaveBeenCalledTimes(1))
     expect(change).toHaveBeenCalledWith({ payload: { newEmail: 'zhang.new@school.edu' } })
@@ -393,7 +431,7 @@ describe('showing it is you before the account changes hands', () => {
     await vi.waitFor(() => expect(prove).toHaveBeenCalledTimes(1))
     expect(prove).toHaveBeenCalledWith({ payload: { method: 'code', code: '123456' } })
     // the form the code was for
-    await expect.element(page.getByLabelText('新密码', { exact: true })).toBeInTheDocument()
+    await expect.element(page.getByLabelText(/^新密码/)).toBeInTheDocument()
   })
 
   it('offers nothing to press where the account has no way to show it', async () => {

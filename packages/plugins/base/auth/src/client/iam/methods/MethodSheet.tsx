@@ -477,10 +477,11 @@ export function MethodSheet({
           </div>
         )}
         <div {...stylex.props(styles.fields)}>
-          <Field label={format(m.nameLabel)}>
-            {(id) => (
+          <Field label={format(m.nameLabel)} required>
+            {(id, control) => (
               <Input
                 id={id}
+                {...control}
                 disabled={!canManage}
                 value={name ?? provider.name}
                 onChange={(event) => setName(event.target.value)}

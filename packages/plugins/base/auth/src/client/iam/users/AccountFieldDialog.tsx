@@ -5,13 +5,14 @@ import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
-import { Feedback, Field, FormDialog } from '@qualy/ui/admin'
+import { Feedback, Field, FormDialog, useSettledCheck } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { toast } from '@qualy/ui/toast'
 import { iamMessages as m } from '../../i18n.ts'
 import { authApi } from '../../api.ts'
 import { needsReauthentication, useReauthentication } from '../../account/Reauthentication.tsx'
+import { emailShaped, refusedField } from './field-refusals.ts'
 
 // One field of a person's account, set where it is found missing: the
 // profile's address line, a way in that finds them by it. The banner's
@@ -46,9 +47,16 @@ export function AccountFieldDialog({
   const formId = useId()
   const [value, setValue] = useState(current ?? '')
   const [feedback, setFeedback] = useState<string | null>(null)
+  // a refusal about the value itself - somebody else holds it - which the
+  // reader fixes in the field, so it is said under the field
+  const [taken, setTaken] = useState<string | null>(null)
   // moving one's own address, from this screen as from one's own page
   const reauthentication = useReauthentication(undefined)
   const typed = value.trim()
+  const shape = useSettledCheck(value, (next) =>
+    field === 'email' && !emailShaped(next) ? format(m.emailInvalid) : null,
+  )
+  const writable = typed !== '' && typed !== current && (field !== 'email' || emailShaped(typed))
 
   const save = useMutation({
     mutationFn: () =>
@@ -58,7 +66,10 @@ export function AccountFieldDialog({
           payload: { version, ...(field === 'email' ? { email: typed } : { businessNo: typed }) },
         }),
       ),
-    onMutate: () => setFeedback(null),
+    onMutate: () => {
+      setFeedback(null)
+      setTaken(null)
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: query.identity.key() })
       toast.success(format(m.saved))
@@ -66,6 +77,7 @@ export function AccountFieldDialog({
     },
     onError: (error: unknown) => {
       if (needsReauthentication(error)) reauthentication.ask(() => save.mutate())
+      else if (refusedField(error) === field) setTaken(formatError(error))
       else setFeedback(formatError(error))
     },
   })
@@ -77,11 +89,12 @@ export function AccountFieldDialog({
       : format(setting ? m.businessNoSetTitle : m.businessNoChangeTitle, {
           businessNo: businessNoWord,
         })
-  const hint = setting
-    ? undefined
-    : field === 'email'
-      ? format(m.emailChangeConsequence)
-      : format(m.businessNoChangeConsequence, { businessNo: businessNoWord })
+  const hint =
+    field === 'email'
+      ? format(setting ? m.emailPurpose : m.emailChangeConsequence)
+      : setting
+        ? undefined
+        : format(m.businessNoChangeConsequence, { businessNo: businessNoWord })
 
   return (
     <>
@@ -94,11 +107,7 @@ export function AccountFieldDialog({
             <Button variant="outline" onClick={onClose}>
               {format(m.cancel)}
             </Button>
-            <Button
-              type="submit"
-              form={formId}
-              disabled={save.isPending || typed === '' || typed === current}
-            >
+            <Button type="submit" form={formId} disabled={save.isPending || !writable}>
               {format(m.save)}
             </Button>
           </>
@@ -111,22 +120,29 @@ export function AccountFieldDialog({
           {...stylex.props(styles.form)}
           onSubmit={(event: FormEvent) => {
             event.preventDefault()
-            if (!save.isPending && typed !== '' && typed !== current) save.mutate()
+            if (!save.isPending && writable) save.mutate()
           }}
         >
           <Feedback message={feedback} />
           <Field
             label={field === 'email' ? format(m.emailLabel) : businessNoWord}
+            required
+            error={taken ?? shape.error}
             {...(hint === undefined ? {} : { hint })}
           >
-            {(id) => (
+            {(id, control) => (
               <Input
                 id={id}
+                {...control}
                 type={field === 'email' ? 'email' : 'text'}
                 autoComplete="off"
                 autoFocus
                 value={value}
-                onChange={(event) => setValue(event.target.value)}
+                onBlur={shape.onBlur}
+                onChange={(event) => {
+                  setValue(event.target.value)
+                  setTaken(null)
+                }}
               />
             )}
           </Field>

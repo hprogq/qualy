@@ -20,7 +20,7 @@ import { authTerms } from '@qualy/auth-contract/terms'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { ConfirmDialog, Feedback, Field, FormDialog } from '@qualy/ui/admin'
+import { ConfirmDialog, Feedback, Field, FormDialog, useSettledCheck } from '@qualy/ui/admin'
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Button } from '@qualy/ui/button'
 import {
@@ -38,6 +38,7 @@ import { iamMessages as m } from '../i18n.ts'
 import { rosterSearch } from './users/roster-address.ts'
 import { authApi } from '../api.ts'
 import { UserMoveDialog } from './UserMoveDialog.tsx'
+import { emailShaped, refusedField, type PersonField } from './users/field-refusals.ts'
 import { needsReauthentication, useReauthentication } from '../account/Reauthentication.tsx'
 import { instantWords } from '../when.ts'
 import { PersonFacts, type PersonFact } from './person-facts.tsx'
@@ -177,6 +178,8 @@ export default function UserDetailHeader() {
   const [confirmingDisable, setConfirmingDisable] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [moving, setMoving] = useState(false)
+  // a value somebody else already holds, said under the field it was typed in
+  const [taken, setTaken] = useState<{ field: PersonField; said: string } | null>(null)
   const [displayName, setDisplayName] = useState('')
   const [businessNo, setBusinessNo] = useState('')
   const [email, setEmail] = useState('')
@@ -226,6 +229,7 @@ export default function UserDetailHeader() {
     onMutate: () => {
       setFeedback(null)
       setSaved(false)
+      setTaken(null)
     },
     onError: (error: unknown) => setFeedback(formatError(error)),
   })
@@ -251,8 +255,10 @@ export default function UserDetailHeader() {
       }),
     ),
     onError: (error: unknown) => {
+      const field = refusedField(error)
       if (needsReauthentication(error)) reauthentication.ask(() => saveProfile.mutate(undefined))
-      else setFeedback(formatError(error))
+      else if (field === undefined) setFeedback(formatError(error))
+      else setTaken({ field, said: formatError(error) })
     },
     onSuccess: async () => {
       setEditing(false)
@@ -309,7 +315,17 @@ export default function UserDetailHeader() {
   const stopEditing = () => {
     setEditing(false)
     setFeedback(null)
+    setTaken(null)
   }
+  const shape = useSettledCheck(email, (next) =>
+    emailShaped(next) ? null : format(m.emailInvalid),
+  )
+  // an address being replaced, which undoes what the old one had proven
+  const replacingEmail =
+    record?.email !== undefined &&
+    record.email !== null &&
+    email.trim() !== '' &&
+    email.trim().toLowerCase() !== record.email
 
   // The same line the person reads over their own account, with what an
   // administrator looks for first in any section: whether the address was
@@ -498,7 +514,9 @@ export default function UserDetailHeader() {
                 <Button
                   type="submit"
                   form="edit-profile"
-                  disabled={saveProfile.isPending || displayName.trim() === ''}
+                  disabled={
+                    saveProfile.isPending || displayName.trim() === '' || !emailShaped(email)
+                  }
                 >
                   {format(m.save)}
                 </Button>
@@ -510,26 +528,37 @@ export default function UserDetailHeader() {
               {...stylex.props(styles.form)}
               onSubmit={(event) => {
                 event.preventDefault()
-                saveProfile.mutate(undefined)
+                if (emailShaped(email)) saveProfile.mutate(undefined)
               }}
             >
               <Feedback message={feedback} />
-              <Field label={format(m.nameLabel)}>
-                {(id) => (
+              <Field label={format(m.nameLabel)} required>
+                {(id, control) => (
                   <Input
                     id={id}
+                    {...control}
                     value={displayName}
                     onChange={(event) => setDisplayName(event.target.value)}
                   />
                 )}
               </Field>
-              <Field label={businessNoWord}>
-                {(id) => (
+              <Field
+                label={businessNoWord}
+                {...(system || !accountManageable
+                  ? {}
+                  : { hint: format(m.businessNoPurpose, { businessNo: businessNoWord }) })}
+                error={taken?.field === 'businessNo' ? taken.said : undefined}
+              >
+                {(id, control) => (
                   <Input
                     id={id}
+                    {...control}
                     value={businessNo}
                     disabled={system || !accountManageable}
-                    onChange={(event) => setBusinessNo(event.target.value)}
+                    onChange={(event) => {
+                      setBusinessNo(event.target.value)
+                      if (taken?.field === 'businessNo') setTaken(null)
+                    }}
                   />
                 )}
               </Field>
@@ -538,30 +567,38 @@ export default function UserDetailHeader() {
                 hint={format(
                   system
                     ? m.emailSystemHint
-                    : accountManageable
-                      ? m.emailEditHint
-                      : m.accountBeyondReachHint,
+                    : !accountManageable
+                      ? m.accountBeyondReachHint
+                      : replacingEmail
+                        ? m.emailChangeConsequence
+                        : m.emailPurpose,
                 )}
+                error={taken?.field === 'email' ? taken.said : (shape.error ?? undefined)}
               >
-                {(id) => (
+                {(id, control) => (
                   <Input
                     id={id}
+                    {...control}
                     type="email"
                     autoComplete="off"
                     value={email}
                     disabled={system || !accountManageable}
-                    onChange={(event) => setEmail(event.target.value)}
+                    onBlur={shape.onBlur}
+                    onChange={(event) => {
+                      setEmail(event.target.value)
+                      if (taken?.field === 'email') setTaken(null)
+                    }}
                   />
                 )}
               </Field>
-              <Field label={format(m.userTypeLabel)}>
-                {(id) => (
+              <Field label={format(m.userTypeLabel)} required>
+                {(id, control) => (
                   <Select
                     value={userTypeId}
                     onValueChange={setUserTypeId}
                     disabled={!accountManageable}
                   >
-                    <SelectTrigger id={id} xstyle={styles.fullField}>
+                    <SelectTrigger id={id} {...control} xstyle={styles.fullField}>
                       <SelectValue placeholder={format(m.selectUserType)} />
                     </SelectTrigger>
                     <SelectContent>

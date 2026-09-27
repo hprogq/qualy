@@ -1200,19 +1200,44 @@ describe("a person's header", () => {
     expect(dialog.element().querySelector('[data-testid="feedback"]')).toBeNull()
   })
 
-  it('says in the form what a save was refused, and keeps nothing once it is put away', async () => {
+  // An address somebody else holds is fixed in the field it was typed in,
+  // so it is said there; a refusal about nothing in particular is the form's.
+  it('says under the field what a save was refused for, and keeps nothing once it is put away', async () => {
     const update = vi.fn(() => Effect.fail(apiError('USER_EMAIL_CONFLICT')))
     await mount({ updateUser: update })
     await page.getByRole('button', { name: '编辑资料' }).click()
     const dialog = page.getByRole('dialog')
-    await dialog.getByRole('textbox', { name: '邮箱' }).fill('taken@example.edu')
+    const address = dialog.getByRole('textbox', { name: '邮箱' })
+    await address.fill('taken@example.edu')
     await dialog.getByRole('button', { name: '保存' }).click()
     await vi.waitFor(() => expect(update).toHaveBeenCalledTimes(1))
-    await expect.element(dialog.getByTestId('feedback')).toHaveAttribute('data-tone', 'error')
+    await expect.element(dialog.getByTestId('field-error')).toBeVisible()
+    await expect.element(address).toHaveAttribute('aria-invalid', 'true')
+    expect(dialog.element().querySelector('[data-testid="feedback"]')).toBeNull()
+    // typing again takes the refusal back
+    await address.fill('other@example.edu')
+    expect(dialog.element().querySelector('[data-testid="field-error"]')).toBeNull()
 
     await dialog.getByRole('button', { name: '取消' }).click()
     await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull()
     expect(document.querySelector('[data-testid="feedback"]')).toBeNull()
+  })
+
+  it('says an address that cannot be one once the typing has settled, and will not save it', async () => {
+    const update = vi.fn(() => Effect.succeed({ ok: true as const }))
+    await mount({ updateUser: update })
+    await page.getByRole('button', { name: '编辑资料' }).click()
+    const dialog = page.getByRole('dialog')
+    const address = dialog.getByRole('textbox', { name: '邮箱' })
+    // when it is said is the field's own business (tests/field-system); here,
+    // that it is said, and what it keeps from happening
+    await address.fill('not-an-address')
+    await expect.element(dialog.getByTestId('field-error')).toBeVisible()
+    await expect.element(dialog.getByRole('button', { name: '保存' })).toBeDisabled()
+    // the name is asked for, and said to be
+    await expect
+      .element(dialog.getByRole('textbox', { name: '名称' }))
+      .toHaveAttribute('aria-required', 'true')
   })
 
   // Moving somebody from the band opens the move itself, over whichever

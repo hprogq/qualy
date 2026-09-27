@@ -77,6 +77,11 @@ const businessNoChangeTitleMessage = defineMessage<{ businessNo: string }>()({
   id: 'auth/person/business-no-change-title',
   defaultMessage: 'Change {businessNo}',
 })
+const businessNoPurposeMessage = defineMessage<{ businessNo: string }>()({
+  id: 'auth/person/business-no-purpose',
+  defaultMessage:
+    'Used to sign in by {businessNo} and to find them in imported lists; leave empty if they have none',
+})
 const businessNoChangeConsequenceMessage = defineMessage<{ businessNo: string }>()({
   id: 'auth/person/business-no-change-consequence',
   defaultMessage: 'Ways in by {businessNo} use the new value',
@@ -777,7 +782,6 @@ const i18n = definePluginMessages({
     emailNone: { id: 'auth/users/email-none', defaultMessage: 'Not set' },
     emailVerified: { id: 'auth/users/email-verified', defaultMessage: 'Verified' },
     emailUnverified: { id: 'auth/users/email-unverified', defaultMessage: 'Not verified' },
-    emailEditHint: { id: 'auth/users/email-edit-hint', defaultMessage: 'Notices are sent here' },
     accountBeyondReachHint: {
       id: 'auth/users/account-beyond-reach-hint',
       defaultMessage: 'Ask an administrator with wider authority to change sign-in details',
@@ -868,6 +872,10 @@ const i18n = definePluginMessages({
       defaultMessage:
         'Lowercase letters, digits and hyphens. It is part of every sign-in link, so it cannot be changed later',
     },
+    methodCodeInvalid: {
+      id: 'auth/login-methods/code-invalid',
+      defaultMessage: 'Use lowercase letters and digits, with single hyphens between them',
+    },
     methodSecretStored: {
       id: 'auth/login-methods/secret-stored',
       defaultMessage: 'Saved. Type a new value to replace it',
@@ -929,6 +937,11 @@ const i18n = definePluginMessages({
     changeHint: {
       id: 'auth/account/change-hint',
       defaultMessage: 'The new address takes over once you open the link sent to it',
+    },
+    changeConsequence: {
+      id: 'auth/account/change-consequence',
+      defaultMessage:
+        'The new address takes over once you open the link sent to it. Your other devices are then signed out, links sent to your current address stop working, and a verified current address is told of the change',
     },
     changeSent: {
       id: 'auth/account/change-sent',
@@ -1143,9 +1156,20 @@ const i18n = definePluginMessages({
     businessNoSetTitle: businessNoSetTitleMessage,
     businessNoChangeTitle: businessNoChangeTitleMessage,
     businessNoChangeConsequence: businessNoChangeConsequenceMessage,
+    businessNoPurpose: businessNoPurposeMessage,
     emailChangeConsequence: {
       id: 'auth/person/email-change-consequence',
-      defaultMessage: 'The new address needs verifying, and they may have to sign in again',
+      defaultMessage:
+        'The new address has to be verified again, links already sent stop working, they may have to sign in again, and a verified old address is told of the change',
+    },
+    emailInvalid: {
+      id: 'auth/person/email-invalid',
+      defaultMessage: 'Enter an email address such as name@school.edu',
+    },
+    emailPurpose: {
+      id: 'auth/person/email-purpose',
+      defaultMessage:
+        'For signing in by email and for resetting a password; leave empty if they have none',
     },
     fieldUnset: { id: 'auth/person/field-unset', defaultMessage: 'Not set' },
     fieldSetAction: { id: 'auth/person/field-set', defaultMessage: 'Set' },

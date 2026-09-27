@@ -2,9 +2,9 @@ import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { useApi, useApiQuery, useLoadFailure, usePageHref, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { getApiErrorCode, useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { AsyncSection, Field, FormDialog } from '@qualy/ui/admin'
+import { AsyncSection, Field, FormDialog, useSettledCheck } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { Card, DefListSkeleton, SectionHead } from '@qualy/ui/screen'
@@ -14,6 +14,7 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { iamMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
 import { EmailWithStanding } from '../iam/person-facts.tsx'
+import { emailShaped } from '../iam/users/field-refusals.ts'
 import { SessionsCard } from './security-records.tsx'
 import { PasswordChecklist } from '../password/PasswordChecklist.tsx'
 import { usePasswordChecks } from '../password/checks.ts'
@@ -269,10 +270,11 @@ function PasswordSetting({
           }}
         >
           {standing === 'set' && (
-            <Field label={format(m.currentPassword)}>
-              {(id) => (
+            <Field label={format(m.currentPassword)} required>
+              {(id, control) => (
                 <Input
                   id={id}
+                  {...control}
                   type="password"
                   autoComplete="current-password"
                   autoFocus
@@ -282,10 +284,11 @@ function PasswordSetting({
               )}
             </Field>
           )}
-          <Field label={format(m.resetNewPassword)}>
-            {(id) => (
+          <Field label={format(m.resetNewPassword)} required>
+            {(id, control) => (
               <Input
                 id={id}
+                {...control}
                 type="password"
                 autoComplete="new-password"
                 autoFocus={standing !== 'set'}
@@ -302,10 +305,11 @@ function PasswordSetting({
               refused={refused}
             />
           )}
-          <Field label={format(m.resetConfirmPassword)}>
-            {(id) => (
+          <Field label={format(m.resetConfirmPassword)} required>
+            {(id, control) => (
               <Input
                 id={id}
+                {...control}
                 type="password"
                 autoComplete="new-password"
                 value={again}
@@ -335,9 +339,13 @@ function EmailSetting({ email, verified }: { email: string | null; verified: boo
   const reauthentication = useReauthentication(usePageHref('auth/account-security'))
   const [open, setOpen] = useState(false)
   const [next, setNext] = useState('')
+  const shape = useSettledCheck(next, (typed) =>
+    emailShaped(typed) ? null : format(m.emailInvalid),
+  )
   const close = () => {
     setOpen(false)
     setNext('')
+    change.reset()
   }
   const verify = useMutation({
     mutationFn: () => run(api.self.createSelfEmailVerification({})),
@@ -354,6 +362,8 @@ function EmailSetting({ email, verified }: { email: string | null; verified: boo
       if (needsReauthentication(error)) reauthentication.ask(() => change.mutate())
     },
   })
+  // an address somebody else holds is the field's to say; the rest the form's
+  const taken = change.isError && getApiErrorCode(change.error) === 'USER_EMAIL_CONFLICT'
   return (
     <Setting
       testId="email-card"
@@ -391,7 +401,11 @@ function EmailSetting({ email, verified }: { email: string | null; verified: boo
             <Button variant="ghost" type="button" onClick={close}>
               {format(m.cancel)}
             </Button>
-            <Button type="submit" form={formId} disabled={change.isPending || !next}>
+            <Button
+              type="submit"
+              form={formId}
+              disabled={change.isPending || next.trim() === '' || !emailShaped(next)}
+            >
               {format(m.sendChange)}
             </Button>
           </>
@@ -402,22 +416,32 @@ function EmailSetting({ email, verified }: { email: string | null; verified: boo
           {...stylex.props(styles.form)}
           onSubmit={(event: FormEvent) => {
             event.preventDefault()
-            if (!change.isPending) change.mutate()
+            if (!change.isPending && emailShaped(next)) change.mutate()
           }}
         >
-          <Field label={format(m.newEmail)} hint={format(m.changeHint)}>
-            {(id) => (
+          <Field
+            label={format(m.newEmail)}
+            required
+            hint={format(email === null ? m.changeHint : m.changeConsequence)}
+            error={taken ? formatError(change.error) : shape.error}
+          >
+            {(id, control) => (
               <Input
                 id={id}
+                {...control}
                 type="email"
                 autoComplete="email"
                 autoFocus
                 value={next}
-                onChange={(event) => setNext(event.target.value)}
+                onBlur={shape.onBlur}
+                onChange={(event) => {
+                  setNext(event.target.value)
+                  if (taken) change.reset()
+                }}
               />
             )}
           </Field>
-          {change.isError && !needsReauthentication(change.error) && (
+          {change.isError && !taken && !needsReauthentication(change.error) && (
             <p {...stylex.props(styles.refusal)}>{formatError(change.error)}</p>
           )}
         </form>

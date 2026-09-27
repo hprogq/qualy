@@ -3,7 +3,7 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useState } from 'react'
 import { useApi, useRunApi, useApiQuery, useLoadFailure } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { getApiErrorCode, useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { ModeChoice, PickGrid } from '@qualy/ui/screen'
@@ -41,6 +41,8 @@ export function NewUserTypeForm({
   const { format, formatError } = useI18n()
   const describe = useLoadFailure()
   const [feedback, setFeedback] = useState<string | null>(null)
+  // a name another type already has is the name's to fix, said under it
+  const [taken, setTaken] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [mode, setMode] = useState<'unrestricted' | 'allow-list'>('allow-list')
   const [orgTypeIds, setOrgTypeIds] = useState<string[]>([])
@@ -59,7 +61,10 @@ export function NewUserTypeForm({
           },
         }),
       ),
-    onMutate: () => setFeedback(null),
+    onMutate: () => {
+      setFeedback(null)
+      setTaken(null)
+    },
     onSuccess: async (result) => {
       setName('')
       setOrgTypeIds([])
@@ -67,7 +72,10 @@ export function NewUserTypeForm({
       await queryClient.invalidateQueries({ queryKey: query.identity.key() })
       onCreated(result.id)
     },
-    onError: (error: unknown) => setFeedback(formatError(error)),
+    onError: (error: unknown) =>
+      getApiErrorCode(error) === 'USER_TYPE_CONFLICT'
+        ? setTaken(formatError(error))
+        : setFeedback(formatError(error)),
   })
 
   return (
@@ -104,13 +112,17 @@ export function NewUserTypeForm({
           create.mutate()
         }}
       >
-        <Field label={format(m.nameLabel)}>
-          {(id) => (
+        <Field label={format(m.nameLabel)} required error={taken}>
+          {(id, control) => (
             <Input
               id={id}
+              {...control}
               autoFocus
               value={name}
-              onChange={(event) => setName(event.target.value)}
+              onChange={(event) => {
+                setName(event.target.value)
+                setTaken(null)
+              }}
             />
           )}
         </Field>

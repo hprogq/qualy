@@ -14,7 +14,7 @@ import {
   usePageHref,
   usePageNavigate,
 } from '@qualy/web-runtime'
-import { useI18n, useList } from '@qualy/web-i18n'
+import { getApiErrorCode, useI18n, useList } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, ConfirmDialog, Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import {
@@ -134,6 +134,12 @@ export function UserTypeConfig({
   const [feedback, setFeedback] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [renaming, setRenaming] = useState(false)
+  // what a rename was refused for is said in its dialog, not behind it: a
+  // name another type has under the name, anything else above the fields
+  const [renameRefusal, setRenameRefusal] = useState<{
+    readonly taken: boolean
+    readonly said: string
+  } | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [name, setName] = useState(userType.name)
   const [description, setDescription] = useState(userType.description ?? '')
@@ -177,11 +183,24 @@ export function UserTypeConfig({
         },
       }),
     ),
+    onMutate: () => {
+      setSaved(false)
+      setRenameRefusal(null)
+    },
     onSuccess: async () => {
       setRenaming(false)
       await refresh()
     },
+    onError: (error: unknown) =>
+      setRenameRefusal({
+        taken: getApiErrorCode(error) === 'USER_TYPE_CONFLICT',
+        said: formatError(error),
+      }),
   })
+  const closeRename = () => {
+    setRenaming(false)
+    setRenameRefusal(null)
+  }
   const savePlacement = useMutation(
     run(() =>
       api.identity.setPlacementPolicy({
@@ -481,10 +500,10 @@ export function UserTypeConfig({
       <FormDialog
         open={renaming}
         title={format(m.rename)}
-        onClose={() => setRenaming(false)}
+        onClose={closeRename}
         footer={
           <>
-            <Button variant="outline" onClick={() => setRenaming(false)}>
+            <Button variant="outline" onClick={closeRename}>
               {format(m.cancel)}
             </Button>
             <Button
@@ -497,6 +516,7 @@ export function UserTypeConfig({
           </>
         }
       >
+        <Feedback message={renameRefusal?.taken === false ? renameRefusal.said : null} />
         <form
           id="rename-user-type"
           {...stylex.props(styles.form)}
@@ -505,9 +525,21 @@ export function UserTypeConfig({
             saveProfile.mutate(undefined)
           }}
         >
-          <Field label={format(m.nameLabel)}>
-            {(id) => (
-              <Input id={id} value={name} onChange={(event) => setName(event.target.value)} />
+          <Field
+            label={format(m.nameLabel)}
+            required
+            error={renameRefusal?.taken === true ? renameRefusal.said : null}
+          >
+            {(id, control) => (
+              <Input
+                id={id}
+                {...control}
+                value={name}
+                onChange={(event) => {
+                  setName(event.target.value)
+                  if (renameRefusal?.taken === true) setRenameRefusal(null)
+                }}
+              />
             )}
           </Field>
           <Field label={format(m.descriptionLabel)}>

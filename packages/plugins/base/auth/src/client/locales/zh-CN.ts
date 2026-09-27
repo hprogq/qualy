@@ -223,6 +223,7 @@ export default {
   'auth/login-methods/name-hint': '登录页显示名称',
   'auth/login-methods/code-hint-new':
     '仅支持小写字母、数字和连字符，将作为登录链接的一部分，创建后不可修改',
+  'auth/login-methods/code-invalid': '只能用小写字母和数字，中间可用单个连字符分隔',
   'auth/login-methods/secret-stored': '已保存，输入新值可替换',
   'auth/login-methods/secret-unreadable': '密钥无法解密，需要重新填写',
   'auth/login-methods/secret-clear': '清除',
@@ -256,6 +257,8 @@ export default {
   'auth/account/new-email': '新邮箱',
   'auth/account/send-change': '发送确认邮件',
   'auth/account/change-hint': '一封确认邮件将发送至你的新邮箱',
+  'auth/account/change-consequence':
+    '打开发到新邮箱的确认链接后才会生效；生效后其他设备上的登录会退出，发往原邮箱的链接失效，原邮箱已验证的会收到一封变更通知',
   'auth/account/change-sent': '确认邮件已发送，点击邮件中的链接即可完成更换',
   'auth/account/reauth-title': '验证身份',
   'auth/account/reauth-password-hint': '输入当前密码后继续',
@@ -382,7 +385,11 @@ export default {
   'auth/person/business-no-set-title': '设置{businessNo}',
   'auth/person/business-no-change-title': '更改{businessNo}',
   'auth/person/business-no-change-consequence': '按{businessNo}登录时将改用新值',
-  'auth/person/email-change-consequence': '更改后需重新验证，该用户可能需要重新登录',
+  'auth/person/business-no-purpose': '用于按{businessNo}登录和导入名单时认出此人，没有可留空',
+  'auth/person/email-change-consequence':
+    '更改后新邮箱需要重新验证，已发出的验证和找回密码链接将失效，该用户可能需要重新登录；原邮箱已验证的，会收到一封变更通知',
+  'auth/person/email-invalid': '请输入有效的邮箱地址，例如 name@school.edu',
+  'auth/person/email-purpose': '用于邮箱登录和找回密码，没有可留空',
   'auth/person/field-unset': '未设置',
   'auth/person/field-set': '设置',
   'auth/person/field-change': '更改',
@@ -605,7 +612,6 @@ export default {
   'auth/users/email-none': '未设置',
   'auth/users/email-verified': '已验证',
   'auth/users/email-unverified': '未验证',
-  'auth/users/email-edit-hint': '通知将发送至该邮箱',
   'auth/users/account-beyond-reach-hint': '登录信息请交由权限更高的管理员修改',
   'auth/users/email-system-hint': '系统账户邮箱由部署配置，此处不可修改',
   'auth/users/last-sign-in': '最近登录',

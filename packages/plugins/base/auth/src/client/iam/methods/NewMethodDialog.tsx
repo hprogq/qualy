@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
-import { Feedback, Field, FormDialog } from '@qualy/ui/admin'
+import { getApiErrorCode, useI18n } from '@qualy/web-i18n'
+import { Feedback, Field, FormDialog, useSettledCheck } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
@@ -44,6 +44,11 @@ export function NewMethodDialog({
   const [name, setName] = useState('')
   const [code, setCode] = useState('')
   const [feedback, setFeedback] = useState<string | null>(null)
+  // an address another entrance answers at is the address's to fix
+  const [taken, setTaken] = useState<string | null>(null)
+  const shape = useSettledCheck(code, (typed) =>
+    ADDRESS.test(typed.trim()) ? null : format(m.methodCodeInvalid),
+  )
   const kind = kinds.find((one) => one.type === type) ?? (kinds.length === 1 ? kinds[0] : undefined)
 
   // every opening starts empty: a half-typed entrance from last time is not
@@ -54,6 +59,7 @@ export function NewMethodDialog({
     setName('')
     setCode('')
     setFeedback(null)
+    setTaken(null)
   }, [open])
 
   const create = useMutation({
@@ -63,12 +69,18 @@ export function NewMethodDialog({
           payload: { type: kind!.type, code: code.trim(), name: name.trim() },
         }),
       ),
-    onMutate: () => setFeedback(null),
+    onMutate: () => {
+      setFeedback(null)
+      setTaken(null)
+    },
     onSuccess: async (created) => {
       await queryClient.invalidateQueries({ queryKey: query.identity.key() })
       onCreated(created.id)
     },
-    onError: (error: unknown) => setFeedback(formatError(error)),
+    onError: (error: unknown) =>
+      getApiErrorCode(error) === 'AUTH_PROVIDER_CONFLICT'
+        ? setTaken(formatError(error))
+        : setFeedback(formatError(error)),
   })
 
   const ready = kind !== undefined && name.trim() !== '' && ADDRESS.test(code.trim())
@@ -101,9 +113,9 @@ export function NewMethodDialog({
         <Feedback message={feedback} />
         {kinds.length > 1 && (
           <Field label={format(m.providerKindLabel)} required>
-            {(id) => (
+            {(id, control) => (
               <Select value={type === '' ? undefined : type} onValueChange={setType}>
-                <SelectTrigger id={id}>
+                <SelectTrigger id={id} {...control}>
                   <SelectValue placeholder={format(m.methodKindPick)} />
                 </SelectTrigger>
                 <SelectContent>
@@ -118,18 +130,34 @@ export function NewMethodDialog({
           </Field>
         )}
         <Field label={format(m.nameLabel)} required hint={format(m.methodNameHint)}>
-          {(id) => <Input id={id} value={name} onChange={(event) => setName(event.target.value)} />}
-        </Field>
-        <Field label={format(m.providerCodeLabel)} required hint={format(m.methodCodeHint)}>
-          {(id) => (
+          {(id, control) => (
             <Input
               id={id}
+              {...control}
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+          )}
+        </Field>
+        <Field
+          label={format(m.providerCodeLabel)}
+          required
+          hint={format(m.methodCodeHint)}
+          error={taken ?? shape.error}
+        >
+          {(id, control) => (
+            <Input
+              id={id}
+              {...control}
               autoComplete="off"
               spellCheck={false}
               className={stylex.props(styles.mono).className}
               value={code}
-              aria-invalid={code !== '' && !ADDRESS.test(code.trim())}
-              onChange={(event) => setCode(event.target.value.toLowerCase())}
+              onBlur={shape.onBlur}
+              onChange={(event) => {
+                setCode(event.target.value.toLowerCase())
+                setTaken(null)
+              }}
             />
           )}
         </Field>

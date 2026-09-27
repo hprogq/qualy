@@ -9,12 +9,13 @@ import * as stylex from '@stylexjs/stylex'
 import { ChevronsUpDownIcon } from 'lucide-react'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { CardEmpty } from '@qualy/ui/screen'
-import { Feedback, Field, FormDialog } from '@qualy/ui/admin'
+import { Feedback, Field, FormDialog, useSettledCheck } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { iamMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
+import { emailShaped, refusedField, type PersonField } from './users/field-refusals.ts'
 
 // Making one person. Four answers: their name, their number, what kind of
 // person they are, and where they stand.
@@ -82,6 +83,8 @@ export function NewUserForm({
   const { format, formatError } = useI18n()
   const businessNoWord = useTerm(authTerms.businessNumber)
   const [feedback, setFeedback] = useState<string | null>(null)
+  // a value somebody else already holds, said under the field it was typed in
+  const [taken, setTaken] = useState<{ field: PersonField; said: string } | null>(null)
   const [displayName, setDisplayName] = useState('')
   const [businessNo, setBusinessNo] = useState('')
   const [email, setEmail] = useState('')
@@ -95,6 +98,9 @@ export function NewUserForm({
     if (open) setUnit(orgNodeId)
   }, [open, orgNodeId])
 
+  const shape = useSettledCheck(email, (next) =>
+    emailShaped(next) ? null : format(m.emailInvalid),
+  )
   const options = userTypesAt(unit)
   const named = useQueryNodeName(unit, orgNodeId, orgNodeName)
   // a kind that the unit they moved to will not hold is not a kind they chose
@@ -115,7 +121,10 @@ export function NewUserForm({
           },
         }),
       ),
-    onMutate: () => setFeedback(null),
+    onMutate: () => {
+      setFeedback(null)
+      setTaken(null)
+    },
     onSuccess: async () => {
       setDisplayName('')
       setBusinessNo('')
@@ -123,7 +132,11 @@ export function NewUserForm({
       onClose()
       await queryClient.invalidateQueries({ queryKey: query.identity.key() })
     },
-    onError: (error: unknown) => setFeedback(formatError(error)),
+    onError: (error: unknown) => {
+      const field = refusedField(error)
+      if (field === undefined) setFeedback(formatError(error))
+      else setTaken({ field, said: formatError(error) })
+    },
   })
 
   const picker: OrgNodePickerContext = {
@@ -150,7 +163,11 @@ export function NewUserForm({
               type="submit"
               form="new-user"
               disabled={
-                create.isPending || displayName.trim() === '' || userTypeId === '' || unit === ''
+                create.isPending ||
+                displayName.trim() === '' ||
+                userTypeId === '' ||
+                unit === '' ||
+                !emailShaped(email)
               }
             >
               {format(m.create)}
@@ -164,13 +181,14 @@ export function NewUserForm({
           {...stylex.props(styles.form)}
           onSubmit={(event) => {
             event.preventDefault()
-            create.mutate()
+            if (emailShaped(email)) create.mutate()
           }}
         >
-          <Field label={format(m.personNameLabel)}>
-            {(id) => (
+          <Field label={format(m.personNameLabel)} required>
+            {(id, control) => (
               <Input
                 id={id}
+                {...control}
                 autoFocus
                 // the browser reads a lone name field as its own record of
                 // the person at the keyboard and offers to fill it in; this
@@ -182,33 +200,51 @@ export function NewUserForm({
               />
             )}
           </Field>
-          <Field label={businessNoWord}>
-            {(id) => (
+          <Field
+            label={businessNoWord}
+            hint={format(m.businessNoPurpose, { businessNo: businessNoWord })}
+            error={taken?.field === 'businessNo' ? taken.said : undefined}
+          >
+            {(id, control) => (
               <Input
                 id={id}
+                {...control}
                 autoComplete="off"
                 name="new-user-business-no"
                 value={businessNo}
-                onChange={(event) => setBusinessNo(event.target.value)}
+                onChange={(event) => {
+                  setBusinessNo(event.target.value)
+                  if (taken?.field === 'businessNo') setTaken(null)
+                }}
               />
             )}
           </Field>
-          <Field label={format(m.emailLabel)}>
-            {(id) => (
+          <Field
+            label={format(m.emailLabel)}
+            hint={format(m.emailPurpose)}
+            error={taken?.field === 'email' ? taken.said : (shape.error ?? undefined)}
+          >
+            {(id, control) => (
               <Input
                 id={id}
+                {...control}
                 type="email"
                 autoComplete="off"
                 name="new-user-email"
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onBlur={shape.onBlur}
+                onChange={(event) => {
+                  setEmail(event.target.value)
+                  if (taken?.field === 'email') setTaken(null)
+                }}
               />
             )}
           </Field>
-          <Field label={format(m.personPlacement)}>
-            {(id) => (
+          <Field label={format(m.personPlacement)} required>
+            {(id, control) => (
               <Button
                 id={id}
+                {...control}
                 type="button"
                 variant="outline"
                 justify="space-between"
@@ -226,8 +262,8 @@ export function NewUserForm({
               </Button>
             )}
           </Field>
-          <Field label={format(m.userTypeLabel)}>
-            {(id) =>
+          <Field label={format(m.userTypeLabel)} required>
+            {(id, control) =>
               options.length === 0 ? (
                 // Not an empty dropdown. No kind of person may stand at this
                 // unit, which is a rule set on the types themselves - so the
@@ -244,7 +280,7 @@ export function NewUserForm({
                 </span>
               ) : (
                 <Select value={userTypeId} onValueChange={setUserTypeId}>
-                  <SelectTrigger id={id} xstyle={styles.fullField}>
+                  <SelectTrigger id={id} {...control} xstyle={styles.fullField}>
                     <SelectValue placeholder={format(m.selectUserType)} />
                   </SelectTrigger>
                   <SelectContent>
