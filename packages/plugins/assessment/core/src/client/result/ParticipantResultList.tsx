@@ -452,6 +452,9 @@ export function ParticipantResultList({
   latestScores.current = pageScores.queryKey
   const latestRows = useRef(pageRows.queryKey)
   latestRows.current = pageRows.queryKey
+  // the notices' own readings, named below where they are read
+  const latestAlerts = useRef<QueryKey>([])
+  const latestPlacements = useRef<QueryKey>([])
   const [movedAt, setMovedAt] = useState(0)
   const live = useMemo(
     () =>
@@ -493,6 +496,11 @@ export function ParticipantResultList({
       }
       const totals = behind(latestScores.current)
       if (totals || behind(latestRows.current)) live.wake(totals)
+      // and what the roster is waiting on its administrator for, on the
+      // same terms: a question's steps or the organization may have moved
+      for (const key of [latestAlerts.current, latestPlacements.current]) {
+        if (behind(key)) void queryClient.invalidateQueries({ queryKey: key, exact: true })
+      }
       return
     }
     // a question's review steps changed: who they find nowhere may have too
@@ -545,19 +553,17 @@ export function ParticipantResultList({
 
   // whether the organization has anybody elsewhere: the totals ride on the
   // first page, so one row is all this has to fetch to know
-  const placements = useQuery({
-    ...query.assessment.listParticipantPlacements.queryOptions({
-      params: { batchId },
-      query: { limit: '1' },
-    }),
-    enabled: manageable,
+  const placementsRead = query.assessment.listParticipantPlacements.queryOptions({
+    params: { batchId },
+    query: { limit: '1' },
   })
+  const placements = useQuery({ ...placementsRead, enabled: manageable })
+  latestPlacements.current = placementsRead.queryKey
   // whether some question's review steps find anybody on the roster nowhere,
   // read off the roster and the questions as they are now (§32.93)
-  const reach = useQuery({
-    ...query.assessment.reviewAlerts.queryOptions({ params: { batchId } }),
-    enabled: manageable,
-  })
+  const alertsRead = query.assessment.reviewAlerts.queryOptions({ params: { batchId } })
+  const reach = useQuery({ ...alertsRead, enabled: manageable })
+  latestAlerts.current = alertsRead.queryKey
   const [unreachableOpen, setUnreachableOpen] = useState(false)
 
   // targeted invalidation: only this plugin's reads, never the whole cache

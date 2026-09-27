@@ -2,7 +2,7 @@ import ParticipantResultsPage from '../src/client/result/ParticipantResultsPage.
 import { lazy } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
-import { Effect, Stream } from 'effect'
+import { Effect, Queue, Stream } from 'effect'
 import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The roster as the results page walks it: by page number, narrowed and
@@ -1439,6 +1439,33 @@ describe('people the review steps find nowhere', () => {
       await unmount()
     }
     await page.viewport(1280, 800)
+  })
+
+  // What the roster waits on can change under it: a question's steps moved,
+  // or anything at all while the line was down. The count is asked again
+  // for either, as the rows are.
+  it('counts again who cannot file when a question changes, and after a reconnect', async () => {
+    const said = { wake: (_kind: string) => {} }
+    const watchBatch = () =>
+      Effect.succeed(
+        Stream.callback<{ kind: string }>((queue) =>
+          Effect.sync(() => {
+            said.wake = (kind) => void Queue.offerUnsafe(queue, { kind })
+          }),
+        ),
+      )
+    const held = { count: 12 }
+    await open({ watchBatch, reviewAlerts: () => alerts(held.count)() })
+    const notice = page.getByTestId('unreachable-notice')
+    await expect.element(notice).toHaveAttribute('data-count', '12')
+    held.count = 3
+    said.wake('item-changed')
+    await expect.element(notice).toHaveAttribute('data-count', '3')
+    // a line that opens again finds a count read a while before
+    held.count = 5
+    await new Promise((settle) => setTimeout(settle, 2_300))
+    said.wake('sync')
+    await expect.element(notice).toHaveAttribute('data-count', '5')
   })
 
   it('asks nothing of a reader who only re-determines', async () => {
