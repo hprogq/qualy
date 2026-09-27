@@ -1129,6 +1129,7 @@ function Desk({
                       {row.at !== null && <span {...stylex.props(styles.todoAt)}>{row.at}</span>}
                       {row.detail !== null && (
                         <span
+                          data-part="detail"
                           {...stylex.props(
                             styles.todoDetail,
                             row.at === null && styles.todoTimeless,
@@ -1426,7 +1427,7 @@ function adminRows(
       subject: format(m.itemsStuckSummary, { waiting, units }),
       detail:
         gaps.length > MOST_NAMED
-          ? format(m.overviewAdminMoreUnits, { items: listJoin(named), total: gaps.length })
+          ? format(m.overviewAdminMoreUnits, { total: gaps.length, items: listJoin(named) })
           : listJoin(named),
       verb: format(m.itemsStuckAppoint),
       go: () => go('assessment/batch-access'),
@@ -1437,11 +1438,18 @@ function adminRows(
   // all, somebody an escalation route misses can file and be judged, and
   // only cannot appeal. A question may stand in both.
   const { cannotSubmit, cannotAppeal, submitItems, appealItems } = alerts.unreachable
-  const named = (questions: readonly AlertedQuestion[]) => {
-    const titles = listJoin(questions.slice(0, MOST_NAMED).map((one) => one.title))
-    return questions.length > MOST_NAMED
-      ? format(m.overviewAdminMoreItems, { items: titles, total: questions.length })
-      : titles
+  // past three named, how many comes first, where a line cut short keeps it
+  const named = (questions: readonly AlertedQuestion[], stopped: 'submit' | 'appeal') => {
+    const items = listJoin(questions.slice(0, MOST_NAMED).map((one) => one.title))
+    const total = questions.length
+    if (stopped === 'submit') {
+      return total > MOST_NAMED
+        ? format(m.overviewAdminCannotSubmitMany, { items, total })
+        : format(m.overviewAdminCannotSubmit, { items })
+    }
+    return total > MOST_NAMED
+      ? format(m.overviewAdminCannotAppealMany, { items, total })
+      : format(m.overviewAdminCannotAppeal, { items })
   }
   if (cannotSubmit > 0) {
     row({
@@ -1450,7 +1458,7 @@ function adminRows(
       count: cannotSubmit,
       items: submitItems.map((one) => one.id),
       subject: format(m.overviewAdminUnreachable, { count: cannotSubmit }),
-      detail: format(m.overviewAdminCannotSubmit, { items: named(submitItems) }),
+      detail: named(submitItems, 'submit'),
       verb: format(m.overviewGoItems),
       go: () => go('assessment/batch-items'),
     })
@@ -1462,7 +1470,7 @@ function adminRows(
       count: cannotAppeal,
       items: appealItems.map((one) => one.id),
       subject: format(m.overviewAdminUnreachableAppeal, { count: cannotAppeal }),
-      detail: format(m.overviewAdminCannotAppeal, { items: named(appealItems) }),
+      detail: named(appealItems, 'appeal'),
       verb: format(m.overviewGoItems),
       go: () => go('assessment/batch-items'),
     })

@@ -5707,13 +5707,11 @@ const i18n = definePluginMessages({
       id: 'assessment/overview/admin-gap-unit',
       defaultMessage: '{unit} ({roles})',
     },
+    // past three named, how many there are comes first: a line cut short
+    // at its end keeps its count
     overviewAdminMoreUnits: {
       id: 'assessment/overview/admin-more-units',
-      defaultMessage: '{items} and more ({total} in all)',
-    },
-    overviewAdminMoreItems: {
-      id: 'assessment/overview/admin-more-items',
-      defaultMessage: '{items} and more ({total} in all)',
+      defaultMessage: '{total} units, including {items}',
     },
     overviewAdminUnreachable: {
       id: 'assessment/overview/admin-unreachable',
@@ -5729,9 +5727,17 @@ const i18n = definePluginMessages({
       id: 'assessment/overview/admin-cannot-submit',
       defaultMessage: "Can't be submitted: {items}",
     },
+    overviewAdminCannotSubmitMany: {
+      id: 'assessment/overview/admin-cannot-submit-many',
+      defaultMessage: "{total} questions can't be submitted, including {items}",
+    },
     overviewAdminCannotAppeal: {
       id: 'assessment/overview/admin-cannot-appeal',
       defaultMessage: "Can't be appealed: {items}",
+    },
+    overviewAdminCannotAppealMany: {
+      id: 'assessment/overview/admin-cannot-appeal-many',
+      defaultMessage: "{total} questions can't be appealed, including {items}",
     },
     overviewAdminPlacementsGone: {
       id: 'assessment/overview/admin-placements-gone',

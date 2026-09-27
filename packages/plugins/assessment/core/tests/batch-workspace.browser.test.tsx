@@ -411,6 +411,66 @@ describe('the administration lane of the overview', () => {
     expect(itemsOf('admin-unappealable')).toEqual(['item-b', 'item-c'])
   })
 
+  // Past three names a row says how many there are, and says it first: at
+  // the end of a line cut short at two, the count was the part cut off.
+  it('keeps how many there are in sight when the names run past two lines', async () => {
+    await page.viewport(1024, 768)
+    const units = ['一', '二', '三', '四', '五', '六', '七', '九'].map((at) => `软件工程${at}班`)
+    const titles = [
+      '前三学年平均学分绩与专业排名',
+      '学科竞赛获奖（国家级及以上）',
+      '社会实践与志愿服务',
+      '学生干部任职',
+      '科研论文发表',
+      '创新创业项目',
+      '文体活动获奖',
+    ]
+    await shelled(`/assessment/batches/${BATCH_ID}`, {
+      reviewAlerts: () =>
+        Effect.succeed({
+          groups: units.map((unit, at) => ({
+            nodeId: `${NODE_ID.slice(0, -1)}${at}`,
+            nodeName: unit,
+            unitPath: ['软件学院', unit],
+            roleIds: [],
+            roleNames: ['班长', '学习委员', '团支书', '班级综测负责人'],
+            reason: 'no-assignee' as const,
+            waiting: 1,
+          })),
+          unreachable: {
+            routes: titles.map((itemTitle, at) => ({
+              itemId: `item-${at}`,
+              itemTitle,
+              route: 'normal' as const,
+              participants: 1,
+              levelNames: ['班级'],
+            })),
+            cannotSubmit: 1,
+            cannotAppeal: 0,
+          },
+        }),
+    })
+    await expect.element(page.getByTestId('overview-actions')).toBeVisible()
+    await expect.element(page.getByTestId('workspace-rail')).toBeVisible()
+    /** where the count stands against the box its line is cut to */
+    const countInSight = (action: string, total: number) => {
+      const detail = row(action)!.querySelector<HTMLElement>('[data-part="detail"]')!
+      const words = detail.firstChild!
+      const at = words.textContent!.indexOf(String(total))
+      expect(at).toBeGreaterThanOrEqual(0)
+      const range = document.createRange()
+      range.setStart(words, at)
+      range.setEnd(words, at + String(total).length)
+      const seen = range.getBoundingClientRect()
+      return seen.height > 0 && seen.bottom <= detail.getBoundingClientRect().bottom + 0.5
+    }
+    // the lines really are cut: otherwise the count is in sight wherever it stands
+    const gap = row('admin-review-gap')!.querySelector<HTMLElement>('[data-part="detail"]')!
+    expect(gap.scrollHeight).toBeGreaterThan(gap.clientHeight)
+    expect(countInSight('admin-review-gap', units.length)).toBe(true)
+    expect(countInSight('admin-unreachable', titles.length)).toBe(true)
+  })
+
   it('says only the appeals when every question can still be filed into', async () => {
     await page.viewport(1280, 800)
     await shelled(`/assessment/batches/${BATCH_ID}`, {
