@@ -81,7 +81,7 @@ jobs:
       # wrote the bytecode and the dependency set that was compiled - and
       # restored from the newest near miss, because a cache that is mostly
       # right still saves most of the compiling.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: /tmp/node-compile-cache
           key: node-compile-24.20.0-${{ hashFiles('pnpm-lock.yaml') }}
@@ -177,7 +177,7 @@ jobs:
       - name: resolve playwright version
         id: playwright
         run: echo "version=$(node -e "console.log(require('playwright/package.json').version)")" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ steps.playwright.outputs.version }}
