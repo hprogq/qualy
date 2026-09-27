@@ -6,7 +6,12 @@ import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
-import { ALERTED_ENTRIES, entryAlerted, useAdminAlerts } from './admin-alerts.ts'
+import {
+  ALERTED_ENTRIES,
+  entryAlerted,
+  owesAdministration,
+  useAdminAlerts,
+} from './admin-alerts.ts'
 
 // A dot beside the administration entries that have something waiting
 // behind them: questions whose review cannot go on, a roster the
@@ -16,7 +21,8 @@ import { ALERTED_ENTRIES, entryAlerted, useAdminAlerts } from './admin-alerts.ts
 // submissions, appointments - and a number beside "Questions" would read as
 // a count of questions. The overview's desk says what each one is. Answered
 // only for this plugin's own three entries, and only to whoever administers
-// the open batch; everybody else's rail is untouched.
+// the open batch while it is not archived, where none of it could be mended;
+// everybody else's rail is untouched.
 
 const styles = stylex.create({
   dot: {
@@ -48,7 +54,8 @@ function Dot({ navigationId }: { navigationId: string }) {
     staleTime: 30_000,
     enabled: isRecordId(batchId),
   })
-  const alerts = useAdminAlerts(batchId, detail.data?.batch.capabilities.manage === true)
+  const batch = detail.data?.batch
+  const alerts = useAdminAlerts(batchId, batch !== undefined && owesAdministration(batch))
   if (!entryAlerted(alerts, navigationId)) return null
   // named, so the entry reads as one that needs attention to whoever
   // hears the rail rather than sees it

@@ -26,7 +26,12 @@ import { BatchFlow } from './batch/BatchFlow.tsx'
 import { calendarDaysBetween, inZone, useBatchZone, yearOf } from './batch/zone.ts'
 import { assessmentMessages as m } from './i18n.ts'
 import { UnreadDot } from './entry/workspace/marks.tsx'
-import { useAdminAlerts, type AdminAlerts, type AlertedQuestion } from './batch/admin-alerts.ts'
+import {
+  owesAdministration,
+  useAdminAlerts,
+  type AdminAlerts,
+  type AlertedQuestion,
+} from './batch/admin-alerts.ts'
 
 // The batch's front page as one desk (§32.73, laid out to design 2a/2b):
 // the page description says what stands on the desk, the body starts
@@ -641,7 +646,12 @@ export default function BatchOverviewPage() {
             {batch.descriptionMd !== null && batch.descriptionMd.trim() !== '' && (
               <BatchNote text={batch.descriptionMd.trim()} />
             )}
-            <MyDesk batchId={batchId} overview={overview} manage={batch.capabilities.manage} />
+            <MyDesk
+              batchId={batchId}
+              overview={overview}
+              manage={batch.capabilities.manage}
+              owed={owesAdministration(batch)}
+            />
           </div>
 
           <aside {...stylex.props(styles.aside)}>
@@ -800,23 +810,39 @@ function MyDesk({
   batchId,
   overview,
   manage,
+  owed,
 }: {
   batchId: string
   overview: DeskRead
   /** the reader administers this batch, by the batch's own word */
   manage: boolean
+  /** and the batch can still be mended, so what it owes is worth asking for */
+  owed: boolean
 }) {
   // the administrator's counts are asked for by administrators only: to
   // anybody else every one of those reads is a refusal
   return manage ? (
-    <AdministeredDesk batchId={batchId} overview={overview} />
+    <AdministeredDesk batchId={batchId} overview={overview} owed={owed} />
   ) : (
     <Desk batchId={batchId} overview={overview} alerts={null} />
   )
 }
 
-function AdministeredDesk({ batchId, overview }: { batchId: string; overview: DeskRead }) {
-  const alerts = useAdminAlerts(batchId, true)
+/**
+ * An administrator's desk. On an archived batch it is still there - a
+ * manager with no other standing would otherwise meet an empty page - and
+ * says there is nothing to do, since nothing it would list can be mended.
+ */
+function AdministeredDesk({
+  batchId,
+  overview,
+  owed,
+}: {
+  batchId: string
+  overview: DeskRead
+  owed: boolean
+}) {
+  const alerts = useAdminAlerts(batchId, owed)
   return <Desk batchId={batchId} overview={overview} alerts={alerts} />
 }
 
@@ -1020,7 +1046,7 @@ function Desk({
         {overview.isPending || alerts?.pending === true ? (
           <Skeleton className={stylex.props(styles.actionsSkeleton).className} />
         ) : todo.length === 0 ? (
-          <div {...stylex.props(styles.clearCard)}>
+          <div data-testid="overview-clear" {...stylex.props(styles.clearCard)}>
             <span {...stylex.props(styles.clearMark)}>
               <CheckIcon aria-hidden className={stylex.props(styles.clearIcon).className} />
             </span>

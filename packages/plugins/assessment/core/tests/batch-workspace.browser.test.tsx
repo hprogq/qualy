@@ -429,6 +429,36 @@ describe('the administration lane of the overview', () => {
     expect(row('admin-unappealable')?.getAttribute('data-items')).toBe('item-b')
   })
 
+  // An archived batch takes no appointment, no roster change and no change
+  // to its questions, so nothing the lane would list could be mended there:
+  // the staff page counts none of it for the same reason (§32.97).
+  it('lists nothing on an archived batch, and lights no dot beside its rail', async () => {
+    await page.viewport(1280, 800)
+    const reviewAlerts = vi.fn(() => Effect.succeed(stopped))
+    const listParticipantPlacements = vi.fn(() =>
+      Effect.succeed({ items: [], nextCursor: null, changedTotal: 2, unavailableTotal: 1 }),
+    )
+    const previewAccessSync = vi.fn(() =>
+      Effect.succeed({ items: [], nextCursor: null, pendingTotal: 3, lapsedTotal: 0 }),
+    )
+    await shelled(`/assessment/batches/${BATCH_ID}`, {
+      getBatch: () => Effect.succeed({ batch: batch({ status: 'archived' }) }),
+      reviewAlerts,
+      listParticipantPlacements,
+      previewAccessSync,
+    })
+    // the desk is still there for a manager with nothing else here, and
+    // says there is nothing to do
+    await expect.element(page.getByTestId('overview-clear')).toBeVisible()
+    await expect.element(page.getByTestId('workspace-rail')).toBeInTheDocument()
+    expect(lane()).toHaveLength(0)
+    expect(page.getByTestId('overview-actions').elements()).toHaveLength(0)
+    expect(document.querySelectorAll('[data-testid="rail-alert"]')).toHaveLength(0)
+    expect(reviewAlerts).not.toHaveBeenCalled()
+    expect(listParticipantPlacements).not.toHaveBeenCalled()
+    expect(previewAccessSync).not.toHaveBeenCalled()
+  })
+
   it('says what stands behind each administration entry of the rail with a dot', async () => {
     await page.viewport(1280, 800)
     await shelled(`/assessment/batches/${BATCH_ID}`, {
