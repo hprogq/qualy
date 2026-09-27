@@ -103,6 +103,28 @@ describe('the terminology screen', () => {
   })
 })
 
+// Words that could not be read said the server's sentence and a retry,
+// whatever the reason; ones the reader may not read are not worth a retry,
+// and the answer is a pane under the page's own title.
+describe('the terminology screen when the words could not be read', () => {
+  it('says words the reader may not read as that, with no retry', async () => {
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed(emptyManifest()) },
+        settings: { getTerminology: () => Effect.fail(apiError('ACCESS_DENIED')) },
+      }),
+      children: <TerminologyPage />,
+    })
+    const state = page
+      .getByTestId('terminology-page')
+      .getByRole('status')
+      .filter({ has: page.getByRole('heading') })
+    await expect.element(state).toHaveAttribute('data-state', 'denied')
+    await expect.element(state.getByRole('heading', { level: 2 })).toBeVisible()
+    expect(state.getByRole('button', { name: '重试' }).elements()).toHaveLength(0)
+  })
+})
+
 describe('the terminology screen on a phone', () => {
   it('lists the words and opens one to change it', async () => {
     // A dozen terms is a dozen forms, and a dozen forms opened at once is a

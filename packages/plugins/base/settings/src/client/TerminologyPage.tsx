@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { useApi, useRunApi } from '@qualy/web-runtime'
+import { useApi, useLoadFailure, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -95,7 +95,8 @@ const LOCALE_NAME = {
 } as const
 
 export default function TerminologyPage() {
-  const { format, formatText, formatError } = useI18n()
+  const { format, formatText } = useI18n()
+  const failures = useLoadFailure()
   // Narrow, a dozen terms means a dozen forms opened at once - two boxes and
   // two buttons each, a screen apiece. The list says what every word is
   // called today; changing one is a press away, in the panel that opens.
@@ -108,7 +109,8 @@ export default function TerminologyPage() {
       <div {...stylex.props(styles.page)} data-testid="terminology-page">
         <AsyncSection
           pending={terminology.isPending}
-          error={terminology.isError ? formatError(terminology.error) : null}
+          error={terminology.isError ? failures.of(terminology.error) : null}
+          framed
           loadingLabel={format(m.loading)}
           retryLabel={format(m.retry)}
           onRetry={() => void terminology.refetch()}
