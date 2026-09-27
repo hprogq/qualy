@@ -47,6 +47,11 @@ import type { Student, World } from './world.ts'
 
 export interface TermPlan {
   readonly term: Term
+  /**
+   * The school's own name for the term's batch: its academic year and term,
+   * the grade it covers, and what the school calls the exercise - 测评 until
+   * 2025-2026, 考核 from then on, so a renamed programme shows in the list.
+   */
   readonly name: string
   readonly material: { readonly start: string; readonly end: string }
   /** the day filing opens, Beijing time */
@@ -60,7 +65,7 @@ export interface TermPlan {
 export const TERM_PLANS: readonly TermPlan[] = [
   {
     term: '23-24-1',
-    name: '2023-2024学年第一学期综合素质测评',
+    name: '2023-2024-1 软件学院 2023 级本科生综合素质测评',
     material: { start: '2023-09-01', end: '2024-03-01' },
     day: '2024-03-01',
     appeals: 36,
@@ -68,7 +73,7 @@ export const TERM_PLANS: readonly TermPlan[] = [
   },
   {
     term: '23-24-2',
-    name: '2023-2024学年第二学期综合素质测评',
+    name: '2023-2024-2 软件学院 2023 级本科生综合素质测评',
     material: { start: '2024-03-01', end: '2024-09-01' },
     day: '2024-09-02',
     appeals: 106,
@@ -76,7 +81,7 @@ export const TERM_PLANS: readonly TermPlan[] = [
   },
   {
     term: '24-25-1',
-    name: '2024-2025学年第一学期综合素质测评',
+    name: '2024-2025-1 软件学院 2023 级本科生综合素质测评',
     material: { start: '2024-09-01', end: '2025-03-01' },
     day: '2025-03-03',
     appeals: 80,
@@ -84,7 +89,7 @@ export const TERM_PLANS: readonly TermPlan[] = [
   },
   {
     term: '24-25-2',
-    name: '2024-2025学年第二学期综合素质测评',
+    name: '2024-2025-2 软件学院 2023 级本科生综合素质测评',
     material: { start: '2025-03-01', end: '2025-09-01' },
     day: '2025-09-01',
     appeals: 168,
@@ -92,7 +97,7 @@ export const TERM_PLANS: readonly TermPlan[] = [
   },
   {
     term: '25-26-1',
-    name: '2025-2026学年第一学期综合素质测评',
+    name: '2025-2026-1 软件学院 2023 级本科生综合素质考核',
     material: { start: '2025-09-01', end: '2026-03-01' },
     day: '2026-03-15',
     appeals: 154,
@@ -100,13 +105,17 @@ export const TERM_PLANS: readonly TermPlan[] = [
   },
   {
     term: '25-26-2',
-    name: '2025-2026学年第二学期综合素质测评',
+    name: '2025-2026-2 软件学院 2023 级本科生综合素质考核',
     material: { start: '2026-03-01', end: '2026-09-01' },
     day: '2026-09-01',
     appeals: 72,
     onLeave: 0,
   },
 ]
+
+/** what the batch's name calls the term's exercise */
+const exerciseOf = (plan: TermPlan) =>
+  plan.name.endsWith('考核') ? '综合素质考核' : '综合素质测评'
 
 /** a moment `days` after the plan's day, at a Beijing wall-clock time */
 export const dayAt = (day: string, days: number, time: string) => {
@@ -263,7 +272,7 @@ export const runTerm = (input: {
           yield* assessment.advancePhase(
             t,
             batch.id,
-            first ? { to, force: true, reason: '按学院通知启动本学期综合素质测评' } : { to },
+            first ? { to, force: true, reason: `按学院通知启动本学期${exerciseOf(plan)}` } : { to },
             lead,
           )
         }),

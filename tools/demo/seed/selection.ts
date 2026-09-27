@@ -426,7 +426,7 @@ export const runSelection = (input: {
       assessment.createBatch(
         t,
         {
-          name: '2027届推荐优秀应届本科毕业生免试攻读硕士学位研究生综合评价',
+          name: '2027 届软件学院推荐免试研究生综合评价',
           descriptionMd: SELECTION_DESCRIPTION,
           materialRange: { start: '2023-09-01', end: '2026-09-01' },
           import: { orgNodeIds: [world.grade], userTypeIds: [] },
