@@ -115,10 +115,7 @@ describe('the terminology screen when the words could not be read', () => {
       }),
       children: <TerminologyPage />,
     })
-    const state = page
-      .getByTestId('terminology-page')
-      .getByRole('status')
-      .filter({ has: page.getByRole('heading') })
+    const state = page.getByTestId('terminology-page').getByResourceState()
     await expect.element(state).toHaveAttribute('data-state', 'denied')
     await expect.element(state.getByRole('heading', { level: 2 })).toBeVisible()
     expect(state.getByRole('button', { name: '重试' }).elements()).toHaveLength(0)

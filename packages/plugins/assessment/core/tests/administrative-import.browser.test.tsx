@@ -620,7 +620,7 @@ describe('importing a workbook of administrative records', () => {
     await open(base, {
       listAdministrativeEntries: () => Effect.fail(apiError('ACCESS_DENIED')),
     })
-    const state = page.getByRole('status').filter({ has: page.getByRole('heading') })
+    const state = page.getByResourceState()
     await expect.element(state).toHaveAttribute('data-state', 'denied')
     await expect.element(state.getByRole('heading', { level: 2 })).toBeVisible()
     expect(state.getByRole('button', { name: '重试' }).elements()).toHaveLength(0)
@@ -634,7 +634,7 @@ describe('importing a workbook of administrative records', () => {
       listItems: () => Effect.fail(apiError('SERVICE_UNAVAILABLE')),
     })
     const dialog = page.getByRole('dialog')
-    const state = dialog.getByRole('status').filter({ has: page.getByRole('heading') })
+    const state = dialog.getByResourceState()
     await expect.element(state).toHaveAttribute('data-state', 'unavailable')
     await expect.element(state.getByRole('heading', { level: 3 })).toBeVisible()
     await expect.element(state.getByRole('button', { name: '重试' })).toBeVisible()
@@ -648,7 +648,7 @@ describe('importing a workbook of administrative records', () => {
     })
     const detailPane = page.getByTestId('administrative-import-detail')
     await expect.element(detailPane).toBeVisible()
-    const state = detailPane.getByRole('status').filter({ has: page.getByRole('heading') })
+    const state = detailPane.getByResourceState()
     await expect.element(state).toHaveAttribute('data-state', 'unavailable')
     await expect.element(state.getByRole('heading', { level: 3 })).toBeVisible()
     await expect.element(state.getByRole('button', { name: '重试' })).toBeVisible()

@@ -415,7 +415,7 @@ describe('a staff reading that failed', () => {
       routes: [{ path: '/assessment/batches/:batchId/access', element: <BatchAccessPage /> }],
       route: `/assessment/batches/${BATCH_ID}/access`,
     })
-    const state = page.getByRole('status').filter({ has: page.getByRole('heading') })
+    const state = page.getByResourceState()
     await expect.element(state).toHaveAttribute('data-state', 'denied')
     await expect.element(state.getByRole('heading', { level: 2 })).toBeVisible()
     expect(state.getByRole('button', { name: '重试' }).elements()).toHaveLength(0)
@@ -440,10 +440,7 @@ describe('a staff reading that failed', () => {
         />
       ),
     })
-    const state = page
-      .getByRole('dialog')
-      .getByRole('status')
-      .filter({ has: page.getByRole('heading') })
+    const state = page.getByRole('dialog').getByResourceState()
     await expect.element(state).toHaveAttribute('data-state', 'unavailable')
     await expect.element(state.getByRole('heading', { level: 3 })).toBeVisible()
     await expect.element(state.getByRole('button', { name: '重试' })).toBeVisible()

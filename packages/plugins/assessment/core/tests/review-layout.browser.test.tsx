@@ -1360,7 +1360,7 @@ describe('a queue longer than one page', () => {
       route: `/assessment/batches/${BATCH_ID}/reviews`,
     })
     const failure = page
-      .getByRole('status')
+      .getByResourceState()
       .filter({ has: page.getByRole('heading', { level: 2 }) })
     await expect.element(failure).toBeVisible()
     const seat = failure.element()

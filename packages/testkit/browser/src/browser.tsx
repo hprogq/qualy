@@ -1,6 +1,7 @@
 import { StrictMode, type ReactNode } from 'react'
 import { Route, Routes, useLocation } from 'react-router'
 import { render } from 'vitest-browser-react'
+import { locators, type Locator } from 'vitest/browser'
 import { I18nProvider } from '@qualy/web-i18n'
 import {
   GuardedMemoryRouter,
@@ -15,6 +16,23 @@ import { Effect } from 'effect'
 import { toast } from '@qualy/ui/toast'
 
 import type { I18nProviderProps } from '@qualy/web-i18n'
+
+declare module 'vitest/browser' {
+  interface LocatorSelectors {
+    /**
+     * The pane a reading that failed, or found nothing, is said in. Its
+     * words are spoken from a live region of their own, so the pane is found
+     * by what it is rather than by a status role.
+     */
+    getByResourceState(): Locator
+  }
+}
+
+locators.extend({
+  getByResourceState() {
+    return 'css=[data-slot="resource-state"]'
+  },
+})
 
 // What a screen needs to exist at all: a client, a manifest, a locale and a
 // router, assembled the way the host assembles them.

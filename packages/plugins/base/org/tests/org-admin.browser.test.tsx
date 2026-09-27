@@ -617,7 +617,7 @@ describe('the organization screen', () => {
       route: '/admin/org',
       children: <OrgPage />,
     })
-    const state = page.getByRole('status').filter({ has: page.getByRole('heading') })
+    const state = page.getByResourceState()
     await expect.element(state).toHaveAttribute('data-state', 'unavailable')
     await expect.element(state.getByRole('heading', { level: 2 })).toBeVisible()
     await expect.element(state.getByRole('button', { name: '重试' })).toBeVisible()

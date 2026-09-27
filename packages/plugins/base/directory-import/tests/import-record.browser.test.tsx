@@ -128,10 +128,7 @@ describe('the record of an import', () => {
   // sentence with a retry that could only fail again.
   it('says an import that is not there as that, with no retry', async () => {
     await open({ getUserImport: () => Effect.fail(apiError('USER_IMPORT_NOT_FOUND')) })
-    const state = page
-      .getByTestId('import-record-sheet')
-      .getByRole('status')
-      .filter({ has: page.getByRole('heading') })
+    const state = page.getByTestId('import-record-sheet').getByResourceState()
     await expect.element(state).toHaveAttribute('data-state', 'missing')
     await expect.element(state.getByRole('heading', { level: 3 })).toBeVisible()
     expect(state.getByRole('button', { name: '重试' }).elements()).toHaveLength(0)
