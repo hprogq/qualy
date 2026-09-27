@@ -37,6 +37,7 @@ import { Status, Tag } from '@qualy/ui/screen'
 import { iamMessages as m } from '../i18n.ts'
 import { rosterSearch } from './users/roster-address.ts'
 import { authApi } from '../api.ts'
+import { UserMoveDialog } from './UserMoveDialog.tsx'
 import { needsReauthentication, useReauthentication } from '../account/Reauthentication.tsx'
 import { instantWords } from '../when.ts'
 import { PersonFacts, type PersonFact } from './person-facts.tsx'
@@ -175,6 +176,7 @@ export default function UserDetailHeader() {
   const [editing, setEditing] = useState(false)
   const [confirmingDisable, setConfirmingDisable] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [moving, setMoving] = useState(false)
   const [displayName, setDisplayName] = useState('')
   const [businessNo, setBusinessNo] = useState('')
   const [email, setEmail] = useState('')
@@ -427,13 +429,20 @@ export default function UserDetailHeader() {
                 >
                   {format(m.editProfile)}
                 </Button>
-                {/* moving somebody is a section of their record, with the rules
-                      that refuse it said beside the tree; the band only leads there */}
+                {/* the same move the organization section offers, opened here:
+                      going to that section first did nothing visible when the
+                      reader was already on it */}
                 {accountManageable && (
-                  <Button variant="outline" size="sm" asChild>
-                    <PageLink page="auth/user-organization" params={{ userId }}>
-                      {format(m.transfer)}
-                    </PageLink>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    data-testid="band-move-open"
+                    onClick={() => {
+                      setFeedback(null)
+                      setMoving(true)
+                    }}
+                  >
+                    {format(m.transfer)}
                   </Button>
                 )}
                 {accountManageable && (
@@ -589,6 +598,22 @@ export default function UserDetailHeader() {
             onConfirm={() => remove.mutate(undefined)}
             onCancel={() => setConfirmingDelete(false)}
           />
+
+          {accountManageable && (
+            <UserMoveDialog
+              userId={userId}
+              open={moving}
+              onClose={() => setMoving(false)}
+              onStart={() => {
+                setFeedback(null)
+                setSaved(false)
+              }}
+              onDone={(outcome) => {
+                if (outcome.moved) setSaved(true)
+                else setFeedback(outcome.said)
+              }}
+            />
+          )}
         </>
       )}
       {reauthentication.dialog}

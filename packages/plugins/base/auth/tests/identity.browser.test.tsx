@@ -1240,6 +1240,17 @@ describe("a person's header", () => {
     expect(document.querySelector('[data-testid="feedback"]')).toBeNull()
   })
 
+  // Moving somebody from the band opens the move itself, over whichever
+  // section is open: sending the reader to the organization section first
+  // did nothing visible when they were already on it.
+  it('opens the move in place from the band', async () => {
+    await mount({ getUser: () => Effect.succeed({ ...person(), accountManageable: true }) })
+    await page.getByRole('button', { name: '调动' }).click()
+    await expect.element(page.getByTestId('move-picker')).toBeVisible()
+    // still on the record it was opened from, not sent to another section
+    expect(addressNow()).not.toMatch(/\/organization$/)
+  })
+
   // Somebody holding authority the reader could not grant: their record is
   // the reader's to edit, their account is not. The controls that would only
   // be refused are not drawn, and a save sends none of the account's fields.
@@ -1252,7 +1263,7 @@ describe("a person's header", () => {
       updateUser: update,
     })
     await expect.element(page.getByRole('button', { name: '编辑资料' })).toBeInTheDocument()
-    expect(page.getByRole('link', { name: '调动' }).query()).toBeNull()
+    expect(page.getByRole('button', { name: '调动' }).query()).toBeNull()
     expect(page.getByRole('button', { name: '更多操作' }).query()).toBeNull()
 
     await page.getByRole('button', { name: '编辑资料' }).click()
