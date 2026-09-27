@@ -10,7 +10,7 @@ import {
   useLoadFailure,
   usePageNavigate,
 } from '@qualy/web-runtime'
-import { useI18n, useList } from '@qualy/web-i18n'
+import { getApiErrorCode, useI18n, useList } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -170,6 +170,12 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
   const [tab, setTab] = useState<Tab>('permissions')
   const [feedback, setFeedback] = useState<string | null>(null)
   const [renaming, setRenaming] = useState(false)
+  // what a rename was refused for is said in its dialog, not behind it: a
+  // name another role has under the name, anything else above the fields
+  const [renameRefusal, setRenameRefusal] = useState<{
+    readonly taken: boolean
+    readonly said: string
+  } | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   // an active role's duties change live under every holder and every future
   // appointment, so that save states its blast radius before it lands
@@ -262,11 +268,21 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
         },
       }),
     ),
+    onMutate: () => setRenameRefusal(null),
     onSuccess: async () => {
       setRenaming(false)
       await refresh()
     },
+    onError: (error: unknown) =>
+      setRenameRefusal({
+        taken: getApiErrorCode(error) === 'ROLE_CONFLICT',
+        said: formatError(error),
+      }),
   })
+  const closeRename = () => {
+    setRenaming(false)
+    setRenameRefusal(null)
+  }
   const savePermissions = useMutation({
     ...run(() =>
       api.access.setRolePermissions({
@@ -960,10 +976,10 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
       <FormDialog
         open={renaming}
         title={format(m.rename)}
-        onClose={() => setRenaming(false)}
+        onClose={closeRename}
         footer={
           <>
-            <Button variant="outline" onClick={() => setRenaming(false)}>
+            <Button variant="outline" onClick={closeRename}>
               {format(m.cancel)}
             </Button>
             <Button
@@ -976,6 +992,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
           </>
         }
       >
+        <Feedback message={renameRefusal?.taken === false ? renameRefusal.said : null} />
         <form
           id="rename-role"
           {...stylex.props(styles.form)}
@@ -984,9 +1001,21 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
             saveProfile.mutate(undefined)
           }}
         >
-          <Field label={format(m.nameLabel)}>
-            {(id) => (
-              <Input id={id} value={name} onChange={(event) => setName(event.target.value)} />
+          <Field
+            label={format(m.nameLabel)}
+            required
+            error={renameRefusal?.taken === true ? renameRefusal.said : null}
+          >
+            {(id, control) => (
+              <Input
+                id={id}
+                {...control}
+                value={name}
+                onChange={(event) => {
+                  setName(event.target.value)
+                  if (renameRefusal?.taken === true) setRenameRefusal(null)
+                }}
+              />
             )}
           </Field>
           <Field label={format(m.descriptionLabel)}>

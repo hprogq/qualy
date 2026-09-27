@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { getApiErrorCode, useI18n } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
 import { Feedback, Field, FormDialog, RadioGroup } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -40,18 +40,26 @@ export function NewRoleForm({
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
   const [feedback, setFeedback] = useState<string | null>(null)
+  // a name another role already has is the name's to fix, said under it
+  const [taken, setTaken] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [kind, setKind] = useState<'tenant' | 'org'>('org')
 
   const create = useMutation({
     mutationFn: () => run(api.access.createRole({ payload: { name, kind } })),
-    onMutate: () => setFeedback(null),
+    onMutate: () => {
+      setFeedback(null)
+      setTaken(null)
+    },
     onSuccess: async (result: { id: string }) => {
       setName('')
       await queryClient.invalidateQueries({ queryKey: query.access.key() })
       onCreated(result.id)
     },
-    onError: (error: unknown) => setFeedback(formatError(error)),
+    onError: (error: unknown) =>
+      getApiErrorCode(error) === 'ROLE_CONFLICT'
+        ? setTaken(formatError(error))
+        : setFeedback(formatError(error)),
   })
 
   return (
@@ -80,13 +88,17 @@ export function NewRoleForm({
           create.mutate()
         }}
       >
-        <Field label={format(m.nameLabel)}>
-          {(id) => (
+        <Field label={format(m.nameLabel)} required error={taken}>
+          {(id, control) => (
             <Input
               id={id}
+              {...control}
               autoFocus
               value={name}
-              onChange={(event) => setName(event.target.value)}
+              onChange={(event) => {
+                setName(event.target.value)
+                setTaken(null)
+              }}
             />
           )}
         </Field>
