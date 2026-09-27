@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { PICTURES } from '../pictures.ts'
 import { itemsOf, type Term } from '../rules.ts'
 import { SCRIPTED_ASKS } from '../seed/asks.ts'
@@ -51,10 +51,6 @@ const CERTIFICATES: Readonly<Record<string, { level: string; rank: number; team:
 }
 
 describe('the persona episodes', () => {
-  afterEach(() => {
-    delete process.env.QUALY_DEMO_EPISODES
-  })
-
   it('plays every kind of episode in some term', () => {
     const played = new Set(Object.values(EPISODES).flatMap((list) => list.map((one) => one.kind)))
     expect([...EPISODE_KINDS].filter((kind) => !played.has(kind))).toEqual([])
