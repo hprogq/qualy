@@ -20463,3 +20463,17 @@ W12 审查意见收尾（十一组，分组见仓库外 `audit-2026-09-25/wave13
 ### 验收（实际执行）
 
 - monaco-editor 0.57.0：内嵌 `DOMPurify 3.4.15`；`pnpm typecheck` exit 0；公式浏览器套件 `Test Files  11 passed (11)`，`Tests  79 passed (79)`；`tools/tests` `Test Files  56 passed (56)`，`Tests  356 passed (356)`；在 5433 临时库上 `pnpm build` → check-staged-web（`198 assets`）→ check-chunks → check-csp-build → check-public-web → `qualy deploy` → seed → smoke-production → check-csp-enforce（`/login`、`/assessment/batches`、`/library/formulas` 0 violation），全部通过。
+
+## 主分支 CI 转绿（2026-09-28）
+
+- image job：release smoke 的 seed 一步从源码检出运行，该 job 此前不装依赖（`Cannot find package 'pg'`）；加 `pnpm/action-setup` 与 `pnpm install --frozen-lockfile`（`3b099f6b2`）。顺带把 `actions/setup-node` 升到 v7、`actions/cache` 升到 v6（两者只是迁移到 ESM；v6 起自动缓存只管 npm，各 job 本来就显式 `cache: pnpm`），Dependabot 的 #4、#5 随之自动关闭（`dbb6a2f6f`）。
+- 在与 CI 同版本的 Playwright 镜像（`mcr.microsoft.com/playwright:v1.62.1-noble`，中文字体为文泉驿正黑）里用干净检出复现：
+  - stage-plan「1024 宽度下长阶段名完整」稳定失败：文泉驿在 13.5px 下每字宽 14px，苹方是 13.5px；1024 且侧栏打开时名称列只有 137px，macOS 一行 10 字只余 2px，Linux 只放得下 9 字，19 字的名称折成三行被两行截断切掉。这是真实的版面余量不足，名称列由 1.9fr 调到 2.3fr（147px，每字 14.7px 以内的中文字体都放得下；「开放内容」列 74px 仍两行完整，英文「No actions enabled」同样两行）（`f98a5ea14`）。
+  - unit-path 标记位置 −11px：用例写成 `poll(apart) ≤ 8` 再断言 `≥ 0`，负值在布局稳定前就满足了前者；改为轮询「落在 0 到 8 之间」（`0f066c581`）。组件另在 `document.fonts` 的 `loadingdone` 时重量一次（与 `Trail.tsx` 同一做法），字体到来而容器不变时标记不再滞留（`5f288ed25`）；为它写的模拟用例在无修复时也通过，没有提交。
+  - sign-in：密码错误后按钮按设计保持禁用 `PAUSE_MS = 1000`，与轮询默认的 1 秒等待相撞，改为等 3 秒（`e5d415a89`）。batch-workspace：先等「任意一个 h1」再假定它属于资源状态，慢机器上先画出的可能是别的标题，改用 testkit 的 `getByResourceState()`（`b5ad65692`）。
+- Dependabot 剩 7 条：fast-xml-parser 6 条（cos-js-sdk-v5 的 dist 内联 4.5.0；启用 COS 后会随上传驱动进入浏览器，只解析桶的应答）、uuid 1 条（只调 v4），待决定是否以理由关闭。
+
+### 验收（实际执行）
+
+- Linux 容器（4 核，与 GitHub ubuntu-latest 同规格）`pnpm test:browser`：修复前 `Tests  1 failed | 1562 passed (1563)`（unit-path，stage-plan 已先修）；修复后 `Test Files  121 passed (121)`，`Tests  1563 passed (1563)`。本机 stage-plan `26 passed`、unit-path `10 passed`、sign-in 与 batch-workspace `44 passed`；`pnpm typecheck`、`pnpm lint`、`pnpm lint:types` exit 0；`tools/tests/release-inputs.test.ts` 通过。
+- GitHub Actions run 36352912465（`b5ad65692`）：static、ci、browser、browser-webkit、image 全部 success。
