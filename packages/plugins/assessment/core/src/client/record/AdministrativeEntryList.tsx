@@ -12,6 +12,7 @@ import { Button } from '@qualy/ui/button'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { ListEmpty } from './ListEmpty.tsx'
 import { ListSkeleton } from './ListSkeleton.tsx'
+import { recordColumns } from './columns.stylex.ts'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { RecordStanding } from './RecordStanding.tsx'
@@ -39,17 +40,6 @@ import { useWhen } from './when.ts'
 // without making anybody read the standing to find that out.
 
 const PAGE = 30
-const wide = '@media (min-width: 900px)'
-const wider = '@media (min-width: 1100px)'
-
-// name, number, item, standing, recorder, time - and how it came in, once
-// there is the room for it. The item is what a line is read for, so it takes
-// what the others leave: a recorder's name is a few characters wherever the
-// window is, and a share of a wide one only spread it out into air.
-const WIDE_COLUMNS =
-  'minmax(5rem, 0.8fr) 7rem minmax(0, 2.2fr) 5.5rem minmax(4rem, 7rem) 7.5rem 1rem'
-const WIDER_COLUMNS =
-  'minmax(5rem, 0.8fr) 7rem minmax(0, 2.4fr) 5rem 5.5rem minmax(4rem, 7rem) 7.5rem 1rem'
 
 const styles = stylex.create({
   column: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 12 },
@@ -74,10 +64,14 @@ const styles = stylex.create({
     borderRadius: tokens.radiusLg,
     backgroundColor: tokens.surface,
     boxShadow: tokens.elevation1,
+    containerType: 'inline-size',
   },
   head: {
-    display: { default: 'none', [wide]: 'grid' },
-    gridTemplateColumns: { default: null, [wide]: WIDE_COLUMNS, [wider]: WIDER_COLUMNS },
+    display: { default: 'grid', [recordColumns.stacked]: 'none' },
+    gridTemplateColumns: {
+      default: recordColumns.entries,
+      [recordColumns.desk]: recordColumns.entriesDesk,
+    },
     columnGap: 12,
     alignItems: 'center',
     borderBottomWidth: 1,
@@ -91,14 +85,14 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
   },
   headEnd: { textAlign: 'end' },
-  headWider: { display: { default: 'none', [wider]: 'block' } },
+  headWider: { display: { default: 'none', [recordColumns.desk]: 'block' } },
   row: {
     display: 'grid',
     width: '100%',
     gridTemplateColumns: {
-      default: 'minmax(0, 1fr) auto 1rem',
-      [wide]: WIDE_COLUMNS,
-      [wider]: WIDER_COLUMNS,
+      default: recordColumns.entries,
+      [recordColumns.stacked]: recordColumns.entriesStacked,
+      [recordColumns.desk]: recordColumns.entriesDesk,
     },
     alignItems: 'center',
     columnGap: 12,
@@ -111,7 +105,7 @@ const styles = stylex.create({
       ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
     },
     paddingInline: 16,
-    paddingBlock: { default: 12, [wide]: 11 },
+    paddingBlock: { default: 11, [recordColumns.stacked]: 12 },
     textAlign: 'start',
     cursor: 'pointer',
     transitionProperty: 'background-color',
@@ -121,13 +115,13 @@ const styles = stylex.create({
   // Across, every cell takes the next column in the order it is written;
   // narrow, each is put where the stacked card wants it.
   name: {
-    gridColumnStart: { default: 1, [wide]: 'auto' },
-    gridRowStart: { default: 1, [wide]: 'auto' },
+    gridColumnStart: { default: 'auto', [recordColumns.stacked]: 1 },
+    gridRowStart: { default: 'auto', [recordColumns.stacked]: 1 },
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    fontSize: { default: 15, [wide]: 14 },
+    fontSize: { default: 14, [recordColumns.stacked]: 15 },
     fontWeight: 500,
   },
   // number and how it arrived, joined by the time of it on a narrow screen
@@ -135,7 +129,7 @@ const styles = stylex.create({
   meta: {
     gridColumn: '1 / span 2',
     gridRowStart: 3,
-    display: { default: 'flex', [wide]: 'none' },
+    display: { default: 'none', [recordColumns.stacked]: 'flex' },
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: 8,
@@ -149,22 +143,22 @@ const styles = stylex.create({
     backgroundColor: tokens.divider,
   },
   itemCell: {
-    gridColumn: { default: '1 / span 2', [wide]: 'auto' },
-    gridRow: { default: '2', [wide]: 'auto' },
+    gridColumn: { default: 'auto', [recordColumns.stacked]: '1 / span 2' },
+    gridRow: { default: 'auto', [recordColumns.stacked]: '2' },
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    fontSize: { default: 13, [wide]: 14 },
+    fontSize: { default: 14, [recordColumns.stacked]: 13 },
   },
   standingSeat: {
     display: 'flex',
-    gridColumnStart: { default: 2, [wide]: 'auto' },
-    gridRow: { default: '1', [wide]: 'auto' },
+    gridColumnStart: { default: 'auto', [recordColumns.stacked]: 2 },
+    gridRow: { default: 'auto', [recordColumns.stacked]: '1' },
   },
   // a fact in a column of its own across; narrow it is on the meta line
   fact: {
-    display: { default: 'none', [wide]: 'block' },
+    display: { default: 'block', [recordColumns.stacked]: 'none' },
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -172,7 +166,7 @@ const styles = stylex.create({
     fontSize: 13,
     color: tokens.mutedForeground,
   },
-  factWider: { display: { default: 'none', [wider]: 'block' } },
+  factWider: { display: { default: 'none', [recordColumns.desk]: 'block' } },
   number: { fontSize: 12.5, fontVariantNumeric: 'tabular-nums' },
   // when, at the right edge
   when: {
@@ -184,8 +178,8 @@ const styles = stylex.create({
   chevron: {
     width: 16,
     height: 16,
-    gridColumnStart: { default: 3, [wide]: 'auto' },
-    gridRow: { default: '1 / span 3', [wide]: 'auto' },
+    gridColumnStart: { default: 'auto', [recordColumns.stacked]: 3 },
+    gridRow: { default: 'auto', [recordColumns.stacked]: '1 / span 3' },
     color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
   },
   empty: {

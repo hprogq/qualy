@@ -10,6 +10,7 @@ import { Button } from '@qualy/ui/button'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { ListEmpty } from '../ListEmpty.tsx'
 import { ListSkeleton } from '../ListSkeleton.tsx'
+import { recordColumns } from '../columns.stylex.ts'
 import { assessmentApi } from '../../api.ts'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { useWhen } from '../when.ts'
@@ -31,11 +32,6 @@ import { useWhen } from '../when.ts'
 // withdrawn record does.
 
 const PAGE = 30
-const wide = '@media (min-width: 900px)'
-
-// what it was, what it filled, what it comes to now, who, and when: one line
-// a record, the time at the right edge
-const WIDE_COLUMNS = 'minmax(0, 1.4fr) minmax(0, 1.6fr) 9rem minmax(4rem, 7rem) 7.5rem 1rem'
 
 const styles = stylex.create({
   card: {
@@ -46,10 +42,14 @@ const styles = stylex.create({
     borderRadius: tokens.radiusLg,
     backgroundColor: tokens.surface,
     boxShadow: tokens.elevation1,
+    containerType: 'inline-size',
   },
   head: {
-    display: { default: 'none', [wide]: 'grid' },
-    gridTemplateColumns: WIDE_COLUMNS,
+    display: { default: 'grid', [recordColumns.stacked]: 'none' },
+    gridTemplateColumns: {
+      default: recordColumns.imports,
+      [recordColumns.desk]: recordColumns.importsDesk,
+    },
     columnGap: 12,
     alignItems: 'center',
     borderBottomWidth: 1,
@@ -66,8 +66,9 @@ const styles = stylex.create({
     display: 'grid',
     width: '100%',
     gridTemplateColumns: {
-      default: 'minmax(0, 1fr) 1rem',
-      [wide]: WIDE_COLUMNS,
+      default: recordColumns.imports,
+      [recordColumns.stacked]: recordColumns.historyStacked,
+      [recordColumns.desk]: recordColumns.importsDesk,
     },
     alignItems: 'center',
     columnGap: 12,
@@ -80,7 +81,7 @@ const styles = stylex.create({
       ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
     },
     paddingInline: 16,
-    paddingBlock: { default: 12, [wide]: 11 },
+    paddingBlock: { default: 11, [recordColumns.stacked]: 12 },
     textAlign: 'start',
     cursor: 'pointer',
     transitionProperty: 'background-color',
@@ -90,8 +91,8 @@ const styles = stylex.create({
   // Across, every cell takes the next column in the order it is written;
   // narrow, each is put where the stacked card wants it.
   file: {
-    gridColumnStart: { default: 1, [wide]: 'auto' },
-    gridRowStart: { default: 1, [wide]: 'auto' },
+    gridColumnStart: { default: 'auto', [recordColumns.stacked]: 1 },
+    gridRowStart: { default: 'auto', [recordColumns.stacked]: 1 },
     display: 'flex',
     minWidth: 0,
     alignItems: 'center',
@@ -103,22 +104,22 @@ const styles = stylex.create({
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    fontSize: { default: 15, [wide]: 14 },
+    fontSize: { default: 14, [recordColumns.stacked]: 15 },
     fontWeight: 500,
   },
   itemCell: {
-    gridColumnStart: { default: 1, [wide]: 'auto' },
-    gridRowStart: { default: 2, [wide]: 'auto' },
+    gridColumnStart: { default: 'auto', [recordColumns.stacked]: 1 },
+    gridRowStart: { default: 'auto', [recordColumns.stacked]: 2 },
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    fontSize: { default: 13, [wide]: 14 },
+    fontSize: { default: 14, [recordColumns.stacked]: 13 },
   },
   // who, and when at the right edge: columns of their own across, and on a
   // phone the time joins the count for want of one
   fact: {
-    display: { default: 'none', [wide]: 'block' },
+    display: { default: 'block', [recordColumns.stacked]: 'none' },
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -135,8 +136,8 @@ const styles = stylex.create({
   // what the file comes to now; narrow, the time joins it for want of a
   // column of its own
   standing: {
-    gridColumnStart: { default: 1, [wide]: 'auto' },
-    gridRowStart: { default: 3, [wide]: 'auto' },
+    gridColumnStart: { default: 'auto', [recordColumns.stacked]: 1 },
+    gridRowStart: { default: 'auto', [recordColumns.stacked]: 3 },
     display: 'flex',
     flexWrap: 'wrap',
     alignItems: 'center',
@@ -147,13 +148,13 @@ const styles = stylex.create({
   },
   tick: { width: 1, height: 10, backgroundColor: tokens.divider },
   headEnd: { textAlign: 'end' },
-  phoneOnly: { display: { default: 'inline', [wide]: 'none' } },
+  phoneOnly: { display: { default: 'none', [recordColumns.stacked]: 'inline' } },
   chevron: {
     width: 16,
     height: 16,
-    gridColumnStart: { default: 2, [wide]: 'auto' },
-    gridRowStart: { default: 1, [wide]: 'auto' },
-    gridRowEnd: { default: 'span 3', [wide]: 'auto' },
+    gridColumnStart: { default: 'auto', [recordColumns.stacked]: 2 },
+    gridRowStart: { default: 'auto', [recordColumns.stacked]: 1 },
+    gridRowEnd: { default: 'auto', [recordColumns.stacked]: 'span 3' },
     color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
   },
   empty: {
@@ -212,7 +213,7 @@ export function AdministrativeImportHistory({
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
       onRetry={() => void history.refetch()}
-      skeleton={<ListSkeleton kind="history" />}
+      skeleton={<ListSkeleton kind="imports" />}
     >
       {rows.length === 0 ? (
         <ListEmpty

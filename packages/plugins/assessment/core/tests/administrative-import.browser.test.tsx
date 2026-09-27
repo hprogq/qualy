@@ -1,4 +1,6 @@
 import AdministrativeRecordsPage from '../src/client/record/AdministrativeRecordsPage.tsx'
+import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
+import { Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { reasonText } from '../src/client/record/import/issues.ts'
 import { page, userEvent } from 'vitest/browser'
@@ -235,6 +237,55 @@ const open = (route: string, stubs: Record<string, unknown> = {}) =>
   })
 
 const base = `/assessment/batches/${BATCH_ID}/record`
+
+/** the same page inside the workspace shell, with its rail open beside it */
+const openInShell = (route: string, stubs: Record<string, unknown> = {}) =>
+  renderScreen({
+    client: fakeClient({
+      app: {
+        getManifest: () =>
+          Effect.succeed({
+            ...emptyManifest(),
+            pages: PAGES,
+            collections: {
+              'app-shell/navigation-groups': [],
+              'app-shell/navigation-primary': [],
+              'workspace-shell/navigation': [
+                {
+                  id: 'assessment/batch-record/rail',
+                  label: { kind: 'literal', value: '行政认定' },
+                  target: {
+                    kind: 'page',
+                    pageId: 'assessment/batch-record',
+                    path: '/assessment/batches/:batchId/record',
+                  },
+                  order: 10,
+                },
+              ],
+            },
+          }),
+      },
+      assessment: {
+        getBatch: () => Effect.succeed({ batch: batch() }),
+        listItems: () => Effect.succeed({ items: [item], capabilities: { canManage: false } }),
+        listScoreGroups: () => Effect.succeed({ groups: [], version: 1 }),
+        listAdministrativeEntries: () => Effect.succeed({ entries: [bookLine], nextCursor: null }),
+        listAdministrativeImports: () => Effect.succeed({ items: [importRow], nextCursor: null }),
+        ...stubs,
+      },
+    }),
+    route,
+    children: (
+      <Routes>
+        <Route element={<WorkspaceShell />}>
+          <Route
+            path="/assessment/batches/:batchId/record"
+            element={<AdministrativeRecordsPage />}
+          />
+        </Route>
+      </Routes>
+    ),
+  })
 
 /**
  * The file a recorder picks, and the press that has it checked.
@@ -660,6 +711,68 @@ describe('the record book and its histories across a screen', () => {
         await page.viewport(1280, 800)
       }
     })
+  }
+
+  // Beside the workspace rail a 1024 window leaves the table the width of a
+  // tablet's, and the recorder's column capped at a name's width took its
+  // cap first: the item fell from 144 to 104 pixels at 1024 and from 133 to
+  // 88 at 1100, and a title of eight characters no longer fit. The floors
+  // are what the item had before the cap.
+  for (const [width, floor] of [
+    [1024, 144],
+    [1100, 133],
+  ] as const) {
+    it(`keeps the item its room beside the open rail at ${String(width)} wide`, async () => {
+      await page.viewport(width, 900)
+      try {
+        const title = '学生干部任职加分'
+        await openInShell(base, {
+          listAdministrativeEntries: () =>
+            Effect.succeed({
+              entries: [{ ...bookLine, item: { id: ITEM_ID, title } }],
+              nextCursor: null,
+            }),
+        })
+        await expect.element(page.getByTestId('workspace-rail')).toBeVisible()
+        await expect.element(page.getByTestId('administrative-entry').first()).toBeVisible()
+        const item = page.getByTitle(title).element()
+        expect(item.scrollWidth).toBeLessThanOrEqual(item.clientWidth + 1)
+        expect(item.getBoundingClientRect().width).toBeGreaterThanOrEqual(floor)
+      } finally {
+        await page.viewport(1280, 800)
+      }
+    })
+  }
+
+  // The bones stand where the columns will: the same tracks, loaded or not,
+  // in each of the three tables, at a desk and beside the rail.
+  for (const width of [1024, 1280]) {
+    for (const { tab, row } of tables) {
+      it(`waits for ${row} in its own columns at ${String(width)} wide`, async () => {
+        await page.viewport(width, 900)
+        try {
+          let land: () => void = () => {}
+          const landed = new Promise<void>((resolve) => {
+            land = resolve
+          })
+          const later = <A,>(value: A) => Effect.promise(() => landed.then(() => value))
+          await openInShell(`${base}${tab}`, {
+            listAdministrativeEntries: () => later({ entries: [bookLine], nextCursor: null }),
+            listAdministrativeRecords: () => later({ items: [act], nextCursor: null }),
+            listAdministrativeImports: () => later({ items: [importRow], nextCursor: null }),
+          })
+          const bones = page.getByTestId('list-skeleton-row').first()
+          await expect.element(bones).toBeVisible()
+          const waited = getComputedStyle(bones.element()).gridTemplateColumns
+          land()
+          const line = page.getByTestId(row).first()
+          await expect.element(line).toBeVisible()
+          expect(getComputedStyle(line.element()).gridTemplateColumns).toBe(waited)
+        } finally {
+          await page.viewport(1280, 800)
+        }
+      })
+    }
   }
 
   it('waits for the record book in the shape of one line a record', async () => {
