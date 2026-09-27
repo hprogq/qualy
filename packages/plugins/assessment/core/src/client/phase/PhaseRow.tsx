@@ -375,6 +375,7 @@ function useParts(props: PhaseRowProps) {
     standing: `${base}-standing`,
     when: `${base}-when`,
     scope: `${base}-scope`,
+    scopeNames: `${base}-scope-names`,
     refused: `${base}-refused`,
   }
   const entered = phase?.actualEntryAt ?? null
@@ -425,8 +426,15 @@ function useParts(props: PhaseRowProps) {
       {itemsLimited && <Tag>{format(m.scopeItemsTag, { count: draft.itemScope.length })}</Tag>}
       {peopleLimited && <Tag>{format(m.scopePeopleTag)}</Tag>}
       {/* the names a pointer reads by resting on the tags, for a reader
-          with no pointer to rest; the panel the row opens lists them too */}
-      {named !== undefined && <span hidden>{named}</span>}
+          with no pointer to rest; the panel the row opens lists them too.
+          Hidden text is read into a description only when the description
+          names it itself, not when it sits inside something named, so the
+          names are their own node and the row points at them directly */}
+      {named !== undefined && (
+        <span id={ids.scopeNames} hidden>
+          {named}
+        </span>
+      )}
     </span>
   )
 
@@ -632,6 +640,7 @@ function useParts(props: PhaseRowProps) {
     ids.standing,
     ids.when,
     ...(scope ? [ids.scope] : []),
+    ...(scope && named !== undefined ? [ids.scopeNames] : []),
     ...(refused ? [ids.refused] : []),
   ].join(' ')
 

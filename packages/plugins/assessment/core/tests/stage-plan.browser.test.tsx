@@ -392,14 +392,29 @@ describe('the stage plan, read', () => {
           ],
           planFingerprint: 'plan-two',
         }),
+      listItems: () =>
+        Effect.succeed({
+          items: [
+            { id: 'some-item', title: '学科竞赛获奖', scoreGroupId: 'paper', status: 'active' },
+          ],
+          capabilities: { canManage: true },
+        }),
+      listScoreGroups: () =>
+        Effect.succeed({
+          groups: [{ id: 'paper', parentGroupId: null, name: '卷面', sortOrder: 0 }],
+          version: 1,
+          capabilities: { canManage: true },
+        }),
     })
 
     // the stage's own name, not a sentence wrapped around it
     const row = page.getByRole('link', { name: '审核整理', exact: true })
     await expect.element(row).toBeVisible()
-    // what it is limited to is part of what is said about it
+    // what it is limited to is part of what is said about it, the items it
+    // opens by name included, though no pointer rests on the tags to show them
     const scope = row.getByTestId('phase-scope').element()
     expect(row.element().getAttribute('aria-describedby')?.split(' ')).toContain(scope.id)
+    await expect.element(row).toHaveAccessibleDescription(/学科竞赛获奖/)
   })
 
   it('keeps saying which stage is in hand while it has an edit not saved', async () => {
