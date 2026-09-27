@@ -271,6 +271,13 @@ const SELECTION_ITEMS: readonly ItemSpec[] = [
 ]
 
 /**
+ * What the selection's overview says above its phases: who may apply and
+ * where the roster comes from. What to hand in is the first phase's to say.
+ */
+export const SELECTION_DESCRIPTION =
+  '申请人须前三学年无补考重修、平均学分绩位列本专业前20%、通过大学英语四级。\n名单按各班报名汇总录入，已报名但不在名单上的请联系辅导员。'
+
+/**
  * The selection's phases. Re-examination opens while material is reviewed
  * and while results may be appealed, as in the school's own assessments
  * (stages.ts); settling what was appealed opens nothing new. The phases
@@ -278,13 +285,6 @@ const SELECTION_ITEMS: readonly ItemSpec[] = [
  * would move the batch on by itself, weeks after the story stopped. Each
  * says instead what it waits for.
  */
-/**
- * What the selection's overview says above its phases: who may apply and
- * where the roster comes from. What to hand in is the first phase's to say.
- */
-export const SELECTION_DESCRIPTION =
-  '申请人须前三学年无补考重修、平均学分绩位列本专业前20%、通过大学英语四级。\n名单按各班报名汇总录入，已报名但不在名单上的请联系辅导员。'
-
 export const SELECTION_PHASES = [
   {
     phaseKey: 'entry',
