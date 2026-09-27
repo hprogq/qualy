@@ -127,8 +127,8 @@ describe('a unit path', () => {
       await expect
         .element(page.getByTestId('unit-path'))
         .toHaveAttribute('data-clipped', String(width < 900))
-      await expect.poll(apart).toBeLessThanOrEqual(8)
-      expect(apart()).toBeGreaterThanOrEqual(0)
+      // against the words: neither over them nor adrift, polled as one
+      await expect.poll(() => apart() >= 0 && apart() <= 8).toBe(true)
       await unmount()
     }
   })
