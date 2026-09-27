@@ -4,11 +4,8 @@ import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { RotateCwIcon, UserRoundIcon } from 'lucide-react'
-import { commonMessages } from '@qualy/web-i18n/messages'
+import { UserRoundIcon } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
-import { Button } from '@qualy/ui/button'
-import { Spinner } from '@qualy/ui/spinner'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { initialsOf } from '@qualy/ui/person'
 import { Tag } from '@qualy/ui/screen'
@@ -67,12 +64,8 @@ const styles = stylex.create({
   // what the banner says when the reader's own record would not come: in
   // the banner's own place and measure, not an alert standing in for it
   unread: {
-    display: 'flex',
     margin: 0,
     minWidth: 0,
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 8,
     fontSize: 14,
     color: tokens.mutedForeground,
   },
@@ -88,6 +81,9 @@ export default function AccountHeader() {
   const self = useQuery(query.self.getSelf.queryOptions())
 
   const me = self.data
+  // One line and no retry of its own: the page under it reads the same
+  // record, or has its own to read, and says the failure with the one retry
+  // a reader should see. Two for one reading was one too many.
   if (me === undefined && self.isError) {
     return (
       <div data-testid="account-header" data-state="unread" {...stylex.props(styles.who)}>
@@ -97,18 +93,7 @@ export default function AccountHeader() {
           </AvatarFallback>
         </Avatar>
         <div {...stylex.props(styles.text)}>
-          <p role="status" {...stylex.props(styles.unread)}>
-            {format(m.accountHeaderUnread)}
-            <Button
-              size="xs"
-              variant="ghost"
-              disabled={self.isFetching}
-              onClick={() => void self.refetch()}
-            >
-              {self.isFetching ? <Spinner aria-hidden /> : <RotateCwIcon aria-hidden />}
-              {format(commonMessages.retry)}
-            </Button>
-          </p>
+          <p {...stylex.props(styles.unread)}>{format(m.accountHeaderUnread)}</p>
         </div>
       </div>
     )

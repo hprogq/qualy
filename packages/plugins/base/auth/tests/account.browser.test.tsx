@@ -120,9 +120,11 @@ describe('the reader’s banner', () => {
     expect(facts()).toEqual(['unit'])
   })
 
-  // Their own record not coming is said in the banner's own place, with
-  // another try, and the banner keeps its height rather than becoming an alert.
-  it('keeps its place when their record would not come, with another try', async () => {
+  // Their own record not coming is said in the banner's own place, and the
+  // banner keeps its height rather than becoming an alert. The page under it
+  // reads the same record and offers the one retry: a reading that failed
+  // once is not said twice with a press each.
+  it('keeps its place when their record would not come, and leaves the retry to the page', async () => {
     const answers = { down: true }
     await renderScreen({
       client: fakeClient(
@@ -131,13 +133,26 @@ describe('the reader’s banner', () => {
             answers.down ? Effect.fail(apiError('INTERNAL_FAILURE')) : Effect.succeed(me()),
         }),
       ),
-      children: <AccountHeader />,
+      route: '/account',
+      children: (
+        <>
+          <AccountHeader />
+          <AccountProfilePage />
+        </>
+      ),
     })
     const banner = page.getByTestId('account-header')
     await expect.element(banner).toHaveAttribute('data-state', 'unread')
     expect(document.querySelector('[role="alert"]')).toBeNull()
+    await expect
+      .poll(() =>
+        document.querySelector('[data-slot="resource-state"]')?.getAttribute('data-state'),
+      )
+      .toBe('failed')
+    expect(page.getByRole('button', { name: '重试' }).elements()).toHaveLength(1)
     answers.down = false
-    await banner.getByRole('button', { name: '重试' }).click()
+    await page.getByRole('button', { name: '重试' }).click()
+    // the page's press brings the banner back with it: one reading, one answer
     await expect.element(page.getByTestId('person-facts')).toBeInTheDocument()
   })
 })
