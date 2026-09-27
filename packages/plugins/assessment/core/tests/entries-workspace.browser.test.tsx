@@ -780,6 +780,28 @@ describe('reading one question’s claims', () => {
     }
   })
 
+  // The way to file under the claims, and the rest of a long list, stand in
+  // from the pane's edge as far as the claims do: by the pane's own width,
+  // which at a laptop's three columns is narrower than the window says.
+  it('lines up the rows after the claims with the claims, by the pane’s own width', async () => {
+    for (const width of [1280, 1440, 834]) {
+      await page.viewport(width, 900)
+      const filed = Array.from({ length: 22 }, (_, n) => claim(n + 1, TAIL, 'in_review'))
+      const { unmount } = await workspace({ route: `${base}?open=${TAIL}`, entries: filed })
+      await expect.poll(() => rows().length).toBe(20)
+      const inset = (element: Element) => getComputedStyle(element).paddingLeft
+      const claims = inset(rows()[0]!)
+      const foot = [...document.querySelectorAll('[data-testid="file-claim"]')].at(-1)!
+      const more = document.querySelector('[data-testid="entries-more"]')!
+      expect({ width, foot: inset(foot), more: inset(more) }).toEqual({
+        width,
+        foot: claims,
+        more: claims,
+      })
+      await unmount()
+    }
+  })
+
   it('carries what a reviewer said on the row, and what the claim counts for', async () => {
     await page.viewport(1440, 900)
     await workspace({

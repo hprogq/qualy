@@ -375,7 +375,10 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
     fontVariantNumeric: 'tabular-nums',
   },
-  inset: { paddingInline: { default: 28, [BELOW_DESK]: 16 } },
+  // the claims' own inset, by the same measure as their rows: the pane's
+  // width, not the window's
+  insetRoomy: { paddingInline: 28 },
+  insetCompact: { paddingInline: 16 },
   addRow: {
     display: 'flex',
     width: '100%',
@@ -833,6 +836,7 @@ export function ItemPane({
     </div>
   )
 
+  const inset = roomy ? styles.insetRoomy : styles.insetCompact
   const addLabel = format(filing?.declared === true ? m.entryDeclare : m.entryNew)
   // Where another claim would start, the way in - or, while the stage has
   // shut it, why, in the words the way in would have had: a key that only
@@ -844,7 +848,7 @@ export function ItemPane({
         data-testid="filing-held"
         data-reason={filing.reason ?? ''}
         data-said={filing.why?.message.id ?? ''}
-        {...stylex.props(styles.heldRow, styles.inset)}
+        {...stylex.props(styles.heldRow, inset)}
       >
         <ClockIcon aria-hidden {...stylex.props(styles.heldIcon)} />
         {filing.why === null ? null : format(filing.why.message, filing.why.values)}
@@ -856,7 +860,7 @@ export function ItemPane({
         data-gate={filing.gate}
         disabled={busy}
         onClick={onFile}
-        {...stylex.props(styles.addRow, styles.inset)}
+        {...stylex.props(styles.addRow, inset)}
       >
         <span aria-hidden {...stylex.props(styles.addMark)}>
           <PlusIcon {...stylex.props(styles.addIcon)} />
@@ -1018,7 +1022,7 @@ export function ItemPane({
           )}
           {filtered.length > limit && (
             <Trailing still={still}>
-              <div {...stylex.props(styles.more, styles.inset)} data-testid="entries-more">
+              <div {...stylex.props(styles.more, inset)} data-testid="entries-more">
                 <span>
                   {format(m.entriesShownOf, { shown: shown.length, total: filtered.length })}
                 </span>
