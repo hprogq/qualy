@@ -50,7 +50,10 @@ import { ZoneNote } from './batch/BatchZone.tsx'
 //
 // The start time keeps the room a whole date and time need: it is what the
 // page is read for, and the column an edit adds is taken from the others.
-const COLUMNS = 'minmax(0, 1.9fr) minmax(0, 0.95fr) minmax(10.5rem, 1.4fr) 5.5rem'
+// The name's share holds ten CJK characters a line at 1024 with the rail open
+// even where the system's CJK font runs a little wider than its size (Linux's
+// WenQuanYi advances 14px at 13.5px); at 1.9fr it held exactly ten at 13.5.
+const COLUMNS = 'minmax(0, 2.3fr) minmax(0, 0.95fr) minmax(10.5rem, 1.4fr) 5.5rem'
 const EDITING_COLUMNS = `${COLUMNS} 6rem`
 
 const styles = stylex.create({
