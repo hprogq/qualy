@@ -15,15 +15,28 @@ import type { ReviewGap } from '../items/ReviewGapNotice.tsx'
 /** how long a count stands before another look, on every screen of the batch */
 const FRESH_FOR = 60_000
 
+/** one question a route misses somebody on, named */
+export interface AlertedQuestion {
+  readonly id: string
+  readonly title: string
+}
+
 export interface AdminAlerts {
   /** review stopped for want of a reviewer, unit by unit */
   readonly gaps: readonly ReviewGap[]
-  /** people some question's route finds nowhere to be reviewed */
+  /**
+   * People some question's route finds nowhere to be reviewed, told apart
+   * by the route: an ordinary route that misses somebody stops them filing
+   * into that question, an escalation route only stops them appealing what
+   * it concluded. The same question can stand in both.
+   */
   readonly unreachable: {
     readonly cannotSubmit: number
     readonly cannotAppeal: number
-    /** the questions concerned, ordinary routes first, each named once */
-    readonly items: readonly string[]
+    /** the questions whose ordinary route misses somebody, in the order the server lists them */
+    readonly submitItems: readonly AlertedQuestion[]
+    /** the questions whose escalation route misses somebody */
+    readonly appealItems: readonly AlertedQuestion[]
   }
   /** people the organization now places somewhere the roster does not */
   readonly placements: { readonly changed: number; readonly unavailable: number }
@@ -77,22 +90,20 @@ export function useAdminAlerts(batchId: string, enabled: boolean): AdminAlerts {
   })
 
   const reach = alerts.data?.unreachable
-  // a question named once however many of its routes are concerned, and the
-  // ones people cannot file into before the ones they cannot appeal
-  const items = [
-    ...new Set(
-      [...(reach?.routes ?? [])]
-        .sort((a, b) => (a.route === b.route ? 0 : a.route === 'normal' ? -1 : 1))
-        .map((route) => route.itemTitle),
-    ),
-  ]
+  // each route's questions on their own: a question whose appeal cannot be
+  // heard is not one that cannot be filed into
+  const questionsOn = (route: 'normal' | 'escalation'): AlertedQuestion[] =>
+    (reach?.routes ?? [])
+      .filter((one) => one.route === route)
+      .map((one) => ({ id: one.itemId, title: one.itemTitle }))
   const reads = [alerts, placements, access]
   return {
     gaps: alerts.data?.groups ?? [],
     unreachable: {
       cannotSubmit: reach?.cannotSubmit ?? 0,
       cannotAppeal: reach?.cannotAppeal ?? 0,
-      items,
+      submitItems: questionsOn('normal'),
+      appealItems: questionsOn('escalation'),
     },
     placements: {
       changed: placements.data?.changedTotal ?? 0,

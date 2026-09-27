@@ -354,10 +354,11 @@ describe('the administration lane of the overview', () => {
       .getByTestId('overview-actions')
       .element()
       .querySelector('[data-testid="overview-lane"][data-lane="manage"]')
-    expect(strip?.getAttribute('data-count')).toBe('4')
+    expect(strip?.getAttribute('data-count')).toBe('5')
     expect(row('admin-review-gap')?.getAttribute('data-count')).toBe('5')
-    // counted by who cannot submit, before who cannot appeal
+    // who cannot submit and who cannot appeal, each on a line of their own
     expect(row('admin-unreachable')?.getAttribute('data-count')).toBe('1')
+    expect(row('admin-unappealable')?.getAttribute('data-count')).toBe('4')
     expect(row('admin-placements')?.getAttribute('data-count')).toBe('2')
     expect(row('admin-access')?.getAttribute('data-count')).toBe('3')
     // an administrator with nothing of their own here has no story to follow
@@ -367,6 +368,65 @@ describe('the administration lane of the overview', () => {
     const verb = row('admin-access')!.querySelector('button')!
     verb.click()
     await vi.waitFor(() => expect(addressNow()).toBe(`/assessment/batches/${BATCH_ID}/access`))
+  })
+
+  // An ordinary route that misses somebody stops them filing; an escalation
+  // route that misses them only stops an appeal. Said as one line, a
+  // question people can file into read as one they cannot, and the people
+  // who cannot appeal went unsaid.
+  it('tells the questions nobody can file into from the ones nobody can appeal', async () => {
+    await page.viewport(1280, 800)
+    await shelled(`/assessment/batches/${BATCH_ID}`, {
+      reviewAlerts: () =>
+        Effect.succeed({
+          groups: [],
+          unreachable: {
+            routes: [
+              ...stopped.unreachable.routes,
+              {
+                itemId: 'item-c',
+                itemTitle: '社会实践',
+                route: 'normal',
+                participants: 2,
+                levelNames: ['班级'],
+              },
+              {
+                itemId: 'item-c',
+                itemTitle: '社会实践',
+                route: 'escalation',
+                participants: 2,
+                levelNames: ['年级'],
+              },
+            ],
+            cannotSubmit: 2,
+            cannotAppeal: 5,
+          },
+        }),
+    })
+    await expect.element(page.getByTestId('overview-actions')).toBeVisible()
+    const itemsOf = (action: string) => row(action)?.getAttribute('data-items')?.split(' ')
+    expect(row('admin-unreachable')?.getAttribute('data-count')).toBe('2')
+    expect(itemsOf('admin-unreachable')).toEqual(['item-a', 'item-c'])
+    expect(row('admin-unappealable')?.getAttribute('data-count')).toBe('5')
+    expect(itemsOf('admin-unappealable')).toEqual(['item-b', 'item-c'])
+  })
+
+  it('says only the appeals when every question can still be filed into', async () => {
+    await page.viewport(1280, 800)
+    await shelled(`/assessment/batches/${BATCH_ID}`, {
+      reviewAlerts: () =>
+        Effect.succeed({
+          groups: [],
+          unreachable: {
+            routes: stopped.unreachable.routes.filter((one) => one.route === 'escalation'),
+            cannotSubmit: 0,
+            cannotAppeal: 4,
+          },
+        }),
+    })
+    await expect.element(page.getByTestId('overview-actions')).toBeVisible()
+    expect(row('admin-unreachable')).toBeNull()
+    expect(row('admin-unappealable')?.getAttribute('data-items')).toBe('item-b')
   })
 
   it('says what stands behind each administration entry of the rail with a dot', async () => {

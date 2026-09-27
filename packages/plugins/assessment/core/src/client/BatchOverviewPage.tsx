@@ -26,7 +26,7 @@ import { BatchFlow } from './batch/BatchFlow.tsx'
 import { calendarDaysBetween, inZone, useBatchZone, yearOf } from './batch/zone.ts'
 import { assessmentMessages as m } from './i18n.ts'
 import { UnreadDot } from './entry/workspace/marks.tsx'
-import { useAdminAlerts, type AdminAlerts } from './batch/admin-alerts.ts'
+import { useAdminAlerts, type AdminAlerts, type AlertedQuestion } from './batch/admin-alerts.ts'
 
 // The batch's front page as one desk (§32.73, laid out to design 2a/2b):
 // the page description says what stands on the desk, the body starts
@@ -776,6 +776,8 @@ interface TodoRow {
   lane: DeskLane
   action: string
   count?: number
+  /** the questions the row is about, where it names some */
+  items?: readonly string[]
   subject: string
   detail: string | null
   at: string | null
@@ -1046,6 +1048,7 @@ function Desk({
                       key={row.key}
                       data-action={row.action}
                       {...(row.count !== undefined ? { 'data-count': row.count } : {})}
+                      {...(row.items !== undefined ? { 'data-items': row.items.join(' ') } : {})}
                       onClick={row.go}
                       {...stylex.props(styles.todoRow)}
                     >
@@ -1289,9 +1292,9 @@ function Desk({
 /**
  * The administrator's rows, one per thing that stops the round and that
  * only an administrator can mend, in the order they stop it: review that
- * cannot go on, filings that cannot start, a roster the organization has
- * moved away from, appointments the batch has yet to take. Each goes to the
- * page that mends it.
+ * cannot go on, filings that cannot start, appeals that cannot be heard, a
+ * roster the organization has moved away from, appointments the batch has
+ * yet to take. Each goes to the page that mends it.
  */
 function adminRows(
   alerts: AdminAlerts,
@@ -1343,24 +1346,37 @@ function adminRows(
       go: () => go('assessment/batch-access'),
     })
   }
-  const { cannotSubmit, cannotAppeal, items } = alerts.unreachable
-  if (cannotSubmit > 0 || cannotAppeal > 0) {
-    const submit = cannotSubmit > 0
-    const named = listJoin(items.slice(0, MOST_NAMED))
-    const list =
-      items.length > MOST_NAMED
-        ? format(m.overviewAdminMoreItems, { items: named, total: items.length })
-        : named
+  // The two routes are two different troubles and each is said on its own:
+  // somebody an ordinary route misses cannot file into that question at
+  // all, somebody an escalation route misses can file and be judged, and
+  // only cannot appeal. A question may stand in both.
+  const { cannotSubmit, cannotAppeal, submitItems, appealItems } = alerts.unreachable
+  const named = (questions: readonly AlertedQuestion[]) => {
+    const titles = listJoin(questions.slice(0, MOST_NAMED).map((one) => one.title))
+    return questions.length > MOST_NAMED
+      ? format(m.overviewAdminMoreItems, { items: titles, total: questions.length })
+      : titles
+  }
+  if (cannotSubmit > 0) {
     row({
       key: 'admin-unreachable',
       action: 'admin-unreachable',
-      count: submit ? cannotSubmit : cannotAppeal,
-      subject: format(submit ? m.overviewAdminUnreachable : m.overviewAdminUnreachableAppeal, {
-        count: submit ? cannotSubmit : cannotAppeal,
-      }),
-      detail: format(submit ? m.overviewAdminCannotSubmit : m.overviewAdminCannotAppeal, {
-        items: list,
-      }),
+      count: cannotSubmit,
+      items: submitItems.map((one) => one.id),
+      subject: format(m.overviewAdminUnreachable, { count: cannotSubmit }),
+      detail: format(m.overviewAdminCannotSubmit, { items: named(submitItems) }),
+      verb: format(m.overviewGoItems),
+      go: () => go('assessment/batch-items'),
+    })
+  }
+  if (cannotAppeal > 0) {
+    row({
+      key: 'admin-unappealable',
+      action: 'admin-unappealable',
+      count: cannotAppeal,
+      items: appealItems.map((one) => one.id),
+      subject: format(m.overviewAdminUnreachableAppeal, { count: cannotAppeal }),
+      detail: format(m.overviewAdminCannotAppeal, { items: named(appealItems) }),
       verb: format(m.overviewGoItems),
       go: () => go('assessment/batch-items'),
     })
