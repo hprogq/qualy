@@ -13,8 +13,16 @@ const STORE = 'qualy:review-bench-columns'
 /** px: [floor, ceiling] of the dragged columns, and the floor of the one between */
 const FLOW = [272, 640] as const
 const ABOUT = [240, 480] as const
-const FILING_FLOOR = 288
+const FILING_LEAST = 288
 const STEP = 16
+
+// The floors as the grid is given them: a column's own floor, or its share
+// of a bench too narrow for every floor at once, whichever is less - so the
+// three give way together rather than the last being pushed off the edge.
+// The shares leave a little over for the rules between the columns.
+// The same shares as the bench's own template (ReviewInstancePage).
+const FLOW_FLOOR = `min(${String(FLOW[0])}px, 32%)`
+const ABOUT_FLOOR = `min(${String(ABOUT[0])}px, 30%)`
 
 const lg = '@media (min-width: 1024px)'
 
@@ -106,8 +114,8 @@ export function useBenchColumns(
       const room = bench?.getBoundingClientRect().width ?? Number.POSITIVE_INFINITY
       // the column between keeps its floor: whichever side is being dragged
       // stops where that floor begins
-      const flow = clamp(Math.min(next.flow, room - next.about - FILING_FLOOR), FLOW)
-      const about = clamp(Math.min(next.about, room - flow - FILING_FLOOR), ABOUT)
+      const flow = clamp(Math.min(next.flow, room - next.about - FILING_LEAST), FLOW)
+      const about = clamp(Math.min(next.about, room - flow - FILING_LEAST), ABOUT)
       return { flow, about }
     },
     [bench],
@@ -211,35 +219,42 @@ export function useBenchColumns(
     )
   }
 
-  // Where the handles stand before anybody has dragged: on the rules the
-  // columns already draw, read off the panes themselves.
+  // Where the handles stand: on the rules the columns draw, read off the
+  // panes themselves - a dragged column on a bench too narrow for it is
+  // narrower than it was dragged to, and the handle stands where it is.
   const [resting, setResting] = useState<Widths | null>(null)
   useEffect(() => {
-    if (bench === null || widths !== null) return
-    const read = () => {
-      const panes = [...bench.children].filter(
-        (child): child is HTMLElement =>
-          child instanceof HTMLElement && child.dataset['benchHandle'] === undefined,
-      )
-      const first = panes[0]
-      const last = panes[panes.length - 1]
-      if (first === undefined || last === undefined) return
+    if (bench === null) return
+    const panes = [...bench.children].filter(
+      (child): child is HTMLElement =>
+        child instanceof HTMLElement && child.dataset['benchHandle'] === undefined,
+    )
+    const first = panes[0]
+    const last = panes[panes.length - 1]
+    if (first === undefined || last === undefined) return
+    const read = () =>
       setResting({
         flow: first.getBoundingClientRect().width,
         about: last.getBoundingClientRect().width,
       })
-    }
     read()
     const watch = new ResizeObserver(read)
     watch.observe(bench)
+    watch.observe(first)
+    watch.observe(last)
     return () => watch.disconnect()
-  }, [bench, widths])
+  }, [bench])
 
-  const at = widths ?? resting
+  const at = resting ?? widths
+  // as wide as it was dragged where the bench has the room, and giving way
+  // to its floor where it has not
   const vars = {
     ...(widths === null
       ? {}
-      : { '--bench-flow': `${widths.flow}px`, '--bench-about': `${widths.about}px` }),
+      : {
+          '--bench-flow': `minmax(${FLOW_FLOOR}, ${widths.flow}px)`,
+          '--bench-about': `minmax(${ABOUT_FLOOR}, ${widths.about}px)`,
+        }),
     ...(at === null
       ? {}
       : { '--bench-flow-at': `${at.flow}px`, '--bench-about-at': `${at.about}px` }),

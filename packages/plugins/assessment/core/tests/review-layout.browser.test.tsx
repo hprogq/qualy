@@ -655,6 +655,85 @@ describe('the workbench inside the workspace shell', () => {
     const main = page.getByRole('main').element()
     await expect.poll(() => getComputedStyle(main).scrollbarGutter).toBe('auto')
   })
+
+  // Beside the rail a laptop's bench is narrower than the window says; the
+  // three columns give way together rather than the terms being pushed off
+  // its right edge - whether they share the room by their own measure or
+  // were dragged wide on a bigger screen.
+  for (const [width, height, dragged] of [
+    [1024, 768, false],
+    [1024, 768, true],
+    [1280, 800, true],
+  ] as const) {
+    it(`keeps the three columns inside the bench at ${String(width)}, rail open${dragged ? ', dragged wide' : ''}`, async () => {
+      await page.viewport(width, height)
+      await renderScreen({
+        storage: dragged
+          ? { 'qualy:review-bench-columns': JSON.stringify({ flow: 640, about: 480 }) }
+          : {},
+        client: fakeClient({
+          app: {
+            getManifest: () =>
+              Effect.succeed({
+                ...emptyManifest(),
+                pages: PAGES,
+                collections: {
+                  'app-shell/navigation-groups': [],
+                  'app-shell/navigation-primary': [],
+                  'workspace-shell/navigation': [
+                    {
+                      id: 'assessment/batch-reviews/rail',
+                      label: { kind: 'literal', value: '审核工作' },
+                      target: {
+                        kind: 'page',
+                        pageId: 'assessment/batch-reviews',
+                        path: '/assessment/batches/:batchId/reviews',
+                      },
+                      order: 10,
+                    },
+                  ],
+                },
+              }),
+          },
+          assessment: {
+            getBatch: () => Effect.succeed({ batch: batch() }),
+            listReviewInbox: () =>
+              Effect.succeed({ items: [inboxRow()], nextCursor: null, handledToday: 0 }),
+            getReviewInstance: () => Effect.succeed({ review }),
+            getEntryHistory: () => Effect.succeed({ revisions: [], events: [], rounds: [] }),
+          },
+        }),
+        route: `/assessment/batches/${BATCH_ID}/reviews/${INSTANCE_ID}`,
+        children: (
+          <Routes>
+            <Route element={<WorkspaceShell />}>
+              <Route
+                path="/assessment/batches/:batchId/reviews/:instanceId"
+                element={<ReviewInstancePage />}
+              />
+            </Route>
+          </Routes>
+        ),
+      })
+      await expect.element(page.getByTestId('workspace-rail')).toBeVisible()
+      await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
+      expect(parts()).toEqual(['flow', 'filing', 'about'])
+      const edge = page.getByRole('main').element().getBoundingClientRect().right
+      await expect
+        .poll(() =>
+          Math.max(
+            ...[...document.querySelectorAll<HTMLElement>('[data-workbench-part]')].map(
+              (part) => part.getBoundingClientRect().right,
+            ),
+          ),
+        )
+        .toBeLessThanOrEqual(edge + 1)
+      // and each column keeps a readable width while it gives way
+      for (const part of document.querySelectorAll<HTMLElement>('[data-workbench-part]')) {
+        expect(part.getBoundingClientRect().width).toBeGreaterThanOrEqual(200)
+      }
+    })
+  }
 })
 
 // Opened cold from an address - a bookmark, a link in a message, a round

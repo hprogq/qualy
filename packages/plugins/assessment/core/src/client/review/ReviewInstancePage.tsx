@@ -212,12 +212,14 @@ const styles = stylex.create({
       default: null,
       // Each column has a floor. Without one the fixed rail at the end kept
       // its width and the other two paid for it, and the middle one - how the
-      // filing has been handled - went under 200px on a laptop. The rail gives
-      // first; below every floor the bench scrolls sideways instead.
-      // and each of the outer two is as wide as the reviewer dragged it,
-      // once they have (bench-columns.tsx); until then the three share the
-      // width nearly evenly, the reference column a little the narrowest
-      [lg]: 'var(--bench-flow, minmax(17rem, 1fr)) minmax(18rem, 1.1fr) var(--bench-about, minmax(16rem, 0.85fr))',
+      // filing has been handled - went under 200px on a laptop. The floors
+      // give way together where the bench is narrower than all three: beside
+      // the shell's rail a laptop's bench is narrower than the window says,
+      // and floors that could not give pushed the terms off its right edge.
+      // Each of the outer two is as wide as the reviewer dragged it, once
+      // they have (bench-columns.tsx); until then the three share the width
+      // nearly evenly, the reference column a little the narrowest.
+      [lg]: 'var(--bench-flow, minmax(min(17rem, 32%), 1fr)) minmax(min(18rem, 35%), 1.1fr) var(--bench-about, minmax(min(16rem, 30%), 0.85fr))',
     },
     gridTemplateRows: {
       default: null,
