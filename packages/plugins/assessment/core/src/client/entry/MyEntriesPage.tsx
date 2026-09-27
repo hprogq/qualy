@@ -112,28 +112,23 @@ function Body({
   // Wake-ups from the server, mapped to the exact reads they stale. The
   // workspace redraws itself from fresh answers; nothing here touches the
   // form a person may be filling - the open dialog holds its own snapshot.
-  const { live, lost, heard } = useBatchLive(batchId, (kind) => {
-    const stale = (key: readonly unknown[]) => void queryClient.invalidateQueries({ queryKey: key })
-    switch (kind) {
-      // a phase switch may have flipped every capability on this screen, so
-      // it re-reads the lot, exactly like a fresh connection
-      case 'sync':
-      case 'phase-changed':
-        stale(query.assessment.key())
-        return
-      case 'entries-changed':
-        stale(query.assessment.listMyEntries.key({ params: { batchId }, query: {} }))
-        stale(query.assessment.listAwaitingSupplements.key({ query: { batchId } }))
-        return
-      case 'item-changed':
-        stale(query.assessment.listItems.key({ params: { batchId } }))
-        stale(query.assessment.listScoreGroups.key({ params: { batchId } }))
-        return
-      case 'result-changed':
-        stale(query.assessment.getMyResult.key({ params: { batchId } }))
-        return
-      default:
-        return
+  const { live, lost, heard } = useBatchLive(batchId, ({ kinds, stale }) => {
+    // a phase switch may have flipped every capability on this screen, so
+    // it re-reads the lot, exactly like a fresh connection
+    if (kinds.has('sync') || kinds.has('phase-changed')) {
+      stale(query.assessment.key())
+      return
+    }
+    if (kinds.has('entries-changed')) {
+      stale(query.assessment.listMyEntries.key({ params: { batchId }, query: {} }))
+      stale(query.assessment.listAwaitingSupplements.key({ query: { batchId } }))
+    }
+    if (kinds.has('item-changed')) {
+      stale(query.assessment.listItems.key({ params: { batchId } }))
+      stale(query.assessment.listScoreGroups.key({ params: { batchId } }))
+    }
+    if (kinds.has('result-changed')) {
+      stale(query.assessment.getMyResult.key({ params: { batchId } }))
     }
   })
 

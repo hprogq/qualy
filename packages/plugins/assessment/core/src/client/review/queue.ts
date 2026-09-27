@@ -1,4 +1,4 @@
-import { queryOptions, useQueryClient } from '@tanstack/react-query'
+import { queryOptions, type QueryKey } from '@tanstack/react-query'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { assessmentApi } from '../api.ts'
 import { everyPage, WHOLE_LIST_PAGE } from '../every-page.ts'
@@ -22,19 +22,14 @@ import { everyPage, WHOLE_LIST_PAGE } from '../every-page.ts'
 /**
  * What a change to the queue makes stale: the whole list, and the rail's
  * count, which is the desk's own figure rather than a count of this list.
- * Every screen that hears the queue move calls this rather than naming the
- * two keys itself.
+ * Every screen that hears the queue move hands its wake-up's `stale` to this
+ * rather than naming the two keys itself.
  */
-export function useQueueRefresh(batchId: string): () => void {
-  const queryClient = useQueryClient()
+export function useQueueRefresh(batchId: string): (stale: (key: QueryKey) => void) => void {
   const query = useApiQuery(assessmentApi)
-  return () => {
-    void queryClient.invalidateQueries({
-      queryKey: query.assessment.listReviewInbox.key({ query: { batchId } }),
-    })
-    void queryClient.invalidateQueries({
-      queryKey: query.assessment.getMyOverview.key({ params: { batchId } }),
-    })
+  return (stale) => {
+    stale(query.assessment.listReviewInbox.key({ query: { batchId } }))
+    stale(query.assessment.getMyOverview.key({ params: { batchId } }))
   }
 }
 

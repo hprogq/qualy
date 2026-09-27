@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { FileTextIcon, SearchIcon, ShieldIcon } from 'lucide-react'
 import {
@@ -230,23 +230,19 @@ const viewOf = (raw: string): View =>
  */
 function useQueue(batchId: string, reviewing: boolean) {
   const query = useApiQuery(assessmentApi)
-  const queryClient = useQueryClient()
   // queue changes arrive as wake-ups; the poll below is the fallback pace
   const refreshQueue = useQueueRefresh(batchId)
-  const { live } = useBatchLive(batchId, (kind) => {
-    if (
-      kind !== 'sync' &&
-      kind !== 'phase-changed' &&
-      kind !== 'review-inbox-changed' &&
-      kind !== 'review-instance-changed'
-    ) {
-      return
-    }
+  const { live } = useBatchLive(batchId, ({ kinds, stale }) => {
+    const moves = [
+      'sync',
+      'phase-changed',
+      'review-inbox-changed',
+      'review-instance-changed',
+    ] as const
+    if (!moves.some((kind) => kinds.has(kind))) return
     // the list and the rail's count, which is the desk's rather than this list's
-    refreshQueue()
-    void queryClient.invalidateQueries({
-      queryKey: query.assessment.listAwaitingSupplements.key({ query: { batchId } }),
-    })
+    refreshQueue(stale)
+    stale(query.assessment.listAwaitingSupplements.key({ query: { batchId } }))
   })
   const inbox = useQuery({
     ...useReviewQueueQuery(batchId),

@@ -1,5 +1,5 @@
 import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import {
   CheckIcon,
@@ -625,7 +625,6 @@ type ActivityItem = ApiResult<typeof assessmentApi, 'assessment', 'listMyActivit
 export default function BatchOverviewPage() {
   const { batchId } = usePageRouteParams('batchId')
   const query = useApiQuery(assessmentApi)
-  const queryClient = useQueryClient()
   const { format } = useI18n()
 
   const plan = useQuery({
@@ -635,23 +634,18 @@ export default function BatchOverviewPage() {
   const timeline = plan.data?.timeline ?? []
   const overview = useQuery(query.assessment.getMyOverview.queryOptions({ params: { batchId } }))
 
-  useBatchLive(batchId, (kind) => {
-    if (
-      kind !== 'sync' &&
-      kind !== 'phase-changed' &&
-      kind !== 'entries-changed' &&
-      kind !== 'result-changed' &&
-      kind !== 'review-inbox-changed' &&
-      kind !== 'review-instance-changed'
-    ) {
-      return
-    }
-    void queryClient.invalidateQueries({
-      queryKey: query.assessment.getMyOverview.key({ params: { batchId } }),
-    })
-    void queryClient.invalidateQueries({
-      queryKey: query.assessment.listMyActivity.key({ params: { batchId }, query: {} }),
-    })
+  useBatchLive(batchId, ({ kinds, stale }) => {
+    const moves = [
+      'sync',
+      'phase-changed',
+      'entries-changed',
+      'result-changed',
+      'review-inbox-changed',
+      'review-instance-changed',
+    ] as const
+    if (!moves.some((kind) => kinds.has(kind))) return
+    stale(query.assessment.getMyOverview.key({ params: { batchId } }))
+    stale(query.assessment.listMyActivity.key({ params: { batchId }, query: {} }))
   })
 
   return (

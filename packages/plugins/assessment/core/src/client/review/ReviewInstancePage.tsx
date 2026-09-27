@@ -700,22 +700,11 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // is down the same queries poll instead - later, but not blind.
   // the list and the rail's count move together, whichever wake-up says so
   const refreshQueue = useQueueRefresh(batch.id)
-  const { live } = useBatchLive(batch.id, (kind) => {
-    switch (kind) {
-      case 'sync':
-      case 'phase-changed':
-      case 'review-instance-changed':
-        void queryClient.invalidateQueries({
-          queryKey: query.assessment.getReviewInstance.key({ params: { instanceId } }),
-        })
-        refreshQueue()
-        return
-      case 'review-inbox-changed':
-        refreshQueue()
-        return
-      default:
-        return
-    }
+  const { live } = useBatchLive(batch.id, ({ kinds, stale }) => {
+    const round =
+      kinds.has('sync') || kinds.has('phase-changed') || kinds.has('review-instance-changed')
+    if (round) stale(query.assessment.getReviewInstance.key({ params: { instanceId } }))
+    if (round || kinds.has('review-inbox-changed')) refreshQueue(stale)
   })
 
   const inbox = useQuery({

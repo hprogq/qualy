@@ -480,9 +480,8 @@ export function ParticipantResultList({
   // totals both. What is being read right now, or was read a moment ago,
   // has not: the page has only just asked for its rows and totals, and
   // asking again would work out the whole page twice.
-  useBatchLive(batchId, (kind) => {
-    if (kind === 'heartbeat' || kind === 'plan-changed' || kind === 'review-inbox-changed') return
-    if (kind === 'sync') {
+  useBatchLive(batchId, ({ kinds, stale }) => {
+    if (kinds.has('sync')) {
       const lately = Date.now() - SYNC_FRESH
       // read at some point, not being read now, and not a moment ago; what
       // has never been read is read when it is first asked for
@@ -502,15 +501,14 @@ export function ParticipantResultList({
       for (const key of [latestAlerts.current, latestPlacements.current]) {
         if (behind(key)) void queryClient.invalidateQueries({ queryKey: key, exact: true })
       }
-      return
     }
     // a question's review steps changed: who they find nowhere may have too
-    if (kind === 'item-changed') {
-      void queryClient.invalidateQueries({
-        queryKey: query.assessment.reviewAlerts.key({ params: { batchId } }),
-      })
-    }
-    live.wake(MOVES_TOTALS.has(kind))
+    if (kinds.has('item-changed')) stale(query.assessment.reviewAlerts.key({ params: { batchId } }))
+    // a queue or a plan moving changes nothing on this list
+    const others = [...kinds].filter(
+      (kind) => kind !== 'sync' && kind !== 'plan-changed' && kind !== 'review-inbox-changed',
+    )
+    if (others.length > 0) live.wake(others.some((kind) => MOVES_TOTALS.has(kind)))
   })
 
   // The units the people this list can show were admitted from: the tree the

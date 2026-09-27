@@ -346,8 +346,8 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
   // another administrator's edit, or a boundary turning: the plan on screen
   // is stale. Unsaved edits are not clobbered - the editor's own draft
   // shields the rows it is holding until saved or discarded.
-  useBatchLive(batch.id, (kind) => {
-    if (kind === 'plan-changed' || kind === 'phase-changed' || kind === 'sync') void settle()
+  useBatchLive(batch.id, ({ kinds }) => {
+    if (kinds.has('plan-changed') || kinds.has('phase-changed') || kinds.has('sync')) void settle()
   })
   const failed = (error: unknown) => {
     const refusals = refusalsOf(error)

@@ -182,6 +182,65 @@ const queue = (inbox?: Record<string, unknown>, search = '') =>
     route: `/assessment/batches/${BATCH_ID}/reviews${search}`,
   })
 
+// One decision announces its round, the queue, the claim and the account in
+// one burst. Every reviewer with the round open used to read the whole queue
+// once per kind of that burst; now once for all of it.
+describe('the wake-ups of one decision', () => {
+  it('reads the queue once for the whole burst', async () => {
+    let reads = 0
+    let release = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const burst = [
+      'review-instance-changed',
+      'review-inbox-changed',
+      'entries-changed',
+      'result-changed',
+    ] as const
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+        assessment: {
+          getBatch: () => Effect.succeed({ batch: batch() }),
+          getMyOverview: () => Effect.succeed({}),
+          listReviewInbox: () => {
+            reads += 1
+            return Effect.succeed({
+              items: [inboxRow()],
+              nextCursor: null,
+              handledToday: 0,
+              judging: true,
+            })
+          },
+          listAwaitingSupplements: () => Effect.succeed({ items: [], nextCursor: null }),
+          watchBatch: () =>
+            Effect.succeed(
+              Stream.concat(
+                Stream.fromEffect(Effect.promise(() => gate)).pipe(
+                  Stream.flatMap(() => Stream.fromIterable(burst.map((kind) => ({ kind })))),
+                ),
+                Stream.never,
+              ),
+            ),
+        },
+      }),
+      routes: [
+        { path: '/assessment/batches/:batchId/reviews', element: <ReviewInboxPage /> },
+      ] as never,
+      route: `/assessment/batches/${BATCH_ID}/reviews`,
+    })
+    await expect.element(page.getByText('周予安').first()).toBeVisible()
+    await vi.waitFor(() => expect(reads).toBeGreaterThan(0))
+    const before = reads
+    release()
+    await vi.waitFor(() => expect(reads).toBe(before + 1))
+    // and nothing more follows once the burst has settled
+    await new Promise((resolve) => setTimeout(resolve, 800))
+    expect(reads).toBe(before + 1)
+  })
+})
+
 const open = (stubs: Record<string, unknown> = {}, locale: 'zh-CN' | 'en-US' = 'zh-CN') =>
   renderScreen({
     locale,

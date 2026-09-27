@@ -187,27 +187,27 @@ function Standing({
   // Wake-ups say "read again" and name what moved: a decision moves the
   // account, a filing moves the counts beside it, and a change to the paper
   // moves how the account is laid out.
-  const line = useBatchLive(batchId, (kind) => {
-    const stale = (key: readonly unknown[]) => void queryClient.invalidateQueries({ queryKey: key })
-    switch (kind) {
-      case 'sync':
-      case 'phase-changed':
-        stale(query.assessment.key())
-        return
-      case 'entries-changed':
-        stale(query.assessment.listMyEntries.key({ params: { batchId }, query: {} }))
-        return
-      case 'review-instance-changed':
-      case 'result-changed':
-        stale(query.assessment.getMyResult.key({ params: { batchId } }))
-        stale(query.assessment.listMyEntries.key({ params: { batchId }, query: {} }))
-        return
-      case 'item-changed':
-        stale(query.assessment.listItems.key({ params: { batchId } }))
-        stale(query.assessment.getMyResult.key({ params: { batchId } }))
-        return
-      default:
-        return
+  const line = useBatchLive(batchId, ({ kinds, stale }) => {
+    if (kinds.has('sync') || kinds.has('phase-changed')) {
+      stale(query.assessment.key())
+      return
+    }
+    if (
+      kinds.has('entries-changed') ||
+      kinds.has('review-instance-changed') ||
+      kinds.has('result-changed')
+    ) {
+      stale(query.assessment.listMyEntries.key({ params: { batchId }, query: {} }))
+    }
+    if (
+      kinds.has('review-instance-changed') ||
+      kinds.has('result-changed') ||
+      kinds.has('item-changed')
+    ) {
+      stale(query.assessment.getMyResult.key({ params: { batchId } }))
+    }
+    if (kinds.has('item-changed')) {
+      stale(query.assessment.listItems.key({ params: { batchId } }))
     }
   })
 

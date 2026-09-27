@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useQueryClient } from '@tanstack/react-query'
 import { DownloadIcon, PlusIcon, SearchIcon, ShieldOffIcon } from 'lucide-react'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { useApiQuery, usePageQueryState, usePageQueryUpdate } from '@qualy/web-runtime'
@@ -266,7 +265,6 @@ function RecordsBody({
   const { format } = useI18n()
   const businessNo = useTerm(authTerms.businessNumber)
   const query = useApiQuery(assessmentApi)
-  const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   // kept while the dialog shuts, or its contents would vanish before the
   // panel does and the whole thing would fold inward
@@ -297,24 +295,22 @@ function RecordsBody({
   // What somebody else just recorded, imported or withdrew in this round
   // moves the book and the imports' standing; nothing else on this page
   // listens for it.
-  useBatchLive(batch.id, (kind) => {
-    if (kind !== 'sync' && kind !== 'entries-changed') return
-    void queryClient.invalidateQueries({
-      queryKey: query.assessment.listAdministrativeEntries.key({
+  useBatchLive(batch.id, ({ kinds, stale }) => {
+    if (!kinds.has('sync') && !kinds.has('entries-changed')) return
+    stale(
+      query.assessment.listAdministrativeEntries.key({
         params: { batchId: batch.id },
         query: {},
       }),
-    })
-    void queryClient.invalidateQueries({
-      queryKey: query.assessment.listAdministrativeImports.key({
+    )
+    stale(
+      query.assessment.listAdministrativeImports.key({
         params: { batchId: batch.id },
         query: {},
       }),
-    })
-    void queryClient.invalidateQueries({ queryKey: query.assessment.getAdministrativeImport.key() })
-    void queryClient.invalidateQueries({
-      queryKey: query.assessment.listAdministrativeImportRows.key(),
-    })
+    )
+    stale(query.assessment.getAdministrativeImport.key())
+    stale(query.assessment.listAdministrativeImportRows.key())
   })
 
   if (!batch.capabilities.record) {

@@ -491,8 +491,7 @@ export function ParticipantResultDetail({
   // exactly what it could have changed. Invalidating everything on every
   // event would throw away the roster, the paper and the batch on a wake-up
   // about one claim, which is a page that flickers for no reason.
-  const line = useBatchLive(batchId, (kind) => {
-    const stale = (key: readonly unknown[]) => void queryClient.invalidateQueries({ queryKey: key })
+  const line = useBatchLive(batchId, ({ kinds, stale }) => {
     const account = () => {
       stale(
         query.assessment.listParticipantEntries.key({
@@ -502,55 +501,36 @@ export function ParticipantResultDetail({
       )
       stale(query.assessment.getParticipantResult.key({ params: { batchId, participantId } }))
     }
-    switch (kind) {
-      // A line just opened: whatever was read before it may have moved
-      // while nobody was listening. What is being read right now, or was
-      // read a moment ago - the page opening, the next person stepped to -
-      // has not, and reading it again would only read the page twice.
-      case 'sync': {
-        const lately = Date.now() - SYNC_FRESH
-        void queryClient.invalidateQueries({
-          queryKey: query.assessment.key(),
-          predicate: (read) =>
-            read.state.fetchStatus !== 'fetching' && read.state.dataUpdatedAt < lately,
-        })
-        return
-      }
-      // a phase that may have moved what staff may do
-      case 'phase-changed':
-        stale(query.assessment.key())
-        return
-      // A decision changes both what the claim says and what it counts for,
-      // and takes the round it closed out of whoever's queue it was in.
-      case 'review-instance-changed':
-        account()
-        refreshQueue()
-        rosterStirred.wake(null)
-        return
-      // Anybody's claim in the round, a saved draft as often as not: the
-      // account may have moved, but a queue only moves on a round, and
-      // every write that moves one says so in its own wake-up. Reading the
-      // whole queue again on each of these would read it on every save.
-      case 'entries-changed':
-        account()
-        rosterStirred.wake(null)
-        return
-      case 'result-changed':
-        account()
-        return
-      // somebody else took a round off a queue this reader shares
-      case 'review-inbox-changed':
-        refreshQueue()
-        return
-      // the paper itself moved: the ledger is grouped by it, and every
-      // amount is computed from the arithmetic it carries
-      case 'item-changed':
-        stale(query.assessment.listItems.key({ params: { batchId } }))
-        stale(query.assessment.listScoreGroups.key({ params: { batchId } }))
-        stale(query.assessment.getParticipantResult.key({ params: { batchId, participantId } }))
-        return
-      default:
-        return
+    // A line just opened: whatever was read before it may have moved while
+    // nobody was listening. What is being read right now, or was read a
+    // moment ago - the page opening, the next person stepped to - has not,
+    // and reading it again would only read the page twice.
+    if (kinds.has('sync')) {
+      const lately = Date.now() - SYNC_FRESH
+      void queryClient.invalidateQueries({
+        queryKey: query.assessment.key(),
+        predicate: (read) =>
+          read.state.fetchStatus !== 'fetching' && read.state.dataUpdatedAt < lately,
+      })
+    }
+    // a phase that may have moved what staff may do
+    if (kinds.has('phase-changed')) stale(query.assessment.key())
+    // A decision changes both what the claim says and what it counts for,
+    // and takes the round it closed out of whoever's queue it was in.
+    // Anybody's claim in the round - a saved draft as often as not - may
+    // move the account, but a queue only moves on a round, and every write
+    // that moves one says so in its own wake-up.
+    const decided = kinds.has('review-instance-changed')
+    if (decided || kinds.has('entries-changed') || kinds.has('result-changed')) account()
+    // somebody else took a round off a queue this reader shares
+    if (decided || kinds.has('review-inbox-changed')) refreshQueue(stale)
+    if (decided || kinds.has('entries-changed')) rosterStirred.wake(null)
+    // the paper itself moved: the ledger is grouped by it, and every amount
+    // is computed from the arithmetic it carries
+    if (kinds.has('item-changed')) {
+      stale(query.assessment.listItems.key({ params: { batchId } }))
+      stale(query.assessment.listScoreGroups.key({ params: { batchId } }))
+      stale(query.assessment.getParticipantResult.key({ params: { batchId, participantId } }))
     }
   })
 
