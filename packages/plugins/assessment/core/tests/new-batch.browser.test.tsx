@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { page, userEvent } from 'vitest/browser'
+import { page } from 'vitest/browser'
 import { Effect } from 'effect'
 import { NewBatchDialog } from '../src/client/NewBatchForm.tsx'
 import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
@@ -61,15 +61,21 @@ describe('choosing who a batch covers before the choices arrive', () => {
     await expect
       .poll(() => document.querySelector('[data-slot="date-range-picker"]') !== null)
       .toBe(true)
-    await userEvent.click(document.querySelector('[data-slot="date-range-picker"]')!)
+    // the dates are only the way to the second step, not what is under
+    // test: pressed in the page itself rather than through the driver,
+    // which waits on a busy machine for a calendar that is already there
+    document.querySelector<HTMLElement>('[data-slot="date-range-picker"]')!.click()
     await expect.poll(() => document.querySelectorAll('table td button').length > 0).toBe(true)
     const days = () =>
       Array.from(document.querySelectorAll<HTMLElement>('table td button')).filter(
         (day) => !day.hasAttribute('data-hidden') && !day.hasAttribute('disabled'),
       )
-    await userEvent.click(days()[0]!)
-    await userEvent.click(days()[4]!)
-    await dialog.getByRole('button', { name: '下一步' }).click()
+    days()[0]!.click()
+    await expect.poll(() => days()[4] !== undefined).toBe(true)
+    days()[4]!.click()
+    const next = dialog.getByRole('button', { name: '下一步' })
+    await expect.element(next).toBeEnabled()
+    await next.click()
     await expect.element(dialog.getByTestId('new-batch-waiting').first()).toBeVisible()
     expect(dialog.element().querySelectorAll('[data-slot="empty-field"]')).toHaveLength(0)
   })
