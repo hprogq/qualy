@@ -219,15 +219,14 @@ const assessmentStubs = (over: Stubs = {}): Stubs => ({
   listParticipantCandidates: () => Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }),
   listParticipantPlacements: () =>
     Effect.succeed({ items: [], nextCursor: null, changedTotal: 0, unavailableTotal: 0 }),
+  // the roster's standing warning and the overview's administration lane:
+  // nothing stopped here
   reviewAlerts: () =>
     Effect.succeed({ groups: [], unreachable: { routes: [], cannotSubmit: 0, cannotAppeal: 0 } }),
   previewImport: () => Effect.succeed({ candidates: 0 }),
   staffOptions: () => Effect.succeed({ nodes: [], roles: [] }),
   listAccess: () => Effect.succeed(staffPage([subject()])),
   previewAccessSync: () => Effect.succeed(emptyPlan),
-  // what the overview's administration lane reads: nothing stopped here
-  reviewAlerts: () =>
-    Effect.succeed({ groups: [], unreachable: { routes: [], cannotSubmit: 0, cannotAppeal: 0 } }),
   ...over,
 })
 

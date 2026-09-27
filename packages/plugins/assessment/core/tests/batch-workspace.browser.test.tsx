@@ -52,6 +52,8 @@ const stopped: Alerts = {
     {
       nodeId: NODE_ID,
       nodeName: '软件2401',
+      unitPath: ['软件学院', '软件2401'],
+      roleIds: [],
       roleNames: ['班长', '学习委员'],
       reason: 'no-assignee',
       waiting: 3,
@@ -59,6 +61,8 @@ const stopped: Alerts = {
     {
       nodeId: null,
       nodeName: null,
+      unitPath: [],
+      roleIds: [],
       roleNames: ['辅导员'],
       reason: 'no-assignee',
       waiting: 2,
