@@ -2,8 +2,9 @@ import BatchPhasesPage from '../src/client/BatchPhasesPage.tsx'
 import BatchSettingsPage from '../src/client/BatchSettingsPage.tsx'
 import { BatchFlow } from '../src/client/batch/BatchFlow.tsx'
 import { BatchZone } from '../src/client/batch/BatchZone.tsx'
+import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
 import type { ReactNode } from 'react'
-import { Link } from 'react-router'
+import { Link, Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
@@ -372,6 +373,82 @@ describe('the stage plan, being edited', () => {
       .toHaveAttribute('data-reason', 'scheduled-phase-immutable')
     expect(addressNow()).toBe(`/assessment/batches/${BATCH_ID}/phases`)
   })
+})
+
+describe('the stage plan, being edited in the workspace', () => {
+  const LONG = '补充提交（语言证书与竞赛获奖材料补交）'
+  const shelled = () =>
+    renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              viewer: 'authenticated' as const,
+              pages: PAGES,
+              collections: {
+                'workspace-shell/navigation': [
+                  {
+                    id: 'assessment/batch-phases/rail',
+                    label: { kind: 'literal' as const, value: '阶段安排' },
+                    target: {
+                      kind: 'page',
+                      pageId: 'assessment/batch-phases',
+                      path: '/assessment/batches/:batchId/phases',
+                    },
+                    order: 10,
+                  },
+                ],
+              },
+            }),
+        },
+        assessment: stubs({
+          getPhases: () =>
+            Effect.succeed({
+              ...threeStages,
+              phases: threeStages.phases.map((one) =>
+                one.id === REVIEW_ID ? { ...one, displayName: LONG } : one,
+              ),
+            }),
+        }),
+      }),
+      route: `/assessment/batches/${BATCH_ID}/phases`,
+      children: (
+        <Routes>
+          <Route element={<WorkspaceShell />}>
+            <Route path="/assessment/batches/:batchId/phases" element={<BatchPhasesPage />} />
+          </Route>
+        </Routes>
+      ),
+    })
+
+  /** whether a box shows all it holds, across and down */
+  const whole = (node: Element) =>
+    node.scrollWidth <= node.clientWidth + 1 && node.scrollHeight <= node.clientHeight + 1
+
+  // the rail open beside a laptop's width, and a tablet's with no rail:
+  // the two narrowest tables the plan is edited in
+  for (const width of [1024, 834]) {
+    it(`keeps a long stage name and what each stage opens whole at ${width}`, async () => {
+      await page.viewport(width, 800)
+      await shelled()
+      await vi.waitFor(() => expect(keys()).toHaveLength(3))
+      await page.getByRole('button', { name: '编辑阶段' }).click()
+      await expect.element(page.getByRole('button', { name: '新增阶段' })).toBeVisible()
+      if (width >= 1024) await expect.element(page.getByTestId('workspace-rail')).toBeVisible()
+
+      const name = page
+        .getByTestId('phase-row')
+        .nth(1)
+        .element()
+        .querySelector('[data-slot="phase-name"]')!
+      expect(name.textContent).toBe(LONG)
+      expect(whole(name)).toBe(true)
+      for (const opens of document.querySelectorAll('[data-slot="phase-opens"]')) {
+        expect(whole(opens)).toBe(true)
+      }
+    })
+  }
 })
 
 describe('the stage plan, read', () => {

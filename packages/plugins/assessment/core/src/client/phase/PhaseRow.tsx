@@ -75,11 +75,17 @@ const styles = stylex.create({
     rowGap: 4,
     margin: 0,
   },
+  // a stage is told apart by its name, most of all while the plan is being
+  // reordered and the column is at its narrowest: two lines before any of
+  // it gives way, and the whole of it on a pointer's rest
   name: {
+    display: '-webkit-box',
     minWidth: 0,
     overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
+    overflowWrap: 'anywhere',
+    whiteSpace: 'normal',
+    WebkitBoxOrient: 'vertical',
+    WebkitLineClamp: 2,
     fontSize: 13.5,
     lineHeight: 1.45,
     fontWeight: 500,
@@ -123,7 +129,15 @@ const styles = stylex.create({
     lineHeight: 1.45,
     color: tokens.danger,
   },
+  // the column gives up room to the name and the time while an edit adds
+  // its controls, so what the stage opens takes a second line rather than
+  // losing its end
   opens: {
+    display: '-webkit-box',
+    overflow: 'hidden',
+    whiteSpace: 'normal',
+    WebkitBoxOrient: 'vertical',
+    WebkitLineClamp: 2,
     fontVariantNumeric: 'tabular-nums',
   },
   whenRow: {
@@ -444,6 +458,8 @@ function useParts(props: PhaseRowProps) {
       <span {...stylex.props(styles.nameCol)}>
         <span
           id={ids.name}
+          title={name}
+          data-slot="phase-name"
           {...stylex.props(styles.name, draft.displayName === '' && styles.nameAbsent)}
         >
           {name}
@@ -475,7 +491,7 @@ function useParts(props: PhaseRowProps) {
   )
 
   const opens = (
-    <span {...stylex.props(styles.opens)}>
+    <span data-slot="phase-opens" {...stylex.props(styles.opens)}>
       {format(m.opensCount, { count: draft.permissionProfile.length })}
     </span>
   )
