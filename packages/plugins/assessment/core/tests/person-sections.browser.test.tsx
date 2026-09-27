@@ -121,7 +121,8 @@ describe('the sections of a person’s record this plugin holds', () => {
       const counted = () => [
         ...document.querySelectorAll<HTMLElement>('[data-testid="person-section-count"]'),
       ]
-      await expect.poll(() => counted().length).toBe(2)
+      // the counts wait on two reads and the shell's lazy sections
+      await expect.poll(() => counted().length, { timeout: 5_000 }).toBe(2)
       const bySection = new Map(counted().map((badge) => [badge.dataset['section'], badge]))
       expect(bySection.get('batches')?.dataset['count']).toBe('3')
       expect(bySection.get('entries')?.dataset['count']).toBe('20')

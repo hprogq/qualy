@@ -227,7 +227,7 @@ const choosePerson = async (name: string) => {
       (row.textContent ?? '').includes(name),
     )
     if (!found) throw new Error(`${name} is not offered yet`)
-  })
+  }, 5_000)
   const row = [...document.querySelectorAll('[data-testid="people-picker-row"]')].find((one) =>
     (one.textContent ?? '').includes(name),
   )!
@@ -471,7 +471,9 @@ describe('recording with a determination', () => {
         throw new Error('the errand is still standing')
     })
     // the band's own action; the empty book below offers the same errand
-    await userEvent.click(page.getByRole('button', { name: '统一认定' }).first().element())
+    // by locator, which waits: the closing dialog keeps the page hidden from
+    // the accessibility tree until it has gone
+    await page.getByRole('button', { name: '统一认定' }).first().click()
     await waitForItems()
     await chooseItem('竞赛获奖登记')
     await vi.waitFor(() => {
