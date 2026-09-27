@@ -1273,6 +1273,16 @@ const i18n = definePluginMessages({
       defaultMessage:
         'This item’s review workflow doesn’t cover your unit, so it can’t be sent for review. Contact the batch administrator',
     },
+    refuseAppealRouteMissing: {
+      id: 'assessment/entry/refuse-appeal-route-missing',
+      defaultMessage:
+        'This item’s escalation workflow doesn’t cover your unit, so you can’t appeal yet. Contact the batch administrator',
+    },
+    refuseReopenRouteMissing: {
+      id: 'assessment/entry/refuse-reopen-route-missing',
+      defaultMessage:
+        'This item’s escalation workflow doesn’t cover the participant’s unit, so it can’t be re-examined yet',
+    },
     entriesHeldRoute: {
       id: 'assessment/entries/held-route',
       defaultMessage:

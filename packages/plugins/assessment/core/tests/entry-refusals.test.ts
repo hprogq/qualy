@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import type { ReservationInvalidReason, UploadRefusedReason } from '@qualy/plugin-storage/errors'
 import { describe, expect, it } from 'vitest'
 import {
+  entryRefusalMessage,
   entryRefusalReason,
   filingHeldOf,
   holdOf,
@@ -264,8 +265,28 @@ describe('why a stage holds the owner’s act', () => {
   it('says a route with nowhere to stand where the next claim would start', () => {
     expect(filingHeldOf('review-level-missing', during).message.id).toBe(m.entriesHeldRoute.id)
     expect(filingHeldOf('review-level-missing', null).message.id).toBe(m.entriesHeldRoute.id)
-    expect(read(sayBlocked('appeal', 'review-level-missing', during, words))).toEqual({
+    // sending names the review route; the submit key says so
+    expect(read(sayBlocked('submit', 'review-level-missing', during, words))).toEqual({
       id: m.refuseReviewLevelMissing.id,
     })
+  })
+
+  // An appeal walks the route above the ordinary one, and the staff's
+  // reopening walks it too: where that route has nowhere to stand, the
+  // sentence names that route and the act it held, not "sending for review".
+  it('says an appeal route with nowhere to stand as an appeal', () => {
+    expect(read(sayBlocked('appeal', 'review-level-missing', during, words))).toEqual({
+      id: m.refuseAppealRouteMissing.id,
+    })
+    expect(read(sayOwnRefusal(refused('appeal', 'review-level-missing'), during, words))).toEqual({
+      id: m.refuseAppealRouteMissing.id,
+    })
+    expect(entryRefusalMessage(refused('reopen', 'review-level-missing'))?.id).toBe(
+      m.refuseReopenRouteMissing.id,
+    )
+    // and a claim being sent keeps the review route's own sentence
+    expect(entryRefusalMessage(refused('submit', 'review-level-missing'))?.id).toBe(
+      m.refuseReviewLevelMissing.id,
+    )
   })
 })

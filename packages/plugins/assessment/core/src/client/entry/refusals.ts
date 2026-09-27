@@ -77,6 +77,22 @@ const SENTENCES: Record<string, MessageDescriptor> = {
   oversized: m.refuseUploadAgain,
 }
 
+/**
+ * Reasons whose sentence depends on the act they held. A route with nowhere
+ * to stand is the ordinary review route for a claim being sent, and the
+ * review route above it for an appeal or a staff reopening: saying "cannot
+ * be sent for review" to somebody pressing "appeal" names the wrong route
+ * and the wrong act.
+ */
+const BY_ACT: Record<string, Record<string, MessageDescriptor>> = {
+  appeal: { 'review-level-missing': m.refuseAppealRouteMissing },
+  reopen: { 'review-level-missing': m.refuseReopenRouteMissing },
+}
+
+/** a reason's sentence, as the act it held needs it said */
+const sentenceOf = (action: string | null, reason: string): MessageDescriptor | null =>
+  (action === null ? undefined : BY_ACT[action]?.[reason]) ?? SENTENCES[reason] ?? null
+
 /** the sentence for a bare reason code, for a blocked act's tooltip */
 export const entryRefusalReason = (reason: string): MessageDescriptor | null =>
   SENTENCES[reason] ?? null
@@ -199,7 +215,7 @@ export const sayBlocked = (
 ): string => {
   const hold = holdOf(reason, round)
   if (hold !== null) return sayHeld(hold, [act], words)
-  return words.format((reason === null ? null : entryRefusalReason(reason)) ?? m.entryBlockedNow)
+  return words.format((reason === null ? null : sentenceOf(act, reason)) ?? m.entryBlockedNow)
 }
 
 /** the act and the reason of a refused entry act, or null when this is not one */
@@ -234,14 +250,14 @@ export const sayOwnRefusal = (
   if (hold !== null && HELD_ACTS.has(refusal.action)) {
     return sayHeld(hold, [refusal.action as HeldAct], words)
   }
-  return words.format(SENTENCES[refusal.reason] ?? m.refuseOther)
+  return words.format(sentenceOf(refusal.action, refusal.reason) ?? m.refuseOther)
 }
 
 /** the sentence for a refusal, or null when this is not one */
 export const entryRefusalMessage = (error: unknown): MessageDescriptor | null => {
-  const refusal = error as { _tag?: string; reason?: string }
-  if (refusal?._tag !== 'ASSESSMENT_ENTRY_ACTION_REFUSED') return null
-  return SENTENCES[refusal.reason ?? ''] ?? m.refuseOther
+  const refusal = refusalOf(error)
+  if (refusal === null) return null
+  return sentenceOf(refusal.action, refusal.reason) ?? m.refuseOther
 }
 
 /**

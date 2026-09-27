@@ -134,6 +134,10 @@ export default {
   'assessment/entry/refuse-item-unconfigured': '项目尚未完成配置，请联系批次管理员。',
   'assessment/entry/refuse-review-level-missing':
     '该项目的审核流程未覆盖你所在的组织，暂时无法送审，请联系批次管理员',
+  'assessment/entry/refuse-appeal-route-missing':
+    '该项目的复核流程未覆盖你所在的组织，暂不能申诉，请联系批次管理员',
+  'assessment/entry/refuse-reopen-route-missing':
+    '该项目的复核流程未覆盖该参评人所在的组织，暂不能发起复查',
   'assessment/entries/held-route':
     '该项目的审核流程未覆盖你所在的组织，暂不能申报，请联系批次管理员',
   'assessment/entry/refuse-self-record': '与本人有关的记录需由其他工作人员处理',
