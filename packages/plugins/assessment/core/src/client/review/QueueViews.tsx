@@ -24,6 +24,7 @@ import { scrollMotion, useBeside, useMedia, useWidthOf } from './pointer.ts'
 import {
   BESIDE_MIN,
   SPREAD_MOST,
+  STACK_MIN,
   WHEN_WIDTH,
   WHO_MIN,
   answersFitIn,
@@ -50,7 +51,8 @@ import {
 // beside the work of the one picked: the questions (or the people) on the
 // left with how much is waiting and since when, the picked one's filings on
 // the right, ten to a page. Where the queue's own room is too narrow for
-// both, the two are one screen after the other - the list first, the picked
+// both, the list is a strip of keys over the picked one's filings; on a
+// phone the two are one screen after the other - the list first, the picked
 // one's filings a step in - the way "my entries" goes from its structure
 // into a question. By time the queue is one table, oldest first.
 //
@@ -422,6 +424,84 @@ const styles = stylex.create({
     lineHeight: 1.5,
     color: tokens.foreground,
   },
+  // ---- the list as a strip of keys, over the filings ----
+  strip: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'flex-start',
+    gap: 12,
+    paddingInline: 16,
+    paddingBlock: 10,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+  },
+  stripLabel: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    alignItems: 'baseline',
+    gap: 6,
+    fontSize: 12.5,
+    lineHeight: '30px',
+    fontWeight: 600,
+  },
+  // two lines of keys at most; past that the strip scrolls inside itself
+  // rather than pushing the filings down the page
+  stripList: {
+    display: 'flex',
+    minWidth: 0,
+    maxHeight: 66,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexWrap: 'wrap',
+    gap: 6,
+    margin: 0,
+    padding: 0,
+    overflowY: 'auto',
+    overscrollBehavior: 'contain',
+    listStyleType: 'none',
+  },
+  stripKey: {
+    display: 'inline-flex',
+    maxWidth: '16rem',
+    height: 30,
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    borderRadius: 9999,
+    paddingInline: 12,
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 55%, transparent)`,
+    },
+    fontFamily: 'inherit',
+    fontSize: 12.5,
+    color: 'inherit',
+    cursor: 'pointer',
+    transitionProperty: 'background-color, border-color',
+    transitionDuration: '120ms',
+  },
+  stripKeyOn: {
+    borderColor: tokens.foreground,
+    backgroundColor: { default: tokens.surfaceMuted, ':hover': tokens.surfaceMuted },
+    fontWeight: 600,
+  },
+  stripName: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  stripCount: {
+    flexShrink: 0,
+    fontSize: 12,
+    fontWeight: 500,
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.mutedForeground,
+  },
   // who filed it with the question under the name, where the room has no
   // column to spare for the question
   whoWithItem: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 2 },
@@ -459,6 +539,8 @@ const styles = stylex.create({
   },
   skName: { height: 14 },
   skMeta: { height: 11, width: '45%' },
+  skKey: { height: 30, borderRadius: 9999 },
+  skStripLabel: { width: 48, height: 14, marginBlock: 8, flexShrink: 0 },
 })
 
 /** what a row opens: the filing, walked as part of the named run */
@@ -472,7 +554,7 @@ type OpenRow = (row: InboxItemDto, run: string) => void
 type Choose = (key: string, drills: boolean) => void
 
 /** how the queue was laid out, for the hooks a test reads it by */
-type Layout = 'split' | 'drill' | 'single' | 'spread' | 'table'
+type Layout = 'split' | 'stack' | 'drill' | 'single' | 'spread' | 'table'
 
 /**
  * The room the queue has, measured, around whatever it is laid out as. Its
@@ -673,6 +755,87 @@ function MasterRow({
         {drills && (
           <ChevronRightIcon aria-hidden className={stylex.props(styles.masterChevron).className} />
         )}
+      </button>
+    </li>
+  )
+}
+
+/**
+ * The list as a strip of keys over the picked one's filings, where the room
+ * has no column to spare for it: each key the name and how much it holds,
+ * the picked one marked. The same rows a test finds in the list beside.
+ */
+function MasterStrip({
+  label,
+  count,
+  selected,
+  children,
+}: {
+  label: string
+  count: number
+  /** the key of the one picked, kept in sight when the strip scrolls */
+  selected: string | null
+  children: ReactNode
+}) {
+  const list = useRef<HTMLUListElement>(null)
+  useEffect(() => {
+    if (selected === null) return
+    const key = list.current?.querySelector<HTMLElement>(`[data-key="${CSS.escape(selected)}"]`)
+    const strip = list.current
+    if (key === null || key === undefined || strip === null) return
+    // inside the strip only: the page itself stays where the reader has it
+    const above = key.offsetTop - strip.offsetTop
+    if (
+      above < strip.scrollTop ||
+      above + key.offsetHeight > strip.scrollTop + strip.clientHeight
+    ) {
+      strip.scrollTop = above
+    }
+  }, [selected])
+  return (
+    <div data-testid="queue-master" data-shape="strip" {...stylex.props(styles.strip)}>
+      <span {...stylex.props(styles.stripLabel)}>
+        {label}
+        <span {...stylex.props(styles.masterTally)}>{count}</span>
+      </span>
+      <ul ref={list} aria-label={label} {...stylex.props(styles.stripList)}>
+        {children}
+      </ul>
+    </div>
+  )
+}
+
+function StripKey({
+  id,
+  name,
+  note = null,
+  count,
+  selected,
+  onChoose,
+}: {
+  id: string
+  name: string
+  /** a number the name is told apart by, said on hover */
+  note?: string | null
+  count: number
+  selected: boolean
+  onChoose: () => void
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        data-testid="queue-master-row"
+        data-key={id}
+        data-count={count}
+        data-selected={selected}
+        aria-current={selected || undefined}
+        title={note === null ? name : `${name} ${note}`}
+        onClick={onChoose}
+        {...stylex.props(styles.stripKey, selected && styles.stripKeyOn)}
+      >
+        <span {...stylex.props(styles.stripName)}>{name}</span>
+        <span {...stylex.props(styles.stripCount)}>{count}</span>
       </button>
     </li>
   )
@@ -929,17 +1092,33 @@ const pickedOf = <Group,>(
   key: string,
 ) => (key === '' ? undefined : groups.find((group) => keyOf(group) === key))
 
-/** the queue's room, and what it allows: the list beside the filings, and how wide they are */
+/**
+ * The queue's room, and what it allows: the list beside the filings, the
+ * list as a strip over them, or one after the other.
+ */
 function useQueueRoom() {
   const [seat, width] = useWidthOf<HTMLDivElement>()
   const room = width ?? 0
   const beside = width !== null && width >= BESIDE_MIN
-  return { seat, width, room, beside }
+  const stacked = width !== null && !beside && width >= STACK_MIN
+  return { seat, width, room, beside, stacked }
 }
 
 /** how the queue is laid out, from how much of it there is and the room it has */
-const layoutOf = (total: number, groups: number, beside: boolean): Layout =>
-  total <= SPREAD_MOST ? 'spread' : groups === 1 ? 'single' : beside ? 'split' : 'drill'
+const layoutOf = (
+  total: number,
+  groups: number,
+  room: { beside: boolean; stacked: boolean },
+): Layout =>
+  total <= SPREAD_MOST
+    ? 'spread'
+    : groups === 1
+      ? 'single'
+      : room.beside
+        ? 'split'
+        : room.stacked
+          ? 'stack'
+          : 'drill'
 
 /**
  * The run over one question or one person, where it is worth a key: one
@@ -991,15 +1170,17 @@ export function ItemQueue({
   onOpen: OpenRow
 }) {
   const { format } = useI18n()
-  const { seat, width, room, beside } = useQueueRoom()
+  const { seat, width, room, beside, stacked } = useQueueRoom()
   const phone = usePhone()
   const since = useDayClock()
   const groups = groupByItem(rows)
-  const layout = layoutOf(rows.length, groups.length, beside)
+  const layout = layoutOf(rows.length, groups.length, { beside, stacked })
   const named = pickedOf(groups, (group) => group.itemId, chosen)
   // at a desk something is always open: the question that has waited
   // longest; and a question alone in the queue is open at any width
-  const open = named ?? (layout === 'split' || layout === 'single' ? groups[0] : undefined)
+  const open =
+    named ??
+    (layout === 'split' || layout === 'stack' || layout === 'single' ? groups[0] : undefined)
   const paneWidth = paneWidthOf(room, layout === 'split')
 
   if (layout === 'spread') {
@@ -1048,26 +1229,44 @@ export function ItemQueue({
     )
   }
 
-  const master = (
-    <MasterCard
-      title={format(m.reviewMasterItems)}
-      count={groups.length}
-      selected={open?.itemId ?? null}
-    >
-      {groups.map((group) => (
-        <MasterRow
-          key={group.itemId}
-          id={group.itemId}
-          name={group.itemTitle}
-          meta={format(m.reviewOldest, { when: since(group.rows[0]!.submittedAt) })}
-          count={group.rows.length}
-          selected={beside && open?.itemId === group.itemId}
-          drills={!beside}
-          onChoose={() => onChoose(group.itemId, !beside)}
-        />
-      ))}
-    </MasterCard>
-  )
+  const master =
+    layout === 'stack' ? (
+      <MasterStrip
+        label={format(m.reviewMasterItems)}
+        count={groups.length}
+        selected={open?.itemId ?? null}
+      >
+        {groups.map((group) => (
+          <StripKey
+            key={group.itemId}
+            id={group.itemId}
+            name={group.itemTitle}
+            count={group.rows.length}
+            selected={open?.itemId === group.itemId}
+            onChoose={() => onChoose(group.itemId, false)}
+          />
+        ))}
+      </MasterStrip>
+    ) : (
+      <MasterCard
+        title={format(m.reviewMasterItems)}
+        count={groups.length}
+        selected={open?.itemId ?? null}
+      >
+        {groups.map((group) => (
+          <MasterRow
+            key={group.itemId}
+            id={group.itemId}
+            name={group.itemTitle}
+            meta={format(m.reviewOldest, { when: since(group.rows[0]!.submittedAt) })}
+            count={group.rows.length}
+            selected={beside && open?.itemId === group.itemId}
+            drills={!beside}
+            onChoose={() => onChoose(group.itemId, !beside)}
+          />
+        ))}
+      </MasterCard>
+    )
 
   let pane: ReactNode = null
   if (open !== undefined) {
@@ -1088,6 +1287,7 @@ export function ItemQueue({
         data-count={open.rows.length}
         data-answers={answers}
       >
+        {layout === 'stack' && master}
         <PaneHead
           back={layout === 'drill' ? { label: format(m.reviewFilterAllItems), onBack } : null}
           title={open.itemTitle}
@@ -1131,7 +1331,7 @@ export function ItemQueue({
 
   return (
     <QueueRoom layout={layout} seat={seat} width={width}>
-      {layout === 'single' ? (
+      {layout === 'single' || layout === 'stack' ? (
         pane
       ) : (
         <Split
@@ -1254,12 +1454,14 @@ export function PersonQueue({
   onOpen: OpenRow
 }) {
   const { format } = useI18n()
-  const { seat, width, room, beside } = useQueueRoom()
+  const { seat, width, room, beside, stacked } = useQueueRoom()
   const phone = usePhone()
   const people = groupByPerson(rows)
-  const layout = layoutOf(rows.length, people.length, beside)
+  const layout = layoutOf(rows.length, people.length, { beside, stacked })
   const named = pickedOf(people, (person) => person.key, chosen)
-  const open = named ?? (layout === 'split' || layout === 'single' ? people[0] : undefined)
+  const open =
+    named ??
+    (layout === 'split' || layout === 'stack' || layout === 'single' ? people[0] : undefined)
   const paneWidth = paneWidthOf(room, layout === 'split')
 
   if (layout === 'spread') {
@@ -1310,28 +1512,47 @@ export function PersonQueue({
     )
   }
 
-  const master = (
-    <MasterCard
-      title={format(m.reviewColumnParticipant)}
-      count={people.length}
-      selected={open?.key ?? null}
-    >
-      {people.map((person) => (
-        <MasterRow
-          key={person.key}
-          id={person.key}
-          name={person.name}
-          note={person.businessNo}
-          meta={person.unitName}
-          count={person.rows.length}
-          face={<Face name={person.name} />}
-          selected={beside && open?.key === person.key}
-          drills={!beside}
-          onChoose={() => onChoose(person.key, !beside)}
-        />
-      ))}
-    </MasterCard>
-  )
+  const master =
+    layout === 'stack' ? (
+      <MasterStrip
+        label={format(m.reviewColumnParticipant)}
+        count={people.length}
+        selected={open?.key ?? null}
+      >
+        {people.map((person) => (
+          <StripKey
+            key={person.key}
+            id={person.key}
+            name={person.name}
+            note={person.businessNo}
+            count={person.rows.length}
+            selected={open?.key === person.key}
+            onChoose={() => onChoose(person.key, false)}
+          />
+        ))}
+      </MasterStrip>
+    ) : (
+      <MasterCard
+        title={format(m.reviewColumnParticipant)}
+        count={people.length}
+        selected={open?.key ?? null}
+      >
+        {people.map((person) => (
+          <MasterRow
+            key={person.key}
+            id={person.key}
+            name={person.name}
+            note={person.businessNo}
+            meta={person.unitName}
+            count={person.rows.length}
+            face={<Face name={person.name} />}
+            selected={beside && open?.key === person.key}
+            drills={!beside}
+            onChoose={() => onChoose(person.key, !beside)}
+          />
+        ))}
+      </MasterCard>
+    )
 
   let pane: ReactNode = null
   if (open !== undefined) {
@@ -1344,6 +1565,7 @@ export function PersonQueue({
         data-count={open.rows.length}
         data-answers={answers}
       >
+        {layout === 'stack' && master}
         <PaneHead
           back={layout === 'drill' ? { label: format(m.reviewAllPeople), onBack } : null}
           face={<Face name={open.name} />}
@@ -1387,7 +1609,7 @@ export function PersonQueue({
 
   return (
     <QueueRoom layout={layout} seat={seat} width={width}>
-      {layout === 'single' ? (
+      {layout === 'single' || layout === 'stack' ? (
         pane
       ) : (
         <Split
@@ -1675,11 +1897,35 @@ function SpreadRows({
 
 /**
  * The queue's own shape while it is read: where the room allows it the list
- * beside the open question's filings, narrower the list alone - the screens
- * that land a moment later, greyed.
+ * beside the open question's filings, a little narrower the strip of keys
+ * over them, narrower still the list alone - the screens that land a moment
+ * later, greyed.
  */
 export function QueueSkeleton() {
-  const { seat, width, room, beside } = useQueueRoom()
+  const { seat, width, room, beside, stacked } = useQueueRoom()
+  const paneBones = (strip: boolean) => (
+    <Card>
+      {strip && (
+        <div {...stylex.props(styles.strip)}>
+          <Skeleton className={stylex.props(styles.skStripLabel).className} />
+          <div {...stylex.props(styles.stripList)}>
+            {[132, 104, 148].map((wide) => (
+              <Skeleton
+                key={wide}
+                className={stylex.props(styles.skKey).className}
+                style={{ width: wide }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      <div {...stylex.props(styles.skHead)}>
+        <Skeleton className={stylex.props(styles.skTitle).className} />
+        <Skeleton className={stylex.props(styles.skFacts).className} />
+      </div>
+      <TableSkeleton rows={6} />
+    </Card>
+  )
   const masterBones = (
     <Card xstyle={styles.master}>
       <div {...stylex.props(styles.skHead)}>
@@ -1699,14 +1945,10 @@ export function QueueSkeleton() {
         {beside ? (
           <div {...stylex.props(styles.split(`${String(masterWidthOf(room))}px minmax(0, 1fr)`))}>
             <div {...stylex.props(styles.masterSeat)}>{masterBones}</div>
-            <Card>
-              <div {...stylex.props(styles.skHead)}>
-                <Skeleton className={stylex.props(styles.skTitle).className} />
-                <Skeleton className={stylex.props(styles.skFacts).className} />
-              </div>
-              <TableSkeleton rows={6} />
-            </Card>
+            {paneBones(false)}
           </div>
+        ) : stacked ? (
+          paneBones(true)
         ) : (
           masterBones
         )}

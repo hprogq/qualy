@@ -20,6 +20,14 @@ export const SPREAD_MOST = 3
 /** below this, the list and the picked one's filings do not fit side by side */
 export const BESIDE_MIN = 880
 
+/**
+ * Below this, the list and the picked one's filings are one screen after the
+ * other. Between it and BESIDE_MIN they are one above the other: the list
+ * drawn as a strip of keys over the filings of the one picked, so a desk
+ * narrowed by the rail opens on work rather than on a list to step into.
+ */
+export const STACK_MIN = 640
+
 /** the column the list takes beside the filings: a quarter of the room, within bounds */
 export const masterWidthOf = (room: number): number =>
   Math.round(Math.min(288, Math.max(224, room * 0.24)))

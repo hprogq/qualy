@@ -182,9 +182,10 @@ afterEach(() => page.viewport(DEFAULT_VIEWPORT.width, DEFAULT_VIEWPORT.height))
 describe('the queue beside the rail', () => {
   // The line is the queue's own room: 1024 with the rail open leaves the
   // queue about as wide as a tablet, where the list and a question's table
-  // do not both fit; from about 1280 they do.
+  // do not both fit side by side and the list is a strip over the table;
+  // from about 1280 they do.
   for (const [width, height, shape] of [
-    [1024, 768, 'drill'],
+    [1024, 768, 'stack'],
     [1280, 800, 'split'],
     [1440, 900, 'split'],
     [1920, 1080, 'split'],
@@ -207,20 +208,30 @@ describe('the queue beside the rail', () => {
     })
   }
 
-  // Narrower than the two need, the list is a screen of its own, and a
-  // question is a step in from it that the back key steps out of - at a
-  // desk width too, where the rail has taken the room.
-  it('steps into a question from the list where the rail leaves too little room', async () => {
+  // Narrower than the two need side by side but still a desk, the list is
+  // a strip of keys over the question that has waited longest: the page
+  // opens on work, and another question is one press away rather than a
+  // step in and back out.
+  it('opens on the oldest question under a strip of the rest where the rail leaves too little room', async () => {
     await page.viewport(1024, 768)
     await shelled(both())
+    await expect.element(layout()).toHaveAttribute('data-layout', 'stack')
     const masters = page.getByTestId('queue-master-row')
     await expect.element(masters.first()).toBeVisible()
-    expect(rows().elements()).toHaveLength(0)
+    await expect.element(masters.first()).toHaveAttribute('data-selected', 'true')
+    // the filings are there without a press, under the keys
+    await expect.element(rows().first()).toBeVisible()
+    const strip = page.getByTestId('queue-master').element()
+    expect(strip.getAttribute('data-shape')).toBe('strip')
+    expect(strip.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+      rows().first().element().getBoundingClientRect().top,
+    )
+    // nothing to step back out of
+    expect(page.getByTestId('queue-pane-back').elements()).toHaveLength(0)
     await masters.nth(1).click()
     await expect.element(page.getByTestId('queue-pane')).toHaveAttribute('data-key', OTHER_ITEM)
-    await page.getByTestId('queue-pane-back').click()
-    await expect.poll(() => addressNow()).not.toContain('item=')
-    await expect.element(masters.first()).toBeVisible()
+    await expect.element(masters.nth(1)).toHaveAttribute('data-selected', 'true')
+    expect(addressNow()).toContain(`item=${OTHER_ITEM}`)
   })
 
   // A table's answers take the room their longest entries need, the
