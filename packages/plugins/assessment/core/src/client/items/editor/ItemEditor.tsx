@@ -920,6 +920,8 @@ export function ItemEditor({
   }
 
   // ---- saving -------------------------------------------------------------
+  /** a save made on the way out of the page, which stays where the reader is going */
+  const leavingNow = useRef(false)
   const save = useMutation({
     mutationFn: ({
       reason,
@@ -1095,7 +1097,6 @@ export function ItemEditor({
   // page holds itself. A save that cannot go straight through - something
   // left unfinished, a reason it needs, somebody else's version - stays,
   // and says why here.
-  const leavingNow = useRef(false)
   useLeaveGuard({
     when: dirty || composedHere,
     onSave: async () => {
