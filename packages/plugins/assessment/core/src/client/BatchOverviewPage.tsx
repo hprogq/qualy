@@ -5,13 +5,16 @@ import { CheckIcon, ChevronDownIcon, ChevronRightIcon, ChevronUpIcon } from 'luc
 import {
   useApi,
   useApiQuery,
+  useLoadFailure,
   usePageNavigate,
   usePageRouteParams,
   useRunApi,
   cursorPages,
 } from '@qualy/web-runtime'
 import { useI18n, useList } from '@qualy/web-i18n'
+import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { AsyncSection } from '@qualy/ui/admin'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
@@ -123,10 +126,6 @@ const styles = stylex.create({
   asideSkeletonLine: {
     height: 20,
     width: '100%',
-  },
-  failNote: {
-    fontSize: 14,
-    color: tokens.danger,
   },
   actions: {
     display: 'flex',
@@ -782,14 +781,17 @@ function MyDesk({
     data: OverviewDto | undefined
     isPending: boolean
     isError: boolean
+    isFetching: boolean
     error: unknown
+    refetch: () => unknown
   }
 }) {
   const query = useApiQuery(assessmentApi)
   const api = useApi(assessmentApi)
   const run = useRunApi()
   const navigate = usePageNavigate()
-  const { format, formatError, locale } = useI18n()
+  const { format, locale } = useI18n()
+  const failure = useLoadFailure()
   const zone = useBatchZone()
   const [lane, setLane] = useState<Lane>('all')
   // the desk's list fragments join in the reader's own punctuation
@@ -837,8 +839,20 @@ function MyDesk({
 
   const desk = overview.data
   const mixed = desk !== undefined && desk.participant !== null && desk.reviewer !== null
-  if (overview.isError) {
-    return <p {...stylex.props(styles.failNote)}>{formatError(overview.error)}</p>
+  if (overview.isError && desk === undefined) {
+    return (
+      <AsyncSection
+        pending={false}
+        error={failure.of(overview.error)}
+        framed
+        retrying={overview.isFetching}
+        loadingLabel={format(commonMessages.loading)}
+        retryLabel={format(commonMessages.retry)}
+        onRetry={() => void overview.refetch()}
+      >
+        {null}
+      </AsyncSection>
+    )
   }
   if (desk !== undefined && desk.participant === null && desk.reviewer === null) {
     // an administrator without a standing here reads the stage plan alone
@@ -1045,8 +1059,18 @@ function MyDesk({
               </div>
             ))}
           </div>
-        ) : activity.isError ? (
-          <p {...stylex.props(styles.failNote)}>{formatError(activity.error)}</p>
+        ) : activity.isError && rows.length === 0 ? (
+          <AsyncSection
+            pending={false}
+            error={failure.of(activity.error)}
+            framed
+            retrying={activity.isFetching}
+            loadingLabel={format(commonMessages.loading)}
+            retryLabel={format(commonMessages.retry)}
+            onRetry={() => void activity.refetch()}
+          >
+            {null}
+          </AsyncSection>
         ) : rows.length === 0 ? (
           <p {...stylex.props(styles.quietNote)}>{format(m.overviewActivityNone)}</p>
         ) : (

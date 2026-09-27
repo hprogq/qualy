@@ -283,3 +283,84 @@ describe('a screen of the batch that is not for the reader', () => {
     expect(page.getByRole('textbox').elements()).toHaveLength(0)
   })
 })
+
+describe('the overview when its own reads fail', () => {
+  it('stands a state with another try where the desk would be, not a line of red', async () => {
+    await page.viewport(1280, 800)
+    let reachable = false
+    // a reviewer, whose desk is the overview's own read and nothing else
+    await shelled(`/assessment/batches/${BATCH_ID}`, {
+      getBatch: () =>
+        Effect.succeed({
+          batch: batch({
+            manageable: false,
+            capabilities: {
+              personal: false,
+              review: true,
+              record: false,
+              manage: false,
+              redetermine: false,
+            },
+          }),
+        }),
+      getMyOverview: () =>
+        reachable
+          ? Effect.succeed({
+              participant: null,
+              reviewer: { pendingCount: 2, answeredAskCount: 0, queueGroups: [], answeredAsks: [] },
+            })
+          : Effect.fail(apiError('ASSESSMENT_INTERNAL')),
+      listMyActivity: () =>
+        reachable
+          ? Effect.succeed({ items: [], nextCursor: null })
+          : Effect.fail(apiError('SERVICE_UNAVAILABLE')),
+    })
+    const failed = () =>
+      page
+        .getByRole('main')
+        .element()
+        .querySelector('[data-slot="resource-state"][data-state="failed"]')
+    await vi.waitFor(() => expect(failed()).not.toBeNull())
+    reachable = true
+    await page.getByRole('main').getByRole('button', { name: '重试' }).click()
+    await expect.element(page.getByTestId('overview-actions')).toBeVisible()
+    expect(failed()).toBeNull()
+  })
+
+  it('says the feed could not be read, and not that nothing has happened', async () => {
+    await page.viewport(1280, 800)
+    await shelled(`/assessment/batches/${BATCH_ID}`, {
+      getBatch: () =>
+        Effect.succeed({
+          batch: batch({
+            manageable: false,
+            capabilities: {
+              personal: false,
+              review: true,
+              record: false,
+              manage: false,
+              redetermine: false,
+            },
+          }),
+        }),
+      getMyOverview: () =>
+        Effect.succeed({
+          participant: null,
+          reviewer: { pendingCount: 2, answeredAskCount: 0, queueGroups: [], answeredAsks: [] },
+        }),
+      listMyActivity: () => Effect.fail(apiError('SERVICE_UNAVAILABLE')),
+    })
+    await expect.element(page.getByTestId('overview-actions')).toBeVisible()
+    await vi.waitFor(
+      () =>
+        expect(
+          page
+            .getByRole('main')
+            .element()
+            .querySelector('[data-slot="resource-state"][data-state="unavailable"]'),
+        ).not.toBeNull(),
+      { timeout: 8_000 },
+    )
+    expect(page.getByTestId('overview-activity').elements()).toHaveLength(0)
+  })
+})
