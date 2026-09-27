@@ -20386,3 +20386,70 @@ W12 审查意见收尾（十一组，分组见仓库外 `audit-2026-09-25/wave13
 - 其余 medium：备份（定时、保留、异机、附件恢复步骤、演练一次）；「我可审」逐行判定与批次列表 30 秒（先量再改）；导入分块事务 + 提交后 ANALYZE；启动核对默认租户。
 - 第三批试用反馈的十二条决定（`wave14-feedback.md`），含演示批次改名与演示数据刷新。
 - CI 其余步骤在本地对 5433 临时库跑一遍，然后请用户推送（本地领先 origin 十余个提交）。
+
+以上四项均已完成，见下一节。
+
+## 审计施工收尾：会话、备份与性能、第三批反馈、CI 本地全跑、收尾检查（2026-09-27 晚）
+
+### 会话空闲超时与原地重新登录（第 5 步）
+
+- 会话空闲上限（`8d6fd574a`）：`QUALY_SESSION_IDLE_SECONDS` 默认 7200，`0` 关闭，小于 600 拒启（使用记录最多每 5 分钟写一次，上限不能比这更细）；按数据库时钟从 `coalesce(last_used_at, created_at)` 起算，超限与过期同样处理（删行、清 cookie、答 `SESSION_EXPIRED`），7 天绝对上限不变。带 `x-qualy-background: 1`（`QUALY_BACKGROUND_HEADER`，api-kit 根导出）的请求照常服务但不续期：标签页隐藏或 60 秒内没有按键、点按、触摸、滚轮时，浏览器传输层自动加这个头，轮询与实时通道重连因此续不了一个没人看的页面。
+- 原地重新登录（`5d843e9be`）：已登录页面上的调用遇到 `AUTH_REQUIRED` / `SESSION_EXPIRED` 时先挂起，300ms 后弹出对话框请读者在另一个标签页重新登录，本页每 3 秒及获得焦点时重读 manifest；回来的是同一人就重放该调用（被拒的调用从未到达 handler，客户端也没有把多个请求组合进一次调用的地方，重放安全），换了人则给不可关闭的刷新对话框，选择退出则按原样失败。manifest 新增 `identity`（租户与用户的 sha256 截 22 位），`useSessionTransition` 期间的拒绝不进恢复流程。
+
+### 其余 medium（第 6 步）
+
+- 行政导入与批量录入（`938985b18`）：先逐行判定，再每 500 行一条语句写入草稿、修订、附件引用、认定，最后一条 update 审核通过；id 在进程内按 UUIDv7 预先生成（多行 insert 不保证 RETURNING 顺序）；写入 200 条及以上时提交后 ANALYZE。规模测试逐项核对跨分块边界的每个事实，2000 行导入在测试里 3.4s → 1.4s，持锁时间随之缩短。
+- 审核列表预筛（`48605ebf7`）：队列、审核台与待审计数加上「轮次所在节点是读者持有有效授权的节点」，这是 `mayReview` 的必要条件（授权必须精确落在轮次节点、同一人、未撤销，`mayActOn` 里没有 OR 分支），答案不变，查询改从 (tenant, state, current node) 索引起步；审计在演示数据副本上量得队列一页 115–153ms → 28–43ms（不是本机实测）。批次列表只对有 `assessment.review.process` 的批次计队列。
+- 备份（`f21241a34`）：`deploy/backup.sh` 每次一个目录（dump 经 `pg_restore --list` 校验、附件卷经 `gzip -t`、SHA256SUMS），完成后才就位，保留最新 14 份，设了 `QUALY_BACKUP_OFFSITE` 就推异机，`last-success` 供监控看时效；`deploy/restore.sh` 先核对校验和、服务不停时还原进临时库，再停服、换库（旧库留作 `_previous`）、换附件、迁移、启动。release smoke 演练：备份前写入的一行与一个附件在两者都被销毁并还原后读回。
+- 启动核对默认租户（`34019d3ed`）：`QUALY_DEFAULT_TENANT` 指向的租户不存在、停用或过期时，生产拒启并点名 `pnpm seed`，开发告警；`deploy/compose.seed.yaml` 把 postgres 只在回环 55432 上发布给 seed；CI 在 smoke 之前先 seed。
+
+### 第三批试用反馈（第 7 步，`wave14-feedback.md` 第 1–12 条）
+
+- 批次概览（`cdfda182f`）：批次说明超过约 4 行折叠，「查看全部」开对话框；安全 Markdown 子集（段落与换行、有序与无序列表、加粗、链接只收 http/https/mailto，图片与原始 HTML 按原文显示），渲染器按需加载不进首屏；「最近动态」为空用紧凑 Blank；待办行在手机上动作按钮放右侧、紧凑尺寸。
+- 用户详情：「调动」直接打开与组织归属页同一个调动对话框（`b2a8cd66b`）；名册的 ℹ️ 速览抽屉没有详情页之外的独有能力，删除，旧 `?user=` 链接改开详情页（`1a29a0584`）；「申报记录」批次列单行省略、悬停与读屏给全名（`84889b213`）。
+- 表单（`fdaf60383` 起七个提交）：平台 `Field` 支持 `error`（字段下方、`aria-invalid`、`aria-describedby` 先错误后说明）与必填标记（`aria-required`），`useSettledCheck` 在停顿 700ms 或离开字段后才校验格式；Mantine `Input` 会用自己的上下文覆盖调用方的 `aria-describedby`，改为经 `InputWrapperContext` 交给它。可预期的字段错误落到字段下方：用户资料、新增用户与账号字段对话框的邮箱 / 学工号冲突，本人改邮箱（另补换邮箱的后果说明与实时格式校验），登录方式地址冲突与格式，角色、用户类型、组织节点与组织类型的重名（改名对话框此前把拒绝写在对话框背后的页面上），公式发布名重名；其余错误仍在表单顶部。按「提交按钮以空值门控」检索全仓表单，空着就提交不了的字段都标了必填（收尾检查补上目录导入的映射步骤，`e7e16a328`）；行政录入的「依据」只在部分方式下必填，没有标。
+- 演示批次改名（`8c35e676b`）：`2023-2024-1 软件学院 2023 级本科生综合素质测评`，2025-2026 学年起为「……考核」；推免为 `2027 届软件学院推荐免试研究生综合评价`。
+
+### CI 其余步骤本地全跑（E 步）
+
+对 5433 上的临时库 `qualy_ci_local`（`DATABASE_URL` 显式指定），按 CI 顺序逐条执行，全部 exit 0：
+
+- `pnpm format:check`、`pnpm qualy resolve --frozen-lockfile`、`check-migrations-immutable.ts origin/main`（`the lineage only grew since origin/main, at its end (0 migration(s) added after 20260925110930)`）、`database check`、`database verify`（`88 committed migration(s) build the declared schema, zero drift`）、`database drop-guard`。
+- `pnpm test`：`Test Files  382 passed | 3 skipped (385)`，`Tests  2900 passed | 17 skipped (2917)`。
+- `pnpm build` → `check-staged-web`（`staged web release r_axoZnfjJ79mxDETwwne6OQ (197 assets, production, protocol 2)`）→ `check-chunks` → `check-csp-build`（`no code from strings in the bundle`）→ `check-public-web`（`discloses nothing it should not (197 served files)`）。
+- `pnpm qualy deploy`（`deploy: database, web-release`）→ `pnpm seed` → `smoke-production`（含错误 resolutionHash / browserContractHash / 无主密钥均拒启）→ `check-csp-enforce`（`no violations on /login, /assessment/batches, /library/formulas under the enforced policy`）。
+- 浏览器套件见下；镜像 job（`release:build --check` + `release:smoke`）在第 6 步对 `34019d3e-dirty` 跑过且全部通过，第 7 步只改浏览器与演示工具，未重跑。
+
+### 收尾检查（第 1–7 步）
+
+- **演示生成会停在新加的启动钩子上**（第 6 步遗漏）：`auth/default-tenant` 没在 `tools/demo/runtime.ts` 的钩子分类表里，重生成一开始就拒绝。已归为 `run`（只读检查，非生产只告警），分类表挪到 `tools/demo/boot-hooks.ts`，新测试扫描全部插件的 `register({ name, run })`，双向核对（`91d497b61`）。
+- 审核预筛是否可能漏项：逐条核对 `mayReview`，确认只收窄不放宽；只把插错位置、与所述函数分离的文档注释放回原处（`027dad271`）。
+- 第 1 步的队列刷新在两个浏览器测试文件里抛未处理错误：测试假客户端没有 `getMyOverview`，`key()` 取不到（生产的完整客户端不受影响），补上（`252ff291a`）。
+- 公式工作台测试的隔离缺陷（至少从 `d53da2e96` 起就存在）：前面的测试在防抖窗口内卸载，按设计把编辑留在本地，后面的测试打开时读到它；每个测试开始先清掉本地草稿（`374dd66a6`）。
+- 冷启动测试的隔离缺陷：启动脚本在 window 上的 error 监听器与 20 秒看门狗跨测试存活，前面测试里没来得及出声的闭包在后面测试的资源失败时再加一条「重新加载」，是否触发取决于前面测试的耗时（与演示生成并行时整文件稳定失败，单条通过）；`runBootScript` 记下脚本注册的监听器与定时器，每个测试结束收回（`834b432ba`）。
+- 满载抖动：`resource-state` 改为在 live region 插入的一刻记录其文字（断言与时序无关）；`record-recognition` 改用会等待的定位点击、放宽人员选择器等待；`person-sections` 放宽计数等待（`59e3479b8`、`d4e481ddc`）。
+- 平台 `Textarea` 丢掉调用方的 `aria-invalid` 与 `aria-describedby`（浏览器实测两者皆为 null）：Mantine 的 Textarea 总是自带一层 InputWrapper，按它自己的上下文重写这两个属性。`aria-invalid` 改走它的 `error` 布尔值，`aria-describedby` 经 `inputContainer` 在那层包装之内再提供一次上下文；field-system 补用例。
+- 另核对：备份脚本的删除都有 `${root:?}` 与保留数校验，还原先验校验和；表头「调动」按钮与对话框的挂载条件一致；本人改邮箱对话框关闭即清空。
+
+### 演示数据重生成
+
+- 改名要落到六个归档学期上，而计划里「只重生成推免批次」所需的归档缓存（快照 + 生成器状态 + 源码哈希）还不存在，所以走完整重生成；第四份意见里的生成器四项提速只影响耗时，没做。旧基线先备份到 `data/demo-baseline/previous-20260927-1301/`。
+- `demo:reset-db` → `demo:seed`（7006 秒，31306 步、332961 个时间值）→ `demo:check` exit 0 → `demo:snapshot --clear-runtime`；另跑 `pnpm qualy assessment audit-scoring`（只读）：`recognitions: 31521   derived grants: 12`，`accepted: 31533   refused: 0 …`，`verdict: clean`。
+- 与中午的基线相比，`demo:check` 107 行输出里只有 14 行的批次名不同，分布、逐批次分数与各身份计数逐项相同：生成是确定性的，导入改为分块批量写入没有改变任何结果（`docs/notes/demo-data.md` 已换成新输出）。
+- 第一次打出的附件包是 4.1 MB：此前几版都在新建的 worktree 里生成，这次在主工作目录，`data/demo-storage` 里还有上一版的 14570 个文件。把它们移出后重新快照（14274 个文件 = `storage_attachments` 14274 行，2.5 MB）；`demo:reset-db` 现在连同库一起清空该目录，`demo:snapshot` 先核对文件与引用的附件一一对应（`c2271765e`，两个方向都实测过）。
+- 最终基线：`qualy-demo.dump` 15.4 MB（sha256 `809c5acb…`）、`storage.tar.gz` 2.5 MB（`82e94f86…`），在 `data/demo-baseline/`。服务器上的演示基线尚未替换（等用户）。
+
+### 验收（实际执行）
+
+- 第 5 步：`pnpm typecheck`、`pnpm lint`、`pnpm lint:types` exit 0；`pnpm test:browser`：`Tests  1 failed | 1549 passed (1550)`，失败的是 resource-state 满载抖动，单独 `Tests  9 passed (9)`。
+- 第 6 步：assessment 节点套件 `Tests  862 passed (862)`；`pnpm release:smoke 34019d3e-dirty` 全部步骤通过（默认租户缺失拒启、经 compose.seed.yaml 播种、web release 安装与服务、卷里缺 release 拒启、backup.sh / restore.sh 后读回一行与一个附件）。
+- 第 7 步：`pnpm typecheck`、`pnpm lint`、`pnpm lint:types` exit 0；catalogs / error-codes / client-paths / 演示工具测试 `Tests  92 passed (92)`；`pnpm test:browser`：`Test Files  2 failed | 119 passed (121)`，`Tests  2 failed | 1560 passed (1562)`，两条满载抖动（resource-state、record-recognition），两文件单独 `Tests  18 passed (18)`，随后在收尾检查里修掉。
+- 收尾修复：`pnpm typecheck`、`pnpm lint`、`pnpm lint:types` exit 0；`boot-hooks.test.ts` `Tests  3 passed (3)`；resource-state `9 passed`、record-recognition `9 passed`、person-sections `2 passed`、formula-workbench `16 passed`、cold-start `11 passed`、field-system `9 passed`、directory-import `13 passed`、演示工具 `Tests  68 passed (68)`。
+- 最终状态（演示生成结束后、机器空闲时）：`pnpm test`：`Test Files  383 passed | 3 skipped (386)`，`Tests  2903 passed | 17 skipped (2920)`；`pnpm test:browser`：`Test Files  2 failed | 119 passed (121)`，`Tests  2 failed | 1561 passed (1563)`，两条都是长流程用例在整套并行时点击等到测试时限（record-recognition「keeps the one finding…」、import-wizard「names how many the file holds…」，整套里各约 20 秒、重试一次仍超时），两文件单独 `Tests  17 passed (17)`，这两条各约 1 秒。
+
+### 下一步
+
+- 请用户推送：本地 main 领先 origin 38 个提交以上（本机 `git fetch` 因 SSH agent 签名失败没取到远端，领先数按本地 `origin/main`，14:33）。
+- 服务器上替换演示基线（`data/demo-baseline/` 的新 dump 与附件包，按 deploy/demo/README.md 还原）。
+- 等用户：§30 第 10–12 条；§32.72 / §32.74 / §32.92 的界面选择；轮换 `ops/observability/collector.env` 并 `docker compose up -d`；STATUS 第 327 行的开发密码；移走 `data/backups`。
+- 挂起：MikroORM #8337 / #8338 等维护者；生成器四项提速（下次全量生成前）；「只重生成推免批次」所需的归档缓存；OSS（有数据再说）；浏览器整套并行时长流程用例偶发超时（每次一两条、每次不同，单独都约 1 秒），要么降低并行度，要么给这类用例单独的时限，待定。
