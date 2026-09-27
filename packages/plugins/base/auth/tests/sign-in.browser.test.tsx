@@ -196,7 +196,11 @@ describe('the sign-in screen', () => {
       // the password was wrong after all: the proof is gone with it, so the
       // next press is a plain attempt the door answers afresh
       await expect.element(submit).toHaveAttribute('data-captcha', 'idle')
-      await expect.poll(() => submit.element().hasAttribute('disabled')).toBe(false)
+      // a refusal holds the button for a second (the form's PAUSE_MS), which
+      // is also a poll's default patience: wait past it
+      await expect
+        .poll(() => submit.element().hasAttribute('disabled'), { timeout: 3_000 })
+        .toBe(false)
       await submit.click()
       await expect.poll(() => sent.length).toBe(3)
       expect(sent[2]?.captcha).toBeUndefined()
