@@ -409,6 +409,10 @@ const open = (
     coverage?: readonly unknown[]
     /** where the round stands, when not being set up */
     status?: string
+    /** what the round's questions are read as instead, one answer per read */
+    itemsRead?: () => Effect.Effect<unknown, unknown>
+    /** what the choices a question may be set to are read as instead */
+    optionsRead?: () => Effect.Effect<unknown, unknown>
     /** inside the workspace shell the product draws, its rail open */
     inShell?: boolean
   } = {},
@@ -474,6 +478,7 @@ const open = (
           return Effect.succeed({ groups: had.groups ?? [paper], version: 2 })
         },
         listItems: () => {
+          if (had.itemsRead !== undefined) return had.itemsRead()
           reads += 1
           const answer = Effect.succeed({ items: holding, capabilities: { canManage: true } })
           return had.slowReads === undefined || reads === 1
@@ -483,6 +488,7 @@ const open = (
               ).pipe(Effect.andThen(() => answer))
         },
         itemOptions: () =>
+          had.optionsRead?.() ??
           Effect.succeed({
             orgTypes: [{ id: ORG_TYPE_ID, code: 'class', name: '班级' }],
             roles: [{ id: ROLE_ID, name: '审核员' }],
@@ -2948,6 +2954,58 @@ describe('review waiting for a reviewer', () => {
       expect(page.getByText('学生干部任职').elements().length).toBeGreaterThan(0),
     )
     expect(document.querySelector('[data-testid="review-gap-notice"]')).toBeNull()
+  })
+})
+
+describe('when the round cannot be read', () => {
+  it('says the questions could not be read, on a card of its own, with a way to ask again', async () => {
+    let fail = true
+    const onPaper = { ...officerItem(), scoreGroupId: PAPER_ID }
+    await open({
+      itemsRead: () =>
+        fail
+          ? Effect.fail(apiError('INTERNAL_ERROR'))
+          : Effect.succeed({ items: [onPaper], capabilities: { canManage: true } }),
+    })
+    await vi.waitFor(() =>
+      expect(document.querySelector('[data-slot="resource-state"]')).not.toBeNull(),
+    )
+    const failure = document.querySelector<HTMLElement>('[data-slot="resource-state"]')!
+    expect(failure.getAttribute('data-state')).toBe('failed')
+    // on the page's bare ground: a heading under the page's own, not a line
+    expect(failure.querySelector('h2')).not.toBeNull()
+    fail = false
+    await page.getByRole('button', { name: '重试' }).click()
+    await vi.waitFor(() =>
+      expect(page.getByText('学生干部任职').elements().length).toBeGreaterThan(0),
+    )
+  })
+
+  it('offers no second try to a reader refused the questions', async () => {
+    await open({ itemsRead: () => Effect.fail(apiError('ACCESS_DENIED')) })
+    await vi.waitFor(() =>
+      expect(document.querySelector('[data-slot="resource-state"]')).not.toBeNull(),
+    )
+    const failure = document.querySelector<HTMLElement>('[data-slot="resource-state"]')!
+    expect(failure.getAttribute('data-state')).toBe('denied')
+    expect(page.getByRole('button', { name: '重试' }).elements()).toHaveLength(0)
+  })
+
+  // What a question may be set to failed alone, and an opened question was
+  // a blank pane with nothing said.
+  it('says so when what a question may be set to cannot be read', async () => {
+    await open({
+      items: [officerItem()],
+      question: ITEM_ID,
+      optionsRead: () => Effect.fail(apiError('INTERNAL_ERROR')),
+    })
+    await vi.waitFor(() =>
+      expect(document.querySelector('[data-slot="resource-state"]')).not.toBeNull(),
+    )
+    expect(document.querySelector('[data-slot="resource-state"]')!.getAttribute('data-state')).toBe(
+      'failed',
+    )
+    await expect.element(page.getByRole('button', { name: '重试' })).toBeVisible()
   })
 })
 

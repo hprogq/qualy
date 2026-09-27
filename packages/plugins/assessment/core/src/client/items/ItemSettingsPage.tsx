@@ -6,6 +6,7 @@ import { PencilIcon } from 'lucide-react'
 import {
   useApi,
   useApiQuery,
+  useLoadFailure,
   usePageQueryState,
   usePageQueryUpdate,
   useRunApi,
@@ -66,6 +67,9 @@ const moveBetween = (from: string, to: string, questions: readonly { id: string 
 
 const STRUCTURE = 'structure'
 
+/** the round itself gone: nothing under it is there to read again */
+const BATCH_MISSING = 'ASSESSMENT_BATCH_NOT_FOUND'
+
 /**
  * What a refused publish or restore actually says.
  *
@@ -88,6 +92,9 @@ const styles = stylex.create({
     flexBasis: '0%',
     flexDirection: 'column',
   },
+  // a reading that failed is a card as tall as what it says, not the
+  // height of the paper that did not arrive
+  failure: { flexGrow: 0 },
   structureArea: {
     gap: 16,
   },
@@ -486,6 +493,7 @@ function Editor({
   const run = useRunApi()
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
+  const failures = useLoadFailure()
   const groups = useQuery(query.assessment.listScoreGroups.queryOptions({ params: { batchId } }))
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
   const options = useQuery(query.assessment.itemOptions.queryOptions({ params: { batchId } }))
@@ -906,20 +914,25 @@ function Editor({
       </div>
     )
 
+  // The paper, its questions and what a question may be set to are one
+  // reading as far as the reader is concerned: a question cannot be opened
+  // without the last, and it failing alone left the question a blank pane.
+  const unread = groups.error ?? items.error ?? options.error ?? null
   return (
     <AsyncSection
       pending={groups.isPending || items.isPending || options.isPending}
-      error={
-        groups.error ? formatError(groups.error) : items.error ? formatError(items.error) : null
-      }
+      error={unread === null ? null : failures.of(unread, { missing: [BATCH_MISSING] })}
+      framed
+      retrying={groups.isFetching || items.isFetching || options.isFetching}
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
       onRetry={() => {
-        void groups.refetch()
-        void items.refetch()
+        if (groups.isError) void groups.refetch()
+        if (items.isError) void items.refetch()
+        if (options.isError) void options.refetch()
       }}
       skeleton={question === '' ? <StructureSkeleton /> : <QuestionSkeleton />}
-      xstyle={styles.grow}
+      xstyle={unread === null ? styles.grow : styles.failure}
     >
       <div {...stylex.props(styles.grow, styles.editorColumn)}>
         {selection === null && (
