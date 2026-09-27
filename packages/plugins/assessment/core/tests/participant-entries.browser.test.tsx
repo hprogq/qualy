@@ -279,6 +279,9 @@ const screen = ({
         listUserTypeOptions: () =>
           Effect.succeed({ userTypes: [{ id: 'type-student', code: 'student', name: '学生' }] }),
         getRecognitionContract: () => Effect.succeed({ contract: null }),
+        // named because a wake-up stales the rail's count with the queue;
+        // nothing on this screen reads it
+        getMyOverview: () => Effect.fail(apiError('SERVICE_UNAVAILABLE')),
         listReviewInbox: () =>
           Effect.succeed({
             items: typeof queue === 'function' ? queue() : queue,

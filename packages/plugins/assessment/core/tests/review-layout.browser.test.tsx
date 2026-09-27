@@ -248,6 +248,9 @@ const open = (stubs: Record<string, unknown> = {}, locale: 'zh-CN' | 'en-US' = '
       app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
       assessment: {
         getBatch: () => Effect.succeed({ batch: batch() }),
+        // named because a wake-up stales the rail's count with the queue;
+        // nothing on these screens reads it
+        getMyOverview: () => Effect.fail(apiError('SERVICE_UNAVAILABLE')),
         listReviewInbox: () =>
           Effect.succeed({
             items: [
