@@ -1843,6 +1843,10 @@ const i18n = definePluginMessages({
       id: 'assessment/participant-results/denied-title',
       defaultMessage: "You can't view this participant",
     },
+    participantDeniedHint: {
+      id: 'assessment/participant-results/denied-hint',
+      defaultMessage: 'Pick someone else from the list',
+    },
     /** whose account the work beside the person's column is, and which half of it */
     participantAccountHeading: defineMessage<{ name: string; half: string }>()({
       id: 'assessment/participant-results/account-heading',
@@ -6170,11 +6174,11 @@ const i18n = definePluginMessages({
     importTitle: { id: 'assessment/roster/import-title', defaultMessage: 'Import participants' },
     importHint: {
       id: 'assessment/roster/import-hint',
-      defaultMessage: 'Participants already on the roster are skipped automatically.',
+      defaultMessage: 'Participants already on the roster are skipped automatically',
     },
     importChoose: {
       id: 'assessment/roster/import-choose',
-      defaultMessage: 'Select organization units and participant types.',
+      defaultMessage: 'Select organization units and participant types',
     },
     importConfirm: { id: 'assessment/roster/import-confirm', defaultMessage: 'Import' },
     importCandidates,
@@ -6215,7 +6219,7 @@ const i18n = definePluginMessages({
     addPeopleTitle: { id: 'assessment/roster/add-title', defaultMessage: 'Add participants' },
     addPeopleHint: defineMessage<{ businessNo: string }>()({
       id: 'assessment/roster/add-hint',
-      defaultMessage: 'Search by name or {businessNo}, or browse the organization.',
+      defaultMessage: 'Search by name or {businessNo}, or browse the organization',
     }),
     addPeopleConfirm,
     importNoUnits: {
@@ -6547,7 +6551,8 @@ const i18n = definePluginMessages({
     },
     unreachableHint: {
       id: 'assessment/roster/unreachable-hint',
-      defaultMessage: "Adjust a question's review steps, or remove these people from the list",
+      defaultMessage:
+        "Adjust a question's review steps, or remove the people concerned from the list",
     },
     unreachableLevels: defineMessage<{ levels: string }>()({
       id: 'assessment/roster/unreachable-levels',

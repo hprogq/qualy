@@ -583,7 +583,10 @@ export function ParticipantResultDetail({
       title: format(m.participantMissingTitle),
       description: format(m.participantMissingHint),
     },
-    denied: { title: format(m.participantDeniedTitle) },
+    denied: {
+      title: format(m.participantDeniedTitle),
+      description: format(m.participantDeniedHint),
+    },
   }
   const absent = shaped
     ? failures.subject(who, { missing: [PARTICIPANT_MISSING], copy: absentWords })
