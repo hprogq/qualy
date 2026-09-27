@@ -276,8 +276,9 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
     [groups.data, items.data],
   )
   // the timeline templates a plan may be added from; with none, nothing
-  // offers to add from one
-  const hasTimelines = (timelines.data?.items.length ?? 0) > 0
+  // offers to add from one. Only a plan nobody has entered yet takes one
+  // (the server refuses the rest), so only there is it offered.
+  const hasTimelines = batch.status === 'draft' && (timelines.data?.items.length ?? 0) > 0
 
   const rows = useMemo(() => phases.data?.phases ?? [], [phases.data])
   const serverDrafts = useMemo(() => rows.map(draftOf), [rows])
@@ -353,6 +354,8 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
     }: {
       submitted: readonly PhaseDraft[]
       expected: string | undefined
+      /** saved on the way to something else, which the editing carries on into */
+      keepEditing?: boolean
     }) =>
       run(
         api.assessment.putPhases({
@@ -372,11 +375,11 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
         }),
       ),
     onMutate: clear,
-    onSuccess: async () => {
+    onSuccess: async (_, { keepEditing }) => {
       toast.success(format(m.toastPlanSaved))
       await settle()
       dropDraft()
-      setEditing(false)
+      if (keepEditing !== true) setEditing(false)
     },
     onError: failed,
   })
@@ -391,14 +394,22 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
       ),
     onMutate: clear,
     onSuccess: async () => {
-      toast.success(format(m.toastPlanSaved))
+      toast.success(format(m.toastTemplateAdded))
       await settle()
+      // the template was added over the plan as stored: whatever the draft
+      // still held was let go on purpose, by the press that got here
       dropDraft()
       setTemplateOpen(false)
       setTemplateId('')
     },
-    onError: failed,
+    onError: (error: unknown) => {
+      // the reason is said on the page, which the dialog would cover
+      setTemplateOpen(false)
+      failed(error)
+    },
   })
+  /** saving and then adding is two writes; the dialog holds still across both */
+  const [addingAfterSave, setAddingAfterSave] = useState(false)
 
   const schedule = useMutation({
     mutationFn: (input: { phaseId: string; at: string | null }) =>
@@ -455,13 +466,17 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
   )
 
   /** saves the plan as edited; true once it is saved, false with the reason on the page */
-  const saveAll = async (): Promise<boolean> => {
+  const saveAll = async (options?: { keepEditing?: boolean }): Promise<boolean> => {
     if (blockers.length > 0) {
       setPlanRefusals(blockers)
       return false
     }
     try {
-      await savePlan.mutateAsync({ submitted: drafts, expected: baseline ?? serverFingerprint })
+      await savePlan.mutateAsync({
+        submitted: drafts,
+        expected: baseline ?? serverFingerprint,
+        ...(options?.keepEditing === true ? { keepEditing: true } : {}),
+      })
       return true
     } catch {
       // said on the page by the mutation's own error handling
@@ -472,7 +487,23 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
   // Leaving the page takes an unsaved plan with it, whether by a link, the
   // rail, the browser's own back or a closed tab: each asks first, and in
   // the application the question can save the plan on the way out.
-  useLeaveGuard({ when: dirty > 0, onSave: saveAll })
+  useLeaveGuard({ when: dirty > 0, onSave: () => saveAll() })
+
+  /** the edits saved first, then the template added after them */
+  const saveThenAdd = async () => {
+    const chosen = templateId
+    setAddingAfterSave(true)
+    try {
+      if (!(await saveAll({ keepEditing: true }))) {
+        // what stopped the save is said on the page, behind the dialog
+        setTemplateOpen(false)
+        return
+      }
+      await addFromTemplate.mutateAsync(chosen).catch(() => undefined)
+    } finally {
+      setAddingAfterSave(false)
+    }
+  }
 
   /** out of editing, with whatever the draft still held put down */
   const stopEditing = () => {
@@ -636,7 +667,9 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
         {drafts.length === 0 ? (
           <Card data-testid="phase-plan-empty">
             <div {...stylex.props(styles.emptyPlan)}>
-              <p {...stylex.props(styles.emptyNote)}>{format(m.phasesEmpty)}</p>
+              <p {...stylex.props(styles.emptyNote)}>
+                {format(hasTimelines ? m.phasesEmpty : m.phasesEmptyPlain)}
+              </p>
               {!readOnly && (
                 <div {...stylex.props(styles.emptyActions)}>
                   <Button size="sm" onClick={addPhase}>
@@ -797,10 +830,12 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
         open={templateOpen}
         templates={timelines.data?.items ?? []}
         value={templateId}
-        pending={addFromTemplate.isPending}
+        unsaved={dirty}
+        pending={addFromTemplate.isPending || addingAfterSave}
         onChange={setTemplateId}
         onCancel={() => setTemplateOpen(false)}
-        onConfirm={() => addFromTemplate.mutate(templateId)}
+        onAdd={() => addFromTemplate.mutate(templateId)}
+        onSaveAndAdd={() => void saveThenAdd()}
       />
 
       <ConfirmDialog

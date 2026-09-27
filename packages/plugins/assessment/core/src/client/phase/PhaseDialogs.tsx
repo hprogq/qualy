@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { CircleAlertIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useI18n } from '@qualy/web-i18n'
@@ -20,6 +21,21 @@ const styles = stylex.create({
   skipped: {
     display: 'block',
     color: tokens.warningForeground,
+  },
+  unsaved: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 6,
+    margin: 0,
+    fontSize: 12.5,
+    lineHeight: 1.5,
+    color: tokens.warningForeground,
+  },
+  unsavedGlyph: {
+    width: 14,
+    height: 14,
+    flexShrink: 0,
+    marginTop: 2,
   },
 })
 
@@ -173,25 +189,42 @@ export function UnscheduleDialog({
  * A timeline template adds its phases to the end of the plan, unscheduled.
  * Offered only where there is a template to choose: the plan has no way
  * in to this dialog without one.
+ *
+ * Adding one writes the plan as it is stored, so a plan being edited is
+ * asked about first: its changes are saved ahead of the template, or let go
+ * for it. Nothing is dropped without that being the button pressed.
  */
 export function TemplateDialog({
   open,
   templates,
   value,
+  unsaved,
   pending,
   onChange,
   onCancel,
-  onConfirm,
+  onAdd,
+  onSaveAndAdd,
 }: {
   open: boolean
   templates: readonly { id: string; name: string }[]
   value: string
+  /** how many changes the plan being edited has not saved */
+  unsaved: number
   pending: boolean
   onChange: (next: string) => void
   onCancel: () => void
-  onConfirm: () => void
+  /** adds the template to the plan as stored, letting any unsaved change go */
+  onAdd: () => void
+  /** saves the plan as edited, then adds the template after it */
+  onSaveAndAdd: () => void
 }) {
   const { format } = useI18n()
+  // the count the question was asked with: saving on the way zeroes it
+  // while the dialog is still open, and the buttons must not change under
+  // the press that is being carried out
+  const [asked, setAsked] = useState(unsaved)
+  if (open && !pending && asked !== unsaved) setAsked(unsaved)
+  const choosing = value === '' || pending
   return (
     <FormDialog
       open={open}
@@ -203,9 +236,20 @@ export function TemplateDialog({
           <Button variant="outline" onClick={onCancel}>
             {format(m.cancel)}
           </Button>
-          <Button disabled={value === '' || pending} onClick={onConfirm}>
-            {format(m.templateAdd)}
-          </Button>
+          {asked > 0 ? (
+            <>
+              <Button variant="outline" disabled={choosing} onClick={onAdd}>
+                {format(m.templateDiscardAndAdd)}
+              </Button>
+              <Button disabled={choosing} onClick={onSaveAndAdd}>
+                {format(m.templateSaveAndAdd)}
+              </Button>
+            </>
+          ) : (
+            <Button disabled={choosing} onClick={onAdd}>
+              {format(m.templateAdd)}
+            </Button>
+          )}
         </>
       }
     >
@@ -221,6 +265,16 @@ export function TemplateDialog({
           </NativeSelect>
         )}
       </Field>
+      {asked > 0 && (
+        <p
+          data-testid="template-unsaved"
+          data-count={String(asked)}
+          {...stylex.props(styles.unsaved)}
+        >
+          <CircleAlertIcon aria-hidden {...stylex.props(styles.unsavedGlyph)} />
+          {format(m.templateUnsaved, { count: asked })}
+        </p>
+      )}
     </FormDialog>
   )
 }

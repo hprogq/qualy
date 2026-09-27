@@ -104,6 +104,14 @@ const discardTitle = defineMessage<{ count: number }>()({
   defaultMessage: 'Discard {count, plural, one {# unsaved change} other {# unsaved changes}}?',
 })
 
+// adding a template writes the plan, so the edits it is added over are
+// saved or let go first
+const templateUnsaved = defineMessage<{ count: number }>()({
+  id: 'assessment/template/unsaved',
+  defaultMessage:
+    '{count, plural, one {# change to the plan is} other {# changes to the plan are}} not saved yet',
+})
+
 const describeTitle = defineMessage<{ name: string }>()({
   id: 'assessment/phase/describe-title',
   defaultMessage: 'Stage details: \u201c{name}\u201d',
@@ -5960,6 +5968,10 @@ const i18n = definePluginMessages({
       id: 'assessment/phase/empty',
       defaultMessage: 'No stages yet. Add them one by one, or from a template',
     },
+    phasesEmptyPlain: {
+      id: 'assessment/phase/empty-plain',
+      defaultMessage: 'No stages yet. Start by adding the first one',
+    },
     addPhase: { id: 'assessment/phase/add', defaultMessage: 'Add stage' },
     colStage: { id: 'assessment/plan/col-stage', defaultMessage: 'Stage' },
     colOpens: { id: 'assessment/plan/col-opens', defaultMessage: 'Available actions' },
@@ -6032,6 +6044,12 @@ const i18n = definePluginMessages({
       id: 'assessment/template/add-body',
       defaultMessage:
         'Stages from the template are appended in order without start times and can be scheduled individually afterwards.',
+    },
+    templateUnsaved,
+    templateSaveAndAdd: { id: 'assessment/template/save-and-add', defaultMessage: 'Save and add' },
+    templateDiscardAndAdd: {
+      id: 'assessment/template/discard-and-add',
+      defaultMessage: 'Discard and add',
     },
     'refusal.schedule-out-of-order': {
       id: 'assessment/refusal/schedule-out-of-order',
@@ -6171,6 +6189,10 @@ const i18n = definePluginMessages({
     toastBatchReopened: { id: 'assessment/toast/batch-reopened', defaultMessage: 'Batch reopened' },
     toastBatchDeleted: { id: 'assessment/toast/batch-deleted', defaultMessage: 'Batch deleted' },
     toastPlanSaved: { id: 'assessment/toast/plan-saved', defaultMessage: 'Stage plan saved' },
+    toastTemplateAdded: {
+      id: 'assessment/toast/template-added',
+      defaultMessage: 'Stages added from the template',
+    },
     toastPhaseScheduled: {
       id: 'assessment/toast/phase-scheduled',
       defaultMessage: 'Start time saved',

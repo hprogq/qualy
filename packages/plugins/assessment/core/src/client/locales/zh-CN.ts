@@ -1729,6 +1729,7 @@ export default {
   'assessment/phase/tab': '阶段安排',
   'assessment/phase/hint': '安排各阶段的顺序与开始时间，设置每个阶段开放的操作和项目',
   'assessment/phase/empty': '还没有阶段，可逐个新增，也可从模板添加',
+  'assessment/phase/empty-plain': '还没有阶段，先新增第一个阶段',
   'assessment/plan/col-stage': '阶段',
   'assessment/plan/col-opens': '开放操作',
   'assessment/plan/col-start': '开始时间',
@@ -1792,6 +1793,9 @@ export default {
   'assessment/template/add': '从模板添加',
   'assessment/template/add-body':
     '模板中的阶段会按顺序添加到现有阶段之后，添加后仍可逐个调整和排期。',
+  'assessment/template/unsaved': '阶段安排中还有 {count} 项修改未保存',
+  'assessment/template/save-and-add': '保存修改并添加',
+  'assessment/template/discard-and-add': '放弃修改并添加',
   'assessment/refusal/schedule-out-of-order': '阶段需按顺序排期，请先为上一阶段设置开始时间。',
   'assessment/refusal/unschedule-not-from-tail':
     '请先取消最后一个已排期阶段的时间，排期需要从后向前依次取消。',
@@ -1830,6 +1834,7 @@ export default {
   'assessment/toast/batch-reopened': '批次已重新开启',
   'assessment/toast/batch-deleted': '批次已删除',
   'assessment/toast/plan-saved': '阶段安排已保存',
+  'assessment/toast/template-added': '已添加模板中的阶段',
   'assessment/toast/phase-scheduled': '开始时间已保存',
   'assessment/toast/phase-advanced': '已进入下一阶段',
   'assessment/toast/lapsed-cleared': '已清除失效记录',

@@ -220,6 +220,113 @@ describe('the stage plan, being edited', () => {
     await expect.element(page.getByTestId('elsewhere')).toBeVisible()
   })
 
+  describe('adding a timeline template over an edit', () => {
+    const withTemplate = (over: Stubs = {}) =>
+      screen({
+        listTemplates: (request: Request) =>
+          Effect.succeed({
+            items: request.query?.['kind'] === 'timeline' ? [timelineTemplate] : [],
+            nextCursor: null,
+          }),
+        ...over,
+      })
+
+    /** one stage renamed in its panel, the edit not saved */
+    const renameReview = async () => {
+      await vi.waitFor(() => expect(keys()).toHaveLength(3))
+      await page.getByTestId('phase-row').nth(1).getByText('审核整理').click()
+      const panel = page.getByRole('dialog')
+      await panel.getByLabelText('阶段名称').fill('审核整理期')
+      await panel.getByRole('button', { name: '完成' }).click()
+      await vi.waitFor(() => expect(unsaved()).toEqual(['false', 'true', 'false']))
+    }
+
+    const chooseTemplate = async () => {
+      await page.getByRole('button', { name: '从模板添加' }).click()
+      const dialog = page.getByRole('dialog')
+      await dialog.getByLabelText('时间线模板').selectOptions(timelineTemplate.name)
+      return dialog
+    }
+
+    it('saves the edit first when asked to, then adds the template after it', async () => {
+      await page.viewport(1280, 800)
+      const putPhases = vi.fn((_request: Request) => Effect.succeed({ phases: [], warnings: [] }))
+      await withTemplate({ putPhases })
+      await renameReview()
+
+      const dialog = await chooseTemplate()
+      // the edit the template would be added over is named before anything is written
+      await expect
+        .element(dialog.getByTestId('template-unsaved'))
+        .toHaveAttribute('data-count', '1')
+      await dialog.getByRole('button', { name: '保存修改并添加' }).click()
+
+      await vi.waitFor(() => expect(putPhases).toHaveBeenCalledTimes(2))
+      // the plan as edited, named against the plan it began from, and only then the template
+      const [saved, added] = putPhases.mock.calls.map((call) => call[0].payload!)
+      expect(saved!['expectedPlanFingerprint']).toBe('plan-three')
+      expect((saved!['phases'] as readonly Record<string, unknown>[])[1]).toMatchObject({
+        displayName: '审核整理期',
+      })
+      expect(added).toEqual({ fromTemplateId: timelineTemplate.id })
+      await vi.waitFor(() => expect(page.getByRole('dialog').elements()).toHaveLength(0))
+    })
+
+    it('lets the edit go only when that is the press, and keeps it when called off', async () => {
+      await page.viewport(1280, 800)
+      const putPhases = vi.fn((_request: Request) => Effect.succeed({ phases: [], warnings: [] }))
+      await withTemplate({ putPhases })
+      await renameReview()
+
+      // called off: nothing written, the edit still there
+      let dialog = await chooseTemplate()
+      await dialog.getByRole('button', { name: '取消', exact: true }).click()
+      await vi.waitFor(() => expect(page.getByRole('dialog').elements()).toHaveLength(0))
+      expect(putPhases).not.toHaveBeenCalled()
+      expect(unsaved()).toEqual(['false', 'true', 'false'])
+
+      dialog = await chooseTemplate()
+      await dialog.getByRole('button', { name: '放弃修改并添加' }).click()
+      await vi.waitFor(() => expect(putPhases).toHaveBeenCalledTimes(1))
+      expect(putPhases.mock.calls[0]![0].payload).toEqual({ fromTemplateId: timelineTemplate.id })
+      // the edit went with the press that said so
+      await vi.waitFor(() => expect(unsaved()).toEqual(['false', 'false', 'false']))
+    })
+
+    it('adds nothing when the save is refused, and keeps the edit', async () => {
+      await page.viewport(1280, 800)
+      const putPhases = vi.fn((_request: Request) =>
+        Effect.fail(
+          Object.assign(new Error('ASSESSMENT_PLAN_INVALID'), {
+            _tag: 'ASSESSMENT_PLAN_INVALID',
+            refusals: [{ reason: 'plan-changed', phaseId: null }],
+          }),
+        ),
+      )
+      await withTemplate({ putPhases })
+      await renameReview()
+
+      const dialog = await chooseTemplate()
+      await dialog.getByRole('button', { name: '保存修改并添加' }).click()
+      await vi.waitFor(() => expect(putPhases).toHaveBeenCalledTimes(1))
+      // the save said no: the template is not added over the plan it failed to change
+      await vi.waitFor(() => expect(page.getByRole('dialog').elements()).toHaveLength(0))
+      expect(putPhases.mock.calls[0]![0].payload).not.toHaveProperty('fromTemplateId')
+      expect(unsaved()).toEqual(['false', 'true', 'false'])
+    })
+
+    it('offers a template only on a batch that has not begun', async () => {
+      await page.viewport(1280, 800)
+      await withTemplate({
+        getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
+      })
+      await vi.waitFor(() => expect(keys()).toHaveLength(3))
+      await page.getByRole('button', { name: '编辑阶段' }).click()
+      await expect.element(page.getByRole('button', { name: '新增阶段' })).toBeVisible()
+      expect(page.getByRole('button', { name: '从模板添加' }).elements()).toHaveLength(0)
+    })
+  })
+
   it('stays when the save on the way out is refused, with the reason on the page', async () => {
     await page.viewport(1280, 800)
     const putPhases = vi.fn((_request: Request) =>
