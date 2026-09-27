@@ -3,7 +3,7 @@ import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
 import { lazy } from 'react'
 import { Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { page } from 'vitest/browser'
+import { commands, page } from 'vitest/browser'
 import { Effect } from 'effect'
 import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
@@ -334,24 +334,32 @@ describe('the queue beside the rail', () => {
       .toBeLessThanOrEqual(window.innerHeight)
   })
 
-  // Paging moves the reader to the top of the page they asked for; one who
-  // asked for less motion is taken there at once.
-  it('pages without a glide where less motion is asked for', async () => {
-    await page.viewport(1440, 900)
-    await shelled(both(), `?item=${ITEM_ID}`)
-    const glide = vi.spyOn(Element.prototype, 'scrollIntoView')
-    try {
-      await page.getByTestId('review-queue-pager').getByRole('button', { name: '2' }).click()
-      await expect.poll(() => addressNow()).toContain('page=2')
-      const asked = glide.mock.calls.map(
-        ([how]) => (how as ScrollIntoViewOptions | undefined)?.behavior,
-      )
-      expect(asked).toContain('auto')
-      expect(asked).not.toContain('smooth')
-    } finally {
-      glide.mockRestore()
-    }
-  })
+  // Paging moves the reader to the top of the page they asked for, with a
+  // glide; one who asked for less motion is taken there at once.
+  for (const [motion, behavior] of [
+    ['reduce', 'auto'],
+    ['no-preference', 'smooth'],
+  ] as const) {
+    it(`pages with a ${behavior} scroll where motion is ${motion}`, async () => {
+      await page.viewport(1440, 900)
+      await commands.emulateMedia({ reducedMotion: motion })
+      const glide = vi.spyOn(Element.prototype, 'scrollIntoView')
+      try {
+        await shelled(both(), `?item=${ITEM_ID}`)
+        await page.getByTestId('review-queue-pager').getByRole('button', { name: '2' }).click()
+        await expect.poll(() => addressNow()).toContain('page=2')
+        const asked = glide.mock.calls.flatMap(([how]) => {
+          const said = (how as ScrollIntoViewOptions | undefined)?.behavior
+          return said === undefined ? [] : [said]
+        })
+        expect(asked).toContain(behavior)
+        expect(asked).not.toContain(behavior === 'auto' ? 'smooth' : 'auto')
+      } finally {
+        glide.mockRestore()
+        await commands.emulateMedia({ reducedMotion: 'reduce' })
+      }
+    })
+  }
 
   // By time, the question takes a column only where there is room for one
   // beside the answers; narrower it rides under the name, and the answers
