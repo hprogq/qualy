@@ -207,12 +207,6 @@ const seatedOrSeatable = (r: {
 )`
 
 /**
- * The whole of "may act on this round now": stage membership, same-round
- * independence, and a seat where the stage is a sitting. Every reader and
- * writer of a round's queue asks this one composition, so "the queue
- * shows what the decision refuses" cannot be written.
- */
-/**
  * The rounds standing at a node the reader holds any live grant at.
  *
  * Implied by `mayReview` - a judge's grant sits at the round's own node, for
@@ -231,6 +225,12 @@ export const atHeldNode = (tenantId: string, userId: string) => sql<boolean>`
       and rg.org_node_id is not null
   ))`
 
+/**
+ * The whole of "may act on this round now": stage membership, same-round
+ * independence, and a seat where the stage is a sitting. Every reader and
+ * writer of a round's queue asks this one composition, so "the queue
+ * shows what the decision refuses" cannot be written.
+ */
 export const mayActOn = (r: RoundActorRefs) => sql<boolean>`(
   ${mayReview(r)}
   and ${independentAt(r)}
