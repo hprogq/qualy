@@ -1,8 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { EllipsisVerticalIcon, EyeIcon } from 'lucide-react'
-import { useApi, useRunApi, usePageQueryState, useUiCollection } from '@qualy/web-runtime'
+import {
+  useApi,
+  useLeaveGuard,
+  useRunApi,
+  usePageQueryState,
+  useUiCollection,
+} from '@qualy/web-runtime'
 import { useI18n, useList } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { kindOf, type AtomicSchema, type ChoiceSchema } from '@qualy/value-schema'
@@ -539,14 +545,6 @@ export function ItemEditor({
     if (dirty || composedHere) setLeaving(true)
     else onCancel()
   }
-  // closing the tab or reloading it takes unsaved work with it; the browser
-  // asks first, in its own words
-  useEffect(() => {
-    if (!dirty && !composedHere) return
-    const hold = (event: BeforeUnloadEvent) => event.preventDefault()
-    window.addEventListener('beforeunload', hold)
-    return () => window.removeEventListener('beforeunload', hold)
-  }, [dirty, composedHere])
   const scoringMoved =
     item?.currentRevision !== null &&
     item?.currentRevision !== undefined &&
@@ -1002,7 +1000,10 @@ export function ItemEditor({
         )
         setSheet(null)
       }
-      onSaved(result.item.id)
+      // saved on the way out of the page: opening the question again would
+      // move the address back to this page under the reader who is leaving
+      if (leavingNow.current) void onReload?.()
+      else onSaved(result.item.id)
     },
     onError: (error: unknown) => {
       const said = error as { _tag?: string; issues?: readonly Issue[] } & ChangeImpact
@@ -1086,6 +1087,40 @@ export function ItemEditor({
     if (needsReason) setAskingReason(true)
     else save.mutate({ reason: null })
   }
+
+  // Leaving the page - another page of the round, the rail, the browser's
+  // back to somewhere else - with changes here asks first, with a way to
+  // save on the way out; a reload or a closed tab asks in the browser's own
+  // words. Moving between questions is a move inside this page, which the
+  // page holds itself. A save that cannot go straight through - something
+  // left unfinished, a reason it needs, somebody else's version - stays,
+  // and says why here.
+  const leavingNow = useRef(false)
+  useLeaveGuard({
+    when: dirty || composedHere,
+    onSave: async () => {
+      setAttempted(true)
+      const first = problems[0]
+      if (first !== undefined) {
+        jumpTo(first)
+        return false
+      }
+      setRefused(null)
+      if (needsReason) {
+        setAskingReason(true)
+        return false
+      }
+      leavingNow.current = true
+      try {
+        await save.mutateAsync({ reason: null })
+        return true
+      } catch {
+        return false
+      } finally {
+        leavingNow.current = false
+      }
+    },
+  })
 
   /** the question as the server holds it now, read past every cache */
   const readAgain = async (): Promise<ItemDto | null> => {

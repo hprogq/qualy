@@ -1,7 +1,7 @@
 import ItemSettingsPage from '../src/client/items/ItemSettingsPage.tsx'
 import { MAX_ENTRIES_PER_ITEM } from '../src/api.ts'
 import { lazy } from 'react'
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
@@ -376,10 +376,15 @@ const open = (
     locale?: 'zh-CN' | 'en-US'
     /** who a route being composed finds nowhere, by the unit kinds it asks for */
     unreachable?: (query: { nodeTypeIds?: unknown; page?: string }) => unknown
+    /** another page of the round, and a link to it: what leaving the page is */
+    elsewhere?: boolean
+    /** how long every read of the questions after the first one takes */
+    slowReads?: number
   } = {},
 ) => {
   // what the server holds, so a save is read back as it was stored
   const holding = [...((had.items ?? []) as Record<string, any>[])]
+  let reads = 0
   return renderScreen({
     ...(had.locale === undefined ? {} : { locale: had.locale }),
     client: fakeClient({
@@ -409,7 +414,15 @@ const open = (
           had.regrouped?.push(call.payload)
           return Effect.succeed({ groups: had.groups ?? [paper], version: 2 })
         },
-        listItems: () => Effect.succeed({ items: holding, capabilities: { canManage: true } }),
+        listItems: () => {
+          reads += 1
+          const answer = Effect.succeed({ items: holding, capabilities: { canManage: true } })
+          return had.slowReads === undefined || reads === 1
+            ? answer
+            : Effect.promise(
+                () => new Promise<void>((settle) => setTimeout(settle, had.slowReads)),
+              ).pipe(Effect.andThen(() => answer))
+        },
         itemOptions: () =>
           Effect.succeed({
             orgTypes: [{ id: ORG_TYPE_ID, code: 'class', name: '班级' }],
@@ -468,9 +481,20 @@ const open = (
           <>
             <ItemSettingsPage />
             {had.withBack === true && <BrowserBack />}
+            {had.elsewhere === true && (
+              <Link to={`/assessment/batches/${BATCH_ID}/access`}>elsewhere</Link>
+            )}
           </>
         ),
       },
+      ...(had.elsewhere === true
+        ? [
+            {
+              path: '/assessment/batches/:batchId/access',
+              element: <p data-testid="elsewhere">elsewhere</p>,
+            },
+          ]
+        : []),
     ] as never,
     registry: {
       slots: {
@@ -738,6 +762,63 @@ describe('choosing how a question is handled', () => {
     await page.getByRole('textbox', { name: '项目名称' }).fill('志愿服务')
     await backButton().click()
     await expect.element(page.getByRole('alertdialog')).toBeVisible()
+  })
+
+  // Leaving for another page asks the application's own question, with a
+  // way to save on the way out; moving between questions stays the page's
+  // own hold, above.
+  it('asks before another page is opened over unsaved changes, and saves on the way out', async () => {
+    const saved: Record<string, unknown>[] = []
+    // the round read again after the save answers late, as it can over a
+    // real network: late enough to land after the reader has left
+    await open({
+      items: [officerItem()],
+      question: ITEM_ID,
+      saved,
+      elsewhere: true,
+      slowReads: 150,
+    })
+    await page.getByRole('textbox', { name: '项目名称' }).fill('学生干部任职（改）')
+    await page.getByRole('link', { name: 'elsewhere' }).click()
+    const asked = page.getByRole('alertdialog')
+    await expect.element(asked).toBeVisible()
+    // still on the question while the reader decides
+    expect(addressNow()).toContain('/items')
+    await asked.getByRole('button', { name: '保存后离开' }).click()
+    await expect.element(page.getByTestId('elsewhere')).toBeVisible()
+    expect(saved).toHaveLength(1)
+    expect(saved[0]).toMatchObject({ title: '学生干部任职（改）' })
+    // and the save does not bring the reader back to the question it saved
+    await new Promise((settle) => setTimeout(settle, 400))
+    expect(addressNow()).toContain('/access')
+    expect(document.querySelector('[data-testid="item-editor"]')).toBeNull()
+  })
+
+  it('stays on a question whose save cannot go through on the way out, and says why', async () => {
+    const saved: Record<string, unknown>[] = []
+    await open({ items: [officerItem()], question: ITEM_ID, saved, elsewhere: true })
+    await page.getByRole('textbox', { name: '项目名称' }).fill('')
+    await page.getByRole('link', { name: 'elsewhere' }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '保存后离开' }).click()
+    await new Promise((settle) => setTimeout(settle, 400))
+    expect(addressNow()).toContain('/items')
+    await expect.element(editor()).toBeVisible()
+    expect(saved).toHaveLength(0)
+    await expect.element(page.getByTestId('pending-trigger')).toBeVisible()
+
+    // letting the changes go is leaving without them
+    await page.getByRole('link', { name: 'elsewhere' }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '放弃修改' }).click()
+    await expect.element(page.getByTestId('elsewhere')).toBeVisible()
+    expect(saved).toHaveLength(0)
+  })
+
+  it('lets the page go without asking when nothing was changed', async () => {
+    await open({ items: [officerItem()], question: ITEM_ID, elsewhere: true })
+    await expect.element(editor()).toBeVisible()
+    await page.getByRole('link', { name: 'elsewhere' }).click()
+    await expect.element(page.getByTestId('elsewhere')).toBeVisible()
+    expect(page.getByRole('alertdialog').elements()).toHaveLength(0)
   })
 
   it('names only the plain facts changed here, so a rename made elsewhere stands', async () => {
