@@ -262,13 +262,17 @@ export function NewBatchDialog({
               }
             </Field>
             {userTypes.data === undefined ? (
-              <div
-                role="status"
-                aria-label={format(commonMessages.loading)}
-                data-testid="new-batch-waiting"
-              >
-                <Skeleton className={stylex.props(styles.waitingKinds).className} />
-              </div>
+              <Field label={format(m.userTypesLegend)}>
+                {() => (
+                  <div
+                    role="status"
+                    aria-label={format(commonMessages.loading)}
+                    data-testid="new-batch-waiting"
+                  >
+                    <Skeleton className={stylex.props(styles.waitingKinds).className} />
+                  </div>
+                )}
+              </Field>
             ) : (
               <CheckboxGroup
                 legend={format(m.userTypesLegend)}
