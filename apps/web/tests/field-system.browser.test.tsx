@@ -10,6 +10,7 @@ import {
 } from '@qualy/ui/admin'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Input } from '@qualy/ui/input'
+import { Textarea } from '@qualy/ui/textarea'
 import { UiProvider } from '@qualy/ui/provider'
 import '../src/app.css'
 
@@ -42,6 +43,22 @@ describe('the admin field wires its label', () => {
     const described = input.element().getAttribute('aria-describedby')!.split(' ')
     expect(described).toHaveLength(2)
     expect(described[0]).toBe(error.element().id)
+  })
+
+  // the widget behind the textarea wraps it in a layer of its own that knows
+  // none of the caller's words; they reach the element all the same
+  it('hands a textarea the same, through the layer its widget wraps it in', async () => {
+    await mount(
+      <AdminField label="退回事由" required hint="写给申报人看" error="请填写事由">
+        {(id, control) => <Textarea id={id} {...control} />}
+      </AdminField>,
+    )
+    const box = page.getByRole('textbox', { name: '退回事由' })
+    await expect.element(box).toHaveAttribute('aria-required', 'true')
+    await expect.element(box).toHaveAttribute('aria-invalid', 'true')
+    const described = box.element().getAttribute('aria-describedby')!.split(' ')
+    expect(described).toHaveLength(2)
+    expect(described[0]).toBe(page.getByTestId('field-error').element().id)
   })
 
   it('says nothing of a field that is neither required nor refused', async () => {
