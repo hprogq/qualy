@@ -592,7 +592,13 @@ const styles = stylex.create({
     color: tokens.foreground,
     backgroundColor: tokens.surfaceMuted,
   },
-  personWord: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  personWord: {
+    minWidth: 0,
+    flexGrow: 1,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
   personContent: {
     display: 'flex',
     minWidth: 0,
@@ -876,15 +882,19 @@ function PersonChip({
 }
 
 function PersonEntry({
+  id,
   label,
   to,
   page,
   exact,
+  badge,
 }: {
+  id: string
   label: ResolvedNavigationItem['label']
   to: string
   page?: NamespacedId
   exact: boolean
+  badge: UiSlotToken | undefined
 }) {
   const navigation = usePendingNavigation(to)
   const prefetch = usePagePrefetch()
@@ -908,6 +918,8 @@ function PersonEntry({
         <span {...stylex.props(styles.personWord)}>
           <LocalizedText value={label} />
         </span>
+        {/* the same live number the narrow row of sections carries */}
+        {badge !== undefined && <UiSlot token={badge} context={{ navigationId: id }} />}
       </NavLink>
     </li>
   )
@@ -1351,10 +1363,12 @@ function CapableRailShell({
                         {group.items.map((item) => (
                           <PersonEntry
                             key={item.id}
+                            id={item.id}
                             label={item.label}
                             to={item.to}
                             page={item.target.kind === 'page' ? item.target.pageId : undefined}
                             exact={hasEntriesBelow(item.to, paths)}
+                            badge={badge}
                           />
                         ))}
                       </ul>
