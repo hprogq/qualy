@@ -334,13 +334,24 @@ const styles = stylex.create({
     textDecorationColor: `color-mix(in oklab, ${tokens.mutedForeground} 45%, transparent)`,
   },
   foldNote: { flexShrink: 0, fontSize: 11, color: tokens.mutedForeground },
+  // A question's name, its news and its word, in the room the dot and the
+  // figure leave: the word's room is worked out against this, not the row.
+  label: {
+    display: 'flex',
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    alignItems: 'center',
+    gap: 8,
+  },
   word: {
-    // Whole while it is short, as the words a reader acts on are; a long one
-    // (English, mostly) is held to a share of the row, so what the name gives
-    // up stops at its floor. It never shrinks with the name: any shrinking at
-    // all cuts a word that fits by a hair into an ellipsis.
+    // Whole, as the words a reader acts on are: the name gives up its room
+    // first, down to its floor, and the word is cut only where even that is
+    // not enough (its limit is set on the row). It never shrinks with the
+    // name: any shrinking at all cuts a word that fits by a hair into an
+    // ellipsis.
     flexShrink: 0,
-    maxWidth: 'min(88px, 30%)',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
@@ -408,18 +419,39 @@ const NAME_FLOOR = 5
 const WIDE_CHARACTER =
   /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\u3000-\u303f\uff00-\uffef]/u
 
+/** the size a question's name is set in on its row, which its floor is counted in */
+const NAME_SIZE = 14
+
+/** the gap between the parts of a row */
+const GAP = 8
+
 /**
  * The room the first few characters of a name take, in ems of its own type:
  * a wide character (Chinese, Japanese, Korean, full-width forms) about one,
  * anything else a little over half. A floor that overshoots a short name by
  * a hair only moves what follows it by that hair.
  */
-const nameFloor = (name: string): string => {
+const nameFloor = (name: string): number => {
   let ems = 0
   for (const character of [...name].slice(0, NAME_FLOOR)) {
     ems += WIDE_CHARACTER.test(character) ? 1 : 0.6
   }
-  return `${String(ems)}em`
+  return ems
+}
+
+/** how wide a news count is drawn: its pill, never narrower than round, and its figures */
+const countWidth = (count: number): number => (count > 99 ? 28 : count > 9 ? 22 : 16)
+
+/**
+ * The most a row's word may take of the room beside the question's name:
+ * all of it but the name's floor, the news count after the name and the
+ * gaps between them. So the word stays whole while the name can still give
+ * way, and is cut only where the name is down to its floor.
+ */
+const wordRoom = (row: StructureRow): string => {
+  const reserved =
+    nameFloor(row.name) * NAME_SIZE + 2 * GAP + (row.unread > 0 ? countWidth(row.unread) + GAP : 0)
+  return `calc(100% - ${String(Math.ceil(reserved))}px)`
 }
 
 export function StructureRail({
@@ -661,27 +693,29 @@ export function StructureRail({
                   data-dot={dotOf(row)}
                   {...stylex.props(styles.dot, DOT[dotOf(row)])}
                 />
-                <span
-                  data-rail-name=""
-                  {...stylex.props(styles.name, on && styles.nameOn, gone && styles.nameGone)}
-                  // a question's name gives up its room first, down to its
-                  // first few characters, and only then the word after it
-                  style={{ minWidth: nameFloor(row.name) }}
-                >
-                  {row.name}
-                </span>
-                {row.unread > 0 && <UnreadCount count={row.unread} />}
-                <span {...stylex.props(styles.spacer)} />
-                {drawn ? (
+                <span data-rail-label="" {...stylex.props(styles.label)}>
                   <span
-                    data-word=""
-                    {...stylex.props(styles.word, urgentTag(row) && styles.wordUrgent)}
+                    data-rail-name=""
+                    {...stylex.props(styles.name, on && styles.nameOn, gone && styles.nameGone)}
+                    // a question's name gives up its room first, down to its
+                    // first few characters, and only then the word after it
+                    style={{ minWidth: `${String(nameFloor(row.name))}em` }}
                   >
-                    {format(word)}
+                    {row.name}
                   </span>
-                ) : (
-                  word !== null && <VisuallyHidden>{format(word)}</VisuallyHidden>
-                )}
+                  {row.unread > 0 && <UnreadCount count={row.unread} />}
+                  <span {...stylex.props(styles.spacer)} />
+                  {drawn ? (
+                    <span
+                      data-word=""
+                      {...stylex.props(styles.word, urgentTag(row) && styles.wordUrgent)}
+                      style={{ maxWidth: wordRoom(row) }}
+                    >
+                      {format(word)}
+                    </span>
+                  ) : null}
+                  {!drawn && word !== null && <VisuallyHidden>{format(word)}</VisuallyHidden>}
+                </span>
                 {figured && (
                   <span
                     data-amount={two(score)}

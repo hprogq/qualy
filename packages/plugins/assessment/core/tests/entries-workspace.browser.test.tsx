@@ -2104,6 +2104,88 @@ describe('what a question’s row says at a glance', () => {
     expect(name.scrollWidth).toBeGreaterThan(name.clientWidth)
   })
 
+  // A long word (English, mostly) is cut only where the name beside it is
+  // already down to its floor: beside a short name it stands whole, and
+  // where it must be cut nothing on the row runs into anything else.
+  it('cuts a long word only where the name beside it can give no more', async () => {
+    for (const width of [834, 1024]) {
+      await page.viewport(width, 900)
+      const filed = [
+        claim(1, itemId(1), 'needs_revision'),
+        claim(2, itemId(2), 'needs_revision'),
+        claim(3, itemId(2), 'approved'),
+      ]
+      const { unmount } = await workspace({
+        route: `${base}?open=${itemId(3)}`,
+        locale: 'en-US',
+        // two sections deep, where the row is narrowest
+        items: [
+          question(1, '文体活动', SUB_B),
+          question(2, '学生干部任职情况及社会工作履职考核', SUB_B),
+          question(3, '品德题目 3', BAND_A),
+        ],
+        groups: [
+          group(BAND_A, null, '品德行为表现', 0),
+          group(BAND_B, null, '学业发展', 1),
+          group(SUB_B, BAND_B, '学科竞赛', 0),
+        ],
+        entries: filed,
+        stubs: {
+          listMyEntries: () =>
+            Effect.succeed({
+              participantId: PARTICIPANT_ID,
+              entries: filed,
+              nextCursor: null,
+              attention: { unreadEntryIds: [entryId(2), entryId(3)] },
+            }),
+          getMyResult: () =>
+            Effect.succeed({
+              mode: 'provisional',
+              total: '12.50',
+              groups: [],
+              lines: [
+                {
+                  lineId: `entry:${entryId(3)}`,
+                  kind: 'entry',
+                  label: '',
+                  value: '12.5',
+                  itemId: itemId(2),
+                  provenance: { entryId: entryId(3) },
+                },
+              ],
+            }),
+        },
+      })
+      await expect
+        .poll(() => railRow(2).querySelector('[data-amount]')?.getAttribute('data-amount'))
+        .toBe('12.50')
+      /** the word's own text against the box it is given, to the fraction of a pixel */
+      const whole = (row: HTMLElement) => {
+        const word = row.querySelector('[data-word]') as HTMLElement
+        const text = document.createRange()
+        text.selectNodeContents(word)
+        return text.getBoundingClientRect().width <= word.getBoundingClientRect().width + 0.01
+      }
+      // a short name leaves the word all the room it needs
+      expect({ width, whole: whole(railRow(1)) }).toEqual({ width, whole: true })
+      // a long one gives way first, down to its floor, and nothing overlaps
+      const row = railRow(2)
+      const name = row.querySelector('[data-rail-name]') as HTMLElement
+      const size = Number.parseFloat(getComputedStyle(name).fontSize)
+      const word = (row.querySelector('[data-word]') as HTMLElement).getBoundingClientRect()
+      const amount = (row.querySelector('[data-amount]') as HTMLElement).getBoundingClientRect()
+      const count = row.querySelector('[data-testid="unread-mark"]')!.getBoundingClientRect()
+      expect({
+        width,
+        floor: name.clientWidth >= 5 * size - 1,
+        order: name.getBoundingClientRect().right <= count.left,
+        clear: count.right <= word.left && word.right <= amount.left,
+        inside: row.scrollWidth <= row.clientWidth,
+      }).toEqual({ width, floor: true, order: true, clear: true, inside: true })
+      await unmount()
+    }
+  })
+
   // A section's fill is a small pie beside its figure, not a line along the foot
   // of its row: a full line there is indistinguishable from the rule under it.
   it('draws a section’s fill beside its figure, full in its own colour', async () => {
