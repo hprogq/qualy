@@ -266,6 +266,10 @@ const styles = stylex.create({
     color: tokens.foreground,
   },
   noticeWords: { minWidth: 0 },
+  // a line with two ways out: on a phone the ways go under the words rather
+  // than being squeezed beside them
+  noticeWrapping: { flexWrap: 'wrap', rowGap: 8 },
+  noticeWordsWhole: { flexBasis: { default: 'auto', [breakpoints.phone]: '100%' } },
   noticeTitle: { fontWeight: 600, marginRight: 8 },
   editorLoading: {
     display: 'flex',
@@ -2493,9 +2497,9 @@ export default function FormulaEditorPage() {
         <div
           role="alert"
           data-testid="formula-gone"
-          {...stylex.props(styles.notice, styles.noticeWarning)}
+          {...stylex.props(styles.notice, styles.noticeWarning, styles.noticeWrapping)}
         >
-          <span {...stylex.props(styles.noticeWords)}>
+          <span {...stylex.props(styles.noticeWords, styles.noticeWordsWhole)}>
             <span {...stylex.props(styles.noticeTitle)}>{format(m.formulaGoneTitle)}</span>
             {format(m.formulaGoneEditsKept)}
           </span>

@@ -330,7 +330,25 @@ describe('a formula that goes away while it is open', () => {
       // and nothing is offered that could only be refused
       await expect.element(page.getByTestId('formula-save')).toBeDisabled()
       await expect.element(page.getByTestId('formula-publish-open')).toBeDisabled()
+      // on a phone its two ways out keep their words whole
+      await page.viewport(390, 844)
+      // the phone's workbench, which spreads its parts over tabs
+      await expect.element(page.getByRole('tab', { name: /代码/ })).toBeVisible()
+      await new Promise((settled) => setTimeout(settled, 300))
+      await vi.waitFor(() => {
+        const notice = page.getByTestId('formula-gone').element()
+        const edge = notice.getBoundingClientRect().right
+        const ways = [...notice.querySelectorAll('button')]
+        expect(ways).toHaveLength(2)
+        for (const way of ways) {
+          expect(way.getBoundingClientRect().right).toBeLessThanOrEqual(edge + 0.5)
+          // the label inside, which clips what does not fit
+          for (const part of [way, ...way.querySelectorAll('span')])
+            expect(part.scrollWidth).toBeLessThanOrEqual(part.clientWidth + 1)
+        }
+      })
     } finally {
+      await page.viewport(1280, 800)
       await view.unmount()
       await forgetLocalDraft(OPEN_ID)
     }
