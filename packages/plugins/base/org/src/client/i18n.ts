@@ -45,10 +45,6 @@ const moveNowhereMessage = defineMessage<{ type: string }>()({
   id: 'org/node/move-nowhere',
   defaultMessage: 'Let another kind of unit hold a {type} first',
 })
-const createNowhereTitleMessage = defineMessage<{ name: string }>()({
-  id: 'org/node/create-nowhere-title',
-  defaultMessage: 'Nothing can be created under {name}',
-})
 const createNowhereMessage = defineMessage<{ type: string }>()({
   id: 'org/node/create-nowhere',
   defaultMessage: 'Let a {type} hold another kind of unit first',
@@ -297,7 +293,12 @@ const i18n = definePluginMessages({
       defaultMessage: 'under the unit being moved',
     },
     moveNowhere: moveNowhereMessage,
-    createNowhereTitle: createNowhereTitleMessage,
+    // the dialog's own title names the unit; the answer under it does not
+    // name it a second time
+    createNowhereTitle: {
+      id: 'org/node/create-nowhere-title',
+      defaultMessage: 'Nothing can be created here',
+    },
     createNowhere: createNowhereMessage,
     moveNowhereTitle: {
       id: 'org/node/move-nowhere-title',

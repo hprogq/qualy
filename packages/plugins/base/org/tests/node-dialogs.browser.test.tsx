@@ -74,6 +74,9 @@ describe('a unit task with nothing to do', () => {
     expect(answer.element().querySelector('[data-slot="empty"]')?.getAttribute('data-size')).toBe(
       'compact',
     )
+    // the unit is named once, by the dialog's title, not again by the answer
+    expect(dialog.element().textContent?.split('软件2301班')).toHaveLength(2)
+    expect(answer.element().textContent).not.toContain('软件2301班')
     // nothing to type, nothing to press but the way out
     expect(dialog.getByRole('textbox').elements()).toHaveLength(0)
     expect(dialog.getByRole('button', { name: '创建' }).elements()).toHaveLength(0)

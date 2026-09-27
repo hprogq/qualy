@@ -81,7 +81,7 @@ export default {
   'org/node/move-nowhere': '需先在层级规则中允许其他类型的组织包含{type}',
   'org/node/move-nowhere-title': '没有可移入的组织',
   'org/node/move-nowhere-rules': '查看该类型的层级规则',
-  'org/node/create-nowhere-title': '{name}下不能新建组织',
+  'org/node/create-nowhere-title': '该组织下不能新建下级组织',
   'org/node/create-nowhere': '需先在层级规则中允许{type}包含其他类型的组织',
   'org/node/move-barred-current': '当前上级组织',
   'org/node/move-barred-type': '类型不允许',

@@ -189,7 +189,7 @@ export function NodeDialogs({
               <Blank
                 size="compact"
                 icon={<NetworkIcon />}
-                title={format(m.createNowhereTitle, { name: node.name })}
+                title={format(m.createNowhereTitle)}
                 description={format(m.createNowhere, { type: kindName })}
                 action={toRules}
               />
