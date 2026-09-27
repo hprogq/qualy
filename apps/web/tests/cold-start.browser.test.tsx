@@ -59,11 +59,42 @@ const reloadName = () =>
     .reload
 
 /** the boot script as the source holds it, run in this page */
+/**
+ * What the boot script left on the window, taken back after each test.
+ *
+ * A page runs it once; these tests run it again and again in one window. Its
+ * error listener and watchdog outlive the test that started them, and one
+ * whose frame was taken down before it spoke is still listening when a later
+ * test fails a file - so that test's frame gets two notes, not one.
+ */
+const leftBehind: (() => void)[] = []
+
 const runBootScript = async () => {
   const script = /<script>([\s\S]*?)<\/script>/.exec(await shellSource())?.[1]
   if (script === undefined) throw new Error('index.html has no boot script')
-  // eslint-disable-next-line typescript/no-implied-eval -- runs the boot script the page would
-  new Function(script)()
+  const listen = window.addEventListener
+  const schedule = window.setTimeout
+  window.addEventListener = function (
+    this: Window,
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ) {
+    leftBehind.push(() => window.removeEventListener(type, listener, options))
+    listen.call(this, type, listener, options)
+  } as typeof window.addEventListener
+  window.setTimeout = ((handler: TimerHandler, timeout?: number) => {
+    const id = schedule(handler, timeout)
+    leftBehind.push(() => clearTimeout(id))
+    return id
+  }) as typeof window.setTimeout
+  try {
+    // eslint-disable-next-line typescript/no-implied-eval -- runs the boot script the page would
+    new Function(script)()
+  } finally {
+    window.addEventListener = listen
+    window.setTimeout = schedule
+  }
 }
 
 /** when this page first painted, which is where the threshold counts from */
@@ -101,6 +132,7 @@ const rectOf = (element: Element) => {
 }
 
 afterEach(() => {
+  for (const undo of leftBehind.splice(0)) undo()
   vi.useRealTimers()
   document.documentElement.removeAttribute('data-cold-start')
 })
