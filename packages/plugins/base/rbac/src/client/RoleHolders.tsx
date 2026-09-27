@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { useApiQuery, usePageHref, usePageNavigate } from '@qualy/web-runtime'
+import { useApiQuery, useLoadFailure, usePageHref, usePageNavigate } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
@@ -30,7 +30,8 @@ const styles = stylex.create({
 export function RoleHolders({ roleId }: { roleId: string }) {
   const query = useApiQuery(accessApi)
   const navigate = usePageNavigate()
-  const { format, formatError } = useI18n()
+  const { format } = useI18n()
+  const describe = useLoadFailure()
   const moment = useMoment()
   const [page, setPage] = useState(1)
   const personReachable =
@@ -46,7 +47,8 @@ export function RoleHolders({ roleId }: { roleId: string }) {
   return (
     <AsyncSection
       pending={held.isPending}
-      error={held.isError ? formatError(held.error) : null}
+      error={held.isError ? describe.of(held.error) : null}
+      retrying={held.isFetching}
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
       onRetry={() => void held.refetch()}

@@ -1,4 +1,6 @@
 import RolePage from '../src/client/RolePage.tsx'
+import RolesPage from '../src/client/RolesPage.tsx'
+import { RoleHolders } from '../src/client/RoleHolders.tsx'
 import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
@@ -121,6 +123,40 @@ describe('a role that cannot be shown', () => {
   it('offers another try when the list could not be read', async () => {
     await mount(() => Effect.fail(apiError('INTERNAL_FAILURE')))
     await expect.poll(() => state()?.getAttribute('data-state')).toBe('failed')
+    await expect.element(page.getByRole('button', { name: '重试' })).toBeVisible()
+  })
+})
+
+// Readings that failed, said in the words of reading: one refused is not
+// tried again, and a server that cannot serve right now is told apart.
+describe('a role list or holder list that could not be read', () => {
+  const state = () => document.querySelector('[data-slot="resource-state"]')
+
+  it('says the holders could not be shown to this reader, with nothing to retry', async () => {
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed(emptyManifest()) },
+        access: { listRoleGrants: () => Effect.fail(apiError('ACCESS_DENIED')) },
+      }),
+      children: <RoleHolders roleId={ROLE_ID} />,
+    })
+    await expect.poll(() => state()?.getAttribute('data-state')).toBe('denied')
+    expect(page.getByRole('button', { name: '重试' }).query()).toBeNull()
+  })
+
+  it('says the roles could not be read right now, with another try', async () => {
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed(emptyManifest()) },
+        access: {
+          listRoles: () => Effect.fail(apiError('SERVICE_UNAVAILABLE')),
+          getRoleOptions: () => Effect.succeed({ userTypes: [], orgTypes: [] }),
+        },
+      }),
+      route: '/admin/roles',
+      children: <RolesPage />,
+    })
+    await expect.poll(() => state()?.getAttribute('data-state')).toBe('unavailable')
     await expect.element(page.getByRole('button', { name: '重试' })).toBeVisible()
   })
 })

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useApiQuery } from '@qualy/web-runtime'
+import { useApiQuery, useLoadFailure } from '@qualy/web-runtime'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -49,7 +49,8 @@ type Role = ApiResult<typeof accessApi, 'access', 'listSelfRoles'>['roles'][numb
 
 export default function AccountRolesPage() {
   const query = useApiQuery(accessApi)
-  const { format, formatError } = useI18n()
+  const { format } = useI18n()
+  const describe = useLoadFailure()
   const roles = useQuery(query.access.listSelfRoles.queryOptions({}))
   const items = roles.data?.roles ?? []
   return (
@@ -57,7 +58,12 @@ export default function AccountRolesPage() {
       <SectionHead title={format(m.accountRolesTitle)} />
       <AsyncSection
         pending={roles.isPending}
-        error={roles.isError ? formatError(roles.error) : null}
+        error={roles.isError ? describe.of(roles.error) : null}
+        // on the page's own ground, where the list would have stood in a
+        // card, and under the section's heading
+        framed
+        headingLevel={3}
+        retrying={roles.isFetching}
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void roles.refetch()}

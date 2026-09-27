@@ -1,6 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { useApi, useApiQuery, usePageRouteParams, useRunApi } from '@qualy/web-runtime'
+import {
+  useApi,
+  useApiQuery,
+  useLoadFailure,
+  usePageRouteParams,
+  useRunApi,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
@@ -76,6 +82,7 @@ export default function UserRoleGrantsPage() {
   const query = useApiQuery(accessApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
+  const describe = useLoadFailure()
   const moment = useMoment()
   // whose authority is waiting on an answer; taking one away is not undone
   // by pressing again
@@ -150,7 +157,12 @@ export default function UserRoleGrantsPage() {
         <Feedback message={feedback} />
         <AsyncSection
           pending={grants.isPending}
-          error={grants.isError ? formatError(grants.error) : null}
+          error={grants.isError ? describe.of(grants.error) : null}
+          // on the section's own ground, where the grants would have stood
+          // in a card, and under the section's heading
+          framed
+          headingLevel={3}
+          retrying={grants.isFetching}
           loadingLabel={format(commonMessages.loading)}
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void grants.refetch()}

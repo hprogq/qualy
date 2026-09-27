@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useApiQuery, usePageNavigate } from '@qualy/web-runtime'
+import { useApiQuery, useLoadFailure, usePageNavigate } from '@qualy/web-runtime'
 import { useI18n, useList } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { useState } from 'react'
@@ -41,7 +41,8 @@ const COLUMNS = 'minmax(0, 1.1fr) 5.5rem 5rem minmax(0, 1fr) minmax(0, 1fr) 5rem
 
 export default function RolesPage() {
   const query = useApiQuery(accessApi)
-  const { format, formatError, locale } = useI18n()
+  const { format, locale } = useI18n()
+  const describe = useLoadFailure()
   const figure = new Intl.NumberFormat(locale)
   const listJoin = useList()
   const navigate = usePageNavigate()
@@ -115,7 +116,10 @@ export default function RolesPage() {
     >
       <AsyncSection
         pending={roles.isPending}
-        error={roles.isError ? formatError(roles.error) : null}
+        error={roles.isError ? describe.of(roles.error) : null}
+        // on the page's own ground, where the list would have stood in a card
+        framed
+        retrying={roles.isFetching}
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void roles.refetch()}

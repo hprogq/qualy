@@ -2,7 +2,7 @@ import AccountRolesPage from '../src/client/AccountRolesPage.tsx'
 import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
-import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The reader's own roles: where each holds, and what it lets them do by
 // name - a long list folded, a role that carries everything said once.
@@ -67,5 +67,22 @@ describe('the reader’s roles', () => {
     expect(first.textContent).not.toContain('权限11')
     await rows.first().getByRole('button').click()
     await expect.element(rows.first().getByText('权限11')).toBeVisible()
+  })
+
+  // A server that cannot serve right now is told apart from one that failed,
+  // and the state stands under the section's own heading.
+  it('says their roles could not be read the way the reading failed', async () => {
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed(emptyManifest()) },
+        access: { listSelfRoles: () => Effect.fail(apiError('SERVICE_UNAVAILABLE')) },
+      }),
+      route: '/account/roles',
+      children: <AccountRolesPage />,
+    })
+    const state = () => document.querySelector('[data-slot="resource-state"]')
+    await expect.poll(() => state()?.getAttribute('data-state')).toBe('unavailable')
+    await expect.element(page.getByRole('button', { name: '重试' })).toBeVisible()
+    expect(state()?.querySelector('h3')).not.toBeNull()
   })
 })

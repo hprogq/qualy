@@ -6,7 +6,7 @@ import { Effect } from 'effect'
 import type { OrgNodePickerContext, ResourceGrantContext } from '@qualy/ui-contract'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import type { accessApi } from '../src/client/api.ts'
-import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The grants one person holds, on their own page: the organizational ones
 // with the form and the revoke press, the confined ones as something to
@@ -543,6 +543,16 @@ describe('the grants of one person', () => {
       .toHaveAttribute('data-combobox-disabled', 'true')
     await page.getByRole('option', { name: /班主任/ }).click()
     await expect.element(page.getByRole('button', { name: '授予', exact: true })).toBeEnabled()
+  })
+
+  // A reading that failed says so in the words of reading: one refused is
+  // not tried again, and the state stands under the section's own heading.
+  it('says a grants reading that was refused as refused, with nothing to retry', async () => {
+    await open({ getUserRoleGrants: () => Effect.fail(apiError('ACCESS_DENIED')) })
+    const state = () => document.querySelector('[data-slot="resource-state"]')
+    await expect.poll(() => state()?.getAttribute('data-state')).toBe('denied')
+    expect(page.getByRole('button', { name: '重试' }).query()).toBeNull()
+    expect(state()?.querySelector('h3')).not.toBeNull()
   })
 
   it('offers no form to a reader who may give a role nowhere', async () => {

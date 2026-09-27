@@ -2,7 +2,14 @@ import type { ApiResult } from '@qualy/web-runtime/api'
 import type { Effect } from 'effect'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
-import { PageLink, useApi, useRunApi, useApiQuery, usePageNavigate } from '@qualy/web-runtime'
+import {
+  PageLink,
+  useApi,
+  useRunApi,
+  useApiQuery,
+  useLoadFailure,
+  usePageNavigate,
+} from '@qualy/web-runtime'
 import { useI18n, useList } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -157,6 +164,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
   const query = useApiQuery(accessApi)
   const queryClient = useQueryClient()
   const { format, formatError, formatText } = useI18n()
+  const describe = useLoadFailure()
   const listJoin = useList()
   const navigate = usePageNavigate()
   const [tab, setTab] = useState<Tab>('permissions')
@@ -632,7 +640,8 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
           ) : (
             <AsyncSection
               pending={catalog.isPending}
-              error={catalog.isError ? formatError(catalog.error) : null}
+              error={catalog.isError ? describe.of(catalog.error) : null}
+              retrying={catalog.isFetching}
               loadingLabel={format(commonMessages.loading)}
               retryLabel={format(commonMessages.retry)}
               onRetry={() => void catalog.refetch()}
@@ -749,7 +758,8 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
         {tab === 'eligibility' && !locked && (
           <AsyncSection
             pending={options.isPending}
-            error={options.isError ? formatError(options.error) : null}
+            error={options.isError ? describe.of(options.error) : null}
+            retrying={options.isFetching}
             loadingLabel={format(commonMessages.loading)}
             retryLabel={format(commonMessages.retry)}
             onRetry={() => void options.refetch()}
@@ -876,11 +886,12 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
             pending={allRoles.isPending || grantable.isPending}
             error={
               allRoles.isError
-                ? formatError(allRoles.error)
+                ? describe.of(allRoles.error)
                 : grantable.isError
-                  ? formatError(grantable.error)
+                  ? describe.of(grantable.error)
                   : null
             }
+            retrying={allRoles.isFetching || grantable.isFetching}
             loadingLabel={format(commonMessages.loading)}
             retryLabel={format(commonMessages.retry)}
             onRetry={() => {
