@@ -682,7 +682,7 @@ describe('a row on the desk', () => {
     page
       .getByTestId('overview-actions')
       .element()
-      .querySelector('[data-action="review-pending"] button')!
+      .querySelector<HTMLButtonElement>('[data-action="review-pending"] button')!
       .click()
     await vi.waitFor(() => expect(addressNow()).toBe(`/assessment/batches/${BATCH_ID}/reviews`))
     await page.getByRole('button', { name: 'back' }).click()
