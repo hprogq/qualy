@@ -3675,10 +3675,33 @@ export const make = Effect.fn('Assessment.make')(function* () {
       const filings = yield* dieQuery(
         withDb(entryCountsByBatchOf({ tenantId, userId: as.userId, batchIds })),
       )
+      // Every round asks rbac its own question, so the rounds ask at once:
+      // in series a reader with a dozen rounds under way waited for a dozen
+      // round trips to answer a card that shows one of them.
+      const authorities = new Map(
+        yield* Effect.forEach(
+          batchIds,
+          (batchId) =>
+            Effect.map(
+              batchAuthority(tenantId, batchId, as.userId),
+              (held) => [batchId, held] as const,
+            ),
+          { concurrency: 8 },
+        ),
+      )
+      // The queue is counted only where its reader judges: every card polls
+      // this, and a participant with no queue anywhere used to pay for
+      // counting every open round of every batch, only to have it dropped.
+      const judging = batchIds.filter((batchId) =>
+        authorities.get(batchId)?.has('assessment.review.process'),
+      )
       const waiting = new Map(
-        (yield* dieQuery(
-          withDb(reviewsWaitingByBatchOf({ tenantId, userId: as.userId, batchIds })),
-        )).map((row) => [row.batchId, row.waiting]),
+        (judging.length === 0
+          ? []
+          : yield* dieQuery(
+              withDb(reviewsWaitingByBatchOf({ tenantId, userId: as.userId, batchIds: judging })),
+            )
+        ).map((row) => [row.batchId, row.waiting]),
       )
       // by round and by the status the asked-about filing stands in
       const asks = new Map(
@@ -3780,13 +3803,10 @@ export const make = Effect.fn('Assessment.make')(function* () {
           },
         }
       })
-      // Every round asks rbac its own question, so the rounds ask at once:
-      // in series a reader with a dozen rounds under way waited for a dozen
-      // round trips to answer a card that shows one of them.
       const items = yield* Effect.forEach(
         batchIds,
         Effect.fn(function* (batchId: string) {
-          const authority = yield* batchAuthority(tenantId, batchId, as.userId)
+          const authority = authorities.get(batchId) ?? new Set<string>()
           return {
             batchId,
             myEntries: taking.has(batchId)

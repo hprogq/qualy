@@ -212,6 +212,25 @@ const seatedOrSeatable = (r: {
  * writer of a round's queue asks this one composition, so "the queue
  * shows what the decision refuses" cannot be written.
  */
+/**
+ * The rounds standing at a node the reader holds any live grant at.
+ *
+ * Implied by `mayReview` - a judge's grant sits at the round's own node, for
+ * the same person, unrevoked - so adding it to a list changes no answer. What
+ * it changes is where the list starts: from the reader's own nodes, through
+ * the review index on (tenant, state, current node), instead of evaluating
+ * the whole predicate over every open round of the batch before sorting and
+ * paging. A reader with no grants anywhere reads nothing at all.
+ */
+export const atHeldNode = (tenantId: string, userId: string) => sql<boolean>`
+  ri.current_node_id = any(array(
+    select rg.org_node_id from role_grants rg
+    where rg.tenant_id = ${tenantId}
+      and rg.user_id = ${userId}
+      and rg.revoked_at is null
+      and rg.org_node_id is not null
+  ))`
+
 export const mayActOn = (r: RoundActorRefs) => sql<boolean>`(
   ${mayReview(r)}
   and ${independentAt(r)}
@@ -714,6 +733,7 @@ export const reviewsWaitingByBatchOf = (input: {
             where ri.tenant_id = ${input.tenantId}
               and e.batch_id = any(${sql.val(`{${input.batchIds.join(',')}}`)}::uuid[])
               and ri.state = 'active'
+              and ${atHeldNode(input.tenantId, input.userId)}
               and ${mayActOn({
                 tenantId: sql`${input.tenantId}`,
                 batchId: sql.ref('e.batch_id'),
@@ -809,6 +829,7 @@ export const inboxPage = (input: {
             .where('ri.tenantId', '=', input.tenantId)
             .where('ri.state', '=', 'active')
             .where('e.batchId', 'in', [...input.batchIds])
+            .where(atHeldNode(input.tenantId, input.userId))
             .where(
               mayActOn({
                 tenantId: sql`${input.tenantId}`,
@@ -1913,6 +1934,7 @@ export const reviewerDeskOf = (input: { tenantId: string; batchId: string; userI
               where ri.tenant_id = ${input.tenantId}
                 and e.batch_id = ${input.batchId}
                 and ri.state = 'active'
+                and ${atHeldNode(input.tenantId, input.userId)}
                 and ${mayActOn({
                   tenantId: sql`${input.tenantId}`,
                   batchId: sql.ref('e.batch_id'),
@@ -1945,6 +1967,7 @@ export const reviewerDeskOf = (input: { tenantId: string; batchId: string; userI
                 and sr.requested_by = ${input.userId}
                 and sr.status = 'answered'
                 and ri.state in ('active', 'blocked')
+                and ${atHeldNode(input.tenantId, input.userId)}
                 and ${mayActOn({
                   tenantId: sql`${input.tenantId}`,
                   batchId: sql.ref('e.batch_id'),
@@ -2041,6 +2064,7 @@ export const awaitingPage = (input: {
             eb.and([eb('sr.status', '=', 'answered'), eb('ri.state', 'in', ['active', 'blocked'])]),
           ]),
         )
+        .where(atHeldNode(input.tenantId, input.userId))
         .where(
           mayActOn({
             tenantId: sql`${input.tenantId}`,
