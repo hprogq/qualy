@@ -12,51 +12,53 @@ import type { Weighted } from '../catalog.ts'
 
 export const SEED = 20260923
 
+/** every kind of draw the scenario makes, from `next`, a number in [0, 1) each time */
+export const randomOf = (next: () => number) => ({
+  next,
+  int: (min: number, max: number) => min + Math.floor(next() * (max - min + 1)),
+  chance: (p: number) => next() < p,
+  pick: <T>(items: readonly T[]): T => items[Math.floor(next() * items.length)]!,
+  weighted: <T extends Weighted>(items: readonly T[]): T => {
+    const total = items.reduce((sum, item) => sum + item.weight, 0)
+    let at = next() * total
+    for (const item of items) {
+      at -= item.weight
+      if (at < 0) return item
+    }
+    return items[items.length - 1]!
+  },
+  /** a count drawn from a histogram of how many times each count occurred */
+  fromHistogram: (histogram: Readonly<Record<string, number>>): number => {
+    const entries = Object.entries(histogram)
+    const total = entries.reduce((sum, [, n]) => sum + n, 0)
+    let at = next() * total
+    for (const [value, n] of entries) {
+      at -= n
+      if (at < 0) return Number(value)
+    }
+    return Number(entries[entries.length - 1]![0])
+  },
+  /** a value between quantiles, drawn uniformly along the distribution */
+  fromQuantiles: (quantiles: readonly number[]): number => {
+    const position = next() * (quantiles.length - 1)
+    const low = Math.floor(position)
+    const high = Math.min(low + 1, quantiles.length - 1)
+    return quantiles[low]! + (quantiles[high]! - quantiles[low]!) * (position - low)
+  },
+})
+export type Random = ReturnType<typeof randomOf>
+
 /** mulberry32: small, fast, and the same everywhere */
-export const makeRandom = (seed: number) => {
+export const makeRandom = (seed: number): Random => {
   let state = seed >>> 0
-  const next = () => {
+  return randomOf(() => {
     state = (state + 0x6d2b79f5) >>> 0
     let t = state
     t = Math.imul(t ^ (t >>> 15), t | 1)
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-  return {
-    next,
-    int: (min: number, max: number) => min + Math.floor(next() * (max - min + 1)),
-    chance: (p: number) => next() < p,
-    pick: <T>(items: readonly T[]): T => items[Math.floor(next() * items.length)]!,
-    weighted: <T extends Weighted>(items: readonly T[]): T => {
-      const total = items.reduce((sum, item) => sum + item.weight, 0)
-      let at = next() * total
-      for (const item of items) {
-        at -= item.weight
-        if (at < 0) return item
-      }
-      return items[items.length - 1]!
-    },
-    /** a count drawn from a histogram of how many times each count occurred */
-    fromHistogram: (histogram: Readonly<Record<string, number>>): number => {
-      const entries = Object.entries(histogram)
-      const total = entries.reduce((sum, [, n]) => sum + n, 0)
-      let at = next() * total
-      for (const [value, n] of entries) {
-        at -= n
-        if (at < 0) return Number(value)
-      }
-      return Number(entries[entries.length - 1]![0])
-    },
-    /** a value between quantiles, drawn uniformly along the distribution */
-    fromQuantiles: (quantiles: readonly number[]): number => {
-      const position = next() * (quantiles.length - 1)
-      const low = Math.floor(position)
-      const high = Math.min(low + 1, quantiles.length - 1)
-      return quantiles[low]! + (quantiles[high]! - quantiles[low]!) * (position - low)
-    },
-  }
+  })
 }
-export type Random = ReturnType<typeof makeRandom>
 
 /** Beijing time, the way the school's calendar is written */
 export const cst = (text: string) => new Date(`${text}+08:00`)

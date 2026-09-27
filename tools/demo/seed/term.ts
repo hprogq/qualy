@@ -5,13 +5,7 @@ import type { Principal } from '@qualy/rbac-contract'
 import { Assessment } from '@qualy/plugin-assessment/testkit'
 import { runSql } from '@qualy/plugin-database/testkit'
 import library from '../library.json' with { type: 'json' }
-import {
-  APPEAL_REASONS,
-  CADRE_POSTS,
-  REJECTIONS,
-  SCRIPTED_APPEALS,
-  type ScriptedAppeal,
-} from '../catalog.ts'
+import { APPEAL_REASONS, CADRE_POSTS, SCRIPTED_APPEALS, type ScriptedAppeal } from '../catalog.ts'
 import type { FieldSpec, ItemSpec, Term } from '../rules.ts'
 import { claimsOf, type Claim } from './claims.ts'
 import { SCRIPTED_ASKS, answerAsk, askFor, requestAsk, type Ask } from './asks.ts'
@@ -20,6 +14,7 @@ import { EPISODE_DOORS, TRIAL_ITEM, type Episode } from './episodes.ts'
 import { stageProof, stageWorkbook } from './files.ts'
 import { buildTermItems, reviewPolicyOf, scoringConfigOf, type Versions } from './items.ts'
 import { EventQueue } from './queue.ts'
+import { reviewAtRandom } from './random-review.ts'
 import { STAGING, openingDescription, voidedDescription, type Stage } from './stages.ts'
 import type { Student, World } from './world.ts'
 
@@ -124,26 +119,6 @@ const specOf = (stage: Stage) => ({
 })
 
 export const ESCALATE_REASONS = ['材料真实性存疑', '认定标准存在争议', '超出当前审核范围'] as const
-
-/**
- * Whether the random review scheduled when a claim was sent takes up the
- * round it finds. A claim moved onto a changed route is looked at both by
- * that review and by the one the move schedules, so one of them can find it
- * already passed up. The escalation route is walked by its own schedule
- * (`decideEscalated`): a refusal there is one step's opinion, the claim stays
- * under review, and judging it as a first-route refusal would queue it to be
- * filed again while it cannot be edited.
- */
-export const takenUpAtRandom = (round: {
-  readonly chain: { readonly route: 'normal' | 'escalation' }
-}) => round.chain.route === 'normal'
-
-/**
- * Whether a resubmission queued after a refusal goes ahead: only while the
- * claim still stands refused when its moment comes, whatever happened to it
- * in between.
- */
-export const refilesNow = (status: string | undefined) => status === 'rejected'
 
 interface Filed {
   readonly entryId: string
@@ -507,39 +482,45 @@ export const runTerm = (input: {
 
     const decideNormal = (entry: Filed): Effect.Effect<void, unknown, unknown> =>
       Effect.gen(function* () {
-        if (entry.instanceId === null) return
-        const judge = yield* judgeOf(entry.instanceId, entry.student)
-        if (judge === null || !takenUpAtRandom(judge.round)) return
-        const roll = random.next()
-        const beforeDeadline = queue.now.getTime() < deadline.getTime() - 6 * 3_600_000
-        if (roll < 0.07) {
-          const rejection = random.weighted(REJECTIONS)
-          yield* assessment.decideReview(
-            t,
-            entry.instanceId,
-            { decision: 'reject', reason: rejection.reason, comment: rejection.comment },
-            judge.as,
-          )
-          entry.status = 'rejected'
-          if (beforeDeadline && random.chance(0.65)) {
-            const when = addMinutes(queue.now, random.int(120, 26 * 60))
-            if (when < deadline) {
-              queue.at(when, 'revise', () =>
-                Effect.gen(function* () {
-                  const standing = (yield* runSql(
-                    sql`select status from entries where id = ${entry.entryId}`,
-                  )) as { rows: { status: string }[] }
-                  if (refilesNow(standing.rows[0]?.status)) yield* revise(entry)
-                }),
+        const instanceId = entry.instanceId
+        if (instanceId === null) return
+        yield* reviewAtRandom({
+          judge: judgeOf(instanceId, entry.student),
+          random,
+          queue,
+          deadline,
+          refuse: (judge, rejection) =>
+            Effect.gen(function* () {
+              yield* assessment.decideReview(
+                t,
+                instanceId,
+                { decision: 'reject', reason: rejection.reason, comment: rejection.comment },
+                judge.as,
               )
-            }
-          }
-          return
-        }
+              entry.status = 'rejected'
+            }),
+          standing: () =>
+            Effect.map(
+              runSql(sql`select status from entries where id = ${entry.entryId}`),
+              (found) => (found as { rows: { status: string }[] }).rows[0]?.status,
+            ),
+          refile: () => revise(entry),
+          otherwise: (judge, roll) => carryOn(entry, instanceId, judge, roll),
+        })
+      })
+
+    /** what the random review does with a first-route round it does not refuse */
+    const carryOn = (
+      entry: Filed,
+      instanceId: string,
+      judge: NonNullable<Effect.Success<ReturnType<typeof judgeOf>>>,
+      roll: number,
+    ): Effect.Effect<void, unknown, unknown> =>
+      Effect.gen(function* () {
         if (roll < 0.095 && judge.round.actions.escalate.state === 'available') {
           yield* assessment.decideReview(
             t,
-            entry.instanceId,
+            instanceId,
             {
               decision: 'escalate',
               reason: random.pick(ESCALATE_REASONS),
@@ -571,7 +552,7 @@ export const runTerm = (input: {
         }
         yield* approve(entry, judge, 0.04)
         // a route with more than one step: the next one looks at it later
-        const after = yield* assessment.getReviewInstance(t, entry.instanceId, lead)
+        const after = yield* assessment.getReviewInstance(t, instanceId, lead)
         if (after.state === 'active')
           review(entry, addMinutes(queue.now, random.int(2 * 60, 20 * 60)))
       })
