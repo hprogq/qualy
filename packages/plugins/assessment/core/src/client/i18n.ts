@@ -893,7 +893,7 @@ const i18n = definePluginMessages({
       id: 'assessment/batch/gone-hint',
       defaultMessage: 'It may have been deleted, or you may not have access to it',
     },
-    batchGoneBack: { id: 'assessment/batch/gone-back', defaultMessage: 'Back to all rounds' },
+    batchGoneBack: { id: 'assessment/batch/gone-back', defaultMessage: 'Back to all batches' },
     batchDeniedPersonal: {
       id: 'assessment/batch/denied-personal',
       defaultMessage: "You're not on this batch's participant list",
@@ -6293,7 +6293,7 @@ const i18n = definePluginMessages({
     placementPrompt: {
       id: 'assessment/placement/prompt',
       defaultMessage:
-        "{count, plural, one {# person's} other {# people's}} organization details changed",
+        'Organization details changed for {count, plural, one {# person} other {# people}}',
     },
     placementUnavailablePrompt: {
       id: 'assessment/placement/unavailable-prompt',
