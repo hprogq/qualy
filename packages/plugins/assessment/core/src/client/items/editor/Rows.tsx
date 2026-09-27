@@ -21,12 +21,27 @@ const MONO = "'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace"
 
 const styles = stylex.create({
   section: { display: 'flex', flexDirection: 'column', gap: 12 },
-  sectionHead: { display: 'flex', alignItems: 'flex-end', gap: 12, minWidth: 0 },
+  // A phone puts what the heading says at its end on a line of its own,
+  // under the words: beside them it took the line's end and left the name a
+  // column two words wide.
+  sectionHead: {
+    display: 'flex',
+    flexDirection: { default: 'row', [breakpoints.phone]: 'column' },
+    alignItems: { default: 'flex-end', [breakpoints.phone]: 'flex-start' },
+    columnGap: 12,
+    rowGap: 6,
+    minWidth: 0,
+  },
   sectionWords: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 3 },
   sectionTitle: { margin: 0, fontSize: 14, fontWeight: 600 },
   sectionHint: { margin: 0, fontSize: 12, color: tokens.mutedForeground, textWrap: 'pretty' },
-  sectionSpacer: { flexGrow: 1 },
-  sectionAside: { flexShrink: 0, fontSize: 12, whiteSpace: 'nowrap' },
+  sectionSpacer: { flexGrow: 1, display: { default: 'block', [breakpoints.phone]: 'none' } },
+  sectionAside: {
+    flexShrink: 0,
+    maxWidth: '100%',
+    fontSize: 12,
+    whiteSpace: { default: 'nowrap', [breakpoints.phone]: 'normal' },
+  },
   asideError: { color: tokens.danger },
   asidePending: {
     display: 'inline-flex',

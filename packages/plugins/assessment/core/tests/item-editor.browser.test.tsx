@@ -405,6 +405,8 @@ const open = (
     slowReads?: number
     /** the questions whose current route finds some of the roster nowhere */
     reach?: readonly unknown[]
+    /** the units a step's roles are held at, and by how many */
+    coverage?: readonly unknown[]
     /** inside the workspace shell the product draws, its rail open */
     inShell?: boolean
   } = {},
@@ -487,7 +489,7 @@ const open = (
             groups: had.alerts ?? [],
             unreachable: { ...NOBODY_UNREACHABLE, routes: had.reach ?? [] },
           }),
-        reviewCoverage: () => Effect.succeed({ nodes: [] }),
+        reviewCoverage: () => Effect.succeed({ nodes: had.coverage ?? [] }),
         listUnreachableParticipants: (call: { query: { nodeTypeIds?: unknown; page?: string } }) =>
           had.unreachable === undefined
             ? Effect.succeed({ items: [], total: 0, page: 1, pageSize: 10 })
@@ -1907,6 +1909,45 @@ describe('the band', () => {
           // shortened where it can be seen, never squeezed out of sight
           expect(box.width).toBeGreaterThan(40)
         }
+      } finally {
+        await page.viewport(1280, 900)
+      }
+    })
+  }
+
+  // What a block said at its far end took a phone's line from its heading:
+  // the name broke in two and the words under it ran a word to a line.
+  for (const locale of ['zh-CN', 'en-US'] as const) {
+    it(`keeps a block's name on one line on a phone, with what it says at its end under it, in ${locale}`, async () => {
+      await page.viewport(390, 900)
+      try {
+        await open({
+          items: [officerWithAppeals()],
+          question: ITEM_ID,
+          panel: 'rules',
+          locale,
+          coverage: [{ id: 'c1', name: '1班', reviewers: 0 }],
+        })
+        const review = page.getByTestId('review-chain')
+        await vi.waitFor(() =>
+          expect(review.element().querySelector('[data-tone="pending"]')).not.toBeNull(),
+        )
+        for (const heading of document.querySelectorAll<HTMLElement>(
+          '[data-testid="item-editor"] section h2',
+        )) {
+          if (!heading.checkVisibility()) continue
+          const block = heading.closest('section')!.getBoundingClientRect()
+          expect(heading.getBoundingClientRect().height).toBeLessThan(24)
+          const hint = heading.nextElementSibling
+          if (hint !== null) {
+            expect(hint.getBoundingClientRect().width).toBeGreaterThanOrEqual(block.width * 0.6)
+          }
+        }
+        const aside = review.element().querySelector('[data-tone="pending"]')!
+        const words = review.element().querySelector('h2')!.parentElement!
+        expect(aside.getBoundingClientRect().top).toBeGreaterThanOrEqual(
+          words.getBoundingClientRect().bottom - 1,
+        )
       } finally {
         await page.viewport(1280, 900)
       }
