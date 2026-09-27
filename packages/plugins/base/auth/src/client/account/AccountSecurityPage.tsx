@@ -1,7 +1,7 @@
 import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { useApi, useApiQuery, usePageHref, useRunApi } from '@qualy/web-runtime'
+import { useApi, useApiQuery, useLoadFailure, usePageHref, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, Field, FormDialog } from '@qualy/ui/admin'
@@ -76,7 +76,8 @@ const styles = stylex.create({
 
 export default function AccountSecurityPage() {
   const query = useApiQuery(authApi)
-  const { format, formatError } = useI18n()
+  const { format } = useI18n()
+  const describe = useLoadFailure()
   const self = useQuery(query.self.getSelf.queryOptions())
   const me = self.data
   return (
@@ -84,7 +85,7 @@ export default function AccountSecurityPage() {
       <SectionHead title={format(m.accountSecurity)} />
       <AsyncSection
         pending={self.isPending}
-        error={self.isError ? formatError(self.error) : null}
+        error={self.isError ? describe.of(self.error) : null}
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void self.refetch()}

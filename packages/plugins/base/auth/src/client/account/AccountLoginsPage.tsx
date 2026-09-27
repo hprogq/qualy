@@ -7,6 +7,7 @@ import {
   PageLink,
   useApi,
   useApiQuery,
+  useLoadFailure,
   usePageHref,
   useRunApi,
   useSessionTransition,
@@ -63,6 +64,7 @@ export default function AccountLoginsPage() {
   const queryClient = useQueryClient()
   const endSession = useSessionTransition()
   const { format, formatError, locale } = useI18n()
+  const describe = useLoadFailure()
   const [releasing, setReleasing] = useState<Entrance | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
   const here = usePageHref('auth/account-logins')
@@ -133,7 +135,7 @@ export default function AccountLoginsPage() {
       <AsyncSection
         pending={found.isPending || self.isPending}
         error={
-          found.isError ? formatError(found.error) : self.isError ? formatError(self.error) : null
+          found.isError ? describe.of(found.error) : self.isError ? describe.of(self.error) : null
         }
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}

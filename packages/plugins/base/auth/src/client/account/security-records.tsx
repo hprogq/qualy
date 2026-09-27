@@ -7,7 +7,14 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { cursorPages, PageLink, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
+import {
+  cursorPages,
+  PageLink,
+  useApi,
+  useApiQuery,
+  useLoadFailure,
+  useRunApi,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, ConfirmDialog } from '@qualy/ui/admin'
@@ -125,6 +132,7 @@ export function SessionsCard({ person }: { person?: RecordPerson }) {
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const { format, formatError, locale } = useI18n()
+  const describe = useLoadFailure()
   const [confirming, setConfirming] = useState(false)
   // somebody else's session, asked about before it is ended: a stray press
   // signs out a student in the middle of filling something in
@@ -195,7 +203,7 @@ export function SessionsCard({ person }: { person?: RecordPerson }) {
       </CardHead>
       <AsyncSection
         pending={sessions.isPending}
-        error={sessions.isError ? formatError(sessions.error) : null}
+        error={sessions.isError ? describe.of(sessions.error) : null}
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void sessions.refetch()}
@@ -466,7 +474,8 @@ function RecordCard<Item extends { readonly id: string }>({
   /** the whole record, for the sheet */
   whole: ReactNode
 }) {
-  const { format, formatError } = useI18n()
+  const { format } = useI18n()
+  const describe = useLoadFailure()
   const [open, setOpen] = useState(false)
   const items = recent.data?.items ?? []
   return (
@@ -488,7 +497,7 @@ function RecordCard<Item extends { readonly id: string }>({
       </CardHead>
       <AsyncSection
         pending={recent.isPending}
-        error={recent.isError ? formatError(recent.error) : null}
+        error={recent.isError ? describe.of(recent.error) : null}
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void recent.refetch()}
@@ -587,7 +596,8 @@ export function AccountChanges() {
 
 /** every sign-in, a numbered page at a time, within the days and outcome asked for */
 function AllSignIns({ person }: { person: RecordPerson | undefined }) {
-  const { format, formatError } = useI18n()
+  const { format } = useI18n()
+  const describe = useLoadFailure()
   const [outcome, setOutcome] = useState<'all' | 'success' | 'failure'>('all')
   const [range, setRange] = useState<DateRange>({ start: '', end: '' })
   const [page, setPage] = useState(1)
@@ -629,7 +639,7 @@ function AllSignIns({ person }: { person: RecordPerson | undefined }) {
       <Card data-testid="sign-ins-all">
         <AsyncSection
           pending={signIns.isPending}
-          error={signIns.isError ? formatError(signIns.error) : null}
+          error={signIns.isError ? describe.of(signIns.error) : null}
           loadingLabel={format(commonMessages.loading)}
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void signIns.refetch()}
@@ -656,7 +666,8 @@ function AllSignIns({ person }: { person: RecordPerson | undefined }) {
 /** every change, a numbered page at a time, within the days asked for */
 function AllChanges() {
   const query = useApiQuery(authApi)
-  const { format, formatError } = useI18n()
+  const { format } = useI18n()
+  const describe = useLoadFailure()
   const [range, setRange] = useState<DateRange>({ start: '', end: '' })
   const [page, setPage] = useState(1)
   const changes = useQuery({
@@ -680,7 +691,7 @@ function AllChanges() {
       <Card data-testid="account-changes-all">
         <AsyncSection
           pending={changes.isPending}
-          error={changes.isError ? formatError(changes.error) : null}
+          error={changes.isError ? describe.of(changes.error) : null}
           loadingLabel={format(commonMessages.loading)}
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void changes.refetch()}

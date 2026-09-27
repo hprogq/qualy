@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { useApiQuery } from '@qualy/web-runtime'
+import { useApiQuery, useLoadFailure } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
@@ -27,7 +27,8 @@ const styles = stylex.create({
 
 export default function AccountProfilePage() {
   const query = useApiQuery(authApi)
-  const { format, formatError } = useI18n()
+  const { format } = useI18n()
+  const describe = useLoadFailure()
   const businessNoWord = useTerm(authTerms.businessNumber)
   const self = useQuery(query.self.getSelf.queryOptions())
   const me = self.data
@@ -37,7 +38,7 @@ export default function AccountProfilePage() {
       <SectionHead title={format(m.accountProfile)} />
       <AsyncSection
         pending={self.isPending}
-        error={self.isError ? formatError(self.error) : null}
+        error={self.isError ? describe.of(self.error) : null}
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void self.refetch()}

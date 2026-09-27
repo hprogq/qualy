@@ -143,6 +143,23 @@ describe('the reader’s banner', () => {
 })
 
 describe('the reader’s profile', () => {
+  // A reading that failed says why in the words of reading, and a server
+  // that cannot serve right now is told apart from one that failed.
+  it('says their record could not be read the way a reading failed', async () => {
+    await renderScreen({
+      client: fakeClient(
+        stubs([], { getSelf: () => Effect.fail(apiError('SERVICE_UNAVAILABLE')) }),
+      ),
+      route: '/account',
+      children: <AccountProfilePage />,
+    })
+    await expect
+      .poll(() =>
+        document.querySelector('[data-slot="resource-state"]')?.getAttribute('data-state'),
+      )
+      .toBe('unavailable')
+  })
+
   it('shows what is on file about them', async () => {
     await renderScreen({
       client: fakeClient(stubs([])),
