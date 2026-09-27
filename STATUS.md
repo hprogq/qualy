@@ -20453,3 +20453,13 @@ W12 审查意见收尾（十一组，分组见仓库外 `audit-2026-09-25/wave13
 - 服务器上替换演示基线（`data/demo-baseline/` 的新 dump 与附件包，按 deploy/demo/README.md 还原）。
 - 等用户：§30 第 10–12 条；§32.72 / §32.74 / §32.92 的界面选择；轮换 `ops/observability/collector.env` 并 `docker compose up -d`；STATUS 第 327 行的开发密码；移走 `data/backups`。
 - 挂起：MikroORM #8337 / #8338 等维护者；生成器四项提速（下次全量生成前）；「只重生成推免批次」所需的归档缓存；OSS（有数据再说）；浏览器整套并行时长流程用例偶发超时（每次一两条、每次不同，单独都约 1 秒），要么降低并行度，要么给这类用例单独的时限，待定。
+
+## 依赖告警、开发密码与上线差距盘点（2026-09-28）
+
+- Dependabot 11 条（在推送后打开）：dompurify 4 条是 monaco-editor 内嵌的副本（`esm/vs/base/browser/dompurify/dompurify.js`，0.56.0 带 3.4.8），overrides 改不到它；升级 monaco-editor 到 0.57.0，内嵌的是 3.4.15（`813c54d5d`）。fast-xml-parser 6 条是 cos-js-sdk-v5 的 dist 用 webpack 内联的 4.5.0（最新 1.10.1 仍固定 4.5.0），只在启用 storage-cos 时于上传者的浏览器里解析桶的应答，当前 qualy.yml 未启用、浏览器产物里没有；uuid 1 条针对 v3/v5/v6 带调用方缓冲区，exceljs 与腾讯 sdk 只调 v4。后两者 overrides 无效或无意义，理由写进 `pnpm-workspace.yaml`，建议在 GitHub 上以「vulnerable code not used」关闭。
+- STATUS 里一处开发库示例账号的明文密码已删（`47b692dbb`）；它仍在公开仓库的历史里，需在开发库里换掉那几个示例账号的密码（本会话不写开发库）。
+- 主分支 CI 自 09-25 起连续失败：image job 的 release smoke 在 seed 一步 `ERR_MODULE_NOT_FOUND: Cannot find package 'pg'`（该 job 没有 `pnpm install`，而 seed 按部署文档从源码检出运行）；browser job 在 Linux 上有 4 个文件失败（stage-plan 1024 宽度的长名称完整显示、unit-path 标记位置 -11px、batch-workspace 资源状态的 `data-state`、sign-in 验证码后按钮仍禁用），其中 stage-plan 几次都在，属版面对字体宽度敏感；各次失败的集合不同。webkit job 通过。Dependabot 的两个 Actions 升级 PR（#4 cache 4→6、#5 setup-node 5→7）随之红。
+
+### 验收（实际执行）
+
+- monaco-editor 0.57.0：内嵌 `DOMPurify 3.4.15`；`pnpm typecheck` exit 0；公式浏览器套件 `Test Files  11 passed (11)`，`Tests  79 passed (79)`；`tools/tests` `Test Files  56 passed (56)`，`Tests  356 passed (356)`；在 5433 临时库上 `pnpm build` → check-staged-web（`198 assets`）→ check-chunks → check-csp-build → check-public-web → `qualy deploy` → seed → smoke-production → check-csp-enforce（`/login`、`/assessment/batches`、`/library/formulas` 0 violation），全部通过。
