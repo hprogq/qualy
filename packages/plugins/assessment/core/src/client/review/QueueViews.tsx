@@ -462,6 +462,9 @@ const styles = stylex.create({
     overscrollBehavior: 'contain',
     listStyleType: 'none',
   },
+  stripListMore: {
+    maskImage: 'linear-gradient(to bottom, #000 calc(100% - 14px), transparent)',
+  },
   stripKey: {
     display: 'inline-flex',
     maxWidth: '16rem',
@@ -778,6 +781,22 @@ function MasterStrip({
   children: ReactNode
 }) {
   const list = useRef<HTMLUListElement>(null)
+  // whether keys stand below the strip's two lines: its foot fades then,
+  // so the strip reads as one that goes on rather than as all there is
+  const [more, setMore] = useState(false)
+  useEffect(() => {
+    const strip = list.current
+    if (strip === null) return
+    const read = () => setMore(strip.scrollTop + strip.clientHeight < strip.scrollHeight - 1)
+    read()
+    strip.addEventListener('scroll', read, { passive: true })
+    const watch = new ResizeObserver(read)
+    watch.observe(strip)
+    return () => {
+      strip.removeEventListener('scroll', read)
+      watch.disconnect()
+    }
+  }, [count])
   useEffect(() => {
     if (selected === null) return
     const key = list.current?.querySelector<HTMLElement>(`[data-key="${CSS.escape(selected)}"]`)
@@ -798,7 +817,12 @@ function MasterStrip({
         {label}
         <span {...stylex.props(styles.masterTally)}>{count}</span>
       </span>
-      <ul ref={list} aria-label={label} {...stylex.props(styles.stripList)}>
+      <ul
+        ref={list}
+        aria-label={label}
+        data-more={more}
+        {...stylex.props(styles.stripList, more && styles.stripListMore)}
+      >
         {children}
       </ul>
     </div>

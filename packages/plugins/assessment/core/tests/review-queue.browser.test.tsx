@@ -234,6 +234,29 @@ describe('the queue beside the rail', () => {
     expect(addressNow()).toContain(`item=${OTHER_ITEM}`)
   })
 
+  // The strip holds two lines of keys; past them it scrolls inside itself
+  // and its foot fades, so it does not read as all there is.
+  it('says the strip goes on past its two lines', async () => {
+    await page.viewport(1024, 768)
+    const many = Array.from({ length: 24 }, (_, n) =>
+      filing(n, {
+        itemId: `cccccccc-cccc-4ccc-8ccc-${String(n).padStart(12, '0')}`,
+        itemTitle: `第 ${String(n + 1)} 个项目`,
+      }),
+    )
+    const shown = await shelled(many)
+    const strip = page.getByRole('list', { name: '项目' })
+    await expect.element(strip).toHaveAttribute('data-more', 'true')
+    const list = strip.element() as HTMLElement
+    list.scrollTop = list.scrollHeight
+    await expect.element(strip).toHaveAttribute('data-more', 'false')
+    await shown.unmount()
+    await shelled(both())
+    await expect
+      .element(page.getByRole('list', { name: '项目' }))
+      .toHaveAttribute('data-more', 'false')
+  })
+
   // A table's answers take the room their longest entries need, the
   // shortest first, so a grade and a date are whole before a competition's
   // name is cut; and an answer the room still cuts short says the whole of
