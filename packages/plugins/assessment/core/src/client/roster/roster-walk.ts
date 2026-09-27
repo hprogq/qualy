@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { keepPreviousData, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  hashKey,
+  keepPreviousData,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import { useApiQuery } from '@qualy/web-runtime'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { assessmentApi } from '../api.ts'
@@ -17,6 +23,13 @@ import { rosterFiltered, rosterQueryOf, type RosterView } from './roster-view.ts
 // the server is asked where they stand, and the address follows. Somebody
 // the list does not hold at all is said to be off it, never guessed at; one
 // it let go of while they were open leaves a place the walk goes on from.
+//
+// Whatever the rows show answers one reading of the list. When the round
+// moves under it, the pages near the open person and the pages the column
+// is showing are read again, in place; the pages beyond them are let go -
+// off the screen and out of the cache - and read afresh when the reader
+// comes near them again. A page read before the move beside one read after
+// it could hold a person twice, or lose one between them.
 
 /** how near either end of what has been read the open person may stand before the page beyond is read */
 const EDGE = 10
@@ -29,6 +42,9 @@ const EDGE = 10
 const FRESH = 10_000
 
 type Answer = ApiResult<typeof assessmentApi, 'assessment', 'listParticipantAccounts'>
+
+/** the first and last page a list on screen is showing rows of, or null when it shows none */
+export type ShownPages = () => readonly [number, number] | null
 
 /**
  * One person on the walk, as the list has them - everything opening them
@@ -66,8 +82,17 @@ export interface RosterWalk {
   readonly placed: boolean
   /** the first person this question holds, from its first page however far the rows read are from it */
   readonly first: () => Promise<WalkRow | null>
-  /** the rows may have moved under a live round: read what is near again, the rest when it is near */
+  /**
+   * The rows may have moved under a live round: what is near the open person
+   * and what the list shows is read again, and the rest let go until it is
+   * near.
+   */
   readonly refresh: () => void
+  /**
+   * A list showing these rows says which pages it has on screen, so that
+   * they stay through a refresh; the answer is the way to stop saying so.
+   */
+  readonly watch: (shown: ShownPages) => () => void
   /**
    * The people either side of the open person; where the list let go of
    * them while they were open, either side of the place they left.
@@ -187,7 +212,17 @@ export function useRosterWalk({
     else {
       while (byPage.has(first - 1)) first -= 1
       while (byPage.has(last + 1)) last += 1
-      for (let page = first; page <= last; page += 1) rows.push(...rowsOf(byPage.get(page)!))
+      // Pages read again together land one at a time: for that moment
+      // somebody who moved across a page's edge can be on both sides of it.
+      // They stand where they were first met.
+      const met = new Set<string>()
+      for (let page = first; page <= last; page += 1) {
+        for (const row of rowsOf(byPage.get(page)!)) {
+          if (met.has(row.id)) continue
+          met.add(row.id)
+          rows.push(row)
+        }
+      }
     }
   }
   const total = answered === undefined || stale ? null : answered.total
@@ -256,8 +291,8 @@ export function useRosterWalk({
   // them in this very question, and the address moves there. Asked once per
   // answer of the address's page, so a list that moves under a live round
   // is followed without asking on every render.
-  const latest = useRef({ optionsOf, onPage, page: view.page })
-  latest.current = { optionsOf, onPage, page: view.page }
+  const latest = useRef({ optionsOf, onPage, page: view.page, span, question, pages })
+  latest.current = { optionsOf, onPage, page: view.page, span, question, pages }
   const [missing, setMissing] = useState<string | null>(null)
   const [unasked, setUnasked] = useState<string | null>(null)
   const locate =
@@ -302,18 +337,14 @@ export function useRosterWalk({
   // settled either way: held, off, or asked about without an answer
   const placed = here !== null || off || (locate !== null && unasked === locate)
 
-  // Coming to a page the live round has moved since it was read - stepping
-  // down the list reads on around the next person - reads the pages either
-  // side of it again, which a wake-up left for later (see `refresh`).
-  useEffect(() => {
-    if (!active) return
-    for (const page of [view.page - 1, view.page + 1]) {
-      if (page < 1) continue
-      const key = latest.current.optionsOf(page).queryKey
-      if (queryClient.getQueryState(key)?.isInvalidated !== true) continue
-      void queryClient.refetchQueries({ queryKey: key, exact: true, type: 'active' })
+  // what the list on screen is showing, when one is
+  const shown = useRef<ShownPages | null>(null)
+  const watch = useCallback((probe: ShownPages) => {
+    shown.current = probe
+    return () => {
+      if (shown.current === probe) shown.current = null
     }
-  }, [active, view.page, queryClient])
+  }, [])
 
   /** a page asked for beside the address's that did not come back, asked again */
   const again = (page: number) => {
@@ -338,24 +369,38 @@ export function useRosterWalk({
         .fetchQuery({ ...latest.current.optionsOf(1), staleTime: FRESH })
         .then((answer) => rowsOf(answer)[0] ?? null),
     refresh: () => {
-      // Every page read goes stale; only the address's and the pages either
-      // side of it are read again now. A reader deep in a long list would
-      // otherwise send a request per page read on every burst of wake-ups;
-      // the rest are read again once they are near whoever is open.
-      void queryClient.invalidateQueries({
-        queryKey: query.assessment.listParticipantAccounts.key(),
-        refetchType: 'none',
+      const { optionsOf: ask, page, span: held, question: asking, pages: known } = latest.current
+      // Kept: the address's page and one either side, and every page from
+      // there to what the list is showing - the rows kept have to join up.
+      // Reading every page ever scrolled past on every burst of wake-ups
+      // would read a long list whole; a reader who scrolled far and stayed
+      // there has asked for what they see, and only that is read.
+      const seen = shown.current?.() ?? null
+      const from = Math.max(held.from, Math.min(page - 1, seen?.[0] ?? page))
+      const to = Math.min(held.to, Math.max(page + 1, seen?.[1] ?? page))
+      setAsked((now) => (now.question === asking ? { question: asking, from, to } : now))
+      // The rest of this question's pages are let go, so none comes back
+      // into the column as it was read before the move; every other
+      // reading of the list goes stale, for whenever it is asked for again.
+      const letGo = new Set<string>()
+      for (let other = 1; other <= Math.max(known, held.to); other += 1) {
+        if (other < from || other > to) letGo.add(hashKey(ask(other).queryKey))
+      }
+      const listed = query.assessment.listParticipantAccounts.key()
+      queryClient.removeQueries({
+        queryKey: listed,
+        predicate: (read) => letGo.has(read.queryHash),
       })
-      const { optionsOf: ask, page } = latest.current
-      for (const near of [page - 1, page, page + 1]) {
-        if (near < 1) continue
+      void queryClient.invalidateQueries({ queryKey: listed, refetchType: 'none' })
+      for (let kept = from; kept <= to; kept += 1) {
         void queryClient.refetchQueries({
-          queryKey: ask(near).queryKey,
+          queryKey: ask(kept).queryKey,
           exact: true,
           type: 'active',
         })
       }
     },
+    watch,
     previous,
     next,
     narrowed: view.q.trim() !== '' || rosterFiltered(view),

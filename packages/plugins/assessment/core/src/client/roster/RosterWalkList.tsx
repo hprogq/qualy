@@ -348,6 +348,31 @@ export function RosterWalkList({
     return () => watch.disconnect()
   }, [box, settle])
 
+  // The pages whose rows stand in the window, for the walk to keep when the
+  // round moves under it: what a reader is looking at is read again rather
+  // than let go from under them.
+  const { watch } = walk
+  useEffect(
+    () =>
+      watch(() => {
+        const list = scroller.current
+        if (list === null || list.clientHeight === 0) return null
+        const { top, bottom } = list.getBoundingClientRect()
+        let from: number | null = null
+        let to: number | null = null
+        for (const row of list.querySelectorAll<HTMLElement>('[data-page]')) {
+          const at = row.getBoundingClientRect()
+          if (at.bottom <= top) continue
+          if (at.top >= bottom) break
+          const page = Number(row.dataset['page'])
+          from ??= page
+          to = page
+        }
+        return from === null || to === null ? null : [from, to]
+      }),
+    [watch],
+  )
+
   // ---- keys ----
   const [focused, setFocused] = useState<string | null>(null)
   const ids = walk.rows.map((row) => row.id)
@@ -608,6 +633,7 @@ function WalkEntry({
       data-testid="roster-walk-row"
       data-participant={row.id}
       data-position={row.position}
+      data-page={row.page}
       data-current={current || undefined}
       data-status={row.status}
       data-waiting={

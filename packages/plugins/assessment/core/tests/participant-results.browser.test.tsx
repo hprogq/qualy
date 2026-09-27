@@ -1759,13 +1759,131 @@ describe('the list beside an open account', () => {
     await expect.element(strip.getByRole('button', { name: '下一位' })).toBeDisabled()
     await expect.element(strip.getByRole('button', { name: '上一位' })).toBeDisabled()
   })
+
+  // The round moving under a list read a page at a time: every row the
+  // column shows answers the same reading of the list, so nobody stands in
+  // it twice and nobody falls between two pages.
+  const many = (count: number) =>
+    Array.from({ length: count }, (_, index) =>
+      participant({
+        id: personId(index + 1),
+        displayName: `参评人${String(index + 1).padStart(3, '0')}`,
+        businessNo: `2023${String(100_000 + index + 1)}`,
+      }),
+    )
+  const walkRows = () => [
+    ...document.querySelectorAll<HTMLElement>('[data-testid="roster-walk-row"]'),
+  ]
+  const pagesAsked = (asked: readonly Request[]) =>
+    [
+      ...new Set(
+        asked
+          .filter((one) => one.query?.['around'] === undefined)
+          .map((one) => Number(one.query?.['page'] ?? 1)),
+      ),
+    ].sort((a, b) => a - b)
+
+  it('shows nobody twice and leaves no gap when the list moves under rows read far down', async () => {
+    await page.viewport(1280, 800)
+    const { said, watchBatch } = line()
+    const dealtWith = new Set<string>()
+    const { asked, rendered } = shelled(
+      at(3, '&list-waiting=any'),
+      { watchBatch },
+      { dealtWith, people: many(100) },
+    )
+    await rendered
+    await expect.poll(() => current()?.dataset['participant']).toBe(personId(3))
+    await expect.poll(() => watchBatch.mock.calls.length).toBeGreaterThan(0)
+    const scroller = page.getByTestId('roster-walk-scroller').element()
+    // the reader takes the column in hand, scrolls it down to the fourth
+    // page, and stays there
+    await expect
+      .poll(
+        () => {
+          scroller.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: 400 }))
+          scroller.scrollTop = scroller.scrollHeight
+          return Math.max(...pagesAsked(asked))
+        },
+        { timeout: 10_000 },
+      )
+      .toBeGreaterThanOrEqual(4)
+    await new Promise((settle) => setTimeout(settle, 300))
+    const errors = vi.spyOn(console, 'error')
+    try {
+      // three people near the top are dealt with, and leave the list of the waiting
+      for (const n of [3, 4, 5]) dealtWith.add(personId(n))
+      const before = asked.length
+      said.wake('review-instance-changed')
+      await expect.poll(() => asked.length, { timeout: 4_000 }).toBeGreaterThan(before)
+      await new Promise((settle) => setTimeout(settle, 800))
+      const ids = walkRows().map((row) => row.dataset['participant'])
+      expect(new Set(ids).size).toBe(ids.length)
+      for (const n of [3, 4, 5]) expect(ids).not.toContain(personId(n))
+      const positions = walkRows().map((row) => Number(row.dataset['position']))
+      positions.forEach((position, index) => expect(position).toBe(positions[0]! + index))
+      // what the column was showing is still what it shows
+      expect(Math.max(...positions)).toBeGreaterThan(60)
+      expect(errors.mock.calls.some((call) => String(call[0]).includes('same key'))).toBe(false)
+    } finally {
+      errors.mockRestore()
+    }
+  })
+
+  it('reads again only what is near the open person, and a page let go once it is near again', async () => {
+    await page.viewport(1280, 800)
+    const { said, watchBatch } = line()
+    const { asked, rendered } = shelled(
+      at(23, '&list-page=2'),
+      { watchBatch },
+      { people: many(160) },
+    )
+    await rendered
+    await expect.poll(() => current()?.dataset['participant']).toBe(personId(23))
+    await expect.poll(() => watchBatch.mock.calls.length).toBeGreaterThan(0)
+    const scroller = page.getByTestId('roster-walk-scroller').element()
+    // the reader looks a long way down the list, and comes back to the open person
+    await expect
+      .poll(
+        () => {
+          scroller.scrollTop = scroller.scrollHeight
+          return Math.max(...pagesAsked(asked))
+        },
+        { timeout: 10_000 },
+      )
+      .toBeGreaterThanOrEqual(6)
+    scroller.scrollTop = current()!.offsetTop - scroller.clientHeight / 2
+    await new Promise((settle) => setTimeout(settle, 300))
+    const before = asked.length
+    said.wake('entries-changed')
+    await expect.poll(() => asked.length, { timeout: 4_000 }).toBeGreaterThan(before)
+    await new Promise((settle) => setTimeout(settle, 600))
+    expect(pagesAsked(asked.slice(before))).toEqual([1, 2, 3])
+    // the pages further down are no longer shown as they were read
+    await expect
+      .poll(() => Math.max(...walkRows().map((row) => Number(row.dataset['position']))))
+      .toBeLessThanOrEqual(60)
+    // scrolled to again, the next of them is read afresh
+    const mark = asked.length
+    await expect
+      .poll(
+        () => {
+          scroller.scrollTop = scroller.scrollHeight
+          return pagesAsked(asked.slice(mark)).includes(4)
+        },
+        { timeout: 6_000 },
+      )
+      .toBe(true)
+    await expect
+      .poll(() => Math.max(...walkRows().map((row) => Number(row.dataset['position']))))
+      .toBeGreaterThan(60)
+  })
 })
 
 // The list beside an account as a reader works it: the open person told
 // apart from a row under the pointer, keys that say plainly there is nowhere
 // to step, Enter that answers the words it was pressed on, keys along the
-// rows, and a list that can say it failed or found nobody - and that reads
-// again only what is near when the round moves.
+// rows, and a list that can say it failed or found nobody.
 describe('working the list beside an open account', () => {
   const personId = (n: number) => `22222222-2222-4222-8222-${String(n).padStart(12, '0')}`
   const NONE_WAITING = { inReview: 0, toSupplement: 0, reconsidering: 0, toRevise: 0, blocked: 0 }
@@ -2117,50 +2235,5 @@ describe('working the list beside an open account', () => {
     await userEvent.keyboard('{Escape}')
     await expect.poll(() => addressNow()).not.toContain('list-q=')
     await expect.element(search).toHaveValue('')
-  })
-
-  it('reads again only the pages near the open person when the round moves', async () => {
-    await page.viewport(1280, 800)
-    const said = { wake: (_kind: string) => {} }
-    const watchBatch = vi.fn(() =>
-      Effect.succeed(
-        Stream.callback<{ kind: string }>((queue) =>
-          Effect.sync(() => {
-            said.wake = (kind) => void Queue.offerUnsafe(queue, { kind })
-          }),
-        ),
-      ),
-    )
-    const { asked, rendered } = shelled(
-      at(23, '&list-page=2'),
-      { watchBatch },
-      { people: peopleOf(160) },
-    )
-    await rendered
-    await expect.poll(() => current()?.dataset['participant']).toBe(personId(23))
-    const scroller = page.getByTestId('roster-walk-scroller').element()
-    const furthest = () => Math.max(...asked.map((one) => Number(one.query?.['page'] ?? 1)))
-    // the reader scrolls a long way down the list
-    await expect
-      .poll(
-        () => {
-          scroller.scrollTop = scroller.scrollHeight
-          return furthest()
-        },
-        { timeout: 10_000 },
-      )
-      .toBeGreaterThanOrEqual(6)
-    await new Promise((settle) => setTimeout(settle, 300))
-    const before = asked.length
-    said.wake('entries-changed')
-    await expect.poll(() => asked.length, { timeout: 4_000 }).toBeGreaterThan(before)
-    await new Promise((settle) => setTimeout(settle, 600))
-    const again = new Set(
-      asked
-        .slice(before)
-        .filter((one) => one.query?.['around'] === undefined)
-        .map((one) => Number(one.query?.['page'] ?? 1)),
-    )
-    expect([...again].sort((a, b) => a - b)).toEqual([1, 2, 3])
   })
 })
