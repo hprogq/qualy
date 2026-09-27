@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { PencilIcon } from 'lucide-react'
@@ -512,6 +513,16 @@ function Editor({
   const lingeringMove = useLingering(pendingMove)
   /** which screen was on show last commit, which is what says which way it moved */
   const wasAt = useRef(STRUCTURE)
+  // where the reader is, read after a wait: a save's answer arrives with the
+  // round read again, and by then the reader may have gone to another page
+  const { pathname } = useLocation()
+  const here = useRef<string | null>(pathname)
+  useEffect(() => {
+    here.current = pathname
+    return () => {
+      here.current = null
+    }
+  }, [pathname])
 
   const selection: TreeSelection | null =
     composingId !== null
@@ -798,15 +809,21 @@ function Editor({
   const opened = async (itemId: string) => {
     // saved, so nothing on screen is waiting to be let go
     onUnsaved(false)
+    const from = here.current
     // the created row has to be in hand before it can be opened, or the
     // screen has nothing to show between the save and the refetch. The
     // reader stays where they were, so nothing travels.
     await refresh()
+    // Gone to another page meanwhile, the reader is not brought back: the
+    // address is written relative to this page, and written now it took
+    // them back to the question they had just left.
+    if (here.current !== from) return
     // and the question is named before the draft is let go: the other
     // order leaves one render with neither, which is the structure, so
     // the screen travels out to the list and back in again on a press
-    // that never left the question
-    onQuestion(itemId)
+    // that never left the question. A saved question the address already
+    // names is left as it is.
+    if (question !== itemId) onQuestion(itemId)
     if (writing !== null) closeDraft(writing.localId)
   }
 

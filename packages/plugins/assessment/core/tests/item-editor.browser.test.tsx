@@ -926,6 +926,30 @@ describe('choosing how a question is handled', () => {
     await expect.element(editor()).toBeVisible()
   })
 
+  // A save answered, then the round read again slowly: a press on another
+  // page meanwhile was taken back to the question as the read came in.
+  it('lets the reader leave while the round is read again after a save', async () => {
+    const saved: Record<string, unknown>[] = []
+    await open({
+      items: [officerItem()],
+      question: ITEM_ID,
+      saved,
+      elsewhere: true,
+      slowReads: 600,
+    })
+    await page.getByRole('textbox', { name: '项目名称' }).fill('学生干部任职（改）')
+    await page.getByTestId('item-save').click()
+    await vi.waitFor(() => expect(saved).toHaveLength(1))
+    await vi.waitFor(() =>
+      expect(document.querySelector('[data-testid="item-unsaved"]')).toBeNull(),
+    )
+    await page.getByRole('link', { name: 'elsewhere' }).click()
+    await expect.element(page.getByTestId('elsewhere')).toBeVisible()
+    await new Promise((settle) => setTimeout(settle, 1000))
+    expect(addressNow()).toContain('/access')
+    expect(document.querySelector('[data-testid="item-editor"]')).toBeNull()
+  })
+
   it('lets the page go without asking when nothing was changed', async () => {
     await open({ items: [officerItem()], question: ITEM_ID, elsewhere: true })
     await expect.element(editor()).toBeVisible()
