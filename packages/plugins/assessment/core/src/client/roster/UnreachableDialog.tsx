@@ -131,6 +131,11 @@ const styles = stylex.create({
     outline: 'none',
     boxShadow: { default: 'none', ':focus-visible': `inset 0 0 0 2px ${tokens.focusRing}` },
   },
+  // a row that is only read, where there is nobody to open
+  personStill: {
+    cursor: 'default',
+    backgroundColor: { default: 'transparent', ':hover': 'transparent' },
+  },
   personName: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   personNumber: {
     fontVariantNumeric: 'tabular-nums',
@@ -311,31 +316,46 @@ function QuestionRow({
       </div>
       {unfolded && (
         <div id={peopleId}>
-          <PeopleOf batchId={batchId} itemId={route.itemId} onOpenPerson={onOpenPerson} />
+          <PeopleOf
+            batchId={batchId}
+            of={{ itemId: route.itemId, route: 'normal' }}
+            onOpenPerson={onOpenPerson}
+          />
         </div>
       )}
     </li>
   )
 }
 
-/** the people one question's ordinary route finds nowhere, a page at a time */
-function PeopleOf({
+/**
+ * The people a route finds nowhere, a page at a time: a saved question's
+ * route, or - while a route is being composed - the unit kinds it asks for.
+ * The question editor lists them with this too.
+ */
+export function PeopleOf({
   batchId,
-  itemId,
+  of,
   onOpenPerson,
 }: {
   batchId: string
-  itemId: string
-  onOpenPerson: (participantId: string) => void
+  of:
+    | { readonly itemId: string; readonly route: 'normal' | 'escalation' }
+    | { readonly nodeTypeIds: readonly string[] }
+  /** open somebody's account; without it the rows are only read */
+  onOpenPerson?: (participantId: string) => void
 }) {
   const query = useApiQuery(assessmentApi)
   const { format } = useI18n()
   const failures = useLoadFailure()
   const [page, setPage] = useState(1)
+  const paging = { page: String(page), limit: String(PAGE_SIZE) }
   const people = useQuery({
     ...query.assessment.listUnreachableParticipants.queryOptions({
       params: { batchId },
-      query: { itemId, route: 'normal', page: String(page), limit: String(PAGE_SIZE) },
+      query:
+        'itemId' in of
+          ? { itemId: of.itemId, route: of.route, ...paging }
+          : { nodeTypeIds: [...of.nodeTypeIds], ...paging },
     }),
     placeholderData: keepPreviousData,
   })
@@ -356,25 +376,40 @@ function PeopleOf({
           const steps = (row.unitPath.length > 1 ? row.unitPath.slice(1) : row.unitPath).map(
             (name) => name ?? UNNAMED,
           )
+          const said = (
+            <>
+              <span title={row.displayName} {...stylex.props(styles.personName)}>
+                {row.displayName}
+              </span>
+              <span {...stylex.props(styles.personNumber)}>{row.businessNo ?? ''}</span>
+              {steps.length > 0 && (
+                <span {...stylex.props(styles.personUnit)}>
+                  <UnitPath steps={steps} />
+                </span>
+              )}
+            </>
+          )
           return (
             <li key={row.participantId}>
-              <button
-                type="button"
-                data-testid="unreachable-person"
-                data-participant={row.participantId}
-                onClick={() => onOpenPerson(row.participantId)}
-                {...stylex.props(styles.person)}
-              >
-                <span title={row.displayName} {...stylex.props(styles.personName)}>
-                  {row.displayName}
-                </span>
-                <span {...stylex.props(styles.personNumber)}>{row.businessNo ?? ''}</span>
-                {steps.length > 0 && (
-                  <span {...stylex.props(styles.personUnit)}>
-                    <UnitPath steps={steps} />
-                  </span>
-                )}
-              </button>
+              {onOpenPerson === undefined ? (
+                <div
+                  data-testid="unreachable-person"
+                  data-participant={row.participantId}
+                  {...stylex.props(styles.person, styles.personStill)}
+                >
+                  {said}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  data-testid="unreachable-person"
+                  data-participant={row.participantId}
+                  onClick={() => onOpenPerson(row.participantId)}
+                  {...stylex.props(styles.person)}
+                >
+                  {said}
+                </button>
+              )}
             </li>
           )
         })}

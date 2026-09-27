@@ -1645,18 +1645,25 @@ describe('a route that finds some of the roster nowhere', () => {
     const dialog = page.getByTestId('route-reach-dialog')
     await expect.element(dialog).toBeVisible()
     await vi.waitFor(() =>
-      expect(dialog.getByTestId('route-reach-person').elements()).toHaveLength(10),
+      expect(dialog.getByTestId('unreachable-person').elements()).toHaveLength(10),
     )
+    // the list the roster shows them in, its first page the one the count
+    // was read with
+    expect(asked.every((one) => one.page === '1')).toBe(true)
+    expect(dialog.getByTestId('unreachable-people').element().getAttribute('data-total')).toBe('12')
+    // read, not pressed: there is nobody here to open
+    expect(dialog.element().querySelector('button[data-testid="unreachable-person"]')).toBeNull()
     await dialog.getByRole('button', { name: '2', exact: true }).click()
     await vi.waitFor(() =>
-      expect(dialog.getByTestId('route-reach-person').elements()).toHaveLength(2),
+      expect(dialog.getByTestId('unreachable-person').elements()).toHaveLength(2),
     )
     expect(
       dialog
-        .getByTestId('route-reach-person')
+        .getByTestId('unreachable-person')
         .elements()
         .map((row) => row.getAttribute('data-participant')),
     ).toEqual(['p-11', 'p-12'])
+    expect(asked.at(-1)?.page).toBe('2')
     await dialog.getByRole('button', { name: '关闭' }).click()
     await vi.waitFor(() =>
       expect(document.querySelector('[data-testid="route-reach-dialog"]')).toBeNull(),

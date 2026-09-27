@@ -6,8 +6,6 @@ import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import {
   Dialog,
@@ -18,13 +16,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@qualy/ui/dialog'
-import { Pager } from '@qualy/ui/pager'
-import { PersonCell } from '@qualy/ui/person'
-import { Skeleton } from '@qualy/ui/skeleton'
-import { UnitPath } from '@qualy/ui/unit-path'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { assessmentApi } from '../../api.ts'
 import { assessmentMessages as m } from '../../i18n.ts'
+import { PeopleOf } from '../../roster/UnreachableDialog.tsx'
 
 // A route that finds some of the roster nowhere, said under the route while
 // it is being composed (§32.93).
@@ -62,37 +57,6 @@ const styles = stylex.create({
     color: tokens.warningForeground,
   },
   icon: { width: 14, height: 14, flexShrink: 0, marginTop: 2 },
-  list: {
-    display: 'flex',
-    flexDirection: 'column',
-    margin: 0,
-    padding: 0,
-    listStyleType: 'none',
-    borderTopWidth: 1,
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.divider,
-  },
-  row: {
-    display: 'grid',
-    gridTemplateColumns: {
-      default: 'minmax(0, 1fr) minmax(0, 1fr)',
-      [breakpoints.phone]: 'minmax(0, 1fr)',
-    },
-    alignItems: 'center',
-    columnGap: 16,
-    rowGap: 4,
-    paddingBlock: 8,
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: tokens.divider,
-  },
-  place: {
-    color: tokens.mutedForeground,
-    paddingInlineStart: { default: 0, [breakpoints.phone]: 42 },
-  },
-  waiting: { display: 'flex', flexDirection: 'column', gap: 10 },
-  waitingRow: { height: 36, borderRadius: 8 },
-  foot: { paddingTop: 4 },
 })
 
 /** the unit kinds a route asks for, and the round they are asked of */
@@ -102,10 +66,12 @@ interface Asked {
   readonly levels: readonly string[]
 }
 
-const queryFor = (asked: Asked, page: number) => ({
-  params: { batchId: asked.batchId },
-  query: { nodeTypeIds: [...asked.levels], page: String(page) },
-})
+/**
+ * People per page, as the list in the dialog asks for them: the count is
+ * read with the list's own first page, so the list opens on what is already
+ * in hand rather than on an outline.
+ */
+const PER_PAGE = '10'
 
 export function RouteReach(asked: Asked) {
   const { format } = useI18n()
@@ -116,7 +82,10 @@ export function RouteReach(asked: Asked) {
   // both. A reader who may not manage the roster is refused, and is told
   // nothing rather than something went wrong.
   const first = useQuery({
-    ...query.assessment.listUnreachableParticipants.queryOptions(queryFor(asked, 1)),
+    ...query.assessment.listUnreachableParticipants.queryOptions({
+      params: { batchId: asked.batchId },
+      query: { nodeTypeIds: [...asked.levels], page: '1', limit: PER_PAGE },
+    }),
     placeholderData: keepPreviousData,
     retry: false,
   })
@@ -150,6 +119,7 @@ export function RouteReach(asked: Asked) {
   )
 }
 
+/** who they are, a page at a time, as the roster's own list of them says it */
 function UnreachableDialog({
   asked,
   open,
@@ -160,18 +130,7 @@ function UnreachableDialog({
   open: boolean
   onClose: () => void
 }) {
-  const { format, formatError } = useI18n()
-  const query = useApiQuery(assessmentApi)
-  const [page, setPage] = useState(1)
-  const people = useQuery({
-    ...query.assessment.listUnreachableParticipants.queryOptions(queryFor(asked, page)),
-    placeholderData: keepPreviousData,
-  })
-  const rows = people.data?.items ?? []
-  const total = people.data?.total ?? 0
-  const size = people.data?.pageSize ?? 10
-  const at = people.data?.page ?? page
-
+  const { format } = useI18n()
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent data-testid="route-reach-dialog" size="40rem">
@@ -184,60 +143,7 @@ function UnreachableDialog({
           <DialogDescription>{format(m.itemsReachHint)}</DialogDescription>
         </DialogHeader>
         <DialogBody>
-          <AsyncSection
-            pending={people.isPending}
-            error={people.isError ? formatError(people.error) : null}
-            loadingLabel={format(commonMessages.loading)}
-            retryLabel={format(commonMessages.retry)}
-            onRetry={() => void people.refetch()}
-            skeleton={
-              <div {...stylex.props(styles.waiting)}>
-                <Skeleton className={stylex.props(styles.waitingRow).className} />
-                <Skeleton className={stylex.props(styles.waitingRow).className} />
-                <Skeleton className={stylex.props(styles.waitingRow).className} />
-              </div>
-            }
-          >
-            <ul {...stylex.props(styles.list)} data-testid="route-reach-list">
-              {rows.map((row) => {
-                // the root every one of them shares says nothing about any
-                const units = row.unitPath.filter((name): name is string => name !== null)
-                const place = units.length > 1 ? units.slice(1) : units
-                return (
-                  <li
-                    key={row.participantId}
-                    {...stylex.props(styles.row)}
-                    data-testid="route-reach-person"
-                    data-participant={row.participantId}
-                  >
-                    <PersonCell name={row.displayName} secondary={row.businessNo ?? undefined} />
-                    {place.length > 0 && <UnitPath steps={place} xstyle={styles.place} />}
-                  </li>
-                )
-              })}
-            </ul>
-            {total > size && (
-              <div {...stylex.props(styles.foot)}>
-                <Pager
-                  testId="route-reach-pager"
-                  label={format(m.rosterPagerLabel)}
-                  previousLabel={format(m.previousPage)}
-                  nextLabel={format(m.nextPage)}
-                  page={at}
-                  pageSize={size}
-                  total={total}
-                  compact
-                  disabled={people.isFetching}
-                  summary={format(m.rosterPageSummary, {
-                    from: (at - 1) * size + 1,
-                    to: (at - 1) * size + rows.length,
-                    total,
-                  })}
-                  onPage={setPage}
-                />
-              </div>
-            )}
-          </AsyncSection>
+          <PeopleOf batchId={asked.batchId} of={{ nodeTypeIds: asked.levels }} />
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
