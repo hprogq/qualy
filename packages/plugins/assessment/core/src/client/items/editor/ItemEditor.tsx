@@ -114,18 +114,47 @@ const styles = stylex.create({
   modeSeat: { display: { default: 'inline-flex', [breakpoints.phone]: 'none' }, flexShrink: 0 },
   // the way back keeps its words; what gives way on a short line is the path
   backSeat: { display: 'inline-flex', minWidth: 0, flexShrink: 0 },
+  // On a short line, which version this is and when it was saved give way
+  // once the path has folded its outer groups and before the group the
+  // question is in is cut short (the path decides when, see Trail.tsx).
+  // Each goes whole or not at all: the time first, then the version, onto a
+  // second line nobody sees - held open by an anchor with no width, so even
+  // the first of them can go. That changes are unsaved is never given up.
   meta: {
     display: 'inline-flex',
-    flexShrink: 0,
+    minWidth: 0,
+    height: '1.25rem',
+    flexShrink: 1,
+    flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 10,
-    marginLeft: 6,
+    alignContent: 'flex-start',
+    columnGap: 10,
+    marginLeft: -4,
+    overflow: 'hidden',
     fontSize: 12,
     fontVariantNumeric: 'tabular-nums',
     whiteSpace: 'nowrap',
   },
+  metaAnchor: { width: 0, height: '1.25rem' },
+  metaPart: {
+    display: { default: 'inline-flex', [breakpoints.phone]: 'none' },
+    flexShrink: 0,
+    height: '1.25rem',
+    alignItems: 'center',
+    gap: 10,
+  },
   metaRule: { width: 1, height: 10, flexShrink: 0, backgroundColor: tokens.border },
-  metaUnsaved: { display: 'inline-flex', alignItems: 'center', gap: 6, color: tokens.foreground },
+  metaUnsaved: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 10,
+    marginLeft: { default: 4, [breakpoints.phone]: 0 },
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    color: tokens.foreground,
+  },
+  metaUnsavedWords: { display: 'inline-flex', alignItems: 'center', gap: 6 },
   wideOnly: { display: { default: 'inline-flex', [breakpoints.phone]: 'none' } },
   // The views of the question, and what is left before it can be saved. It
   // stays in reach while a long form scrolls under it; a phone scrolls it
@@ -1199,6 +1228,14 @@ export function ItemEditor({
           ...inZone(zone),
         }).format(at)
   })()
+  const versionWords =
+    revision === null
+      ? format(m.itemsVersionNew)
+      : format(m.itemsVersionNo, { no: revision.revisionNo })
+  const savedWords =
+    dirty || savedWhen === null ? null : format(m.itemsSavedAt, { when: savedWhen })
+  // everything else on the path's line, so the path is measured afresh when it changes
+  const metaWords = [versionWords, dirty ? format(m.itemsUnsaved) : (savedWords ?? '')].join('\n')
   const recognitionHandles = recognitionRows(draft, contract).map((row) => row.handle)
   const methodLabel = calculators.find((one) => one.ref === chosenCalculator.ref)?.label ?? null
   const automaticLocked = item !== null && item.status !== 'draft'
@@ -1375,38 +1412,41 @@ export function ItemEditor({
                 {/* where the question sits, beside the way back rather than
                     inside it: the button is named for where it goes, and a
                     path inside it was never read out */}
-                <QuestionTrail key={trail.join('\n')} groups={trail} room={band} />
-                <span
-                  {...stylex.props(styles.meta)}
-                  data-testid="item-meta"
-                  data-revision={revision?.revisionNo ?? 0}
-                  data-standing={item?.status ?? 'new'}
-                >
-                  <span aria-hidden {...stylex.props(styles.metaRule, styles.wideOnly)} />
-                  <span {...stylex.props(styles.wideOnly)}>
-                    {revision === null
-                      ? format(m.itemsVersionNew)
-                      : format(m.itemsVersionNo, { no: revision.revisionNo })}
-                  </span>
-                  {dirty ? (
-                    <>
-                      <span aria-hidden {...stylex.props(styles.metaRule, styles.wideOnly)} />
-                      <span {...stylex.props(styles.metaUnsaved)} data-testid="item-unsaved">
-                        <Dot tone="pending" />
-                        {format(m.itemsUnsaved)}
+                <QuestionTrail
+                  key={trail.join('\n')}
+                  groups={trail}
+                  room={band}
+                  besides={metaWords}
+                  after={
+                    <span
+                      {...stylex.props(styles.meta)}
+                      data-testid="item-meta"
+                      data-revision={revision?.revisionNo ?? 0}
+                      data-standing={item?.status ?? 'new'}
+                    >
+                      <span aria-hidden {...stylex.props(styles.metaAnchor)} />
+                      <span {...stylex.props(styles.metaPart)} data-testid="item-version">
+                        <span aria-hidden {...stylex.props(styles.metaRule)} />
+                        {versionWords}
                       </span>
-                    </>
-                  ) : (
-                    savedWhen !== null && (
-                      <>
-                        <span aria-hidden {...stylex.props(styles.metaRule, styles.wideOnly)} />
-                        <span {...stylex.props(styles.wideOnly)}>
-                          {format(m.itemsSavedAt, { when: savedWhen })}
+                      {savedWords !== null && (
+                        <span {...stylex.props(styles.metaPart)} data-testid="item-saved-at">
+                          <span aria-hidden {...stylex.props(styles.metaRule)} />
+                          {savedWords}
                         </span>
-                      </>
-                    )
-                  )}
-                </span>
+                      )}
+                    </span>
+                  }
+                />
+                {dirty && (
+                  <span {...stylex.props(styles.metaUnsaved)} data-testid="item-unsaved">
+                    <span aria-hidden {...stylex.props(styles.metaRule, styles.wideOnly)} />
+                    <span {...stylex.props(styles.metaUnsavedWords)}>
+                      <Dot tone="pending" />
+                      {format(m.itemsUnsaved)}
+                    </span>
+                  </span>
+                )}
               </>
             }
             actions={

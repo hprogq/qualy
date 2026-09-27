@@ -1974,6 +1974,100 @@ describe('the band', () => {
     }
   })
 
+  // In English at a desk width with the rail open, the group a question is
+  // in was cut to five letters while when it was saved stood whole beside
+  // it, and a line whose other words changed was never measured again.
+  it('gives way the outer groups, then the time and the version, before the group a question is in', async () => {
+    const OUTER = '88888888-8888-4888-8888-8888888888e1'
+    const INNER = '88888888-8888-4888-8888-8888888888e2'
+    const group = (id: string, parentGroupId: string, name: string) => ({
+      id,
+      parentGroupId,
+      name,
+      cap: '20',
+      floor: null,
+      sortOrder: 0,
+      itemCount: 0,
+    })
+    await page.viewport(1024, 900)
+    try {
+      await open({
+        groups: [
+          paper,
+          group(OUTER, PAPER_ID, '德育素质与思想政治表现综合评价'),
+          group(INNER, OUTER, '学生干部任职与班级社团工作履职情况'),
+        ],
+        items: [{ ...officerItem(), scoreGroupId: INNER }],
+        question: ITEM_ID,
+        locale: 'en-US',
+        inShell: true,
+      })
+      await expect.element(page.getByTestId('workspace-rail')).toBeVisible()
+      const trail = page.getByTestId('item-trail')
+      await expect.element(trail).toBeVisible()
+      const settle = () => new Promise((done) => setTimeout(done, 250))
+      /** on the line, rather than on the one under it that nobody sees */
+      const standing = (testId: string) => {
+        const part = document.querySelector(`[data-testid="${testId}"]`)
+        if (part === null) return false
+        const room = document
+          .querySelector('[data-testid="item-trail-after"]')!
+          .getBoundingClientRect()
+        const box = part.getBoundingClientRect()
+        return box.width > 0 && box.bottom <= room.bottom + 1 && box.right <= room.right + 1
+      }
+      const nearestCut = () => {
+        const crumbs = trail.element().querySelectorAll('[data-crumb]')
+        const word = crumbs[crumbs.length - 1]!.lastElementChild as HTMLElement
+        return word.scrollWidth > word.clientWidth + 1
+      }
+      const holds = () => {
+        const seat = trail.element() as HTMLElement
+        // nothing on the path is cut off without a mark
+        expect(seat.scrollWidth).toBeLessThanOrEqual(seat.clientWidth + 1)
+        const folded = Number(seat.getAttribute('data-folded'))
+        // an outer group still on the line: nothing after the path gave way
+        if (folded < 2) {
+          expect(standing('item-version')).toBe(true)
+          if (document.querySelector('[data-testid="item-saved-at"]') !== null) {
+            expect(standing('item-saved-at')).toBe(true)
+          }
+        }
+        // the time goes before the version, each whole
+        if (standing('item-saved-at')) expect(standing('item-version')).toBe(true)
+        // the group the question is in is cut short only once the rest is gone
+        if (nearestCut()) {
+          expect(folded).toBe(2)
+          expect(standing('item-version')).toBe(false)
+        }
+      }
+      await settle()
+      holds()
+      // at 1024 with the rail open there is room for the whole of it
+      expect(nearestCut()).toBe(false)
+      const title = page.getByRole('textbox', { name: 'Title' })
+      for (const width of [1024, 1100, 1180, 1280, 1366, 1440]) {
+        await page.viewport(width, 900)
+        await settle()
+        holds()
+        // changes waiting take their place on the line, and the path is
+        // measured again for what is left
+        await userEvent.type(title, 'x')
+        await expect.element(page.getByTestId('item-unsaved')).toBeVisible()
+        await settle()
+        holds()
+        await userEvent.type(title, '{Backspace}')
+        await vi.waitFor(() =>
+          expect(document.querySelector('[data-testid="item-unsaved"]')).toBeNull(),
+        )
+        await settle()
+        holds()
+      }
+    } finally {
+      await page.viewport(1280, 900)
+    }
+  })
+
   it('keeps the section heading in the band until a question arriving by address can take it', async () => {
     let release: (() => void) | undefined
     const held = new Promise<void>((resolve) => {
