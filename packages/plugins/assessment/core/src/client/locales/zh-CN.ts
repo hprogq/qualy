@@ -1814,8 +1814,8 @@ export default {
 
   'assessment/template/timeline-label': '时间线模板',
   'assessment/template/timeline-choose': '选择时间线模板…',
-  'assessment/template/phase-legend': '应用时间线模板',
-  'assessment/template/phase-choose': '选择时间线模板…',
+  'assessment/template/phase-legend': '应用阶段模板',
+  'assessment/template/phase-choose': '选择阶段模板…',
   'assessment/template/phase-apply': '应用',
 
   'assessment/profile/title': '当前阶段开放的操作',

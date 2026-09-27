@@ -1386,7 +1386,7 @@ describe('the stage plan', () => {
 
     await page.getByTestId('phase-row').first().click()
     const panel = page.getByRole('dialog')
-    await panel.getByLabelText('应用时间线模板').selectOptions('填报阶段预设')
+    await panel.getByLabelText('应用阶段模板').selectOptions('填报阶段预设')
     await panel.getByRole('button', { name: '应用' }).click()
     await expect.element(panel.getByRole('checkbox', { name: '提交审核' })).toBeChecked()
     await expect.element(panel.getByRole('checkbox', { name: '查看排名' })).not.toBeChecked()
