@@ -925,6 +925,11 @@ describe('the participant results screen', () => {
             : Effect.succeed({
                 participant: participant({ id: request.params?.['participantId'] }),
               }),
+        // the rest of the account failed with the person, and comes back with them
+        listParticipantEntries: () =>
+          reads.fail
+            ? Effect.fail(apiError('SOMETHING_ELSE'))
+            : Effect.succeed({ participantId: PARTICIPANT_ID, entries: [], nextCursor: null }),
       },
       `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}`,
     )
@@ -941,6 +946,9 @@ describe('the participant results screen', () => {
     await expect
       .element(page.getByTestId('participant-head').getByRole('heading', { level: 1 }))
       .toHaveTextContent('郭航旗')
+    await expect
+      .element(page.getByTestId('participant-entries'))
+      .toHaveAttribute('data-state', 'ready')
   })
 
   it('says a score cannot be read rather than showing an old one', async () => {

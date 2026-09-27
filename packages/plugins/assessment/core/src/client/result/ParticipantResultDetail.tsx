@@ -993,7 +993,12 @@ export function ParticipantResultDetail({
             <LoadFailure
               failure={absent}
               size="section"
-              onRetry={() => void who.refetch()}
+              // the rest of the account failed with the person, and comes back with them
+              onRetry={() => {
+                void who.refetch()
+                void result.refetch()
+                void entries.refetch()
+              }}
               retrying={who.isFetching}
               extra={
                 <Button variant={absent.retryable ? 'outline' : 'default'} onClick={onBack}>
