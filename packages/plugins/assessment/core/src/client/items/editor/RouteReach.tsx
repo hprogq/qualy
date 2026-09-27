@@ -19,7 +19,7 @@ import {
 import { useLingering } from '@qualy/ui/use-lingering'
 import { assessmentApi } from '../../api.ts'
 import { assessmentMessages as m } from '../../i18n.ts'
-import { PeopleOf } from '../../roster/UnreachableDialog.tsx'
+import { UnreachablePeople } from '../../roster/UnreachablePeople.tsx'
 
 // A route that finds some of the roster nowhere, said under the route while
 // it is being composed (§32.93).
@@ -143,7 +143,7 @@ function UnreachableDialog({
           <DialogDescription>{format(m.itemsReachHint)}</DialogDescription>
         </DialogHeader>
         <DialogBody>
-          <PeopleOf batchId={asked.batchId} of={{ nodeTypeIds: asked.levels }} />
+          <UnreachablePeople batchId={asked.batchId} of={{ nodeTypeIds: asked.levels }} />
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
