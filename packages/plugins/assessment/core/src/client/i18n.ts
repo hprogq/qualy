@@ -1073,7 +1073,7 @@ const i18n = definePluginMessages({
     tabOverview: { id: 'assessment/overview/tab', defaultMessage: 'Overview' },
     overviewHint: {
       id: 'assessment/overview/hint',
-      defaultMessage: 'View batch progress and items requiring your attention',
+      defaultMessage: 'Where this batch stands, and what is left for you to do',
     },
     overviewPlaceholder: {
       id: 'assessment/overview/placeholder',
@@ -5635,11 +5635,11 @@ const i18n = definePluginMessages({
     // what has happened to their claims lately
     overviewActionsTitle: {
       id: 'assessment/overview/actions-title',
-      defaultMessage: 'Needs your attention',
+      defaultMessage: 'To do',
     },
     overviewActionsNone: {
       id: 'assessment/overview/actions-none',
-      defaultMessage: 'Nothing needs your attention right now',
+      defaultMessage: 'Nothing to do right now',
     },
     overviewActionSupplement: {
       id: 'assessment/overview/action-supplement',
@@ -5669,10 +5669,6 @@ const i18n = definePluginMessages({
     overviewBatchNoteMore: {
       id: 'assessment/overview/batch-note-more',
       defaultMessage: 'Read all',
-    },
-    overviewBatchNoteLess: {
-      id: 'assessment/overview/batch-note-less',
-      defaultMessage: 'Show less',
     },
     overviewActivityNone: {
       id: 'assessment/overview/activity-none',
@@ -5765,7 +5761,7 @@ const i18n = definePluginMessages({
     overviewGoItems: { id: 'assessment/overview/go-items', defaultMessage: 'Go to questions' },
     overviewGoRoster: { id: 'assessment/overview/go-roster', defaultMessage: 'Go to participants' },
     overviewGoAccess: { id: 'assessment/overview/go-access', defaultMessage: 'Go to staff' },
-    railAlert: { id: 'assessment/batch/rail-alert', defaultMessage: 'Needs attention' },
+    railAlert: { id: 'assessment/batch/rail-alert', defaultMessage: 'Something to do' },
     'activity.r.review-approved': {
       id: 'assessment/activity/reviewer-approved',
       defaultMessage: "You approved {who}'s claim",
@@ -5894,7 +5890,7 @@ const i18n = definePluginMessages({
     },
     myEntriesFilterNone: {
       id: 'assessment/entry/filter-none',
-      defaultMessage: 'Nothing needs your action',
+      defaultMessage: 'Nothing to do here',
     },
     myEntriesBasis: { id: 'assessment/entry/basis', defaultMessage: 'Scoring basis' },
     myEntriesBasisSoon: {
@@ -5974,7 +5970,7 @@ const i18n = definePluginMessages({
     settingsNoteHint: {
       id: 'assessment/settings/note-hint',
       defaultMessage:
-        'Shown at the top of the batch overview to participants and staff; leave out anything sensitive',
+        'Shown on the batch overview to participants and staff; leave out anything sensitive. Paragraphs, lists (- or 1.), **bold** and links ([words](https://…)) are supported',
     },
     settingsUnsaved: { id: 'assessment/settings/unsaved', defaultMessage: 'Not saved' },
     settingsLifecycle: { id: 'assessment/settings/lifecycle', defaultMessage: 'Batch status' },

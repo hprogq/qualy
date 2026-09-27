@@ -1,13 +1,16 @@
-import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  lazy,
+  Suspense,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import {
-  CheckIcon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  ChevronUpIcon,
-  RotateCwIcon,
-} from 'lucide-react'
+import { CheckIcon, ChevronRightIcon, HistoryIcon, RotateCwIcon } from 'lucide-react'
 import {
   useApi,
   useApiQuery,
@@ -21,6 +24,8 @@ import { useI18n, useList } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
+import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@qualy/ui/dialog'
+import { Blank } from '@qualy/ui/screen'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Spinner } from '@qualy/ui/spinner'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
@@ -48,11 +53,6 @@ import {
 
 const wide = '@media (min-width: 1024px)'
 const narrow = '@media (max-width: 1023.98px)'
-// Between a phone and the two-column desk. Stated as a closed range so it
-// cannot overlap `wide` - two conditions that both match leave which one
-// wins up to the order they were written in, which is not something a
-// stylesheet should have to remember.
-const roomy = '@media (min-width: 640px) and (max-width: 1023.98px)'
 
 const styles = stylex.create({
   desk: {
@@ -79,22 +79,25 @@ const styles = stylex.create({
   note: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 8 },
   noteText: {
     margin: 0,
+    minWidth: 0,
     fontSize: 13.5,
     lineHeight: 1.7,
-    whiteSpace: 'pre-wrap',
     overflowWrap: 'anywhere',
     color: tokens.surfaceMutedForeground,
   },
-  // four lines, the last fading out, until the reader asks for the rest
+  // the words as typed, while the renderer is still on its way
+  notePlain: { margin: 0, whiteSpace: 'pre-wrap' },
+  // about four lines, the last fading out; the whole note is a press away.
+  // A height rather than a line clamp: a list or a second paragraph is a
+  // block of its own, and a clamp counts the lines of one block only
   noteFolded: {
-    display: '-webkit-box',
+    maxHeight: '6.8em',
     overflow: 'hidden',
-    WebkitBoxOrient: 'vertical',
-    WebkitLineClamp: 4,
   },
   noteFaded: {
     maskImage: 'linear-gradient(to bottom, black calc(100% - 1.7em), transparent)',
   },
+  noteDialogText: { fontSize: 14, lineHeight: 1.75, color: tokens.foreground },
   noteKey: {
     display: 'inline-flex',
     alignSelf: 'flex-start',
@@ -271,6 +274,9 @@ const styles = stylex.create({
   },
   // the whole line is the way in; the verb inside is the same door with a
   // keyboard-reachable handle
+  // No gap between the rows of a row: the lines under its name keep their
+  // own distance, so a row with only a name has no empty line below it, and
+  // the verb beside it sits level with the name instead of under nothing.
   todoRow: {
     display: 'grid',
     cursor: 'pointer',
@@ -281,8 +287,8 @@ const styles = stylex.create({
       [wide]: 'minmax(0, 1fr) 3.5rem minmax(7rem, max-content)',
     },
     columnGap: { default: 12, [wide]: 20 },
-    rowGap: { default: 8, [wide]: 4 },
-    alignItems: { default: null, [wide]: 'center' },
+    rowGap: 0,
+    alignItems: 'center',
     borderTopWidth: { default: 1, ':first-child': 0 },
     borderTopStyle: 'solid',
     borderTopColor: tokens.divider,
@@ -308,16 +314,17 @@ const styles = stylex.create({
     fontWeight: 500,
     textWrap: 'pretty',
   },
-  // a row with no time takes the time's column too
+  // a row with no time takes the time's column too, where there is one
   todoTimeless: {
-    gridColumnEnd: 'span 2',
+    gridColumnEnd: { default: null, [wide]: 'span 2' },
   },
+  // under the words on a phone, a column of its own on a wide desk
   todoAt: {
-    gridColumnStart: 2,
-    gridRowStart: 1,
+    gridColumnStart: { default: 1, [wide]: 2 },
+    gridRowStart: { default: 3, [wide]: 1 },
     gridRowEnd: { default: null, [wide]: 'span 2' },
-    alignSelf: { default: 'baseline', [wide]: 'center' },
-    textAlign: 'right',
+    marginTop: { default: 4, [wide]: 0 },
+    textAlign: { default: 'left', [wide]: 'right' },
     fontSize: 12,
     whiteSpace: 'nowrap',
     color: tokens.mutedForeground,
@@ -325,8 +332,8 @@ const styles = stylex.create({
   },
   todoDetail: {
     gridColumnStart: 1,
-    gridColumnEnd: { default: 'span 2', [wide]: 'auto' },
     gridRowStart: 2,
+    marginTop: 4,
     display: '-webkit-box',
     WebkitBoxOrient: 'vertical',
     WebkitLineClamp: 2,
@@ -337,29 +344,30 @@ const styles = stylex.create({
     textWrap: 'pretty',
     color: tokens.mutedForeground,
   },
-  // A phone puts the act on a line of its own, full width of the words above
-  // it: at 390 a button sharing a row with a sentence is a target the thumb
-  // has to aim for. A tablet keeps the line but not the width - a 700px
-  // button is not a bigger target, only a louder one - so there it shrinks to
-  // its words and sits at the end, where the desk's own column will put it.
+  // The act at the end of its row at every width, level with the words: a
+  // phone has room for a short verb beside them, and a verb on a line of its
+  // own made every row two rows tall. The whole row answers a press as well,
+  // so the button is the keyboard's handle more than the thumb's target.
   todoVerbSeat: {
-    gridColumnStart: { default: 1, [wide]: 3 },
-    gridColumnEnd: { default: 'span 2', [wide]: 'auto' },
-    gridRowStart: { default: 3, [wide]: 1 },
-    gridRowEnd: { default: null, [wide]: 'span 2' },
-    alignSelf: { default: 'stretch', [wide]: 'center' },
-    justifySelf: { default: null, [roomy]: 'end' },
+    gridColumnStart: { default: 2, [wide]: 3 },
+    gridRowStart: 1,
+    gridRowEnd: { default: 'span 3', [wide]: 'span 2' },
+    alignSelf: 'center',
+    justifySelf: 'end',
   },
+  // a row that is only its name keeps its verb on that one line: spanning
+  // the empty lines under it, the verb's height went to them and it sat
+  // below the name
+  todoVerbSeatLone: { gridRowEnd: 'auto' },
   todoVerb: {
     display: 'inline-flex',
     cursor: 'pointer',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    height: 36,
-    width: { default: '100%', [roomy]: 'auto' },
-    minWidth: { default: null, [roomy]: '7rem' },
-    paddingInline: 16,
+    height: { default: 32, [wide]: 36 },
+    minWidth: { default: null, [wide]: '7rem' },
+    paddingInline: { default: 12, [wide]: 16 },
     fontSize: 13,
     fontWeight: 500,
     whiteSpace: 'nowrap',
@@ -478,10 +486,6 @@ const styles = stylex.create({
   activityBoneMark: { width: 22, height: 22, borderRadius: 7, flexShrink: 0 },
   activityBoneWords: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 5 },
   activityBoneLine: { height: 12, borderRadius: 3 },
-  quietNote: {
-    fontSize: 14,
-    color: tokens.mutedForeground,
-  },
   day: {
     display: 'flex',
     minWidth: 0,
@@ -658,14 +662,16 @@ export default function BatchOverviewPage() {
               first thing on the page pushed what the reader came for below
               the fold. */}
           <div {...stylex.props(styles.main)}>
-            {batch.descriptionMd !== null && batch.descriptionMd.trim() !== '' && (
-              <BatchNote text={batch.descriptionMd.trim()} />
-            )}
             <MyDesk
               batchId={batchId}
               overview={overview}
               manage={batch.capabilities.manage}
               owed={owesAdministration(batch)}
+              note={
+                batch.descriptionMd !== null && batch.descriptionMd.trim() !== '' ? (
+                  <BatchNote text={batch.descriptionMd.trim()} />
+                ) : null
+              }
             />
           </div>
 
@@ -689,33 +695,51 @@ export default function BatchOverviewPage() {
   )
 }
 
+/** loaded when a note is shown: most pages never render one */
+const NoteMarkdown = lazy(() => import('./batch/NoteMarkdown.tsx'))
+
+/** the note's words, in its markup once the renderer is here and as typed until then */
+function NoteText({ text }: { text: string }) {
+  return (
+    <Suspense fallback={<p {...stylex.props(styles.notePlain)}>{text}</p>}>
+      <NoteMarkdown text={text} />
+    </Suspense>
+  )
+}
+
 /**
- * What the batch's managers wrote about it, as they wrote it: plain text,
- * its line breaks kept, never read as markup. Four lines at first - the
- * desk under it is what the reader came for - and the rest a press away.
+ * What the batch's managers wrote about it: the background to the desk, so
+ * it stands under what needs doing. A notice written in a small markup
+ * (batch/note-markdown.ts) - lists of what to bring, the school's own
+ * document to read. About four lines at first, and the whole of it in a
+ * dialog of its own rather than pushing the rest of the page down.
  */
 function BatchNote({ text }: { text: string }) {
   const { format } = useI18n()
   const id = useId()
-  const body = useRef<HTMLParagraphElement | null>(null)
-  const [open, setOpen] = useState(false)
-  // whether four lines hold it all; measured, since how many lines a text
-  // takes depends on the width it is given
+  const body = useRef<HTMLDivElement | null>(null)
+  const [reading, setReading] = useState(false)
+  // whether the fold hides anything; measured, since how much a note takes
+  // depends on the width it is given, and watched as the renderer arrives,
+  // which changes what is inside without resizing the box around it
   const [long, setLong] = useState(false)
   useLayoutEffect(() => {
     const node = body.current
-    if (node === null || open) return
+    if (node === null) return
     const measure = () => setLong(node.scrollHeight > node.clientHeight + 1)
     measure()
-    const watch = new ResizeObserver(measure)
-    watch.observe(node)
-    return () => watch.disconnect()
-  }, [text, open])
-  const folded = !open
+    const resized = new ResizeObserver(measure)
+    resized.observe(node)
+    const rendered = new MutationObserver(measure)
+    rendered.observe(node, { childList: true, subtree: true })
+    return () => {
+      resized.disconnect()
+      rendered.disconnect()
+    }
+  }, [text])
   return (
     <section
       data-testid="batch-note"
-      data-expanded={open}
       data-long={long}
       aria-labelledby={`${id}-title`}
       {...stylex.props(styles.note)}
@@ -723,33 +747,35 @@ function BatchNote({ text }: { text: string }) {
       <h2 id={`${id}-title`} {...stylex.props(styles.sectionTitle)}>
         {format(m.overviewBatchNote)}
       </h2>
-      <p
+      <div
         ref={body}
-        id={`${id}-text`}
-        {...stylex.props(
-          styles.noteText,
-          folded && styles.noteFolded,
-          folded && long && styles.noteFaded,
-        )}
+        {...stylex.props(styles.noteText, styles.noteFolded, long && styles.noteFaded)}
       >
-        {text}
-      </p>
-      {(long || open) && (
+        <NoteText text={text} />
+      </div>
+      {long && (
         <button
           type="button"
-          aria-expanded={open}
-          aria-controls={`${id}-text`}
-          onClick={() => setOpen((now) => !now)}
+          aria-haspopup="dialog"
+          onClick={() => setReading(true)}
           {...stylex.props(styles.noteKey)}
         >
-          {format(open ? m.overviewBatchNoteLess : m.overviewBatchNoteMore)}
-          {open ? (
-            <ChevronUpIcon aria-hidden {...stylex.props(styles.noteKeyIcon)} />
-          ) : (
-            <ChevronDownIcon aria-hidden {...stylex.props(styles.noteKeyIcon)} />
-          )}
+          {format(m.overviewBatchNoteMore)}
+          <ChevronRightIcon aria-hidden {...stylex.props(styles.noteKeyIcon)} />
         </button>
       )}
+      <Dialog open={reading} onOpenChange={setReading}>
+        <DialogContent data-testid="batch-note-dialog" size="40rem">
+          <DialogHeader>
+            <DialogTitle>{format(m.overviewBatchNote)}</DialogTitle>
+          </DialogHeader>
+          <DialogBody>
+            <div {...stylex.props(styles.noteText, styles.noteDialogText)}>
+              <NoteText text={text} />
+            </div>
+          </DialogBody>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }
@@ -837,6 +863,7 @@ function MyDesk({
   overview,
   manage,
   owed,
+  note,
 }: {
   batchId: string
   overview: DeskRead
@@ -844,13 +871,15 @@ function MyDesk({
   manage: boolean
   /** and the batch can still be mended, so what it owes is worth asking for */
   owed: boolean
+  /** what the batch's managers wrote about it, when they wrote anything */
+  note: ReactNode
 }) {
   // the administrator's counts are asked for by administrators only: to
   // anybody else every one of those reads is a refusal
   return manage ? (
-    <AdministeredDesk batchId={batchId} overview={overview} owed={owed} />
+    <AdministeredDesk batchId={batchId} overview={overview} owed={owed} note={note} />
   ) : (
-    <Desk batchId={batchId} overview={overview} alerts={null} />
+    <Desk batchId={batchId} overview={overview} alerts={null} note={note} />
   )
 }
 
@@ -863,13 +892,15 @@ function AdministeredDesk({
   batchId,
   overview,
   owed,
+  note,
 }: {
   batchId: string
   overview: DeskRead
   owed: boolean
+  note: ReactNode
 }) {
   const alerts = useAdminAlerts(batchId, owed)
-  return <Desk batchId={batchId} overview={overview} alerts={alerts} />
+  return <Desk batchId={batchId} overview={overview} alerts={alerts} note={note} />
 }
 
 /** the reader's desk as the page read it */
@@ -886,11 +917,14 @@ function Desk({
   batchId,
   overview,
   alerts,
+  note,
 }: {
   batchId: string
   overview: DeskRead
   /** what the batch's administrators owe it, when the reader is one */
   alerts: AdminAlerts | null
+  /** the batch's note, which stands under what needs doing */
+  note: ReactNode
 }) {
   const query = useApiQuery(assessmentApi)
   const api = useApi(assessmentApi)
@@ -950,22 +984,26 @@ function Desk({
   const own = desk === undefined || desk.participant !== null || desk.reviewer !== null
   if (overview.isError && desk === undefined) {
     return (
-      <AsyncSection
-        pending={false}
-        error={failure.of(overview.error)}
-        framed
-        retrying={overview.isFetching}
-        loadingLabel={format(commonMessages.loading)}
-        retryLabel={format(commonMessages.retry)}
-        onRetry={() => void overview.refetch()}
-      >
-        {null}
-      </AsyncSection>
+      <>
+        <AsyncSection
+          pending={false}
+          error={failure.of(overview.error)}
+          framed
+          retrying={overview.isFetching}
+          loadingLabel={format(commonMessages.loading)}
+          retryLabel={format(commonMessages.retry)}
+          onRetry={() => void overview.refetch()}
+        >
+          {null}
+        </AsyncSection>
+        {note}
+      </>
     )
   }
   if (!own && alerts === null) {
-    // somebody here with no standing on the desk reads the stage plan alone
-    return null
+    // somebody here with no standing on the desk reads the note and the
+    // stage plan alone
+    return note
   }
 
   const openEntry = (itemId: string, entryId: string, layer: 'detail' | 'entry') =>
@@ -1132,7 +1170,12 @@ function Desk({
                           {row.detail}
                         </span>
                       )}
-                      <span {...stylex.props(styles.todoVerbSeat)}>
+                      <span
+                        {...stylex.props(
+                          styles.todoVerbSeat,
+                          row.detail === null && row.at === null && styles.todoVerbSeatLone,
+                        )}
+                      >
                         {/* the row's own door with a handle for the keyboard:
                             pressed, it goes once, not again as the row */}
                         <button
@@ -1176,6 +1219,8 @@ function Desk({
           </div>
         )}
       </section>
+
+      {note}
 
       {own && (
         <section {...stylex.props(styles.activity)}>
@@ -1249,7 +1294,13 @@ function Desk({
               {null}
             </AsyncSection>
           ) : rows.length === 0 ? (
-            <p {...stylex.props(styles.quietNote)}>{format(m.overviewActivityNone)}</p>
+            <div data-testid="overview-activity-empty">
+              <Blank
+                size="compact"
+                icon={<HistoryIcon aria-hidden />}
+                title={format(m.overviewActivityNone)}
+              />
+            </div>
           ) : (
             <div {...stylex.props(styles.card)} data-testid="overview-activity">
               {groups.map((group) => (

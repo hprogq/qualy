@@ -1074,37 +1074,62 @@ describe('the batch note on the overview', () => {
       `/assessment/batches/${BATCH_ID}`,
     )
 
-  // What the managers wrote stands over the desk, as they wrote it: plain
-  // text with its line breaks, never read as markup.
-  it('shows what the managers wrote over the desk, line breaks and all', async () => {
+  // What the managers wrote stands under what needs doing, in the small
+  // markup a notice is written in - and nothing it was not meant to be.
+  it('shows the note under the desk, in its markup and never as html', async () => {
     await page.viewport(1280, 800)
-    await noted('本批次为推免专项\n请于十月前完成填报\n<b>不是标记</b>')
+    await noted(
+      [
+        '请于**十月前**完成填报，详见[学校通知](https://example.edu/notice.pdf)',
+        '',
+        '- 身份证',
+        '- 成绩单',
+        '',
+        '[点我](javascript:alert(1)) <b>不是标记</b> ![海报](https://example.edu/p.png)',
+      ].join('\n'),
+    )
     const note = page.getByTestId('batch-note')
-    await expect.element(note).toBeVisible()
-    const text = note.element().querySelector('p')!
-    expect(text.textContent).toBe('本批次为推免专项\n请于十月前完成填报\n<b>不是标记</b>')
-    expect(text.querySelector('b')).toBeNull()
-    expect(getComputedStyle(text).whiteSpace).toBe('pre-wrap')
-    // three short lines are all there is: nothing to open
+    await expect.element(note.getByTestId('note-markdown')).toBeVisible()
+    const body = note.element()
+    expect(body.querySelector('strong')?.textContent).toBe('十月前')
+    const links = [...body.querySelectorAll('a')]
+    expect(links.map((link) => link.getAttribute('href'))).toEqual([
+      'https://example.edu/notice.pdf',
+    ])
+    expect(links[0]!.getAttribute('rel')).toBe('noopener noreferrer')
+    expect([...body.querySelectorAll('li')].map((item) => item.textContent)).toEqual([
+      '身份证',
+      '成绩单',
+    ])
+    expect(body.querySelector('b, img, script')).toBeNull()
+    expect(body.textContent).toContain('[点我](javascript:alert(1))')
+    // background to the desk, so it comes after what needs doing
+    const desk = page.getByRole('heading', { name: '待办' }).element()
+    expect(desk.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('offers nothing to open when the note is short', async () => {
+    await page.viewport(1280, 800)
+    await noted('本批次为推免专项\n请于十月前完成填报')
+    const note = page.getByTestId('batch-note')
+    await expect.element(note.getByTestId('note-markdown')).toBeVisible()
     await expect.element(note).toHaveAttribute('data-long', 'false')
     expect(note.element().querySelector('button')).toBeNull()
   })
 
-  it('folds a long note to four lines, and opens it on the reader’s word', async () => {
+  it('folds a long note to about four lines, and reads it whole in a dialog', async () => {
     await page.viewport(1280, 800)
     await noted(Array.from({ length: 10 }, (_, n) => `第 ${String(n + 1)} 条说明`).join('\n'))
     const note = page.getByTestId('batch-note')
+    await expect.element(note.getByTestId('note-markdown')).toBeVisible()
     await expect.element(note).toHaveAttribute('data-long', 'true')
-    const text = note.element().querySelector('p')!
-    const folded = text.getBoundingClientRect().height
-    const line = parseFloat(getComputedStyle(text).lineHeight)
-    expect(Math.round(folded / line)).toBe(4)
-    const key = note.getByRole('button')
-    await expect.element(key).toHaveAttribute('aria-expanded', 'false')
-    await key.click()
-    await expect.element(note).toHaveAttribute('data-expanded', 'true')
-    expect(Math.round(text.getBoundingClientRect().height / line)).toBe(10)
-    await expect.element(key).toHaveAttribute('aria-expanded', 'true')
+    const shown = note.element().querySelector('[data-testid="note-markdown"]')!.parentElement!
+    const line = parseFloat(getComputedStyle(shown).lineHeight)
+    expect(Math.round(shown.getBoundingClientRect().height / line)).toBe(4)
+    await note.getByRole('button', { name: '查看全部' }).click()
+    const whole = page.getByTestId('batch-note-dialog')
+    await expect.element(whole).toBeVisible()
+    await expect.poll(() => whole.element().textContent).toContain('第 10 条说明')
   })
 
   it('says nothing where the managers wrote nothing', async () => {

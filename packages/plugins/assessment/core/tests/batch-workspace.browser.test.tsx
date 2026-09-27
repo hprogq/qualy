@@ -371,6 +371,37 @@ describe('the administration lane of the overview', () => {
     await vi.waitFor(() => expect(addressNow()).toBe(`/assessment/batches/${BATCH_ID}/access`))
   })
 
+  // A row is as tall as what it says: a name with nothing under it is one
+  // line, its verb level with the name, and on a phone the verb sits at the
+  // end of the row rather than on a line of its own under it.
+  it.each([
+    [1280, 800],
+    [390, 844],
+  ] as const)('keeps every verb beside its words at %i px', async (width, height) => {
+    await page.viewport(width, height)
+    await shelled(`/assessment/batches/${BATCH_ID}`, {
+      reviewAlerts: () => Effect.succeed(stopped),
+      listParticipantPlacements: () =>
+        Effect.succeed({ items: [], nextCursor: null, changedTotal: 2, unavailableTotal: 1 }),
+      previewAccessSync: () =>
+        Effect.succeed({ items: [], nextCursor: null, pendingTotal: 3, lapsedTotal: 0 }),
+    })
+    await expect.element(page.getByTestId('overview-actions')).toBeVisible()
+    for (const action of ['admin-placements', 'admin-access']) {
+      const line = row(action) as HTMLElement
+      const name = line.firstElementChild!.getBoundingClientRect()
+      const verb = line.querySelector('button')!.getBoundingClientRect()
+      expect(verb.left, action).toBeGreaterThanOrEqual(name.right)
+      expect(verb.top, action).toBeLessThan(name.bottom)
+    }
+    // nothing under the name: no empty line, the verb centred on the name
+    const alone = row('admin-access') as HTMLElement
+    expect(alone.querySelector('[data-part="detail"]')).toBeNull()
+    const name = alone.firstElementChild!.getBoundingClientRect()
+    const verb = alone.querySelector('button')!.getBoundingClientRect()
+    expect(Math.abs((verb.top + verb.bottom) / 2 - (name.top + name.bottom) / 2)).toBeLessThan(3)
+  })
+
   // An ordinary route that misses somebody stops them filing; an escalation
   // route that misses them only stops an appeal. Said as one line, a
   // question people can file into read as one they cannot, and the people
@@ -548,7 +579,7 @@ describe('the administration lane of the overview', () => {
     await page.viewport(390, 844)
     await shelled(`/assessment/batches/${BATCH_ID}`)
     // nothing stopped: the desk says so rather than the page standing empty
-    const heading = page.getByRole('heading', { name: '需要你处理' })
+    const heading = page.getByRole('heading', { name: '待办' })
     await expect.element(heading).toBeVisible()
     expect(heading.element().getBoundingClientRect().height).toBeGreaterThan(0)
     expect(page.getByTestId('overview-lane').elements()).toHaveLength(0)
