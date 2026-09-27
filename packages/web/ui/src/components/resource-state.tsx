@@ -1,4 +1,11 @@
-import { useEffect, useRef, type ComponentType, type ReactNode, type SVGProps } from 'react'
+import {
+  useContext,
+  useEffect,
+  useRef,
+  type ComponentType,
+  type ReactNode,
+  type SVGProps,
+} from 'react'
 import {
   CloudOffIcon,
   LockKeyholeIcon,
@@ -9,6 +16,7 @@ import {
 import * as stylex from '@stylexjs/stylex'
 import type { StyleXStyles } from '@stylexjs/stylex'
 import { clsx } from 'clsx'
+import { HeadingRank } from '../lib/heading-rank.ts'
 import { breakpoints } from '../theme/breakpoints.stylex.ts'
 import { tokens } from '../theme/tokens.stylex.ts'
 
@@ -168,7 +176,7 @@ export function ResourceState({
   size = 'page',
   framed = false,
   focusOnMount = size === 'page',
-  headingLevel = size === 'page' ? 1 : 2,
+  headingLevel,
   role = size === 'page' ? undefined : 'status',
   xstyle,
   className,
@@ -190,8 +198,10 @@ export function ResourceState({
   /** move focus to the heading when it first appears; pages do by default */
   focusOnMount?: boolean
   /**
-   * The heading's rank in the outline around it: 1 for a page, 2 for a pane
-   * on the page, 3 for one inside a card or a dialog that has a title of its own.
+   * The heading's rank in the outline around it: 1 for a page; for a pane,
+   * one under the title of what it stands on - 2 on a page, 3 in a dialog or
+   * a sheet, which say so themselves. Given only where the surface cannot
+   * say, as inside a card with a title of its own.
    */
   headingLevel?: 1 | 2 | 3 | 4
   /**
@@ -204,12 +214,13 @@ export function ResourceState({
   className?: string
 } & { [data: `data-${string}`]: string | undefined }) {
   const heading = useRef<HTMLHeadingElement>(null)
+  const around = useContext(HeadingRank)
   useEffect(() => {
     if (focusOnMount) heading.current?.focus({ preventScroll: true })
   }, [focusOnMount])
   const Mark = marks[kind]
   const page = size === 'page'
-  const Heading = headings[headingLevel]
+  const Heading = headings[headingLevel ?? (page ? 1 : ((around + 1) as 2 | 3 | 4))]
   const sx = stylex.props(
     page ? styles.page : styles.section,
     !page && framed && styles.framed,

@@ -4,15 +4,16 @@ import { useState } from 'react'
 import { Effect } from 'effect'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@qualy/ui/dialog'
 import { ResourceState } from '@qualy/ui/resource-state'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
 import { LoadFailure } from '@qualy/web-runtime'
 import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
-/** one pane of a dialog whose record is not there, as a page says it */
+/** one pane whose record is not there, as a page says it, told nothing about where it stands */
 const LoadFailureProbe = () => (
   <LoadFailure
     size="section"
-    headingLevel={3}
     failure={{ kind: 'missing', title: 'gone', description: 'it went', retryable: false }}
   />
 )
@@ -194,17 +195,40 @@ describe('a section that could not load', () => {
   })
 
   it('ranks its heading under the page on bare ground, and under the dialog inside one', async () => {
-    const { unmount } = await mount(<Section error={failed} framed />)
+    const framedOne = await mount(<Section error={failed} framed />)
     await expect
       .element(page.getByRole('heading', { level: 2, name: 'could not load' }))
       .toBeVisible()
-    await unmount()
-    await mount(
-      <div role="dialog" aria-label="dialog">
-        <h2>dialog</h2>
-        <LoadFailureProbe />
-      </div>,
+    await framedOne.unmount()
+    // told nothing, a pane takes the rank under the title of whatever it
+    // stands on: the page's own, or a dialog's or a sheet's
+    const bare = await mount(<LoadFailureProbe />)
+    await expect.element(page.getByRole('heading', { level: 2, name: 'gone' })).toBeVisible()
+    await bare.unmount()
+    const inDialog = await mount(
+      <Dialog open>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>dialog</DialogTitle>
+          </DialogHeader>
+          <LoadFailureProbe />
+        </DialogContent>
+      </Dialog>,
     )
+    await expect.element(page.getByRole('heading', { level: 2, name: 'dialog' })).toBeVisible()
+    await expect.element(page.getByRole('heading', { level: 3, name: 'gone' })).toBeVisible()
+    await inDialog.unmount()
+    await mount(
+      <Sheet open>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>sheet</SheetTitle>
+          </SheetHeader>
+          <LoadFailureProbe />
+        </SheetContent>
+      </Sheet>,
+    )
+    await expect.element(page.getByRole('heading', { level: 2, name: 'sheet' })).toBeVisible()
     await expect.element(page.getByRole('heading', { level: 3, name: 'gone' })).toBeVisible()
   })
 

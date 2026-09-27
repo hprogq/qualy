@@ -10,6 +10,7 @@ import { breakpoints } from '../theme/breakpoints.stylex.ts'
 import { seatOf } from '../lib/xstyle.ts'
 import { veil } from '../lib/veil.ts'
 import { retainInertBackground } from '../lib/inert-background.ts'
+import { HeadingRank } from '../lib/heading-rank.ts'
 import { Button } from './button.tsx'
 
 // An interruption that demands an answer: same modal substrate as the
@@ -371,7 +372,10 @@ function AlertDialogContent({
         }}
         {...props}
       >
-        <LayoutCtx value={layout}>{children}</LayoutCtx>
+        {/* under the dialog's own title, an h2 */}
+        <LayoutCtx value={layout}>
+          <HeadingRank value={2}>{children}</HeadingRank>
+        </LayoutCtx>
       </MModal.Content>
     </MModal.Root>
   )

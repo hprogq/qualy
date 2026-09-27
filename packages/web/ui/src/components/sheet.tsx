@@ -12,6 +12,7 @@ import { seatOf } from '../lib/xstyle.ts'
 import { veil } from '../lib/veil.ts'
 import { VisuallyHidden } from '../lib/visually-hidden.tsx'
 import { retainInertBackground } from '../lib/inert-background.ts'
+import { HeadingRank } from '../lib/heading-rank.ts'
 import { Button } from './button.tsx'
 import { XIcon } from 'lucide-react'
 
@@ -475,7 +476,10 @@ function SheetContent({
         }}
         {...props}
       >
-        <SideCtx value={side}>{children}</SideCtx>
+        {/* under the sheet's own title, an h2 */}
+        <SideCtx value={side}>
+          <HeadingRank value={2}>{children}</HeadingRank>
+        </SideCtx>
         {showCloseButton && (
           <Button
             data-slot="sheet-close"

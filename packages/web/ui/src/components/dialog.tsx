@@ -9,6 +9,7 @@ import { tokens } from '../theme/tokens.stylex.ts'
 import { seatOf } from '../lib/xstyle.ts'
 import { veil } from '../lib/veil.ts'
 import { VisuallyHidden } from '../lib/visually-hidden.tsx'
+import { HeadingRank } from '../lib/heading-rank.ts'
 import { retainInertBackground } from '../lib/inert-background.ts'
 import { Button } from './button.tsx'
 import { XIcon } from 'lucide-react'
@@ -401,7 +402,8 @@ function DialogContent({
         {/* the trap's own documented resting place: focus settles on this
             hidden point instead of the first control */}
         {restfulFocus && <FocusTrap.InitialFocus />}
-        {children}
+        {/* under the dialog's own title, an h2 */}
+        <HeadingRank value={2}>{children}</HeadingRank>
         {showCloseButton && (
           <Button
             data-slot="dialog-close"

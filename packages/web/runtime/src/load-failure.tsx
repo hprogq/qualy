@@ -119,8 +119,10 @@ export function LoadFailure({
   back?: LoadFailureWayBack
   size?: 'page' | 'section'
   /**
-   * A section's heading rank: 2 on the page's own ground (the default), 3
-   * inside a card or a dialog that has a title of its own. A page is always 1.
+   * A section's heading rank, when what it stands on cannot say: one under
+   * that surface's title is the default - 2 on the page's own ground, 3 in a
+   * dialog or a sheet - and a card with a title of its own is told 3 here. A
+   * page is always 1.
    */
   headingLevel?: 2 | 3 | 4
   /** anything else worth offering, after the ways out */
