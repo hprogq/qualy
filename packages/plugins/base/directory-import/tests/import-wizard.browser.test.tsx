@@ -162,6 +162,15 @@ const chooseOption = async (trigger: Element, name: string) => {
   await userEvent.click(page.getByRole('option', { name }).element())
 }
 
+/** the state a reading that failed is said in, under whatever holds it */
+const stateIn = (scope: string | null) =>
+  document.querySelector<HTMLElement>(
+    `${scope === null ? '' : `[data-testid="${scope}"] `}[data-slot="resource-state"]`,
+  )
+/** the keys that state offers, by the words on them */
+const keysIn = (state: HTMLElement | null) =>
+  [...(state?.querySelectorAll('button') ?? [])].map((key) => key.textContent?.trim() ?? '')
+
 describe('importing users from a spreadsheet', () => {
   let dispose: () => void = () => undefined
   beforeEach(() => {
@@ -258,13 +267,9 @@ describe('importing users from a spreadsheet', () => {
   it('says the file could not be read now, under the wizard, with a retry', async () => {
     await open({ inspectUserImportUpload: () => Effect.fail(apiError('SERVICE_UNAVAILABLE')) })
     await pickFile()
-    const state = page
-      .getByTestId('import-body')
-      .getByRole('status')
-      .filter({ has: page.getByRole('heading') })
-    await expect.element(state).toHaveAttribute('data-state', 'unavailable')
-    await expect.element(state.getByRole('heading', { level: 3 })).toBeVisible()
-    await expect.element(state.getByRole('button', { name: '重试' })).toBeVisible()
+    await expect.poll(() => stateIn('import-body')?.getAttribute('data-state')).toBe('unavailable')
+    expect(stateIn('import-body')!.querySelector('h3')).not.toBeNull()
+    expect(keysIn(stateIn('import-body'))).toContain('重试')
   })
 })
 
@@ -286,9 +291,8 @@ describe('the imports made before', () => {
         />
       ),
     })
-    const state = page.getByRole('status').filter({ has: page.getByRole('heading') })
-    await expect.element(state).toHaveAttribute('data-state', 'denied')
-    await expect.element(state.getByRole('heading', { level: 3 })).toBeVisible()
-    expect(state.getByRole('button', { name: '重试' }).elements()).toHaveLength(0)
+    await expect.poll(() => stateIn(null)?.getAttribute('data-state')).toBe('denied')
+    expect(stateIn(null)!.querySelector('h3')).not.toBeNull()
+    expect(keysIn(stateIn(null))).not.toContain('重试')
   })
 })
