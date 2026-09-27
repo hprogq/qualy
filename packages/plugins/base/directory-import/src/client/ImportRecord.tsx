@@ -190,6 +190,15 @@ export function ImportRecordSheet({
   })
 
   const found = detail.data
+  // the import is what the sheet is about: one shown already stays up
+  // through a reading that failed after it
+  const absent = failed.subject(detail, {
+    missing: ['USER_IMPORT_NOT_FOUND'],
+    copy: {
+      missing: { title: format(m.recordMissing) },
+      failed: { title: format(m.recordFailed) },
+    },
+  })
   const items = rows.data?.items ?? []
   const standingWords = {
     active: m.standingActive,
@@ -209,7 +218,7 @@ export function ImportRecordSheet({
     >
       <AsyncSection
         pending={detail.isPending}
-        error={detail.isError ? formatError(detail.error) : null}
+        error={absent}
         loadingLabel={format(m.recordLoading)}
         retryLabel={format(m.retry)}
         onRetry={() => void detail.refetch()}

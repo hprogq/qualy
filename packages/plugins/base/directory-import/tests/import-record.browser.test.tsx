@@ -2,7 +2,7 @@ import { ImportRecordSheet } from '../src/client/ImportRecord.tsx'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
-import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The record of one import: what it did, what became of the people, and
 // the reversal that goes out with the reason typed for it.
@@ -122,6 +122,19 @@ describe('the record of an import', () => {
     })
     await expect.element(page.getByTestId('import-hidden-rows')).toHaveAttribute('data-count', '2')
     await expect.element(page.getByTestId('import-hidden-nodes')).toHaveAttribute('data-count', '3')
+  })
+
+  // An import the address names that is not there said the server's
+  // sentence with a retry that could only fail again.
+  it('says an import that is not there as that, with no retry', async () => {
+    await open({ getUserImport: () => Effect.fail(apiError('USER_IMPORT_NOT_FOUND')) })
+    const state = page
+      .getByTestId('import-record-sheet')
+      .getByRole('status')
+      .filter({ has: page.getByRole('heading') })
+    await expect.element(state).toHaveAttribute('data-state', 'missing')
+    await expect.element(state.getByRole('heading', { level: 3 })).toBeVisible()
+    expect(state.getByRole('button', { name: '重试' }).elements()).toHaveLength(0)
   })
 
   // Everybody it made is gone already: the dialog wanted a reason for a

@@ -429,6 +429,7 @@ const i18n = definePluginMessages({
       id: 'directory-import/record/failed',
       defaultMessage: 'The import could not be loaded',
     },
+    recordMissing: { id: 'directory-import/record/missing', defaultMessage: 'Import not found' },
     columnRow: { id: 'directory-import/record/column-row', defaultMessage: 'Row' },
     columnName: { id: 'directory-import/record/column-name', defaultMessage: 'Name' },
     columnUnit: { id: 'directory-import/record/column-unit', defaultMessage: 'Unit' },

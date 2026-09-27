@@ -116,6 +116,7 @@ export default {
   'directory-import/record/events': '后续操作',
   'directory-import/record/loading': '正在读取导入记录…',
   'directory-import/record/failed': '暂时无法读取该导入记录',
+  'directory-import/record/missing': '找不到该导入记录',
   'directory-import/record/column-row': '行',
   'directory-import/record/column-name': '姓名',
   'directory-import/record/column-unit': '组织',
