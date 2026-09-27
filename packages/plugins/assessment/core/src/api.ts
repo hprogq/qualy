@@ -2139,7 +2139,10 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
             /**
              * this reader's own filings, each counted once under what it is
              * waiting for, and whether a new one can be started now, at a
-             * later stage, or not again
+             * later stage, or not again - or, `unreachable`, whether the
+             * stage opens questions to them whose every ordinary route
+             * finds them nowhere, so there is nothing they could start
+             * (§32.93③)
              */
             myEntries: Schema.NullOr(
               Schema.Struct({
@@ -2149,7 +2152,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
                 rejected: Schema.Number,
                 submitted: Schema.Number,
                 approved: Schema.Number,
-                filing: Schema.Literals(['open', 'upcoming', 'closed']),
+                filing: Schema.Literals(['open', 'upcoming', 'closed', 'unreachable']),
                 /**
                  * whether at least one draft, and at least one claim sent
                  * back, can be edited and submitted by this reader now: the

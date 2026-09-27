@@ -848,6 +848,19 @@ const i18n = definePluginMessages({
     },
     /** on the roster, nothing filed, and filing is over */
     filingMissed: { id: 'assessment/batch/filing-missed', defaultMessage: 'Nothing filed' },
+    /**
+     * on the roster, and every question open to them has a review that
+     * cannot reach them
+     */
+    filingUnreachable: {
+      id: 'assessment/batch/filing-unreachable',
+      defaultMessage: "Can't file for now",
+    },
+    filingUnreachableHint: {
+      id: 'assessment/batch/filing-unreachable-hint',
+      defaultMessage:
+        "No question's review process covers your unit. Contact the batch administrator",
+    },
     /** a reviewer asked for more material */
     answerAsk: { id: 'assessment/batch/answer-ask', defaultMessage: 'Respond' },
     /** a filing was not accepted: its reasons come first */

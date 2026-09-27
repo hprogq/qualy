@@ -412,7 +412,7 @@ describe('the batch list', () => {
     rejected: number
     submitted: number
     approved: number
-    filing: 'open' | 'upcoming' | 'closed'
+    filing: 'open' | 'upcoming' | 'closed' | 'unreachable'
     continuable: { draft: boolean; toFix: boolean }
   }
   const NOTHING: Filings = {
@@ -486,6 +486,29 @@ describe('the batch list', () => {
         node.getAttribute('data-agenda-state'),
         node.getAttribute('data-agenda-asks'),
       ])
+
+  // Somebody every open question's review cannot reach has nothing they
+  // could start: the line says why, the way each question says it on their
+  // own page, and does not send them to file (§32.93③).
+  it('does not ask somebody to file where no question they could file can reach review', async () => {
+    try {
+      for (const [width, height] of [
+        [390, 844],
+        [1280, 800],
+      ] as const) {
+        await page.viewport(width, height)
+        await screen(standing({ filing: 'unreachable' }, null), '/assessment/batches')
+        await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
+        const line = page.getByTestId('hero-agenda')
+        await expect.element(line).toHaveAttribute('data-agenda-state', 'unreachable')
+        await expect.element(line).toHaveAttribute('data-agenda-asks', 'false')
+        expect(line.element().querySelector('[data-agenda-note]')).not.toBeNull()
+      }
+    } finally {
+      // the width every other case here is written for
+      await page.viewport(1280, 800)
+    }
+  })
 
   it('only reports drafts nobody can send now', async () => {
     await screen(

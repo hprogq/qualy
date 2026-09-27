@@ -56,6 +56,7 @@ import {
   revisionsByIdOf,
 } from '../item/db.ts'
 import { opensTo } from '../item/channels.ts'
+import { questionFactsOf, submitRouteRefusal } from '../entry/question-facts.ts'
 import {
   administrativeRecordService,
   type AdministrativeRecordInput,
@@ -992,8 +993,12 @@ export interface MyFilings {
   readonly rejected: number
   readonly submitted: number
   readonly approved: number
-  /** whether a new filing can be started now, at a later stage, or not again */
-  readonly filing: 'open' | 'upcoming' | 'closed'
+  /**
+   * whether a new filing can be started now, at a later stage, or not again;
+   * `unreachable` when the stage in hand opens questions to this person and
+   * every one of them has an ordinary route that finds them nowhere
+   */
+  readonly filing: 'open' | 'upcoming' | 'closed' | 'unreachable'
   /**
    * whether at least one draft, and at least one claim sent back, can be
    * edited and submitted by its owner now - asked the way the write path
@@ -2261,9 +2266,24 @@ export const make = Effect.fn('Assessment.make')(function* () {
    * would admit this participant, not merely one that opens filing to
    * somebody. Stages already behind the round count for nothing, including
    * the ones before an archive a reopening has not yet reached past.
+   *
+   * "Unreachable" is a stage in hand that admits this participant at some
+   * question, where every such question's ordinary route finds nowhere to
+   * stand for them: the claim would be refused at submission and is not
+   * offered (§32.93③), so there is nothing to start - and no stage to come
+   * mends a route, so it is said instead of any of the three.
    */
-  const filingOf = (tenantId: string, batch: BatchRow, participantId: string, now: EpochMillis) =>
+  const filingOf = (
+    tenantId: string,
+    batch: BatchRow,
+    participant: {
+      readonly id: string
+      readonly anchorLineage: readonly { readonly nodeTypeId: string }[]
+    },
+    now: EpochMillis,
+  ) =>
     Effect.gen(function* () {
+      const participantId = participant.id
       const plan = toSnapshots(yield* listPhaseRows(tenantId, batch.id))
       const admitting = (
         phase: PhaseSnapshot,
@@ -2286,7 +2306,21 @@ export const make = Effect.fn('Assessment.make')(function* () {
             itemTypes.get(item.itemType)?.interaction !== 'derived' &&
             opensTo(item.entryChannels, 'participant'),
         )
-        if (fileable.some((item) => admitting(phase, scopes, item.itemId))) return 'open' as const
+        const admitted = fileable.filter((item) => admitting(phase, scopes, item.itemId))
+        if (admitted.length > 0) {
+          const questions = yield* questionFactsOf(
+            tenantId,
+            admitted.map((item) => item.itemId),
+          )
+          const reached = admitted.some((item) => {
+            const question = questions.get(item.itemId)
+            return (
+              question === undefined ||
+              submitRouteRefusal(question, participant.anchorLineage) === null
+            )
+          })
+          return reached ? ('open' as const) : ('unreachable' as const)
+        }
       }
       // what the clock has reached, whether or not the round is in service:
       // everything after it is still to come
@@ -3714,7 +3748,12 @@ export const make = Effect.fn('Assessment.make')(function* () {
         const participant = yield* dieQuery(
           withDb(activeParticipantByUser(tenantId, batchId, as.userId)),
         )
-        if (!batch || participant === null) {
+        // where they stand, which is what a route finds them by
+        const anchored =
+          participant === null
+            ? null
+            : yield* dieQuery(withDb(participantOf(tenantId, batchId, participant.id)))
+        if (!batch || participant === null || anchored === null) {
           return { filing: 'closed' as const, continuable: { draft: false, toFix: false } }
         }
         // Starting a new filing and getting on with one already begun are
@@ -3734,7 +3773,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 as,
               )
         return {
-          filing: yield* dieQuery(withDb(filingOf(tenantId, batch, participant.id, now))),
+          filing: yield* dieQuery(withDb(filingOf(tenantId, batch, anchored, now))),
           continuable: {
             draft: open !== null && open.draft.size > 0,
             toFix: open !== null && open.toFix.size > 0,

@@ -1685,6 +1685,9 @@ export default {
   'assessment/batch/start-entries': '去填报',
   'assessment/batch/filing-upcoming': '尚未开放填报',
   'assessment/batch/filing-missed': '未申报',
+  'assessment/batch/filing-unreachable': '暂不能申报',
+  'assessment/batch/filing-unreachable-hint':
+    '各项目的审核流程均未覆盖你所在的组织，请联系批次管理员',
   'assessment/batch/answer-ask': '去补充',
   'assessment/batch/see-why': '查看原因',
   'assessment/batch/view': '查看',

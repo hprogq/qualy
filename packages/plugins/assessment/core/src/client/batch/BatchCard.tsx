@@ -363,6 +363,13 @@ const styles = stylex.create({
     fontWeight: 400,
     color: tokens.mutedForeground,
   },
+  // why a line says what it says, under it, in the size of a hint
+  agendaNote: {
+    fontSize: 12,
+    lineHeight: 1.5,
+    textWrap: 'pretty',
+    color: tokens.mutedForeground,
+  },
   /** a way in that is not asking: the same shape, the weight of a note */
   agendaActionIdle: { fontWeight: 400, color: tokens.mutedForeground },
   agendaAction: {
@@ -466,6 +473,12 @@ const phone = stylex.create({
     fontWeight: 600,
   },
   agendaValueIdle: { fontWeight: 500, color: tokens.mutedForeground },
+  agendaNote: {
+    fontSize: 12,
+    lineHeight: 1.5,
+    textWrap: 'pretty',
+    color: tokens.mutedForeground,
+  },
   agendaGlyph: { flexShrink: 0, color: tokens.foreground },
   agendaGlyphIdle: { color: tokens.mutedForeground },
   // Where the round stands and the way into it are one thing, and that
@@ -759,6 +772,8 @@ function wordsOf(
 ): {
   label: string
   value: string
+  /** why, where the state alone does not say what to do about it */
+  note: string | null
   action: string
   quiet: boolean
   page: 'assessment/batch-reviews' | 'assessment/batch-my-entries'
@@ -771,6 +786,7 @@ function wordsOf(
         row.waiting > 0
           ? format(m.submissionsCount, { count: row.waiting })
           : format(m.reviewsClear),
+      note: null,
       action: row.waiting > 0 ? format(m.startReview) : format(m.viewLine),
       quiet: row.waiting === 0,
       page: 'assessment/batch-reviews',
@@ -790,11 +806,15 @@ function wordsOf(
     none: () => [format(m.entriesNone), format(m.startEntries)],
     upcoming: () => [format(m.filingUpcoming), format(m.viewLine)],
     missed: () => [format(m.filingMissed), format(m.viewLine)],
+    // the same answer every question gives on the reader's own page, said
+    // once for the batch instead of an invitation to file
+    unreachable: () => [format(m.filingUnreachable), format(m.viewLine)],
   }
   const [value, action] = words[row.state]()
   return {
     label: format(m.myEntries),
     value,
+    note: row.state === 'unreachable' ? format(m.filingUnreachableHint) : null,
     action,
     quiet: !asks,
     page: 'assessment/batch-my-entries',
@@ -811,7 +831,7 @@ function AgendaRow({
   batchId: string
   format: ReturnType<typeof useI18n>['format']
 }) {
-  const { label, value, action, quiet, page, state } = wordsOf(row, format)
+  const { label, value, note, action, quiet, page, state } = wordsOf(row, format)
   const softly = quiet && styles.agendaActionIdle
   return (
     <div
@@ -824,6 +844,11 @@ function AgendaRow({
       <div {...stylex.props(styles.agendaWords)}>
         <span {...stylex.props(styles.agendaLabel)}>{label}</span>
         <span {...stylex.props(styles.agendaValue, quiet && styles.agendaValueIdle)}>{value}</span>
+        {note !== null && (
+          <span data-agenda-note="" {...stylex.props(styles.agendaNote)}>
+            {note}
+          </span>
+        )}
       </div>
       <PageLink
         page={page}
@@ -848,12 +873,17 @@ function PhoneAgendaRow({
   batchId: string
   format: ReturnType<typeof useI18n>['format']
 }) {
-  const { label, value, quiet, page, state } = wordsOf(row, format)
+  const { label, value, note, quiet, page, state } = wordsOf(row, format)
   const words = (
     <>
       <span {...stylex.props(phone.agendaWords)}>
         <span {...stylex.props(phone.agendaLabel)}>{label}</span>
         <span {...stylex.props(phone.agendaValue, quiet && phone.agendaValueIdle)}>{value}</span>
+        {note !== null && (
+          <span data-agenda-note="" {...stylex.props(phone.agendaNote)}>
+            {note}
+          </span>
+        )}
       </span>
       <ArrowRightIcon
         size={16}

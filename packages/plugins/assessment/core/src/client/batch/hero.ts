@@ -39,7 +39,8 @@ export type AgendaRow =
       /**
        * the earliest of the reader's own filings that is still in play; with
        * nothing filed, whether filing is open now (`none`), opens at a later
-       * stage (`upcoming`) or is over (`missed`)
+       * stage (`upcoming`), is over (`missed`), or is open to them only on
+       * questions whose review cannot reach them (`unreachable`)
        */
       readonly state: OwnState
       readonly count: number
@@ -61,6 +62,15 @@ export type OwnState =
   | 'none'
   | 'upcoming'
   | 'missed'
+  | 'unreachable'
+
+/** what the line says of somebody with nothing filed, by what filing is open to them */
+const NOTHING_FILED = {
+  open: 'none',
+  upcoming: 'upcoming',
+  closed: 'missed',
+  unreachable: 'unreachable',
+} as const satisfies Record<string, OwnState>
 
 /** what a participant can get on with: every other own line only reports */
 const ASKING: ReadonlySet<OwnState> = new Set(['toAnswer', 'toFix', 'draft', 'rejected', 'none'])
@@ -118,7 +128,7 @@ export const agendaOf = (
       rejected: number
       submitted: number
       approved: number
-      filing: 'open' | 'upcoming' | 'closed'
+      filing: 'open' | 'upcoming' | 'closed' | 'unreachable'
       continuable: { draft: boolean; toFix: boolean }
     } | null
     reviewsWaiting: number | null
@@ -134,8 +144,10 @@ export const agendaOf = (
     // to redo does not also need telling what is out for judgement. What
     // waits on the reader comes first, a refusal (news they may answer)
     // before what is still with the reviewers, and what was accepted only
-    // when nothing else is left. "Nothing filed" is three different lines,
-    // because "start filing" is only true while filing is open.
+    // when nothing else is left. "Nothing filed" is four different lines,
+    // because "start filing" is only true while filing is open - and not
+    // then either where every question open to the reader has a review
+    // that cannot reach them, which is said instead (§32.93③).
     //
     // A draft or a claim sent back only waits on the reader while they can
     // edit and submit it. When they cannot, those lines report what was left
@@ -165,8 +177,7 @@ export const agendaOf = (
           }
         : {
             kind: 'own',
-            state:
-              own.filing === 'open' ? 'none' : own.filing === 'upcoming' ? 'upcoming' : 'missed',
+            state: NOTHING_FILED[own.filing],
             count: 0,
             continuable: false,
           },

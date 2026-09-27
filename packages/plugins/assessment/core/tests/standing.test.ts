@@ -194,9 +194,16 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
           )
           const accepted = yield* assessment.listMyStanding(f.t, f.principal(f.s1))
           const refused = yield* assessment.listMyStanding(f.t, f.principal(f.s2))
-          // the fixture sweeps the administrator onto the roster too, with
-          // nothing filed: filing is open, and then it is over
-          const open = yield* assessment.listMyStanding(f.t, f.principal(f.admin))
+          // a student in the other college's class, with nothing filed:
+          // filing is open to them
+          const open = yield* assessment.listMyStanding(f.t, f.principal(f.s3))
+          // The fixture sweeps the administrator onto the roster too, with
+          // nothing filed. They stand at the root, under no class, and the
+          // round's one question is reviewed at the class: the stage opens
+          // it to them, and there is still nothing they could start, which
+          // is said rather than an invitation to file (§32.93③). Then
+          // filing is over for them as for everybody.
+          const rooted = yield* assessment.listMyStanding(f.t, f.principal(f.admin))
           const plan = yield* assessment.getPlan(f.t, g.batch.id, f.principal(f.admin))
           yield* assessment.advancePhase(
             f.t,
@@ -206,7 +213,7 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
           )
           const over = yield* assessment.listMyStanding(f.t, f.principal(f.admin))
           const settled = yield* assessment.listMyStanding(f.t, f.principal(f.s1))
-          return { batchId: g.batch.id, asked, accepted, refused, open, over, settled }
+          return { batchId: g.batch.id, asked, accepted, refused, open, rooted, over, settled }
         }),
       ),
     )
@@ -227,6 +234,7 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
     expect(mine(result.accepted)).toEqual({ ...none, approved: 1, filing: 'open' })
     expect(mine(result.refused)).toEqual({ ...none, rejected: 1, filing: 'open' })
     expect(mine(result.open)).toEqual({ ...none, filing: 'open' })
+    expect(mine(result.rooted)).toEqual({ ...none, filing: 'unreachable' })
     expect(mine(result.over)).toEqual({ ...none, filing: 'closed' })
     // a settled filing stays counted once filing is over
     expect(mine(result.settled)).toEqual({ ...none, approved: 1, filing: 'closed' })
