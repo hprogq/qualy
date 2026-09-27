@@ -5003,7 +5003,7 @@ const i18n = definePluginMessages({
     settingsReasonsHint: {
       id: 'assessment/settings/reasons-hint',
       defaultMessage:
-        'Returning a submission requires a primary reason and a written note. Changes to these reasons affect future reviews only; existing review records remain unchanged.',
+        'Returning a submission takes a primary reason from this list and a written note',
     },
     settingsRejectReasons: {
       id: 'assessment/settings/reject-reasons',
@@ -5015,7 +5015,7 @@ const i18n = definePluginMessages({
     },
     settingsEscalateHint: {
       id: 'assessment/settings/escalate-hint',
-      defaultMessage: 'A primary reason is also selected when escalating a submission.',
+      defaultMessage: 'Escalating a submission takes a primary reason from this list too',
     },
     settingsReasonPlaceholder: {
       id: 'assessment/settings/reason-placeholder',
@@ -5025,12 +5025,12 @@ const i18n = definePluginMessages({
     settingsRejectReasonsNone: {
       id: 'assessment/settings/reject-reasons-none',
       defaultMessage:
-        'No preset return reasons are configured; reviewers will provide a written note instead.',
+        'No preset return reasons; reviewers write a note when returning a submission',
     },
     settingsEscalateReasonsNone: {
       id: 'assessment/settings/escalate-reasons-none',
       defaultMessage:
-        'No preset escalation reasons are configured; reviewers will provide a written note instead.',
+        'No preset escalation reasons; reviewers write a note when escalating a submission',
     },
     settingsReasonRestore: {
       id: 'assessment/settings/reason-restore',
@@ -5939,13 +5939,13 @@ const i18n = definePluginMessages({
     tabSettings: { id: 'assessment/settings/tab', defaultMessage: 'Batch settings' },
     settingsHint: {
       id: 'assessment/settings/hint',
-      defaultMessage: 'Edit the batch name, material date range, and other settings.',
+      defaultMessage: 'Edit the batch name, material date range, and other settings',
     },
     settingsBasics: { id: 'assessment/settings/basics', defaultMessage: 'Basic information' },
     settingsBasicsHint: {
       id: 'assessment/settings/basics-hint',
       defaultMessage:
-        'The material date range determines which achievements may be submitted in this batch.',
+        'The material date range decides which achievements may be submitted in this batch',
     },
     settingsNote: { id: 'assessment/settings/note', defaultMessage: 'About this batch' },
     settingsNoteHint: {
@@ -5958,7 +5958,7 @@ const i18n = definePluginMessages({
     settingsLifecycleHint: {
       id: 'assessment/settings/lifecycle-hint',
       defaultMessage:
-        'A batch that has ended is read-only: no more submissions, reviews or changes to its setup.',
+        'A batch that has ended is read-only: no more submissions, reviews or changes to its setup',
     },
     phasesHint: {
       id: 'assessment/phase/hint',
@@ -5981,7 +5981,8 @@ const i18n = definePluginMessages({
     entryNoteLabel: { id: 'assessment/phase/entry-note', defaultMessage: 'Scheduling note' },
     entryNoteHint: {
       id: 'assessment/phase/entry-note-hint',
-      defaultMessage: 'Shown to participants until a start time is scheduled for the stage.',
+      defaultMessage:
+        'Tell participants when the stage should start, or why it is not scheduled yet',
     },
     entryNotePlaceholder: {
       id: 'assessment/phase/entry-note-placeholder',
@@ -6016,13 +6017,13 @@ const i18n = definePluginMessages({
     describeBody: {
       id: 'assessment/phase/describe-body',
       defaultMessage:
-        'The stage name and description are visible to administrators and participants.',
+        'Participants and staff see the stage name and description; leave out anything sensitive',
     },
     startModeLegend: { id: 'assessment/schedule/mode', defaultMessage: 'Start method' },
     startModeLater: { id: 'assessment/schedule/mode-later', defaultMessage: 'Scheduled start' },
     startModeLaterHint: {
       id: 'assessment/schedule/mode-later-hint',
-      defaultMessage: 'The batch automatically enters the stage at the selected time.',
+      defaultMessage: 'The batch enters the stage by itself at the selected time',
     },
     justNow: { id: 'assessment/plan/just-now', defaultMessage: 'Just now' },
     scheduleBody: {
@@ -6111,7 +6112,7 @@ const i18n = definePluginMessages({
     },
     profileHint: {
       id: 'assessment/profile/hint',
-      defaultMessage: 'Applies only during this stage and does not change global role permissions.',
+      defaultMessage: 'Applies only during this stage and leaves the roles themselves unchanged',
     },
 
     // which items and people a stage is for
