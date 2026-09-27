@@ -1,15 +1,18 @@
 import * as stylex from '@stylexjs/stylex'
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
+import { Share2Icon } from 'lucide-react'
+import { useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { UiSlot } from '@qualy/web-runtime'
 import { orgNodePicker } from '@qualy/ui-contract'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Skeleton } from '@qualy/ui/skeleton'
-import { FormDialog } from '@qualy/ui/admin'
+import { AsyncSection, FormDialog } from '@qualy/ui/admin'
+import { Blank } from '@qualy/ui/screen'
 import { toast } from '@qualy/ui/toast'
 import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
@@ -53,7 +56,6 @@ const styles = stylex.create({
   chipWords: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   // the tree scrolls inside the dialog rather than making the dialog tall
   seat: { display: 'flex', minHeight: '14rem', maxHeight: '20rem', flexDirection: 'column' },
-  none: { margin: 0, fontSize: 12, color: tokens.mutedForeground },
   plain: { display: 'flex', minHeight: 0, flexDirection: 'column', overflowY: 'auto' },
   option: {
     display: 'flex',
@@ -86,6 +88,7 @@ export function VersionSharingDialog({
   const run = useRunApi()
   const query = useApiQuery(formulaApi)
   const { format, formatError } = useI18n()
+  const loadFailure = useLoadFailure()
   const [chosen, setChosen] = useState<readonly string[]>([])
   const [failure, setFailure] = useState<string | null>(null)
 
@@ -121,6 +124,13 @@ export function VersionSharingDialog({
       .map((scope) => ({ id: scope.orgNodeId, name: scope.name, parentId: null })),
   ]
 
+  // Why the dialog has nothing to act on, when it has not: the audience or
+  // the units could not be read, or nothing is offered and there is nowhere
+  // this author may offer it. Either way the footer keeps only the way out.
+  const unreadable = sharing.isError ? sharing.error : options.isError ? options.error : null
+  const idle = unreadable === null && !sharing.isPending && !options.isPending && nodes.length === 0
+  const settled = unreadable !== null || idle
+
   // every opening starts from what is offered now: edits abandoned last time
   // are not what somebody means to save this time
   useEffect(() => {
@@ -153,92 +163,128 @@ export function VersionSharingDialog({
       title={format(m.sharingTitle, { name: version?.name ?? '' })}
       onClose={onClose}
       footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            {format(m.cancel)}
+        settled ? (
+          <Button variant="outline" onClick={onClose}>
+            {format(commonMessages.close)}
           </Button>
-          <Button
-            data-testid="formula-sharing-save"
-            disabled={replace.isPending || sharing.data === undefined}
-            onClick={() => replace.mutate(chosen)}
-          >
-            {format(m.sharingSave)}
-          </Button>
-        </>
+        ) : (
+          <>
+            <Button variant="ghost" onClick={onClose}>
+              {format(m.cancel)}
+            </Button>
+            <Button
+              data-testid="formula-sharing-save"
+              disabled={replace.isPending || sharing.data === undefined}
+              onClick={() => replace.mutate(chosen)}
+            >
+              {format(m.sharingSave)}
+            </Button>
+          </>
+        )
       }
     >
-      <div data-testid="formula-sharing" data-version={versionNo} {...stylex.props(styles.body)}>
-        <p {...stylex.props(styles.hint)}>{format(m.sharingHint)}</p>
-        {/* what it is offered to now, named rather than counted */}
-        <section {...stylex.props(styles.part)}>
-          <h3 {...stylex.props(styles.partTitle)}>
-            {format(m.sharingCurrent)}
-            <span {...stylex.props(styles.partCount)}>
-              {scopes.length === 0 ? format(m.sharingPrivate) : scopes.length}
-            </span>
-          </h3>
-          {scopes.length === 0 ? null : (
-            <div data-testid="formula-sharing-current" {...stylex.props(styles.chips)}>
-              {scopes.map((scope) => (
-                <span key={scope.orgNodeId} {...stylex.props(styles.chip)}>
-                  <span {...stylex.props(styles.chipWords)}>{scope.name}</span>
+      <div
+        data-testid="formula-sharing"
+        data-version={versionNo}
+        data-state={unreadable !== null ? 'unreadable' : idle ? 'idle' : 'ready'}
+        {...stylex.props(styles.body)}
+      >
+        {unreadable !== null ? (
+          <AsyncSection
+            pending={false}
+            error={loadFailure.of(unreadable, {
+              missing: ['ASSESSMENT_FORMULA_VERSION_NOT_FOUND'],
+            })}
+            retrying={sharing.isFetching || options.isFetching}
+            loadingLabel={format(commonMessages.loading)}
+            retryLabel={format(commonMessages.retry)}
+            onRetry={() => {
+              if (sharing.isError) void sharing.refetch()
+              if (options.isError) void options.refetch()
+            }}
+          >
+            {null}
+          </AsyncSection>
+        ) : idle ? (
+          <Blank
+            size="compact"
+            icon={<Share2Icon />}
+            title={format(m.sharingNoOptions)}
+            description={format(m.sharingNoOptionsHint)}
+          />
+        ) : (
+          <>
+            <p {...stylex.props(styles.hint)}>{format(m.sharingHint)}</p>
+            {/* what it is offered to now, named rather than counted */}
+            <section {...stylex.props(styles.part)}>
+              <h3 {...stylex.props(styles.partTitle)}>
+                {format(m.sharingCurrent)}
+                <span {...stylex.props(styles.partCount)}>
+                  {scopes.length === 0 ? format(m.sharingPrivate) : scopes.length}
                 </span>
-              ))}
-            </div>
-          )}
-        </section>
-        <section {...stylex.props(styles.part)}>
-          <h3 {...stylex.props(styles.partTitle)}>{format(m.sharingChoose)}</h3>
-          {sharing.isPending || options.isPending ? (
-            <Skeleton className={stylex.props(styles.seat).className} />
-          ) : nodes.length === 0 ? (
-            <p {...stylex.props(styles.none)}>{format(m.sharingNoOptions)}</p>
-          ) : (
-            <div {...stylex.props(styles.seat)}>
-              <UiSlot
-                token={orgNodePicker}
-                context={{
-                  value: chosen,
-                  onChange: setChosen,
-                  fill: true,
-                  nodes,
-                  loading: options.isPending,
-                }}
-                fallback={
-                  // no organization picker installed: the units still list, so
-                  // an audience can be changed wherever this plugin runs
-                  <div {...stylex.props(styles.plain)}>
-                    {nodes.map((node) => (
-                      <label
-                        key={node.id}
-                        data-testid="formula-sharing-unit"
-                        {...stylex.props(styles.option)}
-                      >
-                        <Checkbox
-                          checked={chosen.includes(node.id)}
-                          disabled={replace.isPending}
-                          onCheckedChange={() =>
-                            setChosen((held) =>
-                              held.includes(node.id)
-                                ? held.filter((one) => one !== node.id)
-                                : [...held, node.id],
-                            )
-                          }
-                        />
-                        <span {...stylex.props(styles.optionName)}>{node.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                }
-                loading={<Skeleton className={stylex.props(styles.seat).className} />}
-              />
-            </div>
-          )}
-        </section>
-        {failure === null ? null : (
-          <p role="alert" data-testid="sharing-failure" {...stylex.props(styles.failure)}>
-            {failure}
-          </p>
+              </h3>
+              {scopes.length === 0 ? null : (
+                <div data-testid="formula-sharing-current" {...stylex.props(styles.chips)}>
+                  {scopes.map((scope) => (
+                    <span key={scope.orgNodeId} {...stylex.props(styles.chip)}>
+                      <span {...stylex.props(styles.chipWords)}>{scope.name}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </section>
+            <section {...stylex.props(styles.part)}>
+              <h3 {...stylex.props(styles.partTitle)}>{format(m.sharingChoose)}</h3>
+              {sharing.isPending || options.isPending ? (
+                <Skeleton className={stylex.props(styles.seat).className} />
+              ) : (
+                <div {...stylex.props(styles.seat)}>
+                  <UiSlot
+                    token={orgNodePicker}
+                    context={{
+                      value: chosen,
+                      onChange: setChosen,
+                      fill: true,
+                      nodes,
+                      loading: options.isPending,
+                    }}
+                    fallback={
+                      // no organization picker installed: the units still list, so
+                      // an audience can be changed wherever this plugin runs
+                      <div {...stylex.props(styles.plain)}>
+                        {nodes.map((node) => (
+                          <label
+                            key={node.id}
+                            data-testid="formula-sharing-unit"
+                            {...stylex.props(styles.option)}
+                          >
+                            <Checkbox
+                              checked={chosen.includes(node.id)}
+                              disabled={replace.isPending}
+                              onCheckedChange={() =>
+                                setChosen((held) =>
+                                  held.includes(node.id)
+                                    ? held.filter((one) => one !== node.id)
+                                    : [...held, node.id],
+                                )
+                              }
+                            />
+                            <span {...stylex.props(styles.optionName)}>{node.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    }
+                    loading={<Skeleton className={stylex.props(styles.seat).className} />}
+                  />
+                </div>
+              )}
+            </section>
+            {failure === null ? null : (
+              <p role="alert" data-testid="sharing-failure" {...stylex.props(styles.failure)}>
+                {failure}
+              </p>
+            )}
+          </>
         )}
       </div>
     </FormDialog>

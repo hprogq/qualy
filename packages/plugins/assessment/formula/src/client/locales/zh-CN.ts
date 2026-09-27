@@ -178,6 +178,8 @@ export default {
   'assessment-formula/sharing/choose': '选择单位',
   'assessment-formula/sharing/search': '搜索单位',
   'assessment-formula/sharing/no-options': '当前没有可共享该公式的单位',
+  'assessment-formula/sharing/no-options-hint':
+    '如需共享，请联系管理员为你开通所在单位的公式共享权限',
   'assessment-formula/sharing/no-matches': '没有匹配的单位',
   'assessment-formula/sharing/truncated': '仅显示部分单位，可通过搜索缩小范围',
   'assessment-formula/sharing/save': '保存',

@@ -673,6 +673,10 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/sharing/no-options',
       defaultMessage: 'No unit here can be offered this formula',
     },
+    sharingNoOptionsHint: {
+      id: 'assessment-formula/sharing/no-options-hint',
+      defaultMessage: 'Ask an administrator for permission to share formulas in a unit',
+    },
     sharingNoMatches: {
       id: 'assessment-formula/sharing/no-matches',
       defaultMessage: 'No unit matches',

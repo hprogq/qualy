@@ -96,6 +96,8 @@ const open = (
     options?: readonly { id: string; name: string; depth: number }[]
     replace?: () => Effect.Effect<never, never, never>
     wrote?: unknown[]
+    /** how the audience itself is answered, when not with `scopes` */
+    audience?: () => unknown
   } = {},
 ) => {
   const scopes = had.scopes ?? []
@@ -113,7 +115,8 @@ const open = (
         previewFormulaDraft: () => Effect.succeed(contract),
         getFormulaVersion: () => Effect.succeed({ version: frozen }),
         evaluateFormulaVersion: { cases: [] },
-        getFormulaVersionSharing: () => Effect.succeed({ scopes, token: 'token-1' }),
+        getFormulaVersionSharing:
+          had.audience ?? (() => Effect.succeed({ scopes, token: 'token-1' })),
         listFormulaShareOptions: () =>
           Effect.succeed({ nodes: had.options ?? [], truncated: false }),
         replaceFormulaVersionSharing: (call: { payload: { orgNodeIds: readonly string[] } }) => {
@@ -192,6 +195,47 @@ describe('managing a published version’s audience', () => {
     await page.getByTestId('formula-versions-open').click()
     await expect.element(page.getByTestId('formula-versions')).toBeVisible()
     expect(document.querySelectorAll('[data-testid="formula-release-shared"]').length).toBe(0)
+  }, 30_000)
+
+  // Offered to nobody, and nowhere this author may offer it: there is nothing
+  // in the dialog to act on, so it says so and keeps only the way out. The
+  // list still counted the offer somebody withdrew a moment ago, which is
+  // how the dialog comes to be opened at all.
+  it('answers with why when there is nothing to offer and nothing offered', async () => {
+    await open({
+      scopes: [{ orgNodeId: COLLEGE, name: '信息学院' }],
+      options: [],
+      audience: () => Effect.succeed({ scopes: [], token: 'token-1' }),
+    })
+    await openSharing()
+    await expect.element(sharing()).toHaveAttribute('data-state', 'idle')
+    expect(page.getByTestId('formula-sharing-save').elements()).toHaveLength(0)
+    expect(sharing().element().querySelector('[data-slot="empty"]')).not.toBeNull()
+    // the one button left closes it
+    await page.getByRole('dialog').getByRole('button', { name: '关闭' }).first().click()
+    await vi.waitFor(() =>
+      expect(document.querySelector('[data-testid="formula-sharing"]')).toBeNull(),
+    )
+  }, 30_000)
+
+  // An audience that could not be read is not an audience of nobody: the
+  // dialog says the reading failed, offers another, and saves nothing.
+  it('says the audience could not be read rather than that there is none', async () => {
+    let reachable = false
+    await open({
+      scopes: [{ orgNodeId: COLLEGE, name: '信息学院' }],
+      audience: () =>
+        reachable
+          ? Effect.succeed({ scopes: [{ orgNodeId: COLLEGE, name: '信息学院' }], token: 't' })
+          : Effect.fail(apiError('SERVICE_UNAVAILABLE')),
+    })
+    await openSharing()
+    await expect.element(sharing(), { timeout: 8_000 }).toHaveAttribute('data-state', 'unreadable')
+    expect(page.getByTestId('formula-sharing-save').elements()).toHaveLength(0)
+    reachable = true
+    await sharing().getByRole('button', { name: '重试' }).click()
+    await expect.element(sharing()).toHaveAttribute('data-state', 'ready')
+    await expect.element(page.getByTestId('formula-sharing-save')).toBeVisible()
   }, 30_000)
 
   it('reads back a refusal when somebody else moved the audience first', async () => {
