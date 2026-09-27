@@ -124,6 +124,26 @@ describe('the record of an import', () => {
     await expect.element(page.getByTestId('import-hidden-nodes')).toHaveAttribute('data-count', '3')
   })
 
+  // Everybody it made is gone already: the dialog wanted a reason for a
+  // delete that would delete nobody, over a greyed button.
+  it('says nobody is left to delete, and asks for no reason', async () => {
+    await open({
+      previewUserImportReversal: () =>
+        Effect.succeed({ toRetire: 0, alreadyGone: 2, withBindings: 0, withGrants: 0 }),
+    })
+    await page.getByRole('button', { name: '撤销本次导入' }).click()
+    const answer = page.getByTestId('reverse-nothing')
+    await expect.element(answer).toBeVisible()
+    expect(answer.element().querySelector('[data-slot="empty"]')?.getAttribute('data-size')).toBe(
+      'compact',
+    )
+    const dialog = answer.element().closest('[role="dialog"]')!
+    expect(dialog.querySelector('textarea')).toBeNull()
+    expect(
+      [...dialog.querySelectorAll('button')].map((button) => button.textContent),
+    ).not.toContain('撤销导入')
+  })
+
   it('reverses only with a reason, and sends the reason typed', async () => {
     const reverse = vi.fn(() => Effect.succeed({ retired: 2, skipped: 0 }))
     await open({ reverseUserImport: reverse })

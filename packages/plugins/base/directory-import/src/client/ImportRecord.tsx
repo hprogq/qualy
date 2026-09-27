@@ -1,14 +1,17 @@
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { PageLink, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
+import { UserRoundCheckIcon } from 'lucide-react'
+import { PageLink, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { commonMessages } from '@qualy/web-i18n/messages'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection, ConfirmDialog, Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import {
+  Blank,
   Card,
   CardFoot,
   CardHead,
@@ -152,6 +155,10 @@ export function ImportRecordSheet({
     ...query.directory.previewUserImportReversal.queryOptions({ params: { importId } }),
     enabled: reversing,
   })
+  const failed = useLoadFailure()
+  // nobody the import made is left to delete: the dialog says so and asks
+  // for nothing, rather than wanting a reason for a press that does nothing
+  const nothingLeft = reversal.data !== undefined && reversal.data.toRetire === 0
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: query.directory.key() })
   }
@@ -504,45 +511,61 @@ export function ImportRecordSheet({
         open={reversing}
         title={format(m.reverseTitle)}
         description={
-          reversal.data === undefined
+          reversal.data === undefined || nothingLeft
             ? undefined
-            : reversal.data.toRetire === 0
-              ? format(m.reverseNothing)
-              : format(m.reversalHint, {
-                  count: reversal.data.toRetire,
-                  bindings: reversal.data.withBindings,
-                  grants: reversal.data.withGrants,
-                })
+            : format(m.reversalHint, {
+                count: reversal.data.toRetire,
+                bindings: reversal.data.withBindings,
+                grants: reversal.data.withGrants,
+              })
         }
         onClose={() => setReversing(false)}
         footer={
           <div {...stylex.props(styles.row)}>
             <span {...stylex.props(styles.spacer)} />
             <Button variant="outline" onClick={() => setReversing(false)}>
-              {format(m.cancel)}
+              {format(nothingLeft ? commonMessages.close : m.cancel)}
             </Button>
-            <Button
-              variant="destructive"
-              disabled={
-                reason.trim() === '' || reverse.isPending || (reversal.data?.toRetire ?? 0) === 0
-              }
-              onClick={() => reverse.mutate()}
-            >
-              {format(m.reverseConfirm)}
-            </Button>
+            {reversal.data !== undefined && !nothingLeft && (
+              <Button
+                variant="destructive"
+                disabled={reason.trim() === '' || reverse.isPending}
+                onClick={() => reverse.mutate()}
+              >
+                {format(m.reverseConfirm)}
+              </Button>
+            )}
           </div>
         }
       >
-        <Field required label={format(m.reverseReason)}>
-          {(id) => (
-            <Textarea
-              id={id}
-              rows={3}
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-            />
+        <AsyncSection
+          pending={reversal.isPending}
+          error={reversal.isError ? failed.of(reversal.error) : null}
+          loadingLabel={format(commonMessages.loading)}
+          retryLabel={format(commonMessages.retry)}
+          onRetry={() => void reversal.refetch()}
+        >
+          {nothingLeft ? (
+            <div data-testid="reverse-nothing">
+              <Blank
+                size="compact"
+                icon={<UserRoundCheckIcon />}
+                title={format(m.reverseNothing)}
+              />
+            </div>
+          ) : (
+            <Field required label={format(m.reverseReason)}>
+              {(id) => (
+                <Textarea
+                  id={id}
+                  rows={3}
+                  value={reason}
+                  onChange={(event) => setReason(event.target.value)}
+                />
+              )}
+            </Field>
           )}
-        </Field>
+        </AsyncSection>
       </FormDialog>
 
       <ConfirmDialog
