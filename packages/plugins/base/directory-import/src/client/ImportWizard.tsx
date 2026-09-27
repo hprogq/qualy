@@ -10,7 +10,7 @@ import {
   PlusIcon,
   XIcon,
 } from 'lucide-react'
-import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
+import { UiSlot, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
@@ -554,6 +554,7 @@ export function ImportWizard({
   onOpenRecord: (importId: string) => void
 }) {
   const { format, formatError } = useI18n()
+  const failures = useLoadFailure()
   const businessNo = useTerm(authTerms.businessNumber)
   const phone = useIsBelow(PHONE)
   const api = useApi(directoryApi)
@@ -1042,7 +1043,7 @@ export function ImportWizard({
             </div>
             <AsyncSection
               pending={inspect.isPending}
-              error={inspect.isError ? formatError(inspect.error) : null}
+              error={inspect.isError ? failures.of(inspect.error) : null}
               loadingLabel={format(m.checking)}
               retryLabel={format(m.retry)}
               onRetry={() => void inspect.refetch()}

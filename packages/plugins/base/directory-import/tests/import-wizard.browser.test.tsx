@@ -1,10 +1,11 @@
 import { ImportWizard } from '../src/client/ImportWizard.tsx'
+import { ImportRecords } from '../src/client/ImportRecords.tsx'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import { registerUploadDriver } from '@qualy/plugin-storage/client'
 import type { OrgNodePickerContext } from '@qualy/ui-contract'
-import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // Walking the five steps the way somebody does: pick a file, say which sheet
 // and which row names the columns, say what each column is for, read what the
@@ -250,5 +251,44 @@ describe('importing users from a spreadsheet', () => {
     // a spreadsheet is corrected where it was written, so the list has to
     // be able to leave with the reader
     await expect.element(page.getByRole('button', { name: '下载问题清单' })).toBeVisible()
+  })
+
+  // A file the server could not read just now is worth reading again, and
+  // the answer is a pane under the wizard's own title rather than a line.
+  it('says the file could not be read now, under the wizard, with a retry', async () => {
+    await open({ inspectUserImportUpload: () => Effect.fail(apiError('SERVICE_UNAVAILABLE')) })
+    await pickFile()
+    const state = page
+      .getByTestId('import-body')
+      .getByRole('status')
+      .filter({ has: page.getByRole('heading') })
+    await expect.element(state).toHaveAttribute('data-state', 'unavailable')
+    await expect.element(state.getByRole('heading', { level: 3 })).toBeVisible()
+    await expect.element(state.getByRole('button', { name: '重试' })).toBeVisible()
+  })
+})
+
+// Past imports this reader may not read: said as that, with no retry that
+// could only be refused again.
+describe('the imports made before', () => {
+  it('says a history the reader may not read as that, with no retry', async () => {
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed(emptyManifest()) },
+        directory: { listUserImports: () => Effect.fail(apiError('ACCESS_DENIED')) },
+      }),
+      children: (
+        <ImportRecords
+          open
+          onClose={() => undefined}
+          onOpen={() => undefined}
+          onImport={() => undefined}
+        />
+      ),
+    })
+    const state = page.getByRole('status').filter({ has: page.getByRole('heading') })
+    await expect.element(state).toHaveAttribute('data-state', 'denied')
+    await expect.element(state.getByRole('heading', { level: 3 })).toBeVisible()
+    expect(state.getByRole('button', { name: '重试' }).elements()).toHaveLength(0)
   })
 })
