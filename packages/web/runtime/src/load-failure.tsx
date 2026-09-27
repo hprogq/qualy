@@ -139,9 +139,13 @@ export function LoadFailure({
       <Button
         key="retry"
         size={buttonSize}
-        disabled={retrying}
+        // refused rather than disabled: a disabled button lets go of the
+        // focus it holds, and a keyboard lands at the top of the page
+        aria-disabled={retrying || undefined}
         aria-busy={retrying || undefined}
-        onClick={onRetry}
+        onClick={() => {
+          if (!retrying) onRetry?.()
+        }}
       >
         {retrying ? <Spinner aria-hidden /> : <RotateCwIcon aria-hidden />}
         {format(commonMessages.retry)}

@@ -1,7 +1,9 @@
 import {
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
+  useState,
   type ComponentType,
   type ReactNode,
   type SVGProps,
@@ -17,6 +19,7 @@ import * as stylex from '@stylexjs/stylex'
 import type { StyleXStyles } from '@stylexjs/stylex'
 import { clsx } from 'clsx'
 import { HeadingRank } from '../lib/heading-rank.ts'
+import { a11yStyles } from '../lib/visually-hidden.tsx'
 import { breakpoints } from '../theme/breakpoints.stylex.ts'
 import { tokens } from '../theme/tokens.stylex.ts'
 
@@ -39,7 +42,15 @@ import { tokens } from '../theme/tokens.stylex.ts'
 // A section is one pane of a larger screen, in the room the pane would have
 // had - inside the card or dialog around it, or on a card of its own on the
 // bare page - and never takes focus away from what the reader is doing, so
-// it is a polite status instead: heard, without being moved to.
+// it is said instead: heard, without being moved to.
+//
+// Said through a region of its own that is already on the screen, empty,
+// when the words go into it. A live region that arrives with its words
+// already inside - the whole pane replacing a spinner - is not heard by
+// every reader, and a region whose role changes over words it already
+// holds is heard by almost none; so the words are put in a beat after the
+// pane appears, and put in again, the same words, when its owner says they
+// are news once more.
 
 /** why the thing cannot be shown, which decides the mark and what may help */
 export type ResourceStateKind = 'missing' | 'denied' | 'offline' | 'unavailable' | 'failed'
@@ -177,7 +188,8 @@ export function ResourceState({
   framed = false,
   focusOnMount = size === 'page',
   headingLevel,
-  role = size === 'page' ? undefined : 'status',
+  live = 'polite',
+  announcement = 0,
   xstyle,
   className,
   ...rest
@@ -205,21 +217,53 @@ export function ResourceState({
    */
   headingLevel?: 1 | 2 | 3 | 4
   /**
-   * How an assistive reader hears it appear: a section is a polite status by
-   * default, `alert` for a failure worth interrupting for; a page is neither,
-   * since it takes focus instead.
+   * How an assistive reader hears a section appear, since it takes no
+   * focus: politely, or interrupting, for a failure worth it. A page is
+   * heard through the focus it takes instead.
    */
-  role?: 'alert' | 'status'
+  live?: 'polite' | 'assertive'
+  /**
+   * Says the section again, as news, whenever it changes: a retry answered
+   * with the same failure is a new answer in words already on the screen.
+   */
+  announcement?: number
   xstyle?: StyleXStyles
   className?: string
 } & { [data: `data-${string}`]: string | undefined }) {
   const heading = useRef<HTMLHeadingElement>(null)
+  const said = useRef<HTMLParagraphElement>(null)
   const around = useContext(HeadingRank)
   useEffect(() => {
     if (focusOnMount) heading.current?.focus({ preventScroll: true })
   }, [focusOnMount])
   const Mark = marks[kind]
   const page = size === 'page'
+  const speaks = !page && !focusOnMount
+  const [spoken, setSpoken] = useState<Spoken | null>(null)
+  // read when the words go in, so an answer that came back with them is said
+  // at the urgency it came back with, without making the urgency news itself
+  const urgency = useRef(live)
+  useLayoutEffect(() => {
+    urgency.current = live
+  })
+  useEffect(() => {
+    if (!speaks) return
+    setSpoken(null)
+    const say = setTimeout(() => {
+      setSpoken({
+        live: urgency.current,
+        title: heading.current?.textContent ?? '',
+        description: said.current?.textContent ?? '',
+      })
+    }, SAY_AFTER_MS)
+    // and taken out again once heard, so a reader moving through the page
+    // meets the words once, where they are shown
+    const quiet = setTimeout(() => setSpoken(null), SAY_AFTER_MS + HEARD_MS)
+    return () => {
+      clearTimeout(say)
+      clearTimeout(quiet)
+    }
+  }, [speaks, announcement])
   const Heading = headings[headingLevel ?? (page ? 1 : ((around + 1) as 2 | 3 | 4))]
   const sx = stylex.props(
     page ? styles.page : styles.section,
@@ -231,7 +275,6 @@ export function ResourceState({
       data-slot="resource-state"
       data-state={kind}
       data-size={size}
-      role={role}
       {...rest}
       {...sx}
       className={clsx(sx.className, className)}
@@ -254,6 +297,7 @@ export function ResourceState({
         )}
         {description !== undefined && (
           <p
+            ref={said}
             {...stylex.props(
               styles.description,
               page ? styles.descriptionPage : styles.descriptionSection,
@@ -273,6 +317,34 @@ export function ResourceState({
         )}
       </div>
       {page && <span aria-hidden {...stylex.props(styles.below)} />}
+      {speaks &&
+        (['polite', 'assertive'] as const).map((region) => (
+          <span
+            key={region}
+            data-slot="resource-state-live"
+            data-live={region}
+            aria-live={region}
+            aria-atomic
+            {...stylex.props(a11yStyles.visuallyHidden)}
+          >
+            {spoken?.live === region && (
+              <>
+                <span>{spoken.title}</span> <span>{spoken.description}</span>
+              </>
+            )}
+          </span>
+        ))}
     </div>
   )
 }
+
+interface Spoken {
+  readonly live: 'polite' | 'assertive'
+  readonly title: string
+  readonly description: string
+}
+
+/** how long an empty region stands before its words go in */
+const SAY_AFTER_MS = 150
+/** how long the words stay in it once they are there */
+const HEARD_MS = 7000

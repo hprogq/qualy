@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { RotateCwIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import type { StyleXStyles } from '@stylexjs/stylex'
@@ -70,15 +70,34 @@ export function AsyncSection({
   children: ReactNode
 }) {
   // Whether a retry pressed here has been answered, and answered with the
-  // same failure: the one moment worth interrupting a reader for. Until then
-  // the failure is a polite status. Told by `retrying` going up and coming
-  // back down, so a caller that does not say when it is retrying never has
-  // an alert raised at the press itself, before any answer.
-  const [asked, setAsked] = useState<'no' | 'pressed' | 'retrying' | 'failed-again'>('no')
+  // same failure: the one moment worth interrupting a reader for, and each
+  // time it happens is news again. Until then the failure is said politely.
+  // Told by the section going busy - `retrying`, or back to loading - and
+  // coming back down, so a caller that does not say when it is retrying
+  // never has an interruption raised at the press itself, before any answer.
+  const [asked, setAsked] = useState<'no' | 'pressed' | 'retrying'>('no')
+  const [failedAgain, setFailedAgain] = useState(0)
   const failing = !pending && Boolean(error)
-  if (!failing && !pending && asked !== 'no') setAsked('no')
-  if (failing && retrying && asked === 'pressed') setAsked('retrying')
-  if (failing && !retrying && asked === 'retrying') setAsked('failed-again')
+  const busy = retrying || pending
+  if (!failing && !pending && (asked !== 'no' || failedAgain !== 0)) {
+    setAsked('no')
+    setFailedAgain(0)
+  }
+  if (asked === 'pressed' && busy) setAsked('retrying')
+  if (asked === 'retrying' && failing && !busy) {
+    setAsked('no')
+    setFailedAgain(failedAgain + 1)
+  }
+  // The retry keeps the focus it was pressed with while it works, so a
+  // keyboard is not dropped to the top of the page; if the section went
+  // back to loading meanwhile and the button was drawn anew, the answer
+  // hands focus back to it - never away from anything else.
+  const retryButton = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (failedAgain === 0) return
+    const active = document.activeElement
+    if (active === null || active === document.body) retryButton.current?.focus()
+  }, [failedAgain])
   if (pending) {
     if (skeleton) {
       const sx = stylex.props(xstyle)
@@ -120,17 +139,22 @@ export function AsyncSection({
         {...(failure.title === undefined ? {} : { title: failure.title })}
         description={failure.description}
         headingLevel={headingLevel}
-        role={asked === 'failed-again' ? 'alert' : 'status'}
+        live={failedAgain > 0 ? 'assertive' : 'polite'}
+        announcement={failedAgain}
         actions={[
           ...(failure.retryable
             ? [
                 <Button
                   key="retry"
+                  ref={retryButton}
                   variant="outline"
                   size="sm"
-                  disabled={retrying}
+                  // refused rather than disabled: a disabled button lets go
+                  // of the focus it holds
+                  aria-disabled={retrying || undefined}
                   aria-busy={retrying || undefined}
                   onClick={() => {
+                    if (retrying) return
                     setAsked('pressed')
                     onRetry()
                   }}

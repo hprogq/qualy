@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { lazy, useState } from 'react'
 import { Outlet } from 'react-router'
 import { Effect } from 'effect'
@@ -136,6 +136,40 @@ describe('a section whose reading failed', () => {
     // a pane in the card or dialog around it, ranked under that one's title
     await expect.element(page.getByRole('heading', { level: 3 })).toBeVisible()
     expect(page.getByRole('button', { name: 'retry' }).elements()).toHaveLength(0)
+  })
+})
+
+describe('a retry that is on its way', () => {
+  it('keeps the focus it was pressed with, and is not pressed twice', async () => {
+    function Asking() {
+      const describe = useLoadFailure()
+      const [asked, setAsked] = useState(0)
+      const [retrying, setRetrying] = useState(false)
+      return (
+        <div data-testid="reading" data-retried={asked}>
+          <LoadFailure
+            size="section"
+            failure={describe.of(apiError('INTERNAL_SERVER_ERROR'))}
+            retrying={retrying}
+            onRetry={() => {
+              setAsked((count) => count + 1)
+              setRetrying(true)
+              setTimeout(() => setRetrying(false), 300)
+            }}
+          />
+        </div>
+      )
+    }
+    await mount(<Asking />)
+    const retry = page.getByRole('button', { name: '重试' })
+    retry.element().focus()
+    await userEvent.keyboard('{Enter}')
+    await expect.element(retry).toHaveAttribute('aria-busy', 'true')
+    expect(document.activeElement).toBe(retry.element())
+    await userEvent.keyboard('{Enter}')
+    await expect.element(page.getByTestId('reading')).toHaveAttribute('data-retried', '1')
+    await expect.element(retry).not.toHaveAttribute('aria-busy')
+    expect(document.activeElement).toBe(retry.element())
   })
 })
 

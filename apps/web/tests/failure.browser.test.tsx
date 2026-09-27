@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { useState } from 'react'
 import { Failure } from '@qualy/web-runtime'
 import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
@@ -40,8 +40,11 @@ describe('a failure with a way to retry', () => {
     expect(notice().getAttribute('role')).toBeNull()
     expect(page.getByRole('alert').elements()).toHaveLength(0)
     await again.click()
-    // pressed: busy before anything else happens
+    // pressed: busy before anything else happens, and still holding the
+    // focus it was pressed with, where a second press is not a second retry
     await expect.element(again).toHaveAttribute('aria-busy', 'true')
+    expect(document.activeElement).toBe(again.element())
+    await userEvent.keyboard('{Enter}')
     await vi.waitFor(() => expect(retried).toHaveBeenCalledTimes(1))
     // and the notice that came back says it is the answer to that press
     await vi.waitFor(() => expect(notice().getAttribute('data-again')).toBe('true'))

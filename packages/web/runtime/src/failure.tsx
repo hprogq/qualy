@@ -63,9 +63,11 @@ export function Failure({
       <Button
         key="retry"
         className={stylex.props(again && styles.failedAgain).className}
-        disabled={trying}
+        // refused rather than disabled, so the focus stays on it
+        aria-disabled={trying || undefined}
         aria-busy={trying || undefined}
         onClick={() => {
+          if (trying) return
           setTrying(true)
           setTimeout(() => {
             retriedAt = performance.now()

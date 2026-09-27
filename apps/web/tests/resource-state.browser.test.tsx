@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { useState } from 'react'
 import { Effect } from 'effect'
 import { AsyncSection } from '@qualy/ui/admin'
@@ -134,6 +134,12 @@ describe('a section that could not load', () => {
     description: 'try',
     retryable: true,
   } as const
+  /** what the pane has put in its region for a reader to hear, at one urgency */
+  const spoken = (live: 'polite' | 'assertive') =>
+    page
+      .getByTestId('section')
+      .element()
+      .querySelector<HTMLElement>(`[data-slot="resource-state-live"][data-live="${live}"]`)
   const drawnState = () =>
     getComputedStyle(
       page.getByTestId('section').element().querySelector('[data-slot="resource-state"]')!,
@@ -184,14 +190,21 @@ describe('a section that could not load', () => {
     // one pane of a screen does not pull the reader out of what they are doing,
     // and is heard politely rather than read out over it
     expect(document.activeElement).toBe(page.getByRole('textbox', { name: 'search' }).element())
-    await expect
-      .element(
-        page
-          .getByTestId('section')
-          .element()
-          .querySelector<HTMLElement>('[data-slot="resource-state"]'),
-      )
-      .toHaveAttribute('role', 'status')
+    const polite = spoken('polite')
+    // the region is there, empty, before its words: words that arrive with
+    // the region are not heard by every reader
+    expect(polite?.textContent).toBe('')
+    await vi.waitFor(() => expect(polite?.textContent).toContain('could not load'))
+    expect(polite?.textContent).toContain('try')
+    expect(spoken('assertive')?.textContent).toBe('')
+    // the pane itself is no live region, or it would be heard twice
+    expect(
+      page
+        .getByTestId('section')
+        .element()
+        .querySelector('[data-slot="resource-state"]')
+        ?.getAttribute('role'),
+    ).toBeNull()
   })
 
   it('ranks its heading under the page on bare ground, and under the dialog inside one', async () => {
@@ -232,7 +245,7 @@ describe('a section that could not load', () => {
     await expect.element(page.getByRole('heading', { level: 3, name: 'gone' })).toBeVisible()
   })
 
-  it('interrupts only when a retry comes back with the same failure', async () => {
+  it('interrupts only when a retry comes back with the same failure, and keeps the retry in hand', async () => {
     function Retried() {
       const [retrying, setRetrying] = useState(false)
       return (
@@ -245,7 +258,7 @@ describe('a section that could not load', () => {
             retryLabel="retry"
             onRetry={() => {
               setRetrying(true)
-              setTimeout(() => setRetrying(false), 150)
+              setTimeout(() => setRetrying(false), 300)
             }}
           >
             <p>content</p>
@@ -254,17 +267,59 @@ describe('a section that could not load', () => {
       )
     }
     await mount(<Retried />)
-    const state = () =>
-      page
-        .getByTestId('section')
-        .element()
-        .querySelector<HTMLElement>('[data-slot="resource-state"]')
-    await expect.element(state()).toHaveAttribute('role', 'status')
-    await page.getByRole('button', { name: 'retry' }).click()
-    await expect.element(page.getByRole('button', { name: 'retry' })).toHaveAttribute('aria-busy')
-    // still asking: nothing to interrupt anybody with yet
-    expect(state()!.getAttribute('role')).toBe('status')
-    await vi.waitFor(() => expect(state()!.getAttribute('role')).toBe('alert'))
+    await vi.waitFor(() => expect(spoken('polite')?.textContent).toContain('could not load'))
+    // every time words go into the interrupting region, as a reader hears it
+    let interruptions = 0
+    new MutationObserver(() => {
+      if (spoken('assertive')?.textContent !== '') interruptions += 1
+    }).observe(spoken('assertive')!, { childList: true, subtree: true, characterData: true })
+    // pressed from the keyboard, as a reader who cannot see the pane would
+    const retry = page.getByRole('button', { name: 'retry' })
+    retry.element().focus()
+    await userEvent.keyboard('{Enter}')
+    await expect.element(retry).toHaveAttribute('aria-busy', 'true')
+    // still asking: the focus stays where the key was pressed, and nothing
+    // interrupts anybody yet
+    expect(document.activeElement).toBe(retry.element())
+    expect(interruptions).toBe(0)
+    // pressed again while asking, it does not ask twice
+    await userEvent.keyboard('{Enter}')
+    // the same answer again: said at once, over whatever was being read
+    await vi.waitFor(() => expect(spoken('assertive')?.textContent).toContain('could not load'))
+    expect(interruptions).toBe(1)
+    expect(document.activeElement).toBe(retry.element())
+    // and every such answer is news again
+    await userEvent.keyboard('{Enter}')
+    await vi.waitFor(() => expect(interruptions).toBe(2))
+    expect(spoken('assertive')?.textContent).toContain('could not load')
+  })
+
+  it('hands the focus back to the retry when the pane loaded again before failing again', async () => {
+    function Reloaded() {
+      const [pending, setPending] = useState(false)
+      return (
+        <div data-testid="section">
+          <AsyncSection
+            pending={pending}
+            error={failed}
+            loadingLabel="loading"
+            retryLabel="retry"
+            onRetry={() => {
+              setPending(true)
+              setTimeout(() => setPending(false), 200)
+            }}
+          >
+            <p>content</p>
+          </AsyncSection>
+        </div>
+      )
+    }
+    await mount(<Reloaded />)
+    page.getByRole('button', { name: 'retry' }).element().focus()
+    await userEvent.keyboard('{Enter}')
+    await expect.element(page.getByRole('status', { name: 'loading' })).toBeInTheDocument()
+    await vi.waitFor(() => expect(spoken('assertive')?.textContent).toContain('could not load'))
+    expect(document.activeElement).toBe(page.getByRole('button', { name: 'retry' }).element())
   })
 
   it('offers a retry only where one can help', async () => {
