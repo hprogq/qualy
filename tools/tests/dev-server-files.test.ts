@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { isFileServingAllowed, resolveConfig } from 'vite'
 
@@ -26,7 +27,8 @@ describe('what the development server serves from the file system', () => {
     const allowed = await served()
     for (const file of [
       'apps/web/src/main.tsx',
-      'apps/web/.qualy/plugins.ts',
+      // generated at build time, so absent from a fresh checkout
+      path.posix.join('apps/web/.qualy', 'plugins.ts'),
       'packages/web/ui/package.json',
       'packages/plugins/assessment/core/src/client/i18n.ts',
       'node_modules/.pnpm/react@19.0.0/node_modules/react/index.js',
