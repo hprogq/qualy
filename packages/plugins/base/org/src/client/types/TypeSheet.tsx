@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
+import { getApiErrorCode, useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { ConfirmDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
+import { FieldError } from '@qualy/ui/field'
 import { Input } from '@qualy/ui/input'
 import {
   Card,
@@ -32,6 +33,7 @@ import type { Api, OrgShape, OrgTypeDto, Run } from '../shape.ts'
 // be the one forgotten.
 
 const styles = stylex.create({
+  rename: { display: 'flex', flexDirection: 'column', gap: 6 },
   form: { display: 'flex', alignItems: 'center', gap: 8 },
   grow: { flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
   tags: { display: 'flex', flexWrap: 'wrap', gap: 6, paddingInline: 16, paddingBlock: 12 },
@@ -72,9 +74,13 @@ export function TypeSheet({
   canManage: boolean
   onClose: () => void
 }) {
-  const { format } = useI18n()
+  const { format, formatError } = useI18n()
   const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState(type.name)
+  // a name another kind already has is the name's to fix, said under it
+  const [taken, setTaken] = useState<string | null>(null)
+  const takenId = useId()
+  const nameTaken = (error: unknown) => getApiErrorCode(error) === 'ORG_TYPE_CONFLICT'
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [saving, setSaving] = useState(false)
   const inUse = shape.nodesOfType.get(type.id) ?? 0
@@ -138,7 +144,14 @@ export function TypeSheet({
       }
       actions={
         canManage ? (
-          <Button size="xs" variant="ghost" onClick={() => setRenaming((now) => !now)}>
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={() => {
+              setRenaming((now) => !now)
+              setTaken(null)
+            }}
+          >
             {format(m.rename)}
           </Button>
         ) : undefined
@@ -171,27 +184,46 @@ export function TypeSheet({
       }
     >
       {renaming && (
-        <form
-          {...stylex.props(styles.form)}
-          onSubmit={(event) => {
-            event.preventDefault()
-            // a refusal is already said by run; the field stays open to fix it
-            void run(api.org.updateType({ params: { typeId: type.id }, payload: { name } }))
-              .then(() => setRenaming(false))
-              .catch(() => undefined)
-          }}
-        >
-          <Input
-            autoFocus
-            value={name}
-            aria-label={format(m.nameLabel)}
-            onChange={(event) => setName(event.target.value)}
-            wrapperXstyle={styles.grow}
-          />
-          <Button size="sm" type="submit" disabled={name.trim() === '' || name === type.name}>
-            {format(m.save)}
-          </Button>
-        </form>
+        <div {...stylex.props(styles.rename)}>
+          <form
+            {...stylex.props(styles.form)}
+            onSubmit={(event) => {
+              event.preventDefault()
+              // a refusal is said by run, or under the name when it is the
+              // name's; the field stays open to fix it either way
+              setTaken(null)
+              void run(
+                api.org.updateType({ params: { typeId: type.id }, payload: { name } }),
+                nameTaken,
+              )
+                .then(() => setRenaming(false))
+                .catch((error: unknown) => {
+                  if (nameTaken(error)) setTaken(formatError(error))
+                })
+            }}
+          >
+            <Input
+              autoFocus
+              value={name}
+              aria-label={format(m.nameLabel)}
+              aria-required
+              {...(taken === null ? {} : { 'aria-invalid': true, 'aria-describedby': takenId })}
+              onChange={(event) => {
+                setName(event.target.value)
+                setTaken(null)
+              }}
+              wrapperXstyle={styles.grow}
+            />
+            <Button size="sm" type="submit" disabled={name.trim() === '' || name === type.name}>
+              {format(m.save)}
+            </Button>
+          </form>
+          {taken !== null && (
+            <FieldError id={takenId} data-testid="field-error">
+              {taken}
+            </FieldError>
+          )}
+        </div>
       )}
 
       <Card>

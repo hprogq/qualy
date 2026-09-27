@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { orgNodePicker, type OrgNodePickerContext } from '@qualy/ui-contract'
 import { UiSlot } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { getApiErrorCode, useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Field, FormDialog } from '@qualy/ui/admin'
@@ -52,9 +52,12 @@ export function NodeDialogs({
   /** to the rules of one kind of unit, where what may hold what is set */
   onOpenRules: (orgTypeId: string) => void
 }) {
-  const { format } = useI18n()
+  const { format, formatError } = useI18n()
   const node = task === null ? undefined : shape.byId.get(task.nodeId)
   const [name, setName] = useState('')
+  // a name a sibling already has is the name's to fix, said under it; a move
+  // refused for the same reason has no name field, so run says that one
+  const [taken, setTaken] = useState<string | null>(null)
   const [typeId, setTypeId] = useState('')
   const [targetId, setTargetId] = useState('')
   const [busy, setBusy] = useState(false)
@@ -77,6 +80,7 @@ export function NodeDialogs({
     setName(task.kind === 'rename' ? node.name : '')
     setTypeId(task.kind === 'create' && childTypes.length === 1 ? childTypes[0]!.id : '')
     setTargetId('')
+    setTaken(null)
     // keyed on the task alone: the shape moves under an open dialog whenever
     // anything is saved, and that must not wipe what is being typed
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -135,10 +139,15 @@ export function NodeDialogs({
               params: { nodeId: node.id },
               payload: { parentId: targetId },
             })
+    const nameTaken = (error: unknown) =>
+      task.kind !== 'move' && getApiErrorCode(error) === 'ORG_NODE_CONFLICT'
     setBusy(true)
-    void run(work)
+    setTaken(null)
+    void run(work, nameTaken)
       .then(onDone)
-      .catch(() => undefined)
+      .catch((error: unknown) => {
+        if (nameTaken(error)) setTaken(formatError(error))
+      })
       .finally(() => setBusy(false))
   }
   const ready =
@@ -195,10 +204,10 @@ export function NodeDialogs({
               />
             </div>
           ) : (
-            <Field label={format(m.typeColumn)}>
-              {(id) => (
+            <Field label={format(m.typeColumn)} required>
+              {(id, control) => (
                 <Select value={typeId === '' ? undefined : typeId} onValueChange={setTypeId}>
-                  <SelectTrigger id={id}>
+                  <SelectTrigger id={id} {...control}>
                     <SelectValue placeholder={format(m.selectType)} />
                   </SelectTrigger>
                   <SelectContent>
@@ -213,13 +222,17 @@ export function NodeDialogs({
             </Field>
           ))}
         {task.kind !== 'move' && !nowhere && (
-          <Field label={format(m.nameLabel)}>
-            {(id) => (
+          <Field label={format(m.nameLabel)} required error={taken}>
+            {(id, control) => (
               <Input
                 id={id}
+                {...control}
                 autoFocus
                 value={name}
-                onChange={(event) => setName(event.target.value)}
+                onChange={(event) => {
+                  setName(event.target.value)
+                  setTaken(null)
+                }}
               />
             )}
           </Field>

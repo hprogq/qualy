@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useI18n } from '@qualy/web-i18n'
+import { getApiErrorCode, useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -21,31 +21,41 @@ export function NewTypeDialog({
   onCreated: (id: string) => void
   onClose: () => void
 }) {
-  const { format } = useI18n()
+  const { format, formatError } = useI18n()
   const [name, setName] = useState('')
+  // a name another kind already has is the name's to fix, said under it
+  const [taken, setTaken] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const nameTaken = (error: unknown) => getApiErrorCode(error) === 'ORG_TYPE_CONFLICT'
+  const close = () => {
+    setTaken(null)
+    onClose()
+  }
   const submit = () => {
     setBusy(true)
-    void run(api.org.createType({ payload: { name: name.trim() } }))
+    setTaken(null)
+    void run(api.org.createType({ payload: { name: name.trim() } }), nameTaken)
       .then((created) => {
         setName('')
-        onClose()
+        close()
         const id =
           (created as { type?: { id?: string }; id?: string } | undefined)?.type?.id ??
           (created as { id?: string } | undefined)?.id
         if (id) onCreated(id)
       })
-      .catch(() => undefined)
+      .catch((error: unknown) => {
+        if (nameTaken(error)) setTaken(formatError(error))
+      })
       .finally(() => setBusy(false))
   }
   return (
     <FormDialog
       open={open}
       title={format(m.newTypeTitle)}
-      onClose={onClose}
+      onClose={close}
       footer={
         <>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={close}>
             {format(commonMessages.cancel)}
           </Button>
           <Button disabled={name.trim() === '' || busy} onClick={submit}>
@@ -54,13 +64,17 @@ export function NewTypeDialog({
         </>
       }
     >
-      <Field label={format(m.nameLabel)}>
-        {(id) => (
+      <Field label={format(m.nameLabel)} required error={taken}>
+        {(id, control) => (
           <Input
             id={id}
+            {...control}
             autoFocus
             value={name}
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => {
+              setName(event.target.value)
+              setTaken(null)
+            }}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && name.trim() !== '' && !busy) submit()
             }}

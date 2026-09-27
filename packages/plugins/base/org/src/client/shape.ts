@@ -10,7 +10,15 @@ export type OrgTreeNodeDto = ApiResult<typeof orgApi, 'org', 'getTree'>['nodes']
 export type OrgTypeDto = ApiResult<typeof orgApi, 'org', 'listTypes'>['types'][number]
 export type OrgRuleDto = ApiResult<typeof orgApi, 'org', 'listRules'>['rules'][number]
 export type Api = ReturnType<typeof useApi>
-export type Run = (work: Effect.Effect<unknown, unknown>) => Promise<unknown>
+/**
+ * A write, with its refusal said for it - unless `own` claims the refusal,
+ * because the caller says it where it belongs: a name another unit has, under
+ * the name.
+ */
+export type Run = (
+  work: Effect.Effect<unknown, unknown>,
+  own?: (error: unknown) => boolean,
+) => Promise<unknown>
 
 export interface OrgShape {
   nodes: readonly OrgTreeNodeDto[]

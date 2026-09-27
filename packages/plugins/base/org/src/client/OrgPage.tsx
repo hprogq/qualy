@@ -95,14 +95,14 @@ export default function OrgPage() {
   // A refusal is said in a toast: every write here is made from a dialog or a
   // sheet that stays up when it fails, and a note on the page would sit under
   // the overlay where nobody can read it.
-  const run: Run = (work) =>
+  const run: Run = (work, own) =>
     runApi(work)
       .then(async (answer) => {
         await refresh()
         return answer
       })
       .catch((error: unknown) => {
-        toast.error(formatError(error))
+        if (own?.(error) !== true) toast.error(formatError(error))
         throw error
       })
 

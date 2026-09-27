@@ -431,7 +431,7 @@ describe('the organization screen', () => {
   // refused it must be readable while it does: a note on the page behind the
   // overlay is under a layer that is inert and hidden from assistive tech.
   it('says why a unit was not created while its dialog is still up', async () => {
-    const create = vi.fn(() => Effect.fail(apiError('ORG_NODE_CONFLICT')))
+    const create = vi.fn(() => Effect.fail(apiError('ACCESS_DENIED')))
     const client = world()
     await renderScreen({
       client: fakeClient({ ...client, org: { ...client.org, createNode: create } }),
@@ -450,6 +450,30 @@ describe('the organization screen', () => {
     expect(said.getAttribute('data-type')).toBe('error')
     expect(said.closest('[aria-hidden="true"]')).toBeNull()
     expect(said.closest('[inert]')).toBeNull()
+  })
+
+  // a name a sibling already has is fixed in the name, so it is said there
+  it('says under the name that a sibling already has it, and nowhere else', async () => {
+    const create = vi.fn(() => Effect.fail(apiError('ORG_NODE_CONFLICT')))
+    const client = world()
+    await renderScreen({
+      client: fakeClient({ ...client, org: { ...client.org, createNode: create } }),
+      route: '/admin/org',
+      children: <OrgPage />,
+    })
+    await page.getByRole('button', { name: '在软件学院下新建组织' }).click()
+    const task = page.getByTestId('node-task')
+    const name = task.getByRole('textbox', { name: '名称' })
+    await name.fill('软件2301班')
+    await page.getByRole('button', { name: '创建', exact: true }).click()
+    await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+
+    await expect.element(task.getByTestId('field-error')).toBeVisible()
+    await expect.element(name).toHaveAttribute('aria-invalid', 'true')
+    expect(document.querySelectorAll('[data-sonner-toast]').length).toBe(0)
+    // another name is another try: the refusal of the last one goes
+    await name.fill('软件2303班')
+    expect(task.element().querySelector('[data-testid="field-error"]')).toBeNull()
   })
 
   it('opens a branch without folding it, and folds only from the twistie', async () => {
