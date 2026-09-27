@@ -1,11 +1,13 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { usersPageActions, type UsersPageActionsContext } from '@qualy/ui-contract'
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowUpRightIcon, InfoIcon, PlusIcon } from 'lucide-react'
+import { ArrowUpRightIcon, PlusIcon } from 'lucide-react'
 import {
+  isRecordId,
   PageLink,
   useApiQuery,
   useLoadFailure,
+  usePageAvailable,
   usePageHref,
   usePageNavigate,
   usePageQueryState,
@@ -38,17 +40,14 @@ import {
   TableRow,
   TableSkeleton,
 } from '@qualy/ui/screen'
-import { Button } from '@qualy/ui/button'
 import { Pager } from '@qualy/ui/pager'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Spinner } from '@qualy/ui/spinner'
-import { useLingering } from '@qualy/ui/use-lingering'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { ChevronRightIcon } from 'lucide-react'
 import { DetailSheet } from '@qualy/ui/screen'
 import { iamMessages as m } from '../i18n.ts'
 import { NewUserForm } from './NewUserForm.tsx'
-import { PersonSheet } from './users/PersonSheet.tsx'
 import { UnitPath } from './users/UnitPath.tsx'
 import { UserJump } from './users/UserJump.tsx'
 import { UnitTree, type UnitNode } from './users/UnitTree.tsx'
@@ -134,7 +133,6 @@ const styles = stylex.create({
     textUnderlineOffset: 3,
   },
   unitLinkIcon: { width: 13, height: 13, flexShrink: 0, color: tokens.mutedForeground },
-  look: { display: 'flex', justifyContent: 'flex-end' },
   // A line, not a sheet: it says which unit the roster below is of, and a
   // card around one line on a phone is two margins and a rule spent on
   // saying that one line is one line.
@@ -185,7 +183,9 @@ export default function UsersPage() {
   const [scope] = usePageQueryState('scope', 'subtree')
   const [typeFilter] = usePageQueryState('type')
   const [search] = usePageQueryState('q')
-  const [openUserId, setOpenUserId] = usePageQueryState('user')
+  // an address from when a person opened in a panel beside the list: the
+  // panel is gone, their own page is where they are looked at now
+  const [linkedUserId] = usePageQueryState('user')
   // which standing the roster is showing; in good standing unless asked
   const [standingParam] = usePageQueryState('standing')
   const standing: 'active' | 'disabled' | 'any' =
@@ -213,7 +213,11 @@ export default function UsersPage() {
   const [pickingUnit, setPickingUnit] = useState(false)
   const [draft, setDraft] = useState(search)
   const [creating, setCreating] = useState(false)
-  const shownUserId = useLingering(openUserId === '' ? null : openUserId)
+  const detailOpen = usePageAvailable('auth/user-detail')
+  useEffect(() => {
+    if (!detailOpen || linkedUserId === '' || !isRecordId(linkedUserId)) return
+    navigate('auth/user-detail', { params: { userId: linkedUserId }, replace: true })
+  }, [detailOpen, linkedUserId, navigate])
 
   // one call gives the units this caller may see, the types they may hand
   // out, and the tree the left pane draws - no permission beyond its own
@@ -509,8 +513,9 @@ export default function UsersPage() {
               {/* a number, a kind and a unit read as one line; a fact that
                   runs out of room loses its end rather than the row gaining
                   a line for half a unit's name */}
+              {/* the last column is the stacked row's mark that it opens */}
               <Table
-                columns={`8.5rem ${nameWidth} 5.5rem minmax(0, 1fr) 4.5rem 1.75rem`}
+                columns={`8.5rem ${nameWidth} 5.5rem minmax(0, 1fr) 4.5rem${stacked ? ' 1.75rem' : ''}`}
                 facts="line"
               >
                 <TableHead>
@@ -519,7 +524,7 @@ export default function UsersPage() {
                   <span>{format(m.columnType)}</span>
                   <span>{format(m.columnUnit)}</span>
                   <span>{format(m.columnStatus)}</span>
-                  <span />
+                  {stacked && <span />}
                 </TableHead>
                 {rows.length === 0 ? (
                   <CardEmpty>{format(m.usersEmpty)}</CardEmpty>
@@ -529,7 +534,6 @@ export default function UsersPage() {
                       key={user.id}
                       height="compact"
                       nested
-                      selected={user.id === openUserId}
                       onOpen={() => navigate('auth/user-detail', { params: { userId: user.id } })}
                       data-testid="roster-row"
                       data-user-status={user.status}
@@ -543,7 +547,7 @@ export default function UsersPage() {
                               on every row says nothing - and it cost the row
                               a column. Only what is NOT ordinary is marked,
                               beside the name it is true of. */}
-                          <Cell lead strong={user.id === openUserId}>
+                          <Cell lead>
                             {user.displayName}
                             {user.status !== 'active' && (
                               <Status tone="bad">{format(m.disabledBadge)}</Status>
@@ -562,9 +566,7 @@ export default function UsersPage() {
                           <Cell lead numeric tone={user.businessNo === null ? 'quiet' : 'plain'}>
                             {user.businessNo ?? format(m.personNoBusinessNo, { businessNo })}
                           </Cell>
-                          <Cell strong={user.id === openUserId} tone="plain">
-                            {user.displayName}
-                          </Cell>
+                          <Cell tone="plain">{user.displayName}</Cell>
                         </>
                       )}
                       {/* a student number, a kind of person and a unit read
@@ -603,13 +605,6 @@ export default function UsersPage() {
                           </Status>
                         )}
                       </Cell>
-                      {/* A glance at somebody without leaving the list is
-                          worth a press beside the row only where the list
-                          stays on screen. Stacked, the sheet covers the
-                          list it was supposed to keep you in, and every
-                          act on it is another press away - so there the
-                          row itself is the way in, and it goes to the
-                          person's own page. */}
                       {/* stacked, the row itself is the way in, and the
                           mark at its end says so - standing against the
                           whole row rather than at the end of its second
@@ -617,19 +612,6 @@ export default function UsersPage() {
                       {stacked && (
                         <span aria-hidden {...stylex.props(styles.go)}>
                           <ChevronRightIcon {...stylex.props(styles.goGlyph)} />
-                        </span>
-                      )}
-                      {!stacked && (
-                        <span {...stylex.props(styles.look)}>
-                          <Button
-                            size="icon-xs"
-                            variant="ghost"
-                            aria-label={format(m.lookAt, { name: user.displayName })}
-                            data-testid="roster-look"
-                            onClick={() => setOpenUserId(user.id === openUserId ? '' : user.id)}
-                          >
-                            <InfoIcon aria-hidden />
-                          </Button>
                         </span>
                       )}
                     </TableRow>
@@ -686,14 +668,6 @@ export default function UsersPage() {
             onScope={asking('scope')}
           />
         </DetailSheet>
-      )}
-
-      {shownUserId !== null && (
-        <PersonSheet
-          open={openUserId !== ''}
-          userId={shownUserId}
-          onClose={() => setOpenUserId('')}
-        />
       )}
 
       {active?.manageable && (

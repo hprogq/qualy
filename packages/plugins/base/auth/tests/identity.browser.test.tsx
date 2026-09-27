@@ -754,64 +754,39 @@ describe('users workspace', () => {
       },
     })
 
-  it('looks at a person beside the roster from the mark at the end of their row, and says so in the address', async () => {
+  // A person is looked at on their own page; the panel that once opened
+  // beside the list is gone, and an address from then opens that page.
+  it('opens the person a link from the old panel names on their own page', async () => {
+    await renderScreen({
+      client: fakeClient({
+        ...rosterStubs(),
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              pages: [{ id: 'auth/user-detail', path: '/people/:userId', layout: 'admin' }],
+            }),
+        },
+      }),
+      routes: [
+        { path: '/admin/users', element: <UsersPage /> },
+        { path: '/people/:userId', element: <p data-testid="landed" /> },
+      ] as never,
+      route: `/admin/users?user=${USER_ID}`,
+    })
+    await expect.element(page.getByTestId('landed')).toBeInTheDocument()
+    expect(addressNow()).toContain(`/people/${USER_ID}`)
+  })
+
+  it('offers no panel beside the roster, only the rows themselves', async () => {
     await renderScreen({
       client: fakeClient(rosterStubs()),
       route: '/admin/users',
       children: <UsersPage />,
     })
-
-    await expect.element(page.getByRole('button', { name: '速览张明远' })).toBeVisible()
-    await page.getByRole('button', { name: '速览张明远' }).click()
-    // the open person is address state, not component state
-    await vi.waitFor(() => expect(addressNow()).toContain(`user=${USER_ID}`))
-    expect(
-      document.querySelector('[data-testid="roster-row"][data-selected="true"]'),
-    ).not.toBeNull()
-    // the panel answers with the person, their standing and their roles -
-    // and with nothing that changes them: the one way on is their own page
-    const sheet = page.getByTestId('person-sheet')
-    await expect.element(sheet).toBeVisible()
-    await expect
-      .element(sheet.getByTestId('person-status'))
-      .toHaveAttribute('data-status', 'active')
-    await expect.element(sheet.getByText('审核员')).toBeVisible()
-    expect(sheet.getByRole('combobox').elements()).toHaveLength(0)
-    expect(sheet.getByRole('textbox').elements()).toHaveLength(0)
-  })
-
-  it('a deep link opens straight onto the person it names', async () => {
-    await renderScreen({
-      client: fakeClient(rosterStubs()),
-      route: `/admin/users?user=${USER_ID}`,
-      children: <UsersPage />,
-    })
-    // no clicks: the address alone opens the panel, on the row it names
-    await expect.element(page.getByTestId('person-sheet')).toBeVisible()
-    await vi.waitFor(() =>
-      expect(
-        document.querySelector('[data-testid="roster-row"][data-selected="true"]'),
-      ).not.toBeNull(),
-    )
-  })
-
-  // A link naming somebody who is not there opens onto saying so, with
-  // nothing to open further and a retry only where one could help.
-  it('says in the panel that the person a link names is not there', async () => {
-    await renderScreen({
-      client: fakeClient(rosterStubs({ getUser: () => Effect.fail(apiError('USER_NOT_FOUND')) })),
-      route: `/admin/users?user=${SECOND_USER_ID}`,
-      children: <UsersPage />,
-    })
-    const sheet = page.getByTestId('person-sheet')
-    await expect.element(sheet).toBeVisible()
-    const absent = sheet.getByTestId('person-sheet-absent')
-    await expect.element(absent).toBeInTheDocument()
-    expect(absent.element().querySelector('[data-state]')?.getAttribute('data-state')).toBe(
-      'missing',
-    )
-    expect(sheet.getByRole('link', { name: '查看详情' }).query()).toBeNull()
-    expect(sheet.getByRole('button', { name: '重试' }).query()).toBeNull()
+    await expect.poll(() => page.getByTestId('roster-row').elements().length).toBe(2)
+    expect(document.querySelector('[data-testid="roster-look"]')).toBeNull()
+    expect(document.querySelector('[data-testid="person-sheet"]')).toBeNull()
   })
 
   // Units that could not be read say so once, with another try, and never
@@ -866,7 +841,7 @@ describe('users workspace', () => {
       children: <UsersPage />,
     })
 
-    await expect.element(page.getByRole('button', { name: '速览张明远' })).toBeVisible()
+    await expect.poll(() => page.getByTestId('roster-row').elements().length).toBe(1)
     await vi.waitFor(() => expect(document.querySelector('[data-node-name="分部"]')).not.toBeNull())
     ;(document.querySelector('[data-node-name="分部"]') as HTMLElement).click()
     await vi.waitFor(() => expect(addressNow()).toContain(`anchor=${BRANCH_NODE_ID}`))

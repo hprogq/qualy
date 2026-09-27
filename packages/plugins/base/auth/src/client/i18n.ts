@@ -139,10 +139,6 @@ const moveConfirmMessage = defineMessage<{ name: string; from: string; to: strin
   defaultMessage:
     'Move {name} from {from} to {to}. Every authority that follows the unit follows them.',
 })
-const lookAtMessage = defineMessage<{ name: string }>()({
-  id: 'auth/users/look-at',
-  defaultMessage: 'Look at {name}',
-})
 const pageSummaryMessage = defineMessage<{ from: number; to: number; total: number }>()({
   id: 'auth/users/page-summary',
   defaultMessage: '{from}-{to} of {total}',
@@ -792,7 +788,6 @@ const i18n = definePluginMessages({
     },
     lastSignInLabel: { id: 'auth/users/last-sign-in', defaultMessage: 'Last sign-in' },
     personGoneTitle: { id: 'auth/person/gone-title', defaultMessage: 'This user can’t be found' },
-    personSheetTitle: { id: 'auth/person/sheet-title', defaultMessage: 'User' },
     personGone: {
       id: 'auth/person/gone',
       defaultMessage: 'Deleted, or outside what you can see',
@@ -826,14 +821,6 @@ const i18n = definePluginMessages({
     searchPeople: {
       id: 'auth/users/search-people',
       defaultMessage: 'Name or {businessNo}',
-    },
-    quickViewHint: {
-      id: 'auth/users/quick-view-hint',
-      defaultMessage: 'Their details, ways in and roles are changed on their own page',
-    },
-    grantCount: {
-      id: 'auth/users/grant-count',
-      defaultMessage: '{count, plural, =0 {no grants} one {# grant} other {# grants}}',
     },
     moveLabel: { id: 'auth/users/move', defaultMessage: 'Move' },
     movePick: { id: 'auth/users/move-pick', defaultMessage: 'Pick where they should stand' },
@@ -1121,17 +1108,12 @@ const i18n = definePluginMessages({
       id: 'auth/login-methods/enable-body',
       defaultMessage: 'It appears on the sign-in page at once, for the user types it admits.',
     },
-    personRolesConfined: {
-      id: 'auth/person/roles-confined',
-      defaultMessage: 'Confined to one object',
-    },
     unitChange: { id: 'auth/users/unit-change', defaultMessage: 'Change' },
     typeMembersTitle: { id: 'auth/user-types/members', defaultMessage: 'People of this type' },
     jumpOpen: { id: 'auth/users/jump-open', defaultMessage: 'Find a person' },
     jumpHint: jumpHintMessage,
     jumpFound: jumpFoundMessage,
     jumpNone: { id: 'auth/users/jump-none', defaultMessage: 'Nobody matches' },
-    lookAt: lookAtMessage,
     pageSummary: pageSummaryMessage,
     pagerLabel: { id: 'auth/users/pager', defaultMessage: 'Pages' },
     resizeTree: { id: 'auth/users/resize-tree', defaultMessage: 'Resize the unit list' },
