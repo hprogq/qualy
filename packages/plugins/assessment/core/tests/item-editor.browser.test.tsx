@@ -555,7 +555,7 @@ const open = (
             </Routes>
           ),
         }
-      : { routes: pages as never }),
+      : { routes: pages }),
     registry: {
       slots: {
         'assessment/calculator-editor': {
