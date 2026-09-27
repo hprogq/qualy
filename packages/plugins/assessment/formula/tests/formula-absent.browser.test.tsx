@@ -1,5 +1,6 @@
 import FormulaEditorPage from '../src/client/FormulaEditorPage.tsx'
 import TemplatePage from '../src/client/FormulaTemplatePage.tsx'
+import CalculatorEditor from '../src/client/CalculatorEditor.tsx'
 import { Effect } from 'effect'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
@@ -112,5 +113,52 @@ describe('a template the reader cannot open', () => {
     await expect.element(state()).toBeVisible()
     expect(seatOf()?.getAttribute('data-state')).toBe('missing')
     expect(asked).not.toHaveBeenCalled()
+  })
+})
+
+describe('a list of formulas to choose from that could not be read', () => {
+  // Said once, as a failure with another try - not as a failure above a
+  // sentence saying there are no formulas, which is the opposite of what
+  // the reader was told a line earlier.
+  it('says the reading failed, and not also that there are none', async () => {
+    await page.viewport(1280, 800)
+    let reachable = false
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+        assessmentFormula: {
+          listFormulaBindingOptions: () =>
+            reachable
+              ? Effect.succeed({ items: [], current: null, nextCursor: null })
+              : Effect.fail(apiError('SERVICE_UNAVAILABLE')),
+        },
+      }),
+      children: (
+        <CalculatorEditor
+          context={{
+            batchId: '11111111-1111-4111-8111-111111111111',
+            itemId: null,
+            calculator: { ref: 'formula@1', config: null },
+            amountPer: 'entry',
+            disabled: false,
+            onChange: () => {},
+            chooser: { commit: () => {}, close: () => {} },
+          }}
+        />
+      ),
+    })
+    const unreadable = page.getByTestId('formula-picker-unreadable')
+    await expect.element(unreadable, { timeout: 8_000 }).toBeVisible()
+    expect(
+      unreadable
+        .element()
+        .querySelector('[data-slot="resource-state"]')
+        ?.getAttribute('data-state'),
+    ).toBe('unavailable')
+    expect(page.getByTestId('formula-picker-empty').elements()).toHaveLength(0)
+    expect(page.getByTestId('feedback').elements()).toHaveLength(0)
+    reachable = true
+    await unreadable.getByRole('button', { name: '重试' }).click()
+    await expect.element(page.getByTestId('formula-picker-empty')).toBeVisible()
   })
 })

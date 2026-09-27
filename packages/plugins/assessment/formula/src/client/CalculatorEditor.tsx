@@ -8,11 +8,18 @@ import {
   SearchIcon,
   SearchXIcon,
 } from 'lucide-react'
-import { PageLink, useApi, useApiQuery, useRunApi, cursorPages } from '@qualy/web-runtime'
+import {
+  LoadFailure,
+  PageLink,
+  useApi,
+  useApiQuery,
+  useLoadFailure,
+  useRunApi,
+  cursorPages,
+} from '@qualy/web-runtime'
 import { useI18n, useList } from '@qualy/web-i18n'
 import { displayTitle, inputOrder, type InputSchema } from '@qualy/value-schema'
 import { Button } from '@qualy/ui/button'
-import { Feedback } from '@qualy/ui/admin'
 import { Input } from '@qualy/ui/input'
 import type { CalculatorEditorContext } from '@qualy/plugin-assessment/surfaces'
 import { formulaApi } from './api.ts'
@@ -286,7 +293,8 @@ function ParameterTags({ words, end = false }: { words: readonly string[]; end?:
 }
 
 export default function CalculatorEditor({ context }: { context: CalculatorEditorContext }) {
-  const { format, formatError, locale } = useI18n()
+  const { format, locale } = useI18n()
+  const loadFailure = useLoadFailure()
   const api = useApi(formulaApi)
   const query = useApiQuery(formulaApi)
   const runApi = useRunApi()
@@ -544,10 +552,20 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
         <span />
       </div>
       <div {...stylex.props(styles.list)}>
-        {versions.isError ? <Feedback message={formatError(versions.error)} /> : null}
         {versions.isPending ? (
           <div {...stylex.props(styles.blank)}>
             <span {...stylex.props(styles.blankHint)}>{format(m.bindingLoading)}</span>
+          </div>
+        ) : versions.isError && matching.length === 0 ? (
+          // the formulas could not be listed, which is not the same as there
+          // being none: one answer, and another try
+          <div data-testid="formula-picker-unreadable">
+            <LoadFailure
+              size="section"
+              failure={loadFailure.of(versions.error)}
+              onRetry={() => void versions.refetch()}
+              retrying={versions.isFetching}
+            />
           </div>
         ) : matching.length === 0 ? (
           <div
