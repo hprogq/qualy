@@ -6,7 +6,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { useApiQuery } from '@qualy/web-runtime'
+import { isRecordId, useApiQuery } from '@qualy/web-runtime'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { assessmentApi } from '../api.ts'
 import { rosterFiltered, rosterQueryOf, type RosterView } from './roster-view.ts'
@@ -161,6 +161,8 @@ export function useRosterWalk({
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
   const active = participantId !== ''
+  // an address that cannot name anybody names nobody the list could hold
+  const named = isRecordId(participantId)
   const optionsOf = (page: number, around?: string) =>
     query.assessment.listParticipantAccounts.queryOptions({
       params: { batchId },
@@ -296,7 +298,7 @@ export function useRosterWalk({
   const [missing, setMissing] = useState<string | null>(null)
   const [unasked, setUnasked] = useState<string | null>(null)
   const locate =
-    active && answered !== undefined && !stale && !anchor.isFetching && here === null
+    active && named && answered !== undefined && !stale && !anchor.isFetching && here === null
       ? `${person}|${String(anchor.dataUpdatedAt)}`
       : null
   useEffect(() => {
@@ -333,7 +335,10 @@ export function useRosterWalk({
     if (herePage !== undefined && herePage !== latest.current.page) latest.current.onPage(herePage)
   }, [herePage])
 
-  const off = here === null && missing !== null && missing.startsWith(`${person}|`)
+  const off =
+    here === null &&
+    ((active && !named && answered !== undefined && !stale) ||
+      (missing !== null && missing.startsWith(`${person}|`)))
   // settled either way: held, off, or asked about without an answer
   const placed = here !== null || off || (locate !== null && unasked === locate)
 

@@ -1878,6 +1878,21 @@ describe('the list beside an open account', () => {
       .poll(() => Math.max(...walkRows().map((row) => Number(row.dataset['position']))))
       .toBeGreaterThan(60)
   })
+
+  it('opens the first on Enter from an address that cannot name anybody', async () => {
+    await page.viewport(1280, 800)
+    const { asked, rendered } = shelled(
+      `/assessment/batches/${BATCH_ID}/results?participant=not-a-person`,
+    )
+    await rendered
+    await expect.element(page.getByTestId('roster-walk')).toHaveAttribute('data-total', '45')
+    // off the list, as somebody the list never held is, and never looked for
+    await expect.element(page.getByTestId('roster-neighbors')).toHaveAttribute('data-off', 'true')
+    expect(asked.some((one) => one.query?.['around'] !== undefined)).toBe(false)
+    await page.getByTestId('roster-walk').getByRole('searchbox').click()
+    await userEvent.keyboard('{Enter}')
+    await expect.poll(() => addressNow()).toContain(`participant=${personId(1)}`)
+  })
 })
 
 // The list beside an account as a reader works it: the open person told
