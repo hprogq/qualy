@@ -56,6 +56,9 @@ const styles = stylex.create({
     borderBottomColor: tokens.divider,
     flexWrap: { default: null, [breakpoints.phone]: 'wrap' },
   },
+  // the controls take a line of their own under the title when the head is
+  // too short for both, rather than squeezing the title's note
+  cardHeadWrap: { flexWrap: 'wrap', rowGap: 8 },
   cardTitleStack: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 1 },
   cardTitle: { flexShrink: 0, margin: 0, fontSize: 13, lineHeight: 1.4, fontWeight: 600 },
   cardNote: {
@@ -518,6 +521,7 @@ export function CardHead({
   title,
   note,
   sub,
+  wrap = false,
   children,
 }: {
   title: ReactNode
@@ -525,11 +529,17 @@ export function CardHead({
   note?: ReactNode
   /** said under the title instead, where the title is a name and this is its scope */
   sub?: ReactNode
+  /**
+   * The controls may go under the title, on a line of their own, when the
+   * head is too short for both; a control that asks for the whole line
+   * (`flexBasis: 100%`) always does.
+   */
+  wrap?: boolean
   /** controls at the far end */
   children?: ReactNode
 }) {
   return (
-    <div {...stylex.props(styles.cardHead)}>
+    <div {...stylex.props(styles.cardHead, wrap && styles.cardHeadWrap)}>
       {sub === undefined ? (
         <h2 {...stylex.props(styles.cardTitle)}>{title}</h2>
       ) : (

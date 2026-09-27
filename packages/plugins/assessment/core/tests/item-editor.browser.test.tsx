@@ -1,7 +1,8 @@
 import ItemSettingsPage from '../src/client/items/ItemSettingsPage.tsx'
+import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
 import { MAX_ENTRIES_PER_ITEM } from '../src/api.ts'
 import { lazy } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link, Route, Routes, useNavigate } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
@@ -340,6 +341,25 @@ const storedAfter = (
 /** what the round's alerts say when every route reaches everybody */
 const NOBODY_UNREACHABLE = { routes: [], cannotSubmit: 0, cannotAppeal: 0 }
 
+/** what the workspace shell draws its rail from: the round's own pages */
+const SHELL_COLLECTIONS = {
+  'app-shell/navigation-groups': [],
+  'app-shell/navigation-primary': [],
+  'workspace-shell/navigation': [
+    ['assessment/batch-items', '项目配置', 10],
+    ['assessment/batch-access', '人员权限', 20],
+  ].map(([pageId, label, order]) => ({
+    id: `${pageId}/rail`,
+    label: { kind: 'literal', value: label },
+    target: {
+      kind: 'page',
+      pageId,
+      path: PAGES.find((one) => one.id === pageId)!.path,
+    },
+    order,
+  })),
+}
+
 const open = (
   had: {
     items?: readonly unknown[]
@@ -385,11 +405,36 @@ const open = (
     slowReads?: number
     /** the questions whose current route finds some of the roster nowhere */
     reach?: readonly unknown[]
+    /** inside the workspace shell the product draws, its rail open */
+    inShell?: boolean
   } = {},
 ) => {
   // what the server holds, so a save is read back as it was stored
   const holding = [...((had.items ?? []) as Record<string, any>[])]
   let reads = 0
+  const pages = [
+    {
+      path: '/assessment/batches/:batchId/items',
+      element: (
+        <>
+          <ItemSettingsPage />
+          {had.withBack === true && <BrowserBack />}
+          {had.elsewhere === true && (
+            <Link to={`/assessment/batches/${BATCH_ID}/access`}>elsewhere</Link>
+          )}
+        </>
+      ),
+    },
+    ...(had.elsewhere === true
+      ? [
+          {
+            path: '/assessment/batches/:batchId/access',
+            element: <p data-testid="elsewhere">elsewhere</p>,
+          },
+        ]
+      : []),
+  ]
+  const surfaces = had.surfaces ?? CALCULATOR_SURFACES
   return renderScreen({
     ...(had.locale === undefined ? {} : { locale: had.locale }),
     client: fakeClient({
@@ -398,7 +443,11 @@ const open = (
           Effect.succeed({
             ...emptyManifest(),
             pages: PAGES,
-            ...(had.surfaces ?? CALCULATOR_SURFACES),
+            ...surfaces,
+            collections: {
+              ...surfaces.collections,
+              ...(had.inShell === true ? SHELL_COLLECTIONS : {}),
+            },
           }),
       },
       assessment: {
@@ -483,28 +532,19 @@ const open = (
         listFormulaBindingOptions: () => Effect.succeed(had.formulas ?? bindingOptions()),
       },
     }),
-    routes: [
-      {
-        path: '/assessment/batches/:batchId/items',
-        element: (
-          <>
-            <ItemSettingsPage />
-            {had.withBack === true && <BrowserBack />}
-            {had.elsewhere === true && (
-              <Link to={`/assessment/batches/${BATCH_ID}/access`}>elsewhere</Link>
-            )}
-          </>
-        ),
-      },
-      ...(had.elsewhere === true
-        ? [
-            {
-              path: '/assessment/batches/:batchId/access',
-              element: <p data-testid="elsewhere">elsewhere</p>,
-            },
-          ]
-        : []),
-    ] as never,
+    ...(had.inShell === true
+      ? {
+          children: (
+            <Routes>
+              <Route element={<WorkspaceShell />}>
+                {pages.map((one) => (
+                  <Route key={one.path} path={one.path} element={one.element} />
+                ))}
+              </Route>
+            </Routes>
+          ),
+        }
+      : { routes: pages as never }),
     registry: {
       slots: {
         'assessment/calculator-editor': {
@@ -2267,6 +2307,49 @@ describe('the structure', () => {
       ],
       items,
     })
+
+  // In English between 768 and 1024 the head could not hold the paper's
+  // name, its limits and the tools on one line: the limits were cut short
+  // and the way to add something dropped under the search field.
+  for (const width of [834, 1024]) {
+    it(`keeps the paper's limits whole and its tools on one line, in English at ${width}`, async () => {
+      await page.viewport(width, 900)
+      try {
+        await open({
+          groups: [paper, section(MORAL, PAPER_ID, '德育素质', 0)],
+          items: [question('66666666-6666-4666-8666-6666666666d1', '学生干部任职', MORAL)],
+          locale: 'en-US',
+          inShell: width >= 1024,
+        })
+        await vi.waitFor(() => expect(shown()).toHaveLength(2))
+        const search = page.getByRole('searchbox').element().getBoundingClientRect()
+        const add = page
+          .getByRole('button', { name: 'New', exact: true })
+          .element()
+          .getBoundingClientRect()
+        const status = page.getByRole('combobox', { name: 'Status' }).element()
+        expect(Math.abs(add.top - search.top)).toBeLessThanOrEqual(4)
+        expect(Math.abs(status.getBoundingClientRect().top - search.top)).toBeLessThanOrEqual(4)
+        expect(add.right).toBeLessThanOrEqual(width)
+        // the paper's limits, whole
+        const name = [...document.querySelectorAll('h2')].find(
+          (one) => one.textContent === '综合素质测评',
+        )!
+        const limits = name.nextElementSibling as HTMLElement
+        expect(limits.scrollWidth).toBeLessThanOrEqual(limits.clientWidth + 1)
+        // and every column's name on the strip's one line
+        for (const name of ['Score per entry', 'Entry limit', 'Review workflow']) {
+          const cell = [...document.querySelectorAll<HTMLElement>('span')].find(
+            (one) => one.textContent === name && one.checkVisibility(),
+          )
+          if (cell === undefined) continue
+          expect(cell.getBoundingClientRect().height).toBeLessThan(20)
+        }
+      } finally {
+        await page.viewport(1280, 900)
+      }
+    })
+  }
 
   it('folds a section away with everything in it, and back', async () => {
     await withSections([

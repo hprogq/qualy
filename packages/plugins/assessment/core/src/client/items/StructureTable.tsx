@@ -50,22 +50,30 @@ const MIDDLING = '@container (min-width: 620px) and (max-width: 899.98px)'
 /** the columns every row lines up against, where there is room for all of them */
 const COLUMNS = 'minmax(0, 1fr) 5.25rem 4.75rem 9rem 8rem 5.5rem 4.5rem'
 /** less room: the way a question is filed goes first, since it is rarely what differs */
-const COLUMNS_MIDDLING = 'minmax(0, 1fr) 4.75rem 4.5rem 7.5rem 5rem 4.5rem'
+const COLUMNS_MIDDLING = 'minmax(0, 1fr) 5.25rem 4.5rem 7.5rem 5rem 4.5rem'
 const INDENT = 20
 const INDENT_NARROW = 12
 
 const styles = stylex.create({
   menuColumn: { width: 176 },
-  // Narrow, the head holds the paper's name and a count, then its tools on
-  // a line of their own: a search field shares a phone's width with nothing.
+  // Short of the room for every column, the head holds the paper's name and
+  // what it is worth, then its tools on a line of their own, the search
+  // taking what the line has to spare: beside the name they cut its limits
+  // short and pushed the way to add something under the search. A search
+  // field shares a phone's width with nothing.
   tools: {
     display: 'flex',
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: 8,
+    flexBasis: { default: 'auto', [MIDDLING]: '100%', [STACKED]: '100%' },
     width: { default: null, [breakpoints.phone]: '100%' },
   },
-  search: { width: { default: '14rem', [breakpoints.phone]: '100%' } },
+  search: {
+    width: { default: '14rem', [breakpoints.phone]: '100%' },
+    minWidth: 0,
+    flexGrow: { default: null, [MIDDLING]: 1 },
+  },
   statusChoice: {
     width: { default: 112, [breakpoints.phone]: 'auto' },
     minWidth: 0,
@@ -97,6 +105,8 @@ const styles = stylex.create({
     fontWeight: 500,
     color: tokens.mutedForeground,
   },
+  // a column's name stays on the strip's one line
+  headWord: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   end: { textAlign: 'right' },
   row: {
     display: 'grid',
@@ -472,7 +482,7 @@ export function StructureTable({
 
   return (
     <Card data-testid="structure-table" xstyle={styles.card}>
-      <CardHead title={title} note={note}>
+      <CardHead title={title} note={note} wrap>
         <span {...stylex.props(styles.tools)}>
           <SearchField
             name="structure-search"
@@ -521,12 +531,14 @@ export function StructureTable({
       {summary}
 
       <div {...stylex.props(styles.head)}>
-        <span>{format(m.structureColName)}</span>
-        <span {...stylex.props(styles.end)}>{format(m.structureColEach)}</span>
-        <span {...stylex.props(styles.end)}>{format(m.structureColMost)}</span>
-        <span {...stylex.props(styles.cellSource)}>{format(m.structureColSource)}</span>
-        <span>{format(m.structureColChain)}</span>
-        <span>{format(m.structureColStatus)}</span>
+        <span {...stylex.props(styles.headWord)}>{format(m.structureColName)}</span>
+        <span {...stylex.props(styles.headWord, styles.end)}>{format(m.structureColEach)}</span>
+        <span {...stylex.props(styles.headWord, styles.end)}>{format(m.structureColMost)}</span>
+        <span {...stylex.props(styles.headWord, styles.cellSource)}>
+          {format(m.structureColSource)}
+        </span>
+        <span {...stylex.props(styles.headWord)}>{format(m.structureColChain)}</span>
+        <span {...stylex.props(styles.headWord)}>{format(m.structureColStatus)}</span>
         <span />
       </div>
 
