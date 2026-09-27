@@ -571,14 +571,30 @@ export function ItemPane({
         )?.key ??
         ended[0]?.key ??
         'all')
-  // Where the list opens is kept as the reader's filter from then on:
-  // reading the news that chose it must not move the list under the drawer
-  // the reader opened it in.
-  const [chip, setChip] = useState<ChipKey>(landing)
-  // a chosen filter that has nothing left under it gives way to where the
-  // list lands
-  const active = (counts.get(chip) ?? 0) > 0 ? chip : landing
-  const test = chips.find((one) => one.key === active)?.test ?? (() => true)
+  // Where the list opened is held for as long as nothing live comes under
+  // the question: reading the news that chose it must not move the list
+  // under the drawer the reader opened it in, but a claim that starts - the
+  // reader's own new draft, a record the office adds - takes the list back
+  // to "all", where it is.
+  const [landed] = useState<ChipKey>(landing)
+  // The filter the reader picked, and the claims there were when they
+  // picked it. It holds until nothing is left under it, or until a claim
+  // new since then would be kept out of sight by it: a claim just filed is
+  // never hidden behind a filter chosen before it existed.
+  const [chosen, setChosen] = useState<{
+    readonly key: ChipKey
+    readonly among: ReadonlySet<string>
+  } | null>(null)
+  const choose = (key: ChipKey) =>
+    setChosen({ key, among: new Set(entries.map((entry) => entry.id)) })
+  const testOf = (key: ChipKey) => chips.find((one) => one.key === key)?.test ?? (() => true)
+  const nonEmpty = (key: ChipKey) => (counts.get(key) ?? 0) > 0
+  const kept =
+    chosen !== null &&
+    nonEmpty(chosen.key) &&
+    !entries.some((entry) => !chosen.among.has(entry.id) && !testOf(chosen.key)(entry))
+  const active: ChipKey = kept ? chosen.key : live > 0 ? 'all' : nonEmpty(landed) ? landed : landing
+  const test = testOf(active)
   // a filter holding news the list in view leaves out says so, so the news
   // under a filter the reader is not in is never out of sight
   const holdsNews = (holds: (entry: EntryDto) => boolean) =>
@@ -713,7 +729,7 @@ export function ItemPane({
               data-count={count}
               data-unread={(!on && holdsNews(one.test)) || undefined}
               onClick={() => {
-                setChip(one.key)
+                choose(one.key)
                 setLimit(PAGE)
               }}
               {...stylex.props(
@@ -992,7 +1008,7 @@ export function ItemPane({
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  setChip('all')
+                  setChosen(null)
                   setSearch('')
                 }}
               >

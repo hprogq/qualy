@@ -1642,6 +1642,85 @@ describe('what a question’s row says at a glance', () => {
     expect(pressed()).toBe('revoked')
   })
 
+  // Where the list opened holds only while nothing live stands under the
+  // question: the reader's own new draft, filed from under a claim they gave
+  // up, is in the list they come back to, not behind a filter.
+  it('goes back to every live claim once one starts under a question that had none', async () => {
+    await page.viewport(1440, 900)
+    const filed: unknown[] = [claim(1, itemId(1), 'voided')]
+    await workspace({
+      route: `${base}?open=${itemId(1)}`,
+      items: [question(1, '品德题目 1', BAND_A)],
+      entries: filed,
+      stubs: {
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [...filed],
+            nextCursor: null,
+            attention: { unreadEntryIds: [] },
+          }),
+      },
+    })
+    const pressed = () =>
+      document.querySelector('[data-chip][aria-pressed="true"]')?.getAttribute('data-chip')
+    await expect.poll(pressed).toBe('abandoned')
+    const listed = () => rows().map((row) => row.getAttribute('data-entry'))
+
+    // read again with nothing new: the list stays where it opened
+    const refresh = page.getByRole('button', { name: zhCN['assessment/entry/refresh'] })
+    await refresh.click()
+    await expect.poll(() => refresh.element().hasAttribute('disabled')).toBe(false)
+    expect(pressed()).toBe('abandoned')
+
+    // a draft starts under it: every live claim, the new one among them
+    filed.push(claim(2, itemId(1), 'draft'))
+    await refresh.click()
+    await expect.poll(pressed).toBe('all')
+    await expect.poll(listed).toEqual([entryId(2)])
+    // the one given up is still a filter away
+    expect(document.querySelector('[data-chip="abandoned"]')?.getAttribute('data-count')).toBe('1')
+  })
+
+  // A filter the reader chose holds while the claims under the question are
+  // the ones they chose it among; one that starts after it and would be kept
+  // out of sight by it takes the list back to every live claim.
+  it('never keeps a claim that starts after a filter was chosen behind that filter', async () => {
+    await page.viewport(1440, 900)
+    const filed: unknown[] = [claim(1, itemId(1), 'in_review'), claim(2, itemId(1), 'voided')]
+    await workspace({
+      route: `${base}?open=${itemId(1)}`,
+      items: [question(1, '品德题目 1', BAND_A)],
+      entries: filed,
+      stubs: {
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [...filed],
+            nextCursor: null,
+            attention: { unreadEntryIds: [] },
+          }),
+      },
+    })
+    const pressed = () =>
+      document.querySelector('[data-chip][aria-pressed="true"]')?.getAttribute('data-chip')
+    await expect.poll(pressed).toBe('all')
+    await userEvent.click(document.querySelector('[data-chip="abandoned"]')!)
+    await expect.poll(pressed).toBe('abandoned')
+
+    const refresh = page.getByRole('button', { name: zhCN['assessment/entry/refresh'] })
+    await refresh.click()
+    await expect.poll(() => refresh.element().hasAttribute('disabled')).toBe(false)
+    expect(pressed()).toBe('abandoned')
+
+    filed.push(claim(3, itemId(1), 'draft'))
+    await refresh.click()
+    await expect.poll(pressed).toBe('all')
+    await expect
+      .poll(() => rows().map((row) => row.getAttribute('data-entry')))
+      .toEqual([entryId(3), entryId(1)])
+  })
+
   // News is never out of sight: a narrower view of the structure, or a
   // filter over the claims, that leaves some out says so on the key that
   // brings them back - to the eye with a dot, to a screen reader in words.
