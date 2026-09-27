@@ -9,7 +9,7 @@ import {
 } from '../src/client/local-draft.ts'
 import { monaco } from '@qualy/plugin-assessment-formula/client/monaco-setup'
 import { Effect } from 'effect'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema'
 import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
@@ -179,6 +179,14 @@ const typeInto = (model: monaco.editor.ITextModel, text: string) => {
 
 const drawn = (model: monaco.editor.ITextModel) =>
   monaco.editor.getEditors().some((editor) => editor.getModel() === model)
+
+// A test that edits and unmounts inside the save's wait leaves its edits
+// kept in this browser - which is what leaving the page is meant to do - and
+// the next test would open onto them. Readwrite transactions on one store run
+// in the order they were made, so this runs after any such keep.
+beforeEach(async () => {
+  await forgetLocalDraft(FN_ID)
+})
 
 afterEach(async () => {
   await page.viewport(1280, 800)
