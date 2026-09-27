@@ -236,36 +236,55 @@ function LifecycleRow({
   )
 }
 
+/** the longest label the reviewer's dialog is offered */
+const REASON_MAX = 100
+
+/**
+ * A list with the label still being typed into it, as the form would save
+ * it: typed and not yet added is still written down, and saving keeps it
+ * rather than leaving it behind in the box.
+ */
+const withTyped = (reasons: readonly string[], typed: string): readonly string[] => {
+  const label = typed.trim()
+  return label === '' || reasons.includes(label) ? reasons : [...reasons, label]
+}
+
 /**
  * One list of pickable labels: chips with a remove, and a box to add one.
  * Order is presentation order in the reviewer's dialog; duplicates fold.
+ *
+ * What is typed into the box is held by the form, not here: it is part of
+ * what the form has not saved yet.
  */
 function ReasonList({
   id,
   reasons,
+  typed,
   disabled,
   emptyNote,
   defaults,
   onChange,
+  onTyped,
 }: {
   id: string
   reasons: readonly string[]
+  /** the label being typed, not yet added */
+  typed: string
   disabled: boolean
   /** what an empty list means for the reviewer, said instead of nothing */
   emptyNote: string
   /** the system's list, offered back whenever this one has drifted from it */
   defaults: readonly string[]
   onChange: (next: readonly string[]) => void
+  onTyped: (next: string) => void
 }) {
   const { format } = useI18n()
-  const [draft, setDraft] = useState('')
   // where a dragged label would land, marked while it hovers
   const [drop, setDrop] = useState<{ reason: string; edge: 'before' | 'after' } | null>(null)
   const add = () => {
-    const label = draft.trim()
-    if (label === '') return
-    if (!reasons.includes(label)) onChange([...reasons, label])
-    setDraft('')
+    if (typed.trim() === '') return
+    onChange(withTyped(reasons, typed))
+    onTyped('')
   }
   const edgeOf = (event: React.DragEvent) => {
     const box = event.currentTarget.getBoundingClientRect()
@@ -345,10 +364,11 @@ function ReasonList({
         <Input
           id={id}
           className={stylex.props(styles.addInput).className}
-          value={draft}
+          value={typed}
+          maxLength={REASON_MAX}
           disabled={disabled}
           placeholder={format(m.settingsReasonPlaceholder)}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => onTyped(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
               event.preventDefault()
@@ -360,7 +380,7 @@ function ReasonList({
           type="button"
           variant="outline"
           size="sm"
-          disabled={disabled || draft.trim() === ''}
+          disabled={disabled || typed.trim() === ''}
           onClick={add}
         >
           <PlusIcon aria-hidden />
@@ -402,6 +422,11 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
   const [escalateReasons, setEscalateReasons] = useState<readonly string[]>(
     batch.reviewReasons.escalate,
   )
+  const [rejectTyped, setRejectTyped] = useState('')
+  const [escalateTyped, setEscalateTyped] = useState('')
+  // the lists as a save would send them, with a label typed and not added
+  const rejectToSave = withTyped(rejectReasons, rejectTyped)
+  const escalateToSave = withTyped(escalateReasons, escalateTyped)
   const [failure, setFailure] = useState<string | null>(null)
   const [confirming, setConfirming] = useState<'archive' | 'delete' | null>(null)
   const [reopening, setReopening] = useState(false)
@@ -414,6 +439,8 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
     setRange(pickedOf(batch.materialRange))
     setRejectReasons(batch.reviewReasons.reject)
     setEscalateReasons(batch.reviewReasons.escalate)
+    setRejectTyped('')
+    setEscalateTyped('')
   }, [batch])
 
   const settle = () => queryClient.invalidateQueries({ queryKey: query.assessment.key() })
@@ -437,7 +464,7 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
             // the last day picked is inside the window, so the stored end
             // is the day after it
             materialRange: { start: range.start, end: dayAfter(range.end) },
-            reviewReasons: { reject: rejectReasons, escalate: escalateReasons },
+            reviewReasons: { reject: rejectToSave, escalate: escalateToSave },
           },
         }),
       ),
@@ -458,8 +485,8 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
     description === (batch.descriptionMd ?? '') &&
     range.start === shownRange.start &&
     range.end === shownRange.end &&
-    JSON.stringify(rejectReasons) === JSON.stringify(batch.reviewReasons.reject) &&
-    JSON.stringify(escalateReasons) === JSON.stringify(batch.reviewReasons.escalate)
+    JSON.stringify(rejectToSave) === JSON.stringify(batch.reviewReasons.reject) &&
+    JSON.stringify(escalateToSave) === JSON.stringify(batch.reviewReasons.escalate)
 
   // Leaving with the form changed asks first. Saving on the way out is
   // offered only while the form can be saved: a window picked halfway has
@@ -598,10 +625,12 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
                 <ReasonList
                   id={id}
                   reasons={rejectReasons}
+                  typed={rejectTyped}
                   disabled={!editable}
                   emptyNote={format(m.settingsRejectReasonsNone)}
                   defaults={DEFAULT_REVIEW_REASONS.reject}
                   onChange={setRejectReasons}
+                  onTyped={setRejectTyped}
                 />
               )}
             </Field>
@@ -610,10 +639,12 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
                 <ReasonList
                   id={id}
                   reasons={escalateReasons}
+                  typed={escalateTyped}
                   disabled={!editable}
                   emptyNote={format(m.settingsEscalateReasonsNone)}
                   defaults={DEFAULT_REVIEW_REASONS.escalate}
                   onChange={setEscalateReasons}
+                  onTyped={setEscalateTyped}
                 />
               )}
             </Field>

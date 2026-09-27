@@ -607,6 +607,25 @@ describe('the batch settings, being edited', () => {
     await expect.element(page.getByTestId('elsewhere')).toBeVisible()
   })
 
+  it('counts a reason typed and not yet added, and keeps it when saving on the way out', async () => {
+    await page.viewport(1280, 800)
+    const updateBatch = vi.fn((_request: Request) => Effect.succeed({ batch: batch() }))
+    await screen({ updateBatch }, `/assessment/batches/${BATCH_ID}/settings`)
+
+    // typed into the box, the add never pressed
+    await page.getByLabelText('退回事由').fill('证明材料缺少盖章')
+    expect(held()).toBe(true)
+    await page.getByRole('link', { name: 'elsewhere' }).click()
+    await expect.element(page.getByRole('alertdialog')).toBeVisible()
+
+    await page.getByRole('alertdialog').getByRole('button', { name: '保存后离开' }).click()
+    await vi.waitFor(() => expect(updateBatch).toHaveBeenCalledTimes(1))
+    expect(updateBatch.mock.calls[0]![0].payload).toMatchObject({
+      reviewReasons: { reject: ['证明材料缺少盖章'], escalate: [] },
+    })
+    await expect.element(page.getByTestId('elsewhere')).toBeVisible()
+  })
+
   it('lets the reader go without the changes', async () => {
     await page.viewport(1280, 800)
     const updateBatch = vi.fn((_request: Request) => Effect.succeed({ batch: batch() }))
