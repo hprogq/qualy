@@ -363,15 +363,22 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
           GRANT_NODE_NOT_FOUND: () => Effect.succeed([]),
         }),
         // the port keeps its four words: a unit or a person out of service
-        // is said as the person's not fitting, as it always was there
+        // is said as the person's not fitting, as it always was there, and
+        // an office closed to new grants was never among its candidates
         Effect.map((candidates) =>
-          candidates.map((candidate) => ({
-            ...candidate,
-            refusal:
-              candidate.refusal === 'org-type' || candidate.refusal === 'person-disabled'
-                ? ('user-type' as const)
-                : candidate.refusal,
-          })),
+          candidates
+            .filter((candidate) => candidate.assignable)
+            .map((candidate) => ({
+              ...candidate,
+              refusal:
+                candidate.refusal === 'org-type' || candidate.refusal === 'person-disabled'
+                  ? ('user-type' as const)
+                  : // only an office closed to new grants says it, and those
+                    // were left out above
+                    candidate.refusal === 'closed'
+                    ? ('unavailable' as const)
+                    : candidate.refusal,
+            })),
         ),
       )
     }),
@@ -819,8 +826,9 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
             })),
           // the offices the reader could fill, that do not fit this person
           // or this place, each with why, and the ones the reader holds
-          // without being the one to fill them; an office neither held nor
-          // theirs to fill is no part of their question and is left out
+          // without being the one to fill them or that are closed to new
+          // grants; an office neither held nor theirs to fill is no part of
+          // their question and is left out
           refused: considered.flatMap((role) =>
             role.refusal === null || (role.refusal === 'authority' && !role.held)
               ? []

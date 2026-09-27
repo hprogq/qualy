@@ -241,7 +241,9 @@ export function GrantRoleDialog({
               ? m.refusedSelfEscalation
               : refusal === 'authority'
                 ? m.refusedAuthority
-                : m.refusedUnavailable,
+                : refusal === 'closed'
+                  ? m.refusedClosed
+                  : m.refusedUnavailable,
     )
   const said = {
     'person-disabled': m.grantNonePersonDisabled,

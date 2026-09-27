@@ -23,6 +23,7 @@ import type { ActivePermission } from '@qualy/rbac-contract'
 import { serviceLayer as auditLayer } from '@qualy/plugin-audit/server'
 import { entities as auditEntities } from '@qualy/plugin-audit/db'
 import { AuditActionCatalog } from '@qualy/audit-contract/effect'
+import { Rbac } from '@qualy/rbac-contract/effect'
 import { compileActionCatalog } from '@qualy/audit-contract/plugin'
 import { entities as rbacEntities } from '../src/db/entities.ts'
 import { accessApiGroup } from '../src/api.ts'
@@ -128,14 +129,19 @@ const seed = (url: string) =>
             on conflict (code) do update set code = excluded.code returning id`),
           (result) => one<{ id: string }>(result).id,
         )
-      const role = (code: string, kind: 'org' | 'tenant', permissions: readonly string[]) =>
+      const role = (
+        code: string,
+        kind: 'org' | 'tenant',
+        permissions: readonly string[],
+        assignable = true,
+      ) =>
         Effect.gen(function* () {
           const created = one<{ id: string }>(
             yield* runSql(sql`
               insert into roles (tenant_id, code, name, kind, status, permission_mode,
-                                 eligibility_mode, anchor_mode)
+                                 eligibility_mode, anchor_mode, assignable)
               values (${tenant}, ${code}, ${code}, ${kind}, 'active', 'explicit', 'unrestricted',
-                      ${kind === 'org' ? 'unrestricted' : null})
+                      ${kind === 'org' ? 'unrestricted' : null}, ${assignable})
               returning id`),
           ).id
           for (const id of permissions) {
@@ -152,10 +158,16 @@ const seed = (url: string) =>
       const collegeAdmin = yield* role('college-admin', 'org', [grantManage, tree])
       const counsellor = yield* role('counsellor', 'org', [tree])
       yield* role('foreign', 'org', [tree])
+      // offices closed to new grants: one the dean may appoint, one the dean
+      // holds, and one that is none of the dean's business
+      const retired = yield* role('retired', 'org', [tree], false)
+      const emeritus = yield* role('emeritus', 'org', [tree], false)
+      yield* role('shelved', 'org', [tree], false)
       const tenantDesk = yield* role('tenant-desk', 'tenant', [tenantGrantManage])
       yield* runSql(sql`
         insert into role_grant_rules (tenant_id, granter_role_id, target_role_id)
-        values (${tenant}, ${collegeAdmin}, ${counsellor})`)
+        values (${tenant}, ${collegeAdmin}, ${counsellor}),
+               (${tenant}, ${collegeAdmin}, ${retired})`)
       // the tenant's administrator role, which only its holders may give
       const administrator = one<{ id: string }>(
         yield* runSql(sql`
@@ -177,6 +189,7 @@ const seed = (url: string) =>
       yield* runSql(sql`
         insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
         values (${tenant}, ${dean}, ${collegeAdmin}, ${root}, 'subtree'),
+               (${tenant}, ${dean}, ${emeritus}, ${root}, 'subtree'),
                (${tenant}, ${clerk}, ${collegeAdmin}, ${child}, 'self')`)
       yield* runSql(sql`
         insert into role_grants (tenant_id, user_id, role_id)
@@ -233,10 +246,14 @@ describe.runIf(postgresAvailable)('the grant form, as served', () => {
       expect(body.reach).toBe('within')
       expect(body.roles.map((role) => role.code)).toEqual(['counsellor'])
       // the dean's own office is one they will look for, and is said to be
-      // beyond them; an office they neither hold nor fill is no part of it
-      expect(body.refused).toEqual([
-        expect.objectContaining({ code: 'college-admin', refusal: 'authority' }),
-      ])
+      // beyond them; an office closed to new grants is said to be closed to
+      // whoever holds or appoints it; an office they neither hold nor fill
+      // is no part of it, closed or not
+      expect(Object.fromEntries(body.refused.map((role) => [role.code, role.refusal]))).toEqual({
+        'college-admin': 'authority',
+        retired: 'closed',
+        emeritus: 'closed',
+      })
     } finally {
       await letGo()
       await db.dispose()
@@ -300,6 +317,36 @@ describe.runIf(postgresAvailable)('the grant form, as served', () => {
       expect(insider.body).toMatchObject({ _tag: 'GRANT_USER_NOT_FOUND' })
     } finally {
       await letGo()
+      await db.dispose()
+    }
+  })
+
+  // The form names an office closed to new grants to whoever holds or
+  // appoints it; the port other plugins pick roles through never offered one
+  // and still does not.
+  it('keeps offices closed to new grants out of the port other plugins ask', async () => {
+    const db = await createTestContext('rbac-grantable-port-closed')
+    try {
+      const f = ok(await seed(db.url))
+      const offered = ok(
+        await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const rbac = yield* Rbac
+            return yield* rbac.listGrantableRoles({
+              tenantId: f.tenant,
+              actor: { tenantId: f.tenant, userId: f.dean, sessionId: 'probe' },
+              userId: f.li,
+              orgNodeId: f.child,
+              coverage: 'self',
+            })
+          }).pipe(Effect.provide(stack(db.url))),
+        ),
+      )
+      const codes = offered.map((role) => role.code)
+      expect(codes).toContain('counsellor')
+      expect(codes).not.toContain('retired')
+      expect(codes).not.toContain('emeritus')
+    } finally {
       await db.dispose()
     }
   })

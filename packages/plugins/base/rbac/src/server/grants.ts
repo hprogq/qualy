@@ -109,15 +109,17 @@ export interface GrantScope {
 /**
  * Why a role cannot be given here, in words a screen can act on.
  *
- * `authority` is the caller's: the office is not theirs to fill. Every other
- * one is about this person or this place, for an office that is - which is
- * what lets a form show those and leave the rest of the catalog out.
+ * `authority` is the caller's: the office is not theirs to fill. `closed` is
+ * the office's own: nobody may be newly given it. Every other one is about
+ * this person or this place, for an office that is - which is what lets a
+ * form show those and leave the rest of the catalog out.
  */
 export type RoleRefusal =
   | 'user-type'
   | 'org-type'
   | 'person-disabled'
   | 'authority'
+  | 'closed'
   | 'self-escalation'
   | 'unavailable'
 
@@ -1000,9 +1002,11 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
           ? 'person-disabled'
           : reason === 'user-type'
             ? 'user-type'
-            : // not assignable, or of the other kind: candidates are neither,
-              // so this is a role that changed under the probe
-              'unavailable'
+            : reason === 'role-unassignable'
+              ? 'closed'
+              : // of the other kind: candidates are not, so this is a role
+                // that changed under the probe
+                'unavailable'
       : tag === 'ROLE_NOT_FOUND'
         ? 'unavailable'
         : // only a self-grant can raise it now, and "this would grow you" is
@@ -1043,6 +1047,8 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
       held: boolean
       /** the canonical administrator: everything the tenant can grant, at once */
       administrator: boolean
+      /** open to new grants at all; a closed office is never offered */
+      assignable: boolean
     }[],
     GrantUserNotFound | GrantNodeNotFound,
     Orm
@@ -1063,8 +1069,10 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
       if (!there) return yield* new GrantNodeNotFound()
     }
     const wantedKind = request.target.kind === 'tenant' ? 'tenant' : 'org'
+    // an office closed to new grants is still one somebody holding or
+    // appointing it will look for, so it is considered and said to be closed
     const candidates = (yield* rolesOfTenant(tenantId).pipe(Effect.orDie)).filter(
-      (role) => role.kind === wantedKind && role.status === 'active' && role.assignable,
+      (role) => role.kind === wantedKind && role.status === 'active',
     )
     const mine = yield* heldRoleIds(tenantId, actor.userId).pipe(Effect.orDie)
     const described = (role: (typeof candidates)[number]) => ({
@@ -1074,6 +1082,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
       kind: role.kind,
       held: mine.has(role.id),
       administrator: isCanonicalTenantAdmin(role),
+      assignable: role.assignable,
     })
     // Asked once, because it does not depend on the role: administering
     // grants of this reach at this place is the same question for every
@@ -1097,6 +1106,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
       refusal: RoleRefusal | null
       held: boolean
       administrator: boolean
+      assignable: boolean
     }[] = []
     for (const role of candidates) {
       const verdict = yield* transaction(
@@ -1154,7 +1164,15 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
         ),
         Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
       )
-      offered.push({ ...described(role), refusal: verdict === true ? null : verdict })
+      // An office closed to new grants is closed whoever asks: to its holder
+      // that is the reason worth saying, before whether they may appoint it.
+      const refusal =
+        verdict === true
+          ? null
+          : verdict === 'authority' && !role.assignable && mine.has(role.id)
+            ? ('closed' as const)
+            : verdict
+      offered.push({ ...described(role), refusal })
     }
     return offered
   })

@@ -443,6 +443,26 @@ describe('the grants of one person', () => {
     await expect.element(page.getByRole('button', { name: '授予', exact: true })).toBeDisabled()
   })
 
+  it('names an office closed to new grants as closed', async () => {
+    await open(
+      {
+        getRoleGrantOptions: () =>
+          Effect.succeed({
+            ...within,
+            roles: [],
+            refused: [{ ...refusedRole('monitor', '老班长'), refusal: 'closed' as const }],
+          }),
+      },
+      unitPicker.manifest,
+      unitPicker.registry(PickBranch),
+    )
+    await page.getByRole('button', { name: '授予角色' }).click()
+    await page.getByRole('button', { name: '分部' }).click()
+    await expect
+      .element(page.getByTestId('grant-nothing-offered').getByTestId('grant-refused'))
+      .toHaveAttribute('data-refusal', 'closed')
+  })
+
   it('keeps only the way out when nothing the form can change would help', async () => {
     await open({
       getUserRoleGrants: () =>

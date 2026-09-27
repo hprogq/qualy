@@ -235,6 +235,10 @@ const i18n = definePluginMessages({
       id: 'rbac/grants/refused-authority',
       defaultMessage: 'You cannot appoint this role',
     },
+    refusedClosed: {
+      id: 'rbac/grants/refused-closed',
+      defaultMessage: 'Closed to new grants',
+    },
     refusedUnavailable: {
       id: 'rbac/grants/refused-unavailable',
       defaultMessage: 'Disabled or removed',

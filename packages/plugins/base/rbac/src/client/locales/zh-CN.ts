@@ -48,6 +48,7 @@ export default {
   'rbac/grants/refused-person-disabled': '该用户已停用',
   'rbac/grants/refused-self-escalation': '超出你本人现有的权限',
   'rbac/grants/refused-authority': '你没有任命该角色的权限',
+  'rbac/grants/refused-closed': '已停止新增授权',
   'rbac/grants/refused-unavailable': '角色已停用或删除',
   'rbac/grants/none-person-disabled': '启用该用户后才能授予角色',
   'rbac/grants/none-refused-user-type': '该用户的类型不能担任以下角色',
