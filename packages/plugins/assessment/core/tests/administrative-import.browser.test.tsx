@@ -640,6 +640,20 @@ describe('importing a workbook of administrative records', () => {
     await expect.element(state.getByRole('button', { name: '重试' })).toBeVisible()
   })
 
+  // The import's own facts are there; only its rows could not be read, so
+  // the rows' pane says so under the detail and offers to read them again.
+  it('says the rows could not be read now, under the import, with a retry', async () => {
+    await open(`${base}?import=${IMPORT_ID}`, {
+      listAdministrativeImportRows: () => Effect.fail(apiError('SERVICE_UNAVAILABLE')),
+    })
+    const detailPane = page.getByTestId('administrative-import-detail')
+    await expect.element(detailPane).toBeVisible()
+    const state = detailPane.getByRole('status').filter({ has: page.getByRole('heading') })
+    await expect.element(state).toHaveAttribute('data-state', 'unavailable')
+    await expect.element(state.getByRole('heading', { level: 3 })).toBeVisible()
+    await expect.element(state.getByRole('button', { name: '重试' })).toBeVisible()
+  })
+
   // A withdrawal asks for the import again; when that second reading fails
   // for a reason another try could change, the import the recorder was
   // just reading is still the answer, not a failure in its place.

@@ -503,7 +503,7 @@ export function AdministrativeImportDetail({
           <p {...stylex.props(styles.section)}>{format(m.importRows)}</p>
           <AsyncSection
             pending={rows.isPending}
-            error={rows.isError ? formatError(rows.error) : null}
+            error={rows.isError ? words.of(rows.error) : null}
             loadingLabel={format(commonMessages.loading)}
             retryLabel={format(commonMessages.retry)}
             onRetry={() => void rows.refetch()}
