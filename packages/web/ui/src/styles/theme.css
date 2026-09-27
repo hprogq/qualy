@@ -332,6 +332,18 @@
     width: 1rem;
     height: 1rem;
   }
+  /* in a line alert the icon stands in the first column of the one row,
+     centred on the words beside it */
+  [data-slot='alert'][data-layout='line'] > svg {
+    grid-row: 1;
+    grid-column: 1;
+    margin-inline-end: 0.625rem;
+    transform: none;
+  }
+  /* what waits on a decision is marked amber; the words stay in ink */
+  [data-slot='alert'][data-variant='warning'] > svg {
+    color: var(--q-warning);
+  }
   [data-slot='alert-title'] a,
   [data-slot='alert-description'] a {
     text-decoration: underline;
