@@ -90,6 +90,7 @@ there last refuses to start and says to run `migrate`.
 ## Upgrading
 
 ```sh
+deploy/backup.sh /var/backups/qualy      # first, always: an image rollback is not a schema rollback
 # load the new release's three images, then:
 sed -i 's/^QUALY_RELEASE=.*/QUALY_RELEASE=<new>/' .env
 docker compose run --rm migrate
@@ -136,28 +137,40 @@ the writes made since. Take that backup first (next section).
 
 ## Backup and restore
 
-The database:
+`backup.sh` backs the deployment up - the database, then the attachments
+the local storage backend keeps in the `storage` volume - into a directory of
+its own under the root you give it, checks what it wrote, keeps the newest 14
+(`QUALY_BACKUP_KEEP`), and copies the new one off this machine when
+`QUALY_BACKUP_OFFSITE` says how (a command run with the directory as `$1`).
+Run it daily:
 
 ```sh
-docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > qualy-$(date +%Y%m%d%H%M%S).dump
+# crontab of the deployment's operator
+17 3 * * * QUALY_BACKUP_OFFSITE='rclone copy "$1" remote:qualy-backups/"$(basename "$1")"' /opt/qualy/deploy/backup.sh /var/backups/qualy >> /var/log/qualy-backup.log 2>&1
 ```
 
-The attachments written by the local storage backend live in the `storage`
-volume:
+`/var/backups/qualy/last-success` names the newest whole backup; a monitor
+reading its age is how a backup that stopped running gets noticed.
+`QUALY_SECRETS_MASTER_KEY` is not in a backup, on purpose: nothing encrypted
+in the database can be read without it, so keep it - with the rest of
+`.env` - somewhere that is not beside the backups.
+
+`restore.sh` puts one back. It checks the files against their sums, restores
+the dump into a scratch database while the server still serves (all or
+nothing), then stops the server, swaps the databases (the live one is kept as
+`<name>_previous` until the next restore), swaps the attachments in, runs
+`migrate` - which brings a backup from an older release up to this one - and
+starts everything again:
 
 ```sh
-docker run --rm -v qualy-deployment_storage:/data -v "$PWD":/backup alpine tar czf /backup/storage-$(date +%Y%m%d%H%M%S).tgz -C /data .
+deploy/restore.sh /var/backups/qualy/<stamp>
 ```
 
-Restoring the database replaces it, with the server stopped:
-
-```sh
-docker compose stop server
-docker compose exec -T postgres sh -c 'dropdb -U "$POSTGRES_USER" "$POSTGRES_DB" && createdb -U "$POSTGRES_USER" "$POSTGRES_DB"'
-docker compose exec -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner' < qualy-<stamp>.dump
-docker compose run --rm migrate       # brings a backup from an older release up to this one
-docker compose up -d server
-```
+A failure before the server stops leaves the deployment as it was; one after
+it names the step, and running the script again finishes the job. The
+release smoke (`pnpm release:smoke`) drills both scripts on every CI run: a
+row and an attachment written before the backup are read back after the
+database and the attachments were destroyed and restored.
 
 ## Looking
 

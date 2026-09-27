@@ -20,9 +20,10 @@ import { repoRoot } from '../lib/manifest.ts'
 // manifest and one hashed asset are served; a server pointed at a store its
 // release was never installed in refuses, naming the job; both sandboxes
 // answer the RPC handshake from inside the server container; a second
-// migration run finds nothing to do; the database is dumped, dropped,
-// restored, brought up to date and served again with its data intact. Then
-// everything, volumes included, is removed.
+// migration run finds nothing to do; deploy/backup.sh backs the database and
+// the attachments up, both are destroyed, and deploy/restore.sh brings them
+// back, up to date and served, with a row and an attachment written before
+// the backup intact. Then everything, volumes included, is removed.
 
 const release = process.argv[2]
 if (!release) {
@@ -251,7 +252,7 @@ try {
     step('migrate again: up to date, the web release already installed')
   }
 
-  // --- backup, destroy, restore, serve again
+  // --- backup, destroy, restore, serve again: the scripts a deployment runs
   const marker = `smoke-${Date.now().toString(36)}`
   expectCode(
     'marker',
@@ -260,17 +261,47 @@ try {
     ),
     0,
   )
-  const dump = compose([
-    'exec',
-    '-T',
-    'postgres',
-    'sh',
-    '-c',
-    'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"',
-  ])
-  expectCode('pg_dump', dump, 0)
-  if (dump.stdout.length < 1024) refuse(`pg_dump produced ${String(dump.stdout.length)} bytes`)
-  step(`backup: ${String(dump.stdout.length)} bytes`)
+  // and an attachment, where the local storage backend keeps them
+  const inStorage = (script: string) =>
+    compose([
+      'run',
+      '--rm',
+      '--no-deps',
+      '-T',
+      '--user',
+      '0:0',
+      '--entrypoint',
+      'sh',
+      'server',
+      '-c',
+      script,
+    ])
+  expectCode(
+    'attachment',
+    inStorage(
+      `mkdir -p /var/lib/qualy/storage/smoke && printf %s ${marker} > /var/lib/qualy/storage/smoke/marker.txt && chown -R 1000:1000 /var/lib/qualy/storage/smoke`,
+    ),
+    0,
+  )
+  const deployScript = (name: string, args: readonly string[]) => {
+    const ran = spawnSync(path.join(repoRoot, 'deploy', name), args, {
+      cwd: work,
+      env: { ...process.env, COMPOSE_PROJECT_NAME: project, QUALY_ENV_FILE: envFile },
+      encoding: 'utf8',
+      timeout: 600_000,
+    })
+    return { code: ran.status ?? 1, out: `${ran.stdout}${ran.stderr}`.trim() }
+  }
+  const backups = path.join(work, 'backups')
+  {
+    const ran = deployScript('backup.sh', [backups])
+    if (ran.code !== 0) refuse(`backup.sh exited ${String(ran.code)}:\n${ran.out.slice(-2000)}`)
+    const stamp = fs.readFileSync(path.join(backups, 'last-success'), 'utf8').trim()
+    const dump = fs.statSync(path.join(backups, stamp, 'qualy.dump')).size
+    const storage = fs.statSync(path.join(backups, stamp, 'storage.tar.gz')).size
+    if (dump < 1024) refuse(`backup.sh wrote a ${String(dump)}-byte dump`)
+    step(`backup: ${stamp}, dump ${String(dump)} bytes, attachments ${String(storage)} bytes`)
+  }
 
   expectCode('server stop', compose(['stop', 'server']), 0)
   expectCode(
@@ -285,29 +316,15 @@ try {
     ]),
     0,
   )
-  step('database dropped and recreated empty')
-  expectCode(
-    'pg_restore',
-    compose(
-      [
-        'exec',
-        '-T',
-        'postgres',
-        'sh',
-        '-c',
-        'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner',
-      ],
-      { input: dump.stdout },
-    ),
-    0,
-  )
+  expectCode('attachments wiped', inStorage('find /var/lib/qualy/storage -mindepth 1 -delete'), 0)
+  step('database dropped and recreated empty, attachments wiped')
   {
-    const ran = compose(['run', '--rm', 'migrate'])
-    expectCode('migrate after restore', ran, 0)
-    expectIn('migrate after restore', ran.out, 'is up to date')
-    step('restored: the ledger is complete, migrate has nothing to do')
+    const stamp = fs.readFileSync(path.join(backups, 'last-success'), 'utf8').trim()
+    const ran = deployScript('restore.sh', [path.join(backups, stamp)])
+    if (ran.code !== 0) refuse(`restore.sh exited ${String(ran.code)}:\n${ran.out.slice(-2000)}`)
+    expectIn('restore.sh', ran.out, 'restored from')
+    step('restore.sh: checked, restored into a scratch database, swapped in, migrated, started')
   }
-  expectCode('server start', compose(['start', 'server']), 0)
   await waitReady('after restore')
   {
     const shell = await fetch(`${base}/`)
@@ -315,7 +332,16 @@ try {
     const found = psql('select value from release_smoke_marker')
     expectCode('marker after restore', found, 0)
     expectIn('marker after restore', found.out, marker)
-    step('after restore: served, and the row written before the backup is there')
+    const attachment = compose([
+      'exec',
+      '-T',
+      'server',
+      'cat',
+      '/var/lib/qualy/storage/smoke/marker.txt',
+    ])
+    expectCode('attachment after restore', attachment, 0)
+    expectIn('attachment after restore', attachment.out, marker)
+    step('after restore: served, with the row and the attachment written before the backup')
   }
 } catch (error) {
   failed = true

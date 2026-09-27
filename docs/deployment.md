@@ -110,7 +110,8 @@ devDependencies 里的包,在每个开发机上都能解析,在镜像第一次�
 
 服务:
 
-- `postgres`(pgvector pg18):命名卷 `pg_data`、`pg_backups`;不发布端口,只在 compose 网络内可达。
+- `postgres`(pgvector pg18):命名卷 `pg_data`;不发布端口,只在 compose 网络内可达。
+  备份与恢复见 §3.3。
 - `migrate`(profile `deploy`):server 镜像跑 `deploy`,`docker compose run --rm migrate` 按需运行。先按 ledger 应用迁移
   (migrator 持数据库级 advisory lock,第二个 writer 排队后发现无事可做;失败的迁移不进 ledger,job 非零退出,旧 server 继续跑),
   再把镜像带的 web release 装进 `web_releases` 卷(可写挂载,`QUALY_WEB_RELEASE_STORE=/var/lib/qualy/web`,见 §3.1)。
@@ -242,6 +243,22 @@ current,旧镜像的 server 要这一步才肯启动;旧 release 已被保留策
 这也是启动校验的另一半:server 对着**落后于自己**的库拒绝启动(`database is N migration(s) behind ... run the migration job`),
 对着**领先于自己**的库(回滚后的镜像)不拒绝——ledger 里多出来的迁移它不认识也不需要认识,能否运行取决于上面的加法规则。
 
+### 3.3 备份与恢复(2026-09-27,外部审计 P3-2)
+
+之前只有 README 里一条手动 `pg_dump`(写到执行者当前目录、没有定时、没有保留、没有异机),附件只有备份命令没有恢复步骤,
+数据库恢复先 `dropdb` 再导入、不带 `--exit-on-error`,演练只覆盖数据库。现在:
+
+- `deploy/backup.sh <root>`:`umask 077`;`pg_dump -Fc` 后以 `pg_restore --list` 验证;再 tar `storage` 卷(用 server 镜像,不另拉镜像)
+  并 `gzip -t`;写 `SHA256SUMS`;整个目录写完才改名就位(以时间戳命名的目录一定是完整备份);保留最近 `QUALY_BACKUP_KEEP`(默认 14)份;
+  `QUALY_BACKUP_OFFSITE` 设了就以新目录为 `$1` 执行(rclone / scp / coscli 由运维选),失败则整次失败;成功后写 `<root>/last-success`,
+  供监控按时间判断备份是否停了。主密钥不进备份,与备份分开保管。
+- `deploy/restore.sh <dir>`:先核对 `SHA256SUMS`;导入临时库(`--exit-on-error`,全有或全无,期间照常服务)→ 停 server → 换名(旧库留作
+  `_previous`)→ 附件解包到 `.incoming` 再换入、`chown 1000:1000` → `migrate`(旧版本备份追平到当前,并装入当前 web release)→ 启动并等待。
+  停服之前失败则实例原样;之后失败则点名步骤,重跑即补完。流程与演示部署的 `deploy/demo/restore.sh` 同一做法。
+- 两个脚本经 `COMPOSE_PROJECT_NAME`、`QUALY_ENV_FILE` 指向具体部署;`release-smoke.ts` 每次 CI 都调用它们演练:备份前写一行数据与一个附件,
+  销库、清空附件,恢复后两样都读回。
+- `pg_backups` 卷删除:只挂载、从没有东西写它。README 的升级步骤第一步改为 `backup.sh`。
+
 ## 4. 发布验证
 
 | #   | 要求                                                                           | 由谁证明                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
@@ -257,7 +274,7 @@ current,旧镜像的 server 要这一步才肯启动;旧 release 已被保留策
 | 9   | 最终 server 镜像无仓库源码 / 开发工具链也能启动                                | `check-release-image.ts`(镜像内 resolve、无库启动停在数据库)+ `release-smoke.ts`(对真库启动到 ready)                                                                                                                                                                                                                                                                                                                                                                                                     |
 | 10  | Web production build 能加载                                                    | `smoke-production.ts`(CI)+ `release-smoke.ts`(镜像内 shell、manifest、一个哈希资源)                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | 11  | Sandbox RPC / ABI 冒烟                                                         | `qualy sandbox status`:从 server 容器内对两条 socket 取 capabilities,核对 rpc / abi 版本;`release-smoke.ts` 在 compose 栈上执行它                                                                                                                                                                                                                                                                                                                                                                        |
-| 12  | 备份 → 恢复 → 启动                                                             | `release-smoke.ts`:`pg_dump -Fc` → dropdb/createdb → `pg_restore` → `migrate`(up to date)→ server 重启到 ready                                                                                                                                                                                                                                                                                                                                                                                           |
+| 12  | 备份 → 恢复 → 启动                                                             | `release-smoke.ts`:`deploy/backup.sh`(数据库 + 附件)→ 销库、清空附件 → `deploy/restore.sh`(临时库导入、换名、附件换入、`migrate`、启动)→ 备份前写入的一行数据与一个附件都读回(§3.3)                                                                                                                                                                                                                                                                                                                      |
 | 13  | 文档:镜像回滚 ≠ schema 回滚                                                    | 本文 §3.2                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | 14  | 发版后开着的旧 tab 仍取得到自己的 chunk,启动不越过部署                         | `release-store.test.ts`「promoting」(下一个镜像进来后上一个 release 与资源仍在、同镜像重跑幂等、回滚把旧 release 设回 current)+ `web-release-deploy.test.ts`(deploy 步骤)+ `effect-web.test.ts`(卷里 current 不是本镜像的 release 或卷为空即拒启、从卷服务并认得之前的 release)+ `release-smoke.ts`(见下)                                                                                                                                                                                                |
 
@@ -265,7 +282,7 @@ current,旧镜像的 server 要这一步才肯启动;旧 release 已被保留策
 postgres 起 → **未迁移就启动 server 必须被拒**(项 9 的另一半)→ `migrate`(迁移 + 把 web release 装进 `web_releases`)→
 server + 两个 sandbox 起 → `/health/ready` → `/__qualy/release` 就是 `migrate` 装的那个 → shell / manifest / 哈希资源 →
 **指向没装过本 release 的 store 启动必须被拒**(项 14)→ `qualy sandbox status` → 第二次 `migrate` 报 up to date 且 release 已装 →
-备份、销库、恢复、`migrate`、重启到 ready → `down -v`。
+`backup.sh` 备份、销库并清空附件、`restore.sh` 恢复到 ready 且数据与附件读回 → `down -v`。
 CI 的 `image` job 构建三个镜像后跑它。
 
 ## 5. 明确不做
