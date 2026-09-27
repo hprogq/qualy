@@ -79,7 +79,13 @@ const styles = stylex.create({
       [breakpoints.phone]: 'none',
     },
   },
+  // one line, however long a batch is named: the whole name is the link's
+  // text for whoever reads it aloud, and its title for whoever hovers
   link: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
     color: 'inherit',
     textDecoration: {
       default: 'none',
@@ -175,7 +181,7 @@ export default function UserEntriesPage() {
                   data-entry-id={entry.id}
                   data-entry-status={entry.status}
                 >
-                  <Cell lead>
+                  <Cell lead title={entry.batchName}>
                     <PageLink
                       page="assessment/batch"
                       params={{ batchId: entry.batchId }}
