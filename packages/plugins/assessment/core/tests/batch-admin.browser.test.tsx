@@ -225,6 +225,9 @@ const assessmentStubs = (over: Stubs = {}): Stubs => ({
   staffOptions: () => Effect.succeed({ nodes: [], roles: [] }),
   listAccess: () => Effect.succeed(staffPage([subject()])),
   previewAccessSync: () => Effect.succeed(emptyPlan),
+  // what the overview's administration lane reads: nothing stopped here
+  reviewAlerts: () =>
+    Effect.succeed({ groups: [], unreachable: { routes: [], cannotSubmit: 0, cannotAppeal: 0 } }),
   ...over,
 })
 

@@ -5667,6 +5667,59 @@ const i18n = definePluginMessages({
     overviewFilterAll: { id: 'assessment/overview/filter-all', defaultMessage: 'All' },
     overviewToday: { id: 'assessment/overview/today', defaultMessage: 'Today' },
     overviewYesterday: { id: 'assessment/overview/yesterday', defaultMessage: 'Yesterday' },
+    // what stops the round that only its administrators can mend (§32.95)
+    overviewLaneManage: {
+      id: 'assessment/overview/lane-manage',
+      defaultMessage: 'Batch administration',
+    },
+    overviewAdminFailed: {
+      id: 'assessment/overview/admin-failed',
+      defaultMessage: "Batch administration items couldn't be loaded",
+    },
+    overviewAdminGapUnit: {
+      id: 'assessment/overview/admin-gap-unit',
+      defaultMessage: '{unit} ({roles})',
+    },
+    overviewAdminMoreUnits: {
+      id: 'assessment/overview/admin-more-units',
+      defaultMessage: '{items} and more ({total} in all)',
+    },
+    overviewAdminMoreItems: {
+      id: 'assessment/overview/admin-more-items',
+      defaultMessage: '{items} and more ({total} in all)',
+    },
+    overviewAdminUnreachable: {
+      id: 'assessment/overview/admin-unreachable',
+      defaultMessage:
+        "Review routes don't reach the units of {count, plural, one {# participant} other {# participants}}",
+    },
+    overviewAdminUnreachableAppeal: {
+      id: 'assessment/overview/admin-unreachable-appeal',
+      defaultMessage:
+        "Appeal routes don't reach the units of {count, plural, one {# participant} other {# participants}}",
+    },
+    overviewAdminCannotSubmit: {
+      id: 'assessment/overview/admin-cannot-submit',
+      defaultMessage: "Can't be submitted: {items}",
+    },
+    overviewAdminCannotAppeal: {
+      id: 'assessment/overview/admin-cannot-appeal',
+      defaultMessage: "Can't be appealed: {items}",
+    },
+    overviewAdminPlacementsGone: {
+      id: 'assessment/overview/admin-placements-gone',
+      defaultMessage:
+        '{count, plural, one {# more person has} other {# more people have}} no place in the organization',
+    },
+    overviewAdminAccess: {
+      id: 'assessment/overview/admin-access',
+      defaultMessage:
+        '{count, plural, one {# change} other {# changes}} to organization appointments to review',
+    },
+    overviewGoItems: { id: 'assessment/overview/go-items', defaultMessage: 'Go to questions' },
+    overviewGoRoster: { id: 'assessment/overview/go-roster', defaultMessage: 'Go to participants' },
+    overviewGoAccess: { id: 'assessment/overview/go-access', defaultMessage: 'Go to staff' },
+    railAlert: { id: 'assessment/batch/rail-alert', defaultMessage: 'Needs attention' },
     'activity.r.review-approved': {
       id: 'assessment/activity/reviewer-approved',
       defaultMessage: "You approved {who}'s claim",

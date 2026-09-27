@@ -26,6 +26,7 @@ import { BatchFlow } from './batch/BatchFlow.tsx'
 import { calendarDaysBetween, inZone, useBatchZone, yearOf } from './batch/zone.ts'
 import { assessmentMessages as m } from './i18n.ts'
 import { UnreadDot } from './entry/workspace/marks.tsx'
+import { useAdminAlerts, type AdminAlerts } from './batch/admin-alerts.ts'
 
 // The batch's front page as one desk (§32.73, laid out to design 2a/2b):
 // the page description says what stands on the desk, the body starts
@@ -261,9 +262,11 @@ const styles = stylex.create({
   todoRow: {
     display: 'grid',
     cursor: 'pointer',
+    // the verb's column is a floor, not a ceiling: a verb longer than it in
+    // another language widens its own row rather than spilling out of it
     gridTemplateColumns: {
       default: 'minmax(0, 1fr) auto',
-      [wide]: 'minmax(0, 1fr) 3.5rem 7rem',
+      [wide]: 'minmax(0, 1fr) 3.5rem minmax(7rem, max-content)',
     },
     columnGap: { default: 12, [wide]: 20 },
     rowGap: { default: 8, [wide]: 4 },
@@ -278,15 +281,24 @@ const styles = stylex.create({
       ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
     },
   },
+  // two lines before it gives way: a row can be a sentence as well as a
+  // question's name, and a column narrowed by the plan beside it cut the
+  // sentence at its first clause
   todoSubject: {
     gridColumnStart: 1,
     gridRowStart: 1,
+    display: '-webkit-box',
+    WebkitBoxOrient: 'vertical',
+    WebkitLineClamp: 2,
     minWidth: 0,
     overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
     fontSize: 14,
     fontWeight: 500,
+    textWrap: 'pretty',
+  },
+  // a row with no time takes the time's column too
+  todoTimeless: {
+    gridColumnEnd: 'span 2',
   },
   todoAt: {
     gridColumnStart: 2,
@@ -629,7 +641,7 @@ export default function BatchOverviewPage() {
             {batch.descriptionMd !== null && batch.descriptionMd.trim() !== '' && (
               <BatchNote text={batch.descriptionMd.trim()} />
             )}
-            <MyDesk batchId={batchId} overview={overview} />
+            <MyDesk batchId={batchId} overview={overview} manage={batch.capabilities.manage} />
           </div>
 
           <aside {...stylex.props(styles.aside)}>
@@ -755,9 +767,13 @@ const SAID: Record<'participant' | 'reviewer', Partial<Record<ActivityItem['kind
 
 type Lane = 'all' | 'participant' | 'reviewer'
 
+/** the standings a row on the desk speaks to, in the order the desk lists them */
+const DESK_LANES = ['participant', 'reviewer', 'manage'] as const
+type DeskLane = (typeof DESK_LANES)[number]
+
 interface TodoRow {
   key: string
-  lane: 'participant' | 'reviewer'
+  lane: DeskLane
   action: string
   count?: number
   subject: string
@@ -771,20 +787,56 @@ interface TodoRow {
  * The desk itself: what needs the reader's hand, grouped by the standing
  * it speaks to, then one merged feed of what lately happened around them.
  * Full histories stay on the claim and the round.
+ *
+ * Whoever administers the batch has a lane of their own on it (§32.95):
+ * what stops the round going on that only an administrator can mend, each
+ * said in one line with the way to the page that mends it. An administrator
+ * with no other standing here has that lane and nothing else - the feed is
+ * of one's own claims and reviews, and they have none.
  */
 function MyDesk({
   batchId,
   overview,
+  manage,
 }: {
   batchId: string
-  overview: {
-    data: OverviewDto | undefined
-    isPending: boolean
-    isError: boolean
-    isFetching: boolean
-    error: unknown
-    refetch: () => unknown
-  }
+  overview: DeskRead
+  /** the reader administers this batch, by the batch's own word */
+  manage: boolean
+}) {
+  // the administrator's counts are asked for by administrators only: to
+  // anybody else every one of those reads is a refusal
+  return manage ? (
+    <AdministeredDesk batchId={batchId} overview={overview} />
+  ) : (
+    <Desk batchId={batchId} overview={overview} alerts={null} />
+  )
+}
+
+function AdministeredDesk({ batchId, overview }: { batchId: string; overview: DeskRead }) {
+  const alerts = useAdminAlerts(batchId, true)
+  return <Desk batchId={batchId} overview={overview} alerts={alerts} />
+}
+
+/** the reader's desk as the page read it */
+interface DeskRead {
+  data: OverviewDto | undefined
+  isPending: boolean
+  isError: boolean
+  isFetching: boolean
+  error: unknown
+  refetch: () => unknown
+}
+
+function Desk({
+  batchId,
+  overview,
+  alerts,
+}: {
+  batchId: string
+  overview: DeskRead
+  /** what the batch's administrators owe it, when the reader is one */
+  alerts: AdminAlerts | null
 }) {
   const query = useApiQuery(assessmentApi)
   const api = useApi(assessmentApi)
@@ -839,6 +891,9 @@ function MyDesk({
 
   const desk = overview.data
   const mixed = desk !== undefined && desk.participant !== null && desk.reviewer !== null
+  // somebody with a claim or a review here, or a desk still on its way:
+  // they have a story of their own to follow below the rows
+  const own = desk === undefined || desk.participant !== null || desk.reviewer !== null
   if (overview.isError && desk === undefined) {
     return (
       <AsyncSection
@@ -854,8 +909,8 @@ function MyDesk({
       </AsyncSection>
     )
   }
-  if (desk !== undefined && desk.participant === null && desk.reviewer === null) {
-    // an administrator without a standing here reads the stage plan alone
+  if (!own && alerts === null) {
+    // somebody here with no standing on the desk reads the stage plan alone
     return null
   }
 
@@ -928,14 +983,30 @@ function MyDesk({
         navigate('assessment/batch-reviews', { params: { batchId }, search: { view: 'asked' } }),
     })
   }
+  if (alerts !== null) {
+    todo.push(
+      ...adminRows(alerts, {
+        format,
+        listJoin,
+        go: (page) => navigate(page, { params: { batchId } }),
+      }),
+    )
+  }
   // grouped by the standing each row speaks to, each under its strip - one
   // standing as much as two: the strip is how the card reads, not a way of
   // telling two standings apart
-  const laneWord = (which: 'participant' | 'reviewer') =>
-    format(which === 'participant' ? m.overviewLaneEntry : m.overviewLaneReview)
-  const todoGroups = (['participant', 'reviewer'] as const)
-    .map((which) => ({ which, rows: todo.filter((row) => row.lane === which) }))
-    .filter((group) => group.rows.length > 0)
+  const laneWord = (which: DeskLane) =>
+    format(
+      which === 'participant'
+        ? m.overviewLaneEntry
+        : which === 'reviewer'
+          ? m.overviewLaneReview
+          : m.overviewLaneManage,
+    )
+  const todoGroups = DESK_LANES.map((which) => ({
+    which,
+    rows: todo.filter((row) => row.lane === which),
+  })).filter((group) => group.rows.length > 0)
 
   return (
     <>
@@ -944,7 +1015,7 @@ function MyDesk({
           <h2 {...stylex.props(styles.sectionTitle)}>{format(m.overviewActionsTitle)}</h2>
           {todo.length > 0 && <span {...stylex.props(styles.actionsCount)}>{todo.length}</span>}
         </div>
-        {overview.isPending ? (
+        {overview.isPending || alerts?.pending === true ? (
           <Skeleton className={stylex.props(styles.actionsSkeleton).className} />
         ) : todo.length === 0 ? (
           <div {...stylex.props(styles.clearCard)}>
@@ -978,13 +1049,36 @@ function MyDesk({
                       onClick={row.go}
                       {...stylex.props(styles.todoRow)}
                     >
-                      <span {...stylex.props(styles.todoSubject)}>{row.subject}</span>
-                      <span {...stylex.props(styles.todoAt)}>{row.at}</span>
+                      <span
+                        {...stylex.props(
+                          styles.todoSubject,
+                          row.at === null && styles.todoTimeless,
+                        )}
+                      >
+                        {row.subject}
+                      </span>
+                      {row.at !== null && <span {...stylex.props(styles.todoAt)}>{row.at}</span>}
                       {row.detail !== null && (
-                        <span {...stylex.props(styles.todoDetail)}>{row.detail}</span>
+                        <span
+                          {...stylex.props(
+                            styles.todoDetail,
+                            row.at === null && styles.todoTimeless,
+                          )}
+                        >
+                          {row.detail}
+                        </span>
                       )}
                       <span {...stylex.props(styles.todoVerbSeat)}>
-                        <button type="button" onClick={row.go} {...stylex.props(styles.todoVerb)}>
+                        {/* the row's own door with a handle for the keyboard:
+                            pressed, it goes once, not again as the row */}
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            row.go()
+                          }}
+                          {...stylex.props(styles.todoVerb)}
+                        >
                           {row.verb}
                           <ChevronRightIcon
                             aria-hidden
@@ -1001,192 +1095,310 @@ function MyDesk({
         )}
       </section>
 
-      <section {...stylex.props(styles.activity)}>
-        <div {...stylex.props(styles.activityHead)}>
-          <h2 {...stylex.props(styles.activityTitle)}>{format(m.overviewActivityTitle)}</h2>
-          {(desk?.participant?.unreadEntryIds.length ?? 0) > 0 && (
-            <span
-              data-testid="overview-unread"
-              data-count={desk!.participant!.unreadEntryIds.length}
-              {...stylex.props(styles.unreadNote)}
-            >
-              <UnreadDot />
-              {format(m.overviewActivityUnread, {
-                count: desk!.participant!.unreadEntryIds.length,
-              })}
-            </span>
-          )}
-          <span {...stylex.props(styles.headSpacer)} />
-          {mixed && (
-            <Tabs
-              variant="segmented"
-              value={lane}
-              onValueChange={(value) => setLane(value as Lane)}
-            >
-              <TabsList>
-                {(
-                  [
-                    ['all', m.overviewFilterAll],
-                    ['participant', m.overviewLaneEntry],
-                    ['reviewer', m.overviewLaneReview],
-                  ] as const
-                ).map(([value, label]) => (
-                  <TabsTrigger key={value} value={value}>
-                    {format(label)}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
-          )}
-        </div>
-
-        {activity.isPending ? (
-          <div {...stylex.props(styles.activityBones)} aria-hidden data-testid="activity-bones">
-            <Skeleton className={stylex.props(styles.activityBoneDay).className} />
-            {['64%', '48%', '71%'].map((width, index) => (
-              <div key={index} {...stylex.props(styles.activityBoneRow)}>
-                <Skeleton className={stylex.props(styles.activityBoneMark).className} />
-                <div {...stylex.props(styles.activityBoneWords)}>
-                  <Skeleton
-                    className={stylex.props(styles.activityBoneLine).className}
-                    width={width}
-                  />
-                  <Skeleton
-                    className={stylex.props(styles.activityBoneLine).className}
-                    width="30%"
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : activity.isError && rows.length === 0 ? (
-          <AsyncSection
-            pending={false}
-            error={failure.of(activity.error)}
-            framed
-            retrying={activity.isFetching}
-            loadingLabel={format(commonMessages.loading)}
-            retryLabel={format(commonMessages.retry)}
-            onRetry={() => void activity.refetch()}
-          >
-            {null}
-          </AsyncSection>
-        ) : rows.length === 0 ? (
-          <p {...stylex.props(styles.quietNote)}>{format(m.overviewActivityNone)}</p>
-        ) : (
-          <div {...stylex.props(styles.card)} data-testid="overview-activity">
-            {groups.map((group) => (
-              <section key={group.key} {...stylex.props(styles.day)}>
-                <div {...stylex.props(styles.strip)}>
-                  <span {...stylex.props(styles.stripWord)}>{group.label}</span>
-                  {group.aside !== null && (
-                    <span {...stylex.props(styles.stripAside)}>{group.aside}</span>
-                  )}
-                </div>
-                {group.items.map((row) => {
-                  const sentence = SAID[row.perspective][row.kind]
-                  const who =
-                    (row.perspective === 'reviewer' ? row.subjectName : row.actorName) ??
-                    format(m['activity.somebody'])
-                  // the server already judged which rounds are still this
-                  // reader's to open; everything else is a plain line
-                  const openable = row.perspective === 'participant' || row.instanceId !== null
-                  // Kept as parts rather than joined into a sentence: these
-                  // are coordinate facts about one claim - the group, the
-                  // question, the level - and a separator between them is a
-                  // rule, not a comma somebody has to read past.
-                  const identity = row.summary
-                    .filter((part) => part.value !== '')
-                    .map((part) => part.value)
-                  return (
-                    <button
-                      key={row.id + row.kind}
-                      type="button"
-                      data-kind={row.kind}
-                      data-perspective={row.perspective}
-                      data-unread={freshRowIds.has(row.id + row.kind) || undefined}
-                      onClick={() => {
-                        if (!openable) return
-                        if (row.perspective === 'reviewer') {
-                          if (row.instanceId !== null) {
-                            navigate('assessment/review-instance', {
-                              params: { batchId, instanceId: row.instanceId },
-                            })
-                          }
-                          return
-                        }
-                        openEntry(row.itemId, row.entryId, 'detail')
-                      }}
-                      {...stylex.props(styles.feedRow, openable && styles.feedRowOpenable)}
-                    >
-                      <span {...stylex.props(styles.feedClockWide)}>
-                        {clockOf(row.at, locale, zone)}
-                      </span>
-                      <span {...stylex.props(styles.feedBody)}>
-                        <span {...stylex.props(styles.feedTitleLine)}>
-                          <span {...stylex.props(styles.feedTitleSeat)}>
-                            {/* the same mark of news as on the claim's own row */}
-                            {freshRowIds.has(row.id + row.kind) && (
-                              <>
-                                <UnreadDot />
-                                <VisuallyHidden>{format(m.claimUnread)}</VisuallyHidden>
-                              </>
-                            )}
-                            <span {...stylex.props(styles.feedTitle)}>{row.itemTitle}</span>
-                          </span>
-                          {mixed && (
-                            <span {...stylex.props(styles.feedLaneWord)}>
-                              {laneWord(row.perspective)}
-                            </span>
-                          )}
-                          <span {...stylex.props(styles.feedClockNarrow)}>
-                            {clockOf(row.at, locale, zone)}
-                          </span>
-                        </span>
-                        {identity.length > 0 && (
-                          <span {...stylex.props(styles.feedIdentity)}>
-                            {identity.map((part, at) => (
-                              <span key={part + String(at)} {...stylex.props(styles.crumb)}>
-                                {at > 0 && <span aria-hidden {...stylex.props(styles.crumbRule)} />}
-                                {part}
-                              </span>
-                            ))}
-                          </span>
-                        )}
-                        <span {...stylex.props(styles.feedSentence)}>
-                          {sentence !== undefined &&
-                            format(sentence as (typeof m)['activity.r.review-approved'], { who })}
-                        </span>
-                        {(row.reason !== null || row.comment !== null) && (
-                          <span {...stylex.props(styles.feedQuote)}>
-                            {row.reason !== null && <span>{row.reason}</span>}
-                            {row.comment !== null && (
-                              <span {...stylex.props(styles.feedComment)}>{row.comment}</span>
-                            )}
-                          </span>
-                        )}
-                      </span>
-                    </button>
-                  )
-                })}
-              </section>
-            ))}
-            {activity.hasNextPage && (
-              <button
-                type="button"
-                disabled={activity.isFetchingNextPage}
-                onClick={() => void activity.fetchNextPage()}
-                {...stylex.props(styles.moreRow)}
+      {own && (
+        <section {...stylex.props(styles.activity)}>
+          <div {...stylex.props(styles.activityHead)}>
+            <h2 {...stylex.props(styles.activityTitle)}>{format(m.overviewActivityTitle)}</h2>
+            {(desk?.participant?.unreadEntryIds.length ?? 0) > 0 && (
+              <span
+                data-testid="overview-unread"
+                data-count={desk!.participant!.unreadEntryIds.length}
+                {...stylex.props(styles.unreadNote)}
               >
-                {format(m.overviewActivityMore)}
-              </button>
+                <UnreadDot />
+                {format(m.overviewActivityUnread, {
+                  count: desk!.participant!.unreadEntryIds.length,
+                })}
+              </span>
+            )}
+            <span {...stylex.props(styles.headSpacer)} />
+            {mixed && (
+              <Tabs
+                variant="segmented"
+                value={lane}
+                onValueChange={(value) => setLane(value as Lane)}
+              >
+                <TabsList>
+                  {(
+                    [
+                      ['all', m.overviewFilterAll],
+                      ['participant', m.overviewLaneEntry],
+                      ['reviewer', m.overviewLaneReview],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <TabsTrigger key={value} value={value}>
+                      {format(label)}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
             )}
           </div>
-        )}
-      </section>
+
+          {activity.isPending ? (
+            <div {...stylex.props(styles.activityBones)} aria-hidden data-testid="activity-bones">
+              <Skeleton className={stylex.props(styles.activityBoneDay).className} />
+              {['64%', '48%', '71%'].map((width, index) => (
+                <div key={index} {...stylex.props(styles.activityBoneRow)}>
+                  <Skeleton className={stylex.props(styles.activityBoneMark).className} />
+                  <div {...stylex.props(styles.activityBoneWords)}>
+                    <Skeleton
+                      className={stylex.props(styles.activityBoneLine).className}
+                      width={width}
+                    />
+                    <Skeleton
+                      className={stylex.props(styles.activityBoneLine).className}
+                      width="30%"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : activity.isError && rows.length === 0 ? (
+            <AsyncSection
+              pending={false}
+              error={failure.of(activity.error)}
+              framed
+              retrying={activity.isFetching}
+              loadingLabel={format(commonMessages.loading)}
+              retryLabel={format(commonMessages.retry)}
+              onRetry={() => void activity.refetch()}
+            >
+              {null}
+            </AsyncSection>
+          ) : rows.length === 0 ? (
+            <p {...stylex.props(styles.quietNote)}>{format(m.overviewActivityNone)}</p>
+          ) : (
+            <div {...stylex.props(styles.card)} data-testid="overview-activity">
+              {groups.map((group) => (
+                <section key={group.key} {...stylex.props(styles.day)}>
+                  <div {...stylex.props(styles.strip)}>
+                    <span {...stylex.props(styles.stripWord)}>{group.label}</span>
+                    {group.aside !== null && (
+                      <span {...stylex.props(styles.stripAside)}>{group.aside}</span>
+                    )}
+                  </div>
+                  {group.items.map((row) => {
+                    const sentence = SAID[row.perspective][row.kind]
+                    const who =
+                      (row.perspective === 'reviewer' ? row.subjectName : row.actorName) ??
+                      format(m['activity.somebody'])
+                    // the server already judged which rounds are still this
+                    // reader's to open; everything else is a plain line
+                    const openable = row.perspective === 'participant' || row.instanceId !== null
+                    // Kept as parts rather than joined into a sentence: these
+                    // are coordinate facts about one claim - the group, the
+                    // question, the level - and a separator between them is a
+                    // rule, not a comma somebody has to read past.
+                    const identity = row.summary
+                      .filter((part) => part.value !== '')
+                      .map((part) => part.value)
+                    return (
+                      <button
+                        key={row.id + row.kind}
+                        type="button"
+                        data-kind={row.kind}
+                        data-perspective={row.perspective}
+                        data-unread={freshRowIds.has(row.id + row.kind) || undefined}
+                        onClick={() => {
+                          if (!openable) return
+                          if (row.perspective === 'reviewer') {
+                            if (row.instanceId !== null) {
+                              navigate('assessment/review-instance', {
+                                params: { batchId, instanceId: row.instanceId },
+                              })
+                            }
+                            return
+                          }
+                          openEntry(row.itemId, row.entryId, 'detail')
+                        }}
+                        {...stylex.props(styles.feedRow, openable && styles.feedRowOpenable)}
+                      >
+                        <span {...stylex.props(styles.feedClockWide)}>
+                          {clockOf(row.at, locale, zone)}
+                        </span>
+                        <span {...stylex.props(styles.feedBody)}>
+                          <span {...stylex.props(styles.feedTitleLine)}>
+                            <span {...stylex.props(styles.feedTitleSeat)}>
+                              {/* the same mark of news as on the claim's own row */}
+                              {freshRowIds.has(row.id + row.kind) && (
+                                <>
+                                  <UnreadDot />
+                                  <VisuallyHidden>{format(m.claimUnread)}</VisuallyHidden>
+                                </>
+                              )}
+                              <span {...stylex.props(styles.feedTitle)}>{row.itemTitle}</span>
+                            </span>
+                            {mixed && (
+                              <span {...stylex.props(styles.feedLaneWord)}>
+                                {laneWord(row.perspective)}
+                              </span>
+                            )}
+                            <span {...stylex.props(styles.feedClockNarrow)}>
+                              {clockOf(row.at, locale, zone)}
+                            </span>
+                          </span>
+                          {identity.length > 0 && (
+                            <span {...stylex.props(styles.feedIdentity)}>
+                              {identity.map((part, at) => (
+                                <span key={part + String(at)} {...stylex.props(styles.crumb)}>
+                                  {at > 0 && (
+                                    <span aria-hidden {...stylex.props(styles.crumbRule)} />
+                                  )}
+                                  {part}
+                                </span>
+                              ))}
+                            </span>
+                          )}
+                          <span {...stylex.props(styles.feedSentence)}>
+                            {sentence !== undefined &&
+                              format(sentence as (typeof m)['activity.r.review-approved'], { who })}
+                          </span>
+                          {(row.reason !== null || row.comment !== null) && (
+                            <span {...stylex.props(styles.feedQuote)}>
+                              {row.reason !== null && <span>{row.reason}</span>}
+                              {row.comment !== null && (
+                                <span {...stylex.props(styles.feedComment)}>{row.comment}</span>
+                              )}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </section>
+              ))}
+              {activity.hasNextPage && (
+                <button
+                  type="button"
+                  disabled={activity.isFetchingNextPage}
+                  onClick={() => void activity.fetchNextPage()}
+                  {...stylex.props(styles.moreRow)}
+                >
+                  {format(m.overviewActivityMore)}
+                </button>
+              )}
+            </div>
+          )}
+        </section>
+      )}
     </>
   )
 }
+
+/**
+ * The administrator's rows, one per thing that stops the round and that
+ * only an administrator can mend, in the order they stop it: review that
+ * cannot go on, filings that cannot start, a roster the organization has
+ * moved away from, appointments the batch has yet to take. Each goes to the
+ * page that mends it.
+ */
+function adminRows(
+  alerts: AdminAlerts,
+  {
+    format,
+    listJoin,
+    go,
+  }: {
+    format: ReturnType<typeof useI18n>['format']
+    listJoin: (items: readonly string[]) => string
+    go: (
+      page: 'assessment/batch-access' | 'assessment/batch-items' | 'assessment/batch-results',
+    ) => void
+  },
+): TodoRow[] {
+  const rows: TodoRow[] = []
+  const row = (over: Omit<TodoRow, 'lane' | 'at'>) =>
+    rows.push({ lane: 'manage', at: null, ...over })
+  if (alerts.failed) {
+    row({
+      key: 'admin-unreadable',
+      action: 'admin-unreadable',
+      subject: format(m.overviewAdminFailed),
+      detail: null,
+      verb: format(commonMessages.retry),
+      go: alerts.retry,
+    })
+  }
+  const gaps = alerts.gaps
+  if (gaps.length > 0) {
+    const waiting = gaps.reduce((total, one) => total + one.waiting, 0)
+    const units = new Set(gaps.map((one) => one.nodeId ?? '')).size
+    const named = gaps.slice(0, MOST_NAMED).map((one) =>
+      format(m.overviewAdminGapUnit, {
+        unit: one.nodeName ?? format(m.itemsStuckNowhere),
+        roles: listJoin(one.roleNames),
+      }),
+    )
+    row({
+      key: 'admin-review-gap',
+      action: 'admin-review-gap',
+      count: waiting,
+      subject: format(m.itemsStuckSummary, { waiting, units }),
+      detail:
+        gaps.length > MOST_NAMED
+          ? format(m.overviewAdminMoreUnits, { items: listJoin(named), total: gaps.length })
+          : listJoin(named),
+      verb: format(m.itemsStuckAppoint),
+      go: () => go('assessment/batch-access'),
+    })
+  }
+  const { cannotSubmit, cannotAppeal, items } = alerts.unreachable
+  if (cannotSubmit > 0 || cannotAppeal > 0) {
+    const submit = cannotSubmit > 0
+    const named = listJoin(items.slice(0, MOST_NAMED))
+    const list =
+      items.length > MOST_NAMED
+        ? format(m.overviewAdminMoreItems, { items: named, total: items.length })
+        : named
+    row({
+      key: 'admin-unreachable',
+      action: 'admin-unreachable',
+      count: submit ? cannotSubmit : cannotAppeal,
+      subject: format(submit ? m.overviewAdminUnreachable : m.overviewAdminUnreachableAppeal, {
+        count: submit ? cannotSubmit : cannotAppeal,
+      }),
+      detail: format(submit ? m.overviewAdminCannotSubmit : m.overviewAdminCannotAppeal, {
+        items: list,
+      }),
+      verb: format(m.overviewGoItems),
+      go: () => go('assessment/batch-items'),
+    })
+  }
+  const { changed, unavailable } = alerts.placements
+  if (changed > 0 || unavailable > 0) {
+    row({
+      key: 'admin-placements',
+      action: 'admin-placements',
+      count: changed > 0 ? changed : unavailable,
+      subject:
+        changed > 0
+          ? format(m.placementPrompt, { count: changed })
+          : format(m.placementUnavailablePrompt, { count: unavailable }),
+      detail:
+        changed > 0 && unavailable > 0
+          ? format(m.overviewAdminPlacementsGone, { count: unavailable })
+          : null,
+      verb: format(m.overviewGoRoster),
+      go: () => go('assessment/batch-results'),
+    })
+  }
+  if (alerts.accessPending > 0) {
+    row({
+      key: 'admin-access',
+      action: 'admin-access',
+      count: alerts.accessPending,
+      subject: format(m.overviewAdminAccess, { count: alerts.accessPending }),
+      detail: null,
+      verb: format(m.overviewGoAccess),
+      go: () => go('assessment/batch-access'),
+    })
+  }
+  return rows
+}
+
+/** how many units or questions a row names before it says how many more */
+const MOST_NAMED = 3
 
 const clockOf = (iso: string, locale: string, zone: string | undefined) =>
   new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit', ...inZone(zone) }).format(

@@ -9,12 +9,13 @@ import { page } from 'vitest/browser'
 import { Effect } from 'effect'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import type { assessmentApi } from '@qualy/plugin-assessment/client/api'
-import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The workspace around one batch, when the batch is not there for the reader
-// and when a screen of it is not theirs (§32.94). Mounted inside the real
-// workspace shell wherever what is being asserted is the shell folding or
-// the rail, because half of it lives there.
+// and when a screen of it is not theirs (§32.94); and the overview's lane for
+// whoever administers it, with the dots beside the rail entries it points at
+// (§32.95). Mounted inside the real workspace shell wherever what is being
+// asserted is the shell folding or the rail, because half of it lives there.
 
 type BatchDto = ApiResult<typeof assessmentApi, 'assessment', 'getBatch'>['batch']
 type Alerts = ApiResult<typeof assessmentApi, 'assessment', 'reviewAlerts'>
@@ -43,6 +44,46 @@ const batch = (over: Partial<BatchDto> = {}): BatchDto => ({
 const quiet: Alerts = {
   groups: [],
   unreachable: { routes: [], cannotSubmit: 0, cannotAppeal: 0 },
+}
+
+/** a round with something stopped in each of the ways an administrator mends */
+const stopped: Alerts = {
+  groups: [
+    {
+      nodeId: NODE_ID,
+      nodeName: '软件2401',
+      roleNames: ['班长', '学习委员'],
+      reason: 'no-assignee',
+      waiting: 3,
+    },
+    {
+      nodeId: null,
+      nodeName: null,
+      roleNames: ['辅导员'],
+      reason: 'no-assignee',
+      waiting: 2,
+    },
+  ],
+  unreachable: {
+    routes: [
+      {
+        itemId: 'item-a',
+        itemTitle: '学业成绩',
+        route: 'normal',
+        participants: 1,
+        levelNames: ['班级'],
+      },
+      {
+        itemId: 'item-b',
+        itemTitle: '竞赛获奖',
+        route: 'escalation',
+        participants: 4,
+        levelNames: ['年级'],
+      },
+    ],
+    cannotSubmit: 1,
+    cannotAppeal: 4,
+  },
 }
 
 type Stub = (...args: never[]) => unknown
@@ -122,6 +163,7 @@ const manifest = () => ({
   },
   slots: {
     'workspace-shell/context': [{ id: 'assessment/batch-context', order: 0 }],
+    'workspace-shell/navigation-badge': [{ id: 'assessment/batch-admin-alerts', order: 0 }],
   },
 })
 
@@ -129,6 +171,11 @@ const registry = {
   slots: {
     'workspace-shell/context': {
       'assessment/batch-context': lazy(() => import('../src/client/batch/BatchContextBar.tsx')),
+    },
+    'workspace-shell/navigation-badge': {
+      'assessment/batch-admin-alerts': lazy(
+        () => import('../src/client/batch/AdminAlertBadge.tsx'),
+      ),
     },
   },
 }
@@ -281,6 +328,137 @@ describe('a screen of the batch that is not for the reader', () => {
       .element(page.getByTestId('batch-standing-missing'))
       .toHaveAttribute('data-requires', 'manage')
     expect(page.getByRole('textbox').elements()).toHaveLength(0)
+  })
+})
+
+describe('the administration lane of the overview', () => {
+  const lane = () => document.querySelectorAll('[data-testid="overview-lane"][data-lane="manage"]')
+  const row = (action: string) =>
+    page.getByTestId('overview-actions').element().querySelector(`[data-action="${action}"]`)
+
+  it('lists what stops the round, one line each with the way to mend it', async () => {
+    await page.viewport(1280, 800)
+    await shelled(`/assessment/batches/${BATCH_ID}`, {
+      reviewAlerts: () => Effect.succeed(stopped),
+      listParticipantPlacements: () =>
+        Effect.succeed({ items: [], nextCursor: null, changedTotal: 2, unavailableTotal: 1 }),
+      previewAccessSync: () =>
+        Effect.succeed({ items: [], nextCursor: null, pendingTotal: 3, lapsedTotal: 0 }),
+    })
+    await expect.element(page.getByTestId('overview-actions')).toBeVisible()
+    const strip = page
+      .getByTestId('overview-actions')
+      .element()
+      .querySelector('[data-testid="overview-lane"][data-lane="manage"]')
+    expect(strip?.getAttribute('data-count')).toBe('4')
+    expect(row('admin-review-gap')?.getAttribute('data-count')).toBe('5')
+    // counted by who cannot submit, before who cannot appeal
+    expect(row('admin-unreachable')?.getAttribute('data-count')).toBe('1')
+    expect(row('admin-placements')?.getAttribute('data-count')).toBe('2')
+    expect(row('admin-access')?.getAttribute('data-count')).toBe('3')
+    // an administrator with nothing of their own here has no story to follow
+    expect(page.getByTestId('overview-activity').elements()).toHaveLength(0)
+    expect(page.getByTestId('activity-bones').elements()).toHaveLength(0)
+    // each row goes to the page that mends it
+    const verb = row('admin-access')!.querySelector('button')!
+    verb.click()
+    await vi.waitFor(() => expect(addressNow()).toBe(`/assessment/batches/${BATCH_ID}/access`))
+  })
+
+  it('says what stands behind each administration entry of the rail with a dot', async () => {
+    await page.viewport(1280, 800)
+    await shelled(`/assessment/batches/${BATCH_ID}`, {
+      reviewAlerts: () => Effect.succeed(stopped),
+      listParticipantPlacements: () =>
+        Effect.succeed({ items: [], nextCursor: null, changedTotal: 0, unavailableTotal: 0 }),
+      previewAccessSync: () =>
+        Effect.succeed({ items: [], nextCursor: null, pendingTotal: 1, lapsedTotal: 4 }),
+    })
+    const dots = () =>
+      [...document.querySelectorAll('[data-testid="rail-alert"]')].map((dot) =>
+        dot.getAttribute('data-navigation'),
+      )
+    await vi.waitFor(() =>
+      expect(dots().sort((a, b) => (a ?? '').localeCompare(b ?? ''))).toEqual([
+        'assessment/batch-access/rail',
+        'assessment/batch-items/rail',
+      ]),
+    )
+    // the entry reads as one that needs attention to whoever hears the rail
+    const items = page.getByRole('link', { name: /项目配置/ })
+    expect(items.element().querySelector('[role="img"][aria-label]')).not.toBeNull()
+  })
+
+  it('keeps the desk for a pure administrator on a phone, where the plan is not shown', async () => {
+    await page.viewport(390, 844)
+    await shelled(`/assessment/batches/${BATCH_ID}`)
+    // nothing stopped: the desk says so rather than the page standing empty
+    const heading = page.getByRole('heading', { name: '需要你处理' })
+    await expect.element(heading).toBeVisible()
+    expect(heading.element().getBoundingClientRect().height).toBeGreaterThan(0)
+    expect(page.getByTestId('overview-lane').elements()).toHaveLength(0)
+  })
+
+  it('asks for none of it on behalf of somebody who does not administer the round', async () => {
+    await page.viewport(1280, 800)
+    const reviewAlerts = vi.fn(() => Effect.succeed(stopped))
+    const listParticipantPlacements = vi.fn(() =>
+      Effect.succeed({ items: [], nextCursor: null, changedTotal: 2, unavailableTotal: 0 }),
+    )
+    const previewAccessSync = vi.fn(() =>
+      Effect.succeed({ items: [], nextCursor: null, pendingTotal: 2, lapsedTotal: 0 }),
+    )
+    await shelled(`/assessment/batches/${BATCH_ID}`, {
+      getBatch: () =>
+        Effect.succeed({
+          batch: batch({
+            manageable: false,
+            capabilities: {
+              personal: false,
+              review: true,
+              record: false,
+              manage: false,
+              redetermine: false,
+            },
+          }),
+        }),
+      getMyOverview: () =>
+        Effect.succeed({
+          participant: null,
+          reviewer: { pendingCount: 2, answeredAskCount: 0, queueGroups: [], answeredAsks: [] },
+        }),
+      reviewAlerts,
+      listParticipantPlacements,
+      previewAccessSync,
+    })
+    await expect.element(page.getByTestId('overview-actions')).toBeVisible()
+    expect(row('review-pending')).not.toBeNull()
+    expect(lane()).toHaveLength(0)
+    expect(document.querySelectorAll('[data-testid="rail-alert"]')).toHaveLength(0)
+    expect(reviewAlerts).not.toHaveBeenCalled()
+    expect(listParticipantPlacements).not.toHaveBeenCalled()
+    expect(previewAccessSync).not.toHaveBeenCalled()
+  })
+
+  it('says when the counts could not be read, and reads them again on the word', async () => {
+    await page.viewport(1280, 800)
+    let reachable = false
+    let asked = 0
+    await shelled(`/assessment/batches/${BATCH_ID}`, {
+      reviewAlerts: () =>
+        Effect.suspend(() => {
+          asked += 1
+          return reachable ? Effect.succeed(stopped) : Effect.fail(apiError('SERVICE_UNAVAILABLE'))
+        }),
+    })
+    await vi.waitFor(() => expect(row('admin-unreadable')).not.toBeNull(), { timeout: 8_000 })
+    reachable = true
+    const before = asked
+    row('admin-unreadable')!.querySelector('button')!.click()
+    await vi.waitFor(() => expect(row('admin-review-gap')).not.toBeNull())
+    expect(row('admin-unreadable')).toBeNull()
+    // the handle inside the row is the row's own door: one press, one read
+    expect(asked - before).toBe(1)
   })
 })
 

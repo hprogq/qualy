@@ -16,6 +16,7 @@
     "./client/BatchSettingsPage": "./src/client/BatchSettingsPage.tsx",
     "./client/access/BatchGrantPresenter": "./src/client/access/BatchGrantPresenter.tsx",
     "./client/api": "./src/client/api.ts",
+    "./client/batch/AdminAlertBadge": "./src/client/batch/AdminAlertBadge.tsx",
     "./client/batch/BatchContextBar": "./src/client/batch/BatchContextBar.tsx",
     "./client/browser": "./src/client/browser.ts",
     "./client/entry/MyEntriesPage": "./src/client/entry/MyEntriesPage.tsx",
