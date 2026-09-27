@@ -2153,6 +2153,6 @@ describe('working the list beside an open account', () => {
         .filter((one) => one.query?.['around'] === undefined)
         .map((one) => Number(one.query?.['page'] ?? 1)),
     )
-    expect([...again].sort()).toEqual([1, 2, 3])
+    expect([...again].sort((a, b) => a - b)).toEqual([1, 2, 3])
   })
 })
