@@ -104,8 +104,8 @@ export interface ScopedStage {
 export interface Staging {
   /**
    * The batch's own description, shown at the top of its overview above the
-   * stages: only what this term has of its own. What filing asks for every
-   * term is the filing stage's to say.
+   * stages: only what this term has of its own, never a stage's name. What
+   * filing asks for every term is the filing stage's to say.
    */
   readonly descriptionMd: string
   readonly stages: readonly Stage[]
@@ -210,8 +210,9 @@ const archive: Stage = {
 }
 
 // A batch's description says what its term has of its own: a change of
-// rules, a stage moved or merged, and why. What filing asks for every term is
-// the filing stage's to say, and the overview shows both on one screen.
+// rules, or why a stage was moved. What filing asks for every term is the
+// filing stage's to say, and the stages are named beside it on the overview,
+// so it names none of them.
 export const STAGING: Readonly<Record<Term, Staging>> = {
   // the first term the school ran in the system
   '23-24-1': {
@@ -221,8 +222,7 @@ export const STAGING: Readonly<Record<Term, Staging>> = {
   },
   // review split in two: the class leads' own, then what is left over
   '23-24-2': {
-    descriptionMd:
-      '本学期审核分为「班级审核」与「复核与补件」两段。\n校园文化活动院级第一名加分调整为0.4分，团体竞赛名次每降一名减0.1分。',
+    descriptionMd: '校园文化活动院级第一名加分调整为0.4分，团体竞赛名次每降一名减0.1分。',
     stages: [
       filing('23-24-2'),
       {
@@ -276,7 +276,7 @@ export const STAGING: Readonly<Record<Term, Staging>> = {
   // appeals are settled inside the appeal stage, with no stage of their own;
   // the question tried this term is announced by its episode (openingDescription)
   '25-26-1': {
-    descriptionMd: '本学期结果公示与申诉合并进行，请在公示期内核对本人结果。',
+    descriptionMd: '请在公示期内核对本人结果，有异议尽早提出。',
     stages: [
       filing('25-26-1'),
       review,

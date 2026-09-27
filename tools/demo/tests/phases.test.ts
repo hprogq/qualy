@@ -69,6 +69,8 @@ describe('the plan of each term', () => {
         expect(shared.length, `${name} ${stage.phaseKey}: ${shared}`).toBeLessThanOrEqual(
           SHARED_AT_MOST,
         )
+        // the stages are named beside it; a sentence naming them says it twice
+        expect(description, `${name} names ${stage.displayName}`).not.toContain(stage.displayName)
       }
     }
   })
