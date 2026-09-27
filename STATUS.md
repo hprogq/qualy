@@ -20352,3 +20352,37 @@ W11 审查的 blocker / major 全部处理，并接上 W11 留下的工作：用
 - W12（已完成，见上）：各页面接入整页资源状态（批次无权与不存在统一 404）、概览为批次管理员汇总三类告警、「走不通」在项目配置与名单里的提示、各编辑页接入离开拦截、其余插件的弹窗空状态、W11 审查找出的问题，以及再生成一次演示基线。
 - 之后单独一轮：全仓 66 处 AsyncSection 改用 `useLoadFailure`（错误标题与是否给重试按错误类型）。
 - 1Password 解锁后补跑 supervisor 与 runtime-cli。
+
+## W13 合并与三份外部审计后的单线程施工（2026-09-27）
+
+### W13（已合并）
+
+W12 审查意见收尾（十一组，分组见仓库外 `audit-2026-09-25/wave13-clusters.md`）：全仓仍用旧写法的 AsyncSection 按归属迁到 `useLoadFailure`（错误标题与是否给重试按错误类型）；侧栏「待审核数」与参评人详情的分区计数在真实外壳里从不显示的旧缺陷（槽位组件签名）修好并补真实外壳用例；「去任命」预选单位与角色；阶段安排「从模板添加」先问未保存的修改；授予对话框区分「没有任命边」与「该组织 / 覆盖范围不能授予」；名单远处已读页的重复与缺行；演示基线再生成（`qualy-demo.dump` sha256 `a0534f51…`）。平台的资源状态原语不再带 `role=status`，十二个浏览器用例改用 testkit 的 `getByResourceState()` 定位（`39f52292b`）。合并后 `pnpm test`：`Test Files  378 passed | 3 skipped (381)`，`Tests  2868 passed | 17 skipped (2885)`。
+
+### 之后按审计意见施工（不再用 workflow）
+
+用户贴来三份外部审计，定下顺序（仓库外 `audit-2026-09-25/post-w13-plan.md`，含完整待办清单）：
+
+- CI：`pnpm test` 三处失败（生成文件路径被当成检查目标；没有 `.env` 的检出里 supervisor 与 runtime-cli 缺 Resend key）已修（`ffe7e5d5a`、`162e6efc7`）。
+- 供应链：`.github/dependabot.yml`（npm 只收安全更新，effect 系随 `repos/` 一起升；Actions 每周；基础镜像不列，digest 由 release-inputs 门禁守），仓库设置打开漏洞告警、自动安全修复、secret scanning 与 push protection（`7f0fd8890`）。
+- 行政导入读不了文件时给「更换文件」而不是重试（`1ad41e027`）。
+- **一次审核决定的实时事件放大**（审计唯一的 high）：`useBatchLive` 把一阵唤醒合并（静 250ms、最迟 2s）后一次交给页面，页面用 `stale(key)` 标记要重读的查询，同一阵里每个查询只读一次；队列刷新也走这条路（`30082ae3e`）。四条事件仍在同一条 SSE 上推送，代价在读不在推，服务端合并暂不做。
+- **发版保留旧前端**（纠正 2026-09-17「release store 随镜像、只装当前 release」的裁决）：当时只考虑了进程，没考虑开着的浏览器——换镜像后旧 tab 的下一次请求（轮询、实时通道重连都算）拿到 409 `release`，整屏接管，未保存的输入丢失。现在部署的 release 住在比镜像活得久的 `web_releases` 卷（`QUALY_WEB_RELEASE_STORE`）：`@qualy/plugin-web` 提供 `web-release` 能力，`qualy deploy`（compose 的 `migrate`）以 `promoteWebRelease` 把镜像带的 release 装进卷，之前的按保留策略留着；server 启动核对卷的 current 就是本镜像的 release，否则拒启并点名部署任务，与「库落后即拒启」对称。deploy-capabilities 门禁改为逐个列出有部署副作用的能力及启动拿什么核对；回滚也要跑 `migrate`（旧镜像的 deploy 对领先的库无事可做，并把旧 release 设回 current）。计划里「release-store 不在生产闭包」一条是审计误读：server 启动时本来就 import 它（`912fe49b4`）。
+- 壳页面的 304 不带任何头（sirv 在 `setHeaders` 之前写 304），只改环境变量的 CSP 到不了回访的浏览器：壳与 public 文件不再带 ETag（`d5bd24c46`）。
+- MikroORM：Kysely 插件每次查询重建映射、复制整个 metadata 扫表名（生产 server 的 `getKysely()` 正是这条路径）。上游 issue #8336，用户的 fork 提了 PR #8337（按查询形状缓存合并映射，插件自身开销单表约 44→8µs、join 约 95→18µs），维护者随后自开 #8338（按实体与别名缓存，约 31 / 62µs），对比数据已留言，由维护者选；仓库不打补丁，修好后升 catalog 即可（`docs/upstream/mikro-orm-9-…`，`f5804fdf2`）。
+- 演示数据提速按第四份意见：生成器四项小改动留到下次真要全量生成之前；Docker 同网络不做；演示刷新走「只重生成推免批次」；导入提交后 ANALYZE 升格为产品问题，与导入持锁一起做。
+
+### 验收（实际执行）
+
+- 实时事件合并：`pnpm typecheck`、`pnpm lint` exit 0；`review-layout.browser.test.tsx`：`Tests  59 passed (59)`（新用例在旧代码上失败：`expected 3 to be 2`）；`pnpm test:browser`：`Tests  2 failed | 1545 passed (1547)`，两条都是 `apps/web/tests/resource-state.browser.test.tsx` 的时序断言，单独连跑两次 `Tests  9 passed (9)`。
+- web release 卷与 304：`pnpm typecheck`、`pnpm lint`、`pnpm lint:types`、改动文件 `oxfmt --check` exit 0；`pnpm test`：`Tests  1 failed | 2879 passed | 17 skipped (2897)`，失败的是 runtime-imports 登记表（描述器新加的能力模块懒加载未登记），登记后连同 web 插件测试 `Test Files  7 passed (7)`，`Tests  59 passed (59)`；304 用例在开回 ETag 时失败。
+- `pnpm release:build --check --platform linux/arm64`：三个镜像 `f5804fdf-dirty`，check-release-image 全部通过（含新加的「部署 store 挂载点归运行用户」），镜像 144 MB。
+- `pnpm release:smoke f5804fdf-dirty`：`migrate: web release r_jNabtvEDOg8XTOB2VUMk_g installed into the deployment's store` → `serving web release r_jNabtvEDOg8XTOB2VUMk_g` → `a server whose release was never installed in its store refuses, naming the job` → `migrate again: up to date, the web release already installed` → 备份恢复后照常服务 → `f5804fdf-dirty ok`。
+- `qualy.lock.json` 由 `pnpm qualy resolve` 重写（多了 `web-release` 能力，`resolutionHash` 随之变化）：本机 `client-dist` 里旧的 staged release 不再匹配，`pnpm start` 之前要重新 `pnpm build`；开发态不受影响。
+
+### 下一步
+
+- 会话空闲超时 2 小时（滑动续期、7 天绝对上限、`QUALY_SESSION_IDLE_SECONDS`、后台请求不续期、保存类请求原地重登后重放）。
+- 其余 medium：备份（定时、保留、异机、附件恢复步骤、演练一次）；「我可审」逐行判定与批次列表 30 秒（先量再改）；导入分块事务 + 提交后 ANALYZE；启动核对默认租户。
+- 第三批试用反馈的十二条决定（`wave14-feedback.md`），含演示批次改名与演示数据刷新。
+- CI 其余步骤在本地对 5433 临时库跑一遍，然后请用户推送（本地领先 origin 十余个提交）。
