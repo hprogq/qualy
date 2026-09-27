@@ -5,6 +5,7 @@ import { Effect } from 'effect'
 import { AddPeopleDialog } from '../src/client/roster/AddPeopleDialog.tsx'
 import { ImportDialog } from '../src/client/roster/ImportDialog.tsx'
 import { PlacementDialog } from '../src/client/roster/PlacementDialog.tsx'
+import { UnreachablePeople } from '../src/client/roster/UnreachablePeople.tsx'
 import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The roster's dialogs as somebody running a round meets them.
@@ -463,5 +464,42 @@ describe('a roster dialog with nothing to act on', () => {
     expect(page.getByTestId('import-units').elements()).toHaveLength(0)
     expect(page.getByRole('button', { name: '导入' }).elements()).toHaveLength(0)
     await expect.element(page.getByRole('button', { name: '关闭' }).first()).toBeVisible()
+  })
+})
+
+// The people a route finds nowhere, asked for by the unit kinds a route
+// still being composed looks for: the same list the roster's dialog opens,
+// for a screen with nowhere to open anybody from.
+describe('the people a route being composed finds nowhere', () => {
+  it('lists them for the unit kinds asked, a page at a time, without offering to open them', async () => {
+    const asked = vi.fn((request: Request) =>
+      Effect.succeed({
+        items: Array.from({ length: request.query?.['page'] === '2' ? 2 : 10 }, (_, n) => ({
+          participantId: person(n),
+          userId: person(n),
+          displayName: `同学${n}`,
+          businessNo: `2023${String(n).padStart(4, '0')}`,
+          unitPath: ['示例大学', '软件学院'],
+        })),
+        total: 12,
+        page: Number(request.query?.['page'] ?? 1),
+        pageSize: 10,
+      }),
+    )
+    await open(<UnreachablePeople batchId={BATCH_ID} of={{ nodeTypeIds: ['class', 'grade'] }} />, {
+      listUnreachableParticipants: asked,
+    })
+    await expect.element(page.getByTestId('unreachable-people')).toHaveAttribute('data-total', '12')
+    expect(asked.mock.calls[0]![0].query).toMatchObject({
+      nodeTypeIds: ['class', 'grade'],
+      page: '1',
+      limit: '10',
+    })
+    // listed, and not a way anywhere
+    const listed = page.getByTestId('unreachable-person')
+    expect(listed.elements()).toHaveLength(10)
+    expect(listed.elements().every((row) => row.tagName !== 'BUTTON')).toBe(true)
+    await page.getByTestId('unreachable-pager').getByRole('button', { name: '2' }).click()
+    await expect.poll(() => asked.mock.calls.at(-1)![0].query?.['page']).toBe('2')
   })
 })
