@@ -246,7 +246,9 @@ export function SessionsCard({ person }: { person?: RecordPerson }) {
                     ? endOne.mutate(session.id)
                     : setEnding({
                         id: session.id,
-                        device: deviceWords(session.userAgent) ?? format(m.unknownDevice),
+                        // said inside a sentence, so the words that stand
+                        // alone as a row's heading are not the ones used
+                        device: deviceWords(session.userAgent) ?? format(m.unknownDeviceInline),
                       })
                 }
                 className={stylex.props(styles.end).className}

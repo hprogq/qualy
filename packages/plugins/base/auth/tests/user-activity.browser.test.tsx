@@ -84,7 +84,8 @@ describe("a person's security activity", () => {
     )
     // none of theirs is the reader's own, so each can be ended
     expect(card.element().querySelectorAll('[data-testid="session-row"] button')).toHaveLength(2)
-    await card.getByRole('button', { name: '全部退出' }).click()
+    // named as what it does to them, like each row's, not as the reader signing out
+    await card.getByRole('button', { name: '结束全部会话' }).click()
     const asked = page.getByRole('alertdialog')
     await expect.element(asked).toBeInTheDocument()
     expect(endAll).not.toHaveBeenCalled()

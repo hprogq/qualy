@@ -1019,6 +1019,10 @@ const i18n = definePluginMessages({
     sessionsEnded: sessionsEndedMessage,
     sessionsActivity: { id: 'auth/sessions/activity', defaultMessage: 'View sign-ins' },
     unknownDevice: { id: 'auth/sessions/unknown-device', defaultMessage: 'Unknown browser' },
+    unknownDeviceInline: {
+      id: 'auth/sessions/unknown-device-inline',
+      defaultMessage: 'an unknown browser',
+    },
     entranceGone: { id: 'auth/sessions/entrance-gone', defaultMessage: 'A way in since removed' },
     showMore: { id: 'auth/sessions/more', defaultMessage: 'Show more' },
     activityTitle: { id: 'auth/activity/title', defaultMessage: 'Security activity' },
