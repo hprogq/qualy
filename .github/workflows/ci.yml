@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 24.20.0
           cache: pnpm
@@ -71,7 +71,7 @@ jobs:
         with:
           fetch-depth: 0
       - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 24.20.0
           cache: pnpm
@@ -81,7 +81,7 @@ jobs:
       # wrote the bytecode and the dependency set that was compiled - and
       # restored from the newest near miss, because a cache that is mostly
       # right still saves most of the compiling.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: /tmp/node-compile-cache
           key: node-compile-24.20.0-${{ hashFiles('pnpm-lock.yaml') }}
@@ -177,7 +177,7 @@ jobs:
       - name: resolve playwright version
         id: playwright
         run: echo "version=$(node -e "console.log(require('playwright/package.json').version)")" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ steps.playwright.outputs.version }}
@@ -202,7 +202,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 24.20.0
           cache: pnpm
@@ -226,7 +226,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 24.20.0
           cache: pnpm
@@ -255,7 +255,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 24.20.0
           # setup-node reads packageManager from package.json and would run
