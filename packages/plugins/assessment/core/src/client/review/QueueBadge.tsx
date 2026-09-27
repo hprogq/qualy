@@ -1,16 +1,18 @@
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
+import type { NavigationBadgeContext } from '@qualy/ui-contract'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
 
 // How many submissions are waiting for this reader, beside the rail entry
 // that opens them.
 //
-// The shell offers the slot and passes the entry's id; this answers only for
-// its own entry and renders nothing for any other, so a rail full of other
-// plugins' pages stays untouched. Nothing while the queue is empty either -
-// a badge saying zero is a badge saying nothing.
+// The shell offers the slot and hands it the entry's id, inside the context
+// it gives every contribution; this answers only for its own entry and
+// renders nothing for any other, so a rail full of other plugins' pages
+// stays untouched. Nothing while the queue is empty either - a badge saying
+// zero is a badge saying nothing.
 //
 // The number is the server's own count of the queue, read with the reader's
 // desk, not the queue walked page by page: the rail stands on every page of
@@ -33,8 +35,9 @@ const styles = stylex.create({
   },
 })
 
-export default function QueueBadge({ navigationId }: { navigationId?: string }) {
-  if (navigationId !== 'assessment/batch-reviews/rail') return null
+// the slot hands its context over as one prop, the entry's id inside it
+export default function QueueBadge({ context }: { context?: NavigationBadgeContext }) {
+  if (context?.navigationId !== 'assessment/batch-reviews/rail') return null
   return <Count />
 }
 

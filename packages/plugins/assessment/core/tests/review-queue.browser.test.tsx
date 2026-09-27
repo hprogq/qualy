@@ -1,5 +1,6 @@
 import ReviewInboxPage from '../src/client/review/ReviewInboxPage.tsx'
 import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
+import { lazy } from 'react'
 import { Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
@@ -103,6 +104,20 @@ const both = () => [
   ...Array.from({ length: 3 }, (_, n) => volunteering(40 + n)),
 ]
 
+/** the rail's count beside the entry it belongs to, as the product mounts it */
+const badges = {
+  manifest: {
+    'workspace-shell/navigation-badge': [{ id: 'assessment/reviews-waiting', order: 0 }],
+  },
+  registry: {
+    slots: {
+      'workspace-shell/navigation-badge': {
+        'assessment/reviews-waiting': lazy(() => import('../src/client/review/QueueBadge.tsx')),
+      },
+    },
+  },
+}
+
 const shelled = (items: readonly Record<string, unknown>[], search = '') =>
   renderScreen({
     client: fakeClient({
@@ -116,6 +131,7 @@ const shelled = (items: readonly Record<string, unknown>[], search = '') =>
               'app-shell/navigation-primary': [],
               'workspace-shell/navigation': rail,
             },
+            slots: badges.manifest,
           }),
       },
       assessment: {
@@ -123,8 +139,19 @@ const shelled = (items: readonly Record<string, unknown>[], search = '') =>
         listReviewInbox: () =>
           Effect.succeed({ items, nextCursor: null, handledToday: 2, judging: true }),
         listAwaitingSupplements: () => Effect.succeed({ items: [], nextCursor: null }),
+        getMyOverview: () =>
+          Effect.succeed({
+            participant: null,
+            reviewer: {
+              pendingCount: items.length,
+              answeredAskCount: 0,
+              queueGroups: [],
+              answeredAsks: [],
+            },
+          }),
       },
     }),
+    registry: badges.registry,
     route: `/assessment/batches/${BATCH_ID}/reviews${search}`,
     children: (
       <Routes>
@@ -273,6 +300,20 @@ describe('the queue beside the rail', () => {
     } finally {
       glide.mockRestore()
     }
+  })
+})
+
+// The shell hands a badge its context as one prop, the entry's id inside
+// it; a badge that read the id off a prop of its own never drew at all.
+describe('the rail beside the queue', () => {
+  it('counts what is waiting beside the entry that opens it', async () => {
+    await page.viewport(1440, 900)
+    await shelled(both())
+    const entry = page.getByRole('link', { name: /审核工作/ })
+    await expect.element(entry).toBeVisible()
+    await expect
+      .element(entry.getByTestId('queue-badge'))
+      .toHaveAttribute('data-count', String(both().length))
   })
 })
 

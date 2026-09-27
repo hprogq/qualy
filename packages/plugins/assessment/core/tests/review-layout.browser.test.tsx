@@ -829,7 +829,7 @@ describe('the rail badge beside the workbench', () => {
             // the rail the shell draws beside the page, holding the badge
             element: (
               <>
-                <QueueBadge navigationId="assessment/batch-reviews/rail" />
+                <QueueBadge context={{ navigationId: 'assessment/batch-reviews/rail' }} />
                 <div style={{ display: 'flex', height: '90dvh', flexDirection: 'column' }}>
                   <ReviewInstancePage />
                 </div>
@@ -1197,7 +1197,7 @@ describe('a queue longer than one page', () => {
       routes: [
         {
           path: '/assessment/batches/:batchId/reviews',
-          element: <QueueBadge navigationId="assessment/batch-reviews/rail" />,
+          element: <QueueBadge context={{ navigationId: 'assessment/batch-reviews/rail' }} />,
         },
       ] as never,
       route: `/assessment/batches/${BATCH_ID}/reviews`,
