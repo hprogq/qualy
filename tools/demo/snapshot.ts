@@ -58,7 +58,38 @@ for (const table of RUNTIME) {
     )
   }
 }
+// The archive is the files the database cites, and nothing else: a file no
+// row names is a leftover from an earlier run, and one a row names but the
+// folder lacks would be an attachment that cannot be opened on the server.
+const cited = new Set(
+  (
+    await pool.query<{ key: string }>(
+      `select storage_key as key from storage_attachments where backend = 'local'`,
+    )
+  ).rows.map((row) => row.key),
+)
 await pool.end()
+const stored = new Set(
+  fs
+    .readdirSync(DEMO_STORAGE_ROOT, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) =>
+      path
+        .relative(DEMO_STORAGE_ROOT, path.join(entry.parentPath, entry.name))
+        .split(path.sep)
+        .join('/'),
+    ),
+)
+const uncited = [...stored].filter((key) => !cited.has(key))
+const missing = [...cited].filter((key) => !stored.has(key))
+if (uncited.length > 0 || missing.length > 0) {
+  throw new Error(
+    `${DEMO_STORAGE_ROOT} does not match the attachments the database cites: ` +
+      `${uncited.length} file(s) no row names (first: ${uncited[0] ?? '-'}), ` +
+      `${missing.length} cited file(s) missing (first: ${missing[0] ?? '-'}); ` +
+      'pnpm demo:reset-db empties the folder with the database',
+  )
+}
 
 fs.mkdirSync(OUT, { recursive: true })
 const dump = execFileSync(
