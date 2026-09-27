@@ -12,9 +12,9 @@ import type { assessmentApi } from '@qualy/plugin-assessment/client/api'
 import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The workspace around one batch, when the batch is not there for the reader
-// and when a screen of it is not theirs (§32.94); and the overview's lane for
+// and when a screen of it is not theirs (§32.96); and the overview's lane for
 // whoever administers it, with the dots beside the rail entries it points at
-// (§32.95). Mounted inside the real workspace shell wherever what is being
+// (§32.97). Mounted inside the real workspace shell wherever what is being
 // asserted is the shell folding or the rail, because half of it lives there.
 
 type BatchDto = ApiResult<typeof assessmentApi, 'assessment', 'getBatch'>['batch']

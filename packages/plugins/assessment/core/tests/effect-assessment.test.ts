@@ -3337,7 +3337,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(asStudent[0]!.manageable).toBe(false)
     expect(opened.name).toBe('Running')
     // and somebody in neither sees nothing, by id or otherwise: the round
-    // they cannot see answers exactly as an id that names nothing (§32.94),
+    // they cannot see answers exactly as an id that names nothing (§32.96),
     // so knowing the id does not tell them the round exists
     expect(asStranger).toEqual([])
     expect(tagOf(refused)).toBe('ASSESSMENT_BATCH_NOT_FOUND')

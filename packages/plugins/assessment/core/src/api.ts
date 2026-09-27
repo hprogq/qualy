@@ -2809,7 +2809,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       success: HttpApiSchema.StreamSse({ data: batchLiveEvent }),
       error: [AccessDenied],
     }).middleware(Authenticated),
-    // a batch the reader cannot see answers as one that is not there (§32.94)
+    // a batch the reader cannot see answers as one that is not there (§32.96)
     HttpApiEndpoint.get('getBatch', '/assessment/batches/:batchId', {
       params: Schema.Struct({ batchId: uuidInput }),
       success: Schema.Struct({ batch: batchView }),

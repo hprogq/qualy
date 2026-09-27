@@ -788,7 +788,7 @@ interface TodoRow {
  * it speaks to, then one merged feed of what lately happened around them.
  * Full histories stay on the claim and the round.
  *
- * Whoever administers the batch has a lane of their own on it (§32.95):
+ * Whoever administers the batch has a lane of their own on it (§32.97):
  * what stops the round going on that only an administrator can mend, each
  * said in one line with the way to the page that mends it. An administrator
  * with no other standing here has that lane and nothing else - the feed is

@@ -10,7 +10,7 @@ import type { ReviewGap } from '../items/ReviewGapNotice.tsx'
 // page asks, so the desk, the dot and the page agree and refresh together.
 // Only the totals are asked for - the rows are the pages' own to list.
 // Nothing here is stored or swept for: every count is worked out when read,
-// from the roster, the routes and the organization as they are now (§32.95).
+// from the roster, the routes and the organization as they are now (§32.97).
 
 /** how long a count stands before another look, on every screen of the batch */
 const FRESH_FOR = 60_000

@@ -482,7 +482,7 @@ const plugin = Plugin.define(
       },
       {
         // a dot beside the administration entries with something waiting
-        // behind them, the same things the overview's desk lists (§32.95)
+        // behind them, the same things the overview's desk lists (§32.97)
         key: workspaceNavigationBadge.key,
         id: 'assessment/batch-admin-alerts',
         component: Ui.react('./client/batch/AdminAlertBadge'),

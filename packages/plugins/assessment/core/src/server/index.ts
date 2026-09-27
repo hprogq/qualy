@@ -2599,7 +2599,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
   /**
    * The same door for the reads every screen of a batch opens with - the
    * batch itself and the reader's desk on it - where a batch the reader
-   * cannot see answers exactly as one that is not there (§32.94): knowing
+   * cannot see answers exactly as one that is not there (§32.96): knowing
    * an id is not being told that the round behind it exists.
    */
   const requireBatchSeen = Effect.fn('Assessment.requireBatchSeen')(function* (

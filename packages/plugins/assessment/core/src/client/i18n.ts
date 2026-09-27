@@ -879,7 +879,7 @@ const i18n = definePluginMessages({
     batchSummaryDraft,
     backToList: { id: 'assessment/batch/back', defaultMessage: 'All rounds' },
     // a batch that is not there for this reader, and a screen of one that is
-    // not for them (§32.94)
+    // not for them (§32.96)
     batchGoneTitle: { id: 'assessment/batch/gone-title', defaultMessage: 'Batch not found' },
     batchGoneHint: {
       id: 'assessment/batch/gone-hint',
@@ -5667,7 +5667,7 @@ const i18n = definePluginMessages({
     overviewFilterAll: { id: 'assessment/overview/filter-all', defaultMessage: 'All' },
     overviewToday: { id: 'assessment/overview/today', defaultMessage: 'Today' },
     overviewYesterday: { id: 'assessment/overview/yesterday', defaultMessage: 'Yesterday' },
-    // what stops the round that only its administrators can mend (§32.95)
+    // what stops the round that only its administrators can mend (§32.97)
     overviewLaneManage: {
       id: 'assessment/overview/lane-manage',
       defaultMessage: 'Batch administration',

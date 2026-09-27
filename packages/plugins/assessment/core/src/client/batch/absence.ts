@@ -8,7 +8,7 @@ import type { BatchDto } from '../phase/model.ts'
 // said once for the bar above the rail and the screens below it.
 //
 // Gone, never there and not the reader's to see are one answer, because the
-// server gives them one (§32.94): the words may not tell apart what the
+// server gives them one (§32.96): the words may not tell apart what the
 // status code refuses to. An address that cannot name a batch at all is
 // known to be absent without asking anybody.
 
