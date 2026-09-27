@@ -2,9 +2,12 @@ import * as stylex from '@stylexjs/stylex'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
+  LoadFailure,
+  isRecordId,
   useApi,
   useApiQuery,
   useClaimScreenFill,
+  useLoadFailure,
   usePageHref,
   usePageNavigate,
   usePageQueryState,
@@ -22,7 +25,6 @@ import { toast } from '@qualy/ui/toast'
 import { ConfirmDialog, Field } from '@qualy/ui/admin'
 import { Spinner } from '@qualy/ui/spinner'
 import { EmptyRow } from '@qualy/ui/empty-row'
-import { PageContainer } from '@qualy/ui/page-container'
 import { useIsMobile } from '@qualy/ui/use-mobile'
 import { downloadText, fileNameOf } from '@qualy/ui/download'
 import {
@@ -745,10 +747,24 @@ export default function FormulaEditorPage() {
     [format],
   )
 
-  const detail = useQuery(
-    query.assessmentFormula.getFormulaFunction.queryOptions({ params: { functionId } }),
-  )
+  // an address that cannot name a formula is not asked about
+  const shaped = isRecordId(functionId)
+  const detail = useQuery({
+    ...query.assessmentFormula.getFormulaFunction.queryOptions({ params: { functionId } }),
+    enabled: shaped,
+  })
   const fn = detail.data?.function
+  // Not there, not this reader's, or never read at all: the page says so
+  // in place of the workbench. Somebody else's formula answers exactly as a
+  // missing one does, so the words do not tell the two apart either.
+  const loadFailure = useLoadFailure()
+  const gone = { title: format(m.formulaGoneTitle), description: format(m.formulaGoneHint) }
+  const absent = shaped
+    ? loadFailure.subject(detail, {
+        missing: ['ASSESSMENT_FORMULA_FUNCTION_NOT_FOUND'],
+        copy: { missing: gone },
+      })
+    : loadFailure.missing({ copy: { missing: gone } })
   const latestNo = fn?.latestVersionNo ?? null
   const latestRelease = useQuery({
     ...query.assessmentFormula.getFormulaVersion.queryOptions({
@@ -1711,8 +1727,10 @@ export default function FormulaEditorPage() {
       // never before - clearing first would take the crash recovery away on
       // a deletion that then failed.
       await forgetFormulaLocally(functionId)
-      await refresh()
+      // away first: read again while this page still stands, the formula
+      // just deleted would answer "not found" over the page for a moment
       goto('assessment-formula/list')
+      void refresh()
     },
     onError: (error: unknown) => setFailure(formatError(error)),
   })
@@ -1755,12 +1773,16 @@ export default function FormulaEditorPage() {
     return () => window.removeEventListener('keydown', onKey, true)
   }, [])
 
-  // a load that fails after the formula arrived keeps the page; only a first load that fails replaces it
-  if (detail.isError && fn === undefined) {
+  // a read that fails after the formula arrived keeps the page; one that
+  // finds it gone, or a first read that fails, replaces it
+  if (absent !== null) {
     return (
-      <PageContainer>
-        <EmptyRow role="alert">{format(m.loadFailed)}</EmptyRow>
-      </PageContainer>
+      <LoadFailure
+        failure={absent}
+        back={{ page: 'assessment-formula/list', label: format(m.formulaGoneBack) }}
+        onRetry={() => void detail.refetch()}
+        retrying={detail.isFetching}
+      />
     )
   }
   if (fn === undefined) return <WorkbenchSkeleton narrow={narrow} />

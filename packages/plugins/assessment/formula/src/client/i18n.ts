@@ -714,9 +714,29 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/editor/remote-moved-save-held',
       defaultMessage: 'Choose first: keep your edits, or discard them and load the latest draft.',
     },
-    loadFailed: {
-      id: 'assessment-formula/editor/load-failed',
-      defaultMessage: 'The formula could not be loaded.',
+    formulaGoneTitle: {
+      id: 'assessment-formula/editor/gone-title',
+      defaultMessage: 'Formula not found',
+    },
+    formulaGoneHint: {
+      id: 'assessment-formula/editor/gone-hint',
+      defaultMessage: 'It may have been deleted, or the link may be wrong',
+    },
+    formulaGoneBack: {
+      id: 'assessment-formula/editor/gone-back',
+      defaultMessage: 'Back to scoring formulas',
+    },
+    templateGoneTitle: {
+      id: 'assessment-formula/templates/gone-title',
+      defaultMessage: 'Template not found',
+    },
+    templateGoneHint: {
+      id: 'assessment-formula/templates/gone-hint',
+      defaultMessage: 'It may no longer be shared with you, or the link may be wrong',
+    },
+    templateGoneBack: {
+      id: 'assessment-formula/templates/gone-back',
+      defaultMessage: 'Back to formula templates',
     },
     listAll: {
       id: 'assessment-formula/list/all',

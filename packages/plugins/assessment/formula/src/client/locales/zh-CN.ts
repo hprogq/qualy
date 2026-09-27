@@ -190,7 +190,12 @@ export default {
   'assessment-formula/editor/keep-mine-anyway': '保留我的修改并覆盖保存',
   'assessment-formula/editor/remote-moved-save-held':
     '请先选择保留本地修改，还是放弃后载入最新草稿。',
-  'assessment-formula/editor/load-failed': '公式加载失败。',
+  'assessment-formula/editor/gone-title': '找不到该公式',
+  'assessment-formula/editor/gone-hint': '公式可能已删除，或链接有误',
+  'assessment-formula/editor/gone-back': '返回计分公式',
+  'assessment-formula/templates/gone-title': '找不到该模板',
+  'assessment-formula/templates/gone-hint': '模板可能已不再共享给你，或链接有误',
+  'assessment-formula/templates/gone-back': '返回公式模板',
   'assessment-formula/list/all': '全部公式',
   'assessment-formula/list/name-column': '名称与说明',
   'assessment-formula/list/empty-hint': '新建一个公式，发布后即可用于题目计分',

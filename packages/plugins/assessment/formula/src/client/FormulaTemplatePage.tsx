@@ -2,8 +2,11 @@ import * as stylex from '@stylexjs/stylex'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
+  LoadFailure,
   PageLink,
+  isRecordId,
   useApiQuery,
+  useLoadFailure,
   usePageNavigate,
   usePageRouteParams,
   usePageTitle,
@@ -141,15 +144,28 @@ const styles = stylex.create({
 export default function FormulaTemplatePage() {
   const { versionId } = usePageRouteParams('versionId')
   const query = useApiQuery(formulaApi)
-  const { format, formatError, locale } = useI18n()
+  const { format, locale } = useI18n()
   const navigate = usePageNavigate()
   const [copying, setCopying] = useState(false)
   const [readingExamples, setReadingExamples] = useState(false)
 
-  const detail = useQuery(
-    query.assessmentFormula.getFormulaTemplate.queryOptions({ params: { versionId } }),
-  )
+  // an address that cannot name a template is not asked about
+  const shaped = isRecordId(versionId)
+  const detail = useQuery({
+    ...query.assessmentFormula.getFormulaTemplate.queryOptions({ params: { versionId } }),
+    enabled: shaped,
+  })
   const template = detail.data?.template
+  // A version this reader may not discover is answered exactly as one that
+  // is not there, so a template withdrawn and one never offered read alike.
+  const loadFailure = useLoadFailure()
+  const gone = { title: format(m.templateGoneTitle), description: format(m.templateGoneHint) }
+  const absent = shaped
+    ? loadFailure.subject(detail, {
+        missing: ['ASSESSMENT_FORMULA_TEMPLATE_NOT_FOUND'],
+        copy: { missing: gone },
+      })
+    : loadFailure.missing({ copy: { missing: gone } })
   // the wire carries the structure as an opaque value; a version published
   // before a field existed, or one that carries nothing, reads as no structure
   // rather than as a broken one
@@ -160,6 +176,19 @@ export default function FormulaTemplatePage() {
       ? (template.inputSchema as NormalizedInputSchema)
       : null
   const titleRef = usePageTitle(template?.functionName ?? format(m.templatesTitle))
+
+  // the whole page: a way back above a template that is not there would
+  // lead back from nothing
+  if (absent !== null) {
+    return (
+      <LoadFailure
+        failure={absent}
+        back={{ page: 'assessment-formula/templates', label: format(m.templateGoneBack) }}
+        onRetry={() => void detail.refetch()}
+        retrying={detail.isFetching}
+      />
+    )
+  }
 
   return (
     <PageContainer>
@@ -174,7 +203,6 @@ export default function FormulaTemplatePage() {
 
         <AsyncSection
           pending={detail.isPending}
-          error={detail.isError ? formatError(detail.error) : null}
           loadingLabel={format(commonMessages.loading)}
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void detail.refetch()}
