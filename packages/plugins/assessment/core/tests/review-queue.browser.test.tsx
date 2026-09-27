@@ -135,9 +135,108 @@ const shelled = (items: readonly Record<string, unknown>[], search = '') =>
     ),
   })
 
+const layout = () => page.getByTestId('queue-layout')
+const rows = () => page.getByTestId('inbox-row')
+
+/** how wide the cells holding a row's answers are drawn, row by row */
+const answerCells = () =>
+  rows()
+    .elements()
+    .flatMap((row) =>
+      [
+        ...row.querySelectorAll(
+          '[data-testid="inbox-row-answer"], [data-testid="inbox-row-summary"]',
+        ),
+      ].map((answer) => (answer.parentElement as HTMLElement).getBoundingClientRect().width),
+    )
+
 afterEach(() => page.viewport(DEFAULT_VIEWPORT.width, DEFAULT_VIEWPORT.height))
 
 describe('the queue beside the rail', () => {
+  // The line is the queue's own room: 1024 with the rail open leaves the
+  // queue about as wide as a tablet, where the list and a question's table
+  // do not both fit; from about 1280 they do.
+  for (const [width, height, side] of [
+    [1024, 768, false],
+    [1280, 800, true],
+    [1440, 900, true],
+    [1920, 1080, true],
+  ] as const) {
+    it(`gives a question's answers room at ${String(width)}, rail open`, async () => {
+      await page.viewport(width, height)
+      await shelled(both(), `?item=${ITEM_ID}`)
+      await expect.element(page.getByTestId('workspace-rail')).toBeVisible()
+      await expect.element(rows().first()).toBeVisible()
+      await expect.element(layout()).toHaveAttribute('data-layout', side ? 'split' : 'drill')
+      // every answer on the page has at least a few characters' room,
+      // whether each has a column or they share one
+      const widths = answerCells()
+      expect(widths.length).toBeGreaterThan(0)
+      expect(Math.min(...widths)).toBeGreaterThanOrEqual(48)
+      // and no row runs out of the card it is in
+      for (const row of rows().elements()) {
+        expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth + 1)
+      }
+    })
+  }
+
+  // Narrower than the two need, the list is a screen of its own, and a
+  // question is a step in from it that the back key steps out of - at a
+  // desk width too, where the rail has taken the room.
+  it('steps into a question from the list where the rail leaves too little room', async () => {
+    await page.viewport(1024, 768)
+    await shelled(both())
+    const masters = page.getByTestId('queue-master-row')
+    await expect.element(masters.first()).toBeVisible()
+    expect(rows().elements()).toHaveLength(0)
+    await masters.nth(1).click()
+    await expect.element(page.getByTestId('queue-pane')).toHaveAttribute('data-key', OTHER_ITEM)
+    await page.getByTestId('queue-pane-back').click()
+    await expect.poll(() => addressNow()).not.toContain('item=')
+    await expect.element(masters.first()).toBeVisible()
+  })
+
+  // The name is how a row is found. The number beside it goes under it
+  // before the name loses a character, and a name longer than the cell
+  // still says its whole self on hover.
+  it('keeps a long name whole and moves the number under it', async () => {
+    await page.viewport(1440, 900)
+    await shelled(both(), `?item=${ITEM_ID}`)
+    const name = page.getByTestId('inbox-row-name').first()
+    await expect.element(name).toHaveTextContent(LONG_NAME)
+    const drawn = name.element() as HTMLElement
+    expect(drawn.scrollWidth).toBeLessThanOrEqual(drawn.clientWidth + 1)
+    expect(drawn.getAttribute('title')).toBe(LONG_NAME)
+    const number = drawn.nextElementSibling as HTMLElement
+    expect(number.getBoundingClientRect().top).toBeGreaterThan(drawn.getBoundingClientRect().top)
+  })
+
+  // Where a round stands rides under when it arrived rather than taking a
+  // column that is empty on nearly every row.
+  it('marks a round under its time, with no column of its own', async () => {
+    await page.viewport(1440, 900)
+    await shelled(both(), `?item=${ITEM_ID}`)
+    const marks = page.getByTestId('inbox-row-mark')
+    await expect.element(marks.first()).toBeVisible()
+    expect(marks.elements().map((mark) => mark.getAttribute('data-mark'))).toEqual([
+      'round',
+      'escalated',
+    ])
+    // each mark stands in the time's own cell, under the time
+    for (const mark of marks.elements()) {
+      const when = mark.parentElement as HTMLElement
+      expect(when.firstElementChild?.textContent).toMatch(/\d{2}:\d{2}/)
+      expect(mark.getBoundingClientRect().top).toBeGreaterThan(
+        (when.firstElementChild as HTMLElement).getBoundingClientRect().top,
+      )
+    }
+    // who, the answers, when, and the way in: no track for the standing
+    const pane = page.getByTestId('queue-pane').element() as HTMLElement
+    const answers = pane.dataset['answers'] === 'columns' ? 4 : 1
+    const tracks = getComputedStyle(rows().first().element()).gridTemplateColumns.split(' ')
+    expect(tracks).toHaveLength(answers + 3)
+  })
+
   // The list stands beside the filings while they are paged, and never
   // reaches below the window: it scrolls inside itself instead of growing
   // the page.

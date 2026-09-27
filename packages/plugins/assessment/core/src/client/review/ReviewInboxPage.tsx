@@ -30,7 +30,6 @@ import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { AwaitingSection } from './AwaitingSection.tsx'
 import { useAwaitingQuery, useQueueRefresh, useReviewQueueQuery } from './queue.ts'
 import { useDraftSweep } from './use-draft.ts'
-import { useBeside } from './pointer.ts'
 import { rememberQueuePlace } from './queue-place.ts'
 import { ItemQueue, PersonQueue, QueueSkeleton, TimeQueue } from './QueueViews.tsx'
 import { matchesSearch, pageNumberOf, type InboxItemDto } from './model.ts'
@@ -384,7 +383,6 @@ function QueueBody({
   onOpen: (row: InboxItemDto, run: string) => void
 }) {
   const { format, formatError } = useI18n()
-  const beside = useBeside()
   const location = useLocation()
   const navigate = useNavigate()
   const update = usePageQueryUpdate()
@@ -408,13 +406,15 @@ function QueueBody({
   const narrow = (changes: Record<string, string>, history: 'replace' | 'push' = 'replace') =>
     update({ ...changes, page: '' }, { history })
 
-  // Narrow, picking a question or a person is a step into its own screen,
-  // and the back key is how anybody leaves one. The way back drawn above
-  // the list goes back over that same step where this sitting took it, so
-  // the list is not left in the history twice.
+  // Where the list and the filings are one screen after the other, picking
+  // a question or a person is a step into its own screen, and the back key
+  // is how anybody leaves one. The way back drawn above the list goes back
+  // over that same step where this sitting took it, so the list is not left
+  // in the history twice. Which of the two it is is the queue's to say: it
+  // is laid out by its own room, not the window's.
   const steppedIn = useRef(false)
-  const choose = (key: 'item' | 'person', value: string) => {
-    if (beside) {
+  const choose = (key: 'item' | 'person', value: string, drills: boolean) => {
+    if (!drills) {
       narrow({ [key]: value })
       return
     }
@@ -608,7 +608,7 @@ function QueueBody({
             rows={rows}
             chosen={itemKey}
             page={page}
-            onChoose={(itemId) => choose('item', itemId)}
+            onChoose={(itemId, drills) => choose('item', itemId, drills)}
             onBack={() => back('item')}
             onPage={onPage}
             onOpen={onOpen}
@@ -620,7 +620,7 @@ function QueueBody({
             rows={rows}
             chosen={personKey}
             page={page}
-            onChoose={(key) => choose('person', key)}
+            onChoose={(key, drills) => choose('person', key, drills)}
             onBack={() => back('person')}
             onPage={onPage}
             onOpen={onOpen}

@@ -11,7 +11,6 @@ import {
   Card,
   CardFoot,
   Cell,
-  LeadWord,
   Status,
   Table,
   TableHead,
@@ -21,12 +20,21 @@ import {
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
-import { scrollMotion, useBeside, useMedia } from './pointer.ts'
+import { scrollMotion, useBeside, useMedia, useWidthOf } from './pointer.ts'
+import {
+  BESIDE_MIN,
+  WHEN_WIDTH,
+  WHO_MIN,
+  answerFloorOf,
+  answerWidthOf,
+  answersFitIn,
+  masterWidthOf,
+  paneWidthOf,
+} from './queue-layout.ts'
 import {
   groupByItem,
   groupByPerson,
   pageOf,
-  rowSummary,
   useDayClock,
   useQueueClock,
   writeRunScope,
@@ -38,10 +46,10 @@ import {
 // By question and by person, the queue is a list of what has work in it
 // beside the work of the one picked: the questions (or the people) on the
 // left with how much is waiting and since when, the picked one's filings on
-// the right, ten to a page. Narrower than a desk the two are one screen
-// after the other - the list first, the picked one's filings a step in -
-// the way "my entries" goes from its structure into a question. By time
-// the queue is one table, oldest first.
+// the right, ten to a page. Where the queue's own room is too narrow for
+// both, the two are one screen after the other - the list first, the picked
+// one's filings a step in - the way "my entries" goes from its structure
+// into a question. By time the queue is one table, oldest first.
 //
 // Pages are cut from the whole queue, which is read in full (queue.ts): the
 // counts, the search and the run a reviewer walks are all about the whole
@@ -51,23 +59,20 @@ import {
 const PANE_PAGE = 10
 /** filings to a page of the whole queue by time */
 const TIME_PAGE = 20
-/**
- * The column a round's standing takes where any row on the page has one: a
- * fixed width, because every row is a grid of its own, and a track sized by
- * its own content put one row's time a word to the left of the next.
- */
-const MARK_COLUMN = '7rem'
+/** narrower than this the pager says where it stands in figures alone */
+const PAGER_ROOM = 640
+/** the page's own margin under the list, which the list stops short of */
+const PAGE_FOOT = 24
 
 const styles = stylex.create({
-  split: {
+  room: { display: 'flex', minWidth: 0, flexDirection: 'column' },
+  // the gap is SPLIT_GAP, which the width of the filings is reckoned with
+  split: (template: string) => ({
     display: 'grid',
     alignItems: 'start',
     gap: 16,
-    gridTemplateColumns: {
-      default: '15rem minmax(0, 1fr)',
-      '@media (min-width: 1440px)': '18rem minmax(0, 1fr)',
-    },
-  },
+    gridTemplateColumns: template,
+  }),
   // the list stands while its picked one's filings are read and paged; how
   // tall it may grow is measured, so its foot is never below the window's
   masterSeat: {
@@ -157,7 +162,15 @@ const styles = stylex.create({
     fontWeight: 500,
   },
   masterNameOn: { fontWeight: 600 },
-  masterNameLine: { display: 'flex', minWidth: 0, alignItems: 'baseline', gap: 8 },
+  // a person's name and number share the line while both fit, and the
+  // number takes the next line before the name loses a character
+  masterNameLine: {
+    display: 'flex',
+    minWidth: 0,
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+    columnGap: 8,
+  },
   masterMeta: {
     minWidth: 0,
     overflow: 'hidden',
@@ -241,14 +254,55 @@ const styles = stylex.create({
     flexShrink: 0,
     backgroundColor: `color-mix(in oklab, ${tokens.foreground} 12%, transparent)`,
   },
+  // ---- who filed it, in a row ----
+  who: {
+    display: 'flex',
+    minWidth: 0,
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+    columnGap: 8,
+    rowGap: 1,
+  },
+  // the row's name: whole wherever the cell has room for it, the number
+  // beside it moving to the next line first; the whole of it on hover when
+  // even the cell alone is too narrow
+  whoName: {
+    minWidth: 0,
+    maxWidth: '100%',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 13.5,
+    fontWeight: 500,
+    color: tokens.foreground,
+  },
   businessNo: {
     flexShrink: 0,
     fontSize: 12,
     fontWeight: 400,
     fontVariantNumeric: 'tabular-nums',
+    whiteSpace: 'nowrap',
     color: tokens.mutedForeground,
   },
   quietFiled: { color: tokens.mutedForeground },
+  when: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    alignItems: { default: 'flex-start', [breakpoints.phone]: 'flex-end' },
+    gap: 2,
+  },
+  unbroken: { whiteSpace: 'nowrap' },
+  // a question's answers as one or two lines, where they share a column
+  summaryLines: {
+    display: '-webkit-box',
+    overflow: 'hidden',
+    WebkitBoxOrient: 'vertical',
+    WebkitLineClamp: 2,
+    whiteSpace: 'normal',
+    overflowWrap: 'anywhere',
+    lineHeight: 1.45,
+  },
   // ---- the queue's shape while it is read ----
   skHead: {
     display: 'flex',
@@ -279,8 +333,43 @@ const styles = stylex.create({
 /** what a row opens: the filing, walked as part of the named run */
 type OpenRow = (row: InboxItemDto, run: string) => void
 
-/** the page's own margin under the list, which the list stops short of */
-const PAGE_FOOT = 24
+/**
+ * What picking a question or a person does. `drills` says whether picking
+ * it was a step into a screen of its own, which the back key should step
+ * back out of.
+ */
+type Choose = (key: string, drills: boolean) => void
+
+/** how the queue was laid out, for the hooks a test reads it by */
+type Layout = 'split' | 'drill' | 'table'
+
+/**
+ * The room the queue has, measured, around whatever it is laid out as. Its
+ * children are drawn once the room is known, which is before the first
+ * paint.
+ */
+function QueueRoom({
+  layout,
+  seat,
+  width,
+  children,
+}: {
+  layout: Layout | null
+  seat: (node: HTMLDivElement | null) => void
+  width: number | null
+  children: ReactNode
+}) {
+  return (
+    <div
+      ref={seat}
+      data-testid="queue-layout"
+      data-layout={layout ?? ''}
+      {...stylex.props(styles.room)}
+    >
+      {width === null ? null : children}
+    </div>
+  )
+}
 
 /**
  * The tallest the list beside the filings may be: to the window's foot from
@@ -329,16 +418,19 @@ function useFitsTheWindow(node: HTMLElement | null) {
  * step in and the step back arrive from the side they came from.
  */
 function Split({
+  room,
+  beside,
   chosen,
   master,
   pane,
 }: {
+  room: number
+  beside: boolean
   /** the key of the one picked in the address, where it names one in the list */
   chosen: string | null
   master: ReactNode
   pane: ReactNode
 }) {
-  const beside = useBeside()
   const [seen, setSeen] = useState<{ chosen: string | null; move: DrillMove }>({
     chosen,
     move: 'none',
@@ -350,7 +442,7 @@ function Split({
   useFitsTheWindow(beside ? seat : null)
   if (beside) {
     return (
-      <div {...stylex.props(styles.split)}>
+      <div {...stylex.props(styles.split(`${String(masterWidthOf(room))}px minmax(0, 1fr)`))}>
         <div ref={setSeat} data-testid="queue-master-seat" {...stylex.props(styles.masterSeat)}>
           {master}
         </div>
@@ -436,7 +528,10 @@ function MasterRow({
         {face}
         <span {...stylex.props(styles.masterWords)}>
           <span {...stylex.props(styles.masterNameLine)}>
-            <span {...stylex.props(styles.masterName, selected && styles.masterNameOn)}>
+            <span
+              title={name}
+              {...stylex.props(styles.masterName, selected && styles.masterNameOn)}
+            >
               {name}
             </span>
             {note !== null && <span {...stylex.props(styles.businessNo)}>{note}</span>}
@@ -514,6 +609,7 @@ export function PagerFoot({
   size,
   onPage,
   anchor = 'queue-pane',
+  compact,
 }: {
   list: {
     readonly page: number
@@ -525,6 +621,8 @@ export function PagerFoot({
   onPage: (page: number) => void
   /** the card whose top the next page is read from */
   anchor?: string
+  /** figures alone, for a strip with little room; the window decides where the caller does not */
+  compact?: boolean
 }) {
   const { format } = useI18n()
   const beside = useBeside()
@@ -537,7 +635,7 @@ export function PagerFoot({
         page={list.page}
         pageSize={size}
         total={list.total}
-        compact={!beside}
+        compact={compact ?? !beside}
         summary={format(m.reviewPageSummary, {
           from: list.from,
           to: list.to,
@@ -599,15 +697,41 @@ function RoundMark({ row }: { row: InboxItemDto }) {
   )
 }
 
-/** who filed it, by name and number */
+/**
+ * When it arrived, and under it where its round stands where that is more
+ * than waiting. A column of its own for the standing was a column empty on
+ * nearly every row, and its width came out of the answers beside it.
+ */
+function When({ row }: { row: InboxItemDto }) {
+  const clock = useQueueClock()
+  return (
+    <span {...stylex.props(styles.when)}>
+      <span>{clock(row.submittedAt)}</span>
+      <RoundMark row={row} />
+    </span>
+  )
+}
+
+/**
+ * Who filed it, by name and number. The name is how the row is found, so
+ * it is the part kept whole: where the cell cannot hold both on one line
+ * the number goes under it, and a name longer than the cell itself gives
+ * its whole self on hover.
+ */
 function Who({ row }: { row: InboxItemDto }) {
   return (
-    <>
-      <LeadWord>{row.participantName}</LeadWord>
+    <span {...stylex.props(styles.who)}>
+      <span
+        data-testid="inbox-row-name"
+        title={row.participantName}
+        {...stylex.props(styles.whoName)}
+      >
+        {row.participantName}
+      </span>
       {row.businessNo !== null && (
         <span {...stylex.props(styles.businessNo)}>{row.businessNo}</span>
       )}
-    </>
+    </span>
   )
 }
 
@@ -627,26 +751,44 @@ function Face({ name }: { name: string }) {
  * question holds: a competition's name and a grade given the same width
  * left the name cut short beside a grade with room to spare. Read over the
  * whole question rather than one page of it, so paging never moves the
- * columns.
+ * columns; never less than the floor the room was checked against.
  */
 const answerColumns = (count: number, rows: readonly InboxItemDto[]): string[] =>
   Array.from({ length: count }, (_, index) => {
-    const longest = Math.max(
-      0,
-      ...rows.map((row) => {
-        const pair = row.values[index]
-        return pair === undefined ? 0 : pair.files !== null ? 4 : [...pair.value].length
-      }),
-    )
-    return `minmax(0, ${String(Math.min(3, Math.max(1, Math.round(longest / 8))))}fr)`
+    // what is left over is shared out by how long each field's answers run,
+    // so the room goes to the competition's name before the date's column
+    const weight = Math.min(400, Math.max(40, answerWidthOf(index, rows)))
+    return `minmax(${String(answerFloorOf(index, rows))}px, ${String(weight)}fr)`
   })
 
-/** a row's answers on one line, a field of files said as how many */
-const answersOf = (row: InboxItemDto, files: (count: number) => string): string =>
-  row.values
-    .map((pair) => (pair.files === null ? pair.value : pair.files === 0 ? '' : files(pair.files)))
-    .filter((value) => value !== '')
-    .join('\u3000')
+/**
+ * A row's answers as one run of words, a field of files said as how many
+ * where `files` asks for it. Separated by an ideographic space rather than
+ * a glyph, and a short answer - a date, a grade - is never broken across
+ * the end of a line: "2025-" over "11-12" reads as two answers.
+ */
+function AnswerRun({ row, files }: { row: InboxItemDto; files: boolean }) {
+  const { format } = useI18n()
+  const said = row.values.flatMap((pair) =>
+    pair.files === null
+      ? pair.value === ''
+        ? []
+        : [pair.value]
+      : files && pair.files > 0
+        ? [format(m.reviewFilesCount, { count: pair.files })]
+        : [],
+  )
+  return (
+    <span data-testid="inbox-row-summary" {...stylex.props(styles.summaryLines)}>
+      {said.map((value, index) => (
+        <span key={index}>
+          {index > 0 && '\u3000'}
+          <span {...stylex.props([...value].length <= 12 && styles.unbroken)}>{value}</span>
+        </span>
+      ))}
+    </span>
+  )
+}
 
 /** a phone, where a table's row stacks its facts under its name */
 const usePhone = () => useMedia('(max-width: 767.98px)', false)
@@ -657,6 +799,14 @@ const pickedOf = <Group,>(
   keyOf: (group: Group) => string,
   key: string,
 ) => (key === '' ? undefined : groups.find((group) => keyOf(group) === key))
+
+/** the queue's room, and what it allows: the list beside the filings, and how wide they are */
+function useQueueRoom() {
+  const [seat, width] = useWidthOf<HTMLDivElement>()
+  const room = width ?? 0
+  const beside = width !== null && width >= BESIDE_MIN
+  return { seat, width, room, beside }
+}
 
 /** the queue by question: which questions have work, and one question's filings */
 export function ItemQueue({
@@ -672,20 +822,21 @@ export function ItemQueue({
   /** the question named in the address; empty for none */
   chosen: string
   page: number
-  onChoose: (itemId: string) => void
+  onChoose: Choose
   onBack: () => void
   onPage: (page: number) => void
   onOpen: OpenRow
 }) {
   const { format } = useI18n()
-  const beside = useBeside()
+  const { seat, width, room, beside } = useQueueRoom()
   const phone = usePhone()
   const since = useDayClock()
-  const clock = useQueueClock()
   const groups = groupByItem(rows)
   const named = pickedOf(groups, (group) => group.itemId, chosen)
   // at a desk something is always open: the question that has waited longest
   const open = named ?? (beside ? groups[0] : undefined)
+  const layout: Layout = beside ? 'split' : 'drill'
+  const paneWidth = paneWidthOf(room, beside)
 
   const master = (
     <MasterCard
@@ -702,7 +853,7 @@ export function ItemQueue({
           count={group.rows.length}
           selected={beside && open?.itemId === group.itemId}
           drills={!beside}
-          onChoose={() => onChoose(group.itemId)}
+          onChoose={() => onChoose(group.itemId, !beside)}
         />
       ))}
     </MasterCard>
@@ -712,17 +863,23 @@ export function ItemQueue({
   if (open !== undefined) {
     const list = pageOf(open.rows, page, PANE_PAGE)
     const run = writeRunScope({ kind: 'item', itemId: open.itemId })
-    const marked = list.rows.some((row) => markOf(row) !== null)
+    // each answer its own column where the room allows it, and one column
+    // of what was filed where it does not; a phone stacks the row anyway
+    const summarize = phone || !answersFitIn(paneWidth, open.columns.length, open.rows)
     const columns = [
-      'minmax(8rem, 11rem)',
-      ...answerColumns(open.columns.length, open.rows),
-      '8rem',
-      ...(marked ? [MARK_COLUMN] : []),
+      `minmax(${String(WHO_MIN)}px, 11rem)`,
+      ...(summarize ? ['minmax(0, 1fr)'] : answerColumns(open.columns.length, open.rows)),
+      `${String(WHEN_WIDTH)}px`,
     ].join(' ')
     pane = (
-      <Card data-testid="queue-pane" data-key={open.itemId} data-count={open.rows.length}>
+      <Card
+        data-testid="queue-pane"
+        data-key={open.itemId}
+        data-count={open.rows.length}
+        data-answers={summarize ? 'summary' : 'columns'}
+      >
         <PaneHead
-          back={beside ? null : { label: format(m.reviewFilterAllItems), onBack }}
+          back={layout === 'drill' ? { label: format(m.reviewFilterAllItems), onBack } : null}
           title={open.itemTitle}
           facts={
             <Facts
@@ -746,11 +903,12 @@ export function ItemQueue({
         <Table columns={columns} openable>
           <TableHead>
             <span>{format(m.reviewColumnParticipant)}</span>
-            {open.columns.map((label, index) => (
-              <span key={index}>{label}</span>
-            ))}
+            {summarize ? (
+              <span>{format(m.reviewColumnSummary)}</span>
+            ) : (
+              open.columns.map((label, index) => <span key={index}>{label}</span>)
+            )}
             <span>{format(m.reviewColumnWhen)}</span>
-            {marked && <span />}
           </TableHead>
           {list.rows.map((row) => (
             <TableRow
@@ -762,39 +920,55 @@ export function ItemQueue({
               <Cell lead>
                 <Who row={row} />
               </Cell>
-              {/* stacked under a name, the answers are one line of what
-                  was filed: a column's word before each of them, and a rule
-                  between, made three short lines of labels out of two
-                  answers */}
-              {phone ? (
+              {/* stacked under a name, or sharing one column, the answers
+                  are one run of what was filed: a column's word before each
+                  of them, and a rule between, made three short lines of
+                  labels out of two answers */}
+              {summarize ? (
                 <Cell tone="plain" unlabelled>
-                  {answersOf(row, (count) => format(m.reviewFilesCount, { count }))}
+                  <AnswerRun row={row} files />
                 </Cell>
               ) : (
                 open.columns.map((_, index) => {
                   const pair = row.values[index]
                   return (
                     <Cell key={index} tone="plain">
-                      {pair === undefined ? null : <FiledValue pair={pair} />}
+                      {pair === undefined ? null : (
+                        <span data-testid="inbox-row-answer">
+                          <FiledValue pair={pair} />
+                        </span>
+                      )}
                     </Cell>
                   )
                 })
               )}
               <Cell narrow="end" numeric unlabelled>
-                {clock(row.submittedAt)}
+                <When row={row} />
               </Cell>
-              {marked && (
-                <Cell unlabelled>{markOf(row) === null ? null : <RoundMark row={row} />}</Cell>
-              )}
             </TableRow>
           ))}
         </Table>
-        <PagerFoot list={list} size={PANE_PAGE} onPage={onPage} />
+        <PagerFoot
+          list={list}
+          size={PANE_PAGE}
+          onPage={onPage}
+          compact={phone || paneWidth < PAGER_ROOM}
+        />
       </Card>
     )
   }
 
-  return <Split chosen={named?.itemId ?? null} master={master} pane={pane} />
+  return (
+    <QueueRoom layout={layout} seat={seat} width={width}>
+      <Split
+        room={room}
+        beside={beside}
+        chosen={named?.itemId ?? null}
+        master={master}
+        pane={pane}
+      />
+    </QueueRoom>
+  )
 }
 
 /** the queue by person: who has work waiting, and one person's filings */
@@ -811,17 +985,19 @@ export function PersonQueue({
   /** the person named in the address, by the key a run names them by */
   chosen: string
   page: number
-  onChoose: (key: string) => void
+  onChoose: Choose
   onBack: () => void
   onPage: (page: number) => void
   onOpen: OpenRow
 }) {
   const { format } = useI18n()
-  const beside = useBeside()
-  const clock = useQueueClock()
+  const { seat, width, room, beside } = useQueueRoom()
+  const phone = usePhone()
   const people = groupByPerson(rows)
   const named = pickedOf(people, (person) => person.key, chosen)
   const open = named ?? (beside ? people[0] : undefined)
+  const layout: Layout = beside ? 'split' : 'drill'
+  const paneWidth = paneWidthOf(room, beside)
 
   const master = (
     <MasterCard
@@ -840,7 +1016,7 @@ export function PersonQueue({
           face={<Face name={person.name} />}
           selected={beside && open?.key === person.key}
           drills={!beside}
-          onChoose={() => onChoose(person.key)}
+          onChoose={() => onChoose(person.key, !beside)}
         />
       ))}
     </MasterCard>
@@ -850,18 +1026,16 @@ export function PersonQueue({
   if (open !== undefined) {
     const list = pageOf(open.rows, page, PANE_PAGE)
     const run = writeRunScope({ kind: 'person', businessNo: open.key })
-    const marked = list.rows.some((row) => markOf(row) !== null)
     const columns = [
-      'minmax(10rem, 16rem)',
+      'minmax(7rem, 12rem)',
       'minmax(0, 1fr)',
-      '5rem',
-      '8rem',
-      ...(marked ? [MARK_COLUMN] : []),
+      '4.5rem',
+      `${String(WHEN_WIDTH)}px`,
     ].join(' ')
     pane = (
       <Card data-testid="queue-pane" data-key={open.key} data-count={open.rows.length}>
         <PaneHead
-          back={beside ? null : { label: format(m.reviewAllPeople), onBack }}
+          back={layout === 'drill' ? { label: format(m.reviewAllPeople), onBack } : null}
           face={<Face name={open.name} />}
           title={open.name}
           facts={
@@ -890,7 +1064,6 @@ export function PersonQueue({
             <span>{format(m.reviewColumnSummary)}</span>
             <span>{format(m.reviewColumnFiles)}</span>
             <span>{format(m.reviewColumnWhen)}</span>
-            {marked && <span />}
           </TableHead>
           {list.rows.map((row) => (
             <TableRow
@@ -899,11 +1072,11 @@ export function PersonQueue({
               data-testid="inbox-row"
               data-instance={row.instanceId}
             >
-              <Cell lead>
-                <LeadWord>{row.itemTitle}</LeadWord>
+              <Cell lead title={row.itemTitle}>
+                <span {...stylex.props(styles.whoName)}>{row.itemTitle}</span>
               </Cell>
               <Cell tone="plain" unlabelled>
-                {rowSummary(row)}
+                <AnswerRun row={row} files={false} />
               </Cell>
               {/* how many files is a desk's column; stacked it was a
                   labelled fact dangling under the answers */}
@@ -911,20 +1084,26 @@ export function PersonQueue({
                 {format(m.reviewFilesCount, { count: row.attachmentCount })}
               </Cell>
               <Cell narrow="end" numeric unlabelled>
-                {clock(row.submittedAt)}
+                <When row={row} />
               </Cell>
-              {marked && (
-                <Cell unlabelled>{markOf(row) === null ? null : <RoundMark row={row} />}</Cell>
-              )}
             </TableRow>
           ))}
         </Table>
-        <PagerFoot list={list} size={PANE_PAGE} onPage={onPage} />
+        <PagerFoot
+          list={list}
+          size={PANE_PAGE}
+          onPage={onPage}
+          compact={phone || paneWidth < PAGER_ROOM}
+        />
       </Card>
     )
   }
 
-  return <Split chosen={named?.key ?? null} master={master} pane={pane} />
+  return (
+    <QueueRoom layout={layout} seat={seat} width={width}>
+      <Split room={room} beside={beside} chosen={named?.key ?? null} master={master} pane={pane} />
+    </QueueRoom>
+  )
 }
 
 /** the whole queue in the order it arrived, oldest first, a page at a time */
@@ -940,90 +1119,99 @@ export function TimeQueue({
   onOpen: OpenRow
 }) {
   const { format } = useI18n()
-  const clock = useQueueClock()
+  const { seat, width, room } = useQueueRoom()
+  const phone = usePhone()
   const list = pageOf(rows, page, TIME_PAGE)
-  const marked = list.rows.some((row) => markOf(row) !== null)
   const columns = [
-    'minmax(8rem, 11rem)',
-    'minmax(8rem, 14rem)',
+    `minmax(${String(WHO_MIN)}px, 11rem)`,
+    'minmax(7rem, 14rem)',
     'minmax(0, 1fr)',
-    '8rem',
-    ...(marked ? [MARK_COLUMN] : []),
+    `${String(WHEN_WIDTH)}px`,
   ].join(' ')
   return (
-    <Card data-testid="queue-pane" data-key="" data-count={rows.length}>
-      <Table columns={columns} openable>
-        <TableHead>
-          <span>{format(m.reviewColumnParticipant)}</span>
-          <span>{format(m.reviewColumnItem)}</span>
-          <span>{format(m.reviewColumnSummary)}</span>
-          <span>{format(m.reviewColumnWhen)}</span>
-          {marked && <span />}
-        </TableHead>
-        {list.rows.map((row) => (
-          <TableRow
-            key={row.instanceId}
-            // the whole queue is the run: pressing any row walks on from it
-            onOpen={() => onOpen(row, '')}
-            data-testid="inbox-row"
-            data-instance={row.instanceId}
-          >
-            <Cell lead>
-              <Who row={row} />
-            </Cell>
-            <Cell tone="plain" unlabelled>
-              {row.itemTitle}
-            </Cell>
-            {/* stacked, the question is what the row is scanned by; its
-                answers are the workbench's to show */}
-            <Cell narrow="drop" unlabelled>
-              {rowSummary(row)}
-            </Cell>
-            <Cell narrow="end" numeric unlabelled>
-              {clock(row.submittedAt)}
-            </Cell>
-            {marked && (
-              <Cell unlabelled>{markOf(row) === null ? null : <RoundMark row={row} />}</Cell>
-            )}
-          </TableRow>
-        ))}
-      </Table>
-      <PagerFoot list={list} size={TIME_PAGE} onPage={onPage} />
-    </Card>
+    <QueueRoom layout="table" seat={seat} width={width}>
+      <Card data-testid="queue-pane" data-key="" data-count={rows.length}>
+        <Table columns={columns} openable>
+          <TableHead>
+            <span>{format(m.reviewColumnParticipant)}</span>
+            <span>{format(m.reviewColumnItem)}</span>
+            <span>{format(m.reviewColumnSummary)}</span>
+            <span>{format(m.reviewColumnWhen)}</span>
+          </TableHead>
+          {list.rows.map((row) => (
+            <TableRow
+              key={row.instanceId}
+              // the whole queue is the run: pressing any row walks on from it
+              onOpen={() => onOpen(row, '')}
+              data-testid="inbox-row"
+              data-instance={row.instanceId}
+            >
+              <Cell lead>
+                <Who row={row} />
+              </Cell>
+              <Cell tone="plain" unlabelled title={row.itemTitle}>
+                {row.itemTitle}
+              </Cell>
+              {/* stacked, the question is what the row is scanned by; its
+                  answers are the workbench's to show */}
+              <Cell narrow="drop" unlabelled>
+                <AnswerRun row={row} files={false} />
+              </Cell>
+              <Cell narrow="end" numeric unlabelled>
+                <When row={row} />
+              </Cell>
+            </TableRow>
+          ))}
+        </Table>
+        <PagerFoot
+          list={list}
+          size={TIME_PAGE}
+          onPage={onPage}
+          compact={phone || room < PAGER_ROOM}
+        />
+      </Card>
+    </QueueRoom>
   )
 }
 
 /**
- * The queue's own shape while it is read: at a desk the list beside the open
- * question's filings, narrower the list alone - the screens that land a
- * moment later, greyed.
+ * The queue's own shape while it is read: where the room allows it the list
+ * beside the open question's filings, narrower the list alone - the screens
+ * that land a moment later, greyed.
  */
 export function QueueSkeleton() {
-  const beside = useBeside()
+  const { seat, width, room, beside } = useQueueRoom()
   const masterBones = (
     <Card xstyle={styles.master}>
       <div {...stylex.props(styles.skHead)}>
         <Skeleton className={stylex.props(styles.skFacts).className} />
       </div>
-      {['72%', '54%', '64%', '48%'].map((width, index) => (
+      {['72%', '54%', '64%', '48%'].map((wide, index) => (
         <div key={index} {...stylex.props(styles.skMasterRow)}>
-          <Skeleton className={stylex.props(styles.skName).className} style={{ width }} />
+          <Skeleton className={stylex.props(styles.skName).className} style={{ width: wide }} />
           <Skeleton className={stylex.props(styles.skMeta).className} />
         </div>
       ))}
     </Card>
   )
-  if (!beside) return <div aria-hidden>{masterBones}</div>
   return (
-    <div aria-hidden {...stylex.props(styles.split)}>
-      <div {...stylex.props(styles.masterSeat)}>{masterBones}</div>
-      <Card>
-        <div {...stylex.props(styles.skHead)}>
-          <Skeleton className={stylex.props(styles.skTitle).className} />
-          <Skeleton className={stylex.props(styles.skFacts).className} />
-        </div>
-        <TableSkeleton rows={6} />
-      </Card>
+    <div aria-hidden>
+      <QueueRoom layout={null} seat={seat} width={width}>
+        {beside ? (
+          <div {...stylex.props(styles.split(`${String(masterWidthOf(room))}px minmax(0, 1fr)`))}>
+            <div {...stylex.props(styles.masterSeat)}>{masterBones}</div>
+            <Card>
+              <div {...stylex.props(styles.skHead)}>
+                <Skeleton className={stylex.props(styles.skTitle).className} />
+                <Skeleton className={stylex.props(styles.skFacts).className} />
+              </div>
+              <TableSkeleton rows={6} />
+            </Card>
+          </div>
+        ) : (
+          masterBones
+        )}
+      </QueueRoom>
     </div>
   )
 }

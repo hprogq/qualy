@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useState } from 'react'
 
-// Which kind of pointer is reading this screen. The workbench and the
-// decision sheets both branch on it, so the answer lives in one place.
+// Which kind of pointer is reading this screen, and how much room a part of
+// it was given. The workbench, the queue and the decision sheets all branch
+// on them, so the answers live in one place.
 
 /** a media query, read before the first paint and watched after it */
 export function useMedia(query: string, initial: boolean): boolean {
@@ -34,6 +35,32 @@ export function useFinePointer(): boolean {
 /** whether the workbench columns stand beside each other: the same line css draws at */
 export function useBeside(): boolean {
   return useMedia('(min-width: 64rem)', true)
+}
+
+/**
+ * How wide an element is, read before the first paint and after every
+ * change of its size.
+ *
+ * The window is the wrong measure for anything inside the shell: the rail
+ * beside a page takes a quarter of a laptop's width, and a layout that
+ * asked the window whether two columns fit put them side by side in room
+ * for one. Null until the element has been laid out once.
+ */
+export function useWidthOf<Element extends HTMLElement>(): readonly [
+  (node: Element | null) => void,
+  number | null,
+] {
+  const [node, setNode] = useState<Element | null>(null)
+  const [width, setWidth] = useState<number | null>(null)
+  useLayoutEffect(() => {
+    if (node === null) return
+    const read = () => setWidth(Math.round(node.getBoundingClientRect().width))
+    read()
+    const watch = new ResizeObserver(read)
+    watch.observe(node)
+    return () => watch.disconnect()
+  }, [node])
+  return [setNode, width] as const
 }
 
 /** how a scroll the reader did not ask for moves: at once, where they asked for less motion */
