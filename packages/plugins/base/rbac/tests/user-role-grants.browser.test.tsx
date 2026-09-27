@@ -443,6 +443,29 @@ describe('the grants of one person', () => {
     await expect.element(page.getByRole('button', { name: '授予', exact: true })).toBeDisabled()
   })
 
+  // Every office the reader could give says the person is out of service;
+  // one they hold and may not appoint does not make that a mixed answer.
+  it('lets a disabled person outweigh the offices beyond the reader', async () => {
+    await open({
+      getUserRoleGrants: () =>
+        Effect.succeed({ grants: [grant()], grantable: { tenant: true, organization: false } }),
+      getRoleGrantOptions: () =>
+        Effect.succeed({
+          ...within,
+          roles: [],
+          refused: [
+            { ...refusedRole('monitor', '学院管理员'), refusal: 'authority' as const },
+            { ...refusedRole('mentor', '辅导员'), refusal: 'person-disabled' as const },
+          ],
+        }),
+    })
+    await page.getByRole('button', { name: '授予角色' }).click()
+    await expect
+      .element(page.getByTestId('grant-nothing-offered'))
+      .toHaveAttribute('data-summary', 'person-disabled')
+    expect(page.getByRole('button', { name: '授予', exact: true }).query()).toBeNull()
+  })
+
   it('names an office closed to new grants as closed', async () => {
     await open(
       {

@@ -100,19 +100,19 @@ const styles = stylex.create({
  * What the offices refused here have in common, which decides the one
  * sentence said above them: a reason that is the unit's sends the reader to
  * another unit, one that is the person's or the reader's own does not.
+ *
+ * A person out of service outweighs everything else: every office the
+ * reader could give says so, and the rest are beside the point until
+ * somebody enables them.
  */
 type RefusalSummary = 'none' | 'person-disabled' | 'org-type' | 'user-type' | 'authority' | 'mixed'
 
 const summarize = (refused: readonly Refused[]): RefusalSummary => {
   if (refused.length === 0) return 'none'
+  if (refused.some((role) => role.refusal === 'person-disabled')) return 'person-disabled'
   const first = refused[0]!.refusal
   if (!refused.every((role) => role.refusal === first)) return 'mixed'
-  return first === 'person-disabled' ||
-    first === 'org-type' ||
-    first === 'user-type' ||
-    first === 'authority'
-    ? first
-    : 'mixed'
+  return first === 'org-type' || first === 'user-type' || first === 'authority' ? first : 'mixed'
 }
 
 /**
