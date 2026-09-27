@@ -223,6 +223,46 @@ describe('the queue beside the rail', () => {
     await expect.element(masters.first()).toBeVisible()
   })
 
+  // A table's answers take the room their longest entries need, the
+  // shortest first, so a grade and a date are whole before a competition's
+  // name is cut; and an answer the room still cuts short says the whole of
+  // itself on hover.
+  it('gives the longest answer the room there is, and the whole of it on hover', async () => {
+    for (const [width, height] of [
+      [1440, 900],
+      [1920, 1080],
+    ] as const) {
+      await page.viewport(width, height)
+      const shown = await shelled(both(), `?item=${ITEM_ID}`)
+      await expect.element(rows().first()).toBeVisible()
+      await expect
+        .element(page.getByTestId('queue-pane'))
+        .toHaveAttribute('data-answers', 'columns')
+      const cells = rows()
+        .elements()
+        .flatMap((row) => [...row.querySelectorAll('[data-testid="inbox-row-answer"]')])
+        .map((answer) => answer.parentElement as HTMLElement)
+      expect(cells.length).toBeGreaterThan(0)
+      for (const cell of cells) {
+        const cut = cell.scrollWidth > cell.clientWidth + 1
+        if (cut) expect(cell.getAttribute('title')).toBe(cell.textContent)
+      }
+      // the short ones are never what gives way
+      const firstRow = rows().first().element()
+      const [, grade, date] = [
+        ...firstRow.querySelectorAll('[data-testid="inbox-row-answer"]'),
+      ].map((answer) => answer.parentElement as HTMLElement)
+      for (const cell of [grade!, date!]) {
+        expect(cell.scrollWidth).toBeLessThanOrEqual(cell.clientWidth + 1)
+      }
+      if (width === 1920) {
+        // and with room to spare nothing is cut at all
+        expect(cells.every((cell) => cell.scrollWidth <= cell.clientWidth + 1)).toBe(true)
+      }
+      await shown.unmount()
+    }
+  })
+
   // The name is how a row is found. The number beside it goes under it
   // before the name loses a character, and a name longer than the cell
   // still says its whole self on hover.
@@ -301,6 +341,33 @@ describe('the queue beside the rail', () => {
       glide.mockRestore()
     }
   })
+
+  // By time, the question takes a column only where there is room for one
+  // beside the answers; narrower it rides under the name, and the answers
+  // keep the width.
+  for (const [width, height, where] of [
+    [1024, 768, 'under-name'],
+    [1440, 900, 'column'],
+  ] as const) {
+    it(`puts the question where the room allows it by time at ${String(width)}`, async () => {
+      await page.viewport(width, height)
+      await shelled(both(), '?view=time')
+      await expect.element(rows().first()).toBeVisible()
+      await expect.element(page.getByTestId('queue-pane')).toHaveAttribute('data-item', where)
+      const summary = rows().first().element().querySelector('[data-testid="inbox-row-summary"]')!
+        .parentElement as HTMLElement
+      expect(summary.getBoundingClientRect().width).toBeGreaterThanOrEqual(240)
+      const item = rows().first().element().querySelector('[data-testid="inbox-row-item"]')!
+      expect(item.textContent).toBe('学科竞赛获奖')
+      if (where === 'under-name') {
+        const name = rows().first().element().querySelector('[data-testid="inbox-row-name"]')!
+        expect(item.getBoundingClientRect().top).toBeGreaterThan(name.getBoundingClientRect().top)
+      }
+      for (const row of rows().elements()) {
+        expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth + 1)
+      }
+    })
+  }
 })
 
 // The few filings of the one question or person open are laid out whole,

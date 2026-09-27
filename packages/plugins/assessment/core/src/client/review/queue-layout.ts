@@ -17,7 +17,7 @@ import type { InboxItemDto } from './model.ts'
  */
 export const SPREAD_MOST = 3
 
-/** below this, the list and the picked one's filings are one screen after the other */
+/** below this, the list and the picked one's filings do not fit side by side */
 export const BESIDE_MIN = 880
 
 /** the column the list takes beside the filings: a quarter of the room, within bounds */
@@ -38,6 +38,8 @@ const TRACK_GAP = 16
 const WAY_IN = 20
 /** who filed it, at its narrowest: eight characters of name, the number under it */
 export const WHO_MIN = 112
+/** who filed it, at its widest: past this a name gives way to the answers */
+const WHO_MOST = 176
 /** when it arrived: "9月20日 10:17", "Sep 20, 10:17"; where a round stands under it */
 export const WHEN_WIDTH = 112
 /**
@@ -52,8 +54,10 @@ const SPARE = 64
 // rather than measured, because the columns have to be decided before
 // anything is drawn in them.
 const CELL_SIZE = 12.5
-const WIDE = CELL_SIZE * 1.04
-const NARROW = CELL_SIZE * 0.6
+const NAME_SIZE = 13.5
+const NUMBER_SIZE = 12
+/** a name and its number on one line, at their widest */
+const WHO_LINE_MOST = 280
 const isWide = (character: string) => (character.codePointAt(0) ?? 0) >= 0x2e80
 
 /** about how wide a piece of text is drawn at a font size */
@@ -65,12 +69,14 @@ const FILES_WIDTH = 56
 
 /** about how wide the longest answer to one of a question's fields is drawn */
 export const answerWidthOf = (index: number, rows: readonly InboxItemDto[]): number =>
-  Math.max(
-    0,
-    ...rows.map((row) => {
-      const pair = row.values[index]
-      return pair === undefined ? 0 : pair.files !== null ? FILES_WIDTH : widthOfText(pair.value)
-    }),
+  Math.ceil(
+    Math.max(
+      0,
+      ...rows.map((row) => {
+        const pair = row.values[index]
+        return pair === undefined ? 0 : pair.files !== null ? FILES_WIDTH : widthOfText(pair.value)
+      }),
+    ),
   )
 
 /**
@@ -79,7 +85,44 @@ export const answerWidthOf = (index: number, rows: readonly InboxItemDto[]): num
  * other column made to give way to it.
  */
 export const answerFloorOf = (index: number, rows: readonly InboxItemDto[]): number =>
-  Math.round(Math.min(12 * WIDE, Math.max(4 * NARROW, answerWidthOf(index, rows))))
+  Math.round(
+    Math.min(12 * CELL_SIZE * 1.04, Math.max(4 * CELL_SIZE * 0.6, answerWidthOf(index, rows))),
+  )
+
+/**
+ * How wide the column of who filed it has to be for the longest name in
+ * it: no wider, so the room goes to the answers, and no narrower than eight
+ * characters. The number beside a name moves under it before the name gives
+ * way.
+ */
+export const whoWidthOf = (rows: readonly InboxItemDto[]): number =>
+  Math.round(
+    Math.min(
+      WHO_MOST,
+      Math.max(WHO_MIN, ...rows.map((row) => widthOfText(row.participantName, NAME_SIZE) + 4)),
+    ),
+  )
+
+/** a name with its number beside it rather than under it, where there is room to spare */
+const whoLineOf = (rows: readonly InboxItemDto[]): number =>
+  Math.round(
+    Math.min(
+      WHO_LINE_MOST,
+      Math.max(
+        WHO_MIN,
+        ...rows.map(
+          (row) =>
+            widthOfText(row.participantName, NAME_SIZE) +
+            (row.businessNo === null ? 0 : 8 + widthOfText(row.businessNo, NUMBER_SIZE)) +
+            4,
+        ),
+      ),
+    ),
+  )
+
+/** what a table of a question's filings spends on everything but who and the answers */
+const fixedWidthOf = (answers: number): number =>
+  ROW_PADDING + TRACK_GAP * (answers + 2) + WHEN_WIDTH + WAY_IN
 
 /**
  * Whether a question's answers can each have a column of their own in the
@@ -92,15 +135,66 @@ export const answersFitIn = (
   count: number,
   rows: readonly InboxItemDto[],
 ): boolean => {
-  // who, every answer, when, and the way in
-  const tracks = count + 3
   const floors = Array.from({ length: count }, (_, index) => answerFloorOf(index, rows)).reduce(
     (sum, floor) => sum + floor,
     0,
   )
-  const needed =
-    ROW_PADDING + TRACK_GAP * (tracks - 1) + WHO_MIN + WHEN_WIDTH + WAY_IN + floors + SPARE
-  return paneWidth >= needed
+  return paneWidth >= fixedWidthOf(count) + WHO_MIN + floors + SPARE
+}
+
+/**
+ * The widths the columns of who filed it and of each answer are given.
+ *
+ * Every column starts at its floor, and the room left over is poured in
+ * evenly: a column stops taking once it holds its longest entry, so a
+ * grade and a date are whole long before a competition's name, and the
+ * name takes what they leave. Room past what every column needs puts a
+ * number beside its name rather than under it, and the rest goes to the
+ * answers, by how long they run. Given as weights for the grid, so a row a
+ * few pixels wider or narrower than reckoned keeps the proportions.
+ */
+export const tableColumnsOf = (
+  paneWidth: number,
+  count: number,
+  rows: readonly InboxItemDto[],
+): { readonly floors: readonly number[]; readonly widths: readonly number[] } => {
+  const floors = [
+    WHO_MIN,
+    ...Array.from({ length: count }, (_, index) => answerFloorOf(index, rows)),
+  ]
+  const needs = [
+    whoWidthOf(rows),
+    ...Array.from({ length: count }, (_, index) =>
+      Math.max(answerFloorOf(index, rows), answerWidthOf(index, rows) + 2),
+    ),
+  ]
+  const widths = [...floors]
+  let spare = paneWidth - fixedWidthOf(count) - floors.reduce((sum, width) => sum + width, 0)
+  while (spare > 0.5) {
+    const open = widths.flatMap((width, index) => (width < needs[index]! ? [index] : []))
+    if (open.length === 0) break
+    const step = Math.min(
+      spare / open.length,
+      ...open.map((index) => needs[index]! - widths[index]!),
+    )
+    for (const index of open) widths[index] = widths[index]! + step
+    spare -= step * open.length
+  }
+  // then the number beside its name, rather than under it
+  if (spare > 0.5) {
+    const grow = Math.min(spare, Math.max(0, whoLineOf(rows) - widths[0]!))
+    widths[0] = widths[0]! + grow
+    spare -= grow
+  }
+  if (spare > 0.5 && count > 0) {
+    const answers = needs.slice(1)
+    const total = answers.reduce((sum, need) => sum + need, 0)
+    answers.forEach((need, index) => {
+      widths[index + 1] =
+        widths[index + 1]! + (total === 0 ? spare / count : (spare * need) / total)
+    })
+  }
+  return { floors, widths }
 }
 
 // a filing laid out whole: its inset either side, and the gap between two

@@ -26,12 +26,12 @@ import {
   SPREAD_MOST,
   WHEN_WIDTH,
   WHO_MIN,
-  answerFloorOf,
-  answerWidthOf,
   answersFitIn,
   masterWidthOf,
   paneWidthOf,
   spreadColumnsOf,
+  tableColumnsOf,
+  whoWidthOf,
 } from './queue-layout.ts'
 import {
   groupByItem,
@@ -421,6 +421,18 @@ const styles = stylex.create({
     fontSize: { default: 13.5, [breakpoints.phone]: 13 },
     lineHeight: 1.5,
     color: tokens.foreground,
+  },
+  // who filed it with the question under the name, where the room has no
+  // column to spare for the question
+  whoWithItem: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 2 },
+  whoItem: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    fontWeight: 400,
+    color: tokens.mutedForeground,
   },
   // ---- the queue's shape while it is read ----
   skHead: {
@@ -866,19 +878,17 @@ function Face({ name }: { name: string }) {
 }
 
 /**
- * How much of the row each answer column takes, by the longest answer the
- * question holds: a competition's name and a grade given the same width
- * left the name cut short beside a grade with room to spare. Read over the
- * whole question rather than one page of it, so paging never moves the
- * columns; never less than the floor the room was checked against.
+ * The tracks of a question's table: who filed it and each answer, by what
+ * the longest of each holds and the room there is (tableColumnsOf). A
+ * competition's name and a grade given the same width left the name cut
+ * short beside a grade with room to spare. Read over the whole question
+ * rather than one page of it, so paging never moves the columns; never less
+ * than the floor the room was checked against.
  */
-const answerColumns = (count: number, rows: readonly InboxItemDto[]): string[] =>
-  Array.from({ length: count }, (_, index) => {
-    // what is left over is shared out by how long each field's answers run,
-    // so the room goes to the competition's name before the date's column
-    const weight = Math.min(400, Math.max(40, answerWidthOf(index, rows)))
-    return `minmax(${String(answerFloorOf(index, rows))}px, ${String(weight)}fr)`
-  })
+const tableTracks = (paneWidth: number, count: number, rows: readonly InboxItemDto[]): string[] => {
+  const { floors, widths } = tableColumnsOf(paneWidth, count, rows)
+  return floors.map((floor, index) => `minmax(${String(floor)}px, ${widths[index]!.toFixed(1)}fr)`)
+}
 
 /**
  * A row's answers as one run of words, a field of files said as how many
@@ -1108,6 +1118,7 @@ export function ItemQueue({
           <ItemTable
             group={open}
             page={page}
+            paneWidth={paneWidth}
             summarize={answers === 'summary'}
             compact={phone || paneWidth < PAGER_ROOM}
             onPage={onPage}
@@ -1139,6 +1150,7 @@ export function ItemQueue({
 function ItemTable({
   group,
   page,
+  paneWidth,
   summarize,
   compact,
   onPage,
@@ -1146,6 +1158,7 @@ function ItemTable({
 }: {
   group: ItemGroup
   page: number
+  paneWidth: number
   /** the answers share one column rather than taking one each */
   summarize: boolean
   /** the pager says where it stands in figures alone */
@@ -1156,8 +1169,9 @@ function ItemTable({
   const { format } = useI18n()
   const list = pageOf(group.rows, page, PANE_PAGE)
   const columns = [
-    `minmax(${String(WHO_MIN)}px, 11rem)`,
-    ...(summarize ? ['minmax(0, 1fr)'] : answerColumns(group.columns.length, group.rows)),
+    ...(summarize
+      ? [`minmax(${String(WHO_MIN)}px, ${String(whoWidthOf(group.rows))}px)`, 'minmax(0, 1fr)']
+      : tableTracks(paneWidth, group.columns.length, group.rows)),
     `${String(WHEN_WIDTH)}px`,
   ].join(' ')
   return (
@@ -1193,8 +1207,13 @@ function ItemTable({
             ) : (
               group.columns.map((_, index) => {
                 const pair = row.values[index]
+                // the whole answer on hover, where its column cuts it short
                 return (
-                  <Cell key={index} tone="plain">
+                  <Cell
+                    key={index}
+                    tone="plain"
+                    title={pair === undefined || pair.files !== null ? undefined : pair.value}
+                  >
                     {pair === undefined ? null : (
                       <span data-testid="inbox-row-answer">
                         <FiledValue pair={pair} />
@@ -1458,9 +1477,12 @@ export function TimeQueue({
   const phone = usePhone()
   const spread = rows.length <= SPREAD_MOST
   const list = pageOf(rows, page, TIME_PAGE)
+  // narrower than a list beside a question, the question rides under the
+  // name rather than taking a column the answers need more
+  const tight = room < BESIDE_MIN
   const columns = [
-    `minmax(${String(WHO_MIN)}px, 11rem)`,
-    'minmax(7rem, 14rem)',
+    `minmax(${String(WHO_MIN)}px, ${String(whoWidthOf(rows))}px)`,
+    ...(tight ? [] : ['minmax(7rem, 14rem)']),
     'minmax(0, 1fr)',
     `${String(WHEN_WIDTH)}px`,
   ].join(' ')
@@ -1472,11 +1494,16 @@ export function TimeQueue({
           <SpreadRows rows={rows} lead="both" room={room} onOpen={(row) => onOpen(row, '')} />
         </Card>
       ) : (
-        <Card data-testid="queue-pane" data-key="" data-count={rows.length}>
+        <Card
+          data-testid="queue-pane"
+          data-key=""
+          data-count={rows.length}
+          data-item={tight ? 'under-name' : 'column'}
+        >
           <Table columns={columns} openable>
             <TableHead>
               <span>{format(m.reviewColumnParticipant)}</span>
-              <span>{format(m.reviewColumnItem)}</span>
+              {!tight && <span>{format(m.reviewColumnItem)}</span>}
               <span>{format(m.reviewColumnSummary)}</span>
               <span>{format(m.reviewColumnWhen)}</span>
             </TableHead>
@@ -1489,11 +1516,26 @@ export function TimeQueue({
                 data-instance={row.instanceId}
               >
                 <Cell lead>
-                  <Who row={row} />
+                  {tight ? (
+                    <span {...stylex.props(styles.whoWithItem)}>
+                      <Who row={row} />
+                      <span
+                        data-testid="inbox-row-item"
+                        title={row.itemTitle}
+                        {...stylex.props(styles.whoItem)}
+                      >
+                        {row.itemTitle}
+                      </span>
+                    </span>
+                  ) : (
+                    <Who row={row} />
+                  )}
                 </Cell>
-                <Cell tone="plain" unlabelled title={row.itemTitle}>
-                  {row.itemTitle}
-                </Cell>
+                {!tight && (
+                  <Cell tone="plain" unlabelled title={row.itemTitle}>
+                    <span data-testid="inbox-row-item">{row.itemTitle}</span>
+                  </Cell>
+                )}
                 {/* stacked, the question is what the row is scanned by; its
                     answers are the workbench's to show */}
                 <Cell narrow="drop" unlabelled>
