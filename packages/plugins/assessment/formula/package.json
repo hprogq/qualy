@@ -62,7 +62,7 @@
     "effect": "catalog:",
     "kysely": "catalog:",
     "lucide-react": "^0.552.0",
-    "monaco-editor": "0.56.0",
+    "monaco-editor": "0.57.0",
     "shiki": "catalog:"
   },
   "devDependencies": {
