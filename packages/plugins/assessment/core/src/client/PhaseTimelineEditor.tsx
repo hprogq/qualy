@@ -301,9 +301,12 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
     if (edited === null) setBaseline(serverFingerprint ?? null)
     setEdited(next)
   }
+  /** the stages a move was pressed on, which decide a swap's tie (movedIds) */
+  const [touched, setTouched] = useState<ReadonlySet<string>>(() => new Set())
   const dropDraft = () => {
     setEdited(null)
     setBaseline(null)
+    setTouched(new Set())
   }
   const [editing, setEditing] = useState(false)
   /** the seam a pointer is currently over, if any */
@@ -326,8 +329,14 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
   // are duplicated for a screen reader too
   const isMobile = useIsMobile()
   const readOnly = batch.status === 'archived'
-  const dirty = useMemo(() => countChanges(edited, serverDrafts), [edited, serverDrafts])
-  const moved = useMemo(() => movedIds(edited, serverDrafts), [edited, serverDrafts])
+  const dirty = useMemo(
+    () => countChanges(edited, serverDrafts, touched),
+    [edited, serverDrafts, touched],
+  )
+  const moved = useMemo(
+    () => movedIds(edited, serverDrafts, touched),
+    [edited, serverDrafts, touched],
+  )
 
   const clear = () => {
     setFailure(null)
@@ -527,6 +536,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
     const [row] = next.splice(index, 1)
     next.splice(to, 0, row!)
     clear()
+    if (row!.id !== undefined) setTouched((was) => new Set(was).add(row!.id!))
     edit(next)
   }
 

@@ -137,10 +137,16 @@ export const shapeOf = (rows: readonly PhaseDto[], currentPhaseId: string | null
  * it is what moved. One stage taken from the top to the bottom is one move,
  * not every stage it passed on the way. Order is part of the plan - it is
  * the order the stages run in - so a move is as unsaved as a rename.
+ *
+ * Two neighbours swapped leave two runs as long as each other, one keeping
+ * either stage. Which one moved is then the one somebody moved: `touched`
+ * names the stages the reader pressed a move on, and the run that keeps the
+ * untouched ones in place is taken.
  */
 export const movedIds = (
   edited: readonly PhaseDraft[] | null,
   server: readonly PhaseDraft[],
+  touched: ReadonlySet<string> = new Set(),
 ): ReadonlySet<string> => {
   if (edited === null) return new Set()
   const stored = new Set(server.flatMap((row) => (row.id !== undefined ? [row.id] : [])))
@@ -149,17 +155,23 @@ export const movedIds = (
   )
   const kept = new Set(after)
   const before = server.flatMap((row) => (row.id !== undefined && kept.has(row.id) ? [row.id] : []))
-  // the longest common run, by the usual table: longest[i][j] is how long
-  // it is over the first i of `after` and the first j of `before`
-  const longest = Array.from({ length: after.length + 1 }, () =>
+  // the longest common run, weighed so that length always wins and, between
+  // runs of one length, the one holding more untouched stages does: a stage
+  // counts one more than there are stages, and one more again if nobody
+  // moved it. best[i][j] is the weight over the first i of `after` and the
+  // first j of `before`. Each id is in each list once, so a pair that
+  // matches is always worth taking.
+  const whole = after.length + 1
+  const weight = (id: string) => whole + (touched.has(id) ? 0 : 1)
+  const best = Array.from({ length: after.length + 1 }, () =>
     Array.from<number>({ length: before.length + 1 }).fill(0),
   )
   for (let i = 1; i <= after.length; i += 1) {
     for (let j = 1; j <= before.length; j += 1) {
-      longest[i]![j] =
+      best[i]![j] =
         after[i - 1] === before[j - 1]
-          ? longest[i - 1]![j - 1]! + 1
-          : Math.max(longest[i - 1]![j]!, longest[i]![j - 1]!)
+          ? best[i - 1]![j - 1]! + weight(after[i - 1]!)
+          : Math.max(best[i - 1]![j]!, best[i]![j - 1]!)
     }
   }
   const moved = new Set(after)
@@ -170,7 +182,7 @@ export const movedIds = (
       moved.delete(after[i - 1]!)
       i -= 1
       j -= 1
-    } else if (longest[i - 1]![j]! >= longest[i]![j - 1]!) {
+    } else if (best[i - 1]![j]! >= best[i]![j - 1]!) {
       i -= 1
     } else {
       j -= 1
@@ -183,10 +195,11 @@ export const movedIds = (
 export const countChanges = (
   edited: readonly PhaseDraft[] | null,
   server: readonly PhaseDraft[],
+  touched?: ReadonlySet<string>,
 ): number => {
   if (edited === null) return 0
   const before = new Map(server.map((row) => [row.id!, row]))
-  const moved = movedIds(edited, server)
+  const moved = movedIds(edited, server, touched)
   const changed = edited.filter(
     (row) => row.id === undefined || edits(row, before.get(row.id)) || moved.has(row.id),
   ).length

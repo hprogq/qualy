@@ -174,6 +174,25 @@ describe('the stage plan, being edited', () => {
     expect(held()).toBe(false)
   })
 
+  it('marks the stage that was moved, not the neighbour it passed', async () => {
+    await page.viewport(1280, 800)
+    await screen()
+    await vi.waitFor(() => expect(keys()).toEqual(['entry', 'review', 'publish']))
+
+    await page.getByRole('button', { name: '编辑阶段' }).click()
+    // the second stage taken up past the first: either could be the one
+    // that moved by the order alone, and it is the one pressed
+    await page.getByRole('button', { name: '上移' }).nth(1).click()
+    await vi.waitFor(() => expect(keys()).toEqual(['review', 'entry', 'publish']))
+    expect(unsaved()).toEqual(['true', 'false', 'false'])
+
+    // the first then taken on down to the end: what the plan now differs
+    // by is that one stage, wherever the presses went in between
+    await page.getByRole('button', { name: '下移' }).nth(1).click()
+    await vi.waitFor(() => expect(keys()).toEqual(['review', 'publish', 'entry']))
+    expect(unsaved()).toEqual(['false', 'false', 'true'])
+  })
+
   it('has nothing to ask about once a stage is moved back where it was', async () => {
     await page.viewport(1280, 800)
     await screen()
