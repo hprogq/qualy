@@ -3,7 +3,6 @@ import type { MessageCatalog } from '@qualy/i18n-contract'
 export default {
   'org/nav-group/organization': '组织与权限',
   'org/navigation/organization': '组织架构',
-  'org/state/load-failed-hint': '请检查网络连接或访问权限后重试。',
   'org/tree/units': '组织',
   'org/tree/counts': '共 {total} 个，其中 {manageable} 个可管理',
   'org/nodes/people-here': '本级',

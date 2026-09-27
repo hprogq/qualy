@@ -602,4 +602,24 @@ describe('the organization screen', () => {
     expect(page.getByRole('button', { name: '创建' }).elements()).toHaveLength(0)
     expect(page.getByRole('button', { name: '删除组织' }).elements()).toHaveLength(0)
   })
+
+  // A structure that could not be read said one fixed sentence about the
+  // connection or permissions, whatever the reason. A server that cannot
+  // answer now is worth another try; the answer is a pane with a heading
+  // under the page's own title.
+  it('says the structure cannot be read now, with a retry', async () => {
+    const client = world()
+    await renderScreen({
+      client: fakeClient({
+        ...client,
+        org: { ...client.org, getTree: () => Effect.fail(apiError('SERVICE_UNAVAILABLE')) },
+      }),
+      route: '/admin/org',
+      children: <OrgPage />,
+    })
+    const state = page.getByRole('status').filter({ has: page.getByRole('heading') })
+    await expect.element(state).toHaveAttribute('data-state', 'unavailable')
+    await expect.element(state.getByRole('heading', { level: 2 })).toBeVisible()
+    await expect.element(state.getByRole('button', { name: '重试' })).toBeVisible()
+  })
 })

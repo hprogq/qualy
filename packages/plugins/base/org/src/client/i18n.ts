@@ -124,10 +124,6 @@ const i18n = definePluginMessages({
       id: 'org/permission/tree-manage',
       defaultMessage: 'Manage the organization',
     },
-    loadFailedHint: {
-      id: 'org/state/load-failed-hint',
-      defaultMessage: 'Check your connection or permissions and try again.',
-    },
     unitsTitle: { id: 'org/tree/units', defaultMessage: 'Units' },
     treeCounts: {
       id: 'org/tree/counts',

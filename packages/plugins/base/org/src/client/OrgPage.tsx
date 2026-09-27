@@ -3,10 +3,11 @@ import { useMemo, useState } from 'react'
 import { PlusIcon, Trash2Icon } from 'lucide-react'
 import {
   useApi,
-  useRunApi,
   useApiQuery,
+  useLoadFailure,
   usePageQueryState,
   usePageQueryUpdate,
+  useRunApi,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -53,6 +54,7 @@ export default function OrgPage() {
   const runApi = useRunApi()
   const query = useApiQuery(orgApi)
   const { format, formatError } = useI18n()
+  const failures = useLoadFailure()
   const queryClient = useQueryClient()
   const [view, setView] = usePageQueryState('view')
   const [selectedId, setSelectedId] = usePageQueryState('node')
@@ -180,9 +182,10 @@ export default function OrgPage() {
         pending={treeQuery.isPending || typesQuery.isPending || rulesQuery.isPending}
         error={
           treeQuery.isError || typesQuery.isError || rulesQuery.isError
-            ? format(m.loadFailedHint)
+            ? failures.of(treeQuery.error ?? typesQuery.error ?? rulesQuery.error)
             : null
         }
+        framed
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void refresh()}
