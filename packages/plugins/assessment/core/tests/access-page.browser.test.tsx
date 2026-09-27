@@ -1,11 +1,13 @@
 import BatchAccessPage from '../src/client/BatchAccessPage.tsx'
-import { describe, expect, it } from 'vitest'
+import { lazy } from 'react'
+import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
 import { AccessAdjustDialog } from '../src/client/access/AccessAdjustDialog.tsx'
 import { AccessSyncDialog } from '../src/client/access/AccessSyncDialog.tsx'
+import { appointSearch } from '../src/client/access/view.ts'
 import zh from '../src/client/locales/zh-CN.ts'
-import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // How one round's staff reads at the widths people actually use: a role and
 // where it is held, never one squeezing the other out; a name that runs
@@ -374,5 +376,119 @@ describe('the changes from the organization', () => {
     await expect
       .element(page.getByTestId('access-change-role'))
       .toHaveAttribute('data-where', 'beyond')
+  })
+})
+
+// Sent here from a review step nobody holds, the reader should only have to
+// say who: the address names the role and the unit, the dialog opens with
+// both answered, and the answer the dialog sends is that seat.
+describe('appointing at a seat the address names', () => {
+  const USER_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+  const OTHER_ROLE = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbc'
+  const PickPeople = ({ context }: { context: { onToggle: (id: string) => void } }) => (
+    <button type="button" onClick={() => context.onToggle(USER_ID)}>
+      pick people
+    </button>
+  )
+  /** the address a link to the seat carries, built the way such a link builds it */
+  const appointQuery = (roleId: string, orgNodeId: string) =>
+    new URLSearchParams(appointSearch({ roleId, orgNodeId })).toString()
+  /** the units as the picker was handed them, so a test can read the answer */
+  const ShowUnits = ({ context }: { context: { value: readonly string[] } }) => (
+    <output data-testid="units-chosen" data-value={context.value.join(' ')} />
+  )
+
+  const appoint = async (search: string, units: readonly string[]) => {
+    const added = vi.fn(
+      (_request: { payload: { userIds: string[]; orgNodeIds: string[]; roleId: string } }) =>
+        Effect.succeed({ staff: [] }),
+    )
+    await renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              pages: [
+                {
+                  id: 'assessment/batch-access',
+                  path: '/assessment/batches/:batchId/access',
+                  layout: 'admin',
+                },
+              ],
+              slots: {
+                'iam/people-picker-view': [{ id: 'test/people', order: 0 }],
+                'iam/org-node-picker-view': [{ id: 'test/units', order: 0 }],
+              },
+            }),
+        },
+        assessment: {
+          getBatch: () => Effect.succeed({ batch }),
+          listAccess: () =>
+            Effect.succeed({ staff: [], total: 0, page: 1, pageSize: 25, roles: [] }),
+          previewAccessSync: () =>
+            Effect.succeed({ items: [], nextCursor: null, pendingTotal: 0, lapsedTotal: 0 }),
+          staffOptions: () =>
+            Effect.succeed({
+              nodes: units.map((id) => ({
+                id,
+                name: CLASS_A,
+                parentId: null,
+                orgTypeId: 'class',
+              })),
+              roles: [
+                { id: OTHER_ROLE, name: '学院综测督查组', refusal: null },
+                { id: ROLE_ID, name: '班级综测负责人', refusal: null },
+              ],
+            }),
+          addStaff: added,
+          listScopeOptions: () => Effect.succeed({ nodes: [] }),
+          listUserTypeOptions: () => Effect.succeed({ userTypes: [] }),
+          listParticipantCandidates: () =>
+            Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }),
+        },
+      }),
+      routes: [{ path: '/assessment/batches/:batchId/access', element: <BatchAccessPage /> }],
+      route: `/assessment/batches/${BATCH_ID}/access?${search}`,
+      registry: {
+        slots: {
+          'iam/people-picker-view': {
+            'test/people': lazy(() => Promise.resolve({ default: PickPeople })),
+          },
+          'iam/org-node-picker-view': {
+            'test/units': lazy(() => Promise.resolve({ default: ShowUnits })),
+          },
+        },
+      },
+    })
+    return added
+  }
+
+  it('opens at the unit and the role, and appoints there once somebody is chosen', async () => {
+    const added = await appoint(appointQuery(ROLE_ID, NODE_ID), [NODE_ID])
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('button', { name: 'pick people' }).click()
+    await dialog.getByRole('button', { name: '下一步' }).click()
+    await expect.element(page.getByTestId('units-chosen')).toHaveAttribute('data-value', NODE_ID)
+    await dialog.getByRole('button', { name: '下一步' }).click()
+    await expect.element(dialog.getByRole('radio', { name: '班级综测负责人' })).toBeChecked()
+    await dialog.getByRole('button', { name: '添加' }).click()
+    await vi.waitFor(() => expect(added).toHaveBeenCalledOnce())
+    expect(added.mock.calls[0]![0].payload).toMatchObject({
+      userIds: [USER_ID],
+      orgNodeIds: [NODE_ID],
+      roleId: ROLE_ID,
+    })
+    // the seat is forgotten with the dialog, so a reload does not open it again
+    await expect.poll(() => addressNow()).not.toContain('appoint')
+  })
+
+  it('does not appoint at a unit the round does not offer', async () => {
+    await appoint(appointQuery(ROLE_ID, NODE_ID), [OTHER_NODE])
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('button', { name: 'pick people' }).click()
+    await dialog.getByRole('button', { name: '下一步' }).click()
+    await expect.element(page.getByTestId('units-chosen')).toHaveAttribute('data-value', '')
+    await expect.element(dialog.getByRole('button', { name: '下一步' })).toBeDisabled()
   })
 })

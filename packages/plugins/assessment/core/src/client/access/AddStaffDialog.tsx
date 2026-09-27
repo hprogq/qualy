@@ -80,16 +80,29 @@ const styles = stylex.create({
   footSide: { display: 'flex', alignItems: 'center', gap: 8 },
 })
 
+/**
+ * Where and as what, already answered: somebody sent here to fill a seat -
+ * a review step nobody holds at a unit - only has to say who. The reader
+ * still walks every step and may change either answer.
+ */
+export interface AddStaffInitial {
+  readonly orgNodeIds?: readonly string[]
+  readonly roleId?: string
+}
+
 export function AddStaffDialog({
   batchId,
   open,
   pending,
+  initial,
   onAdd,
   onClose,
 }: {
   batchId: string
   open: boolean
   pending: boolean
+  /** the unit and the role to start from, each dropped if it is not on offer */
+  initial?: AddStaffInitial
   onAdd: (input: {
     userIds: readonly string[]
     orgNodeIds: readonly string[]
@@ -101,16 +114,20 @@ export function AddStaffDialog({
   const { format, formatError } = useI18n()
   const [step, setStep] = useState(0)
   const [chosen, setChosen] = useState<readonly string[]>([])
-  const [orgNodeIds, setOrgNodeIds] = useState<readonly string[]>([])
+  const [unitIds, setUnitIds] = useState<readonly string[]>([])
   const [roleId, setRoleId] = useState<string | null>(null)
 
+  // the starting answers as values, so a caller that builds them afresh on
+  // every render does not start the dialog over
+  const seedUnits = (initial?.orgNodeIds ?? []).join(' ')
+  const seedRole = initial?.roleId ?? ''
   useEffect(() => {
     if (!open) return
     setStep(0)
     setChosen([])
-    setOrgNodeIds([])
-    setRoleId(null)
-  }, [open])
+    setUnitIds(seedUnits === '' ? [] : seedUnits.split(' '))
+    setRoleId(seedRole === '' ? null : seedRole)
+  }, [open, seedUnits, seedRole])
 
   // The units are asked for on their own, with nothing about the selection in
   // the question: sharing one request with the roles meant every click
@@ -120,6 +137,15 @@ export function AddStaffDialog({
     ...query.assessment.staffOptions.queryOptions({ params: { batchId }, query: {} }),
     enabled: open,
   })
+  // the units chosen that this round offers: one the dialog was opened with
+  // that it does not offer is never quietly appointed at
+  const orgNodeIds = useMemo(() => {
+    if (units.data === undefined) return unitIds
+    const offered = new Set(units.data.nodes.map((node) => node.id))
+    return unitIds.every((id) => offered.has(id))
+      ? unitIds
+      : unitIds.filter((id) => offered.has(id))
+  }, [units.data, unitIds])
   // who may be brought in: the directory's people when the reader may
   // browse them - the directory's picker is delivered only then - and
   // otherwise the people this reader manages, the population the roster's
@@ -138,12 +164,14 @@ export function AddStaffDialog({
     enabled: open && chosen.length > 0 && orgNodeIds.length > 0,
   })
   const roles = useMemo(() => probes.data?.roles ?? [], [probes.data])
-  // a role that stopped being on offer stops being the answer
+  // A role that is not on offer stops being the answer, once the offer is
+  // known: before it is, a role the dialog was opened with is kept.
   useEffect(() => {
-    if (roleId !== null && !roles.some((role) => role.id === roleId && role.refusal === null)) {
+    if (probes.data === undefined || roleId === null) return
+    if (!probes.data.roles.some((role) => role.id === roleId && role.refusal === null)) {
       setRoleId(null)
     }
-  }, [roles, roleId])
+  }, [probes.data, roleId])
 
   const answered = [chosen.length > 0, orgNodeIds.length > 0, roleId !== null]
   const ready = chosen.length > 0 && orgNodeIds.length > 0 && roleId !== null
@@ -250,7 +278,7 @@ export function AddStaffDialog({
                     token={orgNodePickerView}
                     context={{
                       value: orgNodeIds,
-                      onChange: setOrgNodeIds,
+                      onChange: setUnitIds,
                       // the units this round covers, not the whole organization
                       nodes: units.data?.nodes ?? [],
                       loading: units.isPending,

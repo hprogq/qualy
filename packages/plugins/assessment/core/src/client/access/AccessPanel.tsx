@@ -45,7 +45,13 @@ import { AccessSyncDialog } from './AccessSyncDialog.tsx'
 import { AddStaffDialog } from './AddStaffDialog.tsx'
 import { AccessSyncNotice } from './AccessSyncNotice.tsx'
 import { inCatalogOrder, permissionLabel, permissionShort, type StaffCode } from './permissions.ts'
-import { ACCESS_PAGE_SIZE, accessQueryOf, narrowed, useAccessView } from './view.ts'
+import {
+  ACCESS_PAGE_SIZE,
+  accessQueryOf,
+  narrowed,
+  useAccessView,
+  useAppointRequest,
+} from './view.ts'
 import {
   adjustableOf,
   whereOf,
@@ -315,6 +321,8 @@ export function AccessPanel({
   )
   const [merging, setMerging] = useState(false)
   const [addingStaff, setAddingStaff] = useState(false)
+  // sent here to fill a seat: the dialog opens at it
+  const [appointing, forgetAppointing] = useAppointRequest()
   const [view, onView] = useAccessView()
 
   // Typing does not fire a request per keystroke. What the box last asked
@@ -427,6 +435,7 @@ export function AccessPanel({
     onMutate,
     onSuccess: () => {
       setAddingStaff(false)
+      forgetAppointing()
       toast.success(format(m.toastStaffAdded))
       void invalidate()
     },
@@ -735,10 +744,14 @@ export function AccessPanel({
 
       <AddStaffDialog
         batchId={batchId}
-        open={addingStaff && !archived}
+        open={(addingStaff || appointing !== null) && !archived}
         pending={addStaff.isPending}
+        {...(appointing === null ? {} : { initial: appointing })}
         onAdd={(input) => addStaff.mutate(input)}
-        onClose={() => setAddingStaff(false)}
+        onClose={() => {
+          setAddingStaff(false)
+          forgetAppointing()
+        }}
       />
 
       <ConfirmDialog

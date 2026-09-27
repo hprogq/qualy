@@ -68,6 +68,48 @@ export function useAccessView(): readonly [AccessView, (changes: Partial<AccessV
   return [view, move] as const
 }
 
+// Sent here to appoint somebody - from a review step nobody holds - the
+// address says as what and, where it knows, at which unit, and the page
+// opens its add-staff dialog with both answered. Neither is trusted: the
+// dialog drops a role or a unit that is not on offer.
+const APPOINT = { role: 'appoint', unit: 'appoint-at' } as const
+/** `appoint` with no particular role in mind */
+const ANY_ROLE = 'any'
+
+/**
+ * The address of the staff page that opens its add-staff dialog at a seat:
+ * give it as the `search` of a link to `assessment/batch-access`.
+ */
+export const appointSearch = (seat: {
+  readonly roleId?: string
+  readonly orgNodeId?: string
+}): Record<string, string> => ({
+  [APPOINT.role]: seat.roleId ?? ANY_ROLE,
+  ...(seat.orgNodeId === undefined ? {} : { [APPOINT.unit]: seat.orgNodeId }),
+})
+
+/**
+ * A seat the address asks to appoint at, or null; and a way to forget it
+ * once the dialog it opened is closed, so a reload does not open it again.
+ */
+export function useAppointRequest(): readonly [
+  { readonly roleId?: string; readonly orgNodeIds?: readonly string[] } | null,
+  () => void,
+] {
+  const [role] = usePageQueryState(APPOINT.role)
+  const [unit] = usePageQueryState(APPOINT.unit)
+  const write = usePageQueryUpdate()
+  const forget = useCallback(() => write({ [APPOINT.role]: '', [APPOINT.unit]: '' }), [write])
+  if (role === '') return [null, forget] as const
+  return [
+    {
+      ...(UUID.test(role) ? { roleId: role } : {}),
+      ...(UUID.test(unit) ? { orgNodeIds: [unit] } : {}),
+    },
+    forget,
+  ] as const
+}
+
 /** whether anything narrows the list, which is what an empty answer turns on */
 export const narrowed = (view: AccessView) =>
   view.q.trim() !== '' || view.roleId !== '' || view.permission !== '' || view.standing !== ''
