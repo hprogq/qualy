@@ -1,12 +1,13 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { UserRoundIcon, XIcon } from 'lucide-react'
+import { UserRoundIcon, UserRoundXIcon, XIcon } from 'lucide-react'
 import { peoplePicker, type PeoplePickerContext } from '@qualy/ui-contract'
 import * as stylex from '@stylexjs/stylex'
 import {
   UiSlot,
   useApi,
   useApiQuery,
+  useManifest,
   usePageQueryState,
   useRunApi,
   cursorPages,
@@ -14,7 +15,8 @@ import {
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, FormDialog } from '@qualy/ui/admin'
-import { Card, CardFoot, FootNote, Screen, Spacer, TableSkeleton } from '@qualy/ui/screen'
+import { Blank, Card, CardFoot, FootNote, Screen, Spacer, TableSkeleton } from '@qualy/ui/screen'
+import { Skeleton } from '@qualy/ui/skeleton'
 import { Button } from '@qualy/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -26,6 +28,11 @@ import { EventTable } from './EventTable.tsx'
 // The trail, newest first. One table, three filters, a row opens into its
 // correlation ids and details - reading is the whole page, because writing
 // is done by operations, never here.
+//
+// Choosing whose operations to read takes the people picker, which is only
+// there for a reader who may look people up. Without it the choice is not
+// offered at all - a row's "only this person" still narrows the trail, and
+// the narrowing it leaves can still be cleared.
 
 // the select refuses an empty value, and "everything" is a real choice
 const ALL = 'all'
@@ -43,7 +50,7 @@ const styles = stylex.create({
   },
   actorWord: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   pickerSeat: { display: 'flex', minHeight: 0, flexDirection: 'column' },
-  pickerNote: { color: tokens.mutedForeground, fontSize: 12 },
+  pickerWaiting: { height: '18rem', borderRadius: tokens.radiusLg },
 })
 
 export default function AuditEventsPage() {
@@ -55,6 +62,7 @@ export default function AuditEventsPage() {
   const [outcome, setOutcome] = usePageQueryState('outcome')
   const [actor, setActor] = usePageQueryState('actor')
   const [pickingActor, setPickingActor] = useState(false)
+  const pickable = (useManifest().slots[peoplePicker.key]?.length ?? 0) > 0
 
   const options = useQuery(query.audit.getAuditEventOptions.queryOptions({}))
 
@@ -111,15 +119,17 @@ export default function AuditEventsPage() {
           </SelectContent>
         </Select>
         {actor === '' ? (
-          <Button
-            size="sm"
-            variant="outline"
-            className={stylex.props(styles.actorFilter).className}
-            onClick={() => setPickingActor(true)}
-          >
-            <UserRoundIcon aria-hidden />
-            {format(m.anyActor)}
-          </Button>
+          pickable && (
+            <Button
+              size="sm"
+              variant="outline"
+              className={stylex.props(styles.actorFilter).className}
+              onClick={() => setPickingActor(true)}
+            >
+              <UserRoundIcon aria-hidden />
+              {format(m.anyActor)}
+            </Button>
+          )
         ) : (
           <Button
             size="sm"
@@ -171,7 +181,7 @@ export default function AuditEventsPage() {
           it is opened; at a form's width the two columns had a few
           characters each */}
       <FormDialog
-        open={pickingActor}
+        open={pickingActor && pickable}
         size="wide"
         title={format(m.pickActor)}
         onClose={() => setPickingActor(false)}
@@ -189,7 +199,15 @@ export default function AuditEventsPage() {
                 single: true,
               } satisfies PeoplePickerContext
             }
-            fallback={<p {...stylex.props(styles.pickerNote)}>{format(m.pickActorUnavailable)}</p>}
+            loading={<Skeleton className={stylex.props(styles.pickerWaiting).className} />}
+            fallback={
+              <Blank
+                size="compact"
+                icon={<UserRoundXIcon />}
+                title={format(m.pickActorUnavailableTitle)}
+                description={format(m.pickActorUnavailable)}
+              />
+            }
           />
         </div>
       </FormDialog>

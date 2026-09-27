@@ -59,4 +59,31 @@ describe('the audit log', () => {
     await vi.waitFor(() => expect(list).toHaveBeenLastCalledWith({ query: { actorUserId: ACTOR } }))
     await expect.element(page.getByTestId('actor-filter')).toHaveAttribute('data-actor', ACTOR)
   })
+
+  // The picker is only there for a reader who may look people up. Without
+  // it the choice opened a dialog holding one grey sentence; now it is not
+  // offered, and a row's "only this person" is the way to narrow.
+  const trail = (slots: Record<string, { id: string; order: number }[]>) =>
+    renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed({ ...emptyManifest(), slots }) },
+        audit: {
+          listAuditEvents: () => Effect.succeed({ items: [], nextCursor: null }),
+          getAuditEventOptions: () => Effect.succeed({ actions: [] }),
+        },
+      }),
+      route: '/organization/audit',
+      path: '/organization/audit',
+      children: <AuditEventsPage />,
+    })
+
+  it('offers to choose whose operations only where people can be looked up', async () => {
+    const screen = await trail({})
+    await expect.element(page.getByTestId('audit-table')).toBeVisible()
+    expect(page.getByRole('button', { name: '全部操作人' }).elements()).toHaveLength(0)
+    await screen.unmount()
+
+    await trail({ 'iam/people-picker': [{ id: 'auth/people-picker', order: 0 }] })
+    await expect.element(page.getByRole('button', { name: '全部操作人' })).toBeVisible()
+  })
 })
