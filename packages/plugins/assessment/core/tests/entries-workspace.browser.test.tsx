@@ -1328,6 +1328,30 @@ describe('an address naming a claim', () => {
     expect(missing()).toBeNull()
   })
 
+  // A claim of the reader's is theirs to open whatever question the address
+  // names beside it, or none: its form opens, and the question behind it
+  // becomes the one it was filed under.
+  it('opens the form for a claim of the reader’s under whatever question it was filed', async () => {
+    for (const route of [
+      `${base}?entry=${entryId(1)}`,
+      `${base}?open=${itemId(2)}&entry=${entryId(1)}`,
+    ]) {
+      await page.viewport(1440, 900)
+      const { unmount } = await workspace({
+        route,
+        entries: [claim(1, itemId(1), 'draft'), claim(2, itemId(2), 'approved')],
+      })
+      await expect
+        .poll(() => document.querySelector('[role="dialog"] form, [role="dialog"] input'))
+        .not.toBeNull()
+      expect(missing()).toBeNull()
+      await expect.poll(openItem).toBe(itemId(1))
+      await expect.poll(addressNow).toContain(`open=${itemId(1)}`)
+      expect(addressNow()).toContain(`entry=${entryId(1)}`)
+      await unmount()
+    }
+  })
+
   it('still opens the form for a new claim the address asks for', async () => {
     await page.viewport(1440, 900)
     await workspace({ route: `${base}?open=${itemId(1)}&entry=new` })

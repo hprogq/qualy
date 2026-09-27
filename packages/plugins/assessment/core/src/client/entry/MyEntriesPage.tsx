@@ -304,17 +304,18 @@ function Body({
   )
 
   // The claim being written, resolved from the address: 'new' is one about
-  // to exist on the open question, anything else is one of that question's
-  // own claims by id. A parameter naming a claim that is gone opens nothing.
+  // to exist on the open question, anything else is one of the reader's
+  // claims by id, under whichever question it was filed - the address may
+  // name another question, or none. A parameter naming a claim that is gone
+  // opens nothing.
   const itemById = useMemo(
     () => new Map(rows.flatMap((row) => (row.item === undefined ? [] : [[row.id, row] as const]))),
     [rows],
   )
-  const writingRow = filing === '' ? null : (itemById.get(open) ?? null)
   const written =
-    writingRow === null || filing === 'new'
-      ? null
-      : ((entriesByItem.get(writingRow.id) ?? []).find((one) => one.id === filing) ?? null)
+    filing === '' || filing === 'new' ? null : (entries.find((one) => one.id === filing) ?? null)
+  const writingRow =
+    filing === '' ? null : (itemById.get(written === null ? open : written.itemId) ?? null)
   // a claim the address names that is not there is not a new one to write
   const writing =
     writingRow?.item === undefined || (filing !== 'new' && written === null)
@@ -331,6 +332,16 @@ function Body({
       : { entry: found, item: itemRow.item, trail: itemRow.trail }
   })()
   const lingeringDetail = useLingering(detailed)
+  // The list behind a claim is the question it was filed under: an address
+  // naming the claim under another question, or under none, is set right
+  // in place, so the claim is marked in its own list and closing it lands
+  // there.
+  const namedItem = written?.itemId ?? detailed?.entry.itemId ?? null
+  useEffect(() => {
+    if (namedItem !== null && namedItem !== open) {
+      updateQuery({ open: namedItem }, { history: 'replace' })
+    }
+  }, [namedItem, open, updateQuery])
   // A claim the address names that is not among the reader's - a link gone
   // stale, mistyped, or never theirs - is said so in the drawer it would
   // have opened, once the list has been read afresh; closing it takes the
