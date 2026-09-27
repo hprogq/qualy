@@ -1609,6 +1609,39 @@ describe('what a question’s row says at a glance', () => {
     expect(document.querySelector('[data-chip="voided"]')).toBeNull()
   })
 
+  // The news that chose where the list opens is read in the drawer the list
+  // opened it from; reading it does not move the list under that drawer.
+  it('keeps the list where it opened once the news that chose it is read', async () => {
+    await page.viewport(1440, 900)
+    const gone = question(2, '社团活动', BAND_A, { status: 'voided', voidReason: '已并入' })
+    const filed = [
+      claim(1, itemId(2), 'voided'),
+      claim(2, itemId(2), 'voided', { source: 'record' }),
+    ]
+    await workspace({
+      route: `${base}?open=${itemId(2)}`,
+      items: [question(1, '品德题目 1', BAND_A), gone],
+      entries: filed,
+      stubs: {
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: filed,
+            nextCursor: null,
+            attention: { unreadEntryIds: [entryId(2)] },
+          }),
+        markMyEntryRead: () => Effect.succeed({ ok: true as const }),
+      },
+    })
+    const pressed = () =>
+      document.querySelector('[data-chip][aria-pressed="true"]')?.getAttribute('data-chip')
+    await expect.poll(pressed).toBe('revoked')
+    await userEvent.click(rows()[0]!)
+    await expect.element(page.getByRole('dialog')).toBeVisible()
+    await expect.poll(() => rows()[0]?.hasAttribute('data-unread')).toBe(false)
+    expect(pressed()).toBe('revoked')
+  })
+
   // News is never out of sight: a narrower view of the structure, or a
   // filter over the claims, that leaves some out says so on the key that
   // brings them back - to the eye with a dot, to a screen reader in words.

@@ -541,7 +541,6 @@ export function ItemPane({
   const roomy = paneWidth === null ? mode === 'desk' : paneWidth >= ROOMY_PANE
   const compact = !roomy
   const chips = useMemo(() => chipsFor(viewer, item), [viewer, item])
-  const [chip, setChip] = useState<ChipKey>('all')
   const [search, setSearch] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [order, setOrder] = useState<Order>('newest')
@@ -572,6 +571,10 @@ export function ItemPane({
         )?.key ??
         ended[0]?.key ??
         'all')
+  // Where the list opens is kept as the reader's filter from then on:
+  // reading the news that chose it must not move the list under the drawer
+  // the reader opened it in.
+  const [chip, setChip] = useState<ChipKey>(landing)
   // a chosen filter that has nothing left under it gives way to where the
   // list lands
   const active = (counts.get(chip) ?? 0) > 0 ? chip : landing
@@ -650,9 +653,6 @@ export function ItemPane({
     })
   const shown = filtered.slice(0, limit)
   const listed = entries.filter((entry) => entry.status !== 'voided')
-  // nothing shown because of a filter or a search, as against nothing there
-  // to show: a question with no claims at all is the only empty one
-  const narrowed = active !== landing || needle !== ''
 
   const counted = row.right === '' ? 0 : Number(row.right)
   const voided = item.status === 'voided'
@@ -983,7 +983,9 @@ export function ItemPane({
               </Sift>
             </ul>
           )}
-          {entries.length > 0 && filtered.length === 0 && narrowed && (
+          {/* nothing shown because of a search, as against nothing there to
+              show: a question with no claims at all is the only empty one */}
+          {entries.length > 0 && filtered.length === 0 && (
             <div {...stylex.props(styles.noMatch)} data-testid="entries-no-match">
               {format(m.entriesNoMatch)}
               <Button
@@ -1025,7 +1027,7 @@ export function ItemPane({
             </Trailing>
           )}
         </LayoutGroup>
-        {filtered.length === 0 && !narrowed && (
+        {entries.length === 0 && (
           <Tray
             viewer={viewer}
             keyed={mode !== 'phone'}
