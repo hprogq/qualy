@@ -9,10 +9,11 @@ import type { InboxItemDto } from './model.ts'
 // line.
 
 /**
- * As many filings as the queue shows whole, every answer under its own
- * label, rather than as rows of a table: a table of one or two rows is a
- * strip across an empty page, and the few that are waiting are all there is
- * to read.
+ * As many filings as are shown whole, every answer under its own label,
+ * rather than as rows of a table: a table of one or two rows is a strip
+ * across an empty page, and the few that are waiting are all there is to
+ * read. Counted for whatever is open - one question, one person - and for
+ * the whole queue where it is that small.
  */
 export const SPREAD_MOST = 3
 
@@ -46,17 +47,18 @@ export const WHEN_WIDTH = 112
  */
 const SPARE = 64
 
-// One character of an answer at the table's size, a little generous: a
-// han character is a square of the font's size, latin letters and digits
-// about half of one. Estimated rather than measured, because the columns
-// have to be decided before anything is drawn in them.
-const WIDE = 13
-const NARROW = 7.5
+// One character at a size, a little generous: a han character is a square
+// of the font's size, latin letters and digits about half of one. Estimated
+// rather than measured, because the columns have to be decided before
+// anything is drawn in them.
+const CELL_SIZE = 12.5
+const WIDE = CELL_SIZE * 1.04
+const NARROW = CELL_SIZE * 0.6
 const isWide = (character: string) => (character.codePointAt(0) ?? 0) >= 0x2e80
 
-/** about how wide a piece of text is drawn in a cell */
-const widthOfText = (text: string): number =>
-  [...text].reduce((sum, character) => sum + (isWide(character) ? WIDE : NARROW), 0)
+/** about how wide a piece of text is drawn at a font size */
+const widthOfText = (text: string, size = CELL_SIZE): number =>
+  [...text].reduce((sum, character) => sum + (isWide(character) ? size * 1.04 : size * 0.6), 0)
 
 /** "1 个文件", "12 files": what a field of files says in a cell */
 const FILES_WIDTH = 56
@@ -99,4 +101,53 @@ export const answersFitIn = (
   const needed =
     ROW_PADDING + TRACK_GAP * (tracks - 1) + WHO_MIN + WHEN_WIDTH + WAY_IN + floors + SPARE
   return paneWidth >= needed
+}
+
+// a filing laid out whole: its inset either side, and the gap between two
+// of its answers (QueueViews' spread rows)
+const SPREAD_INSET = 16
+const ANSWER_GAP = 24
+const LABEL_SIZE = 11.5
+const VALUE_SIZE = 13.5
+
+/** one answer of a filing laid out whole, as far as its width goes */
+interface SpreadAnswer {
+  readonly label: string
+  readonly value: string
+  readonly files: number | null
+}
+
+/**
+ * The columns a filing laid out whole gives its answers, where every one of
+ * them fits on one line: each as wide as its label or its longest answer,
+ * whichever is wider, and the room left over shared by the same measure.
+ * Filings of one question are measured together, so their answers line up
+ * under each other. Null where they do not fit, and the answers wrap to as
+ * many lines as they need instead.
+ */
+export const spreadColumnsOf = (
+  filings: readonly (readonly SpreadAnswer[])[],
+  room: number,
+): string | null => {
+  const count = Math.max(0, ...filings.map((answers) => answers.length))
+  if (count === 0) return null
+  const needs = Array.from({ length: count }, (_, index) =>
+    Math.ceil(
+      Math.max(
+        0,
+        ...filings.map((answers) => {
+          const answer = answers[index]
+          if (answer === undefined) return 0
+          const value =
+            answer.files !== null
+              ? FILES_WIDTH * (VALUE_SIZE / CELL_SIZE)
+              : widthOfText(answer.value, VALUE_SIZE)
+          return Math.max(widthOfText(answer.label, LABEL_SIZE), value) + 2
+        }),
+      ),
+    ),
+  )
+  const total = needs.reduce((sum, need) => sum + need, 0) + ANSWER_GAP * (count - 1)
+  if (total > room - 2 * SPREAD_INSET) return null
+  return needs.map((need) => `minmax(${String(need)}px, ${String(need)}fr)`).join(' ')
 }

@@ -183,18 +183,18 @@ describe('the queue beside the rail', () => {
   // The line is the queue's own room: 1024 with the rail open leaves the
   // queue about as wide as a tablet, where the list and a question's table
   // do not both fit; from about 1280 they do.
-  for (const [width, height, side] of [
-    [1024, 768, false],
-    [1280, 800, true],
-    [1440, 900, true],
-    [1920, 1080, true],
+  for (const [width, height, shape] of [
+    [1024, 768, 'drill'],
+    [1280, 800, 'split'],
+    [1440, 900, 'split'],
+    [1920, 1080, 'split'],
   ] as const) {
     it(`gives a question's answers room at ${String(width)}, rail open`, async () => {
       await page.viewport(width, height)
       await shelled(both(), `?item=${ITEM_ID}`)
       await expect.element(page.getByTestId('workspace-rail')).toBeVisible()
       await expect.element(rows().first()).toBeVisible()
-      await expect.element(layout()).toHaveAttribute('data-layout', side ? 'split' : 'drill')
+      await expect.element(layout()).toHaveAttribute('data-layout', shape)
       // every answer on the page has at least a few characters' room,
       // whether each has a column or they share one
       const widths = answerCells()
@@ -300,6 +300,103 @@ describe('the queue beside the rail', () => {
     } finally {
       glide.mockRestore()
     }
+  })
+})
+
+// The few filings of the one question or person open are laid out whole,
+// every answer under its label, whatever the rest of the queue holds: a
+// question of two in a queue of many was a strip of table over an empty
+// pane, and so was every person, who has one or two.
+describe('a question or a person of a few, open in a longer queue', () => {
+  /** five filings over three questions: two, two and one */
+  const sparse = () => [filing(0), filing(1), volunteering(2), volunteering(5), cadre(6)]
+  const CADRE_ITEM = '77777777-7777-4777-8777-777777777777'
+  function cadre(n: number) {
+    return filing(n, {
+      itemId: CADRE_ITEM,
+      itemTitle: '学生干部任职',
+      values: [
+        { label: '任职组织', value: '计算机学院学生会', files: null },
+        { label: '职务', value: '学习部部长', files: null },
+        { label: '任职起止', value: '2025-09-01 至 2026-06-30', files: null },
+      ],
+    })
+  }
+  /** every answer on screen says all of itself */
+  const wholly = () => {
+    for (const value of document.querySelectorAll<HTMLElement>(
+      '[data-testid="queue-pane"] [data-testid="inbox-row-value"]',
+    )) {
+      expect(value.scrollWidth).toBeLessThanOrEqual(value.clientWidth + 1)
+      expect(value.scrollHeight).toBeLessThanOrEqual(value.clientHeight + 1)
+    }
+  }
+
+  for (const [question, count, fields] of [
+    [ITEM_ID, 2, 4],
+    [CADRE_ITEM, 1, 3],
+  ] as const) {
+    it(`lays a question of ${String(count)} out whole beside the list at 1440`, async () => {
+      await page.viewport(1440, 900)
+      await shelled(sparse(), `?item=${question}`)
+      await expect.element(layout()).toHaveAttribute('data-layout', 'split')
+      const pane = page.getByTestId('queue-pane')
+      await expect.element(pane).toHaveAttribute('data-key', question)
+      await expect.element(pane).toHaveAttribute('data-answers', 'spread')
+      await expect.element(rows().first()).toBeVisible()
+      expect(rows().elements()).toHaveLength(count)
+      for (const row of rows().elements()) {
+        expect(row.getAttribute('data-answers')).toBe(String(fields))
+        // one line of answers where the pane has the room for them
+        expect(row.getAttribute('data-answers-line')).toBe('one')
+        expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth + 1)
+      }
+      wholly()
+      // one filing is its own way in; a run over the question is worth a key
+      // only where it holds more
+      expect(pane.getByTestId('queue-run').elements()).toHaveLength(count > 1 ? 1 : 0)
+    })
+  }
+
+  it('lines the answers of one question up under each other', async () => {
+    await page.viewport(1440, 900)
+    await shelled(sparse(), `?item=${ITEM_ID}`)
+    await expect.element(rows().nth(1)).toBeVisible()
+    const lefts = rows()
+      .elements()
+      .map((row) =>
+        [...row.querySelectorAll('[data-testid="inbox-row-value"]')].map((value) =>
+          Math.round(value.getBoundingClientRect().left),
+        ),
+      )
+    // every answer of both, each in the same place as the other's
+    expect(lefts[0]).toHaveLength(4)
+    expect(lefts[0]).toEqual(lefts[1])
+  })
+
+  it('lays the one person open out whole, by the question each filing is on', async () => {
+    await page.viewport(1440, 900)
+    await shelled(sparse(), '?view=person')
+    const pane = page.getByTestId('queue-pane')
+    await expect.element(pane).toHaveAttribute('data-answers', 'spread')
+    await expect.element(rows().first()).toBeVisible()
+    expect(rows().elements()).toHaveLength(1)
+    expect(rows().first().element().getAttribute('data-answers')).toBe('4')
+    wholly()
+    expect(pane.getByTestId('queue-run').elements()).toHaveLength(0)
+  })
+
+  it('lays a question of a few out whole a step in on a phone', async () => {
+    await page.viewport(390, 844)
+    await shelled(sparse(), `?item=${OTHER_ITEM}`)
+    await expect.element(layout()).toHaveAttribute('data-layout', 'drill')
+    await expect.element(page.getByTestId('queue-pane')).toHaveAttribute('data-answers', 'spread')
+    await expect.element(rows().first()).toBeVisible()
+    for (const row of rows().elements()) {
+      expect(row.getAttribute('data-answers')).toBe('2')
+      expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth + 1)
+    }
+    wholly()
   })
 })
 

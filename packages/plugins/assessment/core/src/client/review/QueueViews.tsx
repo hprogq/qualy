@@ -31,6 +31,7 @@ import {
   answersFitIn,
   masterWidthOf,
   paneWidthOf,
+  spreadColumnsOf,
 } from './queue-layout.ts'
 import {
   groupByItem,
@@ -40,6 +41,7 @@ import {
   useQueueClock,
   writeRunScope,
   type InboxItemDto,
+  type ItemGroup,
 } from './model.ts'
 
 // The queue laid out for working through it.
@@ -53,8 +55,9 @@ import {
 // into a question. By time the queue is one table, oldest first.
 //
 // A list of one is no list: a queue with one question (or one person) in it
-// is that question's filings, full width, with nothing to pick. And a queue
-// of a few filings is laid out whole, every answer under its own label.
+// is that question's filings, full width, with nothing to pick. And a few
+// filings are laid out whole, every answer under its own label - the whole
+// queue where it is that small, and the picked one's where it holds no more.
 //
 // Pages are cut from the whole queue, which is read in full (queue.ts): the
 // counts, the search and the run a reviewer walks are all about the whole
@@ -924,6 +927,40 @@ function useQueueRoom() {
   return { seat, width, room, beside }
 }
 
+/** how the queue is laid out, from how much of it there is and the room it has */
+const layoutOf = (total: number, groups: number, beside: boolean): Layout =>
+  total <= SPREAD_MOST ? 'spread' : groups === 1 ? 'single' : beside ? 'split' : 'drill'
+
+/**
+ * The run over one question or one person, where it is worth a key: one
+ * filing is its own way in.
+ */
+function RunKey({
+  rows,
+  label,
+  onRun,
+}: {
+  rows: readonly InboxItemDto[]
+  label: string
+  onRun: () => void
+}) {
+  if (rows.length < 2) return null
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      data-testid="queue-run"
+      className={stylex.props(styles.paneAction).className}
+      onClick={onRun}
+    >
+      {label}
+    </Button>
+  )
+}
+
+/** how a pane lays its filings out, for the hooks a test reads it by */
+type Answers = 'spread' | 'summary' | 'columns'
+
 /** the queue by question: which questions have work, and one question's filings */
 export function ItemQueue({
   rows,
@@ -948,16 +985,14 @@ export function ItemQueue({
   const phone = usePhone()
   const since = useDayClock()
   const groups = groupByItem(rows)
-  const spread = rows.length <= SPREAD_MOST
-  const single = !spread && groups.length === 1
+  const layout = layoutOf(rows.length, groups.length, beside)
   const named = pickedOf(groups, (group) => group.itemId, chosen)
   // at a desk something is always open: the question that has waited
   // longest; and a question alone in the queue is open at any width
-  const open = named ?? (beside || single ? groups[0] : undefined)
-  const layout: Layout = spread ? 'spread' : single ? 'single' : beside ? 'split' : 'drill'
+  const open = named ?? (layout === 'split' || layout === 'single' ? groups[0] : undefined)
   const paneWidth = paneWidthOf(room, layout === 'split')
 
-  if (spread) {
+  if (layout === 'spread') {
     return (
       <QueueRoom layout={layout} seat={seat} width={width}>
         <div {...stylex.props(styles.spread)}>
@@ -982,21 +1017,19 @@ export function ItemQueue({
                     />
                   }
                   action={
-                    // one filing is its own way in; the run over the
-                    // question is worth a key only where it has several
-                    group.rows.length > 1 ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className={stylex.props(styles.paneAction).className}
-                        onClick={() => onOpen(group.rows[0]!, run)}
-                      >
-                        {format(m.reviewStartItem)}
-                      </Button>
-                    ) : null
+                    <RunKey
+                      rows={group.rows}
+                      label={format(m.reviewStartItem)}
+                      onRun={() => onOpen(group.rows[0]!, run)}
+                    />
                   }
                 />
-                <SpreadRows rows={group.rows} lead="who" onOpen={(row) => onOpen(row, run)} />
+                <SpreadRows
+                  rows={group.rows}
+                  lead="who"
+                  room={room}
+                  onOpen={(row) => onOpen(row, run)}
+                />
               </Card>
             )
           })}
@@ -1028,22 +1061,22 @@ export function ItemQueue({
 
   let pane: ReactNode = null
   if (open !== undefined) {
-    const list = pageOf(open.rows, page, PANE_PAGE)
     const run = writeRunScope({ kind: 'item', itemId: open.itemId })
-    // each answer its own column where the room allows it, and one column
-    // of what was filed where it does not; a phone stacks the row anyway
-    const summarize = phone || !answersFitIn(paneWidth, open.columns.length, open.rows)
-    const columns = [
-      `minmax(${String(WHO_MIN)}px, 11rem)`,
-      ...(summarize ? ['minmax(0, 1fr)'] : answerColumns(open.columns.length, open.rows)),
-      `${String(WHEN_WIDTH)}px`,
-    ].join(' ')
+    // a few filings whole, each answer under its label; more as a table,
+    // each answer its own column where the room allows it and one column
+    // of what was filed where it does not - a phone stacks the row anyway
+    const answers: Answers =
+      open.rows.length <= SPREAD_MOST
+        ? 'spread'
+        : phone || !answersFitIn(paneWidth, open.columns.length, open.rows)
+          ? 'summary'
+          : 'columns'
     pane = (
       <Card
         data-testid="queue-pane"
         data-key={open.itemId}
         data-count={open.rows.length}
-        data-answers={summarize ? 'summary' : 'columns'}
+        data-answers={answers}
       >
         <PaneHead
           back={layout === 'drill' ? { label: format(m.reviewFilterAllItems), onBack } : null}
@@ -1057,77 +1090,37 @@ export function ItemQueue({
             />
           }
           action={
-            <Button
-              size="sm"
-              variant="outline"
-              className={stylex.props(styles.paneAction).className}
-              onClick={() => onOpen(open.rows[0]!, run)}
-            >
-              {format(m.reviewStartItem)}
-            </Button>
+            <RunKey
+              rows={open.rows}
+              label={format(m.reviewStartItem)}
+              onRun={() => onOpen(open.rows[0]!, run)}
+            />
           }
         />
-        <Table columns={columns} openable>
-          <TableHead>
-            <span>{format(m.reviewColumnParticipant)}</span>
-            {summarize ? (
-              <span>{format(m.reviewColumnSummary)}</span>
-            ) : (
-              open.columns.map((label, index) => <span key={index}>{label}</span>)
-            )}
-            <span>{format(m.reviewColumnWhen)}</span>
-          </TableHead>
-          {list.rows.map((row) => (
-            <TableRow
-              key={row.instanceId}
-              onOpen={() => onOpen(row, run)}
-              data-testid="inbox-row"
-              data-instance={row.instanceId}
-            >
-              <Cell lead>
-                <Who row={row} />
-              </Cell>
-              {/* stacked under a name, or sharing one column, the answers
-                  are one run of what was filed: a column's word before each
-                  of them, and a rule between, made three short lines of
-                  labels out of two answers */}
-              {summarize ? (
-                <Cell tone="plain" unlabelled>
-                  <AnswerRun row={row} files />
-                </Cell>
-              ) : (
-                open.columns.map((_, index) => {
-                  const pair = row.values[index]
-                  return (
-                    <Cell key={index} tone="plain">
-                      {pair === undefined ? null : (
-                        <span data-testid="inbox-row-answer">
-                          <FiledValue pair={pair} />
-                        </span>
-                      )}
-                    </Cell>
-                  )
-                })
-              )}
-              <Cell narrow="end" numeric unlabelled>
-                <When row={row} />
-              </Cell>
-            </TableRow>
-          ))}
-        </Table>
-        <PagerFoot
-          list={list}
-          size={PANE_PAGE}
-          onPage={onPage}
-          compact={phone || paneWidth < PAGER_ROOM}
-        />
+        {answers === 'spread' ? (
+          <SpreadRows
+            rows={open.rows}
+            lead="who"
+            room={paneWidth}
+            onOpen={(row) => onOpen(row, run)}
+          />
+        ) : (
+          <ItemTable
+            group={open}
+            page={page}
+            summarize={answers === 'summary'}
+            compact={phone || paneWidth < PAGER_ROOM}
+            onPage={onPage}
+            onOpen={(row) => onOpen(row, run)}
+          />
+        )}
       </Card>
     )
   }
 
   return (
     <QueueRoom layout={layout} seat={seat} width={width}>
-      {single ? (
+      {layout === 'single' ? (
         pane
       ) : (
         <Split
@@ -1139,6 +1132,86 @@ export function ItemQueue({
         />
       )}
     </QueueRoom>
+  )
+}
+
+/** one question's filings as a table, ten to a page */
+function ItemTable({
+  group,
+  page,
+  summarize,
+  compact,
+  onPage,
+  onOpen,
+}: {
+  group: ItemGroup
+  page: number
+  /** the answers share one column rather than taking one each */
+  summarize: boolean
+  /** the pager says where it stands in figures alone */
+  compact: boolean
+  onPage: (page: number) => void
+  onOpen: (row: InboxItemDto) => void
+}) {
+  const { format } = useI18n()
+  const list = pageOf(group.rows, page, PANE_PAGE)
+  const columns = [
+    `minmax(${String(WHO_MIN)}px, 11rem)`,
+    ...(summarize ? ['minmax(0, 1fr)'] : answerColumns(group.columns.length, group.rows)),
+    `${String(WHEN_WIDTH)}px`,
+  ].join(' ')
+  return (
+    <>
+      <Table columns={columns} openable>
+        <TableHead>
+          <span>{format(m.reviewColumnParticipant)}</span>
+          {summarize ? (
+            <span>{format(m.reviewColumnSummary)}</span>
+          ) : (
+            group.columns.map((label, index) => <span key={index}>{label}</span>)
+          )}
+          <span>{format(m.reviewColumnWhen)}</span>
+        </TableHead>
+        {list.rows.map((row) => (
+          <TableRow
+            key={row.instanceId}
+            onOpen={() => onOpen(row)}
+            data-testid="inbox-row"
+            data-instance={row.instanceId}
+          >
+            <Cell lead>
+              <Who row={row} />
+            </Cell>
+            {/* stacked under a name, or sharing one column, the answers
+                are one run of what was filed: a column's word before each
+                of them, and a rule between, made three short lines of
+                labels out of two answers */}
+            {summarize ? (
+              <Cell tone="plain" unlabelled>
+                <AnswerRun row={row} files />
+              </Cell>
+            ) : (
+              group.columns.map((_, index) => {
+                const pair = row.values[index]
+                return (
+                  <Cell key={index} tone="plain">
+                    {pair === undefined ? null : (
+                      <span data-testid="inbox-row-answer">
+                        <FiledValue pair={pair} />
+                      </span>
+                    )}
+                  </Cell>
+                )
+              })
+            )}
+            <Cell narrow="end" numeric unlabelled>
+              <When row={row} />
+            </Cell>
+          </TableRow>
+        ))}
+      </Table>
+      <PagerFoot list={list} size={PANE_PAGE} onPage={onPage} compact={compact} />
+    </>
   )
 }
 
@@ -1165,14 +1238,12 @@ export function PersonQueue({
   const { seat, width, room, beside } = useQueueRoom()
   const phone = usePhone()
   const people = groupByPerson(rows)
-  const spread = rows.length <= SPREAD_MOST
-  const single = !spread && people.length === 1
+  const layout = layoutOf(rows.length, people.length, beside)
   const named = pickedOf(people, (person) => person.key, chosen)
-  const open = named ?? (beside || single ? people[0] : undefined)
-  const layout: Layout = spread ? 'spread' : single ? 'single' : beside ? 'split' : 'drill'
+  const open = named ?? (layout === 'split' || layout === 'single' ? people[0] : undefined)
   const paneWidth = paneWidthOf(room, layout === 'split')
 
-  if (spread) {
+  if (layout === 'spread') {
     return (
       <QueueRoom layout={layout} seat={seat} width={width}>
         <div {...stylex.props(styles.spread)}>
@@ -1199,19 +1270,19 @@ export function PersonQueue({
                     />
                   }
                   action={
-                    person.rows.length > 1 ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className={stylex.props(styles.paneAction).className}
-                        onClick={() => onOpen(person.rows[0]!, run)}
-                      >
-                        {format(m.reviewStartPerson)}
-                      </Button>
-                    ) : null
+                    <RunKey
+                      rows={person.rows}
+                      label={format(m.reviewStartPerson)}
+                      onRun={() => onOpen(person.rows[0]!, run)}
+                    />
                   }
                 />
-                <SpreadRows rows={person.rows} lead="item" onOpen={(row) => onOpen(row, run)} />
+                <SpreadRows
+                  rows={person.rows}
+                  lead="item"
+                  room={room}
+                  onOpen={(row) => onOpen(row, run)}
+                />
               </Card>
             )
           })}
@@ -1245,16 +1316,15 @@ export function PersonQueue({
 
   let pane: ReactNode = null
   if (open !== undefined) {
-    const list = pageOf(open.rows, page, PANE_PAGE)
     const run = writeRunScope({ kind: 'person', businessNo: open.key })
-    const columns = [
-      'minmax(7rem, 12rem)',
-      'minmax(0, 1fr)',
-      '4.5rem',
-      `${String(WHEN_WIDTH)}px`,
-    ].join(' ')
+    const answers: Answers = open.rows.length <= SPREAD_MOST ? 'spread' : 'summary'
     pane = (
-      <Card data-testid="queue-pane" data-key={open.key} data-count={open.rows.length}>
+      <Card
+        data-testid="queue-pane"
+        data-key={open.key}
+        data-count={open.rows.length}
+        data-answers={answers}
+      >
         <PaneHead
           back={layout === 'drill' ? { label: format(m.reviewAllPeople), onBack } : null}
           face={<Face name={open.name} />}
@@ -1269,60 +1339,36 @@ export function PersonQueue({
             />
           }
           action={
-            <Button
-              size="sm"
-              variant="outline"
-              className={stylex.props(styles.paneAction).className}
-              onClick={() => onOpen(open.rows[0]!, run)}
-            >
-              {format(m.reviewStartPerson)}
-            </Button>
+            <RunKey
+              rows={open.rows}
+              label={format(m.reviewStartPerson)}
+              onRun={() => onOpen(open.rows[0]!, run)}
+            />
           }
         />
-        <Table columns={columns} openable>
-          <TableHead>
-            <span>{format(m.reviewColumnItem)}</span>
-            <span>{format(m.reviewColumnSummary)}</span>
-            <span>{format(m.reviewColumnFiles)}</span>
-            <span>{format(m.reviewColumnWhen)}</span>
-          </TableHead>
-          {list.rows.map((row) => (
-            <TableRow
-              key={row.instanceId}
-              onOpen={() => onOpen(row, run)}
-              data-testid="inbox-row"
-              data-instance={row.instanceId}
-            >
-              <Cell lead title={row.itemTitle}>
-                <span {...stylex.props(styles.whoName)}>{row.itemTitle}</span>
-              </Cell>
-              <Cell tone="plain" unlabelled>
-                <AnswerRun row={row} files={false} />
-              </Cell>
-              {/* how many files is a desk's column; stacked it was a
-                  labelled fact dangling under the answers */}
-              <Cell narrow="drop">
-                {format(m.reviewFilesCount, { count: row.attachmentCount })}
-              </Cell>
-              <Cell narrow="end" numeric unlabelled>
-                <When row={row} />
-              </Cell>
-            </TableRow>
-          ))}
-        </Table>
-        <PagerFoot
-          list={list}
-          size={PANE_PAGE}
-          onPage={onPage}
-          compact={phone || paneWidth < PAGER_ROOM}
-        />
+        {answers === 'spread' ? (
+          <SpreadRows
+            rows={open.rows}
+            lead="item"
+            room={paneWidth}
+            onOpen={(row) => onOpen(row, run)}
+          />
+        ) : (
+          <PersonTable
+            rows={open.rows}
+            page={page}
+            compact={phone || paneWidth < PAGER_ROOM}
+            onPage={onPage}
+            onOpen={(row) => onOpen(row, run)}
+          />
+        )}
       </Card>
     )
   }
 
   return (
     <QueueRoom layout={layout} seat={seat} width={width}>
-      {single ? (
+      {layout === 'single' ? (
         pane
       ) : (
         <Split
@@ -1334,6 +1380,64 @@ export function PersonQueue({
         />
       )}
     </QueueRoom>
+  )
+}
+
+/** one person's filings as a table, ten to a page */
+function PersonTable({
+  rows,
+  page,
+  compact,
+  onPage,
+  onOpen,
+}: {
+  rows: readonly InboxItemDto[]
+  page: number
+  compact: boolean
+  onPage: (page: number) => void
+  onOpen: (row: InboxItemDto) => void
+}) {
+  const { format } = useI18n()
+  const list = pageOf(rows, page, PANE_PAGE)
+  const columns = [
+    'minmax(7rem, 12rem)',
+    'minmax(0, 1fr)',
+    '4.5rem',
+    `${String(WHEN_WIDTH)}px`,
+  ].join(' ')
+  return (
+    <>
+      <Table columns={columns} openable>
+        <TableHead>
+          <span>{format(m.reviewColumnItem)}</span>
+          <span>{format(m.reviewColumnSummary)}</span>
+          <span>{format(m.reviewColumnFiles)}</span>
+          <span>{format(m.reviewColumnWhen)}</span>
+        </TableHead>
+        {list.rows.map((row) => (
+          <TableRow
+            key={row.instanceId}
+            onOpen={() => onOpen(row)}
+            data-testid="inbox-row"
+            data-instance={row.instanceId}
+          >
+            <Cell lead title={row.itemTitle}>
+              <span {...stylex.props(styles.whoName)}>{row.itemTitle}</span>
+            </Cell>
+            <Cell tone="plain" unlabelled>
+              <AnswerRun row={row} files={false} />
+            </Cell>
+            {/* how many files is a desk's column; stacked it was a
+                labelled fact dangling under the answers */}
+            <Cell narrow="drop">{format(m.reviewFilesCount, { count: row.attachmentCount })}</Cell>
+            <Cell narrow="end" numeric unlabelled>
+              <When row={row} />
+            </Cell>
+          </TableRow>
+        ))}
+      </Table>
+      <PagerFoot list={list} size={PANE_PAGE} onPage={onPage} compact={compact} />
+    </>
   )
 }
 
@@ -1365,7 +1469,7 @@ export function TimeQueue({
       {spread ? (
         <Card data-testid="queue-spread" data-key="" data-count={rows.length}>
           {/* the whole queue is the run: pressing any of them walks on from it */}
-          <SpreadRows rows={rows} lead="both" onOpen={(row) => onOpen(row, '')} />
+          <SpreadRows rows={rows} lead="both" room={room} onOpen={(row) => onOpen(row, '')} />
         </Card>
       ) : (
         <Card data-testid="queue-pane" data-key="" data-count={rows.length}>
@@ -1421,26 +1525,45 @@ export function TimeQueue({
 function SpreadRows({
   rows,
   lead,
+  room,
   onOpen,
 }: {
   rows: readonly InboxItemDto[]
-  /** what names each filing: who filed it, the question it is on, or both */
+  /**
+   * What names each filing: who filed it (the filings of one question, whose
+   * answers line up under each other), the question it is on, or both.
+   */
   lead: 'who' | 'item' | 'both'
+  /** how wide the card the filings stand in is */
+  room: number
   onOpen: (row: InboxItemDto) => void
 }) {
   const { format } = useI18n()
   const clock = useQueueClock()
+  const phone = usePhone()
+  // one question's filings keep every field in its place, an empty one as a
+  // gap, so the answers line up; filings of different questions say only
+  // what they hold
+  const aligned = lead === 'who'
+  const shown = rows.map((row) =>
+    aligned ? row.values : row.values.filter((pair) => pair.files !== null || pair.value !== ''),
+  )
+  // a phone gives each answer a line of its own, its label beside it
+  const together = phone || !aligned ? null : spreadColumnsOf(shown, room)
   return (
     <ul {...stylex.props(styles.spreadList)}>
-      {rows.map((row) => {
-        const answers = row.values.filter((pair) => pair.files !== null || pair.value !== '')
+      {rows.map((row, at) => {
+        const answers = shown[at]!
+        const said = answers.filter((pair) => pair.files !== null || pair.value !== '')
+        const columns = phone ? null : aligned ? together : spreadColumnsOf([answers], room)
         return (
           <li key={row.instanceId} {...stylex.props(styles.spreadItem)}>
             <button
               type="button"
               data-testid="inbox-row"
               data-instance={row.instanceId}
-              data-answers={answers.length}
+              data-answers={said.length}
+              data-answers-line={columns === null ? 'wrap' : 'one'}
               onClick={() => onOpen(row)}
               {...stylex.props(styles.spreadRow)}
             >
@@ -1470,20 +1593,34 @@ function SpreadRows({
                   />
                 </span>
               </span>
-              {answers.length > 0 && (
-                <span data-testid="inbox-row-answers" {...stylex.props(styles.answers)}>
-                  {answers.map((pair, index) => (
-                    <span key={index} {...stylex.props(styles.answer)}>
-                      <span {...stylex.props(styles.answerLabel)}>{pair.label}</span>
-                      <span
-                        {...stylex.props(styles.answerValue, pair.files === 0 && styles.quietFiled)}
-                      >
-                        {pair.files === null
-                          ? pair.value
-                          : format(m.reviewFilesCount, { count: pair.files })}
+              {said.length > 0 && (
+                <span
+                  data-testid="inbox-row-answers"
+                  {...stylex.props(styles.answers)}
+                  // every answer on one line, in the columns reckoned for it
+                  style={columns === null ? undefined : { gridTemplateColumns: columns }}
+                >
+                  {answers.map((pair, index) =>
+                    pair.files === null && pair.value === '' ? (
+                      // a field left empty keeps its column, and says nothing
+                      <span key={index} aria-hidden {...stylex.props(styles.answer)} />
+                    ) : (
+                      <span key={index} {...stylex.props(styles.answer)}>
+                        <span {...stylex.props(styles.answerLabel)}>{pair.label}</span>
+                        <span
+                          data-testid="inbox-row-value"
+                          {...stylex.props(
+                            styles.answerValue,
+                            pair.files === 0 && styles.quietFiled,
+                          )}
+                        >
+                          {pair.files === null
+                            ? pair.value
+                            : format(m.reviewFilesCount, { count: pair.files })}
+                        </span>
                       </span>
-                    </span>
-                  ))}
+                    ),
+                  )}
                 </span>
               )}
             </button>
