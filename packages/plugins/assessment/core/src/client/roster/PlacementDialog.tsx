@@ -3,7 +3,7 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useQuery } from '@tanstack/react-query'
 import { CircleCheckIcon, TriangleAlertIcon } from 'lucide-react'
-import { useApiQuery } from '@qualy/web-runtime'
+import { useApiQuery, useLoadFailure } from '@qualy/web-runtime'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -201,7 +201,8 @@ export function PlacementDialog({
   onClose: () => void
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format, formatError } = useI18n()
+  const { format } = useI18n()
+  const failures = useLoadFailure()
   const [cursors, setCursors] = useState<readonly (string | undefined)[]>([undefined])
   const [pageIndex, setPageIndex] = useState(0)
   // kept across pages: a row ticked on page one is still ticked from page three
@@ -292,7 +293,8 @@ export function PlacementDialog({
         <DialogBody xstyle={styles.body}>
           <AsyncSection
             pending={differences.isPending}
-            error={differences.isError ? formatError(differences.error) : null}
+            error={differences.isError ? failures.of(differences.error) : null}
+            retrying={differences.isFetching}
             loadingLabel={format(commonMessages.loading)}
             retryLabel={format(commonMessages.retry)}
             onRetry={() => void differences.refetch()}

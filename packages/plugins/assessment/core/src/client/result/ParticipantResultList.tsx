@@ -14,7 +14,7 @@ import {
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
 } from 'lucide-react'
-import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
+import { UiSlot, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
@@ -382,6 +382,7 @@ export function ParticipantResultList({
   const run = useRunApi()
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
+  const failures = useLoadFailure()
   const [failure, setFailure] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [importing, setImporting] = useState(false)
@@ -909,7 +910,15 @@ export function ParticipantResultList({
       )}
       <AsyncSection
         pending={participants.isPending}
-        error={participants.isError ? formatError(participants.error) : null}
+        // the list's own failure, when it has nothing to show; a later read
+        // that failed keeps the rows it read
+        error={
+          participants.data === undefined && participants.isError
+            ? failures.of(participants.error)
+            : null
+        }
+        retrying={participants.isFetching}
+        framed
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void participants.refetch()}

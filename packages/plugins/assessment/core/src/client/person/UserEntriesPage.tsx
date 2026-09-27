@@ -4,6 +4,7 @@ import {
   PageLink,
   useApi,
   useApiQuery,
+  useLoadFailure,
   usePageRouteParams,
   useRunApi,
 } from '@qualy/web-runtime'
@@ -101,7 +102,8 @@ export default function UserEntriesPage() {
   const api = useApi(assessmentApi)
   const run = useRunApi()
   const query = useApiQuery(assessmentApi)
-  const { format, formatError } = useI18n()
+  const { format } = useI18n()
+  const failures = useLoadFailure()
   const when = useWhen()
 
   const rows = useInfiniteQuery({
@@ -144,7 +146,11 @@ export default function UserEntriesPage() {
       />
       <AsyncSection
         pending={rows.isPending}
-        error={rows.isError ? formatError(rows.error) : null}
+        // the list's own failure, when it has nothing to show; a further
+        // page that did not come leaves the rows read, and its key to press
+        error={rows.data === undefined && rows.isError ? failures.of(rows.error) : null}
+        retrying={rows.isFetching}
+        framed
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void rows.refetch()}

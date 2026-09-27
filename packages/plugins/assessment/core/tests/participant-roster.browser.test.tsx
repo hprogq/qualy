@@ -1036,6 +1036,28 @@ describe('the roster on the results page', () => {
     expect(added.mock.calls[0]![0].payload).toEqual({ userIds: ['u-new'] })
   })
 
+  // The list that could not be read says so by what went wrong: a list the
+  // reader may not read offers no other try, one that failed does.
+  it('says the roster could not be read by what went wrong', async () => {
+    await open({ listParticipantAccounts: () => Effect.fail(apiError('ACCESS_DENIED')) })
+    const state = () => document.querySelector<HTMLElement>('[data-slot="resource-state"]')
+    await expect.poll(() => state()?.dataset['state']).toBe('denied')
+    expect(page.getByRole('button', { name: '重试' }).elements()).toHaveLength(0)
+  })
+
+  it('asks for the roster again when it did not come', async () => {
+    const reads = { fail: true }
+    await open({
+      listParticipantAccounts: (request: Request) =>
+        reads.fail ? Effect.fail(apiError('SOMETHING_ELSE')) : pageOf(request),
+    })
+    const state = () => document.querySelector<HTMLElement>('[data-slot="resource-state"]')
+    await expect.poll(() => state()?.dataset['state']).toBe('failed')
+    reads.fail = false
+    await page.getByRole('button', { name: '重试' }).click()
+    await expect.element(rows().first()).toBeVisible()
+  })
+
   it('walks from one person to the next across a page, and back lands on their page', async () => {
     await open({}, `/assessment/batches/${BATCH_ID}/results?participant=${id(20)}`)
     const strip = page.getByTestId('roster-neighbors')

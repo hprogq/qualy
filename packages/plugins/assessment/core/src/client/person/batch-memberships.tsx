@@ -1,5 +1,5 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
-import { cursorPages, usePageHref, usePageNavigate } from '@qualy/web-runtime'
+import { cursorPages, useLoadFailure, usePageHref, usePageNavigate } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
@@ -148,7 +148,8 @@ export function BatchMemberships({
   /** one page, from where the last one ended */
   fetchPage: (cursor: string | undefined) => Promise<BatchMembershipPage>
 }) {
-  const { format, formatError, locale } = useI18n()
+  const { format, locale } = useI18n()
+  const failures = useLoadFailure()
   const navigate = usePageNavigate()
   // a row is a way into the round only for a reader who may open rounds
   const batchReachable = usePageHref('assessment/batch', { params: { batchId: '0' } }) !== undefined
@@ -172,7 +173,11 @@ export function BatchMemberships({
       />
       <AsyncSection
         pending={rows.isPending}
-        error={rows.isError ? formatError(rows.error) : null}
+        // the list's own failure, when it has nothing to show; a further
+        // page that did not come leaves the rows read, and its key to press
+        error={rows.data === undefined && rows.isError ? failures.of(rows.error) : null}
+        retrying={rows.isFetching}
+        framed
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void rows.refetch()}

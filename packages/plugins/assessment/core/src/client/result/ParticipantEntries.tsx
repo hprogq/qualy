@@ -6,6 +6,7 @@ import {
   PageLink,
   useApi,
   useApiQuery,
+  useLoadFailure,
   usePageQueryState,
   usePageQueryUpdate,
   useRunApi,
@@ -121,6 +122,7 @@ export function ParticipantEntries({
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
+  const failures = useLoadFailure()
   const lineWords = useLineWords()
   // which question is open: the same address key the owner's page keeps
   const [open] = usePageQueryState('open')
@@ -277,12 +279,10 @@ export function ParticipantEntries({
   // A read that failed with nothing to show is the section's failure - the
   // groups too, or the structure would draw as a paper with no sections at
   // all. One that failed later keeps what it showed.
-  const failure =
-    [entries, items, groups]
-      .map((read) =>
-        read.data === undefined && read.error !== null ? formatError(read.error) : null,
-      )
-      .find((said) => said !== null) ?? null
+  const failed = [entries, items, groups].find(
+    (read) => read.data === undefined && read.error !== null,
+  )
+  const failure = failed === undefined ? null : failures.of(failed.error)
 
   return (
     <div
@@ -293,6 +293,8 @@ export function ParticipantEntries({
       <AsyncSection
         pending={pending}
         error={failure}
+        retrying={failed?.isFetching ?? false}
+        framed
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => {

@@ -5,7 +5,7 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useQuery } from '@tanstack/react-query'
 import { Building2Icon, TriangleAlertIcon, UserRoundXIcon } from 'lucide-react'
 import { orgNodePickerView } from '@qualy/ui-contract'
-import { UiSlot, useApiQuery } from '@qualy/web-runtime'
+import { UiSlot, useApiQuery, useLoadFailure } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, CheckboxGroup, Field } from '@qualy/ui/admin'
@@ -117,7 +117,8 @@ export function ImportDialog({
   onClose: () => void
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format, formatError } = useI18n()
+  const { format } = useI18n()
+  const failures = useLoadFailure()
   const [selection, setSelection] = useState<Selection>(EMPTY)
   useEffect(() => {
     if (open) setSelection(EMPTY)
@@ -192,7 +193,8 @@ export function ImportDialog({
         <DialogBody>
           <AsyncSection
             pending={nodes.isPending || userTypes.isPending}
-            error={failed === null ? null : formatError(failed)}
+            error={failed === null ? null : failures.of(failed)}
+            retrying={nodes.isFetching || userTypes.isFetching}
             loadingLabel={format(commonMessages.loading)}
             retryLabel={format(commonMessages.retry)}
             onRetry={() => {

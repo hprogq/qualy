@@ -6,7 +6,7 @@ import { AddPeopleDialog } from '../src/client/roster/AddPeopleDialog.tsx'
 import { ImportDialog } from '../src/client/roster/ImportDialog.tsx'
 import { PlacementDialog } from '../src/client/roster/PlacementDialog.tsx'
 import { UnreachablePeople } from '../src/client/roster/UnreachablePeople.tsx'
-import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The roster's dialogs as somebody running a round meets them.
 //
@@ -501,5 +501,55 @@ describe('the people a route being composed finds nowhere', () => {
     expect(listed.elements().every((row) => row.tagName !== 'BUTTON')).toBe(true)
     await page.getByTestId('unreachable-pager').getByRole('button', { name: '2' }).click()
     await expect.poll(() => asked.mock.calls.at(-1)![0].query?.['page']).toBe('2')
+  })
+})
+
+// A dialog whose choices could not be read says why by what went wrong,
+// under the dialog's own title, with another try only where it could help.
+describe('a roster dialog that could not read what it offers', () => {
+  const state = () => document.querySelector<HTMLElement>('[data-slot="resource-state"]')
+
+  it('offers no other try at units the reader may not read', async () => {
+    await open(
+      <ImportDialog
+        batchId={BATCH_ID}
+        open
+        pending={false}
+        onImport={() => {}}
+        onClose={() => {}}
+      />,
+      { listScopeOptions: () => Effect.fail(apiError('ACCESS_DENIED')) },
+    )
+    await expect.poll(() => state()?.dataset['state']).toBe('denied')
+    expect(state()!.querySelector('h3')).not.toBeNull()
+    expect(page.getByRole('button', { name: '重试' }).elements()).toHaveLength(0)
+  })
+
+  it('asks for the differences again when they did not come', async () => {
+    const reads = { fail: true }
+    await open(
+      <PlacementDialog
+        batchId={BATCH_ID}
+        open
+        pending={false}
+        onDecide={() => {}}
+        onClose={() => {}}
+      />,
+      {
+        listParticipantPlacements: () =>
+          reads.fail
+            ? Effect.fail(apiError('SOMETHING_ELSE'))
+            : Effect.succeed({
+                items: [difference(1)],
+                nextCursor: null,
+                changedTotal: 1,
+                unavailableTotal: 0,
+              }),
+      },
+    )
+    await expect.poll(() => state()?.dataset['state']).toBe('failed')
+    reads.fail = false
+    await page.getByRole('button', { name: '重试' }).click()
+    await expect.element(page.getByTestId('placement-difference')).toBeVisible()
   })
 })
