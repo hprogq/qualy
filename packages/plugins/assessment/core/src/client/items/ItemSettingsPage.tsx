@@ -679,6 +679,16 @@ function Editor({
     },
   })
 
+  // Each question whose route finds some of the roster nowhere, by how many
+  // and on which route: a submission refused is said before an appeal is.
+  const unreachable = new Map<string, { route: 'normal' | 'escalation'; count: number }>()
+  for (const one of alerts.data?.unreachable.routes ?? []) {
+    const said = unreachable.get(one.itemId)
+    if (said === undefined || (said.route === 'escalation' && one.route === 'normal')) {
+      unreachable.set(one.itemId, { route: one.route, count: one.participants })
+    }
+  }
+
   const paper = (allGroups as readonly TreeGroup[]).find((group) => group.parentGroupId === null)
   const roots = (allGroups as readonly TreeGroup[]).filter(
     (group) => group.parentGroupId === (paper?.id ?? null),
@@ -858,6 +868,7 @@ function Editor({
             />
           }
           rows={rows}
+          unreachable={unreachable}
           selectedKey={null}
           onOpen={openRow}
           onAddGroup={(parentId) => setGroup({ kind: 'new', parentId: parentId ?? paper.id })}

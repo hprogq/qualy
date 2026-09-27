@@ -1328,6 +1328,8 @@ export default {
   'assessment/items/structure-add-group-in': '在「{name}」中新建子分组',
   'assessment/items/structure-row-menu-of': '「{name}」的更多操作',
   'assessment/items/structure-steps': '{count} 步',
+  'assessment/items/structure-reach-normal': '{count} 人无法提交',
+  'assessment/items/structure-reach-escalation': '{count} 人无法申诉',
   'assessment/items/paper-start-title': '设置本批次的评分结构',
   'assessment/items/paper-start-hint': '先设置名称和总分，再添加分组和项目。',
   'assessment/items/paper-start-guided': '设置名称和总分',

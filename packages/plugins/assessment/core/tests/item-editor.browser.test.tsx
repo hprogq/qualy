@@ -337,6 +337,9 @@ const storedAfter = (
   }
 }
 
+/** what the round's alerts say when every route reaches everybody */
+const NOBODY_UNREACHABLE = { routes: [], cannotSubmit: 0, cannotAppeal: 0 }
+
 const open = (
   had: {
     items?: readonly unknown[]
@@ -380,6 +383,8 @@ const open = (
     elsewhere?: boolean
     /** how long every read of the questions after the first one takes */
     slowReads?: number
+    /** the questions whose current route finds some of the roster nowhere */
+    reach?: readonly unknown[]
   } = {},
 ) => {
   // what the server holds, so a save is read back as it was stored
@@ -428,7 +433,11 @@ const open = (
             orgTypes: [{ id: ORG_TYPE_ID, code: 'class', name: '班级' }],
             roles: [{ id: ROLE_ID, name: '审核员' }],
           }),
-        reviewAlerts: () => Effect.succeed({ groups: had.alerts ?? [] }),
+        reviewAlerts: () =>
+          Effect.succeed({
+            groups: had.alerts ?? [],
+            unreachable: { ...NOBODY_UNREACHABLE, routes: had.reach ?? [] },
+          }),
         reviewCoverage: () => Effect.succeed({ nodes: [] }),
         listUnreachableParticipants: (call: { query: { nodeTypeIds?: unknown; page?: string } }) =>
           had.unreachable === undefined
@@ -1946,7 +1955,7 @@ describe('the band', () => {
               orgTypes: [{ id: ORG_TYPE_ID, code: 'class', name: '班级' }],
               roles: [{ id: ROLE_ID, name: '审核员' }],
             }),
-          reviewAlerts: () => Effect.succeed({ groups: [] }),
+          reviewAlerts: () => Effect.succeed({ groups: [], unreachable: NOBODY_UNREACHABLE }),
           reviewCoverage: () => Effect.succeed({ nodes: [] }),
           checkItem: () => Effect.succeed({ issues: [], standing: [] }),
           previewScoring: () => Effect.succeed(previewFor('fixed@1')),
@@ -2340,6 +2349,33 @@ describe('the structure', () => {
     expect(shown()[1]!.name).toContain('社会实践')
   })
 
+  // The questions whose route finds some of the roster nowhere are marked
+  // where the paper is read, not only inside each question: an
+  // administrator sees which to open before anybody files (§32.93).
+  it('marks a question whose route finds some of the roster nowhere, by how many', async () => {
+    const OTHER = '66666666-6666-4666-8666-6666666666d9'
+    const at = { itemTitle: '学生干部任职', levelNames: ['班级'] }
+    await open({
+      items: [
+        { ...officerItem(), scoreGroupId: PAPER_ID },
+        { ...officerItem(), id: OTHER, title: '志愿服务', scoreGroupId: PAPER_ID },
+      ],
+      reach: [
+        { ...at, itemId: ITEM_ID, route: 'escalation', participants: 3 },
+        { ...at, itemId: ITEM_ID, route: 'normal', participants: 12 },
+      ],
+    })
+    await vi.waitFor(() =>
+      expect(document.querySelectorAll('[data-testid="structure-review"]')).toHaveLength(2),
+    )
+    const cells = [...document.querySelectorAll('[data-testid="structure-review"]')]
+    // a submission refused is said before an appeal refused
+    const marked = cells[0]!.querySelector('[data-testid="structure-reach"]')!
+    expect(marked.getAttribute('data-route')).toBe('normal')
+    expect(marked.getAttribute('data-count')).toBe('12')
+    expect(cells[1]!.querySelector('[data-testid="structure-reach"]')).toBeNull()
+  })
+
   // The column read a single list off the stored policy, which has held two
   // routes for a long time, so it said nothing on every row.
   it('says how each question is reviewed from both of its routes, and when it is scored by a rule', async () => {
@@ -2628,7 +2664,7 @@ describe('while the page loads', () => {
             ),
           listItems: () => Effect.succeed({ items: [], capabilities: { canManage: true } }),
           itemOptions: () => Effect.succeed({ orgTypes: [], roles: [] }),
-          reviewAlerts: () => Effect.succeed({ groups: [] }),
+          reviewAlerts: () => Effect.succeed({ groups: [], unreachable: NOBODY_UNREACHABLE }),
         },
       }),
       routes: [

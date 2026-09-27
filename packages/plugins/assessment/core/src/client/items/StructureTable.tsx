@@ -8,6 +8,7 @@ import {
   FolderPlusIcon,
   GripVerticalIcon,
   PlusIcon,
+  TriangleAlertIcon,
 } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -243,6 +244,20 @@ const styles = stylex.create({
   },
   cellSource: { display: { default: 'block', [MIDDLING]: 'none', [STACKED]: 'none' } },
   figure: { textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: tokens.foreground },
+  // a route that finds some of the roster nowhere is what the column says
+  // first: the steps are the question's own business, the people it
+  // cannot reach are the round's
+  reach: {
+    display: 'inline-flex',
+    minWidth: 0,
+    maxWidth: '100%',
+    alignItems: 'center',
+    gap: 5,
+    verticalAlign: 'middle',
+    color: tokens.warningForeground,
+  },
+  reachIcon: { width: 12, height: 12, flexShrink: 0 },
+  reachWords: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   none: { color: QUIET },
   status: {
     display: 'flex',
@@ -314,6 +329,7 @@ export function StructureTable({
   note,
   summary,
   rows,
+  unreachable,
   selectedKey,
   onOpen,
   onAddGroup,
@@ -334,6 +350,8 @@ export function StructureTable({
   /** a strip under the head: how much of the paper the sections have been given */
   summary?: ReactNode
   rows: readonly StructureRow[]
+  /** the questions whose route finds some of the roster nowhere, by how many */
+  unreachable?: ReadonlyMap<string, { route: 'normal' | 'escalation'; count: number }>
   selectedKey: string | null
   onOpen: (row: StructureRow) => void
   onAddGroup: (parentId: string | null) => void
@@ -537,6 +555,7 @@ export function StructureTable({
               <ItemRow
                 key={row.key}
                 row={row}
+                reach={row.kind === 'item' ? unreachable?.get(row.id) : undefined}
                 selected={selectedKey === row.key}
                 mark={markOf(row)}
                 handlers={handling(row)}
@@ -734,6 +753,7 @@ function FactRun({ facts }: { facts: readonly string[] }) {
 /** a question, read across the columns it fills */
 function ItemRow({
   row,
+  reach,
   selected,
   mark,
   handlers,
@@ -745,6 +765,8 @@ function ItemRow({
   onDelete,
 }: {
   row: StructureRow
+  /** how many on the roster its route finds nowhere, and on which route */
+  reach: { route: 'normal' | 'escalation'; count: number } | undefined
   selected: boolean
   mark: stylex.StyleXStyles | null
   handlers: RowHandlers
@@ -799,6 +821,25 @@ function ItemRow({
     ) : row.status === 'composing' ? (
       <Status>{format(m.itemsStatusComposing)}</Status>
     ) : null
+  const reachWords =
+    reach === undefined
+      ? null
+      : format(reach.route === 'normal' ? m.structureReachNormal : m.structureReachEscalation, {
+          count: reach.count,
+        })
+  const reachMark =
+    reachWords === null ? null : (
+      <span
+        {...stylex.props(styles.reach)}
+        title={reachWords}
+        data-testid="structure-reach"
+        data-route={reach?.route}
+        data-count={reach?.count}
+      >
+        <TriangleAlertIcon aria-hidden {...stylex.props(styles.reachIcon)} />
+        <span {...stylex.props(styles.reachWords)}>{reachWords}</span>
+      </span>
+    )
   // stacked, the way a question is filed stays out: it is the same on most
   // rows and the longest of the four, and it pushed the rest onto a third line
   const facts = [
@@ -857,11 +898,12 @@ function ItemRow({
             : row.review?.kind
         }
       >
-        {review}
+        {reachMark ?? review}
       </span>
       <span {...stylex.props(styles.status)}>{standing}</span>
       <span {...stylex.props(styles.facts)} style={{ paddingLeft: row.depth * INDENT_NARROW + 26 }}>
         <FactRun facts={facts} />
+        {reachMark}
       </span>
       <span {...stylex.props(styles.acts)}>
         {!composing && (

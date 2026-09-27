@@ -5177,6 +5177,14 @@ const i18n = definePluginMessages({
       id: 'assessment/items/structure-row-menu-of',
       defaultMessage: 'More for “{name}”',
     },
+    structureReachNormal: {
+      id: 'assessment/items/structure-reach-normal',
+      defaultMessage: '{count} cannot submit',
+    },
+    structureReachEscalation: {
+      id: 'assessment/items/structure-reach-escalation',
+      defaultMessage: '{count} cannot appeal',
+    },
     structureSteps: {
       id: 'assessment/items/structure-steps',
       defaultMessage: '{count, plural, one {# step} other {# steps}}',

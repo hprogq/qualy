@@ -7,6 +7,9 @@ import { page } from 'vitest/browser'
 import { Effect } from 'effect'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
+/** what the round's alerts say when every route reaches everybody */
+const NOBODY_UNREACHABLE = { routes: [], cannotSubmit: 0, cannotAppeal: 0 }
+
 // What a person sees when the arithmetic will not, or cannot, score.
 //
 // Three screens meet the same three answers. A reviewer whose last word the
@@ -395,7 +398,7 @@ describe('a rule that re-prices what stands', () => {
               orgTypes: [{ id: ORG_TYPE_ID, code: 'class', name: '班级' }],
               roles: [{ id: ROLE_ID, name: '审核员' }],
             }),
-          reviewAlerts: () => Effect.succeed({ groups: [] }),
+          reviewAlerts: () => Effect.succeed({ groups: [], unreachable: NOBODY_UNREACHABLE }),
           reviewCoverage: () => Effect.succeed({ nodes: [] }),
           previewScoring: () =>
             Effect.succeed({
