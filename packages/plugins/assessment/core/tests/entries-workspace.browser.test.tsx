@@ -2437,6 +2437,55 @@ describe('where filing is shut', () => {
     expect(tray.element().querySelector('[data-testid="file-claim"]')).toBeNull()
   })
 
+  // Known from the structure before any question is opened: a question the
+  // reader can never hand a claim on under says so quietly where a word
+  // would go - and only that reason, which no stage lifts. A question with
+  // work on it keeps the word for the work.
+  it('marks in the structure a question with nowhere to stand, before it is opened', async () => {
+    for (const [width, height] of [
+      [1440, 900],
+      [390, 844],
+    ] as const) {
+      await page.viewport(width, height)
+      const gate = (id: string, reason: string | null) => ({
+        itemId: id,
+        create: reason === null ? { state: 'available' as const, reason: null } : shut(reason),
+        submit: reason === null ? { state: 'available' as const, reason: null } : shut(reason),
+      })
+      const { unmount } = await workspace({
+        route: base,
+        items: [1, 2, 3, 4].map((n) => question(n, `品德题目 ${String(n)}`, BAND_A)),
+        stubs: {
+          listMyEntries: () =>
+            Effect.succeed({
+              participantId: PARTICIPANT_ID,
+              entries: [claim(1, itemId(4), 'draft')],
+              filing: [
+                gate(itemId(1), null),
+                gate(itemId(2), 'review-level-missing'),
+                gate(itemId(3), 'phase-closed'),
+                gate(itemId(4), 'review-level-missing'),
+              ],
+              nextCursor: null,
+              attention: { unreadEntryIds: [] },
+            }),
+        },
+      })
+      await expect
+        .poll(() => railRow(2)?.querySelector('[data-word]')?.getAttribute('data-held'))
+        .toBe('review-level-missing')
+      const held = (n: number) => railRow(n).querySelector('[data-held]') !== null
+      expect({ width, open: held(1), stage: held(3), work: held(4) }).toEqual({
+        width,
+        open: false,
+        stage: false,
+        work: false,
+      })
+      expect(railRow(4).querySelector('[data-word]')).not.toBeNull()
+      await unmount()
+    }
+  })
+
   it('says an archived round is why, and keeps no dead key at a phone’s foot', async () => {
     await page.viewport(390, 844)
     await workspace({

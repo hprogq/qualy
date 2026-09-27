@@ -475,6 +475,7 @@ export function StructureRail({
   refreshing,
   onRefresh,
   layout,
+  unfileable,
 }: {
   /** what the column is called: the reader's own filings, or somebody's account */
   heading: string
@@ -505,6 +506,8 @@ export function StructureRail({
   onRefresh: () => void
   /** a column that scrolls itself, or the whole of a phone's first screen */
   layout: 'column' | 'screen'
+  /** the questions no claim of this reader's can be handed on under, however the round stands */
+  unfileable?: ReadonlySet<string>
 }) {
   const { format } = useI18n()
   const statsId = useId()
@@ -658,6 +661,10 @@ export function StructureRail({
           // the word is drawn only where the reader has something to do;
           // everything else the dot says, and the word is still read out
           const drawn = word !== null && handsOn(row)
+          // a question the reader cannot file into at all, whatever the
+          // stage: said quietly where a word would go, so it is known before
+          // the question is opened - unless there is work on it to say
+          const held = !drawn && unfileable?.has(row.id) === true
           return (
             <li key={row.id}>
               <button
@@ -665,6 +672,7 @@ export function StructureRail({
                 title={[
                   row.name,
                   ...(word === null ? [] : [format(word)]),
+                  ...(held ? [format(m.entriesRowUnfileable)] : []),
                   ...(figured
                     ? [
                         format(score < 0 ? m.entriesDeductedFact : m.entriesCountedFact, {
@@ -712,6 +720,15 @@ export function StructureRail({
                       style={{ maxWidth: wordRoom(row) }}
                     >
                       {format(word)}
+                    </span>
+                  ) : held ? (
+                    <span
+                      data-word=""
+                      data-held="review-level-missing"
+                      {...stylex.props(styles.word)}
+                      style={{ maxWidth: wordRoom(row) }}
+                    >
+                      {format(m.entriesRowUnfileable)}
                     </span>
                   ) : null}
                   {!drawn && word !== null && <VisuallyHidden>{format(word)}</VisuallyHidden>}

@@ -53,6 +53,9 @@ const WIDE = '@media (min-width: 1600px)'
 /** the height of a phone's section head pinned over the rows under it, and a little room */
 const PINNED_HEAD = 48
 
+/** the filing gate's reason where a question's review route never reaches the reader */
+const ROUTE_NOWHERE_TO_STAND = 'review-level-missing'
+
 const styles = stylex.create({
   root: {
     display: 'flex',
@@ -406,6 +409,21 @@ function Workspace({
   const [asideFor, setAsideFor] = useState<string | null>(null)
   const isTodo = (row: StructureRow) =>
     viewer === 'owner' ? row.todo : movingOn(entriesByItem.get(row.id) ?? [])
+  // the questions whose review route has nowhere to stand for the owner: no
+  // claim of theirs could be handed on there, and the structure says so
+  // before the question is opened (§32.93 ③)
+  const unfileable = useMemo(
+    () =>
+      new Set(
+        [...(gates?.values() ?? [])]
+          .filter(
+            (gate) =>
+              gate.create.state === 'blocked' && gate.create.reason === ROUTE_NOWHERE_TO_STAND,
+          )
+          .map((gate) => gate.itemId),
+      ),
+    [gates],
+  )
 
   // The address names a row; without one, a desk opens the first question
   // there is to answer - an empty pane is no place to land. A phone lands on
@@ -629,6 +647,7 @@ function Workspace({
       refreshing={refreshing}
       onRefresh={onRefresh}
       layout={layout}
+      unfileable={unfileable}
     />
   )
 

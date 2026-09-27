@@ -4230,6 +4230,10 @@ const i18n = definePluginMessages({
       id: 'assessment/entries/awaiting-record',
       defaultMessage: 'Awaiting record',
     },
+    entriesRowUnfileable: {
+      id: 'assessment/entries/row-unfileable',
+      defaultMessage: 'Can’t file',
+    },
     entriesAmountNotCounted: {
       id: 'assessment/entries/amount-not-counted',
       defaultMessage: 'Not counted',

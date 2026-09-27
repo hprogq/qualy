@@ -1051,6 +1051,7 @@ export default {
   'assessment/my-entries/paper-meta': '{groups} 个分组，{items} 个项目',
   'assessment/my-entries/paper-unit': '分',
   'assessment/entries/awaiting-record': '等待认定',
+  'assessment/entries/row-unfileable': '不能申报',
   'assessment/entries/amount-not-counted': '不计入',
   'assessment/entries/amount-deducted': '已扣除',
   'assessment/entries/act-asked': '要求补充',
