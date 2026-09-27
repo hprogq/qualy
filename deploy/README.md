@@ -69,15 +69,22 @@ it still wants a host of its own.
 The tenant and its system account - the account the tenant recovers itself
 with, which signs in by email and password - are provisioned by the seed,
 run from a source checkout of the same release against the deployment's
-database (the image carries no seed):
+database (the image carries no seed). The database is on no port, so
+`compose.seed.yaml` publishes it on this host's loopback while the seed runs:
 
 ```sh
-DATABASE_URL=postgres://… QUALY_ADMIN_EMAIL=… QUALY_ADMIN_PASSWORD=… pnpm seed
+docker compose -f compose.yaml -f compose.seed.yaml up -d postgres
+DATABASE_URL=postgres://qualy:<POSTGRES_PASSWORD>@127.0.0.1:55432/qualy \
+  QUALY_ADMIN_EMAIL=… QUALY_ADMIN_PASSWORD=… pnpm seed     # from the checkout
+docker compose up -d postgres                              # off the host again
 ```
 
-A production server refuses to start while any tenant's system account has
-no email or no password at its door, and says which tenant; the order is
-always migrate, then seed when it is needed, then start.
+Give the seed the same `QUALY_DEFAULT_TENANT` as `.env` if you set one: it
+creates the tenant by that name, and the server looks for it by that name.
+A production server refuses to start while the default tenant does not exist
+(never seeded, or the name differs), and while any tenant's system account
+has no email or no password at its door, and says which; the order is always
+migrate, then seed when it is needed, then start.
 
 The first `migrate` builds the whole schema on the empty database. The
 server never migrates on its own: its production command keeps

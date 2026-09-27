@@ -15,7 +15,8 @@ import { repoRoot } from '../lib/manifest.ts'
 // qualy-sandbox-authoring:<release> must exist (pnpm release:build). In
 // order: the database comes up; a server started before the migration job
 // refuses; the job applies the lineage and installs the image's web release
-// into the deployment's release store; the server and both sandboxes come
+// into the deployment's release store; a server started before the seed
+// refuses; the seed runs from this checkout through compose.seed.yaml; the server and both sandboxes come
 // up and the server reports ready, serving that release; the shell, the
 // manifest and one hashed asset are served; a server pointed at a store its
 // release was never installed in refuses, naming the job; both sandboxes
@@ -33,6 +34,8 @@ if (!release) {
 
 const project = `qualy-smoke-${process.pid.toString(36)}`
 const composeFile = path.join(repoRoot, 'deploy/compose.yaml')
+// what publishes the database on this host's loopback while the seed runs
+const seedComposeFile = path.join(repoRoot, 'deploy/compose.seed.yaml')
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-release-smoke-'))
 const envFile = path.join(work, 'smoke.env')
 
@@ -49,6 +52,7 @@ const freePort = (): Promise<number> =>
     })
   })
 const port = await freePort()
+const seedPort = await freePort()
 const base = `http://127.0.0.1:${String(port)}`
 
 fs.writeFileSync(
@@ -71,6 +75,7 @@ fs.writeFileSync(
     // the address it is reached at, which a production process needs to start
     `QUALY_PUBLIC_URL=https://qualy.invalid`,
     `QUALY_PORT=${String(port)}`,
+    `QUALY_SEED_PORT=${String(seedPort)}`,
     // an address plan of its own, clear of a deployment on the same host
     'QUALY_NETWORK_SUBNET=172.30.54.0/24',
     'QUALY_NETWORK_GATEWAY=172.30.54.1',
@@ -87,11 +92,20 @@ interface Ran {
 }
 const compose = (
   args: readonly string[],
-  options: { input?: Buffer; timeoutMs?: number } = {},
+  options: { input?: Buffer; timeoutMs?: number; seeding?: boolean } = {},
 ): Ran => {
+  const files = options.seeding === true ? [composeFile, seedComposeFile] : [composeFile]
   const ran = spawnSync(
     'docker',
-    ['compose', '--project-name', project, '--file', composeFile, '--env-file', envFile, ...args],
+    [
+      'compose',
+      '--project-name',
+      project,
+      ...files.flatMap((file) => ['--file', file]),
+      '--env-file',
+      envFile,
+      ...args,
+    ],
     {
       cwd: repoRoot,
       env: { ...process.env, QUALY_ENV_FILE: envFile },
@@ -181,6 +195,47 @@ try {
       /web-release: (\S+) installed into \/var\/lib\/qualy\/web/.exec(ran.out)?.[1] ??
       refuse(`migrate installed no web release:\n${ran.out.slice(-2000)}`)
     step(`migrate: web release ${installed} installed into the deployment's store`)
+  }
+
+  // --- a start before the seed: refused, naming the default tenant
+  {
+    const ran = compose(['run', '--rm', '--no-deps', 'server'], { timeoutMs: 120_000 })
+    if (ran.code === 0) refuse('a server started before the seed did not refuse')
+    expectIn('start before seed', ran.out, 'QUALY_DEFAULT_TENANT')
+    step('a server started before the seed refuses, naming the default tenant')
+  }
+
+  // --- the seed, from this checkout, the way deploy/README.md runs it
+  {
+    expectCode(
+      'postgres published for the seed',
+      compose(['up', '-d', '--wait', 'postgres'], { seeding: true }),
+      0,
+    )
+    const seeded = spawnSync(
+      process.execPath,
+      [path.join(repoRoot, 'tools/fixtures/seed-cli.ts')],
+      {
+        // a directory with no .env in it: the seed takes only what it is given
+        cwd: work,
+        env: {
+          ...process.env,
+          DATABASE_URL: `postgres://qualy:smoke@127.0.0.1:${String(seedPort)}/qualy`,
+          QUALY_ADMIN_EMAIL: 'admin@qualy.invalid',
+          QUALY_ADMIN_PASSWORD: randomBytes(18).toString('base64url'),
+        },
+        encoding: 'utf8',
+        timeout: 120_000,
+      },
+    )
+    if (seeded.status !== 0) {
+      refuse(
+        `seed exited ${String(seeded.status)}:\n${`${seeded.stdout}${seeded.stderr}`.slice(-2000)}`,
+      )
+    }
+    expectIn('seed', seeded.stdout, 'seed complete: tenant +1')
+    expectCode('postgres unpublished', compose(['up', '-d', '--wait', 'postgres']), 0)
+    step('seed: the default tenant and its system account, then the database off the host again')
   }
 
   // --- the server and the sandboxes

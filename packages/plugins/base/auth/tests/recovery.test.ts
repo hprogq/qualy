@@ -47,7 +47,7 @@ const campus: LoginDriver = {
   resolution: { mode: 'user-field', field: 'businessNo' },
 }
 
-const stack = (url: string, strictBoot: boolean) =>
+const stack = (url: string, strictBoot: boolean, defaultTenantSlug = 'rescue') =>
   booted(
     recoveryBootCheck.pipe(
       // the check stands on the services, which provide the resolver it reads
@@ -75,7 +75,8 @@ const stack = (url: string, strictBoot: boolean) =>
           Layer.succeed(
             AuthConfig,
             AuthConfig.of({
-              defaultTenantSlug: 'default',
+              // the tenant the fixture seeds is the one a visitor is offered
+              defaultTenantSlug,
               sessionTtlSeconds: 3600,
               secureCookies: false,
               sessionCookieName: 'qualy_session',
@@ -88,8 +89,12 @@ const stack = (url: string, strictBoot: boolean) =>
     { catalog: compileCatalog([{ owner: 'auth', permissions: authPermissions }]) },
   )
 
-const run = <A, E>(url: string, effect: Effect.Effect<A, E, Iam | Orm>, strictBoot = false) =>
-  Effect.runPromiseExit(Effect.provide(effect, stack(url, strictBoot)))
+const run = <A, E>(
+  url: string,
+  effect: Effect.Effect<A, E, Iam | Orm>,
+  strictBoot = false,
+  defaultTenantSlug = 'rescue',
+) => Effect.runPromiseExit(Effect.provide(effect, stack(url, strictBoot, defaultTenantSlug)))
 
 const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
   if (Exit.isSuccess(exit)) return exit.value
@@ -247,6 +252,36 @@ describe.runIf(postgresAvailable)('the way a tenant recovers itself', () => {
         ).pipe(Effect.provide(databaseFor(db.url, { migrations: 'off', entities: authClosure }))),
       )
       expect(ok(await run(db.url, probe, true))).toBe('served')
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('refuses a production start whose default tenant is not there, and warns in development', async () => {
+    // never seeded, or the name mistyped: the sign-in page would offer
+    // nobody a way in, and a check over the tenants that exist passes
+    // vacuously on a database with none
+    const db = await createTestContext('recovery-default-tenant')
+    try {
+      const probe = Effect.map(Iam, () => 'served')
+      const unseeded = await run(db.url, probe, true)
+      expect(Exit.isFailure(unseeded)).toBe(true)
+      expect(Cause.pretty((unseeded as Exit.Failure<unknown, unknown>).cause)).toMatch(
+        /QUALY_DEFAULT_TENANT names tenant rescue.*pnpm seed/s,
+      )
+      expect(ok(await run(db.url, probe))).toBe('served')
+      await seed(db.url)
+      const mistyped = await run(db.url, probe, true, 'recsue')
+      expect(Cause.pretty((mistyped as Exit.Failure<unknown, unknown>).cause)).toMatch(
+        /QUALY_DEFAULT_TENANT names tenant recsue/,
+      )
+      // a tenant switched off offers nobody a way in either
+      await Effect.runPromise(
+        runSql(sql`update tenants set enabled = false where slug = 'rescue'`).pipe(
+          Effect.provide(databaseFor(db.url, { migrations: 'off', entities: authClosure })),
+        ),
+      )
+      expect(Exit.isFailure(await run(db.url, probe, true))).toBe(true)
     } finally {
       await db.dispose()
     }

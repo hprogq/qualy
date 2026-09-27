@@ -1,0 +1,19 @@
+# The database, reachable from this host while the seed runs.
+#
+# The seed - the default tenant and its system account - is the one step of
+# a deployment that runs from a source checkout of the same release rather
+# than from the images, so it needs the database this project keeps off every
+# port. This publishes it on the loopback address for as long as it is used
+# (deploy/README.md):
+#
+#   docker compose -f compose.yaml -f compose.seed.yaml up -d postgres
+#   DATABASE_URL=postgres://<user>:<password>@127.0.0.1:55432/<db> \
+#     QUALY_ADMIN_EMAIL=... QUALY_ADMIN_PASSWORD=... pnpm seed
+#   docker compose up -d postgres            # unpublished again
+#
+# QUALY_SEED_PORT moves it off 55432 when that port is taken.
+
+services:
+  postgres:
+    ports:
+      - '127.0.0.1:${QUALY_SEED_PORT:-55432}:5432'

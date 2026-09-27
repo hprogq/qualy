@@ -110,7 +110,7 @@ devDependencies 里的包,在每个开发机上都能解析,在镜像第一次�
 
 服务:
 
-- `postgres`(pgvector pg18):命名卷 `pg_data`;不发布端口,只在 compose 网络内可达。
+- `postgres`(pgvector pg18):命名卷 `pg_data`;不发布端口,只在 compose 网络内可达(seed 时经 `compose.seed.yaml` 临时发布到本机回环地址)。
   备份与恢复见 §3.3。
 - `migrate`(profile `deploy`):server 镜像跑 `deploy`,`docker compose run --rm migrate` 按需运行。先按 ledger 应用迁移
   (migrator 持数据库级 advisory lock,第二个 writer 排队后发现无事可做;失败的迁移不进 ledger,job 非零退出,旧 server 继续跑),
@@ -282,7 +282,8 @@ current,旧镜像的 server 要这一步才肯启动;旧 release 已被保留策
 postgres 起 → **未迁移就启动 server 必须被拒**(项 9 的另一半)→ `migrate`(迁移 + 把 web release 装进 `web_releases`)→
 server + 两个 sandbox 起 → `/health/ready` → `/__qualy/release` 就是 `migrate` 装的那个 → shell / manifest / 哈希资源 →
 **指向没装过本 release 的 store 启动必须被拒**(项 14)→ `qualy sandbox status` → 第二次 `migrate` 报 up to date 且 release 已装 →
-`backup.sh` 备份、销库并清空附件、`restore.sh` 恢复到 ready 且数据与附件读回 → `down -v`。
+`backup.sh` 备份、销库并清空附件、`restore.sh` 恢复到 ready 且数据与附件读回 → `down -v`。migrate 之后、服务启动之前另有两步:
+未 seed 就启动必须被拒(点名 `QUALY_DEFAULT_TENANT`),然后经 `compose.seed.yaml` 从本检出执行 seed。
 CI 的 `image` job 构建三个镜像后跑它。
 
 ## 5. 明确不做

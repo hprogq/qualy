@@ -154,6 +154,19 @@ jobs:
         env:
           DATABASE_URL: postgres://qualy:qualy@localhost:5432/qualy
         run: pnpm qualy deploy
+      # Migrate, seed, then start, as a deployment does: a production start
+      # refuses a database whose default tenant was never created. The same
+      # administrator is who the policy check below signs in as - the pages
+      # worth opening under an enforced policy are the signed-in ones (the
+      # only Workers in the tree are the code editor's, and worker-src is the
+      # directive most likely to be broken), and without one that check
+      # reached the login page alone and reported coverage it did not have.
+      - name: the default tenant and an administrator
+        env:
+          DATABASE_URL: postgres://qualy:qualy@localhost:5432/qualy
+          QUALY_ADMIN_EMAIL: admin@ci.example
+          QUALY_ADMIN_PASSWORD: csp-smoke-only-admin
+        run: pnpm seed
       - name: production boot serves the staged assembly
         env:
           DATABASE_URL: postgres://qualy:qualy@localhost:5432/qualy
@@ -170,18 +183,6 @@ jobs:
           key: playwright-${{ steps.playwright.outputs.version }}
       - name: install chromium
         run: pnpm exec playwright install --with-deps chromium
-      # The pages worth opening under an enforced policy are the signed-in
-      # ones - the only Workers in the tree are the code editor's, and
-      # worker-src is the directive most likely to be broken - so there has
-      # to be somebody to sign in as. Without this the check reached the
-      # login page alone and reported no violations, which read as coverage
-      # it did not have.
-      - name: an administrator to sign in as
-        env:
-          DATABASE_URL: postgres://qualy:qualy@localhost:5432/qualy
-          QUALY_ADMIN_EMAIL: admin@ci.example
-          QUALY_ADMIN_PASSWORD: csp-smoke-only-admin
-        run: pnpm seed
       - name: the content security policy can be enforced
         env:
           DATABASE_URL: postgres://qualy:qualy@localhost:5432/qualy

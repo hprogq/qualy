@@ -105,6 +105,11 @@ export class TenantsUnrecoverable extends Data.TaggedError('TenantsUnrecoverable
   readonly message: string
 }> {}
 
+/** the tenant an anonymous visitor is offered a way into is not there to be offered */
+export class DefaultTenantUnavailable extends Data.TaggedError('DefaultTenantUnavailable')<{
+  readonly message: string
+}> {}
+
 /** the tenants anybody can currently sign in to */
 const liveTenants = db.query((k) =>
   k
@@ -136,6 +141,27 @@ export const recoveryBootCheck: Layer.Layer<
     const drivers = yield* LoginDrivers
     const readiness = yield* makeReadiness
     const withDb = yield* withDatabase
+    // A deployment whose default tenant is missing - never seeded, or the
+    // name mistyped - serves a sign-in page with no way in and says nothing.
+    // Checking only the tenants that exist passes vacuously on a database
+    // with none, which is exactly the one that was never seeded.
+    yield* assembled.register({
+      name: 'auth/default-tenant',
+      run: withDb(
+        Effect.gen(function* () {
+          const live = yield* liveTenants.pipe(Effect.orDie)
+          if (live.some((tenant) => tenant.slug === config.defaultTenantSlug)) return
+          const said =
+            `QUALY_DEFAULT_TENANT names tenant ${config.defaultTenantSlug}, which does not exist, ` +
+            'is disabled or has expired, so the sign-in page offers no way in; ' +
+            'create it with `pnpm seed` (deploy/README.md), or name a live tenant'
+          if (config.strictBoot === true) {
+            return yield* Effect.fail(new DefaultTenantUnavailable({ message: said }))
+          }
+          yield* Effect.logWarning(said)
+        }),
+      ),
+    })
     yield* assembled.register({
       name: 'auth/recovery-channel',
       run: withDb(
