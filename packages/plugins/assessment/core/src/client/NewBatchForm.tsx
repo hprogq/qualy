@@ -209,17 +209,18 @@ export function NewBatchDialog({
           />
         ) : step === 0 ? (
           <FieldGroup>
-            <Field label={format(m.nameLabel)}>
-              {(id) => (
+            <Field label={format(m.nameLabel)} required>
+              {(id, control) => (
                 <Input
                   id={id}
+                  {...control}
                   value={name}
                   placeholder={format(m.namePlaceholder)}
                   onChange={(event) => setName(event.target.value)}
                 />
               )}
             </Field>
-            <Field label={format(m.materialRange)}>
+            <Field label={format(m.materialRange)} required>
               {(id) => (
                 <DateRangePicker
                   id={id}
@@ -237,7 +238,7 @@ export function NewBatchDialog({
           // The choices wait in their own places while they arrive: an empty
           // tree drawn meanwhile says "there are none", which is not yet known.
           <FieldGroup>
-            <Field label={format(m.scopeLegend)}>
+            <Field label={format(m.scopeLegend)} required>
               {() =>
                 nodes.data === undefined ? (
                   <div
@@ -262,7 +263,7 @@ export function NewBatchDialog({
               }
             </Field>
             {userTypes.data === undefined ? (
-              <Field label={format(m.userTypesLegend)}>
+              <Field label={format(m.userTypesLegend)} required>
                 {() => (
                   <div
                     role="status"
@@ -276,6 +277,7 @@ export function NewBatchDialog({
             ) : (
               <CheckboxGroup
                 legend={format(m.userTypesLegend)}
+                required
                 options={userTypes.data.userTypes.map((type) => ({
                   value: type.id,
                   label: type.name,

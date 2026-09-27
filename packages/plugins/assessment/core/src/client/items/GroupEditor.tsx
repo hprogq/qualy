@@ -221,9 +221,15 @@ export function GroupEditor({
         </>
       }
     >
-      <Field label={format(m.itemsGroupName)}>
-        {(id) => (
-          <Input id={id} autoFocus value={name} onChange={(event) => setName(event.target.value)} />
+      <Field label={format(m.itemsGroupName)} required>
+        {(id, control) => (
+          <Input
+            id={id}
+            {...control}
+            autoFocus
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
         )}
       </Field>
       {movable && (

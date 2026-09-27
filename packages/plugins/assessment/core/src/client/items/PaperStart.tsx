@@ -248,10 +248,11 @@ function PaperWizard({
       }
     >
       <div {...stylex.props(styles.wizardFields)}>
-        <Field label={format(m.itemsGroupName)}>
-          {(id) => (
+        <Field label={format(m.itemsGroupName)} required>
+          {(id, control) => (
             <Input
               id={id}
+              {...control}
               autoFocus
               value={name}
               onChange={(event) => setName(event.target.value)}

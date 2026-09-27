@@ -74,9 +74,14 @@ export function VoidQuestionDialog({
         </div>
       }
     >
-      <Field label={format(m.itemsVoidReason)}>
-        {(id) => (
-          <Input id={id} value={reason} onChange={(event) => setReason(event.target.value)} />
+      <Field label={format(m.itemsVoidReason)} required>
+        {(id, control) => (
+          <Input
+            id={id}
+            {...control}
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+          />
         )}
       </Field>
     </FormDialog>

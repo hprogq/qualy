@@ -584,10 +584,11 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
           }}
         >
           <FieldGroup xstyle={styles.formGaps}>
-            <Field label={format(m.nameLabel)}>
-              {(id) => (
+            <Field label={format(m.nameLabel)} required>
+              {(id, control) => (
                 <Input
                   id={id}
+                  {...control}
                   value={name}
                   disabled={!editable}
                   placeholder={format(m.namePlaceholder)}
@@ -595,7 +596,7 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
                 />
               )}
             </Field>
-            <Field label={format(m.materialRange)}>
+            <Field label={format(m.materialRange)} required>
               {(id) => (
                 <DateRangePicker
                   id={id}

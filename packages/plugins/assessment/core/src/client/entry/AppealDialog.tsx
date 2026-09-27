@@ -88,10 +88,11 @@ export function AppealDialog({
       }
     >
       <div {...stylex.props(styles.body)}>
-        <Field label={format(m.entryAppealReason)}>
-          {(id) => (
+        <Field label={format(m.entryAppealReason)} required>
+          {(id, control) => (
             <Textarea
               id={id}
+              {...control}
               rows={4}
               autoFocus
               value={reason}

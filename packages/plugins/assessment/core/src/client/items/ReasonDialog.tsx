@@ -66,10 +66,11 @@ export function ReasonDialog({
         </div>
       }
     >
-      <Field label={format(m.itemsFieldReason)}>
-        {(id) => (
+      <Field label={format(m.itemsFieldReason)} required>
+        {(id, control) => (
           <Textarea
             id={id}
+            {...control}
             rows={3}
             autoFocus
             value={reason}
