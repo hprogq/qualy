@@ -1546,4 +1546,29 @@ describe('people the review steps find nowhere', () => {
     await page.getByRole('button', { name: '完成' }).click()
     await expect.element(outcome).not.toBeInTheDocument()
   })
+
+  // On a short phone the choices scroll; what the import would leave the
+  // roster with stays at the foot beside the button that does it, where it
+  // is read before anybody presses it.
+  it('keeps the warnings beside the import button however the choices scroll', async () => {
+    await page.viewport(375, 640)
+    try {
+      await open({
+        previewImport: () => Effect.succeed({ candidates: 7, cannotSubmit: 2, systemAccounts: 1 }),
+      })
+      await page.getByRole('button', { name: '从组织导入' }).click()
+      await page.getByTestId('import-units').getByRole('checkbox', { name: '软件学院' }).click()
+      await page.getByRole('checkbox', { name: '学生' }).click()
+      const warnings = page.getByTestId('import-warnings')
+      await expect.element(warnings).toHaveAttribute('data-cannot-submit', '2')
+      const foot = warnings.element().closest('[data-slot="dialog-footer"]')
+      expect(foot).not.toBeNull()
+      expect(foot!.contains(page.getByRole('button', { name: '导入' }).element())).toBe(true)
+      expect(warnings.element().getBoundingClientRect().bottom).toBeLessThanOrEqual(
+        window.innerHeight,
+      )
+    } finally {
+      await page.viewport(1280, 800)
+    }
+  })
 })

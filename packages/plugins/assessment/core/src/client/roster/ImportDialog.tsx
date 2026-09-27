@@ -63,24 +63,36 @@ const styles = stylex.create({
       [breakpoints.desktop]: 'space-between',
     },
   },
-  footSide: { display: 'flex', alignItems: 'center', gap: 8 },
-  // what the people counted would leave the roster with, in the colour of
-  // something to look at rather than something wrong
+  footSide: { display: 'flex', alignSelf: 'flex-end', alignItems: 'center', gap: 8 },
+  // What the import would add, and what the people counted would leave the
+  // roster with, together at the foot beside the button that does it: the
+  // body scrolls, and a warning scrolled out of sight is one agreed to
+  // unread.
+  footWords: {
+    display: 'flex',
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '16rem',
+    flexDirection: 'column',
+    gap: 6,
+  },
+  // in the colour of something to look at rather than something wrong
   warnings: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 6,
+    gap: 4,
     margin: 0,
     borderRadius: tokens.radiusMd,
-    paddingInline: 12,
-    paddingBlock: 10,
+    paddingInline: 10,
+    paddingBlock: 6,
     backgroundColor: `color-mix(in oklab, ${tokens.warning} 9%, transparent)`,
     listStyleType: 'none',
     fontSize: 13,
     lineHeight: '1.25rem',
   },
   warning: { display: 'flex', alignItems: 'flex-start', gap: 8 },
-  warningMark: { width: 16, height: 16, flexShrink: 0, marginTop: 2, color: tokens.warning },
+  warningMark: { width: 14, height: 14, flexShrink: 0, marginTop: 3, color: tokens.warning },
 })
 
 const EMPTY: Selection = { orgNodeIds: [], userTypeIds: [] }
@@ -245,27 +257,6 @@ export function ImportDialog({
                   onChange={(userTypeIds) => setSelection((now) => ({ ...now, userTypeIds }))}
                   emptyLabel={format(m.userTypesEmpty)}
                 />
-                {warned !== null && (
-                  <ul
-                    data-testid="import-warnings"
-                    data-cannot-submit={warned.cannotSubmit}
-                    data-system-accounts={warned.systemAccounts}
-                    {...stylex.props(styles.warnings)}
-                  >
-                    {warned.cannotSubmit > 0 && (
-                      <li {...stylex.props(styles.warning)}>
-                        <TriangleAlertIcon aria-hidden {...stylex.props(styles.warningMark)} />
-                        {format(m.importWarnCannotSubmit, { count: warned.cannotSubmit })}
-                      </li>
-                    )}
-                    {warned.systemAccounts > 0 && (
-                      <li {...stylex.props(styles.warning)}>
-                        <TriangleAlertIcon aria-hidden {...stylex.props(styles.warningMark)} />
-                        {format(m.importWarnSystem, { count: warned.systemAccounts })}
-                      </li>
-                    )}
-                  </ul>
-                )}
               </FieldGroup>
             )}
           </AsyncSection>
@@ -278,18 +269,41 @@ export function ImportDialog({
           </DialogFooter>
         ) : (
           <DialogFooter className={stylex.props(styles.foot).className}>
-            <span
-              // how many this import would add, as a number; the sentence
-              // around it is copy and changes without the count changing
-              data-testid="import-candidates"
-              data-ready={String(ready && candidates.data !== undefined)}
-              data-count={ready && candidates.data ? String(candidates.data.candidates) : ''}
-              {...stylex.props(styles.quiet)}
-            >
-              {ready && candidates.data
-                ? format(m.importCandidates, { count: candidates.data.candidates })
-                : format(m.importChoose)}
-            </span>
+            <div {...stylex.props(styles.footWords)}>
+              <span
+                // how many this import would add, as a number; the sentence
+                // around it is copy and changes without the count changing
+                data-testid="import-candidates"
+                data-ready={String(ready && candidates.data !== undefined)}
+                data-count={ready && candidates.data ? String(candidates.data.candidates) : ''}
+                {...stylex.props(styles.quiet)}
+              >
+                {ready && candidates.data
+                  ? format(m.importCandidates, { count: candidates.data.candidates })
+                  : format(m.importChoose)}
+              </span>
+              {warned !== null && (
+                <ul
+                  data-testid="import-warnings"
+                  data-cannot-submit={warned.cannotSubmit}
+                  data-system-accounts={warned.systemAccounts}
+                  {...stylex.props(styles.warnings)}
+                >
+                  {warned.cannotSubmit > 0 && (
+                    <li {...stylex.props(styles.warning)}>
+                      <TriangleAlertIcon aria-hidden {...stylex.props(styles.warningMark)} />
+                      {format(m.importWarnCannotSubmit, { count: warned.cannotSubmit })}
+                    </li>
+                  )}
+                  {warned.systemAccounts > 0 && (
+                    <li {...stylex.props(styles.warning)}>
+                      <TriangleAlertIcon aria-hidden {...stylex.props(styles.warningMark)} />
+                      {format(m.importWarnSystem, { count: warned.systemAccounts })}
+                    </li>
+                  )}
+                </ul>
+              )}
+            </div>
             <div {...stylex.props(styles.footSide)}>
               <Button variant="outline" onClick={onClose}>
                 {format(commonMessages.cancel)}
