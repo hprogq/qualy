@@ -5399,7 +5399,7 @@ const i18n = definePluginMessages({
     structureOpen: { id: 'assessment/items/structure-open', defaultMessage: 'Open' },
 
     /** one question, opened out of the structure */
-    itemsBack: { id: 'assessment/items/back', defaultMessage: 'Back to structure' },
+    itemsBack: { id: 'assessment/items/back', defaultMessage: 'Back to item configuration' },
     itemsPublishedVersion: {
       id: 'assessment/items/published-version',
       defaultMessage: 'Published 　 version {no}',
@@ -7928,7 +7928,7 @@ const i18n = definePluginMessages({
     },
     itemsCrumbRoot: {
       id: 'assessment/items/crumb-root',
-      defaultMessage: 'Questions',
+      defaultMessage: 'Item configuration',
     },
     itemsFixCount: {
       id: 'assessment/items/fix-count',
