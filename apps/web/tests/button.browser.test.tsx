@@ -110,6 +110,34 @@ describe('the button keeps its product contract', () => {
     await expect.element(page.getByRole('button', { name: 'stuck' })).toBeDisabled()
   })
 
+  // A key drawn with no ground keeps none when it cannot be pressed: the
+  // widget's disabled grey is the colour of a ghost's hover, and a key
+  // standing disabled read as one under the pointer. A key with a ground
+  // of its own still rests on one.
+  it('a disabled ghost or link keeps no ground', async () => {
+    await mount(
+      <>
+        <Button size="icon-sm" variant="ghost" aria-label="previous" disabled />
+        <Button variant="ghost" disabled>
+          quiet
+        </Button>
+        <Button variant="link" disabled>
+          away
+        </Button>
+        <Button variant="outline" disabled>
+          boxed
+        </Button>
+      </>,
+    )
+    await atRest()
+    for (const name of ['previous', 'quiet', 'away']) {
+      const key = page.getByRole('button', { name })
+      await expect.element(key).toBeDisabled()
+      expect(box(key).bg, name).toBe('rgba(0, 0, 0, 0)')
+    }
+    expect(box(page.getByRole('button', { name: 'boxed' })).bg).not.toBe('rgba(0, 0, 0, 0)')
+  })
+
   // The defect class a whole earlier migration tripped on: a widget button
   // inside a form without an explicit type is a submit button, and every
   // "open picker" click posts the form. Pinned as a product contract.

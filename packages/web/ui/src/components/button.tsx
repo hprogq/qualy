@@ -153,6 +153,18 @@ const noHover = {
   '--ai-hover': 'var(--ai-bg)',
 } as React.CSSProperties
 
+/**
+ * A key drawn with no ground keeps none when it cannot be pressed.
+ *
+ * The widget grounds every disabled control in the muted grey, whatever its
+ * variant. On a ghost or a link that grey is the colour of the pointer's
+ * hover, so a key standing disabled - a step with nowhere to go, say - read
+ * as one being hovered or held. They fade like every other key instead.
+ */
+const groundless = {
+  '--mantine-color-disabled': 'transparent',
+} as React.CSSProperties
+
 function Button({
   variant,
   size,
@@ -208,7 +220,13 @@ function Button({
           ...(justify === undefined ? {} : { justify }),
         }
       : {}),
-    style: off ? { ...noHover, ...style } : style,
+    style: off
+      ? {
+          ...noHover,
+          ...(disabled === true && (v === 'ghost' || v === 'link') ? groundless : {}),
+          ...style,
+        }
+      : style,
   }
 
   if (asChild) {
