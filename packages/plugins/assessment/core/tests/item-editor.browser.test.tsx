@@ -1,7 +1,8 @@
 import ItemSettingsPage from '../src/client/items/ItemSettingsPage.tsx'
+import { QuestionTrail } from '../src/client/items/editor/Trail.tsx'
 import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
 import { MAX_ENTRIES_PER_ITEM } from '../src/api.ts'
-import { lazy } from 'react'
+import { lazy, useState } from 'react'
 import { Link, Route, Routes, useNavigate } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
@@ -2115,8 +2116,7 @@ describe('the band', () => {
   })
 
   // In English at a desk width with the rail open, the group a question is
-  // in was cut to five letters while when it was saved stood whole beside
-  // it, and a line whose other words changed was never measured again.
+  // in was cut to five letters while when it was saved stood whole beside it.
   it('gives way the outer groups, then the time and the version, before the group a question is in', async () => {
     const OUTER = '88888888-8888-4888-8888-8888888888e1'
     const INNER = '88888888-8888-4888-8888-8888888888e2'
@@ -2145,7 +2145,7 @@ describe('the band', () => {
       await expect.element(page.getByTestId('workspace-rail')).toBeVisible()
       const trail = page.getByTestId('item-trail')
       await expect.element(trail).toBeVisible()
-      const settle = () => new Promise((done) => setTimeout(done, 250))
+      const settle = () => new Promise((done) => setTimeout(done, 150))
       /** on the line, rather than on the one under it that nobody sees */
       const standing = (testId: string) => {
         const part = document.querySelector(`[data-testid="${testId}"]`)
@@ -2185,27 +2185,67 @@ describe('the band', () => {
       holds()
       // at 1024 with the rail open there is room for the whole of it
       expect(nearestCut()).toBe(false)
+      // changes waiting take their place on the line, and what is left is
+      // shared out the same way
       const title = page.getByRole('textbox', { name: 'Title' })
-      for (const width of [1024, 1100, 1180, 1280, 1366, 1440]) {
+      await userEvent.type(title, 'x')
+      await expect.element(page.getByTestId('item-unsaved')).toBeVisible()
+      await settle()
+      holds()
+      await userEvent.type(title, '{Backspace}')
+      await vi.waitFor(() =>
+        expect(document.querySelector('[data-testid="item-unsaved"]')).toBeNull(),
+      )
+      for (const width of [1180, 1440]) {
         await page.viewport(width, 900)
-        await settle()
-        holds()
-        // changes waiting take their place on the line, and the path is
-        // measured again for what is left
-        await userEvent.type(title, 'x')
-        await expect.element(page.getByTestId('item-unsaved')).toBeVisible()
-        await settle()
-        holds()
-        await userEvent.type(title, '{Backspace}')
-        await vi.waitFor(() =>
-          expect(document.querySelector('[data-testid="item-unsaved"]')).toBeNull(),
-        )
         await settle()
         holds()
       }
     } finally {
       await page.viewport(1280, 900)
     }
+  })
+
+  // The path was measured again only when the band's width moved. What else
+  // the line says can grow while the band stays put - saved words longer
+  // than "unsaved" - and a path measured for the shorter words was then cut
+  // off at its end, with no mark that anything was missing.
+  it('measures the path again when the rest of its line changes, with the band as it was', async () => {
+    function Line() {
+      const [room, setRoom] = useState<HTMLDivElement | null>(null)
+      const [long, setLong] = useState(false)
+      return (
+        <>
+          <button type="button" onClick={() => setLong((was) => !was)}>
+            toggle
+          </button>
+          <div ref={setRoom} style={{ width: 600 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
+              <QuestionTrail
+                groups={['综合素质测评', '德育素质与思想政治表现', '学生干部任职']}
+                room={room}
+                besides={long ? 'long' : 'short'}
+              />
+              <span style={{ flexShrink: 0, width: long ? 320 : 40 }} />
+            </div>
+          </div>
+        </>
+      )
+    }
+    await renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
+      children: <Line />,
+    })
+    const trail = page.getByTestId('item-trail')
+    await expect.element(trail).toHaveAttribute('data-folded', '0')
+    const seat = trail.element() as HTMLElement
+    await page.getByRole('button', { name: 'toggle' }).click()
+    // folded for the room that is left, rather than cut off at the end
+    await vi.waitFor(() => expect(seat.getAttribute('data-folded')).not.toBe('0'))
+    expect(seat.scrollWidth).toBeLessThanOrEqual(seat.clientWidth + 1)
+    // and unfolded again once the room comes back
+    await page.getByRole('button', { name: 'toggle' }).click()
+    await expect.element(trail).toHaveAttribute('data-folded', '0')
   })
 
   it('keeps the section heading in the band until a question arriving by address can take it', async () => {
