@@ -1,7 +1,13 @@
 import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { CheckIcon, ChevronDownIcon, ChevronRightIcon, ChevronUpIcon } from 'lucide-react'
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  ChevronUpIcon,
+  RotateCwIcon,
+} from 'lucide-react'
 import {
   useApi,
   useApiQuery,
@@ -16,6 +22,7 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Skeleton } from '@qualy/ui/skeleton'
+import { Spinner } from '@qualy/ui/spinner'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { assessmentApi } from './api.ts'
@@ -369,6 +376,20 @@ const styles = stylex.create({
   todoVerbIcon: {
     width: 12,
     height: 12,
+  },
+  // one seat for the retry's mark and the spinner that replaces it, so the
+  // button keeps its width while it asks
+  todoVerbMark: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    width: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  todoVerbBusy: {
+    cursor: 'progress',
+    opacity: 0.7,
   },
   activity: {
     display: 'flex',
@@ -793,7 +814,18 @@ interface TodoRow {
   at: string | null
   verb: string
   go: () => void
+  /**
+   * `retry` is a row that stands for a reading that failed rather than for
+   * something to do: it is not counted as a thing waiting, and its verb
+   * asks again rather than leading anywhere
+   */
+  kind?: 'retry'
+  /** its verb is already on its way, and takes no second press */
+  busy?: boolean
 }
+
+/** whether a row is one more thing waiting on the reader */
+const waitingOn = (row: TodoRow) => row.kind !== 'retry'
 
 /**
  * The desk itself: what needs the reader's hand, grouped by the standing
@@ -1035,13 +1067,15 @@ function Desk({
     which,
     rows: todo.filter((row) => row.lane === which),
   })).filter((group) => group.rows.length > 0)
+  // what waits on the reader, which a reading that failed is not
+  const waiting = todo.filter(waitingOn).length
 
   return (
     <>
-      <section {...stylex.props(styles.actions)}>
+      <section data-count={waiting} {...stylex.props(styles.actions)}>
         <div {...stylex.props(styles.actionsHead)}>
           <h2 {...stylex.props(styles.sectionTitle)}>{format(m.overviewActionsTitle)}</h2>
-          {todo.length > 0 && <span {...stylex.props(styles.actionsCount)}>{todo.length}</span>}
+          {waiting > 0 && <span {...stylex.props(styles.actionsCount)}>{waiting}</span>}
         </div>
         {overview.isPending || alerts?.pending === true ? (
           <Skeleton className={stylex.props(styles.actionsSkeleton).className} />
@@ -1063,10 +1097,14 @@ function Desk({
                   {...stylex.props(styles.strip)}
                   data-testid="overview-lane"
                   data-lane={group.which}
-                  data-count={group.rows.length}
+                  data-count={group.rows.filter(waitingOn).length}
                 >
                   <span {...stylex.props(styles.stripWord)}>{laneWord(group.which)}</span>
-                  <span {...stylex.props(styles.stripCount)}>{group.rows.length}</span>
+                  {group.rows.some(waitingOn) && (
+                    <span {...stylex.props(styles.stripCount)}>
+                      {group.rows.filter(waitingOn).length}
+                    </span>
+                  )}
                 </div>
                 <div {...stylex.props(styles.laneRows)}>
                   {group.rows.map((row) => (
@@ -1075,7 +1113,9 @@ function Desk({
                       data-action={row.action}
                       {...(row.count !== undefined ? { 'data-count': row.count } : {})}
                       {...(row.items !== undefined ? { 'data-items': row.items.join(' ') } : {})}
-                      onClick={row.go}
+                      onClick={() => {
+                        if (!row.busy) row.go()
+                      }}
                       {...stylex.props(styles.todoRow)}
                     >
                       <span
@@ -1102,17 +1142,35 @@ function Desk({
                             pressed, it goes once, not again as the row */}
                         <button
                           type="button"
+                          disabled={row.busy}
+                          aria-busy={row.busy || undefined}
                           onClick={(event) => {
                             event.stopPropagation()
                             row.go()
                           }}
-                          {...stylex.props(styles.todoVerb)}
+                          {...stylex.props(styles.todoVerb, row.busy && styles.todoVerbBusy)}
                         >
+                          {/* asking again is not going somewhere: it wears the
+                              mark every other retry in the product wears, in
+                              front of its word, and a spinner while it asks */}
+                          {row.kind === 'retry' && (
+                            <span aria-hidden {...stylex.props(styles.todoVerbMark)}>
+                              {row.busy ? (
+                                <Spinner aria-hidden />
+                              ) : (
+                                <RotateCwIcon
+                                  className={stylex.props(styles.todoVerbIcon).className}
+                                />
+                              )}
+                            </span>
+                          )}
                           {row.verb}
-                          <ChevronRightIcon
-                            aria-hidden
-                            className={stylex.props(styles.todoVerbIcon).className}
-                          />
+                          {row.kind !== 'retry' && (
+                            <ChevronRightIcon
+                              aria-hidden
+                              className={stylex.props(styles.todoVerbIcon).className}
+                            />
+                          )}
                         </button>
                       </span>
                     </div>
@@ -1343,6 +1401,8 @@ function adminRows(
     row({
       key: 'admin-unreadable',
       action: 'admin-unreadable',
+      kind: 'retry',
+      busy: alerts.retrying,
       subject: format(m.overviewAdminFailed),
       detail: null,
       verb: format(commonMessages.retry),

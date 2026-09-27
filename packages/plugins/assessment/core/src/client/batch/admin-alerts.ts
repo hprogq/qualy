@@ -114,6 +114,13 @@ export function useAdminAlerts(batchId: string, enabled: boolean): AdminAlerts {
       .filter((one) => one.route === route)
       .map((one) => ({ id: one.itemId, title: one.itemTitle }))
   const reads = [alerts, placements, access]
+  // A reading with nothing read that failed, and still has not answered.
+  // Asked again, it reads as pending once more - a failure with nothing
+  // read is reset on the next try - so it is told by having failed at all:
+  // the row saying so stays through the retry, rather than the desk
+  // falling back to its skeleton, and says the retry is on its way.
+  const unread = (read: (typeof reads)[number]) =>
+    read.data === undefined && read.errorUpdateCount > 0
   return {
     gaps: owed(alerts.data)?.groups ?? [],
     unreachable: {
@@ -127,14 +134,14 @@ export function useAdminAlerts(batchId: string, enabled: boolean): AdminAlerts {
       unavailable: owed(placements.data)?.unavailableTotal ?? 0,
     },
     accessPending: owed(access.data)?.pendingTotal ?? 0,
-    pending: enabled && reads.some((read) => read.isPending),
+    pending: enabled && reads.some((read) => read.isPending && read.errorUpdateCount === 0),
     // what was read once and failed on a later look still stands; nothing
     // asked has nothing to have failed
-    failed: enabled && reads.some((read) => read.isError && read.data === undefined),
+    failed: enabled && reads.some(unread),
     retry: () => {
-      for (const read of reads) if (read.isError) void read.refetch()
+      for (const read of reads) if (unread(read) && !read.isFetching) void read.refetch()
     },
-    retrying: enabled && reads.some((read) => read.isError && read.isFetching),
+    retrying: enabled && reads.some((read) => unread(read) && read.isFetching),
   }
 }
 

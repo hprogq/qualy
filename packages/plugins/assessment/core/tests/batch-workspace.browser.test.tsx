@@ -538,17 +538,32 @@ describe('the administration lane of the overview', () => {
     await page.viewport(1280, 800)
     let reachable = false
     let asked = 0
+    let answer: () => void = () => {}
+    const answered = new Promise<void>((done) => {
+      answer = done
+    })
     await shelled(`/assessment/batches/${BATCH_ID}`, {
       reviewAlerts: () =>
         Effect.suspend(() => {
           asked += 1
-          return reachable ? Effect.succeed(stopped) : Effect.fail(apiError('SERVICE_UNAVAILABLE'))
+          return reachable
+            ? Effect.promise(() => answered).pipe(Effect.as(stopped))
+            : Effect.fail(apiError('SERVICE_UNAVAILABLE'))
         }),
     })
     await vi.waitFor(() => expect(row('admin-unreadable')).not.toBeNull(), { timeout: 8_000 })
+    // a reading that failed is not one more thing waiting on the reader
+    const actions = page.getByTestId('overview-actions').element()
+    expect(actions.closest('section')?.getAttribute('data-count')).toBe('0')
+    expect(lane()[0]?.getAttribute('data-count')).toBe('0')
     reachable = true
     const before = asked
-    row('admin-unreadable')!.querySelector('button')!.click()
+    const retry = row('admin-unreadable')!.querySelector('button')!
+    retry.click()
+    // asking again, it takes no second press
+    await vi.waitFor(() => expect(retry.getAttribute('aria-busy')).toBe('true'))
+    expect(retry.disabled).toBe(true)
+    answer()
     await vi.waitFor(() => expect(row('admin-review-gap')).not.toBeNull())
     expect(row('admin-unreadable')).toBeNull()
     // the handle inside the row is the row's own door: one press, one read
