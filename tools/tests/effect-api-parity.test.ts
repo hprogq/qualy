@@ -83,6 +83,9 @@ describe('the Effect api against the frozen surface', () => {
       'id',
       'id',
       'id',
+      // who is signed in, as an opaque key: whether a page that lost its
+      // session is being carried on by the same person
+      'identity',
       'kind',
       'kind',
       'layout',

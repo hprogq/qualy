@@ -171,4 +171,25 @@ export const commonMessages = {
   leaveSave: { id: 'common/leave/save', defaultMessage: 'Save and leave' },
   leaveDiscard: { id: 'common/leave/discard', defaultMessage: 'Discard changes' },
   leaveStay: { id: 'common/leave/stay', defaultMessage: 'Keep editing' },
+  // The session ended while the page was open. The reader signs in again in
+  // another tab and comes back; what they were doing here carries on. If
+  // somebody else signs in instead, the page can only start over as them.
+  sessionLostTitle: { id: 'common/session/lost-title', defaultMessage: 'You have been signed out' },
+  sessionLostHint: {
+    id: 'common/session/lost-hint',
+    defaultMessage:
+      'Sign in again in a new tab, then come back here to carry on where you left off',
+  },
+  sessionSignIn: { id: 'common/session/sign-in', defaultMessage: 'Sign in in a new tab' },
+  sessionSignOut: { id: 'common/session/sign-out', defaultMessage: 'Sign out' },
+  sessionLater: { id: 'common/session/later', defaultMessage: 'Not now' },
+  sessionSwitchedTitle: {
+    id: 'common/session/switched-title',
+    defaultMessage: 'Another account is signed in',
+  },
+  sessionSwitchedHint: {
+    id: 'common/session/switched-hint',
+    defaultMessage: 'Reload to continue as that account. What was not saved here is discarded',
+  },
+  sessionReload: { id: 'common/session/reload', defaultMessage: 'Reload' },
 } as const satisfies Record<string, MessageDescriptor>

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type { UiText } from '@qualy/i18n-contract'
 import { Context, Effect, Layer } from 'effect'
 import {
@@ -46,11 +47,23 @@ export interface ManifestPage {
 export interface Manifest {
   /** whether a live session was recognised, and nothing about what it may see */
   readonly viewer: 'anonymous' | 'authenticated'
+  /** the same for one person in every session, different for two; absent for nobody */
+  readonly identity?: string
   readonly layouts: readonly ManifestLayout[]
   readonly pages: readonly ManifestPage[]
   readonly collections: Readonly<Record<string, readonly unknown[]>>
   readonly slots: Readonly<Record<string, readonly { id: string; order: number }[]>>
 }
+
+/**
+ * Who a principal is, as the page may compare it: a digest of the tenant and
+ * the user, so it names the person without handing out either id.
+ */
+const identityOf = (principal: Principal) =>
+  createHash('sha256')
+    .update(`${principal.tenantId}\u0000${principal.userId}`)
+    .digest('base64url')
+    .slice(0, 22)
 
 const sorted = <T extends { order?: number; id: string }>(items: readonly T[]) =>
   [...items].sort((a, b) => (a.order ?? 99) - (b.order ?? 99) || a.id.localeCompare(b.id))
@@ -215,6 +228,7 @@ export const make = Effect.fn('Ui.manifest.make')(function* () {
       const used = new Set(shown.map((page) => page.declaration.layout))
       return {
         viewer: viewer.authenticated ? ('authenticated' as const) : ('anonymous' as const),
+        ...(principal === undefined ? {} : { identity: identityOf(principal) }),
         layouts: layouts
           .filter((layout) => used.has(layout.declaration.contract))
           .sort((a, b) => a.declaration.contract.localeCompare(b.declaration.contract))

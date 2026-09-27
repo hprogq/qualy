@@ -51,6 +51,8 @@ locators.extend({
 
 export interface FakeManifest {
   viewer: 'anonymous' | 'authenticated'
+  /** who a signed-in manifest is for; a page recovers a lost session only for the same one */
+  identity?: string
   layouts: { contract: string }[]
   pages: { id: string; path: string; layout: string }[]
   collections: Record<string, unknown[]>

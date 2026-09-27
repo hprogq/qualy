@@ -87,4 +87,12 @@ export default {
   'common/leave/save': '保存后离开',
   'common/leave/discard': '放弃修改',
   'common/leave/stay': '继续编辑',
+  'common/session/lost-title': '登录已失效',
+  'common/session/lost-hint': '在新标签页重新登录，再回到本页接着刚才的操作',
+  'common/session/sign-in': '在新标签页登录',
+  'common/session/sign-out': '退出登录',
+  'common/session/later': '稍后',
+  'common/session/switched-title': '已有其他账号登录',
+  'common/session/switched-hint': '重新载入后以该账号继续，本页未保存的内容会丢弃',
+  'common/session/reload': '重新载入',
 } satisfies CatalogFor<typeof runtimeMessages>

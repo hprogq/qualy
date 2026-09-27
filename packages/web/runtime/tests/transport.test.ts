@@ -8,6 +8,7 @@ import {
   QUALY_CLIENT_UNSUPPORTED_HEADER,
 } from '@qualy/release-contract'
 import { getApiErrorCode, isBackendUnavailable } from '@qualy/web-i18n'
+import { QUALY_BACKGROUND_HEADER } from '@qualy/api-kit'
 import { clientFor } from '../src/api.ts'
 
 // What a browser api request says about the page, and what the page hears
@@ -250,5 +251,37 @@ describe('the server unable to serve a request right now', () => {
         headers: { 'content-type': 'application/json' },
       })
     expect(getApiErrorCode(await failureOf(own, 'send'))).toBe('PROBE_MISSING')
+  })
+})
+
+// A session is kept alive by its reader, not by the page's own traffic: a
+// request made while the tab is hidden, or long after the last input, says so
+// and the server does not count it as use.
+describe('a request nobody at the page asked for', () => {
+  const ask = async () => {
+    const seen: Record<string, string>[] = []
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const client = yield* clientFor(api, 'http://qualy.test', { identity })
+        yield* client.ping.hello()
+      }).pipe(Effect.provideService(FetchHttpClient.Fetch, answering(seen, pong))),
+    )
+    return seen[0]!
+  }
+
+  it('is marked when the tab is hidden, and decided as each request goes out', async () => {
+    const host = globalThis as { document?: { visibilityState: string } }
+    try {
+      host.document = { visibilityState: 'hidden' }
+      expect((await ask())[QUALY_BACKGROUND_HEADER]).toBe('1')
+      host.document = { visibilityState: 'visible' }
+      expect(await ask()).not.toHaveProperty(QUALY_BACKGROUND_HEADER)
+    } finally {
+      delete host.document
+    }
+  })
+
+  it('is not marked where there is no page at all', async () => {
+    expect(await ask()).not.toHaveProperty(QUALY_BACKGROUND_HEADER)
   })
 })

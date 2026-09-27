@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Effect } from 'effect'
-import { useManifest, useSessionTransition } from '@qualy/web-runtime'
+import { useManifest, useRunApi, useSessionTransition } from '@qualy/web-runtime'
 import { onSignOut } from '@qualy/web-runtime/identity'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
@@ -289,6 +289,99 @@ describe('a session that stops working while a page is open', () => {
     await new Promise((settle) => setTimeout(settle, 300))
     // the answer is what an anonymous visitor is told: nothing to settle
     expect({ manifests: manifests - before, asked }).toEqual({ manifests: 0, asked: 1 })
+  })
+})
+
+// A session that ends while its reader is at work - gone unused past the idle
+// limit, ended from elsewhere - no longer takes the page with it. The call
+// that found out waits; the reader signs in again in another tab and comes
+// back; the same person signed in, the call is made again and the page
+// carries on with what was typed still in it. Somebody else signed in, and
+// the page can only start over.
+describe('a session lost from under a signed-in reader', () => {
+  const screen = async (whoComesBack: () => string | undefined) => {
+    let attempts = 0
+    const Draft = () => {
+      const run = useRunApi()
+      const [saved, setSaved] = useState('')
+      return (
+        <main>
+          <input aria-label="draft" defaultValue="" />
+          <button
+            type="button"
+            onClick={() =>
+              void run(
+                Effect.suspend(() => {
+                  attempts += 1
+                  return attempts === 1
+                    ? Effect.fail(apiError('SESSION_EXPIRED'))
+                    : Effect.succeed('saved')
+                }),
+              ).then(setSaved, () => setSaved('failed'))
+            }
+          >
+            save
+          </button>
+          <output data-testid="saved">{saved}</output>
+        </main>
+      )
+    }
+    let signedIn = true
+    await renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.sync(() => {
+              const who = signedIn ? 'reader' : whoComesBack()
+              return who === undefined
+                ? emptyManifest()
+                : { ...emptyManifest(), viewer: 'authenticated', identity: who }
+            }),
+        },
+      }),
+      routes: [{ path: '/draft', element: <Draft /> }],
+      route: '/draft',
+    })
+    await page.getByRole('textbox', { name: 'draft' }).fill('half a sentence')
+    signedIn = false
+    await page.getByRole('button', { name: 'save' }).click()
+    return { attempts: () => attempts }
+  }
+
+  it('holds the call, and makes it again once the same person is back', async () => {
+    let back = false
+    const { attempts } = await screen(() => (back ? 'reader' : undefined))
+    await expect.element(page.getByRole('alertdialog')).toBeVisible()
+    expect(attempts()).toBe(1)
+    back = true
+    // coming back to the tab is when the page asks
+    window.dispatchEvent(new Event('focus'))
+    await expect.element(page.getByTestId('saved')).toHaveTextContent('saved')
+    expect(attempts()).toBe(2)
+    await expect.element(page.getByRole('alertdialog')).not.toBeInTheDocument()
+    await expect
+      .element(page.getByRole('textbox', { name: 'draft' }))
+      .toHaveValue('half a sentence')
+  })
+
+  it('never makes the call as somebody else, and offers only a reload', async () => {
+    let back = false
+    const { attempts } = await screen(() => (back ? 'someone-else' : undefined))
+    await expect.element(page.getByRole('alertdialog')).toBeVisible()
+    back = true
+    window.dispatchEvent(new Event('focus'))
+    await expect.element(page.getByTestId('session-switched')).toBeVisible()
+    await new Promise((settle) => setTimeout(settle, 300))
+    expect(attempts()).toBe(1)
+    expect(page.getByTestId('saved').element().textContent).toBe('')
+  })
+
+  it('fails the call as refused when the reader signs out instead', async () => {
+    const { attempts } = await screen(() => undefined)
+    await expect.element(page.getByRole('alertdialog')).toBeVisible()
+    await page.getByTestId('confirm-other').click()
+    await expect.element(page.getByTestId('saved')).toHaveTextContent('failed')
+    expect(attempts()).toBe(1)
   })
 })
 

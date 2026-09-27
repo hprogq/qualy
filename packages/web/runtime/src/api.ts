@@ -6,6 +6,7 @@ import {
   type HttpClientResponse,
 } from 'effect/unstable/http'
 import { HttpApiClient, type HttpApi, type HttpApiGroup } from 'effect/unstable/httpapi'
+import { QUALY_BACKGROUND_HEADER } from '@qualy/api-kit'
 import { apiRouteTemplates } from '@qualy/api-kit/local'
 import { registerApiRoutes } from '@qualy/browser-observability/api-routes'
 import {
@@ -15,6 +16,7 @@ import {
   isClientUnsupportedReason,
   type ClientUnsupportedReason,
 } from '@qualy/release-contract'
+import { inBackground } from './activity.ts'
 
 // A client is derived from an api DEFINITION, and every plugin holds its own:
 // the global aggregate this module used to wrap was the last generated
@@ -96,8 +98,20 @@ const withIdentity = (options: TransportOptions) => {
           }),
         )
   return <E, R>(client: HttpClient.HttpClient.With<E, R>): HttpClient.HttpClient.With<E, R> =>
-    judged(named(withoutTracePropagation(client)))
+    judged(named(markedBackground(withoutTracePropagation(client))))
 }
+
+/**
+ * A request nobody at the page asked for just now, said so.
+ *
+ * Decided as each request goes out, not when the client is built: the same
+ * query is the reader's when a click mounts it and the page's own when a poll
+ * repeats it an hour later. The server serves both and counts only the
+ * reader's as use of the session.
+ */
+const markedBackground = HttpClient.mapRequest((request) =>
+  inBackground() ? HttpClientRequest.setHeader(request, QUALY_BACKGROUND_HEADER, '1') : request,
+)
 
 /**
  * A client for one api definition.

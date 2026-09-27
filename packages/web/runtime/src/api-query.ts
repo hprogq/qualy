@@ -1,6 +1,7 @@
 import { queryOptions, type QueryKey } from '@tanstack/react-query'
 import { Effect } from 'effect'
 import { isBackendUnavailable, isTransportError } from '@qualy/web-i18n'
+import { recovering } from './session-recovery.ts'
 
 // `Effect<A, E>` has an error type; `Promise<A>` does not, so the moment a
 // page calls `Effect.runPromise` the failure type is gone and TanStack Query
@@ -17,8 +18,12 @@ export interface ApiRuntime {
   runPromise<A, E>(effect: Effect.Effect<A, E>, options?: { signal?: AbortSignal }): Promise<A>
 }
 
+// A call that finds the session gone waits for the reader to sign in again
+// and is then made once more (session-recovery.ts); every other outcome is
+// the effect's own.
 export const browserRuntime: ApiRuntime = {
-  runPromise: (effect, options) => Effect.runPromise(effect, { signal: options?.signal }),
+  runPromise: (effect, options) =>
+    recovering(() => Effect.runPromise(effect, { signal: options?.signal }), options?.signal),
 }
 
 // How long a failed read waits before it says so.

@@ -60,6 +60,11 @@ export const appApiGroup = HttpApiGroup.make('app').add(
       // this manifest cannot place is taken - to sign in first, or as a page
       // this identity cannot open - and nothing about what it may see
       viewer: Schema.Literals(['anonymous', 'authenticated']),
+      // who the session is, as a key that is the same for one person in every
+      // session and tells two people apart, and nothing else: a page whose
+      // session ran out asks for it again and carries on only if the person
+      // who signed back in is the one it was working for. Absent for nobody.
+      identity: Schema.optional(Schema.String),
       layouts: Schema.Array(layout),
       pages: Schema.Array(page),
       collections: Schema.Record(Schema.String, Schema.Array(Schema.Unknown)),

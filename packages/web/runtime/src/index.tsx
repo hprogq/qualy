@@ -38,6 +38,8 @@ import { LoadingScreen } from '@qualy/ui/spinner'
 import { afterFlight } from '@qualy/ui/flight'
 import { clientFor, type ClientIdentity, type ClientOf, type TransportOptions } from './api.ts'
 import { signingOut } from './identity.ts'
+import { changingIdentity } from './session-recovery.ts'
+import { SessionRecoveryGate } from './session-recovery-gate.tsx'
 import { type ComponentRegistry } from './registry.ts'
 import {
   createQueryUtils,
@@ -292,6 +294,10 @@ export function RuntimeProvider({
     return {
       clientFor: provider,
       utilsFor,
+      // who is signed in, asked straight: the manifest never refuses, and a
+      // question about the session must not wait for the session to return
+      askManifest: () =>
+        Effect.runPromise((provider(appApi) as ClientOf<typeof appApi>).app.getManifest()),
     }
   })
   return (
@@ -302,6 +308,10 @@ export function RuntimeProvider({
       {/* mounted once, above every screen: a plugin that wants to say
           something did not have to arrange for somewhere to say it */}
       <Toaster />
+      <SessionRecoveryGate
+        manifestKey={manifestKey.current ?? []}
+        askManifest={runtime.askManifest}
+      />
     </QueryClientProvider>
   )
 }
@@ -390,7 +400,7 @@ export function useSessionTransition() {
   // every answer the page stands on is about to be dropped, and whatever was
   // unsaved belonged to the identity going away.
   const unguarded = useUnguardedMove()
-  return useCallback(
+  const transition = useCallback(
     async (options: { destination: SessionDestination; replace?: boolean }) => {
       // Leaving somebody who was signed in: whatever a plugin kept in this
       // browser for them goes before the next person can find it. Signing
@@ -460,6 +470,19 @@ export function useSessionTransition() {
     },
     // manifest identity ties the callback to the active session
     [queryClient, navigate, manifest, runtime, unguarded],
+  )
+  return useCallback(
+    async (options: { destination: SessionDestination; replace?: boolean }) => {
+      // calls refused on the way are this change's, not a session lost from
+      // under the reader (session-recovery.ts)
+      const changed = changingIdentity()
+      try {
+        await transition(options)
+      } finally {
+        changed()
+      }
+    },
+    [transition],
   )
 }
 

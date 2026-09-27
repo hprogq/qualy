@@ -276,6 +276,19 @@ describe('the manifest a viewer receives', () => {
     expect(manifest.slots[headerActions.key]).toEqual([{ id: 'test/menu', order: 10 }])
   })
 
+  it('says who is signed in as a key: one per person across sessions, none for nobody', async () => {
+    // a page that lost its session carries on only for the same person, and
+    // needs a way to tell - without being handed either id
+    const once = await build(viewer, [])
+    const again = await build({ ...viewer, sessionId: 'another-session' }, [])
+    const someoneElse = await build({ ...viewer, userId: 'v' }, [])
+    expect(once.identity).toMatch(/^[\w-]{22}$/)
+    expect(again.identity).toBe(once.identity)
+    expect(someoneElse.identity).not.toBe(once.identity)
+    expect(JSON.stringify(once)).not.toContain(`"${viewer.userId}"`)
+    expect(await build(undefined, [])).not.toHaveProperty('identity')
+  })
+
   it('names product surfaces and never what implements them, whoever is asking', async () => {
     // three viewers, because the projection differs for each and the rule
     // does not: anonymous, an ordinary member, somebody holding the code
