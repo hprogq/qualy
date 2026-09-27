@@ -515,14 +515,14 @@ function DifferenceRow({
           <span {...stylex.props(styles.aside)}>{format(m.placementBeyondHint)}</span>
         )}
         {/* what syncing would cost them, said before anybody presses it */}
-        {row.canSync && row.unfileableAfterSync !== null && row.unfileableAfterSync > 0 && (
+        {row.canSync && row.closedBySync !== null && row.closedBySync > 0 && (
           <span
             data-testid="placement-unfileable"
-            data-count={row.unfileableAfterSync}
+            data-count={row.closedBySync}
             {...stylex.props(styles.cost)}
           >
             <TriangleAlertIcon aria-hidden {...stylex.props(styles.costMark)} />
-            {format(m.placementUnfileable, { count: row.unfileableAfterSync })}
+            {format(m.placementUnfileable, { count: row.closedBySync })}
           </span>
         )}
         {decidable && (

@@ -399,10 +399,17 @@ describe.runIf(postgresAvailable)('routes with nowhere to stand', () => {
             yield* runSql(sql`
               select primary_org_node_id as id from users where id = ${f.s3}`),
           ).id
+          const collegeB = one<{ id: string }>(
+            yield* runSql(sql`select parent_id as id from org_nodes where id = ${classB}`),
+          ).id
           // one moves up to the college, out of every class; one moves to
-          // the other class, where the class step still finds them
+          // the other class, where the class step still finds them; and one
+          // who sat under no class moves to another college under none
           yield* runSql(sql`update users set primary_org_node_id = ${collegeA} where id = ${f.s1}`)
           yield* runSql(sql`update users set primary_org_node_id = ${classB} where id = ${f.s2}`)
+          yield* runSql(
+            sql`update users set primary_org_node_id = ${collegeB} where id = ${f.recorder}`,
+          )
           return {
             page: yield* assessment.listParticipantPlacements(f.t, g.batch.id, {}, admin),
             people: { s1: f.s1, s2: f.s2 },
@@ -411,10 +418,12 @@ describe.runIf(postgresAvailable)('routes with nowhere to stand', () => {
       ),
     )
     const byPerson = new Map(
-      result.page.items.map((row) => [row.displayName, row.unfileableAfterSync] as const),
+      result.page.items.map((row) => [row.displayName, row.closedBySync] as const),
     )
     expect(byPerson.get('Zhang San')).toBe(1)
     expect(byPerson.get('Li Si')).toBe(0)
+    // what they could not file before the move is not the move's doing
+    expect(byPerson.get('Recorder')).toBe(0)
   })
 
   // Who they are, for the administrator deciding whether to move the route

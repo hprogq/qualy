@@ -627,11 +627,12 @@ const placementDifferenceView = Schema.Struct({
   /** whether this reader may take the organization's placement into the round */
   canSync: Schema.Boolean,
   /**
-   * How many questions they could not file once the organization's placement
-   * is taken in: the ones whose ordinary route finds nobody there. Null where
-   * there is no placement shown to take.
+   * How many questions taking in the organization's placement would close
+   * to them: the ones whose ordinary route finds them where the round has
+   * them and nowhere there. A question closed to them from either place is
+   * not counted. Null where there is no placement shown to take.
    */
-  unfileableAfterSync: Schema.NullOr(Schema.Number),
+  closedBySync: Schema.NullOr(Schema.Number),
   /** what a decision about this row carries back; null where there is nothing to decide */
   observedFingerprint: Schema.NullOr(Schema.String),
 })

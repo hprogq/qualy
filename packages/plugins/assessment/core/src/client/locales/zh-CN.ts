@@ -1879,7 +1879,7 @@ export default {
   'assessment/placement/current': '当前组织',
   'assessment/placement/beyond': '你管理范围之外的单位',
   'assessment/placement/beyond-hint': '需由同时管理两处单位的管理员同步',
-  'assessment/placement/unfileable': '同步后将无法申报 {count} 个项目',
+  'assessment/placement/unfileable': '同步后将无法再申报 {count} 个项目',
   'assessment/placement/gone': '已从组织中删除',
   'assessment/placement/disabled': '账号已停用',
   'assessment/placement/unplaced': '当前不属于任何单位',

@@ -391,15 +391,15 @@ describe('what a sync would cost', () => {
         listParticipantPlacements: () =>
           Effect.succeed({
             items: [
-              { ...difference(1), unfileableAfterSync: 2 },
-              { ...difference(2), unfileableAfterSync: 0 },
+              { ...difference(1), closedBySync: 2 },
+              { ...difference(2), closedBySync: 0 },
               // nothing shown to take in, so nothing to count
               {
                 ...difference(3),
                 current: null,
                 currentBeyondReach: true,
                 canSync: false,
-                unfileableAfterSync: null,
+                closedBySync: null,
               },
             ],
             nextCursor: null,

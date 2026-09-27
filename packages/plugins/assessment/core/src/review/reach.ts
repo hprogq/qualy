@@ -105,11 +105,18 @@ export const unreachableOf = (
 }
 
 /**
- * How many questions somebody standing under these unit kinds could not
- * file: the ones whose ordinary route finds them nowhere.
+ * How many questions somebody could file from where they stand now and
+ * could not from where they would stand: what a move takes from them, and
+ * nothing it leaves as it was.
  */
-export const unfileableFor = (demands: readonly RouteDemand[], levels: readonly string[]): number =>
-  demands.filter((demand) => demand.route === 'normal' && !reaches(demand, levels)).length
+export const closedByMove = (
+  demands: readonly RouteDemand[],
+  from: readonly string[],
+  to: readonly string[],
+): number =>
+  demands.filter(
+    (demand) => demand.route === 'normal' && reaches(demand, from) && !reaches(demand, to),
+  ).length
 
 /**
  * What admitting these people leaves the roster with: how many of them some

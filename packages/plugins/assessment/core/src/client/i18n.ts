@@ -6315,11 +6315,11 @@ const i18n = definePluginMessages({
       id: 'assessment/placement/beyond-hint',
       defaultMessage: 'Syncing needs someone who manages both units.',
     },
-    /** what taking in where the organization has somebody would cost them */
+    /** what taking in where the organization has somebody would take from them */
     placementUnfileable: defineMessage<{ count: number }>()({
       id: 'assessment/placement/unfileable',
       defaultMessage:
-        'After syncing, {count, plural, one {# question} other {# questions}} can no longer be filed',
+        'After syncing, they could no longer file {count, plural, one {# question} other {# questions}}',
     }),
     placementGone: {
       id: 'assessment/placement/gone',

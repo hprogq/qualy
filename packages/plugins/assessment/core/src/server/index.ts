@@ -111,10 +111,10 @@ import {
   admissionWarningsOf,
   admittedGroupsOf,
   candidateGroupsOf,
+  closedByMove,
   itemDemandsOf,
   levelGroupsOf,
   routeDemandsOf,
-  unfileableFor,
   unreachableOf,
   unreachablePage,
   unreachableTotal,
@@ -619,8 +619,8 @@ export interface PlacementDifference {
   readonly current: PlacementView | null
   readonly currentBeyondReach: boolean
   readonly canSync: boolean
-  /** questions they could not file once the placement shown is taken in; null where none is shown */
-  readonly unfileableAfterSync: number | null
+  /** questions taking in the placement shown would close to them; null where none is shown */
+  readonly closedBySync: number | null
   readonly observedFingerprint: string | null
 }
 
@@ -2422,7 +2422,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
    * when it is somebody else's unit. Units above the reader's reach are there
    * by id without a name, on either side. Where the placement is shown, so
    * is what taking it in would cost: the questions whose ordinary route
-   * finds nobody there (§32.93), counted by the same rule as the roster's.
+   * finds them where the round has them and nowhere there (§32.93), counted
+   * by the same rule as the roster's. A question they cannot file from
+   * either place is not the move's doing, and is not counted against it.
    */
   const placementDifferences = (
     tenantId: string,
@@ -2458,6 +2460,8 @@ export const make = Effect.fn('Assessment.make')(function* () {
           .map((step) => ({ id: step.nodeId, name: names.get(step.nodeId) ?? null })),
         userType: { id: snapshot.userTypeId, name: types.get(snapshot.userTypeId) ?? null },
       })
+      const levelsOf = (snapshot: PlacementSnapshot) =>
+        snapshot.lineage.flatMap((step) => (step.nodeTypeId === null ? [] : [step.nodeTypeId]))
       return rows.map((row): PlacementDifference => {
         const current = shown(row)
         return {
@@ -2471,15 +2475,10 @@ export const make = Effect.fn('Assessment.make')(function* () {
           current: current === null ? null : viewOf(current),
           currentBeyondReach: row.live !== null && current === null,
           canSync: current !== null,
-          unfileableAfterSync:
+          closedBySync:
             current === null
               ? null
-              : unfileableFor(
-                  demands,
-                  current.lineage.flatMap((step) =>
-                    step.nodeTypeId === null ? [] : [step.nodeTypeId],
-                  ),
-                ),
+              : closedByMove(demands, levelsOf(row.frozen), levelsOf(current)),
           observedFingerprint: row.unavailable === null ? row.liveFingerprint : null,
         }
       })
