@@ -1,0 +1,20 @@
+# Security updates for the npm tree come through repository settings and
+# still read this file. Version-update pull requests are off for npm
+# (open-pull-requests-limit 0): effect and the @effect packages are a beta
+# whose upgrade must land together with the vendored sources in repos/
+# (docs/agents/effect-source-policy.md), and the catalog pins the rest.
+# Base images are not listed: the node image digest is held equal across the
+# Dockerfiles, mise.toml and CI by tools/tests/release-inputs.test.ts, so a
+# bump to one of them alone would only turn that gate red.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
