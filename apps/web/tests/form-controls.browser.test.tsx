@@ -342,16 +342,34 @@ describe('the input family types at one size', () => {
 
 // A field that narrows a list looks for somebody else: nothing of the
 // reader's own belongs in it, and a password manager that took it for a
-// login filled the reader's own name into a roster search.
+// login filled the reader's own name into a roster search. Every search
+// field says so, not only the one the screen kit draws; a field that is no
+// search is left as it was, and a caller may still say otherwise.
 describe('a search field keeps the reader’s own out', () => {
   it('asks neither the browser nor a password manager to fill it', async () => {
-    await mount(<SearchField value="" onChange={() => {}} label="find" name="find" />)
-    const field = page.getByRole('searchbox', { name: 'find' }).element()
-    expect(field.getAttribute('autocomplete')).toBe('off')
-    expect(field.getAttribute('spellcheck')).toBe('false')
-    expect(field.getAttribute('data-1p-ignore')).not.toBeNull()
-    expect(field.getAttribute('data-lpignore')).toBe('true')
-    expect(field.getAttribute('data-bwignore')).toBe('true')
-    expect(field.getAttribute('data-form-type')).toBe('other')
+    await mount(
+      <>
+        <SearchField value="" onChange={() => {}} label="find" name="find" />
+        <Input type="search" aria-label="units" />
+        <Input type="search" aria-label="remembered" autoComplete="on" />
+        <Input aria-label="name" />
+      </>,
+    )
+    for (const name of ['find', 'units']) {
+      const field = page.getByRole('searchbox', { name }).element()
+      expect(field.getAttribute('autocomplete'), name).toBe('off')
+      expect(field.getAttribute('autocorrect'), name).toBe('off')
+      expect(field.getAttribute('autocapitalize'), name).toBe('off')
+      expect(field.getAttribute('spellcheck'), name).toBe('false')
+      expect(field.getAttribute('data-1p-ignore'), name).not.toBeNull()
+      expect(field.getAttribute('data-lpignore'), name).toBe('true')
+      expect(field.getAttribute('data-bwignore'), name).toBe('true')
+      expect(field.getAttribute('data-form-type'), name).toBe('other')
+    }
+    const remembered = page.getByRole('searchbox', { name: 'remembered' }).element()
+    expect(remembered.getAttribute('autocomplete')).toBe('on')
+    const plain = page.getByRole('textbox', { name: 'name' }).element()
+    expect(plain.getAttribute('autocomplete')).toBeNull()
+    expect(plain.getAttribute('data-1p-ignore')).toBeNull()
   })
 })

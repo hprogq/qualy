@@ -17,6 +17,25 @@ import { Input as MInput } from '@mantine/core'
 // glyph, a unit - which is what the old InputGroup wrapper existed to do.
 // They are ornaments, not controls: they do not take the pointer, and the
 // input keeps the whole clickable surface.
+//
+// A search field looks for somebody or something else, so nothing of the
+// reader's own belongs in it: the browser is told not to offer past entries
+// or to correct the words, and password managers are told it is no login -
+// a field in a dialog with a name on it is exactly what they otherwise fill.
+// A caller may still say otherwise; what it passes wins.
+
+/** what every `type="search"` field says unless its caller says otherwise */
+const LOOKUP = {
+  autoComplete: 'off',
+  autoCorrect: 'off',
+  autoCapitalize: 'off',
+  spellCheck: false,
+  'data-1p-ignore': '',
+  'data-lpignore': 'true',
+  'data-bwignore': 'true',
+  'data-form-type': 'other',
+} as const
+
 function Input({
   className,
   wrapperClassName,
@@ -54,6 +73,7 @@ function Input({
       {...(size === undefined ? {} : { inputSize: String(size) })}
       {...(invalid ? { error: true } : {})}
       data-slot="input"
+      {...(props.type === 'search' ? LOOKUP : {})}
       {...props}
     />
   )
