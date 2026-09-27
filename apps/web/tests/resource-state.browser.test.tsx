@@ -173,8 +173,30 @@ describe('a section that could not load', () => {
       )
     }
     await mount(<Searching />)
+    // what each live region held the moment it was added: read then rather
+    // than after the awaits below, which on a loaded machine outlast the wait
+    // before the words are written
+    const firstHeld = new Map<string, string>()
+    const watch = new MutationObserver((changes) => {
+      for (const change of changes) {
+        for (const added of change.addedNodes) {
+          if (!(added instanceof HTMLElement)) continue
+          for (const region of [
+            added,
+            ...added.querySelectorAll<HTMLElement>('[data-slot="resource-state-live"]'),
+          ]) {
+            const live = region.dataset['live']
+            if (region.dataset['slot'] === 'resource-state-live' && live !== undefined) {
+              if (!firstHeld.has(live)) firstHeld.set(live, region.textContent ?? '')
+            }
+          }
+        }
+      }
+    })
+    watch.observe(document.body, { childList: true, subtree: true })
     await page.getByRole('textbox', { name: 'search' }).fill('x')
     await expect.element(page.getByTestId('section')).toBeVisible()
+    watch.disconnect()
     await expect
       .element(
         page
@@ -193,7 +215,7 @@ describe('a section that could not load', () => {
     const polite = spoken('polite')
     // the region is there, empty, before its words: words that arrive with
     // the region are not heard by every reader
-    expect(polite?.textContent).toBe('')
+    expect(firstHeld.get('polite')).toBe('')
     await vi.waitFor(() => expect(polite?.textContent).toContain('could not load'))
     expect(polite?.textContent).toContain('try')
     expect(spoken('assertive')?.textContent).toBe('')
