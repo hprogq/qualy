@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import { NewBatchDialog } from '../src/client/NewBatchForm.tsx'
 import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
@@ -35,5 +35,42 @@ describe('creating a batch with no kind of person to take', () => {
     expect(dialog.getByRole('textbox').elements()).toHaveLength(0)
     expect(dialog.getByRole('button', { name: '下一步' }).elements()).toHaveLength(0)
     await expect.element(dialog.getByRole('button', { name: '关闭' }).first()).toBeVisible()
+  })
+})
+
+// The units are read when the dialog opens. A reader quick through the
+// first step reached the second before they arrived and was told there
+// were none to choose from.
+describe('choosing who a batch covers before the choices arrive', () => {
+  it('waits for the units in their place rather than saying there are none', async () => {
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed(emptyManifest()) },
+        assessment: {
+          listScopeOptions: () => Effect.never,
+          listUserTypeOptions: () =>
+            Effect.succeed({
+              userTypes: [{ id: NODE_ID, code: 'undergraduate', name: '本科生' }],
+            }),
+        },
+      }),
+      children: <NewBatchDialog open onClose={() => {}} onCreated={() => {}} />,
+    })
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('textbox').first().fill('2026 春季综测')
+    await expect
+      .poll(() => document.querySelector('[data-slot="date-range-picker"]') !== null)
+      .toBe(true)
+    await userEvent.click(document.querySelector('[data-slot="date-range-picker"]')!)
+    await expect.poll(() => document.querySelectorAll('table td button').length > 0).toBe(true)
+    const days = () =>
+      Array.from(document.querySelectorAll<HTMLElement>('table td button')).filter(
+        (day) => !day.hasAttribute('data-hidden') && !day.hasAttribute('disabled'),
+      )
+    await userEvent.click(days()[0]!)
+    await userEvent.click(days()[4]!)
+    await dialog.getByRole('button', { name: '下一步' }).click()
+    await expect.element(dialog.getByTestId('new-batch-waiting').first()).toBeVisible()
+    expect(dialog.element().querySelectorAll('[data-slot="empty-field"]')).toHaveLength(0)
   })
 })

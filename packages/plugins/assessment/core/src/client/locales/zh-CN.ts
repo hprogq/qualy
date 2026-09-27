@@ -1602,9 +1602,9 @@ export default {
   'assessment/action/back': '上一步',
   'assessment/action/next': '下一步',
   'assessment/batch/scope': '从以下单位导入',
-  'assessment/batch/scope-empty': '暂无可管理的组织单位。',
+  'assessment/batch/scope-empty': '暂无可管理的组织单位',
   'assessment/batch/user-types': '参评人员类型',
-  'assessment/batch/user-types-empty': '暂无可选的人员类型。',
+  'assessment/batch/user-types-empty': '暂无可选的人员类型',
   'assessment/action/create': '创建批次',
   'assessment/action/cancel': '取消',
 

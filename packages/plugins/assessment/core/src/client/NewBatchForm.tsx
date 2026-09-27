@@ -14,6 +14,7 @@ import { toast } from '@qualy/ui/toast'
 import { DateRangePicker } from '@qualy/ui/date-range-picker'
 import { FieldGroup } from '@qualy/ui/field'
 import { Input } from '@qualy/ui/input'
+import { Skeleton } from '@qualy/ui/skeleton'
 import { Steps } from '@qualy/ui/steps'
 import { TreeSelect } from '@qualy/ui/tree-select'
 import { assessmentMessages as m } from './i18n.ts'
@@ -41,6 +42,10 @@ const styles = stylex.create({
     borderColor: tokens.border,
     padding: 8,
   },
+  // about the height of a few units and of a row of kinds, so the step
+  // does not jump when they land
+  waitingTree: { height: 96, width: '100%' },
+  waitingKinds: { height: 56, width: '100%' },
 })
 
 export function NewBatchDialog({
@@ -229,29 +234,54 @@ export function NewBatchDialog({
             </Field>
           </FieldGroup>
         ) : (
+          // The choices wait in their own places while they arrive: an empty
+          // tree drawn meanwhile says "there are none", which is not yet known.
           <FieldGroup>
             <Field label={format(m.scopeLegend)}>
-              {() => (
-                <div {...stylex.props(styles.scopeTreeFrame)}>
-                  <TreeSelect
-                    value={scopeNodeIds}
-                    onChange={setScopeNodeIds}
-                    nodes={nodes.data?.nodes ?? []}
-                    emptyLabel={format(m.scopeEmpty)}
-                  />
-                </div>
-              )}
+              {() =>
+                nodes.data === undefined ? (
+                  <div
+                    role="status"
+                    aria-label={format(commonMessages.loading)}
+                    data-testid="new-batch-waiting"
+                    {...stylex.props(styles.scopeTreeFrame)}
+                  >
+                    <Skeleton className={stylex.props(styles.waitingTree).className} />
+                  </div>
+                ) : (
+                  <div {...stylex.props(styles.scopeTreeFrame)}>
+                    <TreeSelect
+                      value={scopeNodeIds}
+                      onChange={setScopeNodeIds}
+                      nodes={nodes.data.nodes}
+                      emptyLabel={format(m.scopeEmpty)}
+                      emptyHint={format(m.newBatchNoUnitsHint)}
+                    />
+                  </div>
+                )
+              }
             </Field>
-            <CheckboxGroup
-              legend={format(m.userTypesLegend)}
-              options={(userTypes.data?.userTypes ?? []).map((type) => ({
-                value: type.id,
-                label: type.name,
-              }))}
-              selected={userTypeIds}
-              onChange={setUserTypeIds}
-              emptyLabel={format(m.userTypesEmpty)}
-            />
+            {userTypes.data === undefined ? (
+              <div
+                role="status"
+                aria-label={format(commonMessages.loading)}
+                data-testid="new-batch-waiting"
+              >
+                <Skeleton className={stylex.props(styles.waitingKinds).className} />
+              </div>
+            ) : (
+              <CheckboxGroup
+                legend={format(m.userTypesLegend)}
+                options={userTypes.data.userTypes.map((type) => ({
+                  value: type.id,
+                  label: type.name,
+                }))}
+                selected={userTypeIds}
+                onChange={setUserTypeIds}
+                emptyLabel={format(m.userTypesEmpty)}
+                emptyHint={format(m.newBatchNoTypesHint)}
+              />
+            )}
           </FieldGroup>
         )}
       </>

@@ -926,7 +926,7 @@ const i18n = definePluginMessages({
     scopeLegend: { id: 'assessment/batch/scope', defaultMessage: 'Import from these units' },
     scopeEmpty: {
       id: 'assessment/batch/scope-empty',
-      defaultMessage: 'No manageable organization units are available.',
+      defaultMessage: 'No manageable organization units are available',
     },
     userTypesLegend: {
       id: 'assessment/batch/user-types',
@@ -934,7 +934,7 @@ const i18n = definePluginMessages({
     },
     userTypesEmpty: {
       id: 'assessment/batch/user-types-empty',
-      defaultMessage: 'No participant types are available.',
+      defaultMessage: 'No participant types are available',
     },
     create: { id: 'assessment/action/create', defaultMessage: 'Create batch' },
     cancel: { id: 'assessment/action/cancel', defaultMessage: 'Cancel' },
