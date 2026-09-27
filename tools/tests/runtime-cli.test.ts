@@ -32,6 +32,9 @@ describe.runIf(postgresAvailable)('a runtime-tier command over the real assembly
         ...inherited,
         DATABASE_URL: db.url,
         NODE_ENV: 'development',
+        // the runtime tier builds the mail service; nothing is sent, but a
+        // checkout without a .env must still start
+        QUALY_MAIL_RESEND_API_KEY: inherited.QUALY_MAIL_RESEND_API_KEY ?? 're_test_only',
       })
       expect(ran.status, `${ran.stdout}\n${ran.stderr}`).toBe(0)
       expect(ran.stdout).toContain('verdict: clean')

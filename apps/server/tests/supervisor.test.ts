@@ -193,6 +193,9 @@ const start = (options: { ownGroup?: boolean } = {}) => {
       PORT: String(port),
       NODE_ENV: 'development',
       QUALY_CONFIG: manifest,
+      // the product sends through resend; nothing is sent here, but a
+      // checkout without a .env must still start
+      QUALY_MAIL_RESEND_API_KEY: process.env.QUALY_MAIL_RESEND_API_KEY ?? 're_test_only',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
