@@ -263,42 +263,43 @@ D+9 开放申诉（条数取真实各学期），D+11 截止；D+13 归档（归
 
 ## 核对：当前基线的 `demo:check`
 
-2026-09-27 中午的基线（`pnpm demo:reset-db` → `pnpm demo:seed`，默认 `--stage=review`、做了流程调整，生成 7169 秒，
+2026-09-28 凌晨的基线（`pnpm demo:reset-db` → `pnpm demo:seed`，默认 `--stage=review`、做了流程调整，生成 7006 秒，
 31306 步、332961 个时间值放进故事，退出码 0 → `pnpm demo:check`，退出码 0 → `pnpm demo:snapshot --clear-runtime`，
-dump 15.7 MB、附件 2.5 MB）。`demo:check` 的输出原样如下（只去掉了开头一行开发用主密钥的告警）：
+dump 15.4 MB、附件 2.5 MB、14274 个文件对应 `storage_attachments` 14274 行；另跑 `qualy assessment audit-scoring`：
+31533 条全部 accepted，`verdict: clean`）。`demo:check` 的输出原样如下（只去掉了开头一行命令回显）：
 
 ```text
-2023-2024学年第一学期综合素质测评 [archived] 1009 people, sampled 85
+2023-2024-1 软件学院 2023 级本科生综合素质测评 [archived] 1009 people, sampled 85
   total     p10 66.95 · median 74.91 · p90 80.88
   品德行为表现   p10 9.90 · median 10.80 · p90 11.50
   学业表现     p10 54.45 · median 60.78 · p90 66.43
   文体表现     p10 3.00 · median 3.40 · p90 4.50
-2023-2024学年第二学期综合素质测评 [archived] 1007 people, sampled 84
+2023-2024-2 软件学院 2023 级本科生综合素质测评 [archived] 1007 people, sampled 84
   total     p10 63.15 · median 70.86 · p90 78.32
   品德行为表现   p10 10.00 · median 10.80 · p90 11.30
   学业表现     p10 49.08 · median 56.43 · p90 63.20
   文体表现     p10 3.00 · median 3.60 · p90 5.70
-2024-2025学年第一学期综合素质测评 [archived] 1002 people, sampled 84
+2024-2025-1 软件学院 2023 级本科生综合素质测评 [archived] 1002 people, sampled 84
   total     p10 61.53 · median 72.71 · p90 79.34
   品德行为表现   p10 10.00 · median 10.80 · p90 11.80
   学业表现     p10 47.45 · median 58.51 · p90 64.62
   文体表现     p10 3.00 · median 3.00 · p90 4.60
-2024-2025学年第二学期综合素质测评 [archived] 998 people, sampled 84
+2024-2025-2 软件学院 2023 级本科生综合素质测评 [archived] 998 people, sampled 84
   total     p10 64.47 · median 70.49 · p90 77.51
   品德行为表现   p10 10.00 · median 10.80 · p90 11.50
   学业表现     p10 50.47 · median 56.57 · p90 62.97
   文体表现     p10 3.00 · median 3.00 · p90 4.70
-2025-2026学年第一学期综合素质测评 [archived] 982 people, sampled 82
+2025-2026-1 软件学院 2023 级本科生综合素质考核 [archived] 982 people, sampled 82
   total     p10 62.91 · median 72.26 · p90 78.84
   品德行为表现   p10 10.00 · median 10.80 · p90 11.80
   学业表现     p10 47.54 · median 58.35 · p90 63.28
   文体表现     p10 3.00 · median 3.00 · p90 6.30
-2025-2026学年第二学期综合素质测评 [archived] 984 people, sampled 82
+2025-2026-2 软件学院 2023 级本科生综合素质考核 [archived] 984 people, sampled 82
   total     p10 63.41 · median 74.20 · p90 80.04
   品德行为表现   p10 9.00 · median 9.80 · p90 10.00
   学业表现     p10 50.61 · median 62.07 · p90 67.44
   文体表现     p10 3.00 · median 3.00 · p90 4.00
-2027届推荐优秀应届本科毕业生免试攻读硕士学位研究生综合评价 [active] 72 people, sampled 72
+2027 届软件学院推荐免试研究生综合评价 [active] 72 people, sampled 72
   total     p10 83.21 · median 85.16 · p90 90.22
   学业成绩     p10 77.18 · median 77.84 · p90 78.44
   素质拓展     p10 5.45 · median 7.71 · p90 11.98
@@ -309,13 +310,13 @@ staff decisions between 23:00 and 08:00 0
 people on a roster with nothing on their result 0
 
 the demonstration students, batch by batch (claims of their own, total):
-  2023-2024学年第一学期综合素质测评: student 7, 86.49; class-lead 4, 79.90
-  2023-2024学年第二学期综合素质测评: student 6, 88.64; class-lead 6, 79.51
-  2024-2025学年第一学期综合素质测评: student 14, 86.79; class-lead 7, 80.51
-  2024-2025学年第二学期综合素质测评: student 9, 87.25; class-lead 9, 83.81
-  2025-2026学年第一学期综合素质测评: student 11, 87.09; class-lead 6, 83.59
-  2025-2026学年第二学期综合素质测评: student 9, 91.49; class-lead 12, 87.20
-  2027届推荐优秀应届本科毕业生免试攻读硕士学位研究生综合评价: student 9, 90.43; class-lead 8, 93.10
+  2023-2024-1 软件学院 2023 级本科生综合素质测评: student 7, 86.49; class-lead 4, 79.90
+  2023-2024-2 软件学院 2023 级本科生综合素质测评: student 6, 88.64; class-lead 6, 79.51
+  2024-2025-1 软件学院 2023 级本科生综合素质测评: student 14, 86.79; class-lead 7, 80.51
+  2024-2025-2 软件学院 2023 级本科生综合素质测评: student 9, 87.25; class-lead 9, 83.81
+  2025-2026-1 软件学院 2023 级本科生综合素质考核: student 11, 87.09; class-lead 6, 83.59
+  2025-2026-2 软件学院 2023 级本科生综合素质考核: student 9, 91.49; class-lead 12, 87.20
+  2027 届软件学院推荐免试研究生综合评价: student 9, 90.43; class-lead 8, 93.10
 
 what the demonstration accounts open onto (selection at review):
   student       4  past: an ask for more material, answered with the file
@@ -377,14 +378,14 @@ awaiting a ruling (docs/assessment-design.md §30, item 12: whether the recordin
   counsellor: running: opens a participant from the roster = 0
 ```
 
-与上一版基线（同日上午）相比，这一版改了几处文字：23-24-2 与 25-26-1 的批次说明不再念阶段名，24-25-2「细则公示」
-与 24-25-1「结果申诉」的阶段说明不再写时刻；并把 24-25-1 的申诉顺延从建计划时挪到申诉开放次日（多一步、多三个时间值，
-是阶段改名与说明改写留下的记录）。随机审核抽成独立函数后抽随机数的次序没有变：上面的分布、逐批次分数与各项计数与上一版
-逐字相同（与上一版核对节逐行比较，没有差异），这也说明抽取没有改变生成的行为。
+与上一版基线（2026-09-27 中午）相比只改了批次名称：学期批次写作「学年-学期 单位年级本科生综合素质测评」，
+2025-2026 学年起改称「考核」，让改名在演示里可见；推免批次改为「2027 届软件学院推荐免试研究生综合评价」。其余逐字相同：
+七个批次的分布、逐批次分数与各身份的每一项计数都与上一版一致（与上一版核对节逐行比较，只有 14 行里的批次名不同），
+步数与时间值个数也一样。生成是确定性的，这也说明其间导入改为分块批量写入没有改变任何结果。
 
-本轮没有另跑短生成：新增的只是 24-25-1 申诉期里的一步，完整生成跑完这个学期（第三个，约 55 分钟处）后先在库里核对了
-改名后的阶段、补了一行的批次说明、阶段的改名事件与两条批次配置变更（都在 2025-03-13 09:10，说明那条带理由）。
-点名从 25-26-2 开始又要求全部经历的组合在写入之前就被拒绝，上一轮审查已用不可达的库地址实跑确认。
+这一版起 `demo:reset-db` 连同库一起清空 `data/demo-storage`：此前的几版都在新建的 worktree 里生成，存储目录天然是空的；
+这一版在主工作目录生成，上一版的 14570 个附件文件还留在目录里，第一次打出的附件包因此是 4.1 MB。`demo:snapshot` 现在
+先核对目录里的文件与库里引用的附件一一对应，多一个或少一个都拒绝打包。
 
 ## 本地预览
 
