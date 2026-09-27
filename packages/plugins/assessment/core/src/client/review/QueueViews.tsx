@@ -498,6 +498,13 @@ const styles = stylex.create({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
+  stripNote: {
+    flexShrink: 0,
+    fontSize: 12,
+    fontWeight: 400,
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.mutedForeground,
+  },
   stripCount: {
     flexShrink: 0,
     fontSize: 12,
@@ -833,6 +840,7 @@ function StripKey({
   id,
   name,
   note = null,
+  noted = false,
   count,
   selected,
   onChoose,
@@ -841,6 +849,8 @@ function StripKey({
   name: string
   /** a number the name is told apart by, said on hover */
   note?: string | null
+  /** said on the key itself as well: somebody else in the strip has the same name */
+  noted?: boolean
   count: number
   selected: boolean
   onChoose: () => void
@@ -859,6 +869,7 @@ function StripKey({
         {...stylex.props(styles.stripKey, selected && styles.stripKeyOn)}
       >
         <span {...stylex.props(styles.stripName)}>{name}</span>
+        {noted && note !== null && <span {...stylex.props(styles.stripNote)}>{note}</span>}
         <span {...stylex.props(styles.stripCount)}>{count}</span>
       </button>
     </li>
@@ -1482,6 +1493,12 @@ export function PersonQueue({
   const phone = usePhone()
   const people = groupByPerson(rows)
   const layout = layoutOf(rows.length, people.length, { beside, stacked })
+  // names more than one person in the queue answers to
+  const shared = new Set(
+    people
+      .map((person) => person.name)
+      .filter((name, index, names) => names.indexOf(name) !== index),
+  )
   const named = pickedOf(people, (person) => person.key, chosen)
   const open =
     named ??
@@ -1549,6 +1566,7 @@ export function PersonQueue({
             id={person.key}
             name={person.name}
             note={person.businessNo}
+            noted={shared.has(person.name)}
             count={person.rows.length}
             selected={open?.key === person.key}
             onChoose={() => onChoose(person.key, false)}

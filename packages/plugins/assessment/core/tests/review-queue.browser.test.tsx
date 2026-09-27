@@ -257,6 +257,30 @@ describe('the queue beside the rail', () => {
       .toHaveAttribute('data-more', 'false')
   })
 
+  // Two people of one name are told apart on the key itself, by number.
+  it('tells two people of one name apart on their keys', async () => {
+    await page.viewport(1024, 768)
+    await shelled(
+      [
+        ...Array.from({ length: 3 }, (_, n) => filing(n, { participantName: '王芳' })),
+        filing(5, { participantName: '李雷' }),
+      ],
+      '?view=person',
+    )
+    await expect.element(layout()).toHaveAttribute('data-layout', 'stack')
+    const keys = page.getByTestId('queue-master-row').elements()
+    const said = (name: string) =>
+      keys
+        .filter((key) => key.textContent?.includes(name))
+        .map(
+          (key) =>
+            key.getAttribute('data-key') !== null &&
+            key.textContent?.includes(key.getAttribute('data-key')!),
+        )
+    expect(said('王芳')).toEqual([true, true, true])
+    expect(said('李雷')).toEqual([false])
+  })
+
   // A table's answers take the room their longest entries need, the
   // shortest first, so a grade and a date are whole before a competition's
   // name is cut; and an answer the room still cuts short says the whole of
