@@ -178,7 +178,7 @@ const emsOf = (text: string) =>
 
 export default function UsersPage() {
   const query = useApiQuery(authApi)
-  const { format, formatError } = useI18n()
+  const { format } = useI18n()
   const describe = useLoadFailure()
   const businessNo = useTerm(authTerms.businessNumber)
   const [anchor] = usePageQueryState('anchor')
@@ -499,7 +499,8 @@ export default function UsersPage() {
 
             <AsyncSection
               pending={options.isPending || (users.isPending && active !== undefined)}
-              error={users.isError ? formatError(users.error) : null}
+              error={users.isError ? describe.of(users.error) : null}
+              retrying={users.isFetching}
               loadingLabel={format(commonMessages.loading)}
               retryLabel={format(commonMessages.retry)}
               onRetry={() => void users.refetch()}

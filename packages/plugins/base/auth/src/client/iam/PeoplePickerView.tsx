@@ -5,6 +5,7 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { ChevronsUpDownIcon } from 'lucide-react'
 import type { PeoplePickerViewContext } from '@qualy/ui-contract'
 import { useI18n } from '@qualy/web-i18n'
+import { useLoadFailure } from '@qualy/web-runtime'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -347,6 +348,7 @@ type Row = PeoplePickerViewContext['rows'][number]
 
 export default function PeoplePickerView({ context }: { context: PeoplePickerViewContext }) {
   const { format } = useI18n()
+  const describe = useLoadFailure()
   const businessNo = useTerm(authTerms.businessNumber)
   const [typed, setTyped] = useState(context.search)
   // Below a desk's width the tree is a field that opens it, and the table
@@ -428,7 +430,8 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
   // Waiting for a first answer, or failing to get one, there are no rows to
   // be elsewhere from; waiting for a changed question, the count on screen
   // is the old question's.
-  const answered = !context.pending && (context.error ?? null) === null
+  const failed = context.failure != null || (context.error ?? null) !== null
+  const answered = !context.pending && !failed
   const settled = answered && context.waiting === undefined
   const counted = answered && context.waiting !== 'question'
   const offPage = settled
@@ -789,7 +792,11 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
           <AsyncSection
             xstyle={[styles.listFill, context.waiting !== undefined && styles.listStale]}
             pending={context.pending}
-            error={context.error ?? null}
+            error={
+              // the reading itself, when the caller hands it over, is said in
+              // the words of reading; a sentence already worded is shown as given
+              context.failure != null ? describe.of(context.failure) : (context.error ?? null)
+            }
             loadingLabel={format(commonMessages.loading)}
             retryLabel={format(commonMessages.retry)}
             onRetry={context.onRetry}

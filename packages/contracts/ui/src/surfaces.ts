@@ -534,6 +534,12 @@ export interface PeoplePickerViewContext {
   waiting?: 'page' | 'question'
   /** why the page could not be read, already in the reader's language */
   error?: string | null
+  /**
+   * The reading that failed, as the caller's client reported it: the picker
+   * then says it the way readings are said (what kind of failure, whether
+   * another try can help) and `error` is not needed.
+   */
+  failure?: unknown
   hasPrevious: boolean
   hasNext: boolean
   /** which page of a list walked forwards this is, counted from one */

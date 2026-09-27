@@ -4,7 +4,7 @@ import { page, userEvent } from 'vitest/browser'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import type { authApi } from '@qualy/plugin-auth/client/api'
 import { Effect } from 'effect'
-import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // loaded through the registry the host actually uses, so a screen that lost
 // its key would fail here rather than at runtime
@@ -171,6 +171,19 @@ const stubs = (over: Record<string, unknown> = {}) => ({
 })
 
 describe('login methods screen', () => {
+  // One refused is not tried again: another press cannot change it.
+  it('says the ways in could not be shown to this reader, with nothing to retry', async () => {
+    await renderScreen({
+      client: fakeClient(
+        stubs({ listAuthProviders: () => Effect.fail(apiError('ACCESS_DENIED')) }),
+      ),
+      children: <LoginMethodsPage />,
+    })
+    const state = () => document.querySelector('[data-slot="resource-state"]')
+    await expect.poll(() => state()?.getAttribute('data-state')).toBe('denied')
+    expect(page.getByRole('button', { name: '重试' }).query()).toBeNull()
+  })
+
   it('replaces the whole audience, stating the version it read', async () => {
     const save = vi.fn(() => Effect.succeed({ version: 5 }))
     await renderScreen({

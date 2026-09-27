@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useState } from 'react'
-import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
+import { useApi, useRunApi, useApiQuery, useLoadFailure } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, Feedback, Field, FormDialog } from '@qualy/ui/admin'
@@ -39,6 +39,7 @@ export function NewUserTypeForm({
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
+  const describe = useLoadFailure()
   const [feedback, setFeedback] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [mode, setMode] = useState<'unrestricted' | 'allow-list'>('allow-list')
@@ -115,7 +116,8 @@ export function NewUserTypeForm({
         </Field>
         <AsyncSection
           pending={catalog.isPending}
-          error={catalog.isError ? formatError(catalog.error) : null}
+          error={catalog.isError ? describe.of(catalog.error) : null}
+          retrying={catalog.isFetching}
           loadingLabel={format(commonMessages.loading)}
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void catalog.refetch()}

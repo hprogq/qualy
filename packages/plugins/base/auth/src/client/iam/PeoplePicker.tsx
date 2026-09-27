@@ -28,7 +28,7 @@ const PAGE = 20
 
 export default function PeoplePicker({ context }: { context: PeoplePickerContext }) {
   const query = useApiQuery(authApi)
-  const { format, formatError } = useI18n()
+  const { format } = useI18n()
 
   const [nodeId, setNodeId] = useState<string | null>(null)
   const [scope, setScope] = useState<'self' | 'subtree'>('subtree')
@@ -105,7 +105,7 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
           : { disabled: context.disabled, disabledLabel: format(m.pickerAlreadyIn) }),
         pending: people.isPending && here !== null,
         ...(waiting === undefined ? {} : { waiting }),
-        error: people.isError ? formatError(people.error) : null,
+        failure: people.isError ? people.error : null,
         hasPrevious: current > 1,
         hasNext: current < pages,
         paging: { page: current, pageSize: PAGE, total, onPage: goTo },

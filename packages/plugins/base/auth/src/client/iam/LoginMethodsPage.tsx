@@ -21,7 +21,13 @@ import {
   DropdownMenuTrigger,
 } from '@qualy/ui/dropdown-menu'
 import { toast } from '@qualy/ui/toast'
-import { useApi, useApiQuery, usePageQueryState, useRunApi } from '@qualy/web-runtime'
+import {
+  useApi,
+  useApiQuery,
+  useLoadFailure,
+  usePageQueryState,
+  useRunApi,
+} from '@qualy/web-runtime'
 import { useI18n, useList } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
@@ -123,6 +129,7 @@ const styles = stylex.create({
 export default function LoginMethodsPage() {
   const query = useApiQuery(authApi)
   const { format, formatText, formatError, locale } = useI18n()
+  const describe = useLoadFailure()
   const listJoin = useList()
   const [selected, setSelected] = usePageQueryState('provider')
 
@@ -470,7 +477,10 @@ export default function LoginMethodsPage() {
     >
       <AsyncSection
         pending={providers.isPending}
-        error={providers.isError ? formatError(providers.error) : null}
+        error={providers.isError ? describe.of(providers.error) : null}
+        // on the page's own ground, where the methods would have stood in cards
+        framed
+        retrying={providers.isFetching}
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void providers.refetch()}

@@ -9,6 +9,7 @@ import {
   useApi,
   useRunApi,
   useApiQuery,
+  useLoadFailure,
   PageLink,
   usePageHref,
   usePageNavigate,
@@ -127,6 +128,7 @@ export function UserTypeConfig({
   // the way to the entrances is offered only to a reader who may go there
   const entrancesHref = usePageHref('auth/login-methods')
   const { format, formatError } = useI18n()
+  const describe = useLoadFailure()
   const listJoin = useList()
   const facts = useUserTypeFacts()
   const [feedback, setFeedback] = useState<string | null>(null)
@@ -327,7 +329,8 @@ export function UserTypeConfig({
             ) : (
               <AsyncSection
                 pending={facts.catalog.isPending}
-                error={facts.catalog.isError ? formatError(facts.catalog.error) : null}
+                error={facts.catalog.isError ? describe.of(facts.catalog.error) : null}
+                retrying={facts.catalog.isFetching}
                 loadingLabel={format(commonMessages.loading)}
                 retryLabel={format(commonMessages.retry)}
                 onRetry={() => void facts.catalog.refetch()}

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useApiQuery, usePageNavigate } from '@qualy/web-runtime'
+import { useApiQuery, useLoadFailure, usePageNavigate } from '@qualy/web-runtime'
 import { useI18n, useList } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
@@ -33,7 +33,8 @@ const COLUMNS = 'minmax(0, 0.9fr) 6rem minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1
 
 export default function UserTypesPage() {
   const query = useApiQuery(authApi)
-  const { format, formatError, locale } = useI18n()
+  const { format, locale } = useI18n()
+  const describe = useLoadFailure()
   const figure = new Intl.NumberFormat(locale)
   const listJoin = useList()
   const navigate = usePageNavigate()
@@ -67,7 +68,10 @@ export default function UserTypesPage() {
     >
       <AsyncSection
         pending={types.isPending}
-        error={types.isError ? formatError(types.error) : null}
+        error={types.isError ? describe.of(types.error) : null}
+        // on the page's own ground, where the list would have stood in a card
+        framed
+        retrying={types.isFetching}
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void types.refetch()}

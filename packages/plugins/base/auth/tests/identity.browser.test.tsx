@@ -182,6 +182,49 @@ describe('user types screen', () => {
     expect(page.getByText('新建用户类型').elements()).toHaveLength(0)
   })
 
+  // A reading that failed is said in the words of reading, on a card of its
+  // own where the list would have stood: a server that cannot serve right
+  // now is told apart from one that failed.
+  it('says the types could not be read right now, with another try', async () => {
+    await renderScreen({
+      client: fakeClient(
+        stubs({
+          identity: { listUserTypes: () => Effect.fail(apiError('SERVICE_UNAVAILABLE')) },
+        }),
+      ),
+      children: <UserTypesPage />,
+    })
+    const state = () => document.querySelector('[data-slot="resource-state"]')
+    await expect.poll(() => state()?.getAttribute('data-state')).toBe('unavailable')
+    await expect.element(page.getByRole('button', { name: '重试' })).toBeVisible()
+  })
+
+  // Inside the dialog too: the kinds of unit a new type could be held to
+  // that could not be read are said as a reading, and one refused is not
+  // tried again.
+  it('says in the new type dialog that the kinds of unit could not be read', async () => {
+    await renderScreen({
+      client: fakeClient(
+        stubs({
+          identity: {
+            listUserTypes: () =>
+              Effect.succeed({ userTypes: [], capabilities: { canManage: true } }),
+            getUserTypeOptions: () => Effect.fail(apiError('ACCESS_DENIED')),
+          },
+        }),
+      ),
+      children: <UserTypesPage />,
+    })
+    await page.getByRole('button', { name: '新建用户类型' }).click()
+    const dialog = page.getByRole('dialog')
+    await expect
+      .poll(() =>
+        dialog.element().querySelector('[data-slot="resource-state"]')?.getAttribute('data-state'),
+      )
+      .toBe('denied')
+    expect(dialog.getByRole('button', { name: '重试' }).query()).toBeNull()
+  })
+
   // A type the list does not hold is the whole page: said once, with the way
   // back to the list, under no heading of a type.
   it('says a type is not there instead of drawing its page', async () => {

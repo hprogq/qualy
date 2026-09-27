@@ -6,7 +6,7 @@ import type { PeoplePickerViewContext } from '@qualy/ui-contract'
 import PeoplePicker from '../src/client/iam/PeoplePicker.tsx'
 import PeoplePickerView from '../src/client/iam/PeoplePickerView.tsx'
 import zhCN from '../src/client/locales/zh-CN.ts'
-import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // Choosing people, as a table with a head.
 //
@@ -71,7 +71,7 @@ const listUsers = vi.fn((request: Request) =>
   Effect.succeed(pageOf(Number(request.query?.['page'] ?? '1'))),
 )
 
-const world = (list: (request: Request) => Effect.Effect<unknown> = listUsers) =>
+const world = (list: (request: Request) => Effect.Effect<unknown, unknown> = listUsers) =>
   fakeClient({
     app: { getManifest: () => Effect.succeed(emptyManifest()) },
     identity: {
@@ -258,6 +258,32 @@ describe('the people picker', () => {
     await expect.element(page.getByTestId('people-picker-unit')).toBeVisible()
     await page.getByRole('checkbox', { name: '全选本页' }).click()
     await expect.poll(() => held().length).toBe(20)
+  })
+})
+
+// The page of people that could not be read is said the way readings are:
+// one refused is not tried again, whatever the caller's own words would be.
+describe('the people picker over a reading that failed', () => {
+  it('says the people could not be shown to this reader, with nothing to retry', async () => {
+    await renderScreen({
+      client: world(() => Effect.fail(apiError('ACCESS_DENIED'))),
+      children: <Harness />,
+    })
+    const state = () => document.querySelector('[data-slot="resource-state"]')
+    await expect.poll(() => state()?.getAttribute('data-state')).toBe('denied')
+    expect(page.getByRole('button', { name: '重试' }).query()).toBeNull()
+    // nothing was answered, so nothing is counted or paged
+    expect(page.getByTestId('people-picker-pager').query()).toBeNull()
+  })
+
+  it('offers another try to a reading that may go through next time', async () => {
+    await renderScreen({
+      client: world(() => Effect.fail(apiError('SERVICE_UNAVAILABLE'))),
+      children: <Harness />,
+    })
+    const state = () => document.querySelector('[data-slot="resource-state"]')
+    await expect.poll(() => state()?.getAttribute('data-state')).toBe('unavailable')
+    await expect.element(page.getByRole('button', { name: '重试' })).toBeVisible()
   })
 })
 
