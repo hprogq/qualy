@@ -1,7 +1,14 @@
 import * as stylex from '@stylexjs/stylex'
 import { useMemo } from 'react'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import { cursorPages, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
+import {
+  LoadFailure,
+  cursorPages,
+  useApi,
+  useApiQuery,
+  useLoadFailure,
+  useRunApi,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { EmptyRow } from '@qualy/ui/empty-row'
@@ -236,7 +243,8 @@ export function VersionsDrawer({
   const api = useApi(formulaApi)
   const runApi = useRunApi()
   const query = useApiQuery(formulaApi)
-  const { format, formatError, locale } = useI18n()
+  const { format, locale } = useI18n()
+  const loadFailure = useLoadFailure()
 
   // where this author holds the sharing permission, asked once for the list:
   // a version offered to nobody, by somebody who may offer it to nobody, has
@@ -401,9 +409,15 @@ export function VersionsDrawer({
     <div role="status" {...stylex.props(styles.fill)}>
       <Spinner aria-label={format(m.editorLoading)} />
     </div>
-  ) : revisions.isError ? (
-    <div {...stylex.props(styles.fill)}>
-      <EmptyRow role="alert">{formatError(revisions.error)}</EmptyRow>
+  ) : revisions.isError && revisionItems.length === 0 ? (
+    // the saves could not be listed, which is not the same as there being none
+    <div data-testid="formula-revisions-unreadable" {...stylex.props(styles.fill)}>
+      <LoadFailure
+        size="section"
+        failure={loadFailure.of(revisions.error)}
+        onRetry={() => void revisions.refetch()}
+        retrying={revisions.isFetching}
+      />
     </div>
   ) : revisionItems.length === 0 ? (
     <div data-testid="formula-revisions-empty" {...stylex.props(styles.fill)}>

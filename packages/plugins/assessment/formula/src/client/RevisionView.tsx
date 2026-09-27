@@ -1,7 +1,7 @@
 import * as stylex from '@stylexjs/stylex'
 import { Suspense, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
+import { LoadFailure, useApi, useApiQuery, useLoadFailure, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
@@ -211,13 +211,30 @@ export function RevisionView({
     }
   }
 
-  const pending = (
+  const loadFailure = useLoadFailure()
+  const unreadable = (error: unknown) =>
+    loadFailure.of(error, { missing: ['ASSESSMENT_FORMULA_DRAFT_REVISION_NOT_FOUND'] })
+  const retryable = detail.isError && unreadable(detail.error).retryable
+  // A save that is not there - an address somebody kept, one deleted
+  // since - is said so, with the way back to the draft rather than another
+  // try; one that could not be read gets another try as well.
+  const pending = detail.isError ? (
+    <div {...stylex.props(styles.loading)}>
+      <LoadFailure
+        size="section"
+        failure={unreadable(detail.error)}
+        onRetry={() => void detail.refetch()}
+        retrying={detail.isFetching}
+        extra={
+          <Button size="sm" variant={retryable ? 'outline' : 'default'} onClick={onBack}>
+            {format(m.backToDraft)}
+          </Button>
+        }
+      />
+    </div>
+  ) : (
     <div role="status" {...stylex.props(styles.loading)}>
-      {detail.isError ? (
-        <EmptyRow role="alert">{formatError(detail.error)}</EmptyRow>
-      ) : (
-        <Spinner aria-label={format(m.editorLoading)} />
-      )}
+      <Spinner aria-label={format(m.editorLoading)} />
     </div>
   )
 

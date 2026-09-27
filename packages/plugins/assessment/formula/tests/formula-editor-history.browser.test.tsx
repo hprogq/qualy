@@ -115,11 +115,20 @@ const open = ({
   route = '',
   publish,
   revisions = [],
+  version = () => Effect.succeed({ version: frozen }),
+  revision = () => Effect.succeed({ revision: savedRevision }),
+  saves,
 }: {
   source?: string
   route?: string
   publish?: (attempt: number) => Effect.Effect<unknown, unknown>
   revisions?: readonly unknown[]
+  /** how a publication is read back, when not as frozen */
+  version?: () => Effect.Effect<unknown, unknown>
+  /** how a saved revision is read back, when not as saved */
+  revision?: () => Effect.Effect<unknown, unknown>
+  /** how the list of saves is answered, when not with `revisions` */
+  saves?: () => Effect.Effect<unknown, unknown>
 } = {}) => {
   const wire: Wire = {
     previews: [],
@@ -139,7 +148,7 @@ const open = ({
           wire.previews.push(request.payload.sourceTs)
           return Effect.succeed(contract)
         },
-        getFormulaVersion: () => Effect.succeed({ version: frozen }),
+        getFormulaVersion: version,
         evaluateFormulaVersion: (request: { payload: unknown }) => {
           wire.versionRuns.push(request.payload)
           return Effect.succeed({
@@ -149,8 +158,9 @@ const open = ({
             cases: [{ clientId: 'try', actual: '7.5' }],
           })
         },
-        listFormulaDraftRevisions: { items: revisions, nextCursor: null },
-        getFormulaDraftRevision: () => Effect.succeed({ revision: savedRevision }),
+        listFormulaDraftRevisions:
+          saves ?? (() => Effect.succeed({ items: revisions, nextCursor: null })),
+        getFormulaDraftRevision: revision,
         getFormulaVersionSharing: () => Effect.succeed({ scopes: [], token: 'token-1' }),
         listFormulaShareOptions: () => Effect.succeed({ nodes: [], truncated: false }),
         updateFormulaVersionInfo: (request: { payload: unknown }) => {
@@ -417,6 +427,54 @@ describe('a formula’s draft and its history', () => {
       await expect.element(page.getByTestId('formula-release-view')).toBeVisible()
       await userEvent.keyboard('{Escape}')
       await expect.element(page.getByTestId('formula-editor')).toBeVisible()
+    } finally {
+      await view.unmount()
+    }
+  }, 60_000)
+
+  // An address kept from before a publication or a save went away opens on
+  // an answer where its source would be, and the draft is one press back.
+  it('says a publication or a save that is not there is not, and goes back to the draft', async () => {
+    for (const [route, stubs] of [
+      [
+        '?view=release-9',
+        { version: () => Effect.fail(apiError('ASSESSMENT_FORMULA_VERSION_NOT_FOUND')) },
+      ],
+      [
+        '?view=revision-9',
+        { revision: () => Effect.fail(apiError('ASSESSMENT_FORMULA_DRAFT_REVISION_NOT_FOUND')) },
+      ],
+    ] as const) {
+      const { screen } = open({ route, ...stubs })
+      const view = await screen
+      try {
+        const state = () => document.querySelector('[data-slot="resource-state"]')
+        await vi.waitFor(() => expect(state()?.getAttribute('data-state')).toBe('missing'), {
+          timeout: 10_000,
+        })
+        expect(state()?.getAttribute('data-size')).toBe('section')
+        // no retry for what another try cannot bring back, only the way home
+        const buttons = [...state()!.querySelectorAll('button')]
+        expect(buttons).toHaveLength(1)
+        buttons[0]!.click()
+        await expect.element(page.getByTestId('formula-editor')).toBeVisible()
+        expect(addressNow()).toBe(`/assessment/formulas/${FN_ID}`)
+      } finally {
+        await view.unmount()
+      }
+    }
+  }, 60_000)
+
+  it('says the saves could not be listed, rather than that there are none', async () => {
+    const { screen } = open({ saves: () => Effect.fail(apiError('SERVICE_UNAVAILABLE')) })
+    const view = await screen
+    try {
+      await openVersions()
+      await page.getByRole('tab', { name: '草稿记录' }).click()
+      const unreadable = page.getByTestId('formula-revisions-unreadable')
+      await expect.element(unreadable, { timeout: 10_000 }).toBeVisible()
+      expect(page.getByTestId('formula-revisions-empty').elements()).toHaveLength(0)
+      await expect.element(unreadable.getByRole('button', { name: '重试' })).toBeVisible()
     } finally {
       await view.unmount()
     }
