@@ -553,6 +553,10 @@ describe('the grants of one person', () => {
     await expect.poll(() => state()?.getAttribute('data-state')).toBe('denied')
     expect(page.getByRole('button', { name: '重试' }).query()).toBeNull()
     expect(state()?.querySelector('h3')).not.toBeNull()
+    // one reading for both sections: the other one does not answer "none"
+    // to a question nobody was given an answer to
+    expect(page.getByRole('heading', { level: 2 }).elements()).toHaveLength(1)
+    expect(document.querySelectorAll('[data-slot="resource-state"]')).toHaveLength(1)
   })
 
   it('offers no form to a reader who may give a role nowhere', async () => {

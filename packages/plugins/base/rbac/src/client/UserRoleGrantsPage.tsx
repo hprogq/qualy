@@ -134,7 +134,9 @@ export default function UserRoleGrantsPage() {
       <section {...stylex.props(styles.section)}>
         <SectionHead
           title={format(m.organizationalSection)}
-          count={organizational.length}
+          // a count is a fact of the reading, and there is none before it
+          // arrives or when it fails
+          count={grants.data === undefined ? undefined : organizational.length}
           aside={format(m.organizationalHint)}
           actions={
             // only for a reader who may give a role somewhere: a form that
@@ -227,53 +229,58 @@ export default function UserRoleGrantsPage() {
         </AsyncSection>
       </section>
 
-      <section {...stylex.props(styles.section)}>
-        <SectionHead
-          title={format(m.confinedSection)}
-          count={confined.length}
-          aside={format(m.confinedHint)}
-        />
-        {!grants.isPending && (
-          <Card>
-            {confined.length === 0 ? (
-              <CardEmpty>{format(m.confinedEmpty)}</CardEmpty>
-            ) : (
-              <Table columns="minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.6fr)">
-                <TableHead>
-                  <span>{format(m.grantRole)}</span>
-                  <span>{format(m.grantScope)}</span>
-                  <span>{format(m.columnOrigin)}</span>
-                </TableHead>
-                {confined.map((grant) => (
-                  <TableRow
-                    key={grant.id}
-                    height="regular"
-                    data-testid="grant-row"
-                    data-grant-kind="confined"
-                    data-role-status={grant.roleStatus}
-                  >
-                    <Cell lead>
-                      <LeadWord>{grant.roleName}</LeadWord>
-                      {grant.roleStatus === 'disabled' && (
-                        <Status tone="bad">{format(m.disabledBadge)}</Status>
-                      )}
-                    </Cell>
-                    <Cell title={where(grant)} unlabelled>
-                      {where(grant)}
-                    </Cell>
-                    <Cell>
-                      <span {...stylex.props(styles.origin)}>
-                        <GrantOrigin grant={grant} />
-                        {window(grant)}
-                      </span>
-                    </Cell>
-                  </TableRow>
-                ))}
-              </Table>
-            )}
-          </Card>
-        )}
-      </section>
+      {/* the same reading as the section above: when it failed, the one
+          state there says so for both, and "none within one object" here
+          would be an answer nobody was given */}
+      {!(grants.isError && grants.data === undefined) && (
+        <section {...stylex.props(styles.section)}>
+          <SectionHead
+            title={format(m.confinedSection)}
+            count={grants.data === undefined ? undefined : confined.length}
+            aside={format(m.confinedHint)}
+          />
+          {grants.data !== undefined && (
+            <Card>
+              {confined.length === 0 ? (
+                <CardEmpty>{format(m.confinedEmpty)}</CardEmpty>
+              ) : (
+                <Table columns="minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.6fr)">
+                  <TableHead>
+                    <span>{format(m.grantRole)}</span>
+                    <span>{format(m.grantScope)}</span>
+                    <span>{format(m.columnOrigin)}</span>
+                  </TableHead>
+                  {confined.map((grant) => (
+                    <TableRow
+                      key={grant.id}
+                      height="regular"
+                      data-testid="grant-row"
+                      data-grant-kind="confined"
+                      data-role-status={grant.roleStatus}
+                    >
+                      <Cell lead>
+                        <LeadWord>{grant.roleName}</LeadWord>
+                        {grant.roleStatus === 'disabled' && (
+                          <Status tone="bad">{format(m.disabledBadge)}</Status>
+                        )}
+                      </Cell>
+                      <Cell title={where(grant)} unlabelled>
+                        {where(grant)}
+                      </Cell>
+                      <Cell>
+                        <span {...stylex.props(styles.origin)}>
+                          <GrantOrigin grant={grant} />
+                          {window(grant)}
+                        </span>
+                      </Cell>
+                    </TableRow>
+                  ))}
+                </Table>
+              )}
+            </Card>
+          )}
+        </section>
+      )}
 
       <GrantRoleDialog
         key={opening}
