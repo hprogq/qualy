@@ -8,6 +8,7 @@ import { Assembled, BootHookFailed } from '@qualy/api-kit/assembled'
 import { sql } from 'kysely'
 import { runSql } from '@qualy/plugin-database/testkit'
 import { describeTarget } from './target.ts'
+import { BOOT_HOOKS } from './boot-hooks.ts'
 
 // The product's own service graph, pointed at the demo database.
 //
@@ -31,35 +32,6 @@ const resolution = async () => {
     )
   }
   return resolved
-}
-
-/**
- * The boot hooks, each named for what it does to a seeding run.
- *
- * Most of them complete a registry the services read - rbac's permission
- * catalog above all, without which every authorization refuses. The rest
- * start loops that write on their own clock (the phase scheduler, the review
- * patrol, the upload sweeper) or listen for browsers nobody has open; a
- * seeding run must be the only writer, so those stay off. A hook this list
- * does not know stops the run: it has to be sorted before it is trusted.
- */
-const BOOT_HOOKS: Readonly<Record<string, 'run' | 'skip'>> = {
-  'mail/backends': 'run',
-  'rum/provider': 'run',
-  'web/shell-policy': 'run',
-  'storage/backends': 'run',
-  'captcha/provider': 'run',
-  'rbac/permission-catalog': 'run',
-  'auth/recovery-channel': 'run',
-  'auth/public-origin': 'run',
-  // reads stored entrance secrets and only logs what does not decrypt
-  'auth/entrance-secrets': 'skip',
-  'assessment/scoring-plans': 'run',
-  'storage/cleanup-scheduler': 'skip',
-  // a loop that removes staging files; the seeder places objects directly
-  'storage-local/staging-sweep': 'skip',
-  'assessment/live-listener': 'skip',
-  'assessment/phase-scheduler': 'skip',
 }
 
 /** the hooks a seeding run needs, for the scenario to run inside a recorded step */
