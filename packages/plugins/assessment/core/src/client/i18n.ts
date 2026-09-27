@@ -3871,9 +3871,10 @@ const i18n = definePluginMessages({
       id: 'assessment/review/queue-unfold',
       defaultMessage: 'Expand pending reviews',
     },
+    /** the key on the decision bar, which has half a phone's width */
     reviewSupplementAsk: {
       id: 'assessment/review/supplement-ask',
-      defaultMessage: 'Request additional material',
+      defaultMessage: 'Request materials',
     },
     reviewSupplementAsked: {
       id: 'assessment/review/supplement-asked',

@@ -182,8 +182,9 @@ const queue = (inbox?: Record<string, unknown>, search = '') =>
     route: `/assessment/batches/${BATCH_ID}/reviews${search}`,
   })
 
-const open = (stubs: Record<string, unknown> = {}) =>
+const open = (stubs: Record<string, unknown> = {}, locale: 'zh-CN' | 'en-US' = 'zh-CN') =>
   renderScreen({
+    locale,
     client: fakeClient({
       app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
       assessment: {
@@ -935,6 +936,23 @@ describe('the four acts, always on the bar', () => {
     // and a register between the rows: the verdicts stand taller
     expect(reject.height).toBeGreaterThan(escalate.height)
   })
+
+  // Half a phone's width is what each routing key has, in either language:
+  // a name that runs past it is a key whose act nobody can read.
+  for (const locale of ['zh-CN', 'en-US'] as const) {
+    it(`says each act whole on a phone (${locale})`, async () => {
+      await page.viewport(390, 844)
+      await open({}, locale)
+      await expect.element(page.getByTestId('act-supplement')).toBeVisible()
+      for (const act of ['act-escalate', 'act-supplement', 'act-reject', 'act-approve']) {
+        const key = page.getByTestId(act).element() as HTMLElement
+        // the key and whatever inside it holds the words
+        for (const part of [key, ...key.querySelectorAll<HTMLElement>('*')]) {
+          expect(part.scrollWidth, act).toBeLessThanOrEqual(part.clientWidth + 1)
+        }
+      }
+    })
+  }
 })
 
 describe('the pager knows what must not be missed', () => {
