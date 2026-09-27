@@ -40,8 +40,10 @@ export function QuestionTrail({
   room: HTMLElement | null
 }) {
   const seat = useRef<HTMLSpanElement>(null)
-  // how many of the outer groups have given way, counted from the paper
-  const [folded, setFolded] = useState(0)
+  // how many of the outer groups have given way, counted from the paper,
+  // and which measuring this is: a change of room starts a new one even
+  // where nothing had given way yet
+  const [{ folded, pass }, setFit] = useState({ folded: 0, pass: 0 })
   const outer = Math.max(0, groups.length - 1)
   const whole = groups.join(' / ')
 
@@ -50,8 +52,12 @@ export function QuestionTrail({
   useLayoutEffect(() => {
     const node = seat.current
     if (node === null) return
-    if (folded < outer && node.scrollWidth > node.clientWidth + 1) setFolded(folded + 1)
-  }, [folded, outer, whole])
+    // said outright rather than as a step from whatever is pending: the
+    // effect may run twice over one render, and must fold once
+    if (folded < outer && node.scrollWidth > node.clientWidth + 1) {
+      setFit({ folded: folded + 1, pass })
+    }
+  }, [folded, pass, outer, whole])
   useLayoutEffect(() => {
     if (room === null) return
     let width = room.getBoundingClientRect().width
@@ -59,7 +65,7 @@ export function QuestionTrail({
       const now = room.getBoundingClientRect().width
       if (Math.abs(now - width) < 1) return
       width = now
-      setFolded(0)
+      setFit((was) => ({ folded: 0, pass: was.pass + 1 }))
     })
     watch.observe(room)
     return () => watch.disconnect()

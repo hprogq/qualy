@@ -1926,6 +1926,9 @@ describe('the band', () => {
       await page.viewport(1440, 900)
       await vi.waitFor(() => expect(trail.element().getAttribute('data-folded')).toBe('0'))
       expect(trail.element().querySelectorAll('[data-crumb]')).toHaveLength(3)
+      // and the room taken away again folds it again
+      await page.viewport(834, 900)
+      await vi.waitFor(() => expect(trail.element().getAttribute('data-folded')).not.toBe('0'))
     } finally {
       await page.viewport(1280, 900)
     }
