@@ -1,5 +1,9 @@
 # Shared by upgrade.sh, rollback.sh, restore.sh, backup.sh and
-# demo/restore.sh; sourced, never run. POSIX sh.
+# demo/restore.sh; sourced, never run. POSIX sh, and `local`, which dash,
+# bash and busybox all have: a function here shares one namespace with the
+# script that sourced it, and every name it assigns is declared local so it
+# never overwrites the caller's - `target`, `release` and `previous` mean a
+# color and a release up there.
 #
 # The scripts never source .env: a value in it (a sender like `Name <addr>`)
 # need not be valid shell. They read the few keys they need with env_get, and
@@ -20,6 +24,7 @@ env_file=${QUALY_ENV_FILE:-$here/.env}
 # QUALY_COMPOSE_OVERLAY names one more file beside compose.yaml - staging's
 # compose.staging.yaml - read from the environment first, then the env file
 compose() {
+  local overlay
   overlay=${QUALY_COMPOSE_OVERLAY:-$(sed -n 's/^QUALY_COMPOSE_OVERLAY=//p' "$env_file" 2> /dev/null | tail -n 1)}
   if [ -n "$overlay" ]; then
     docker compose -f "$here/compose.yaml" -f "$here/$overlay" --env-file "$env_file" "$@"
@@ -39,6 +44,7 @@ refuse() {
 
 # the value .env gives a key, or the second argument when it gives none
 env_get() {
+  local value
   value=$(sed -n "s/^$1=//p" "$env_file" | tail -n 1)
   if [ -n "$value" ]; then printf '%s' "$value"; else printf '%s' "${2:-}"; fi
 }
@@ -47,15 +53,15 @@ env_get() {
 # renamed over it - a rename within one directory is atomic. The new file
 # keeps the old one's mode (and owner, for a caller allowed to keep it).
 replace_file() {
-  target=$1
-  next=$(mktemp "$(dirname "$target")/.$(basename "$target").XXXXXX") || return 1
-  if [ -f "$target" ]; then cp -p "$target" "$next"; fi
-  if ! cat > "$next"; then
-    rm -f "$next"
+  local file="$1" fresh
+  fresh=$(mktemp "$(dirname "$file")/.$(basename "$file").XXXXXX") || return 1
+  if [ -f "$file" ]; then cp -p "$file" "$fresh"; fi
+  if ! cat > "$fresh"; then
+    rm -f "$fresh"
     return 1
   fi
   sync
-  mv -f "$next" "$target"
+  mv -f "$fresh" "$file"
 }
 
 # Writes keys of .env, as KEY VALUE pairs, in one replacement: a key already
@@ -63,6 +69,7 @@ replace_file() {
 # here are release tags and color names, never anything a sed pattern could
 # misread.
 env_set() {
+  local work
   work=$(mktemp "$(dirname "$env_file")/.env.work.XXXXXX") || refuse "cannot write beside $env_file"
   cat "$env_file" > "$work"
   # a last line without its newline would swallow the first added key
@@ -88,7 +95,7 @@ env_set() {
 held_lock=
 take_lock() {
   [ "${QUALY_DEPLOY_LOCK_HELD:-}" = "$env_file" ] && return 0
-  lock="$env_file.lock"
+  local lock="$env_file.lock"
   if command -v flock > /dev/null 2>&1; then
     exec 9> "$lock"
     flock -n 9 || refuse "another deployment step holds $lock; wait for it to finish, then run this again"
@@ -107,6 +114,7 @@ release_lock() {
 
 # a setting the operator's environment gives, else .env, else the default
 setting() {
+  local given
   eval "given=\${$1:-}"
   if [ -n "$given" ]; then printf '%s' "$given"; else env_get "$1" "${2:-}"; fi
 }
@@ -136,12 +144,14 @@ color_services() {
 
 # where this host reaches a color's published port
 color_address() {
+  local bind
   bind=$(env_get QUALY_BIND 127.0.0.1)
   case $bind in 0.0.0.0 | '') bind=127.0.0.1 ;; esac
   printf 'http://%s:%s' "$bind" "$(color_port "$1")"
 }
 
 require_images() {
+  local image
   for image in qualy-server qualy-sandbox-runtime qualy-sandbox-authoring; do
     docker image inspect "$image:$1" > /dev/null 2>&1 ||
       refuse "no image $image:$1 on this host; load or pull the release first"
@@ -155,10 +165,10 @@ served_release() {
 }
 
 wait_ready() {
-  address=$1
+  local deadline
   deadline=$(($(date +%s) + ${2:-180}))
   while [ "$(date +%s)" -lt "$deadline" ]; do
-    if curl -fsS --max-time 5 "$address/health/ready" > /dev/null 2>&1; then return 0; fi
+    if curl -fsS --max-time 5 "$1/health/ready" > /dev/null 2>&1; then return 0; fi
     sleep 2
   done
   return 1
@@ -167,6 +177,7 @@ wait_ready() {
 # Enough room to run two colors for a minute, and to take a backup and a new
 # image. Measured where it can be (Linux); said where it cannot.
 preflight() {
+  local min_memory min_disk available root free
   min_memory=$(setting QUALY_UPGRADE_MIN_MEMORY_MB 600)
   min_disk=$(setting QUALY_UPGRADE_MIN_DISK_MB 2048)
   if [ -r /proc/meminfo ]; then
@@ -221,21 +232,22 @@ missing_from() {
 # the snippet the site imports, validated, then reloaded; a snippet that does
 # not validate or reload is put back as it was, and the caller is told.
 proxy_point() {
+  local proxy snippet validate reload before upstream
   proxy=$(setting QUALY_PROXY caddy)
   [ "$proxy" = none ] && return 0
   [ "$proxy" = caddy ] || refuse "QUALY_PROXY is $proxy; caddy and none are understood"
   snippet=$(setting QUALY_PROXY_UPSTREAM /etc/caddy/qualy/upstream.caddy)
   validate=$(setting QUALY_PROXY_VALIDATE 'caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile')
   reload=$(setting QUALY_PROXY_RELOAD 'systemctl reload caddy')
-  previous=
-  [ -f "$snippet" ] && previous=$(cat "$snippet")
+  before=
+  [ -f "$snippet" ] && before=$(cat "$snippet")
   if [ "$1" = maintenance ]; then
     # handled by the site's handle_errors, which serves the maintenance page
     printf 'error "maintenance" 503\n' | replace_file "$snippet" || return 1
   else
-    target=${1#http://}
+    upstream=${1#http://}
     replace_file "$snippet" << CADDY || return 1
-reverse_proxy $target {
+reverse_proxy $upstream {
 	header_up X-Forwarded-Host {http.request.host}
 	flush_interval -1
 	transport http {
@@ -248,13 +260,14 @@ CADDY
   if sh -c "$validate" > /dev/null 2>&1 && sh -c "$reload"; then
     return 0
   fi
-  printf '%s\n' "$previous" | replace_file "$snippet" || true
+  printf '%s\n' "$before" | replace_file "$snippet" || true
   sh -c "$reload" > /dev/null 2>&1 || true
   return 1
 }
 
 # the release a color's server runs, when it is running
 running_release() {
+  local id
   id=$(compose ps -q "server-$1" 2> /dev/null)
   [ -n "$id" ] || return 1
   [ "$(docker inspect -f '{{.State.Running}}' "$id" 2> /dev/null)" = true ] || return 1
@@ -265,6 +278,7 @@ running_release() {
 # from .env: the snippet the site imports, or - with no edge - which server
 # runs. One of blue, green, maintenance, none or unclear.
 serving_color() {
+  local snippet port color found
   if [ "$(setting QUALY_PROXY caddy)" = caddy ]; then
     snippet=$(setting QUALY_PROXY_UPSTREAM /etc/caddy/qualy/upstream.caddy)
     if [ ! -s "$snippet" ]; then
@@ -305,6 +319,7 @@ serving_color() {
 # upgrade that did not finish, an edge pointed at a stopped color, or a
 # snippet that names neither color's port.
 reconcile() {
+  local recorded actual running
   recorded=$(env_get QUALY_ACTIVE_COLOR)
   actual=$(serving_color)
   case $actual in
@@ -313,12 +328,12 @@ reconcile() {
       refuse "the edge serves ${actual} while $env_file records $recorded as serving - an upgrade under maintenance that did not finish, or an edge changed by hand; point it at the color that should serve (deploy/README.md) and run this again"
       ;;
     blue | green)
-      release=$(running_release "$actual") ||
+      running=$(running_release "$actual") ||
         refuse "the edge sends traffic to $actual, but its server is not running; start it ($(color_services "$actual")) or point the edge at the color that runs, then run this again"
-      if [ "$actual" != "$recorded" ] || [ "$release" != "$(color_release "$actual")" ]; then
-        say "RECONCILED: the edge serves $actual running $release, but $env_file recorded ${recorded:-nothing} serving; recording what serves"
-        env_set QUALY_ACTIVE_COLOR "$actual" QUALY_RELEASE "$release" \
-          "QUALY_RELEASE_$(upper "$actual")" "$release"
+      if [ "$actual" != "$recorded" ] || [ "$running" != "$(color_release "$actual")" ]; then
+        say "RECONCILED: the edge serves $actual running $running, but $env_file recorded ${recorded:-nothing} serving; recording what serves"
+        env_set QUALY_ACTIVE_COLOR "$actual" QUALY_RELEASE "$running" \
+          "QUALY_RELEASE_$(upper "$actual")" "$running"
       fi
       ;;
     *)
@@ -329,6 +344,7 @@ reconcile() {
 
 # what the public address serves, when there is an edge to ask through
 public_serves() {
+  local public tries
   [ "$(setting QUALY_PROXY caddy)" = none ] && return 0
   public=$(env_get QUALY_PUBLIC_URL)
   [ -n "$public" ] || return 0
@@ -354,9 +370,7 @@ deploy_job() {
 # stops the new color and returns non-zero, and the caller puts the web
 # release store back.
 take_over() {
-  target=$1
-  release=$2
-  previous=$3
+  local target="$1" release="$2" previous="$3" was address serving drain
   was=$(color_release "$target")
   # the idle color goes back to naming what it ran, so a later rollback
   # returns there rather than to a release that never served

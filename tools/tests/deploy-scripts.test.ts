@@ -5,18 +5,21 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 // The deploy scripts' own rules, run as the scripts run them: deploy/lib.sh
-// sourced by sh, against a stand-in `docker` first on PATH that answers from
-// files - which server of which color runs on which release, and what each
-// release image's db/migrations holds. The release smoke drives the real
-// thing end to end on every CI run; this pins the branches it cannot reach:
-// a step killed between moving the edge and writing .env, an edge left on
-// the maintenance page, two steps at once, and a migration's rollout line.
+// sourced by sh, against a stand-in `docker` and `curl` first on PATH that
+// answer from files - which server of which color runs on which release, and
+// what each release image's db/migrations holds - and write down what they
+// were asked. The release smoke drives the real thing end to end on every CI
+// run, but with no edge in front; this pins what it cannot reach: a move of
+// a Caddy edge, a step killed between moving the edge and writing .env, an
+// edge left on the maintenance page, two steps at once, and a migration's
+// rollout line.
 
 const ROOT = path.resolve(import.meta.dirname, '../..')
 const LIB = path.join(ROOT, 'deploy/lib.sh')
 
 const FAKE_DOCKER = `#!/bin/sh
 # docker, as far as lib.sh asks it
+printf '%s\\n' "$*" >> "$FAKE/docker.log"
 if [ "$1" = compose ]; then
   service=; saw_ps=
   for arg in "$@"; do
@@ -45,6 +48,15 @@ if [ "$1" = run ]; then
   cd "$FAKE/images/$image" && sh -c "$command"
   exit $?
 fi
+exit 0
+`
+
+// every server is ready, and says which web release it serves
+const FAKE_CURL = `#!/bin/sh
+for url; do :; done
+case $url in
+  */__qualy/release) printf '{"releaseId":"r_web"}\\n' ;;
+esac
 exit 0
 `
 
@@ -81,6 +93,7 @@ beforeEach(() => {
   fake = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-deploy-scripts-'))
   fs.mkdirSync(path.join(fake, 'bin'))
   fs.writeFileSync(path.join(fake, 'bin', 'docker'), FAKE_DOCKER, { mode: 0o755 })
+  fs.writeFileSync(path.join(fake, 'bin', 'curl'), FAKE_CURL, { mode: 0o755 })
   envFile = path.join(fake, 'deployment.env')
   snippet = path.join(fake, 'upstream.caddy')
   fs.writeFileSync(
@@ -163,6 +176,57 @@ describe("the deploy scripts' record of what serves", () => {
     fs.writeFileSync(envFile, 'QUALY_PORT_BLUE=3001\n', { mode: 0o600 })
     fs.writeFileSync(snippet, 'error "maintenance" 503\n')
     expect(run('reconcile').status).toBe(0)
+  })
+})
+
+describe('moving the edge from one color to the other', () => {
+  const caddy = {
+    QUALY_PROXY_VALIDATE: 'true',
+    QUALY_PROXY_RELOAD: 'true',
+    QUALY_DRAIN_SECONDS: '0',
+    QUALY_READY_TIMEOUT: '5',
+  }
+  const asked = () => fs.readFileSync(path.join(fake, 'docker.log'), 'utf8')
+
+  it('starts the idle color, points the edge at it, records it and stops the other', () => {
+    edgeOn(3001)
+    const ran = run('take_over green r3 blue', caddy)
+    expect(ran.status, ran.stderr).toBe(0)
+    expect(fs.readFileSync(snippet, 'utf8')).toMatch(/^reverse_proxy 127\.0\.0\.1:3002 \{$/m)
+    expect(envOf()).toMatch(/^QUALY_ACTIVE_COLOR=green$/m)
+    expect(envOf()).toMatch(/^QUALY_RELEASE=r3$/m)
+    expect(envOf()).toMatch(/^QUALY_RELEASE_GREEN=r3$/m)
+    expect(envOf()).toMatch(/^QUALY_RELEASE_BLUE=r1$/m)
+    expect(asked()).toContain('up -d server-green sandbox-runtime-green sandbox-authoring-green')
+    expect(asked()).toContain('stop -t 40 server-blue sandbox-runtime-blue sandbox-authoring-blue')
+  })
+
+  it('leaves the edge, the record and the serving color as they were when the edge will not move', () => {
+    edgeOn(3001)
+    const ran = run('take_over green r3 blue', { ...caddy, QUALY_PROXY_VALIDATE: 'false' })
+    expect(ran.status).toBe(1)
+    expect(fs.readFileSync(snippet, 'utf8')).toMatch(/^reverse_proxy 127\.0\.0\.1:3001 \{$/m)
+    expect(envOf()).toMatch(/^QUALY_ACTIVE_COLOR=blue$/m)
+    // the idle color names what it ran before, for a later rollback
+    expect(envOf()).toMatch(/^QUALY_RELEASE_GREEN=r2$/m)
+    expect(asked()).toContain(
+      'stop -t 10 server-green sandbox-runtime-green sandbox-authoring-green',
+    )
+    expect(asked()).not.toContain('server-blue sandbox-runtime-blue')
+  })
+
+  // sh has one namespace: a helper that assigned `release` or `target` once
+  // upgraded a deployment to the release already serving, and wrote a file
+  // path where a color belonged
+  it("keeps the calling script's names as they were", () => {
+    edgeOn(3001)
+    serverRuns('blue', 'r0')
+    const ran = run(
+      'release=r9 target=green previous=blue; reconcile; env_set QUALY_X y; proxy_point http://127.0.0.1:3002; wait_ready http://x 1; printf "%s %s %s" "$release" "$target" "$previous"',
+      caddy,
+    )
+    expect(ran.status, ran.stderr).toBe(0)
+    expect(ran.stdout).toMatch(/r9 green blue$/)
   })
 })
 
