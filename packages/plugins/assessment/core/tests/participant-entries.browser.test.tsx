@@ -1,6 +1,7 @@
 import ParticipantResultsPage from '../src/client/result/ParticipantResultsPage.tsx'
+import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
 import type { ReactNode } from 'react'
-import { useNavigate } from 'react-router'
+import { Route, Routes, useNavigate } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect, Stream } from 'effect'
@@ -198,8 +199,11 @@ const screen = ({
   who = participant(),
   stubs = {},
   locale = 'zh-CN',
+  shell = false,
 }: {
   route: string
+  /** inside the workspace shell the page is mounted in, rather than on its own */
+  shell?: boolean
   locale?: 'zh-CN' | 'en-US'
   element?: ReactNode
   capabilities?: Record<string, boolean>
@@ -293,7 +297,17 @@ const screen = ({
         ...stubs,
       },
     }),
-    routes: [{ path: '/assessment/batches/:batchId/results', element }],
+    ...(shell
+      ? {
+          children: (
+            <Routes>
+              <Route element={<WorkspaceShell />}>
+                <Route path="/assessment/batches/:batchId/results" element={element} />
+              </Route>
+            </Routes>
+          ),
+        }
+      : { routes: [{ path: '/assessment/batches/:batchId/results', element }] }),
     route,
     locale,
   })
@@ -965,5 +979,48 @@ describe('reading somebody’s entries', () => {
     await page.getByTestId('participant-row').click()
     await expect.poll(() => addressNow()).toContain(`participant=${PARTICIPANT_ID}`)
     await expect.poll(() => unitSaid()).toBe(onList)
+  })
+})
+
+describe('an account inside the workspace shell', () => {
+  it('scrolls its own tree and never grows the page behind it', async () => {
+    // A paper longer than the window: the account fills the room below the
+    // shell and its tree scrolls inside its column. The page itself, and the
+    // shell's main, have nothing to scroll.
+    await page.viewport(1440, 700)
+    const questions = Array.from({ length: 40 }, (_, at) =>
+      question(
+        `44444444-4444-4444-8444-5555${String(at).padStart(8, '0')}`,
+        `题目 ${String(at + 1)}`,
+        ['participant'],
+        at + 10,
+      ),
+    )
+    await screen({
+      route: `${base}&view=entries`,
+      shell: true,
+      stubs: {
+        listItems: () =>
+          Effect.succeed({
+            items: [
+              question(OWN_ITEM, '科研成果', ['participant'], 1),
+              question(RECORDED_ITEM, '体测加分', ['administrative'], 2),
+              ...questions,
+            ],
+            version: 1,
+          }),
+      },
+    })
+    await expect.element(page.getByText('题目 40')).toBeInTheDocument()
+    const main = () => document.querySelector('main')!
+    // settled: the rail has its rows before the heights are read
+    await expect
+      .poll(() =>
+        [...document.querySelectorAll('nav')].some((nav) => nav.scrollHeight > nav.clientHeight),
+      )
+      .toBe(true)
+    expect(main().scrollHeight).toBe(main().clientHeight)
+    const doc = document.documentElement
+    expect(doc.scrollHeight).toBe(doc.clientHeight)
   })
 })

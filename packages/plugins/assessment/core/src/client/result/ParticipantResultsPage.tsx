@@ -43,6 +43,12 @@ const styles = stylex.create({
     flexBasis: '0%',
     flexDirection: 'column',
   },
+  // An open account fills the room below the shell and scrolls inside its
+  // own columns, as the participant's own page does. Every box on the way
+  // down says it may be shorter than what it holds; without this one the
+  // whole workspace took the height of its tree, and the page scrolled
+  // behind it. The list stays a page that scrolls as a whole.
+  bounded: { minHeight: 0 },
 })
 
 export default function ParticipantResultsPage() {
@@ -128,7 +134,7 @@ function Results({ batch, participantId }: { batch: BatchDto; participantId: str
     <Drill
       move={level}
       drillKey={participantId === '' ? 'list' : 'one'}
-      className={stylex.props(styles.grow).className}
+      className={stylex.props(styles.grow, participantId !== '' && styles.bounded).className}
     >
       {participantId === '' ? (
         <ParticipantResultList
