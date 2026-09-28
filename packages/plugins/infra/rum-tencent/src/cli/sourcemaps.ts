@@ -36,8 +36,15 @@ const CREDENTIAL_SECONDS = 3600
 /** less than this left and the upload is refused before it starts */
 const CREDENTIAL_LEAST_SECONDS = 300
 
-/** enough to keep the wire busy, few enough to stay well inside the api's rate */
+/** api calls in flight at once */
 const CONCURRENCY = 8
+/**
+ * And how many may start in a second. The api refuses the twenty-first in a
+ * second; a runner abroad reaches it in a few milliseconds, so eight at a
+ * time came back and went again fast enough to cross that, which is how
+ * v0.1.0-rc.4's maps were all filed and then failed the read-back.
+ */
+const CALLS_PER_SECOND = 16
 
 // The maps cross an ocean: the pipeline runs on a hosted runner abroad and
 // the platform's bucket is in China. The bucket drops a connection it judges
@@ -84,10 +91,9 @@ const certificateFor = async (
   client: InstanceType<typeof tencentcloud.rum.v20210622.Client>,
   projectId: number,
 ) => {
-  const answer = (await client.request('DescribeFileCertificate', {
-    ID: projectId,
-    Timeout: CREDENTIAL_SECONDS,
-  })) as Record<string, unknown>
+  const answer = (await call(() =>
+    client.request('DescribeFileCertificate', { ID: projectId, Timeout: CREDENTIAL_SECONDS }),
+  )) as Record<string, unknown>
   const field = (name: string): string => {
     const value = answer[name]
     return typeof value === 'string' && value !== ''
@@ -145,16 +151,34 @@ const mapsUnder = (dist: string): { readonly file: string; readonly name: string
   return found.sort((a, b) => a.name.localeCompare(b.name))
 }
 
+/** `size` at a time; a batch of api calls takes at least as long as the rate allows */
 const inBatches = async <T, R>(
   items: readonly T[],
   run: (item: T) => Promise<R>,
   size = CONCURRENCY,
+  perSecond: number = CALLS_PER_SECOND,
 ): Promise<R[]> => {
   const out: R[] = []
   for (let at = 0; at < items.length; at += size) {
+    const started = Date.now()
     out.push(...(await Promise.all(items.slice(at, at + size).map(run))))
+    const least = (size / perSecond) * 1000 - (Date.now() - started)
+    if (least > 0) await pause(least)
   }
   return out
+}
+
+/** one api call, asked again after a second if the rate refused it */
+const call = async <T>(make: () => Promise<T>): Promise<T> => {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await make()
+    } catch (error) {
+      const code = (error as { code?: unknown }).code
+      if (code !== 'RequestLimitExceeded' || attempt >= 3) throw error
+      await pause(1_000)
+    }
+  }
 }
 
 export async function run(context: CliContext): Promise<void> {
@@ -206,7 +230,7 @@ export async function run(context: CliContext): Promise<void> {
   const hashes = new Map(maps.map(({ file, name }) => [name, md5(fs.readFileSync(file))]))
   const filedByName = new Map<string, FiledMap[]>()
   for (const found of await inBatches(maps, async ({ name }) =>
-    client.DescribeReleaseFiles({ ProjectID: projectId, FileName: name }),
+    call(() => client.DescribeReleaseFiles({ ProjectID: projectId, FileName: name })),
   )) {
     for (const file of found.Files ?? []) {
       if (file.FileName === undefined || file.Version === undefined) continue
@@ -235,7 +259,7 @@ export async function run(context: CliContext): Promise<void> {
   // there before it makes one, so a record that exists is a map that can be
   // read - and a run that fails part way keeps what it filed.
   const fileGroup = async (group: ReleaseRecord[]) => {
-    await client.CreateReleaseFile({ ProjectID: projectId, Files: group })
+    await call(() => client.CreateReleaseFile({ ProjectID: projectId, Files: group }))
     filed.push(...group)
     console.log(
       `rum: filed ${String(filed.length)}/${String(plan.reuse.length + plan.upload.length)}`,
@@ -332,6 +356,8 @@ export async function run(context: CliContext): Promise<void> {
           return { Version: version, FileKey: key, FileName: name, FileHash: md5(bytes) }
         },
         UPLOAD_CONCURRENCY,
+        // the object store, not the api: no rate to keep under
+        Infinity,
       ),
     )
   }
@@ -339,10 +365,9 @@ export async function run(context: CliContext): Promise<void> {
   // Read back by name, for the same reason the check above is by name.
   const missing = (
     await inBatches(filed, async (file) => {
-      const found = await client.DescribeReleaseFiles({
-        ProjectID: projectId,
-        FileName: file.FileName,
-      })
+      const found = await call(() =>
+        client.DescribeReleaseFiles({ ProjectID: projectId, FileName: file.FileName }),
+      )
       return (found.Files ?? []).some(
         (record) => record.Version === version && record.FileHash === file.FileHash,
       )
