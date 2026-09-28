@@ -111,7 +111,7 @@ exporters:
   # service.name and service.instance.id become each series' job and
   # instance; the rest of the resource goes to target_info rather than onto
   # every series.
-  prometheusremotewrite/tencent_tmp:
+  prometheus_remote_write/tencent_tmp:
     endpoint: ${env:TENCENT_TMP_REMOTE_WRITE_URL}
     headers:
       authorization: Bearer ${env:TENCENT_TMP_TOKEN}
@@ -132,7 +132,7 @@ service:
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [prometheusremotewrite/tencent_tmp]
+      exporters: [prometheus_remote_write/tencent_tmp]
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]
