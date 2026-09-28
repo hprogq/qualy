@@ -652,3 +652,22 @@ export const factsForKeys = (input: { backend: string; keys: readonly string[] }
     }
     return facts
   })
+
+/** how many attachments name each of these backends, for the ones any attachment names */
+export const attachmentCountsIn = (backends: readonly string[]) =>
+  backends.length === 0
+    ? Effect.succeed([] as readonly { readonly backend: string; readonly attachments: number }[])
+    : db
+        .query((k) =>
+          k
+            .selectFrom('Attachment')
+            .select(({ fn }) => ['backend', fn.countAll<string>().as('attachments')])
+            .where('backend', 'in', [...backends])
+            .groupBy('backend')
+            .execute(),
+        )
+        .pipe(
+          Effect.map((rows) =>
+            rows.map((row) => ({ backend: row.backend, attachments: Number(row.attachments) })),
+          ),
+        )

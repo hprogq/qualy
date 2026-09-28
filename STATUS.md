@@ -20525,3 +20525,15 @@ W12 审查意见收尾（十一组，分组见仓库外 `audit-2026-09-25/wave13
 ### 下一步
 
 - A3：§30 第 12 条落地与 §30 / §32 文档改为已裁决；demo:check 辅导员一项改为必需。
+
+## 附件留在未配置后端时启动告警（2026-09-28）
+
+- 审计接受 503 的偏离，补一件：`storage/backends` 屏障里，对未配置的后端数一次附件表（按 backend 分组计数），有记录就记一条 Warn 带条数（`storage backend "cos" is not configured and N attachment(s) are kept there; …`），不拒启；计数失败只记 Warn。没有新增启动钩子。`docs/m2-design.md` 同步一句。
+- registry 测试的屏障部分因此接上 5433 的临时库（`createTestContext('storage-registry')`，无 postgres 时跳过），并加一条「两条指向 cos 的记录 → 一条带条数的 Warn」。
+- 推送：`c5193d873`…`e332e27e8` 已推到 origin/main（推送前在本机跑了真桶 58 条，见上一节）。
+
+### 验收（实际执行）
+
+- storage 三包：`Test Files  12 passed | 3 skipped (15)`，`Tests  112 passed | 27 skipped (139)`（registry 13 条）；`apps/server/tests/effect-api.test.ts`（一次性库）`Tests  6 passed (6)`。
+- `pnpm typecheck`（第一次因测试里链式 `Effect.provide` 被 Effect 诊断判 warning 而失败，合并成一次 provide 后通过）、`pnpm lint`、`pnpm lint:types` exit 0。
+

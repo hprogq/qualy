@@ -1275,6 +1275,8 @@ QUALY_STORAGE_COS_SECRET_KEY=...
   此时把它设为 `defaultBackend` 在建层时拒启并点名缺什么;读到一条 `backend = 'cos'` 的附件,
   storage 返回 `BackendNotConfigured`(沿用 `STORAGE_BACKEND_UNAVAILABLE` 标签,各调用方已有处理),
   带 api-kit 的 `unavailable` 标记,请求答 503 `SERVICE_UNAVAILABLE`,日志点名后端与缺的变量。
+  启动时(`storage/backends` 屏障)若附件表里有指向未配置后端的记录,记一条 Warn 带条数,不拒启——与
+  入口密钥在当前主密钥下解不开时同一档:其余功能照常,运维在日志第一屏就能看到。
 - 给了任一个 secret:四项(两个 secret、bucket、region)必须齐,缺哪个就点名拒启——半套配置是笔误,不是选择。
   齐了则完整激活,启动时读一次桶的版本控制状态(§3.3)。
 

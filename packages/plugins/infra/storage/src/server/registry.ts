@@ -1,9 +1,11 @@
 import { Context, Effect, Layer } from 'effect'
 import { Assembled } from '@qualy/api-kit/assembled'
+import { withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { DeclaredBackends } from '../plugin.ts'
 import { BackendNotConfigured, backendFailure, type BackendUnavailable } from '../errors.ts'
 import type { StorageBackend } from './backend.ts'
 import { StorageConfig } from './config.ts'
+import { attachmentCountsIn } from './db.ts'
 
 // Which store answers for which attachment.
 //
@@ -118,13 +120,14 @@ export const registryLayer: Layer.Layer<StorageBackends, never, StorageConfig> =
 export const barrierLayer: Layer.Layer<
   never,
   never,
-  StorageBackends | StorageConfig | DeclaredBackends | Assembled
+  StorageBackends | StorageConfig | DeclaredBackends | Assembled | Orm
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const assembled = yield* Assembled
     const registry = yield* StorageBackends
     const declared = yield* DeclaredBackends
     const config = yield* StorageConfig
+    const withDb = yield* withDatabase
     yield* assembled.register({
       name: 'storage/backends',
       run: Effect.gen(function* () {
@@ -155,6 +158,22 @@ export const barrierLayer: Layer.Layer<
             unconfigured.length === 0 ? '' : `; without credentials: ${unconfigured.join(', ')}`
           }`,
         )
+        // Not a refusal: the rest of the product works, and these answer
+        // "unavailable" until the credentials are back. But a deployment
+        // whose bucket went missing should be told on the first page of its
+        // log, not by the first person who opens one.
+        const stranded = yield* withDb(attachmentCountsIn(unconfigured)).pipe(
+          Effect.catchTag('QueryFailed', (error) =>
+            Effect.logWarning('could not count attachments in unconfigured storage', error).pipe(
+              Effect.as([]),
+            ),
+          ),
+        )
+        for (const { backend, attachments } of stranded) {
+          yield* Effect.logWarning(
+            `storage backend "${backend}" is not configured and ${attachments} attachment(s) are kept there; they cannot be opened until its credentials are given`,
+          )
+        }
       }),
     })
   }),

@@ -1,7 +1,15 @@
-import { Cause, Effect, Exit, Layer, Option } from 'effect'
-import { describe, expect, it } from 'vitest'
+import { randomUUID } from 'node:crypto'
+import { Cause, Effect, Exit, Layer, Logger, Option } from 'effect'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { assembledLayer, runBootHooks } from '@qualy/api-kit/assembled'
 import { unavailableIn } from '@qualy/api-kit/unavailable'
+import {
+  createTestContext,
+  databaseFor,
+  postgresAvailable,
+  type TestContext,
+} from '@qualy/plugin-database/testkit'
+import { entities } from '../src/db/entities.ts'
 import { DeclaredBackends } from '../src/plugin.ts'
 import { DEFAULT_LIMITS, StorageConfig } from '../src/server/config.ts'
 import { barrierLayer, registryLayer, StorageBackends } from '../src/server/registry.ts'
@@ -102,73 +110,101 @@ describe('the storage backend registry', () => {
   })
 })
 
-const barrier = (declared: readonly { code: string; uploadDriver: string; pluginId: string }[]) =>
+const barrier = (
+  url: string,
+  declared: readonly { code: string; uploadDriver: string; pluginId: string }[],
+) =>
   barrierLayer.pipe(
     Layer.provideMerge(registryLayer),
     Layer.provideMerge(Layer.succeed(DeclaredBackends, declared)),
     Layer.provideMerge(assembledLayer),
+    Layer.provideMerge(databaseFor(url, { entities: [...entities] })),
   )
 
 /** builds the layer and runs what registered at the barrier, as a host does */
 const boot = (
+  url: string,
   declared: readonly { code: string; uploadDriver: string; pluginId: string }[],
   defaultBackend: string,
   register: readonly string[],
   unconfigured: readonly string[] = [],
-) =>
-  Effect.runPromiseExit(
+) => {
+  const warnings: string[] = []
+  const capture = Logger.layer([
+    Logger.make((options) => {
+      if (options.logLevel !== 'Warn') return
+      warnings.push(String(Array.isArray(options.message) ? options.message[0] : options.message))
+    }),
+  ])
+  return Effect.runPromiseExit(
     Effect.scoped(
       Effect.gen(function* () {
         const registry = yield* StorageBackends
         for (const code of register) yield* registry.register(memoryBackend(code))
         for (const code of unconfigured) yield* registry.unconfigured(code, 'no credentials')
         yield* runBootHooks
-      }).pipe(Effect.provide(barrier(declared).pipe(Layer.provide(config(defaultBackend))))),
+      }).pipe(
+        Effect.provide(
+          Layer.merge(barrier(url, declared).pipe(Layer.provide(config(defaultBackend))), capture),
+        ),
+      ),
     ),
-  )
+  ).then((exit) => ({ exit, warnings }))
+}
 
-describe('what the assembly refuses to start with', () => {
+const local = { code: 'local', uploadDriver: 'local', pluginId: '@qualy/plugin-storage-local' }
+const cos = { code: 'cos', uploadDriver: 'cos', pluginId: '@qualy/plugin-storage-cos' }
+
+describe.skipIf(!postgresAvailable)('what the assembly refuses to start with', () => {
+  let context: TestContext
+  beforeAll(async () => {
+    context = await createTestContext('storage-registry')
+  })
+  afterAll(async () => {
+    await context?.dispose()
+  })
+  beforeEach(async () => {
+    await context.query('truncate storage_upload_reservations, storage_attachments cascade')
+  })
+
   it('starts when the default backend is installed', async () => {
-    const exit = await boot(
-      [{ code: 'local', uploadDriver: 'local', pluginId: '@qualy/plugin-storage-local' }],
-      'local',
-      ['local'],
-    )
+    const { exit } = await boot(context.url, [local], 'local', ['local'])
     expect(Exit.isSuccess(exit)).toBe(true)
   })
 
   it('refuses a default backend nobody provides', async () => {
-    const exit = await boot(
-      [{ code: 'local', uploadDriver: 'local', pluginId: '@qualy/plugin-storage-local' }],
-      'cos',
-      ['local'],
-    )
+    const { exit } = await boot(context.url, [local], 'cos', ['local'])
+    expect(Exit.isFailure(exit)).toBe(true)
+  })
+
+  it('refuses a provider that declared a backend and never registered it', async () => {
+    const { exit } = await boot(context.url, [local, cos], 'local', ['local'])
     expect(Exit.isFailure(exit)).toBe(true)
   })
 
   it('starts with a provider that takes part without credentials', async () => {
-    const exit = await boot(
-      [
-        { code: 'local', uploadDriver: 'local', pluginId: '@qualy/plugin-storage-local' },
-        { code: 'cos', uploadDriver: 'cos', pluginId: '@qualy/plugin-storage-cos' },
-      ],
-      'local',
-      ['local'],
-      ['cos'],
-    )
+    const { exit, warnings } = await boot(context.url, [local, cos], 'local', ['local'], ['cos'])
     expect(Exit.isSuccess(exit)).toBe(true)
+    // nothing is kept there, so there is nothing to say
+    expect(warnings).toEqual([])
   })
 
-  it('refuses a provider that declared a backend and never registered it', async () => {
-    const exit = await boot(
-      [
-        { code: 'local', uploadDriver: 'local', pluginId: '@qualy/plugin-storage-local' },
-        { code: 'cos', uploadDriver: 'cos', pluginId: '@qualy/plugin-storage-cos' },
-      ],
-      'local',
-      ['local'],
-    )
-    expect(Exit.isFailure(exit)).toBe(true)
+  // not a refusal - everything else works - but the log says it first,
+  // before anybody opens one of them
+  it('says how many attachments a store without credentials keeps', async () => {
+    const tenantId = randomUUID()
+    for (const attachmentId of [randomUUID(), randomUUID()]) {
+      await context.query(
+        `insert into storage_attachments (id, tenant_id, owner_user_id, filename, declared_mime, size, integrity_algorithm, integrity_value, backend, storage_key, status)
+         values ($1, $2, $3, 'evidence.pdf', 'application/pdf', 12, 'crc64-ecma', '1', 'cos', $4, 'staged')`,
+        [attachmentId, tenantId, randomUUID(), `attachments/${tenantId}/${attachmentId}`],
+      )
+    }
+    const { exit, warnings } = await boot(context.url, [local, cos], 'local', ['local'], ['cos'])
+    expect(Exit.isSuccess(exit)).toBe(true)
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('"cos"')
+    expect(warnings[0]).toContain('2 attachment(s)')
   })
 })
 
