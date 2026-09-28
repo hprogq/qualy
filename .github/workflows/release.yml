@@ -1,0 +1,85 @@
+name: release
+
+# A release is a tag on a commit main already has. CI runs on it in full,
+# then the three images are built once under the tag's name, driven through
+# the release smoke, and pushed to the registry production pulls from.
+# release.json on the tag's GitHub release names each image by digest; the
+# deploy workflow pulls those digests and nothing else. A release name is
+# published once: a second run for a tag that already has its release.json
+# stops before building.
+#
+# Needs the repository variable QUALY_REGISTRY (docker.cnb.cool/<org>/<repo>)
+# and the release environment's secret QUALY_REGISTRY_PUSH_TOKEN.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+    with:
+      skip-image: true
+
+  release:
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    env:
+      RELEASE: ${{ github.ref_name }}
+      REGISTRY: ${{ vars.QUALY_REGISTRY }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: the tag is on main, and not published yet
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main ||
+            { echo "$RELEASE is not on main"; exit 1; }
+          if gh release view "$RELEASE" --json assets --jq '.assets[].name' 2> /dev/null | grep -qx release.json; then
+            echo "$RELEASE is published already; a release name names one set of images"
+            exit 1
+          fi
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.20.0
+          cache: pnpm
+      # the smoke seeds the deployment from this checkout, as deploy/README.md does
+      - run: pnpm install --frozen-lockfile
+      - name: build the release images, and inspect the server image
+        run: node tools/release/build-images.ts "$RELEASE" --check --platform linux/amd64
+      - name: the release deploys, migrates, serves, backs up and restores
+        run: node tools/quality/release-smoke.ts "$RELEASE"
+      - name: log in to the registry
+        env:
+          TOKEN: ${{ secrets.QUALY_REGISTRY_PUSH_TOKEN }}
+        run: printf '%s' "$TOKEN" | docker login "${REGISTRY%%/*}" -u cnb --password-stdin
+      - name: push the images and record their digests
+        run: node tools/release/push-images.ts "$RELEASE" "$REGISTRY" --out release.json
+      - name: publish release.json on the tag
+        run: |
+          {
+            echo "Images, by digest:"
+            echo
+            echo '```json'
+            cat release.json
+            echo '```'
+          } > notes.md
+          if gh release view "$RELEASE" > /dev/null 2>&1; then
+            gh release upload "$RELEASE" release.json
+          else
+            gh release create "$RELEASE" release.json --verify-tag --title "$RELEASE" --notes-file notes.md
+          fi
+          cat notes.md >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        run: docker logout "${REGISTRY%%/*}"

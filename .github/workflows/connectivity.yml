@@ -1,0 +1,76 @@
+name: connectivity
+
+# A measurement, run by hand before the release workflow is relied on: how
+# long this builder takes to push one release's images to the registry
+# production pulls from (the registry is in China, the builder is not), and
+# whether the server's SSH port answers from here. The images go up under a
+# connectivity-<run> tag through the same script a release uses; nothing
+# ever deploys them.
+#
+# Needs the repository variables QUALY_REGISTRY (docker.cnb.cool/<org>/<repo>),
+# QUALY_DEPLOY_HOST and QUALY_DEPLOY_PORT, and the release environment's
+# secret QUALY_REGISTRY_PUSH_TOKEN.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  registry:
+    runs-on: ubuntu-latest
+    environment: release
+    env:
+      RELEASE: connectivity-${{ github.run_id }}
+      REGISTRY: ${{ vars.QUALY_REGISTRY }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.20.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: build the release images
+        run: node tools/release/build-images.ts "$RELEASE" --platform linux/amd64
+      - name: log in to the registry
+        env:
+          TOKEN: ${{ secrets.QUALY_REGISTRY_PUSH_TOKEN }}
+        run: printf '%s' "$TOKEN" | docker login "${REGISTRY%%/*}" -u cnb --password-stdin
+      - name: push them, timed
+        run: |
+          started=$(date +%s)
+          node tools/release/push-images.ts "$RELEASE" "$REGISTRY" --out release.json | tee push.log
+          {
+            echo "### Push to $REGISTRY"
+            echo
+            echo "Total: $(( $(date +%s) - started ))s"
+            echo
+            grep '^push-images: qualy-' push.log | sed 's/^push-images: /- /'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        run: docker logout "${REGISTRY%%/*}"
+
+  server:
+    runs-on: ubuntu-latest
+    env:
+      HOST: ${{ vars.QUALY_DEPLOY_HOST }}
+      PORT: ${{ vars.QUALY_DEPLOY_PORT }}
+    steps:
+      # the key the deploy job will pin in known_hosts, to compare with the
+      # one the server's console shows
+      - name: the SSH port answers, and with which host key
+        run: |
+          started=$(date +%s%N)
+          ssh-keyscan -T 15 -p "$PORT" -t ed25519 "$HOST" 2> /dev/null > host.key
+          took=$(( ($(date +%s%N) - started) / 1000000 ))
+          [ -s host.key ] || { echo "no answer from $HOST:$PORT"; exit 1; }
+          {
+            echo "### SSH to $HOST:$PORT"
+            echo
+            echo "Key scan: ${took}ms"
+            echo
+            echo '```'
+            ssh-keygen -lf host.key
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

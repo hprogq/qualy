@@ -4,6 +4,13 @@ on:
   push:
     branches: [main]
   pull_request:
+  # the release workflow runs all of this first, on the tagged commit, and
+  # builds the release images itself
+  workflow_call:
+    inputs:
+      skip-image:
+        type: boolean
+        default: false
 
 jobs:
   # Everything that reads the source without running it: no database, no
@@ -252,6 +259,7 @@ jobs:
   # again. No pnpm install here on purpose: a release is used, not built
   # upon, and the three scripts import nothing beyond node.
   image:
+    if: ${{ !inputs.skip-image }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

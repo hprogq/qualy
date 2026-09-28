@@ -104,6 +104,16 @@ devDependencies 里的包,在每个开发机上都能解析,在镜像第一次�
 这个前提由 `tools/tests/deploy-capabilities.test.ts` 钉住:枚举仓库全部插件的能力 provider,实现 `deploy` 的只能是这两个。
 出现第三种有持久部署副作用的能力时,先设计启动如何验证它执行过,再改这张表。
 
+### 2.5 发布:tag → 镜像仓库(2026-09-28)
+
+GitHub Actions 是唯一的发布构建者(`.github/workflows/release.yml`):推一个 `v*` tag → 以 `workflow_call` 在同一 commit 上跑完整 CI
+(其 `image` job 跳过,由下一步自己构建)→ tag 必须在 main 上、同名 release 没有发布过 → `build-images.ts <tag> --check --platform linux/amd64`
+→ `release-smoke.ts <tag>` → 推到 `vars.QUALY_REGISTRY`(CNB,`docker.cnb.cool/<org>/<repo>`)→ `tools/release/push-images.ts` 记下三个镜像的
+digest 与 server 镜像携带的 web release id,写成 `release.json` 挂在该 tag 的 GitHub release 上。推送令牌只在 GitHub 的 `release` 环境里,
+服务器只持只读令牌。部署按 `release.json` 的 digest 拉取(tag 只是名字,有推送权的人都能挪),拉下后以本地的 `qualy-*:<release>` 命名,
+compose 与 `upgrade.sh` 不需要知道镜像仓库。`connectivity.yml` 是手动运行的测量:同一脚本以 `connectivity-<run>` 推一遍并逐个计时,
+另对服务器的 SSH 端口做一次 host key 扫描。
+
 ## 3. 部署(`deploy/`)
 
 `deploy/compose.yaml` + 从 `deploy/.env.example` 填出的 `.env`,就是部署单元。只有 `image:`,不 build、不 bind 源码、不挂宿主 node_modules。
@@ -350,7 +360,7 @@ current,旧镜像的 server 要这一步才肯启动;旧 release 已被保留策
 | 10  | Web production build 能加载                                                    | `smoke-production.ts`(CI)+ `release-smoke.ts`(镜像内 shell、manifest、一个哈希资源)                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | 11  | Sandbox RPC / ABI 冒烟                                                         | `qualy sandbox status`:从 server 容器内对两条 socket 取 capabilities,核对 rpc / abi 版本;`release-smoke.ts` 在 compose 栈上执行它                                                                                                                                                                                                                                                                                                                                                                        |
 | 12  | 备份 → 恢复 → 启动                                                             | `release-smoke.ts`:`deploy/backup.sh`(数据库 + 附件 + 按版本导出的附件清单)→ 销库、清空附件 → `deploy/restore.sh`(临时库导入、换名、附件换入、`migrate`、启动)→ 备份前写入的一行数据与一个附件都读回(§3.3)                                                                                                                                                                                                                                                                                               |
-| 15  | 双色升级与回滚不停服,两种拒绝在动手之前                                        | `release-smoke.ts`:`upgrade.sh` 起第一色 → 藏起一条破坏性迁移的账本行,升级被拒、原色照常服务 → 升级到另一色、原色停下且保留旧 release → 账本里放一条旧 release 不认识的迁移,回滚被拒 → 回滚到原色、另一色停下(§3.1、§3.2)                                                                                                                                                                                                                                                                                |
+| 15  | 双色升级与回滚不停服,两种拒绝在动手之前                                        | `release-smoke.ts`:`upgrade.sh` 起第一色 → 藏起一条不是 expand 的迁移的账本行,升级被拒、原色照常服务 → 升级到另一色、原色停下且保留旧 release → `.env` 改回记着原色,回滚先按实际服务的颜色记回(`RECONCILED`),再因账本里一条旧 release 不认识的迁移被拒 → 回滚到原色、另一色停下(§3.1、§3.2);有 Caddy 边缘时的切换与失败还原由 `tools/tests/deploy-scripts.test.ts` 以假 `docker`/`curl` 驱动真 `lib.sh` 覆盖                                                                                             |
 | 13  | 文档:镜像回滚 ≠ schema 回滚                                                    | 本文 §3.2                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | 14  | 发版后开着的旧 tab 仍取得到自己的 chunk,启动不越过部署                         | `release-store.test.ts`「promoting」(下一个镜像进来后上一个 release 与资源仍在、同镜像重跑幂等、回滚把旧 release 设回 current)+ `web-release-deploy.test.ts`(deploy 步骤)+ `effect-web.test.ts`(卷里 current 不是本镜像的 release 或卷为空即拒启、从卷服务并认得之前的 release)+ `release-smoke.ts`(见下)                                                                                                                                                                                                |
 
