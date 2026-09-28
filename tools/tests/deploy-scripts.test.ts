@@ -1,0 +1,210 @@
+import { spawn, spawnSync } from 'node:child_process'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+
+// The deploy scripts' own rules, run as the scripts run them: deploy/lib.sh
+// sourced by sh, against a stand-in `docker` first on PATH that answers from
+// files - which server of which color runs on which release, and what each
+// release image's db/migrations holds. The release smoke drives the real
+// thing end to end on every CI run; this pins the branches it cannot reach:
+// a step killed between moving the edge and writing .env, an edge left on
+// the maintenance page, two steps at once, and a migration's rollout line.
+
+const ROOT = path.resolve(import.meta.dirname, '../..')
+const LIB = path.join(ROOT, 'deploy/lib.sh')
+
+const FAKE_DOCKER = `#!/bin/sh
+# docker, as far as lib.sh asks it
+if [ "$1" = compose ]; then
+  service=; saw_ps=
+  for arg in "$@"; do
+    if [ -n "$saw_ps" ] && [ "$arg" != -q ]; then service=$arg; fi
+    [ "$arg" = ps ] && saw_ps=1
+  done
+  [ -n "$saw_ps" ] && [ -f "$FAKE/running/$service" ] && printf 'id-%s\\n' "$service"
+  exit 0
+fi
+if [ "$1" = inspect ]; then
+  id=$(eval "printf '%s' \\"\\\${$#}\\"")
+  service=\${id#id-}
+  case "$3" in
+    *State.Running*) printf 'true\\n' ;;
+    *Config.Image*) printf 'qualy-server:%s\\n' "$(cat "$FAKE/running/$service")" ;;
+  esac
+  exit 0
+fi
+if [ "$1" = run ]; then
+  image=; command=; next_is_command=
+  for arg in "$@"; do
+    if [ -n "$next_is_command" ]; then command=$arg; next_is_command=; fi
+    [ "$arg" = -c ] && next_is_command=1
+    case $arg in qualy-server:*) image=\${arg#qualy-server:} ;; esac
+  done
+  cd "$FAKE/images/$image" && sh -c "$command"
+  exit $?
+fi
+exit 0
+`
+
+let fake: string
+let envFile: string
+let snippet: string
+
+const run = (script: string, extra: Record<string, string> = {}) =>
+  spawnSync(
+    'sh',
+    ['-c', `here=${JSON.stringify(path.dirname(LIB))}; . ${JSON.stringify(LIB)}; ${script}`],
+    {
+      env: {
+        ...process.env,
+        PATH: `${path.join(fake, 'bin')}:${process.env.PATH ?? ''}`,
+        FAKE: fake,
+        QUALY_ENV_FILE: envFile,
+        QUALY_PROXY_UPSTREAM: snippet,
+        ...extra,
+      },
+      encoding: 'utf8',
+    },
+  )
+
+const serverRuns = (color: string, release: string) => {
+  fs.mkdirSync(path.join(fake, 'running'), { recursive: true })
+  fs.writeFileSync(path.join(fake, 'running', `server-${color}`), release)
+}
+const edgeOn = (port: number) =>
+  fs.writeFileSync(snippet, `reverse_proxy 127.0.0.1:${String(port)} {\n\tflush_interval -1\n}\n`)
+const envOf = () => fs.readFileSync(envFile, 'utf8')
+
+beforeEach(() => {
+  fake = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-deploy-scripts-'))
+  fs.mkdirSync(path.join(fake, 'bin'))
+  fs.writeFileSync(path.join(fake, 'bin', 'docker'), FAKE_DOCKER, { mode: 0o755 })
+  envFile = path.join(fake, 'deployment.env')
+  snippet = path.join(fake, 'upstream.caddy')
+  fs.writeFileSync(
+    envFile,
+    [
+      'POSTGRES_PASSWORD=kept as it was',
+      'QUALY_PORT_BLUE=3001',
+      'QUALY_PORT_GREEN=3002',
+      'QUALY_ACTIVE_COLOR=blue',
+      'QUALY_RELEASE=r1',
+      'QUALY_RELEASE_BLUE=r1',
+      'QUALY_RELEASE_GREEN=r2',
+      '',
+    ].join('\n'),
+    { mode: 0o600 },
+  )
+})
+
+afterEach(() => {
+  fs.rmSync(fake, { recursive: true, force: true })
+})
+
+describe("the deploy scripts' record of what serves", () => {
+  it('writes several keys in one replacement, keeping the rest and the mode', () => {
+    fs.appendFileSync(envFile, 'QUALY_LAST=no newline after me')
+    const ran = run('env_set QUALY_ACTIVE_COLOR green QUALY_RELEASE r2 QUALY_NEW value')
+    expect(ran.status, ran.stderr).toBe(0)
+    const written = envOf()
+    expect(written).toContain('POSTGRES_PASSWORD=kept as it was\n')
+    expect(written).toMatch(/^QUALY_ACTIVE_COLOR=green$/m)
+    expect(written).toMatch(/^QUALY_RELEASE=r2$/m)
+    expect(written).toMatch(/^QUALY_LAST=no newline after me$/m)
+    expect(written).toMatch(/^QUALY_NEW=value$/m)
+    expect(fs.statSync(envFile).mode & 0o777).toBe(0o600)
+    // nothing left beside it
+    expect(fs.readdirSync(fake).filter((name) => name.startsWith('.'))).toEqual([])
+  })
+
+  it('reads where the edge sends traffic from the snippet, not from .env', () => {
+    expect(run('serving_color').stdout).toBe('none')
+    edgeOn(3002)
+    expect(run('serving_color').stdout).toBe('green')
+    fs.writeFileSync(snippet, 'error "maintenance" 503\n')
+    expect(run('serving_color').stdout).toBe('maintenance')
+    edgeOn(4000)
+    expect(run('serving_color').stdout).toBe('unclear')
+  })
+
+  // the window a cancelled job leaves: the edge moved, .env did not
+  it('brings the record back to the color the edge serves, and says so', () => {
+    edgeOn(3002)
+    serverRuns('green', 'r2')
+    const ran = run('reconcile')
+    expect(ran.status, ran.stderr).toBe(0)
+    expect(ran.stdout).toContain('RECONCILED: the edge serves green running r2')
+    expect(envOf()).toMatch(/^QUALY_ACTIVE_COLOR=green$/m)
+    expect(envOf()).toMatch(/^QUALY_RELEASE=r2$/m)
+    // and says nothing when the two already agree
+    expect(run('reconcile').stdout).toBe('')
+  })
+
+  it('refuses when the fact cannot settle it', () => {
+    // the edge on a color whose server is not running
+    edgeOn(3002)
+    expect(run('reconcile').stderr).toContain('its server is not running')
+    // a maintenance page an upgrade left up, while a color is on record
+    fs.writeFileSync(snippet, 'error "maintenance" 503\n')
+    expect(run('reconcile').stderr).toContain('while')
+    expect(run('reconcile').status).toBe(1)
+    // with no edge, both servers running
+    serverRuns('blue', 'r1')
+    serverRuns('green', 'r2')
+    expect(run('reconcile', { QUALY_PROXY: 'none' }).stderr).toContain(
+      'cannot tell which color serves',
+    )
+    expect(envOf()).toMatch(/^QUALY_ACTIVE_COLOR=blue$/m)
+  })
+
+  it('lets a first deployment through: nothing serves and nothing is on record', () => {
+    fs.writeFileSync(envFile, 'QUALY_PORT_BLUE=3001\n', { mode: 0o600 })
+    fs.writeFileSync(snippet, 'error "maintenance" 503\n')
+    expect(run('reconcile').status).toBe(0)
+  })
+})
+
+describe('one deployment step at a time', () => {
+  it('refuses a second step while the first holds the lock', async () => {
+    const holder = spawn(
+      'sh',
+      [
+        '-c',
+        `here=${JSON.stringify(path.dirname(LIB))}; . ${JSON.stringify(LIB)}; take_lock; echo held; sleep 3`,
+      ],
+      { env: { ...process.env, QUALY_ENV_FILE: envFile } },
+    )
+    await new Promise<void>((resolve) => holder.stdout.once('data', () => resolve()))
+    const second = run('take_lock')
+    holder.kill()
+    await new Promise((resolve) => holder.once('exit', resolve))
+    expect(second.status).toBe(1)
+    expect(second.stderr).toContain('another deployment step holds')
+  })
+})
+
+describe("a pending migration's rollout", () => {
+  it('holds back every migration that does not say expand, the silent ones included', () => {
+    const migrations = path.join(fake, 'images', 'r2', 'db', 'migrations')
+    fs.mkdirSync(migrations, { recursive: true })
+    fs.writeFileSync(
+      path.join(migrations, '1_expand.sql'),
+      '-- rollout: expand\ncreate table a (id int);\n',
+    )
+    fs.writeFileSync(
+      path.join(migrations, '2_maintenance.sql'),
+      '-- rollout: maintenance\nalter table a rename to b;\n',
+    )
+    fs.writeFileSync(path.join(migrations, '3_silent.sql'), 'create table c (id int);\n')
+    fs.writeFileSync(path.join(migrations, '4_mention.sql'), 'select 1; -- rollout: expand\n')
+    const ran = run('not_expand_in r2')
+    expect(ran.status, ran.stderr).toBe(0)
+    expect(ran.stdout.trim().split('\n').sort()).toEqual([
+      '2_maintenance.sql',
+      '3_silent.sql',
+      '4_mention.sql',
+    ])
+  })
+})

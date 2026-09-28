@@ -22,9 +22,9 @@ import { repoRoot } from '../lib/manifest.ts'
 // server pointed at a store its release was never installed in refuses,
 // naming the job; both sandboxes answer the RPC handshake from inside the
 // server container; a second migration run finds nothing to do; the operator
-// sets a password from the environment; an upgrade with a destructive
-// migration pending refuses, and one without moves the deployment onto the
-// other color; a rollback whose older release does not know a migration the
+// sets a password from the environment; an upgrade with a migration pending
+// that does not roll out as expand refuses, and one without moves the
+// deployment onto the other color; a rollback whose older release does not know a migration the
 // database ran refuses, and one that does moves it back; deploy/backup.sh
 // backs the database and the attachments up, both are destroyed, and
 // deploy/restore.sh brings them back, up to date and served, with a row and
@@ -382,30 +382,30 @@ try {
     step('auth set-password: the system account given a password from the environment')
   }
 
-  // --- an upgrade with a destructive migration pending: refused, nothing changed
+  // --- an upgrade with a migration pending that does not roll out as
+  // expand: refused, nothing changed. The one hidden predates the rollout
+  // line and says nothing, which counts as maintenance.
   const ledger = (sql: string) => psql(sql)
   {
-    const destructive = '20260809085658_batch-scope-node-set.sql'
+    const holding = '20260809085658_batch-scope-node-set.sql'
     expectCode(
       'hide a ledger row',
-      ledger(`delete from mikro_orm_migrations where name = '${destructive}'`),
+      ledger(`delete from mikro_orm_migrations where name = '${holding}'`),
       0,
     )
     tag(release, next)
     const ran = deployScript('upgrade.sh', [next])
     expectCode(
       'restore the ledger row',
-      ledger(
-        `insert into mikro_orm_migrations (name, executed_at) values ('${destructive}', now())`,
-      ),
+      ledger(`insert into mikro_orm_migrations (name, executed_at) values ('${holding}', now())`),
       0,
     )
-    if (ran.code === 0) refuse('an upgrade with a destructive migration pending did not refuse')
-    expectIn('destructive upgrade', ran.out, destructive)
-    expectIn('destructive upgrade', ran.out, '--maintenance')
+    if (ran.code === 0) refuse('an upgrade with a maintenance migration pending did not refuse')
+    expectIn('maintenance upgrade', ran.out, holding)
+    expectIn('maintenance upgrade', ran.out, '--maintenance')
     if ((await fetch(`${blue}/health/ready`)).status !== 200)
       refuse('blue stopped serving after a refused upgrade')
-    step('upgrade.sh: a destructive migration pending is refused, blue still serving')
+    step('upgrade.sh: a maintenance migration pending is refused, blue still serving')
   }
 
   // --- an upgrade: green takes over, blue stops
@@ -421,7 +421,10 @@ try {
     step(`upgrade.sh: green serves ${next}, blue stopped with ${release} kept for rollback`)
   }
 
-  // --- a rollback past a migration the older release does not know: refused
+  // --- a rollback past a migration the older release does not know: refused.
+  // It starts from .env as a step stopped after moving the edge and before
+  // recording it leaves it - still naming blue - and first records what
+  // actually serves.
   {
     const unknown = '29990101000000_not-in-any-release.sql'
     expectCode(
@@ -429,12 +432,24 @@ try {
       ledger(`insert into mikro_orm_migrations (name, executed_at) values ('${unknown}', now())`),
       0,
     )
+    fs.writeFileSync(
+      envFile,
+      fs
+        .readFileSync(envFile, 'utf8')
+        .replace(/^QUALY_ACTIVE_COLOR=green$/m, 'QUALY_ACTIVE_COLOR=blue')
+        .replace(/^QUALY_RELEASE=.*$/m, `QUALY_RELEASE=${release}`),
+    )
     const ran = deployScript('rollback.sh', [])
     expectCode(
       'remove the unknown row',
       ledger(`delete from mikro_orm_migrations where name = '${unknown}'`),
       0,
     )
+    expectIn('reconcile', ran.out, `RECONCILED: the edge serves green running ${next}`)
+    const env = fs.readFileSync(envFile, 'utf8')
+    expectIn('env after reconcile', env, /^QUALY_ACTIVE_COLOR=green$/m)
+    expectIn('env after reconcile', env, new RegExp(`^QUALY_RELEASE=${next}$`, 'm'))
+    step('rollback.sh: .env left naming blue is brought back to green, which serves')
     if (ran.code === 0) refuse('a rollback past an unknown migration did not refuse')
     expectIn('unknown rollback', ran.out, unknown)
     step('rollback.sh: a migration the older release does not know is refused')

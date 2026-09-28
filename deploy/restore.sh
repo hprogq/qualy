@@ -49,12 +49,17 @@ step="checking the backup against its sums"
 echo "$step"
 (cd "$backup" && sums -c SHA256SUMS > /dev/null) || { echo "$backup does not match its SHA256SUMS" >&2; exit 1; }
 
+# one deployment step at a time, and the record of what serves checked
+# against the edge before it is acted on (lib.sh)
+take_lock
 step="starting"
 finish() {
   status=$?
+  release_lock
   if [ "$status" -ne 0 ]; then echo "restore failed while $step; run it again to finish" >&2; fi
 }
 trap finish EXIT
+reconcile
 
 step="starting the database"
 compose up -d --wait postgres

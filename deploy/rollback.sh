@@ -10,11 +10,12 @@
 #
 # An image rollback is not a schema rollback (docs/deployment.md): the
 # migrations the newer release applied stay applied, and the older release
-# runs against them. That is safe for migrations that only add, which is
-# what a reviewed migration is until the release after it. When one of them
-# was approved as destructive, the older release may not work on what it
-# left, and this refuses unless --force says the operator has checked; the
-# ways back from there are a fix-forward release or restore.sh.
+# runs against them. That is safe for migrations that roll out as expand
+# (lib.sh, rollout.ts). When one of them says maintenance, says nothing, or
+# is not in the newer release either, the older release may not work on
+# what it left, and this refuses unless --force says the operator has
+# checked; the ways back from there are a fix-forward release or restore.sh.
+# The same lock and the same reconcile as upgrade.sh come first.
 #
 # The deploy job runs first for the older release: it applies nothing (the
 # database is ahead of it, and migrations it does not know are left alone)
@@ -28,6 +29,9 @@ here=$(cd "$(dirname "$0")" && pwd)
 force=false
 [ "${1:-}" = --force ] && force=true
 [ -f "$env_file" ] || refuse "no $env_file"
+take_lock
+trap release_lock EXIT
+reconcile
 
 active=$(env_get QUALY_ACTIVE_COLOR)
 [ -n "$active" ] || refuse "nothing serves yet; there is nothing to roll back"
@@ -44,17 +48,17 @@ preflight
 compose up -d --wait postgres
 
 # what the database ran that the older release does not know, and whether the
-# release that brought it approved any of it as destructive
+# release that brought it says all of it rolls out as expand
 ahead=$(missing_from "$(ledger)" "$(lineage_of "$release")")
 if [ -n "$ahead" ]; then
   known=$(lineage_of "$current")
   unknown=$(missing_from "$ahead" "$known")
-  risky=$(printf '%s\n' "$(destructive_in "$current")" | while read -r name; do
+  risky=$(printf '%s\n' "$(not_expand_in "$current")" | while read -r name; do
     [ -n "$name" ] && printf '%s\n' "$ahead" | grep -qxF "$name" && printf '%s\n' "$name"
   done || true)
   say "applied since $release: $(printf '%s' "$ahead" | tr '\n' ' ')"
   if [ -n "$unknown$risky" ] && [ "$force" = false ]; then
-    refuse "$release may not run on this schema: ${risky:+destructive: $(printf '%s' "$risky" | tr '\n' ' ')}${unknown:+ unknown to $current: $(printf '%s' "$unknown" | tr '\n' ' ')}
+    refuse "$release may not run on this schema: ${risky:+not rolling out as expand: $(printf '%s' "$risky" | tr '\n' ' ')}${unknown:+ unknown to $current: $(printf '%s' "$unknown" | tr '\n' ' ')}
 check that it does and run again with --force, or fix forward, or restore a backup (restore.sh)"
   fi
 fi

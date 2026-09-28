@@ -200,7 +200,8 @@ URL 原样交给驱动,应用连接池、迁移器与通知监听用的是同一
 
 1. 镜像在本机;内存与磁盘够两色同时跑(`QUALY_UPGRADE_MIN_MEMORY_MB` 默认 600、`QUALY_UPGRADE_MIN_DISK_MB` 默认 2048,Linux 上实测,
    量不到的主机明说);
-2. 待应用迁移里有 `-- destructive: approved` 的(按库里的 `mikro_orm_migrations` 与新镜像的 `db/migrations` 比对)即拒绝,除非 `--maintenance`;
+2. 待应用迁移里有不是 `-- rollout: expand` 的(按库里的 `mikro_orm_migrations` 与新镜像的 `db/migrations` 比对,没写这一行的
+   按 maintenance 算)即拒绝,除非 `--maintenance`;首次部署没有服务中的一色,不做这项检查;
 3. 设了 `QUALY_BACKUP_ROOT` 就先备份(§3.3);
 4. 以新 release 跑 deploy job(迁移 + 把 web release 设为 store 的 current);
 5. 空闲色以新 release 起来,等 `/health/ready`(`QUALY_READY_TIMEOUT` 默认 180s),先请求一次 shell 与 manifest 预热;
@@ -217,10 +218,26 @@ URL 原样交给驱动,应用连接池、迁移器与通知监听用的是同一
 新色先发 `sync`,页面据此刷新数据,不整页重载。开着的旧 tab 照常从 `web_releases` 取自己的 chunk(见下)。
 
 **迁移纪律**(同一时刻两个 release 对着一个库):新 release 必须能在旧 release 留下的 schema 上跑,旧 release 也必须能在新 schema 上跑,
-所以迁移先 expand(加表、加列、加索引、backfill),旧 release 不再用的东西晚一个 release 再 contract。带 `-- destructive: approved`
-的迁移违反这一点,`upgrade.sh` 拒走零空窗,要 `--maintenance`:代理先指向维护页(片段写 `error "maintenance" 503`,站点的
+所以迁移先 expand(加表、加列、加索引、backfill),旧 release 不再用的东西晚一个 release 再 contract。
+
+每条迁移自己声明属于哪一种(2026-09-28):`-- rollout: expand` 表示上一个 release 在它留下的 schema 上照常工作,
+`-- rollout: maintenance` 表示不行。这与「会不会丢数据」(`-- destructive: approved`,drop guard 管)是两个问题:`SET NOT NULL`、
+改列类型、改名、新加约束不丢数据,却让上一个 release 写不进或读不到;而旧 release 早已不读的列晚一个 release 再删,谁也不影响。
+`pnpm qualy generate` 按 SQL 猜一个写进文件(`packages/plugins/infra/database/src/assembly/rollout.ts`:只有新表、对新表的一切、
+普通索引、可空或带默认值的新列、注释等才猜 expand,其余一律 maintenance),review 时人可以改;`database custom` 建的空白迁移写
+maintenance。CI 的 `check-migrations-immutable.ts` 拒绝 base..HEAD 之间新增而没写这一行的迁移。这条规则之前提交的迁移都没有这一行,
+不回填:它们在首次部署时一起应用,那时还没有服务中的一色。
+
+不是 expand 的迁移,`upgrade.sh` 拒走零空窗,要 `--maintenance`:代理先指向维护页(片段写 `error "maintenance" 503`,站点的
 `handle_errors` 服务 `deploy/demo/maintenance.html`),服务中的那一色停下,job 跑完、新色就绪后代理再指过去。正常走 expand 再 contract,
 这个开关应该很少被用到。
+
+**一次只跑一个部署步骤,且先核对谁在服务**:`upgrade.sh`、`rollback.sh`、`restore.sh` 与演示重置开始时都在 `.env` 旁取同一把锁
+(Linux 用 `flock`,没有它的机器用 `mkdir`),第二个步骤直接拒绝并说明;嵌套调用的子步骤继承同一把锁。`.env` 只是记录,事实是边缘代理的
+片段:每个步骤先从片段读出服务中的是哪一色(`QUALY_PROXY=none` 时看哪一色的 server 在跑),与 `.env` 的 `QUALY_ACTIVE_COLOR` 比对。
+答案唯一(片段指向的那一色的 server 正在跑)而记录不同——上一次步骤在改完片段、还没写 `.env` 时被中断——就把那一色与它正在跑的
+release 写回 `.env`,并打出一行 `RECONCILED: …`;片段指向的那一色没在跑、片段停在维护页而 `.env` 记着一色、或两色都在跑而没有片段
+可看,都拒绝并说明,由人判断。`.env` 的每次写入都是同目录临时文件整份替换(保留权限与属主),多个键一次写完,不会留下半个文件。
 
 **仍有停机的两种情形**:PostgreSQL 镜像升级(两色共用一个库),宿主机重启。
 
@@ -284,10 +301,10 @@ current,旧镜像的 server 要这一步才肯启动;旧 release 已被保留策
 
 - 迁移只做加法(加表、加列、加索引、backfill 写新列)时,旧代码看不见新列,回滚安全。这正是「先 expand、等一个 release 再 contract」
   的理由:一条 contract(删列、改类型、收紧约束)必须等到依赖它的 release 已经稳定、不会再被回滚之后才提交。
-- 迁移含破坏性变更(drop guard 要求 `ALLOW_DESTRUCTIVE=1` 或 `-- destructive: approved` 才放行)时,旧代码可能直接报错,
+- 迁移不是 expand(`-- rollout: maintenance`,或没写这一行;删列、改类型、收紧约束都在此列)时,旧代码可能直接报错,
   这时「回滚」只有两条路:fix-forward 一个新 release,或从升级前的备份恢复并接受这段时间的写入丢失。
 - 因此升级前先备份(`deploy/README.md`「Backup and restore」),这不是可选项。
-- `rollback.sh` 先比对:库里已应用、旧 release 的 lineage 里没有的迁移,在当前镜像里标了 `-- destructive: approved` 的,或当前镜像也不认识的,
+- `rollback.sh` 先比对:库里已应用、旧 release 的 lineage 里没有的迁移,在当前镜像里不是 `-- rollout: expand` 的,或当前镜像也不认识的,
   一律拒绝回滚,除非 `--force`(运维确认旧 release 能在这个 schema 上跑)。
 
 这也是启动校验的另一半:server 对着**落后于自己**的库拒绝启动(`database is N migration(s) behind ... run the migration job`),

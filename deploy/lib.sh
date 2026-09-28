@@ -5,7 +5,14 @@
 # need not be valid shell. They read the few keys they need with env_get, and
 # write the ones that are theirs - which release each color runs, which color
 # serves - with env_set, so a plain `docker compose ps` or `up` afterwards
-# sees what the scripts left.
+# sees what the scripts left. Every file they write is replaced whole, never
+# rewritten in place: a step killed halfway leaves the old file or the new
+# one, not half of either.
+#
+# What .env says serves is a record, not the fact. The fact is where the edge
+# sends traffic, and a step interrupted between moving the edge and writing
+# .env leaves the two apart; reconcile() reads the fact at the start of every
+# step and brings the record back to it, or refuses when the fact is unclear.
 
 here=${here:?lib.sh expects $here to name the deploy directory}
 env_file=${QUALY_ENV_FILE:-$here/.env}
@@ -36,16 +43,66 @@ env_get() {
   if [ -n "$value" ]; then printf '%s' "$value"; else printf '%s' "${2:-}"; fi
 }
 
-# writes one key of .env in place, or adds it; values here are release tags
-# and color names, never anything a sed pattern could misread
-env_set() {
-  if grep -q "^$1=" "$env_file"; then
-    sed "s|^$1=.*|$1=$2|" "$env_file" > "$env_file.next"
-    cat "$env_file.next" > "$env_file"
-    rm -f "$env_file.next"
-  else
-    printf '%s=%s\n' "$1" "$2" >> "$env_file"
+# Replaces a file with what stdin holds: written beside it, flushed, then
+# renamed over it - a rename within one directory is atomic. The new file
+# keeps the old one's mode (and owner, for a caller allowed to keep it).
+replace_file() {
+  target=$1
+  next=$(mktemp "$(dirname "$target")/.$(basename "$target").XXXXXX") || return 1
+  if [ -f "$target" ]; then cp -p "$target" "$next"; fi
+  if ! cat > "$next"; then
+    rm -f "$next"
+    return 1
   fi
+  sync
+  mv -f "$next" "$target"
+}
+
+# Writes keys of .env, as KEY VALUE pairs, in one replacement: a key already
+# there is rewritten where it stands, a new one is added at the end. Values
+# here are release tags and color names, never anything a sed pattern could
+# misread.
+env_set() {
+  work=$(mktemp "$(dirname "$env_file")/.env.work.XXXXXX") || refuse "cannot write beside $env_file"
+  cat "$env_file" > "$work"
+  # a last line without its newline would swallow the first added key
+  if [ -s "$work" ] && [ -n "$(tail -c 1 "$work")" ]; then printf '\n' >> "$work"; fi
+  while [ $# -ge 2 ]; do
+    if grep -q "^$1=" "$work"; then
+      sed "s|^$1=.*|$1=$2|" "$work" > "$work.next" && mv -f "$work.next" "$work"
+    else
+      printf '%s=%s\n' "$1" "$2" >> "$work"
+    fi
+    shift 2
+  done
+  replace_file "$env_file" < "$work" || refuse "could not replace $env_file"
+  rm -f "$work"
+}
+
+# One deployment step at a time for an env file: two upgrades at once - a
+# retried CI job and a hand at the terminal - would each move the edge and
+# write .env. flock where the host has it (Linux), which the kernel releases
+# however the process ends; a directory elsewhere, which release_lock removes
+# from the script's exit trap. A step a script runs inside another inherits
+# the lock rather than waiting on it.
+held_lock=
+take_lock() {
+  [ "${QUALY_DEPLOY_LOCK_HELD:-}" = "$env_file" ] && return 0
+  lock="$env_file.lock"
+  if command -v flock > /dev/null 2>&1; then
+    exec 9> "$lock"
+    flock -n 9 || refuse "another deployment step holds $lock; wait for it to finish, then run this again"
+  else
+    mkdir "$lock.d" 2> /dev/null ||
+      refuse "another deployment step holds $lock.d; if none is running, remove it and run this again"
+    held_lock="$lock.d"
+  fi
+  QUALY_DEPLOY_LOCK_HELD=$env_file
+  export QUALY_DEPLOY_LOCK_HELD
+}
+release_lock() {
+  if [ -n "$held_lock" ]; then rmdir "$held_lock" 2> /dev/null || true; fi
+  held_lock=
 }
 
 # a setting the operator's environment gives, else .env, else the default
@@ -139,13 +196,17 @@ ledger() {
     2> /dev/null || true
 }
 
-# the migrations a release's image carries, and those approved as destructive
+# the migrations a release's image carries
 lineage_of() {
   docker run --rm --entrypoint sh "qualy-server:$1" -c 'cd db/migrations && ls -1 *.sql'
 }
-destructive_in() {
+
+# Those of them that do not say `-- rollout: expand`: the ones that say
+# maintenance, and the ones that say nothing, which are read the same way
+# (packages/plugins/infra/database/src/assembly/rollout.ts).
+not_expand_in() {
   docker run --rm --entrypoint sh "qualy-server:$1" -c \
-    'cd db/migrations && grep -l -F -e "-- destructive: approved" *.sql || true'
+    'cd db/migrations && grep -L -E "^--[[:space:]]*rollout:[[:space:]]*expand[[:space:]]*$" *.sql || true'
 }
 
 # names in the first list that the second does not hold
@@ -170,10 +231,10 @@ proxy_point() {
   [ -f "$snippet" ] && previous=$(cat "$snippet")
   if [ "$1" = maintenance ]; then
     # handled by the site's handle_errors, which serves the maintenance page
-    printf 'error "maintenance" 503\n' > "$snippet"
+    printf 'error "maintenance" 503\n' | replace_file "$snippet" || return 1
   else
     target=${1#http://}
-    cat > "$snippet" << CADDY
+    replace_file "$snippet" << CADDY || return 1
 reverse_proxy $target {
 	header_up X-Forwarded-Host {http.request.host}
 	flush_interval -1
@@ -187,9 +248,83 @@ CADDY
   if sh -c "$validate" > /dev/null 2>&1 && sh -c "$reload"; then
     return 0
   fi
-  printf '%s\n' "$previous" > "$snippet"
+  printf '%s\n' "$previous" | replace_file "$snippet" || true
   sh -c "$reload" > /dev/null 2>&1 || true
   return 1
+}
+
+# the release a color's server runs, when it is running
+running_release() {
+  id=$(compose ps -q "server-$1" 2> /dev/null)
+  [ -n "$id" ] || return 1
+  [ "$(docker inspect -f '{{.State.Running}}' "$id" 2> /dev/null)" = true ] || return 1
+  docker inspect -f '{{.Config.Image}}' "$id" | sed 's/^qualy-server://'
+}
+
+# Which color the edge sends traffic to, from what can be checked rather than
+# from .env: the snippet the site imports, or - with no edge - which server
+# runs. One of blue, green, maintenance, none or unclear.
+serving_color() {
+  if [ "$(setting QUALY_PROXY caddy)" = caddy ]; then
+    snippet=$(setting QUALY_PROXY_UPSTREAM /etc/caddy/qualy/upstream.caddy)
+    if [ ! -s "$snippet" ]; then
+      printf none
+      return
+    fi
+    if grep -q 'error "maintenance"' "$snippet"; then
+      printf maintenance
+      return
+    fi
+    port=$(sed -n 's/^reverse_proxy [^ ]*:\([0-9][0-9]*\) .*/\1/p' "$snippet" | head -n 1)
+    for color in blue green; do
+      if [ -n "$port" ] && [ "$port" = "$(color_port "$color")" ]; then
+        printf '%s' "$color"
+        return
+      fi
+    done
+    printf unclear
+  else
+    found=
+    for color in blue green; do
+      if running_release "$color" > /dev/null; then found="$found $color"; fi
+    done
+    case $found in
+      '') printf none ;;
+      ' blue' | ' green') printf '%s' "${found# }" ;;
+      *) printf unclear ;;
+    esac
+  fi
+}
+
+# Brings .env's record of what serves back to the fact, before a step acts on
+# it. When the edge sends traffic to a running color, that color and the
+# release its server runs are what serve, and .env is made to say so - out
+# loud, since it means a step before this one ended between moving the edge
+# and writing the record. When nothing serves yet, that is a first
+# deployment. Anything else is refused: a maintenance page left up by an
+# upgrade that did not finish, an edge pointed at a stopped color, or a
+# snippet that names neither color's port.
+reconcile() {
+  recorded=$(env_get QUALY_ACTIVE_COLOR)
+  actual=$(serving_color)
+  case $actual in
+    none | maintenance)
+      [ -z "$recorded" ] && return 0
+      refuse "the edge serves ${actual} while $env_file records $recorded as serving - an upgrade under maintenance that did not finish, or an edge changed by hand; point it at the color that should serve (deploy/README.md) and run this again"
+      ;;
+    blue | green)
+      release=$(running_release "$actual") ||
+        refuse "the edge sends traffic to $actual, but its server is not running; start it ($(color_services "$actual")) or point the edge at the color that runs, then run this again"
+      if [ "$actual" != "$recorded" ] || [ "$release" != "$(color_release "$actual")" ]; then
+        say "RECONCILED: the edge serves $actual running $release, but $env_file recorded ${recorded:-nothing} serving; recording what serves"
+        env_set QUALY_ACTIVE_COLOR "$actual" QUALY_RELEASE "$release" \
+          "QUALY_RELEASE_$(upper "$actual")" "$release"
+      fi
+      ;;
+    *)
+      refuse "cannot tell which color serves: the edge names neither color's port, or both servers run with no edge to choose between them; settle it by hand (deploy/README.md) and run this again"
+      ;;
+  esac
 }
 
 # what the public address serves, when there is an edge to ask through
@@ -259,8 +394,9 @@ take_over() {
     abandon
     return 1
   fi
-  env_set QUALY_ACTIVE_COLOR "$target"
-  env_set QUALY_RELEASE "$release"
+  # the edge moved; the record follows in one write, and reconcile() at the
+  # start of the next step puts it right if this one never gets here
+  env_set QUALY_ACTIVE_COLOR "$target" QUALY_RELEASE "$release"
   say "the edge serves $target"
   if [ -n "$previous" ]; then
     drain=$(setting QUALY_DRAIN_SECONDS 20)

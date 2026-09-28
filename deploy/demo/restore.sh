@@ -57,23 +57,21 @@ unset_passwords=$(printf '%s\n' "$ACCOUNTS" | while read -r email variable; do
   [ -n "$(env_get "$variable")" ] || printf '%s ' "$variable"
 done)
 [ -z "$unset_passwords" ] || refuse "set these in $env_file first: $unset_passwords"
-active=$(env_get QUALY_ACTIVE_COLOR)
-
-# One restore at a time: two would drop each other's scratch database.
-lock="${TMPDIR:-/tmp}/qualy-demo-restore.lock"
-if ! mkdir "$lock" 2>/dev/null; then
-  echo "another restore holds $lock; remove it if no restore is running" >&2
-  exit 1
-fi
+# One deployment step at a time - two restores would drop each other's
+# scratch database, and an upgrade beside one would move the edge under it -
+# and the record of what serves checked against the edge first (lib.sh).
+take_lock
 step="starting"
 finish() {
   status=$?
-  rmdir "$lock" 2>/dev/null || true
+  release_lock
   if [ "$status" -ne 0 ]; then
     echo "restore failed while $step; run it again to finish" >&2
   fi
 }
 trap finish EXIT
+reconcile
+active=$(env_get QUALY_ACTIVE_COLOR)
 
 step="starting the database"
 compose up -d --wait postgres

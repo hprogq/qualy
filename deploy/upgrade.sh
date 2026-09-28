@@ -13,17 +13,27 @@
 #
 # While the colors overlap, both run against one database, so a release must
 # work on the schema the one before it left, and the one before it on the
-# new one: migrations expand, and what they remove goes a release later. A
-# pending migration approved as destructive breaks that, and the upgrade
-# refuses it unless --maintenance says to take the site down instead: the
-# edge shows the maintenance page, the serving color stops, and only then
-# does the job run. That should be rare.
+# new one: migrations expand, and what they remove goes a release later. Each
+# migration says whether it does (`-- rollout: expand`, or `maintenance`;
+# packages/plugins/infra/database/src/assembly/rollout.ts). A pending one
+# that does not say expand - maintenance, or nothing at all - refuses the
+# upgrade unless --maintenance says to take the site down instead: the edge
+# shows the maintenance page, the serving color stops, and only then does the
+# job run. That should be rare. The first deployment serves nothing yet, so
+# nothing is asked.
 #
-# Refused before anything changes: images missing, too little memory or disk
-# (QUALY_UPGRADE_MIN_MEMORY_MB, QUALY_UPGRADE_MIN_DISK_MB), a destructive
-# migration without --maintenance. With QUALY_BACKUP_ROOT set, a backup comes
-# first. A failure after the deploy job leaves the serving color serving and
-# puts its web release back as the store's current one.
+# One step at a time: a second upgrade, rollback or restore on the same env
+# file waits for nobody and is refused. Before anything else, .env's record of
+# what serves is checked against where the edge actually sends traffic
+# (reconcile in lib.sh).
+#
+# Refused before anything changes: another step running, the record and the
+# edge disagreeing in a way that cannot be settled, images missing, too little
+# memory or disk (QUALY_UPGRADE_MIN_MEMORY_MB, QUALY_UPGRADE_MIN_DISK_MB), a
+# pending migration that does not roll out as expand, without --maintenance.
+# With QUALY_BACKUP_ROOT set, a backup comes first. A failure after the deploy
+# job leaves the serving color serving and puts its web release back as the
+# store's current one.
 #
 # The edge: QUALY_PROXY (caddy, or none for a host with no edge), the snippet
 # the site imports (QUALY_PROXY_UPSTREAM, default
@@ -40,6 +50,9 @@ release=${1:-}
 maintenance=false
 [ "${2:-}" = --maintenance ] && maintenance=true
 [ -f "$env_file" ] || refuse "no $env_file"
+take_lock
+trap release_lock EXIT
+reconcile
 
 active=$(env_get QUALY_ACTIVE_COLOR)
 target=$(other_color "$active")
@@ -52,16 +65,20 @@ require_images "$release"
 preflight
 compose up -d --wait postgres
 
-# what the database has not run yet, and whether any of it is destructive
-applied=$(ledger)
-destructive=$(missing_from "$(destructive_in "$release")" "$applied")
-if [ -n "$destructive" ]; then
-  if [ "$maintenance" = false ]; then
-    refuse "pending migrations approved as destructive: $(printf '%s' "$destructive" | tr '\n' ' ')
-while two colors overlap the serving one would run against a schema it does not know;
+# what the database has not run yet, and whether all of it lets the serving
+# release keep working; nothing serves on a first deployment, so nothing is
+# asked there
+if [ -n "$active" ]; then
+  applied=$(ledger)
+  holding=$(missing_from "$(not_expand_in "$release")" "$applied")
+  if [ -n "$holding" ]; then
+    if [ "$maintenance" = false ]; then
+      refuse "pending migrations that do not roll out as expand: $(printf '%s' "$holding" | tr '\n' ' ')
+while two colors overlap, $current would run on a schema it may not work on;
 run again with --maintenance to take the site down for this upgrade"
+    fi
+    say "migrations that do not roll out as expand are pending, upgrading under maintenance: $(printf '%s' "$holding" | tr '\n' ' ')"
   fi
-  say "destructive migrations pending, upgrading under maintenance: $(printf '%s' "$destructive" | tr '\n' ' ')"
 fi
 
 backups=$(setting QUALY_BACKUP_ROOT)

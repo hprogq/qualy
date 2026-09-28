@@ -132,11 +132,21 @@ the web store's current one and says what failed.
 
 While the colors overlap, both releases run against one database, so each
 must work on the schema the other leaves: migrations expand, and what a
-release stops using is removed a release later. A pending migration approved
-as destructive (`-- destructive: approved`) breaks that, and the upgrade
-refuses it unless run with `--maintenance`: the edge shows the maintenance
-page, the serving color stops, the job runs, the new color starts. That
-should be rare.
+release stops using is removed a release later. Every migration says which
+it is on a line of its own, `-- rollout: expand` or `-- rollout: maintenance`.
+A pending migration that does not say expand (one written before the rule
+says nothing, and counts as maintenance) makes the upgrade refuse unless run
+with `--maintenance`: the edge shows the maintenance page, the serving color
+stops, the job runs, the new color starts. That should be rare. A first
+deployment has no serving color, and applies what it finds.
+
+One deployment step runs at a time: `upgrade.sh`, `rollback.sh`,
+`restore.sh` and the demo reset take a lock beside `.env` and refuse while
+another step holds it. Each first reads which color the edge serves from the
+proxy snippet and compares it with `QUALY_ACTIVE_COLOR`: a step stopped
+after moving the edge but before writing `.env` is noticed and recorded
+(`RECONCILED: ...` in the output); anything the snippet and the running
+containers cannot settle is refused for a person to look at.
 
 When the release notes say an upgrade needs the seed (the one that moved the
 password door to email sign-in does: the existing system account has no email
@@ -172,7 +182,7 @@ None of this rolls the **schema** back: applied migrations stay applied, and
 the older code now runs against the newer schema. That is safe when the
 release's migrations only added (columns, tables, indexes), which is what a
 reviewed migration should be until the release that depended on it has
-settled. When one of them was approved as destructive, or is unknown to the
+settled. When one of them does not roll out as expand, or is unknown to the
 release that brought it, `rollback.sh` refuses unless `--force` says the
 operator has checked; the ways back from there are a fix-forward release, or
 a restore from the backup the upgrade took, accepting the writes made since.
@@ -280,7 +290,8 @@ From a checkout with the release's images loaded, the release smoke drives
 this compose file and these scripts on a throwaway project: database up,
 migrate, seed, the first color up through `upgrade.sh`, shell and manifest
 served, an upgrade to the other color and a rollback, both refusals (a
-destructive migration pending, a migration the older release does not know),
+migration pending that does not roll out as expand, a migration the older
+release does not know),
 backup, restore, start again, down.
 
 ```sh
