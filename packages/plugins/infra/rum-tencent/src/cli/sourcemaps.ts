@@ -110,7 +110,9 @@ export async function run(context: CliContext): Promise<void> {
 
   const projectId = Number(need('QUALY_RUM_TENCENT_SOURCEMAP_PROJECT_ID'))
   if (!Number.isInteger(projectId)) {
-    refuse('QUALY_RUM_TENCENT_SOURCEMAP_PROJECT_ID must be the numeric project id, not the reporting id')
+    refuse(
+      'QUALY_RUM_TENCENT_SOURCEMAP_PROJECT_ID must be the numeric project id, not the reporting id',
+    )
   }
 
   const client = new tencentcloud.rum.v20210622.Client({
