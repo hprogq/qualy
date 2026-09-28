@@ -9,6 +9,7 @@ import { checkoutOf } from './context.ts'
 // platform.
 //
 //   pnpm release:build [<release>] [--check] [--allow-dirty] [--platform <os/arch>]
+//                      [--export-web <dir>]
 //
 // A release is the server image and the two sandbox images built from the
 // same checkout and tagged alike, so that deploy/compose.yaml names one value
@@ -38,6 +39,12 @@ import { checkoutOf } from './context.ts'
 // Every image carries the commit it was built from as its revision label.
 // --check runs the image inspection on the server image once all three exist,
 // and a release that fails it is removed as well.
+//
+// --export-web writes the browser build the server image took its web release
+// from - source maps included, which never go into an image - to <dir>, for
+// the reporting platform's uploader. It is the same stage of the same build
+// context, so the same cached layers; the export's web release id must equal
+// the one the server image carries, or the release is removed.
 
 const args = process.argv.slice(2)
 const flagValue = (flag: string): string | undefined => {
@@ -47,7 +54,13 @@ const flagValue = (flag: string): string | undefined => {
 const check = args.includes('--check')
 const allowDirty = args.includes('--allow-dirty')
 const platform = flagValue('--platform') ?? 'linux/amd64'
-const known = new Set(['--check', '--allow-dirty', '--platform'])
+// against where this runs, not the snapshot the images are built in
+const exportWebArgument = flagValue('--export-web')
+const exportWeb =
+  exportWebArgument === undefined || exportWebArgument.startsWith('--')
+    ? exportWebArgument
+    : path.resolve(exportWebArgument)
+const known = new Set(['--check', '--allow-dirty', '--platform', '--export-web'])
 const unknownFlags = args.filter((argument) => argument.startsWith('--') && !known.has(argument))
 if (unknownFlags.length > 0) {
   console.error(`release-build: unknown option ${unknownFlags.join(', ')}`)
@@ -58,8 +71,17 @@ if (!/^[a-z0-9]+\/[a-z0-9]+(\/[a-z0-9]+)?$/.test(platform)) {
   process.exit(2)
 }
 const positional = args.filter(
-  (argument, at) => !argument.startsWith('--') && args[at - 1] !== '--platform',
+  (argument, at) =>
+    !argument.startsWith('--') && args[at - 1] !== '--platform' && args[at - 1] !== '--export-web',
 )
+if (args.includes('--export-web') && (exportWeb === undefined || exportWeb.startsWith('--'))) {
+  console.error('release-build: --export-web wants a directory')
+  process.exit(2)
+}
+if (exportWeb !== undefined && fs.existsSync(exportWeb)) {
+  console.error(`release-build: ${exportWeb} exists; --export-web writes a directory of its own`)
+  process.exit(2)
+}
 const named = positional[0]
 
 const IMAGES: readonly (readonly [name: string, dockerfile: string])[] = [
@@ -162,6 +184,59 @@ try {
     tagged.push(tag)
   }
   unmoved('while the images were being built')
+
+  if (exportWeb !== undefined) {
+    // only the files: the web stage as an image would unpack its whole
+    // development install, gigabytes, to hand over a few megabytes
+    const built = spawnSync(
+      'docker',
+      [
+        'build',
+        '--platform',
+        platform,
+        '--file',
+        path.join(context, 'Dockerfile'),
+        '--target',
+        'web-dist',
+        '--output',
+        `type=local,dest=${exportWeb}`,
+        context,
+      ],
+      { cwd: context, stdio: 'inherit' },
+    )
+    if (built.status !== 0) abandon('the web stage did not build for --export-web')
+    const exported = (
+      JSON.parse(fs.readFileSync(path.join(exportWeb, '.qualy-web-build.json'), 'utf8')) as {
+        releaseId?: unknown
+      }
+    ).releaseId
+    const served = spawnSync(
+      'docker',
+      [
+        'run',
+        '--rm',
+        '--entrypoint',
+        'cat',
+        `qualy-server:${release}`,
+        '/app/packages/plugins/infra/web/client-dist/current.json',
+      ],
+      { encoding: 'utf8' },
+    )
+    const inImage =
+      served.status === 0
+        ? (JSON.parse(served.stdout) as { releaseId?: unknown }).releaseId
+        : undefined
+    if (typeof exported === 'string' && exported === inImage) {
+      console.log(
+        `release-build: web build ${exported} with its source maps exported to ${exportWeb}`,
+      )
+    } else {
+      fs.rmSync(exportWeb, { recursive: true, force: true })
+      abandon(
+        `the exported web build is ${String(exported)}, the server image serves ${String(inImage)}; they are not one build`,
+      )
+    }
+  }
 } finally {
   cleanUp()
 }

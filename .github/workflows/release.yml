@@ -10,10 +10,12 @@ name: release
 # stops before building.
 #
 # Needs the repository variable QUALY_REGISTRY (docker.cnb.cool/<org>/<repo>),
-# the release environment's secret QUALY_REGISTRY_PUSH_TOKEN, and the
-# cos-test environment's QUALY_STORAGE_COS_SECRET_ID / _SECRET_KEY (secrets)
-# and QUALY_STORAGE_COS_REGION / _BUCKET / QUALY_TEST_COS_VERSIONED_BUCKET
-# (variables).
+# the release environment's secret QUALY_REGISTRY_PUSH_TOKEN, the cos-test
+# environment's QUALY_STORAGE_COS_SECRET_ID / _SECRET_KEY (secrets) and
+# QUALY_STORAGE_COS_REGION / _BUCKET / QUALY_TEST_COS_VERSIONED_BUCKET
+# (variables), and the rum-sourcemaps environment's
+# QUALY_RUM_TENCENT_SOURCEMAP_SECRET_ID / _SECRET_KEY (secrets) and
+# QUALY_RUM_TENCENT_SOURCEMAP_PROJECT_ID (variable).
 on:
   push:
     tags: ['v*']
@@ -113,8 +115,10 @@ jobs:
           cache: pnpm
       # the smoke seeds the deployment from this checkout, as deploy/README.md does
       - run: pnpm install --frozen-lockfile
+      # the browser build comes out beside the images, source maps included,
+      # for the sourcemaps job; the maps never go into an image
       - name: build the release images, and inspect the server image
-        run: node tools/release/build-images.ts "$RELEASE" --check --platform linux/amd64
+        run: node tools/release/build-images.ts "$RELEASE" --check --platform linux/amd64 --export-web web-dist
       - name: the release deploys, migrates, serves, backs up and restores
         run: node tools/quality/release-smoke.ts "$RELEASE"
       - name: log in to the registry
@@ -138,5 +142,52 @@ jobs:
             gh release create "$RELEASE" release.json --verify-tag --title "$RELEASE" --notes-file notes.md
           fi
           cat notes.md >> "$GITHUB_STEP_SUMMARY"
+      # the source is public; the maps are kept only as long as the next job needs them
+      - uses: actions/upload-artifact@v7
+        with:
+          name: web-dist
+          path: web-dist
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
       - if: always()
         run: docker logout "${REGISTRY%%/*}"
+
+  # The browser build's source maps, filed with the reporting platform so a
+  # production stack trace reads as the source. Its own environment, open to
+  # v* tags only, holds the one credential that can file them; only the
+  # upload step sees it. It runs once the release is published: a map that
+  # does not file is a red job to look at, not a release that did not happen
+  # (docs/rum.md, the uploader's failure policy).
+  sourcemaps:
+    needs: release
+    runs-on: ubuntu-latest
+    environment: rum-sourcemaps
+    env:
+      RELEASE: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.20.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v8
+        with:
+          name: web-dist
+          path: web-dist
+      - name: the maps are the published release's
+        run: |
+          gh release download "$RELEASE" --repo "$GITHUB_REPOSITORY" --pattern release.json
+          built=$(jq -r .releaseId web-dist/.qualy-web-build.json)
+          published=$(jq -r .webRelease release.json)
+          [ "$built" = "$published" ] ||
+            { echo "the maps are for web release $built, $RELEASE serves $published"; exit 1; }
+      - name: file them with the reporting platform
+        env:
+          QUALY_RUM_TENCENT_SOURCEMAP_SECRET_ID: ${{ secrets.QUALY_RUM_TENCENT_SOURCEMAP_SECRET_ID }}
+          QUALY_RUM_TENCENT_SOURCEMAP_SECRET_KEY: ${{ secrets.QUALY_RUM_TENCENT_SOURCEMAP_SECRET_KEY }}
+          QUALY_RUM_TENCENT_SOURCEMAP_PROJECT_ID: ${{ vars.QUALY_RUM_TENCENT_SOURCEMAP_PROJECT_ID }}
+        run: pnpm qualy rum sourcemaps web-dist

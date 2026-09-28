@@ -49,6 +49,14 @@ RUN node apps/cli/src/main.ts resolve --frozen-lockfile \
  && node packages/build/web/src/stage.ts \
  && node tools/quality/check-staged-web.ts
 
+# --- the browser build as files, source maps included --------------------------
+# For the reporting platform's uploader only (tools/release/build-images.ts
+# --export-web writes it out with --output type=local). Never an image's layer:
+# the maps carry the source, and this is not the last stage, so a plain build
+# never makes it.
+FROM scratch AS web-dist
+COPY --from=web /app/apps/web/dist /
+
 # --- the runtime tree: production dependencies of what runs, pruned ------------
 FROM source AS runtime
 # --filter-prod, not --filter: the closure is followed along production edges

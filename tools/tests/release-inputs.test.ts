@@ -37,12 +37,14 @@ describe('what a release is built on', () => {
         new RegExp(`^node:${node.replaceAll('.', '\\.')}-[\\w.-]+@sha256:[0-9a-f]{64}$`),
       )
       // every stage starts from that argument or from an earlier stage, so no
-      // FROM can name a base the pin does not cover
+      // FROM can name a base the pin does not cover; `scratch` is no image at
+      // all - nothing is pulled - and only ever holds files an earlier stage made
       const stages = new Set([...text.matchAll(/^FROM\s+\S+\s+AS\s+(\S+)$/gim)].map((m) => m[1]))
       for (const [, base] of text.matchAll(/^FROM\s+(\S+)/gm)) {
-        expect(base === '${NODE_IMAGE}' || stages.has(base), `${dockerfile}: FROM ${base}`).toBe(
-          true,
-        )
+        expect(
+          base === '${NODE_IMAGE}' || base === 'scratch' || stages.has(base),
+          `${dockerfile}: FROM ${base}`,
+        ).toBe(true)
       }
     }
   })
