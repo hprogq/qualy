@@ -11,6 +11,7 @@
     ".": "./src/index.ts",
     "./client": "./src/client/upload.ts",
     "./client/upload": "./src/client/upload.ts",
+    "./config": "./src/server/config.ts",
     "./package.json": "./package.json",
     "./server": "./src/server/backend.ts"
   },

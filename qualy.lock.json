@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
-  "manifestHash": "sha256:371ef7d9d7a51eb47129cb6cfc4df4ab26a76a6fdaf2147d428a4c985a1fa547",
-  "resolutionHash": "sha256:ea6ec97909611fc1b0e76e905510e0eaab1e21e17ee439d27e35d96840c04dd9",
+  "manifestHash": "sha256:5981ac1966d5b429f0b6290b636f57344bd8daad4ddefb73292fc6ea6d48d213",
+  "resolutionHash": "sha256:f551ae1c0d7edd7b8a7bb341d87cbe3c9571c72affbca6d8b0c88c63b0e719e4",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -311,7 +311,7 @@
     },
     "@qualy/plugin-rum-tencent": {
       "version": "0.0.0",
-      "state": "disabled"
+      "state": "active"
     },
     "@qualy/plugin-sandbox": {
       "version": "0.0.0",
@@ -364,7 +364,7 @@
     },
     "@qualy/plugin-storage-cos": {
       "version": "0.0.0",
-      "state": "disabled"
+      "state": "active"
     },
     "@qualy/plugin-storage-local": {
       "version": "0.0.0",
@@ -440,10 +440,12 @@
       "@qualy/plugin-org",
       "@qualy/plugin-rbac",
       "@qualy/plugin-rum",
+      "@qualy/plugin-rum-tencent",
       "@qualy/plugin-sandbox",
       "@qualy/plugin-secrets",
       "@qualy/plugin-settings",
       "@qualy/plugin-storage",
+      "@qualy/plugin-storage-cos",
       "@qualy/plugin-storage-local",
       "@qualy/plugin-ui-registry",
       "@qualy/plugin-web"

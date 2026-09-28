@@ -13,6 +13,7 @@
     "./client/api-speed": "./src/client/api-speed.ts",
     "./client/privacy": "./src/client/privacy.ts",
     "./client/provider": "./src/client/provider.ts",
+    "./config": "./src/server/config.ts",
     "./client/register": "./src/client/register.ts",
     "./package.json": "./package.json",
     "./settings": "./src/settings.ts",

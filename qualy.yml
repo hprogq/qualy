@@ -29,15 +29,17 @@ plugins:
   # install the ones this machine can reach, and name the one new uploads are
   # written to. Everything already written stays readable through the backend
   # that wrote it.
+  #
+  # Both backends ship in every release. The disk is the product's default; a
+  # deployment writes to the bucket with QUALY_STORAGE_DEFAULT_BACKEND=cos and
+  # the bucket, region and credentials in its environment. Without the
+  # credentials the bucket takes part unconfigured and nothing reaches it,
+  # which is how a development machine and CI run this same manifest.
   '@qualy/plugin-storage':
     config:
       defaultBackend: local
   '@qualy/plugin-storage-local': {}
-  '@qualy/plugin-storage-cos':
-    enabled: false
-    config:
-      region: ap-beijing
-      bucket: qualy-dev-files-1301296774
+  '@qualy/plugin-storage-cos': {}
 
   # Browser failure reporting. The capability owns the vocabulary the runtime
   # reports through and answers whether this deployment reports at all; where
@@ -45,15 +47,13 @@ plugins:
   # the assembly refuses two by name. Switching platforms is one line here,
   # with no change to any screen.
   #
-  # The capability stays on with no provider selected, which is what makes
-  # that one line enough: the endpoint answers "nobody", the browser stops
-  # there, and no vendor bundle is ever fetched. Turning reporting on needs a
-  # project to report to, which a development machine does not have - so the
-  # provider is off here, and a deployment that wants it enables the provider
-  # and sets QUALY_RUM_TENCENT_ID.
+  # The provider ships in every release; whether a deployment reports is its
+  # own switch, QUALY_RUM_REPORTING, off unless on. Off, the endpoint answers
+  # "nobody", the browser stops there, and no vendor bundle is ever fetched -
+  # which is how a development machine and CI run this manifest. On needs
+  # QUALY_RUM_TENCENT_ID, or the server refuses to start.
   '@qualy/plugin-rum': {}
-  '@qualy/plugin-rum-tencent':
-    enabled: false
+  '@qualy/plugin-rum-tencent': {}
 
   '@qualy/plugin-assessment': {}
   '@qualy/plugin-assessment-evidence': {}

@@ -26,8 +26,10 @@
     "@qualy/plugin-mail-smtp": "workspace:*",
     "@qualy/plugin-ping": "workspace:*",
     "@qualy/plugin-rum": "workspace:*",
+    "@qualy/plugin-rum-tencent": "workspace:*",
     "@qualy/plugin-secrets": "workspace:*",
     "@qualy/plugin-storage": "workspace:*",
+    "@qualy/plugin-storage-cos": "workspace:*",
     "@qualy/plugin-storage-local": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "kysely": "catalog:"

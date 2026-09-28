@@ -20505,3 +20505,23 @@ W12 审查意见收尾（十一组，分组见仓库外 `audit-2026-09-25/wave13
 
 - `pnpm typecheck`、`pnpm lint`、`pnpm lint:types` exit 0。
 - `tools/tests` + `packages/plugins/infra` + assessment 附件 + directory-import + auth：`Test Files  150 passed | 3 skipped (153)`，`Tests  1083 passed | 27 skipped (1110)`；其中 storage-cos 新 `config.test.ts` 6 条、`bucket-mode.test.ts` 5 条（加「无凭据不碰桶」），registry 12 条（加未配置的读取、未配置作默认、屏障放行）。
+
+## 发布清单：COS 与 RUM provider 随每个 release 走（2026-09-28）
+
+- RUM 显式开关（`89a093752`）：`QUALY_RUM_REPORTING=on|off` 归能力插件 `@qualy/plugin-rum`，缺省 off，其他值拒启。off 时 provider 闲置（不注册、不登记 CSP 来源、不要 ID），`GET /api/app/observability` 答 `config: null`；on 时 provider 缺 `QUALY_RUM_TENCENT_ID` 拒启，清单里没有任何 provider 也拒启。不再把「缺 ID」当关闭。写进 `docs/rum.md` §11 与两份 env 模板。
+- 清单：`qualy plugin enable` 启用 `@qualy/plugin-storage-cos` 与 `@qualy/plugin-rum-tencent`，lock 由 CLI 重算（只变两者状态、active 列表与两个 hash）；storage-cos 块去掉了写死的 dev 桶，bucket / region / 凭据都走环境变量。开发机与 CI 不给凭据、不开开关，就是只写 local、不上报。部署须重建 Web release（resolution 变了）。
+- `apps/server/tests/effect-api.test.ts` 手工给每个带 config 通道的插件配层，补 `RumReporting`（off）、`CosStorageConfig`（未配置）、`TencentRumConfig`（缺 ID）；为此 storage-cos 与 rum-tencent 各加 `./config` 导出，三个插件进 apps/server 的 devDependencies。
+- 本机注意：`.env` 里若给了 COS 凭据，`pnpm dev` 会以完整形态接入 dev 桶，此时 `QUALY_STORAGE_COS_REGION` 也必须有值（清单不再提供）；想在本机试 RUM 要加 `QUALY_RUM_REPORTING=on`。
+
+### 验收（实际执行）
+
+- 在 5433 的一次性库上照 CI 走（COS 凭据置空、`QUALY_RUM_REPORTING=off`）：`pnpm build` → check-staged-web（`201 assets`，此前 198，多出的是两个 provider 的浏览器半边）→ check-chunks → check-csp-build → check-public-web → `qualy deploy` → seed → smoke-production（含错 hash 拒启、缺主密钥拒启、SIGTERM/SIGINT 干净退出）→ check-csp-enforce（`/login`、`/assessment/batches`、`/library/formulas` 各 0 violation），全部 exit 0。
+- `pnpm test` 第一次 `Tests  18 failed | 2933 passed`：17 条是脚本在跑测试前删掉了 `DATABASE_URL` 指向的一次性库，1 组是 effect-api 缺 `RumReporting` 层（真问题，已补）。补完在新一次性库上重跑这 5 个文件：`Test Files  5 passed (5)`，`Tests  37 passed (37)`。
+- `pnpm test:browser`：第一次与 `pnpm install` 重叠（install 10:42:24 结束，套件 10:40:21–10:42:40），导入失败、iframe 60 秒未就绪，不计；机器空闲时重跑 `Test Files  3 failed | 118 passed (121)`，`Tests  5 failed | 1558 passed (1563)`，五条都是 36–41 秒超时（import-wizard 2、record-recognition 2、stage-plan 1，前两者即 STATUS 记过的整套并行偶发超时），三个文件单独跑 `Test Files  3 passed (3)`，`Tests  43 passed (43)`。
+- 开关提交的中间状态（清单未改）单独验过：`pnpm typecheck` exit 0，effect-api + rum + rum-tencent `Tests  41 passed (41)`。
+- 最终状态：`pnpm typecheck`、`pnpm lint`、`pnpm lint:types` exit 0；改动文件 `oxfmt --check` 通过；`pnpm qualy resolve --frozen-lockfile` 通过；`pnpm-lock.yaml` 与验证时逐字节相同。
+
+### 下一步
+
+- A3：§30 第 12 条落地与 §30 / §32 文档改为已裁决；demo:check 辅导员一项改为必需。
+- 未推送：本地 main 领先 origin 6 个提交（`c5193d873` 起）。

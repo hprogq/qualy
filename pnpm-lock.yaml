@@ -520,12 +520,18 @@ importers:
       '@qualy/plugin-rum':
         specifier: workspace:*
         version: link:../../packages/plugins/infra/rum
+      '@qualy/plugin-rum-tencent':
+        specifier: workspace:*
+        version: link:../../packages/plugins/infra/rum-tencent
       '@qualy/plugin-secrets':
         specifier: workspace:*
         version: link:../../packages/plugins/infra/secrets
       '@qualy/plugin-storage':
         specifier: workspace:*
         version: link:../../packages/plugins/infra/storage
+      '@qualy/plugin-storage-cos':
+        specifier: workspace:*
+        version: link:../../packages/plugins/infra/storage-cos
       '@qualy/plugin-storage-local':
         specifier: workspace:*
         version: link:../../packages/plugins/infra/storage-local

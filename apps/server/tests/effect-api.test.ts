@@ -21,7 +21,9 @@ import { FormulaSettings } from '@qualy/plugin-assessment-formula/config'
 import { MailConfig } from '@qualy/plugin-mail/server'
 import { SmtpConfig } from '@qualy/plugin-mail-smtp/config'
 import { ResendConfig } from '@qualy/plugin-mail-resend/config'
+import { COS_CREDENTIALS_MISSING, CosStorageConfig } from '@qualy/plugin-storage-cos/config'
 import { RumReporting } from '@qualy/plugin-rum/server'
+import { TENCENT_RUM_ID_MISSING, TencentRumConfig } from '@qualy/plugin-rum-tencent/config'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { Api } from '@qualy/api-kit/plugin'
 import { Plugin } from '@qualy/plugin-kit'
@@ -235,8 +237,11 @@ const shell = (url: string) => {
           LocalStorageConfig,
           LocalStorageConfig.of({ root: path.join(tmpdir(), 'qualy-effect-api-storage') }),
         ),
-        // reporting off, as CI runs
+        // the bucket and the reporting project are in every release and
+        // reached by neither here: no credentials, reporting off, as CI runs
+        Layer.succeed(CosStorageConfig, CosStorageConfig.of({ refusal: COS_CREDENTIALS_MISSING })),
         Layer.succeed(RumReporting, RumReporting.of({ on: false })),
+        Layer.succeed(TencentRumConfig, TencentRumConfig.of({ refusal: TENCENT_RUM_ID_MISSING })),
         // mail is assembled too and nothing here sends any: a relay nobody
         // listens on and a key nobody checks, for whichever backend the
         // manifest enables
