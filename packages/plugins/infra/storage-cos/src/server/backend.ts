@@ -160,7 +160,25 @@ export const cosBackend = (
       catch: (cause) => backendFailure('delete', cause),
     }).pipe(Effect.asVoid)
 
-  const revisions: RevisionStore = { list, remove }
+  /** exactly one version, by name; a version or key that is not there answers 404 */
+  const exists = (key: string, revision: string | undefined) =>
+    Effect.tryPromise({
+      try: async () => {
+        try {
+          await cos.headObject({
+            ...object(key),
+            VersionId: revision ?? 'null',
+          } as COS.HeadObjectParams)
+          return true
+        } catch (error) {
+          if (statusOf(error) === 404) return false
+          throw error
+        }
+      },
+      catch: (cause) => backendFailure('exists', cause),
+    })
+
+  const revisions: RevisionStore = { list, exists, remove }
 
   /**
    * Every version and marker under exactly this key.

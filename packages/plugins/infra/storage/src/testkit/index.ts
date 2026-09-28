@@ -59,9 +59,14 @@ export interface MemoryBackend extends StorageBackend {
  */
 export const memoryBackend = (
   code = 'memory',
-  options: { readonly versioned?: boolean } = {},
+  options: {
+    readonly versioned?: boolean
+    /** how many revisions and markers one listing page holds; a bucket's is 1000 */
+    readonly listPage?: number
+  } = {},
 ): MemoryBackend => {
   const versioned = options.versioned === true
+  const listPage = options.listPage ?? 1000
   const store = new Map<string, MemoryRevision[]>()
   let counter = 0
   let lastServedAs: string | undefined
@@ -151,24 +156,55 @@ export const memoryBackend = (
     ...(versioned
       ? {
           revisions: {
+            // As a bucket lists them: keys in order, each key's revisions
+            // newest first, cut into pages wherever the count falls - so one
+            // key's revisions may span pages, its oldest on a later one. The
+            // cursor names the last entry given, as a bucket's key and
+            // version markers do, so removing what a page held does not
+            // move where the next one starts.
             list: (prefix, cursor) =>
               Effect.sync(() => {
-                // one key a page, so a caller that pages through gets the
-                // same answer whatever it does between pages
-                const keys = [...store.keys()].filter((key) => key.startsWith(prefix)).sort()
-                const at = cursor === undefined ? 0 : keys.indexOf(cursor) + 1
-                const key = keys[at]
-                if (key === undefined) return { entries: [], next: undefined }
+                const numberOf = (revision: string) => Number(revision.slice(1))
+                const all = [...store.keys()]
+                  .filter((key) => key.startsWith(prefix))
+                  .sort()
+                  .flatMap((key) =>
+                    [...(store.get(key) ?? [])].reverse().map((entry) => ({
+                      key,
+                      revision: entry.revision,
+                      deleteMarker: entry.bytes === null,
+                      modifiedAt: entry.modifiedAt,
+                    })),
+                  )
+                const [afterKey, afterRevision] =
+                  cursor === undefined
+                    ? [undefined, undefined]
+                    : (JSON.parse(cursor) as [string, number])
+                const from =
+                  afterKey === undefined
+                    ? 0
+                    : all.findIndex(
+                        (entry) =>
+                          entry.key > afterKey ||
+                          (entry.key === afterKey && numberOf(entry.revision) < afterRevision),
+                      )
+                const entries = from < 0 ? [] : all.slice(from, from + listPage)
+                const last = entries.at(-1)
+                const more = from >= 0 && from + listPage < all.length
                 return {
-                  entries: (store.get(key) ?? []).map((entry) => ({
-                    key,
-                    revision: entry.revision,
-                    deleteMarker: entry.bytes === null,
-                    modifiedAt: entry.modifiedAt,
-                  })),
-                  next: at + 1 < keys.length ? key : undefined,
+                  entries,
+                  next:
+                    more && last !== undefined
+                      ? JSON.stringify([last.key, numberOf(last.revision)])
+                      : undefined,
                 }
               }),
+            exists: (key, revision) =>
+              Effect.sync(() =>
+                (store.get(key) ?? []).some(
+                  (entry) => entry.bytes !== null && entry.revision === revision,
+                ),
+              ),
             remove: (key, revision) =>
               Effect.suspend(() => {
                 // a typed failure, as a store that cannot be reached answers

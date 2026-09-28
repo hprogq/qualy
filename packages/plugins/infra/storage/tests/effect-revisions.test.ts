@@ -246,6 +246,36 @@ describe.skipIf(!postgresAvailable)('storage over a store that keeps revisions',
     expect(backend.revisionsOf(outcome.key).map((entry) => entry.revision)).toEqual(['r2'])
   })
 
+  // A thousand writes to one key inside a credential's lifetime put the
+  // revision the attachment reads on a later page than most of the rest.
+  // Judged page by page, the pages without it kept everything, every pass.
+  it('removes the later writes to a key in one pass, however many pages they span', async () => {
+    const tenantId = randomUUID()
+    const ownerUserId = randomUUID()
+    const backend = memoryBackend('memory', { versioned: true, listPage: 3 })
+    const outcome = ok(
+      await run(
+        context.url,
+        backend,
+        Effect.gen(function* () {
+          const cleanup = yield* StorageCleanup
+          const { ticket, key } = yield* completed(backend, { tenantId, ownerUserId })
+          for (let round = 0; round < 7; round += 1) {
+            yield* write(backend, key, `swapped ${String(round)}`)
+          }
+          yield* TestClock.adjust('50 minutes')
+          const report = yield* cleanup.reconcileRevisions
+          const text = yield* readBack({ tenantId, attachmentId: ticket.attachmentId })
+          return { report, key, text }
+        }),
+      ),
+    )
+
+    expect(outcome.report.removed).toBe(7)
+    expect(backend.revisionsOf(outcome.key).map((entry) => entry.revision)).toEqual(['r1'])
+    expect(outcome.text).toBe('checked')
+  })
+
   it('removes what sits at a key no ticket named, once it is a day old', async () => {
     const tenantId = randomUUID()
     const backend = memoryBackend('memory', { versioned: true })

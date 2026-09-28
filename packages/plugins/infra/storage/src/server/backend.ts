@@ -71,6 +71,16 @@ export interface RevisionStore {
     { readonly entries: readonly RevisionEntry[]; readonly next: string | undefined },
     BackendUnavailable
   >
+  /**
+   * Whether exactly this revision of the key is there - absent for the
+   * object the key held before the store kept revisions. Asked of the one
+   * revision an attachment reads before anything beside it is removed, so
+   * the answer never depends on where a listing's pages happen to break.
+   */
+  readonly exists: (
+    key: string,
+    revision: string | undefined,
+  ) => Effect.Effect<boolean, BackendUnavailable>
   /** removes exactly one revision or marker; removing what is not there is success */
   readonly remove: (
     key: string,

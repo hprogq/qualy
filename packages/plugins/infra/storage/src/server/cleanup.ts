@@ -74,10 +74,12 @@ const sameRevision = (a: string | null | undefined, b: string | null | undefined
  * Removed: every other revision and marker at a key whose writes are over,
  * and anything at a key no ticket ever named once it is a day old.
  *
- * `frozenSeen` is whether the listing that produced this entry also showed
- * the attachment's own revision alive at the key. When it did not, nothing
- * at the key is removed: the only revision this attachment can be read by
- * must be where the store says it is before anything beside it goes.
+ * `frozenSeen` is whether the store holds the attachment's own revision -
+ * asked of the store by name, not read off the page this entry came on, so
+ * the answer does not depend on where a listing's pages break. When it does
+ * not, nothing at the key is removed: the only revision this attachment can
+ * be read by must be where the store says it is before anything beside it
+ * goes.
  */
 export const revisionVerdict = (input: {
   readonly entry: RevisionEntry
@@ -216,6 +218,19 @@ const make = () =>
         const backend = yield* backends.resolve(code)
         const store = backend.revisions
         if (store === undefined) continue
+        // A key's revisions can span pages - a hostile uploader can write a
+        // thousand to one key inside a credential's lifetime - so whether an
+        // attachment's own revision is there is asked of the store, once per
+        // key per pass, and every page is then judged on its own.
+        const held = new Map<string, boolean>()
+        const holds = (key: string, revision: string | null) =>
+          Effect.gen(function* () {
+            const known = held.get(key)
+            if (known !== undefined) return known
+            const answer = yield* store.exists(key, revision ?? undefined)
+            held.set(key, answer)
+            return answer
+          })
         let cursor: string | undefined
         do {
           const page = yield* store.list(ATTACHMENT_PREFIX, cursor)
@@ -224,15 +239,13 @@ const make = () =>
           for (const entry of page.entries) {
             examined += 1
             const known = facts.get(entry.key) ?? { attachment: undefined, reservation: undefined }
-            const frozen = known.attachment?.storageVersion
+            // asked only once nothing can still be written to the key:
+            // before that, everything at it stays whatever the answer
+            const settled = known.reservation === undefined || now >= known.reservation.cleanupAfter
             const frozenSeen =
               known.attachment !== undefined &&
-              page.entries.some(
-                (other) =>
-                  other.key === entry.key &&
-                  !other.deleteMarker &&
-                  sameRevision(other.revision, frozen),
-              )
+              settled &&
+              (yield* holds(entry.key, known.attachment.storageVersion))
             if (revisionVerdict({ entry, facts: known, frozenSeen, now }) === 'keep') continue
             yield* store.remove(entry.key, entry.revision)
             removed += 1
