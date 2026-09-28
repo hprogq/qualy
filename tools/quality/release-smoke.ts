@@ -24,12 +24,14 @@ import { repoRoot } from '../lib/manifest.ts'
 // server container; a second migration run finds nothing to do; the operator
 // sets a password from the environment; an upgrade with a migration pending
 // that does not roll out as expand refuses, and one without moves the
-// deployment onto the other color; a rollback whose older release does not know a migration the
-// database ran refuses, and one that does moves it back; deploy/backup.sh
-// backs the database and the attachments up, both are destroyed, and
-// deploy/restore.sh brings them back, up to date and served, with a row and
-// an attachment written before the backup intact. Then everything, volumes
-// and the second release's tags included, is removed.
+// deployment onto the other color; a rollback whose older release does not
+// know a migration the database ran refuses, and one that does moves it
+// back; deploy/backup.sh backs the database and the attachments up, both are
+// destroyed, and deploy/restore.sh brings them back, up to date and served,
+// with a row and an attachment written before the backup intact. On Linux a
+// real Caddy stands in front throughout, and every move is checked through
+// it. Then everything, volumes and the second release's tags included, is
+// removed.
 
 const release = process.argv[2]
 if (!release) {
@@ -65,6 +67,23 @@ const green = `http://127.0.0.1:${String(greenPort)}`
 // releases, and what differs between them is not what is under test
 const next = `${release}-next`
 
+// A real Caddy in front of the colors, as a deployment has: the scripts
+// rewrite its snippet, validate and reload it through the container, and ask
+// through it which release it serves. They point it at 127.0.0.1:<port>,
+// which a container reaches only on the host's own network - Linux's; under
+// Docker Desktop that network is a VM's, so there the scripts run with no
+// edge and ask each color directly, and the smoke says so.
+const EDGE_IMAGE =
+  'caddy:2.11.4-alpine@sha256:6aeddd44c3078b0f9a35206472a11420648a79c184603ef95957d0a20044cb2b'
+const withEdge = process.platform === 'linux'
+const edgePort = await freePort()
+const edgeAdminPort = await freePort()
+const edgeName = `${project}-edge`
+const edgeDir = path.join(work, 'edge')
+const edge = `http://127.0.0.1:${String(edgePort)}`
+const inEdge = (command: string) =>
+  `docker exec ${edgeName} caddy ${command} --config /etc/caddy/qualy/Caddyfile --adapter caddyfile`
+
 fs.writeFileSync(
   envFile,
   [
@@ -87,8 +106,15 @@ fs.writeFileSync(
     `QUALY_PORT_BLUE=${String(bluePort)}`,
     `QUALY_PORT_GREEN=${String(greenPort)}`,
     `QUALY_SEED_PORT=${String(seedPort)}`,
-    // no edge in front of it here; the scripts ask each color directly
-    'QUALY_PROXY=none',
+    ...(withEdge
+      ? [
+          'QUALY_PROXY=caddy',
+          `QUALY_PROXY_UPSTREAM=${path.join(edgeDir, 'upstream.caddy')}`,
+          `QUALY_PROXY_VALIDATE=${inEdge('validate')}`,
+          `QUALY_PROXY_RELOAD=${inEdge('reload')}`,
+          `QUALY_PROXY_CHECK_URL=${edge}`,
+        ]
+      : ['QUALY_PROXY=none']),
     'QUALY_DRAIN_SECONDS=2',
     // an address plan of its own, clear of a deployment on the same host
     'QUALY_NETWORK_SUBNET=172.30.54.0/24',
@@ -209,6 +235,16 @@ const untag = (name: string) => {
 // every color and every one-off service, so teardown reaches them all
 const EVERY_PROFILE = ['blue', 'green', 'tools', 'deploy'].flatMap((name) => ['--profile', name])
 
+/** the edge sends traffic to this port, and what is there answers through it */
+const edgeOn = async (label: string, port: number) => {
+  if (!withEdge) return
+  const snippet = fs.readFileSync(path.join(edgeDir, 'upstream.caddy'), 'utf8')
+  expectIn(label, snippet, `reverse_proxy 127.0.0.1:${String(port)} {`)
+  const answered = await fetch(`${edge}/health/ready`, { signal: AbortSignal.timeout(5000) })
+  if (answered.status !== 200) refuse(`${label}: the edge answered ${String(answered.status)}`)
+  step(`${label}: caddy sends traffic to 127.0.0.1:${String(port)}, and it answers`)
+}
+
 const reachable = async (base: string) => {
   try {
     await fetch(`${base}/health/live`, { signal: AbortSignal.timeout(3000) })
@@ -286,6 +322,65 @@ try {
     step('seed: the default tenant and its system account, then the database off the host again')
   }
 
+  // --- the edge, before anything serves: the maintenance page, as a first
+  // deployment's snippet starts (deploy/README.md)
+  if (withEdge) {
+    fs.mkdirSync(edgeDir)
+    fs.writeFileSync(
+      path.join(edgeDir, 'Caddyfile'),
+      [
+        '{',
+        `\tadmin 127.0.0.1:${String(edgeAdminPort)}`,
+        '\tauto_https off',
+        '}',
+        `http://127.0.0.1:${String(edgePort)} {`,
+        '\tbind 127.0.0.1',
+        '\timport /etc/caddy/qualy/upstream.caddy',
+        '\thandle_errors 502 503 504 {',
+        '\t\trespond "maintenance" 503',
+        '\t}',
+        '}',
+        '',
+      ].join('\n'),
+    )
+    fs.writeFileSync(path.join(edgeDir, 'upstream.caddy'), 'error "maintenance" 503\n')
+    const started = spawnSync(
+      'docker',
+      [
+        'run',
+        '-d',
+        '--name',
+        edgeName,
+        '--network',
+        'host',
+        '-v',
+        `${edgeDir}:/etc/caddy/qualy`,
+        EDGE_IMAGE,
+        'caddy',
+        'run',
+        '--config',
+        '/etc/caddy/qualy/Caddyfile',
+        '--adapter',
+        'caddyfile',
+      ],
+      { encoding: 'utf8' },
+    )
+    if (started.status !== 0) refuse(`caddy did not start: ${started.stderr}`)
+    const deadline = Date.now() + 30_000
+    let status = 0
+    while (Date.now() < deadline && status !== 503) {
+      status = await fetch(edge, { signal: AbortSignal.timeout(2000) }).then(
+        (response) => response.status,
+        () => 0,
+      )
+      if (status !== 503) await new Promise((resolve) => setTimeout(resolve, 500))
+    }
+    if (status !== 503) refuse(`caddy answered ${String(status)}, not the maintenance page`)
+    step('caddy in front, serving the maintenance page')
+  } else {
+    step(`no edge: docker's host network is not this machine's on ${process.platform}`)
+  }
+
   // --- the first color, through the script every later release goes through
   {
     const ran = deployScript('upgrade.sh', [release])
@@ -295,6 +390,7 @@ try {
     step('upgrade.sh: the first color, blue, up and serving')
   }
   await waitReady('first start')
+  await edgeOn('first start', bluePort)
 
   // --- what it serves: the release the job installed, the shell, one hashed asset, the manifest
   {
@@ -419,6 +515,7 @@ try {
     expectIn('env after upgrade', env, /^QUALY_ACTIVE_COLOR=green$/m)
     expectIn('env after upgrade', env, new RegExp(`^QUALY_RELEASE_GREEN=${next}$`, 'm'))
     step(`upgrade.sh: green serves ${next}, blue stopped with ${release} kept for rollback`)
+    await edgeOn('after the upgrade', greenPort)
   }
 
   // --- a rollback past a migration the older release does not know: refused.
@@ -463,6 +560,7 @@ try {
     await waitReady('after the rollback', blue)
     if (await reachable(green)) refuse('green still answers after the rollback')
     step(`rollback.sh: blue serves ${release} again, green stopped`)
+    await edgeOn('after the rollback', bluePort)
   }
 
   // --- backup, destroy, restore, serve again: the scripts a deployment runs
@@ -545,6 +643,7 @@ try {
     step('restore.sh: checked, restored into a scratch database, swapped in, migrated, started')
   }
   await waitReady('after restore')
+  await edgeOn('after restore', bluePort)
   {
     const shell = await fetch(`${blue}/`)
     if (shell.status !== 200) refuse(`GET / after restore: status ${String(shell.status)}`)
@@ -587,6 +686,7 @@ try {
     '20',
   ])
   untag(next)
+  if (withEdge) spawnSync('docker', ['rm', '-f', edgeName])
   if (down.code !== 0)
     console.error(`release-smoke: compose down exited ${String(down.code)}:\n${down.out}`)
   fs.rmSync(work, { recursive: true, force: true })

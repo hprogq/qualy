@@ -355,11 +355,13 @@ reconcile() {
   esac
 }
 
-# what the public address serves, when there is an edge to ask through
+# what the public address serves, when there is an edge to ask through;
+# QUALY_PROXY_CHECK_URL asks the edge at another address than the public one
+# (the release smoke's edge is plain http on loopback)
 public_serves() {
   local public tries
   [ "$(setting QUALY_PROXY caddy)" = none ] && return 0
-  public=$(env_get QUALY_PUBLIC_URL)
+  public=$(setting QUALY_PROXY_CHECK_URL "$(env_get QUALY_PUBLIC_URL)")
   [ -n "$public" ] || return 0
   tries=0
   while [ "$tries" -lt 15 ]; do
