@@ -318,10 +318,19 @@ serving_color() {
 # deployment. Anything else is refused: a maintenance page left up by an
 # upgrade that did not finish, an edge pointed at a stopped color, or a
 # snippet that names neither color's port.
+#
+# A restore is run on a deployment that is down, or again after a restore
+# that stopped halfway, so with --stopped-ok a stopped color is accepted
+# when nothing says anything but the record: no edge and no server running,
+# or the edge on the very color .env records.
 reconcile() {
   local recorded actual running
   recorded=$(env_get QUALY_ACTIVE_COLOR)
   actual=$(serving_color)
+  if [ "${1:-}" = --stopped-ok ] && [ -n "$recorded" ]; then
+    if [ "$actual" = none ] && [ "$(setting QUALY_PROXY caddy)" = none ]; then return 0; fi
+    if [ "$actual" = "$recorded" ] && ! running_release "$actual" > /dev/null; then return 0; fi
+  fi
   case $actual in
     none | maintenance)
       [ -z "$recorded" ] && return 0

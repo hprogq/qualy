@@ -59,7 +59,9 @@ done)
 [ -z "$unset_passwords" ] || refuse "set these in $env_file first: $unset_passwords"
 # One deployment step at a time - two restores would drop each other's
 # scratch database, and an upgrade beside one would move the edge under it -
-# and the record of what serves checked against the edge first (lib.sh).
+# and the record of what serves checked against the edge first (lib.sh), a
+# stopped color included: a reset that stopped halfway is finished by
+# running it again.
 take_lock
 step="starting"
 finish() {
@@ -70,7 +72,7 @@ finish() {
   fi
 }
 trap finish EXIT
-reconcile
+reconcile --stopped-ok
 active=$(env_get QUALY_ACTIVE_COLOR)
 
 step="starting the database"

@@ -172,6 +172,22 @@ describe("the deploy scripts' record of what serves", () => {
     expect(envOf()).toMatch(/^QUALY_ACTIVE_COLOR=blue$/m)
   })
 
+  // a restore runs on a deployment that is down, or again after one that
+  // stopped halfway
+  it('lets a restore through when the stopped color is the one on record', () => {
+    // no edge, nothing running: only the record speaks
+    expect(run('reconcile --stopped-ok', { QUALY_PROXY: 'none' }).status).toBe(0)
+    expect(run('reconcile', { QUALY_PROXY: 'none' }).status).toBe(1)
+    // the edge on the recorded color, stopped
+    edgeOn(3001)
+    expect(run('reconcile --stopped-ok').status).toBe(0)
+    expect(run('reconcile').status).toBe(1)
+    // the edge on the other one, stopped: which release it ran is not known
+    edgeOn(3002)
+    expect(run('reconcile --stopped-ok').stderr).toContain('its server is not running')
+    expect(envOf()).toMatch(/^QUALY_ACTIVE_COLOR=blue$/m)
+  })
+
   it('lets a first deployment through: nothing serves and nothing is on record', () => {
     fs.writeFileSync(envFile, 'QUALY_PORT_BLUE=3001\n', { mode: 0o600 })
     fs.writeFileSync(snippet, 'error "maintenance" 503\n')

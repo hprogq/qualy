@@ -50,7 +50,8 @@ echo "$step"
 (cd "$backup" && sums -c SHA256SUMS > /dev/null) || { echo "$backup does not match its SHA256SUMS" >&2; exit 1; }
 
 # one deployment step at a time, and the record of what serves checked
-# against the edge before it is acted on (lib.sh)
+# against the edge before it is acted on (lib.sh) - a stopped color included,
+# since a restore is run on a deployment that is down
 take_lock
 step="starting"
 finish() {
@@ -59,7 +60,7 @@ finish() {
   if [ "$status" -ne 0 ]; then echo "restore failed while $step; run it again to finish" >&2; fi
 }
 trap finish EXIT
-reconcile
+reconcile --stopped-ok
 
 step="starting the database"
 compose up -d --wait postgres
