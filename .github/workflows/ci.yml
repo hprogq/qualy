@@ -12,6 +12,10 @@ on:
         type: boolean
         default: false
 
+# the token reads the checkout and nothing else; no job here writes to GitHub
+permissions:
+  contents: read
+
 jobs:
   # Everything that reads the source without running it: no database, no
   # browser, parallel to the jobs that need them, and the first to fail.
