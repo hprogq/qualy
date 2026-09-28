@@ -22,6 +22,11 @@ const FAKE_DOCKER = `#!/bin/sh
 # docker, as far as the launcher asks it: the registry is $FAKE/registry/<image>@<digest>/,
 # a local name is $FAKE/local/<image>:<tag> holding an image id
 printf '%s\\n' "$*" >> "$FAKE/docker.log"
+# the launcher pulls with a docker config of its own
+if [ "$1" = --config ]; then
+  [ "$2" = "$FAKE/docker" ] || { echo "pulled with the config at $2" >&2; exit 1; }
+  shift 2
+fi
 remote() { printf '%s' "\${1#${REGISTRY}/}"; }
 case $1 in
   pull) [ -d "$FAKE/registry/$(remote "$3")" ] ;;

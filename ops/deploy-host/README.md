@@ -12,6 +12,7 @@ registry, not an image name, not a script.
 ```text
 /usr/local/sbin/qualy-deploy     this file, root:root 0755
 /etc/qualy/deploy.conf           QUALY_DEPLOY_REGISTRY, QUALY_DEPLOY_ROOT; root:root 0644
+/etc/qualy/docker/               the registry's read-only credential; root 0700
 /opt/qualy/.env                  the deployment's settings (deploy/.env.example); root 0600
 /opt/qualy/collector.env         the telemetry uplink's credentials; root 0600
 /opt/qualy/releases/<release>/   each release's deploy/, as its server image carries it; root-owned
@@ -31,8 +32,12 @@ install -o root -g root -m 0755 ops/deploy-host/qualy-deploy /usr/local/sbin/qua
 install -d -o root -g root -m 0755 /etc/qualy /opt/qualy
 printf 'QUALY_DEPLOY_REGISTRY=%s\nQUALY_DEPLOY_ROOT=/opt/qualy\n' docker.cnb.cool/<org>/<repo> > /etc/qualy/deploy.conf
 
-# the registry, read-only: the token can pull and nothing else
-docker login docker.cnb.cool -u cnb          # paste the read-only token
+# the registry, read-only: the token can pull and nothing else. Kept in a
+# docker config of its own beside deploy.conf, not in root's: one registry
+# host holds one credential per config, and other deployments on this host
+# may pull from the same registry with root's.
+install -d -o root -g root -m 0700 /etc/qualy/docker
+docker --config /etc/qualy/docker login docker.cnb.cool -u cnb   # paste the read-only token
 
 # the account the workflow signs in as: no shell use, no docker group
 adduser --system --group --disabled-password --shell /bin/sh --home /var/lib/qualy-deploy qualy-deploy

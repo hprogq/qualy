@@ -107,7 +107,10 @@ revision=
 pull() {
   local ref labels version commit id named
   ref=$registry/$1@$2
-  docker pull --quiet "$ref" > /dev/null || refuse "could not pull $ref"
+  # the registry's read-only credential lives beside deploy.conf, apart from
+  # root's own docker login, which other deployments on this host may use
+  docker --config "$(dirname "$conf")/docker" pull --quiet "$ref" > /dev/null ||
+    refuse "could not pull $ref"
   labels=$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.version"}} {{index .Config.Labels "org.opencontainers.image.revision"}}' "$ref")
   version=${labels%% *}
   commit=${labels#* }
