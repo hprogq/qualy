@@ -20537,7 +20537,6 @@ W12 审查意见收尾（十一组，分组见仓库外 `audit-2026-09-25/wave13
 - storage 三包：`Test Files  12 passed | 3 skipped (15)`，`Tests  112 passed | 27 skipped (139)`（registry 13 条）；`apps/server/tests/effect-api.test.ts`（一次性库）`Tests  6 passed (6)`。
 - `pnpm typecheck`（第一次因测试里链式 `Effect.provide` 被 Effect 诊断判 warning 而失败，合并成一次 provide 后通过）、`pnpm lint`、`pnpm lint:types` exit 0。
 
-
 ## §30 第 10–12 条裁决落地，§32 待确认点按现状确认（2026-09-28）
 
 - 用户裁决：§30 第 10 条（各项上限取值与按渠道拆分）、第 11 条（两个 `record-closing` 豁免）按现值与现实现认可；第 12 条批准；§32.72 / §32.74 / §32.92 里的待确认点都按现状确认（§32.90⑨、§32.91① 里对应第 10、11 条的两处一并改为已确认）。§32.94 不在这次范围内，仍待确认。
