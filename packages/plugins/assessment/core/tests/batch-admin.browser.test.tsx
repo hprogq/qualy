@@ -2972,6 +2972,14 @@ describe('what the open round offers the rail', () => {
       .toHaveAttribute('data-values', 'assessment/results')
   })
 
+  // recording reads the accounts it covers too (assessment-design §30 #12)
+  it('offers the results to whoever records here, beside the record page', async () => {
+    await open({ ...none, record: true })
+    await expect
+      .element(page.getByTestId('published'))
+      .toHaveAttribute('data-values', 'assessment/record assessment/results')
+  })
+
   it('offers nothing of the results to a reviewer', async () => {
     await open({ ...none, review: true })
     await expect

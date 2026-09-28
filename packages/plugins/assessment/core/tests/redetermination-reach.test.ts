@@ -147,54 +147,97 @@ describe.runIf(postgresAvailable)('what re-determining reads', () => {
     expect(result.told).toContain('approval-revoked')
   })
 
-  // Whether recording on somebody also reads their account is a question
-  // the owner has not ruled on (assessment-design §30), so it does not: the
-  // recorder lists the people it may record on, on the record page, and
-  // opens none of their accounts.
-  it('lists to a recorder the people it may record on, and opens none of their accounts', async () => {
+  // Recording on somebody reads their account (2026-09-28, assessment-design
+  // §30 #12) - every line and amount, the total is the account's - but opens
+  // only the administrative claims: a line standing on the participant's own
+  // claim names none, neither in its provenance nor in its id.
+  it('opens to a recorder the accounts it covers, with only the administrative claims in them', async () => {
     const result = ok(
       await run(
         db.url,
         Effect.gen(function* () {
           const f = yield* seed('rr-recorder')
           const assessment = yield* Assessment
-          const g = yield* runningBatch(f, { profile: OPEN })
+          const g = yield* runningBatch(f, { profile: OPEN, scoring: twoFactScoring })
+          const owner = f.principal(f.s1)
+          const filed = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            owner,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, filed.id, 'in_review', owner)
+          yield* assessment.decideReview(
+            f.t,
+            sent.currentReviewInstanceId!,
+            {
+              decision: 'approve',
+              recognition: { values: { 'rec-level': 'provincial', 'rec-ordinal': 2 } },
+            },
+            f.principal(f.reviewer),
+          )
           const deduction = yield* recordItem(f, g.batch.id)
-          yield* assessment.createEntry(
+          const recorded = yield* assessment.createEntry(
             f.t,
             { itemId: deduction.id, participantId: g.p1, payload: {}, note: '校发〔2026〕9 号' },
             f.principal(f.recorder),
           )
           const as = f.principal(f.recorder)
+          const batch = yield* assessment.getBatch(f.t, g.batch.id, as)
           const roster = yield* assessment.listParticipants(f.t, g.batch.id, { limit: 50 }, as)
-          const person = yield* Effect.exit(assessment.getParticipant(f.t, g.batch.id, g.p1, as))
-          const account = yield* Effect.exit(
-            assessment.getParticipantResult(f.t, g.batch.id, g.p1, as),
+          const person = yield* assessment.getParticipant(f.t, g.batch.id, g.p1, as)
+          const account = yield* assessment.getParticipantResult(f.t, g.batch.id, g.p1, as)
+          const whole = yield* assessment.getParticipantResult(
+            f.t,
+            g.batch.id,
+            g.p1,
+            f.principal(f.admin),
           )
-          const claims = yield* Effect.exit(
-            assessment.listParticipantEntries(f.t, g.batch.id, g.p1, {}, as),
+          const claims = yield* assessment.listParticipantEntries(f.t, g.batch.id, g.p1, {}, as)
+          const ownClaim = yield* Effect.exit(assessment.getEntry(f.t, filed.id, as))
+          const farAccount = yield* Effect.exit(
+            assessment.getParticipantResult(f.t, g.batch.id, g.p3, as),
           )
           return {
+            capabilities: batch.capabilities,
             roster: roster.map((row) => row.id),
-            person,
+            person: person.id,
             account,
-            claims,
+            whole,
+            claims: claims.entries.map((row) => row.entry.id),
+            ownClaim,
+            farAccount,
+            filed: filed.id,
+            recorded: recorded.id,
             p1: g.p1,
             p3: g.p3,
           }
         }),
       ),
     )
+    expect(result.capabilities).toEqual(
+      expect.objectContaining({ record: true, manage: false, redetermine: false }),
+    )
     expect(result.roster).toContain(result.p1)
     expect(result.roster).not.toContain(result.p3)
-    const refusals: readonly Exit.Exit<unknown, unknown>[] = [
-      result.person,
-      result.account,
-      result.claims,
-    ]
-    for (const refused of refusals) {
-      expect(errorOf<{ _tag: string }>(refused)?._tag).toBe('ACCESS_DENIED')
-    }
+    expect(result.person).toBe(result.p1)
+    // the account is the account: the same total and the same lines
+    expect(result.account.total).toBe(result.whole.total)
+    expect(result.account.lines.map((line) => line.value)).toEqual(
+      result.whole.lines.map((line) => line.value),
+    )
+    // the participant's own claim is on the whole account, and nowhere in
+    // the recorder's - its line is named by its place instead
+    expect(JSON.stringify(result.whole)).toContain(result.filed)
+    expect(JSON.stringify(result.account)).not.toContain(result.filed)
+    expect(result.account.lines.some((line) => line.lineId.startsWith('line:'))).toBe(true)
+    // the administrative claim still links
+    expect(result.account.lines.some((line) => line.provenance?.entryId === result.recorded)).toBe(
+      true,
+    )
+    expect(result.claims).toEqual([result.recorded])
+    // a claim a reader may not open reads as no such claim (`mayReadEntry`)
+    expect(errorOf<{ _tag: string }>(result.ownClaim)?._tag).toBe('ASSESSMENT_ENTRY_NOT_FOUND')
+    expect(errorOf<{ _tag: string }>(result.farAccount)?._tag).toBe('ACCESS_DENIED')
   })
 
   it('reads no accounts for somebody holding neither door', async () => {

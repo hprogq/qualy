@@ -113,10 +113,10 @@ export interface ScoringDeps {
   ) => Effect.Effect<void, AccessDenied>
   /**
    * The staff account's door: administrative reach over this round's
-   * roster, or re-determining authority over this participant, and which of
-   * their claims that reader may open. Recording authority is not a door
-   * until the owner rules on it (assessment-design §30). The same refusal
-   * whether the id names nobody or somebody out of reach.
+   * roster, or re-determining or recording authority over this participant,
+   * and which of their claims that reader may open - every one, or the
+   * administrative ones for a recorder (assessment-design §30 #12). The same
+   * refusal whether the id names nobody or somebody out of reach.
    */
   readonly requireAccountReach: (
     as: Principal,
@@ -566,11 +566,11 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
       Effect.gen(function* () {
         const batch = yield* oneBatch(tenantId, batchId)
         if (!batch) return yield* new BatchNotFound()
-        // Administering this roster, or re-determining over this person, is
-        // the whole authorization (recording over them is not, until the
-        // owner rules on it, §30): a reader without either learns nothing
-        // about who is on somebody else's roster, not even whether the id
-        // they guessed is one.
+        // Administering this roster, or re-determining or recording over
+        // this person, is the whole authorization: a reader without any
+        // learns nothing about who is on somebody else's roster, not even
+        // whether the id they guessed is one. A recorder reads every line and
+        // amount, but no line names a claim it cannot open.
         const reading = yield* deps.requireAccountReach(as, tenantId, batchId, participantId)
         // scoped to this batch by the query itself, so an id from another
         // round reads as no such participant rather than as somebody else's

@@ -302,8 +302,9 @@ describe.runIf(postgresAvailable)('the roster, as the results page reads it', ()
               status?: 'active' | 'excluded' | 'all'
             },
           ) => assessment.listRosterUnits(f.t, g.batch.id, filter, f.principal(as))
-          // recording over college A alone opens nobody's account
-          const recorderAccounts = yield* Effect.exit(units(f.recorder, { reading: 'accounts' }))
+          // recording over college A opens the accounts it covers
+          // (assessment-design §30 #12)
+          const recorderAccounts = yield* units(f.recorder, { reading: 'accounts' })
           // and re-determining over class B opens its people's
           yield* appointStaff(f, g.batch.id, {
             name: 'Class B inspector',
@@ -348,14 +349,14 @@ describe.runIf(postgresAvailable)('the roster, as the results page reads it', ()
     const idsOf = (found: { units: readonly { id: string }[] }) =>
       found.units.map((unit) => unit.id).sort()
     const sorted = (...units: string[]) => [...units].sort()
-    expect(errorOf<{ _tag: string }>(result.recorderAccounts)?._tag).toBe('ACCESS_DENIED')
+    expect(idsOf(result.recorderAccounts)).toEqual(sorted(f.root, ids.collegeA, f.classA))
     // the record page reads what recording and re-determining cover together
     expect(idsOf(result.record)).toEqual(
       sorted(f.root, ids.collegeA, f.classA, ids.collegeB, ids.classB),
     )
-    // the results page only what re-determining covers: no unit whose list
-    // would be empty for this reader
-    expect(idsOf(result.accounts)).toEqual(sorted(f.root, ids.collegeB, ids.classB))
+    // and the results page the same people, since recording opens the
+    // accounts it covers: no unit whose list would be empty for this reader
+    expect(idsOf(result.accounts)).toEqual(idsOf(result.record))
     expect(idsOf(result.active)).toEqual(sorted(f.root, ids.collegeA, f.classA))
     expect(idsOf(result.everyone)).toEqual(
       sorted(f.root, ids.collegeA, f.classA, ids.collegeB, ids.classB),
@@ -375,7 +376,7 @@ describe.runIf(postgresAvailable)('the roster, as the results page reads it', ()
     expect(result.excluded.userTypes).toEqual([{ id: f.studentType, name: 'Student' }])
   })
 
-  it('lists to a re-determiner only the people it covers, and to a recorder nobody', async () => {
+  it('lists to a re-determiner and to a recorder only the people each covers', async () => {
     const result = ok(
       await run(
         db.url,
@@ -389,8 +390,8 @@ describe.runIf(postgresAvailable)('the roster, as the results page reads it', ()
             codes: ['assessment.entry.redetermine'],
           })
           const covered = yield* page(f, g.batch.id, {}, f.principal(inspector.who))
-          const recorder = yield* Effect.exit(page(f, g.batch.id, {}, f.principal(f.recorder)))
-          // the record page's own reading is untouched
+          const recorder = yield* page(f, g.batch.id, {}, f.principal(f.recorder))
+          // the record page lists the same people to the recorder
           const recordable = yield* assessment.listParticipants(
             f.t,
             g.batch.id,
@@ -403,11 +404,12 @@ describe.runIf(postgresAvailable)('the roster, as the results page reads it', ()
     )
     expect(names(result.covered)).toEqual(['Li Si', 'Reviewer', 'Zhang San'])
     expect(result.covered.total).toBe(3)
-    expect(errorOf<{ _tag: string }>(result.recorder)?._tag).toBe('ACCESS_DENIED')
     expect(result.recordable).toEqual(
       expect.arrayContaining(['Zhang San', 'Li Si', 'Reviewer', 'Recorder']),
     )
     expect(result.recordable).not.toContain('Wang Wu')
+    expect(names(result.recorder)).toEqual([...result.recordable].sort())
+    expect(result.recorder.total).toBe(result.recordable.length)
   })
 
   // Walking the roster from an open account finds that person's page by
@@ -761,8 +763,17 @@ describe.runIf(postgresAvailable)('the totals on a page of the roster', () => {
           const across = yield* Effect.exit(
             assessment.listParticipantScores(f.t, g.batch.id, [g.p1, g.p3], as),
           )
+          // recording over the person reads their total too (§30 #12)
           const recorder = yield* Effect.exit(
             assessment.listParticipantScores(f.t, g.batch.id, [g.p1], f.principal(f.recorder)),
+          )
+          const recorderAcross = yield* Effect.exit(
+            assessment.listParticipantScores(
+              f.t,
+              g.batch.id,
+              [g.p1, g.p3],
+              f.principal(f.recorder),
+            ),
           )
           const nobody = yield* Effect.exit(
             assessment.listParticipantScores(
@@ -772,13 +783,16 @@ describe.runIf(postgresAvailable)('the totals on a page of the roster', () => {
               f.principal(f.admin),
             ),
           )
-          return { within, across, recorder, nobody }
+          return { within, across, recorder, recorderAcross, nobody }
         }),
       ),
     )
     expect(result.within.map((score) => score.state)).toEqual(['scored', 'scored'])
     expect(errorOf<{ _tag: string }>(result.across)?._tag).toBe('ACCESS_DENIED')
-    expect(errorOf<{ _tag: string }>(result.recorder)?._tag).toBe('ACCESS_DENIED')
+    expect(Exit.isSuccess(result.recorder) && result.recorder.value.map((s) => s.state)).toEqual([
+      'scored',
+    ])
+    expect(errorOf<{ _tag: string }>(result.recorderAcross)?._tag).toBe('ACCESS_DENIED')
     expect(Exit.isFailure(result.nobody)).toBe(true)
     expect(errorOf<{ _tag: string }>(result.nobody)?._tag).toBe('ASSESSMENT_PARTICIPANT_NOT_FOUND')
   })

@@ -224,25 +224,15 @@ await runOverDemo(
     // the last term (QUALY_DEMO_TERMS) is not asked for what only it writes
     const lastTerm = batches.some((batch) => batch.name === TERM_PLANS.at(-1)!.name)
     const situations = yield* personaSituations
-    const { missing, notExpected, pending } = judgeSituations(situations, { ...options, lastTerm })
+    const { missing, notExpected } = judgeSituations(situations, { ...options, lastTerm })
     console.log(
       `\nwhat the demonstration accounts open onto (selection at ${options.stage}${options.migrationBefore ? ', route change left for the demonstration' : ''}):`,
     )
     for (const one of situations) {
-      const note = notExpected.includes(one)
-        ? '  (not seeded by this run)'
-        : pending.includes(one)
-          ? '  (awaiting a ruling, not required)'
-          : ''
+      const note = notExpected.includes(one) ? '  (not seeded by this run)' : ''
       console.log(
         `  ${one.account.padEnd(10)} ${String(one.count).padStart(4)}  ${one.label}${note}`,
       )
-    }
-    if (pending.length > 0) {
-      console.log(
-        '\nawaiting a ruling (docs/assessment-design.md §30, item 12: whether the recording permission reads the roster):',
-      )
-      for (const one of pending) console.log(`  ${one.account}: ${one.label} = ${one.count}`)
     }
     if (missing.length > 0) {
       console.log(

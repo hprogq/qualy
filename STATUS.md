@@ -20537,3 +20537,15 @@ W12 审查意见收尾（十一组，分组见仓库外 `audit-2026-09-25/wave13
 - storage 三包：`Test Files  12 passed | 3 skipped (15)`，`Tests  112 passed | 27 skipped (139)`（registry 13 条）；`apps/server/tests/effect-api.test.ts`（一次性库）`Tests  6 passed (6)`。
 - `pnpm typecheck`（第一次因测试里链式 `Effect.provide` 被 Effect 诊断判 warning 而失败，合并成一次 provide 后通过）、`pnpm lint`、`pnpm lint:types` exit 0。
 
+
+## §30 第 10–12 条裁决落地，§32 待确认点按现状确认（2026-09-28）
+
+- 用户裁决：§30 第 10 条（各项上限取值与按渠道拆分）、第 11 条（两个 `record-closing` 豁免）按现值与现实现认可；第 12 条批准；§32.72 / §32.74 / §32.92 里的待确认点都按现状确认（§32.90⑨、§32.91① 里对应第 10、11 条的两处一并改为已确认）。§32.94 不在这次范围内，仍待确认。
+- 第 12 条落地：`requireAccountReach` 三扇门——名册管理与覆盖该参评人的重新认定读整本（`whole`），只有覆盖的录入读整本账、只列行政条目（`administrative`，两者都覆盖按前者）。录入者的账页总分与每行金额与管理员所见一致；指向参评人自报条目的账行经 `linkingOnly` 去掉条目、修订、认定 id，`lineId` 改为 `line:<序号>`；点名自报条目答 `ASSESSMENT_ENTRY_NOT_FOUND`（`mayReadEntry` 同一口径）。结果页名单、单位树 `reading=accounts`、逐页总分改用录入页同一读取 `rosterReadingOf`（删去 `accountReadingOf`），`requireAccountsReach` 授权码为录入与重新认定两者。前端结果页入口按 `manage || redetermine || record`（`holdsStanding(…, 'results')`，`BatchContextBar` 改为复用它）。
+- `demo:check`：辅导员「能从名册打开参评人」改为必需，「awaiting a ruling」一类随之删除（`tools/demo/situations.ts`、`check.ts` 与其测试）；`docs/notes/demo-data.md` 里保留的旧运行记录加注。**演示库本会话未碰**，按现在的实现对基线重跑 `pnpm demo:check`，这一项应为 1，需用户在演示环境跑一次确认。
+
+### 验收（实际执行）
+
+- `pnpm typecheck`、`pnpm lint`、`pnpm lint:types` exit 0。
+- `packages/plugins/assessment` + `tools/demo` + `tools/tests`（5433 一次性库）：`Test Files  196 passed (196)`，`Tests  1456 passed (1456)`；其中改写的「录入者打开覆盖范围内账页、只见行政条目」一条，与 roster-accounts 里录入者名单、单位树、逐页总分三处。
+- `pnpm test:browser packages/plugins/assessment`：`Test Files  39 passed (39)`，`Tests  941 passed (941)`；新增「录入者的侧栏出现结果页」一条。

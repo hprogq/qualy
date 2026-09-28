@@ -84,15 +84,13 @@ describe('what a check requires', () => {
     { account: 'student', label: 'appeal', count: 0, needs: 'review-stage' },
     { account: 'student', label: 'reroute', count: 0, needs: 'route-change' },
     { account: 'student', label: 'reopened', count: 0, needs: 'last-term' },
-    { account: 'counsellor', label: 'roster', count: 0, needs: 'ruling' },
   ]
   const labels = (list: readonly Situation[]) => list.map((one) => one.label)
   const full = { stage: 'review', migrationBefore: false, lastTerm: true } as const
 
-  it('requires everything a full run writes, but never what waits on a ruling', () => {
+  it('requires everything a full run writes', () => {
     const judged = judgeSituations(situations, full)
     expect(labels(judged.missing)).toEqual(['always', 'appeal', 'reroute', 'reopened'])
-    expect(labels(judged.pending)).toEqual(['roster'])
     expect(judged.notExpected).toEqual([])
   })
 

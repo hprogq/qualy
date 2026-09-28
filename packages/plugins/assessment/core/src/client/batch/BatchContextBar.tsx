@@ -24,7 +24,7 @@ import { BatchFlow } from './BatchFlow.tsx'
 import { BatchZone } from './BatchZone.tsx'
 import { BatchProgress } from './BatchProgress.tsx'
 import { BatchSwitcher } from './BatchSwitcher.tsx'
-import { useBatchAbsence } from './absence.ts'
+import { holdsStanding, useBatchAbsence } from './absence.ts'
 
 /** where the band stops being one line and becomes the window's own head */
 const HEAD_BREAKPOINT = 768
@@ -252,8 +252,7 @@ export default function BatchContextBar() {
             batch.capabilities.review && 'assessment/review',
             batch.capabilities.record && 'assessment/record',
             batch.capabilities.manage && 'assessment/manage',
-            // whoever re-determines reads the accounts it covers (ruling #33)
-            (batch.capabilities.manage || batch.capabilities.redetermine) && 'assessment/results',
+            holdsStanding(batch.capabilities, 'results') && 'assessment/results',
           ].filter((token): token is string => token !== false),
         ),
   )

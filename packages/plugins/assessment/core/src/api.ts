@@ -3492,9 +3492,9 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
      * person's claims are waiting on.
      *
      * The same doors as opening one of them (roster administration, or
-     * re-determination over the people it covers), so everybody listed here
-     * opens. Recording authority reads the roster through `listParticipants`
-     * on the record page instead, and none of this.
+     * re-determination or recording over the people it covers), so
+     * everybody listed here opens; a recorder opens the whole account and
+     * the administrative claims in it (assessment-design §30 #12).
      */
     HttpApiEndpoint.get(
       'listParticipantAccounts',
@@ -3811,10 +3811,11 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         /**
          * Whose members: the record page's (the people this reader may
          * record on or re-determine over) when absent, the results page's
-         * (the people whose accounts this reader may open), or the people
-         * an administrative finding by this reader would reach
-         * (`recordable`: recording authority alone), so a tree never holds
-         * a unit its own list, or its own act, passes over.
+         * (the people whose accounts this reader may open - the same people,
+         * since recording opens the accounts it covers), or the people an
+         * administrative finding by this reader would reach (`recordable`:
+         * recording authority alone), so a tree never holds a unit its own
+         * list, or its own act, passes over.
          */
         reading: Schema.optional(Schema.Literals(['record', 'accounts', 'recordable'])),
         /** members on the roster now when absent; taken off it; or both */

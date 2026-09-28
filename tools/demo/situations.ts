@@ -24,12 +24,11 @@ type Key = (typeof PERSONA_ACCOUNTS)[number]['key']
 /**
  * What a situation needs beyond the seeder having written it: the selection
  * past its filing phase (appeals and re-examinations open only then), the
- * route change having been made rather than left for the demonstration, the
- * run having gone on to the last of the six terms (QUALY_DEMO_TERMS stops
- * short of it), or a policy ruling still to come (docs/assessment-design.md
- * §30).
+ * route change having been made rather than left for the demonstration, or
+ * the run having gone on to the last of the six terms (QUALY_DEMO_TERMS
+ * stops short of it).
  */
-export type Needs = 'review-stage' | 'route-change' | 'last-term' | 'ruling'
+export type Needs = 'review-stage' | 'route-change' | 'last-term'
 
 /** what the run being checked seeded: the flags it took, and how far it went */
 export interface Seeded extends SeedOptions {
@@ -54,19 +53,13 @@ const expected = (situation: Situation, seeded: Seeded) => {
       return seeded.stage !== 'entry' && !seeded.migrationBefore
     case 'last-term':
       return seeded.lastTerm
-    case 'ruling':
-      return false
   }
 }
 
-/**
- * Sorts the counts into what failed, what this run's options left out, and
- * what waits on a ruling and is shown without being required.
- */
+/** sorts the counts into what failed and what this run's options left out */
 export const judgeSituations = (situations: readonly Situation[], seeded: Seeded) => ({
   missing: situations.filter((one) => expected(one, seeded) && one.count === 0),
-  notExpected: situations.filter((one) => one.needs !== 'ruling' && !expected(one, seeded)),
-  pending: situations.filter((one) => one.needs === 'ruling'),
+  notExpected: situations.filter((one) => !expected(one, seeded)),
 })
 
 const count = (query: RawBuilder<unknown>) =>
@@ -516,8 +509,8 @@ export const personaSituations = Effect.gen(function* () {
     )
     // Whether the roster opens for this account at all: the persona student
     // stands on it, so reaching them is reaching the roster. Counsellors hold
-    // the recording permission, and whether that reads the roster's accounts
-    // waits on the owner (docs/assessment-design.md §30, item 12).
+    // the recording permission, which reads the accounts it covers
+    // (docs/assessment-design.md §30, item 12, ruled 2026-09-28).
     const standing = (
       (yield* runSql(sql`
         select p.id from batch_participants p
@@ -534,7 +527,7 @@ export const personaSituations = Effect.gen(function* () {
               principalOf(tenantId, counsellor),
             ),
           ))._tag === 'Success'
-    add('counsellor', 'running: opens a participant from the roster', opened ? 1 : 0, 'ruling')
+    add('counsellor', 'running: opens a participant from the roster', opened ? 1 : 0)
   }
 
   return situations

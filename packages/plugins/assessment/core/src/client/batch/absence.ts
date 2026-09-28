@@ -40,6 +40,7 @@ export const holdsStanding = (
   standing: BatchStanding,
 ): boolean =>
   standing === 'results'
-    ? // whoever re-determines reads the accounts it covers (ruling #33)
-      capabilities.manage || capabilities.redetermine
+    ? // whoever re-determines or records reads the accounts it covers
+      // (ruling #33; assessment-design §30 #12)
+      capabilities.manage || capabilities.redetermine || capabilities.record
     : capabilities[standing]
