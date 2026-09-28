@@ -102,6 +102,8 @@ interface ExportedSpan {
   attributes: { key: string; value: { stringValue?: string; intValue?: string | number } }[]
   /** OTLP's status: 1 is ok, 2 is error */
   status?: { code?: number; message?: string }
+  startTimeUnixNano?: string
+  endTimeUnixNano?: string
 }
 
 const exported: ExportedSpan[] = []
@@ -351,6 +353,8 @@ describe('the span a request exports', () => {
     })
     const reader = response.body!.getReader()
     await reader.read()
+    // the reader stays a while, as a page does
+    await new Promise((resolve) => setTimeout(resolve, 400))
     leaving.abort()
     await reader.read().catch(() => undefined)
     const span = await exportedSpan((candidate) => candidate.traceId === inbound)
@@ -359,6 +363,18 @@ describe('the span a request exports', () => {
       (attribute) => attribute.key === 'http.response.status_code',
     )
     expect(Number(status?.value.intValue)).toBe(200)
+    // and its duration is the stream's opening, not how long the page stayed
+    const lasted =
+      Number(BigInt(span.endTimeUnixNano ?? '0') - BigInt(span.startTimeUnixNano ?? '0')) / 1e6
+    expect(lasted).toBeLessThan(200)
+    // measured to the same moment, as semconv asks of the two
+    const measured = (await Effect.runPromise(Metric.snapshot)).find(
+      (state) =>
+        state.id === 'http.server.request.duration' &&
+        state.attributes?.['http.route'] === '/events',
+    )
+    expect(measured?.type).toBe('Histogram')
+    if (measured?.type === 'Histogram') expect(measured.state.max).toBeLessThan(0.2)
   })
 
   it('still ends a request that failed on its own as an error', async () => {

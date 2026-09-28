@@ -1,5 +1,6 @@
 import { Cause, Clock, Context, Effect, Exit, Layer, Metric, Option, Tracer } from 'effect'
 import {
+  HttpEffect,
   HttpMiddleware,
   HttpServerError,
   HttpServerRequest,
@@ -313,10 +314,10 @@ export const routeSpanNames = <A, E, R>(
  * label was the `'http'` fallback on every data point, and behind a
  * TLS-terminating proxy the trace said https while the metric said http for
  * the same request. Derived here the same way the tracer derives it, which is
- * the only way the two can actually agree. Event streams are counted like every other
- * request, because the standard metric measures request duration and makes
- * no SSE exception; a latency dashboard excludes those routes by
- * `http.route`, not this recorder by content type.
+ * the only way the two can actually agree. An event stream is measured to the
+ * moment it opens, not to the moment its reader leaves, because semconv asks
+ * this metric to equal the server span's duration and that span ends there
+ * (serverSpans says why).
  *
  * One deviation, by upstream constraint: semconv types
  * `http.response.status_code` as an int, but `Metric.AttributeSet` in
@@ -382,6 +383,16 @@ const schemeOf = (
  * backend for every upload while the access log had stopped writing it.
  * Written on the way out because the router names the template while it
  * dispatches, before which nothing here knows it.
+ *
+ * An event stream's span ends when the stream is established - its head on
+ * the way out - not when the connection closes. A stream lasts as long as the
+ * page that opened it, minutes where a request lasts milliseconds, and as one
+ * span it made every latency figure of the service a figure about how long
+ * people keep pages open. HTTP semantic conventions say nothing about when a
+ * server span ends for a streaming response; the open proposal for streams
+ * (open-telemetry/semantic-conventions#3703) is this one - end the span at
+ * establishment, and model what the stream carries separately. The duration
+ * metric is taken at the same moment, as semconv asks of the two.
  */
 export const serverSpans = (options?: {
   readonly trustedProxies?: readonly string[] | undefined
@@ -402,28 +413,52 @@ export const serverSpans = (options?: {
             'url.scheme': schemeOf(request, trusted),
           },
         }),
-        (span) =>
-          Effect.withParentSpan(httpApp, span).pipe(
+        (span) => {
+          const writePath = () => {
+            const route = span.attributes.get('http.route')
+            span.attribute('url.path', typeof route === 'string' ? route : pathOf(request.url))
+          }
+          // an event stream's request is over once the stream is open
+          HttpEffect.appendPreResponseHandlerUnsafe(request, (_request, response) =>
+            isEventStream(response)
+              ? Effect.flatMap(Clock.currentTimeNanos, (now) =>
+                  Effect.sync(() => {
+                    if (span.status._tag !== 'Ended') {
+                      span.attribute('http.response.status_code', response.status)
+                      writePath()
+                      span.end(now, Exit.succeed(response))
+                    }
+                    return response
+                  }),
+                )
+              : Effect.succeed(response),
+          )
+          return Effect.withParentSpan(httpApp, span).pipe(
             Effect.tap((response) =>
-              Effect.sync(() => span.attribute('http.response.status_code', response.status)),
+              Effect.sync(() => {
+                if (span.status._tag !== 'Ended')
+                  span.attribute('http.response.status_code', response.status)
+              }),
             ),
             Effect.onExit((exit) =>
               Effect.flatMap(Clock.currentTimeNanos, (now) =>
                 Effect.sync(() => {
-                  const route = span.attributes.get('http.route')
-                  span.attribute(
-                    'url.path',
-                    typeof route === 'string' ? route : pathOf(request.url),
-                  )
                   if (span.status._tag === 'Ended') return
+                  writePath()
                   span.end(now, spanExitOf(exit, span))
                 }),
               ),
             ),
-          ),
+          )
+        },
       )
     })
 }
+
+/** a response whose body is an event stream, by the content type it carries */
+const isEventStream = (response: HttpServerResponse.HttpServerResponse): boolean =>
+  'contentType' in response.body &&
+  (response.body.contentType ?? '').startsWith('text/event-stream')
 
 /**
  * The exit a server span ends with, which is not always the request's own.
@@ -484,13 +519,9 @@ export const httpMetrics = (options?: {
       const request = Context.getUnsafe(fiber.context, HttpServerRequest.HttpServerRequest)
       const span = Option.getOrUndefined(Context.getOption(fiber.context, Tracer.ParentSpan))
       const started = performance.now()
-      return Effect.onExit(httpApp, (exit) =>
+      const record = (status: number) =>
         Effect.suspend(() => {
           const seconds = (performance.now() - started) / 1000
-          const status =
-            exit._tag === 'Success'
-              ? exit.value.status
-              : HttpServerError.causeResponseStripped(exit.cause)[0].status
           const spanAttribute = (key: string): string | undefined => {
             const value =
               span !== undefined && span._tag === 'Span' ? span.attributes.get(key) : undefined
@@ -513,7 +544,22 @@ export const httpMetrics = (options?: {
             }),
             seconds,
           )
-        }),
+        })
+      // an event stream is measured when it opens, like its span (serverSpans)
+      let recorded = false
+      HttpEffect.appendPreResponseHandlerUnsafe(request, (_request, response) => {
+        if (!isEventStream(response)) return Effect.succeed(response)
+        recorded = true
+        return Effect.as(record(response.status), response)
+      })
+      return Effect.onExit(httpApp, (exit) =>
+        recorded
+          ? Effect.void
+          : record(
+              exit._tag === 'Success'
+                ? exit.value.status
+                : HttpServerError.causeResponseStripped(exit.cause)[0].status,
+            ),
       )
     })
 }
