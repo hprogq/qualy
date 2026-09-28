@@ -10,8 +10,11 @@
 # same region without spending its public bandwidth (measured from the
 # server, 2026-09-28: both resolve to 169.254.x.x and accept connections):
 #
-#   TENCENT_APM_ENDPOINT     pl.ap-beijing.apm.tencentcs.com:4319, gRPC in
-#                            the clear
+#   TENCENT_APM_ENDPOINT     pl.ap-beijing.apm.tencentcs.com:4320, gRPC over
+#                            TLS (4319 is the same in the clear; the token
+#                            rides every export, so it goes encrypted -
+#                            probed 2026-09-28: h2 negotiated, the
+#                            certificate names this host)
 #   TENCENT_APM_TOKEN        the APM business system token
 #   TENCENT_CLS_ENDPOINT     https://ap-beijing.cls.tencentyun.com
 #   TENCENT_CLS_TOPIC_ID     the log topic
@@ -26,7 +29,7 @@
 #
 # Validated against the pinned image, with placeholder values:
 #   docker run --rm -v ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro \
-#     -e TENCENT_APM_ENDPOINT=x:4319 -e TENCENT_APM_TOKEN=x -e TENCENT_CLS_ENDPOINT=https://x \
+#     -e TENCENT_APM_ENDPOINT=x:4320 -e TENCENT_APM_TOKEN=x -e TENCENT_CLS_ENDPOINT=https://x \
 #     -e TENCENT_CLS_TOPIC_ID=x -e TENCENT_CLS_SECRET_ID=x -e TENCENT_CLS_SECRET_KEY=x \
 #     -e QUALY_INSTANCE_ID=x \
 #     otel/opentelemetry-collector-contrib:0.159.0 validate --config=/etc/otelcol-contrib/config.yaml
@@ -76,9 +79,10 @@ processors:
 exporters:
   otlp_grpc/tencent_apm:
     endpoint: ${env:TENCENT_APM_ENDPOINT}
-    # the private-network endpoint speaks gRPC in the clear
+    # gRPC over TLS on the private-network endpoint, as on the public one
+    # the staging collector verified (ops/observability/collector.staging.yaml)
     tls:
-      insecure: true
+      insecure: false
     # the header the public endpoint was verified with from a development
     # machine (ops/observability/collector.staging.yaml), beside the attribute
     headers:

@@ -104,7 +104,7 @@ as the `otel-collector` service of `deploy/compose.yaml` (profile
 region's private-network endpoints:
 
 ```text
-traces  → Tencent APM  (OTLP gRPC in the clear on 4319; token + host.name
+traces  → Tencent APM  (OTLP gRPC over TLS on 4320; token + host.name
                         injected by the resource processor, never set by
                         the application)
 metrics → Tencent APM  (the same uplink; the console's sync rules carry them
