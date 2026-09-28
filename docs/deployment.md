@@ -256,7 +256,8 @@ Resend 答 400/422 算这封信被拒,429/409/5xx/超时算暂不可用;401/403 
 启动时不连中继:中继宕着不影响启动,第一封信会失败并记日志与指标 `qualy.mail.sent{outcome}`。
 
 **恢复账号与 seed**:租户与其系统账户(租户自救用、以邮箱 + 密码登录)由 seed 供给;镜像不含 seed,从同一 release 的源码检出对部署库执行
-`DATABASE_URL=… QUALY_ADMIN_EMAIL=… QUALY_ADMIN_PASSWORD=… pnpm seed`。生产 server 在 Assembled 屏障检查每个存活租户的恢复通道,
+`DATABASE_URL=… QUALY_ADMIN_EMAIL=… QUALY_ADMIN_PASSWORD=… node tools/fixtures/seed-cli.ts`(不用 `pnpm seed`:它读检出目录的 `.env`,
+开发机上那是开发机的设置;`seed-cli.ts` 自己不读任何文件,2026-09-28)。生产 server 在 Assembled 屏障检查每个存活租户的恢复通道,
 系统账户缺邮箱或缺密码即拒启并点名租户——顺序固定为 migrate → seed → boot。把本地入口改为邮箱登录的那次升级(迁移
 `20260922164042_user-auth-bindings.sql`)必须走这一步:迁移后旧系统账户没有邮箱,seed 以 `QUALY_ADMIN_EMAIL` 补上(已有不同邮箱视为漂移报错)。
 该迁移遇到「同一租户第二个仍在使用的密码入口」会直接失败并点名租户与入口 code,需人工清理后重跑,不做合并。

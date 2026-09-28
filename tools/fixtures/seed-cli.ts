@@ -1,12 +1,14 @@
 // bootstrap runner over scripts/lib/seed.ts; the whole seed executes in one
 // transaction, so any failure aborts without partial writes. Credentials come
 // only from environment variables and are never logged.
+//
+// It reads no file of its own. `pnpm seed` hands it this checkout's .env,
+// which is what a development machine wants; a deployment runs this file
+// directly with only what it is given (deploy/README.md), because a checkout
+// on a developer's machine keeps that developer's .env - QUALY_SEED_DEMO=1
+// among it - and a production seed must not pick any of it up.
 import { Pool } from 'pg'
 import { seed } from './seed.ts'
-
-try {
-  process.loadEnvFile()
-} catch {}
 
 const url = process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy'
 const pool = new Pool({ connectionString: url })

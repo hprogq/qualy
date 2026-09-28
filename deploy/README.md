@@ -86,9 +86,14 @@ database (the image carries no seed). The database is on no port, so
 ```sh
 docker compose -f compose.yaml -f compose.seed.yaml up -d postgres
 DATABASE_URL=postgres://qualy:<POSTGRES_PASSWORD>@127.0.0.1:55432/qualy \
-  QUALY_ADMIN_EMAIL=… QUALY_ADMIN_PASSWORD=… pnpm seed     # from the checkout
+  QUALY_ADMIN_EMAIL=… QUALY_ADMIN_PASSWORD=… node tools/fixtures/seed-cli.ts   # from the checkout
 docker compose up -d postgres                              # off the host again
 ```
+
+Run the file itself, not `pnpm seed`: `pnpm seed` loads the checkout's own
+`.env`, which on a developer's machine is that machine's settings - a
+`QUALY_SEED_DEMO=1` there would seed demonstration people into production.
+The file reads only the environment it is given.
 
 Give the seed the same `QUALY_DEFAULT_TENANT` as `.env` if you set one: it
 creates the tenant by that name, and the server looks for it by that name.

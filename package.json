@@ -91,7 +91,7 @@
     "plugin:add": "node tools/repo/plugin-add.ts",
     "prepare": "effect-tsgo patch --typescript --no-oxlint",
     "qualy": "node apps/cli/src/main.ts",
-    "seed": "node tools/fixtures/seed-cli.ts",
+    "seed": "node --env-file-if-exists=.env tools/fixtures/seed-cli.ts",
     "demo:reset-db": "node tools/demo/reset-db.ts",
     "demo:seed": "node tools/demo/seed.ts",
     "demo:snapshot": "node tools/demo/snapshot.ts",
