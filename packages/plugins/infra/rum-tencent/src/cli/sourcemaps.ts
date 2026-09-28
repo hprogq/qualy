@@ -23,6 +23,18 @@ import { rumVersionForRelease } from '../version.ts'
 // goes through the same mapping the browser stamps its reports with, so a map
 // filed under a version no report carries is not a mistake this can make.
 
+/**
+ * How long the upload credential lasts, asked for explicitly.
+ *
+ * Stated because the default is TEN SECONDS - documented nowhere, and not
+ * enough for one batch, let alone a build's worth: a credential that expired
+ * mid-upload comes back from the bucket as "The Access Key Id you provided
+ * does not exist", which is how the v0.1.0-rc.2 maps first failed to file.
+ */
+const CREDENTIAL_SECONDS = 3600
+/** less than this left and the upload is refused before it starts */
+const CREDENTIAL_LEAST_SECONDS = 300
+
 /** enough to keep the wire busy, few enough to stay well inside the api's rate */
 const CONCURRENCY = 8
 
@@ -54,10 +66,10 @@ const certificateFor = async (
   client: InstanceType<typeof tencentcloud.rum.v20210622.Client>,
   projectId: number,
 ) => {
-  const answer = (await client.request('DescribeFileCertificate', { ID: projectId })) as Record<
-    string,
-    unknown
-  >
+  const answer = (await client.request('DescribeFileCertificate', {
+    ID: projectId,
+    Timeout: CREDENTIAL_SECONDS,
+  })) as Record<string, unknown>
   const field = (name: string): string => {
     const value = answer[name]
     return typeof value === 'string' && value !== ''
@@ -73,6 +85,12 @@ const certificateFor = async (
     rest.length > 0
   ) {
     refuse(`DescribeFileCertificate named no bucket as region:bucket`)
+  }
+  const lasts = Number(answer['ExpiredTime']) - Number(answer['StartTime'])
+  if (!(lasts >= CREDENTIAL_LEAST_SECONDS)) {
+    refuse(
+      `DescribeFileCertificate issued a credential that lasts ${String(lasts)}s; the upload needs at least ${String(CREDENTIAL_LEAST_SECONDS)}s`,
+    )
   }
   return {
     secretId: field('SecretID'),
