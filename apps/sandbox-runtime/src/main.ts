@@ -26,10 +26,18 @@ import { runtimeCapabilities } from './capabilities.ts'
 const socketPath =
   process.env.QUALY_SANDBOX_RUNTIME_SOCKET ?? '.qualy/run/sandbox/runtime/runtime.sock'
 
+// A whole number from 1 to 32, or the process refuses to start and says so:
+// a typo used to become 2 in silence, which on a one-CPU quota is exactly
+// the pairing that times healthy formulas out.
 const poolSize = (() => {
   const raw = process.env.QUALY_SANDBOX_POOL_SIZE
-  const parsed = raw === undefined ? 2 : Number(raw)
-  return Number.isSafeInteger(parsed) && parsed > 0 && parsed <= 32 ? parsed : 2
+  if (raw === undefined || raw === '') return 2
+  const parsed = /^\d{1,2}$/.test(raw) ? Number(raw) : Number.NaN
+  if (parsed >= 1 && parsed <= 32) return parsed
+  console.error(
+    `QUALY_SANDBOX_POOL_SIZE must be a whole number from 1 to 32, not ${JSON.stringify(raw)}`,
+  )
+  process.exit(1)
 })()
 
 const handlers = RuntimeSandboxRpcs.toLayer(

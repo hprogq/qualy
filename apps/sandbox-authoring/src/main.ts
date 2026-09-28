@@ -133,12 +133,25 @@ const compile = (source: string): Effect.Effect<CompiledWire, AuthoringCompileEr
       )
   })
 
+// How often idle language sessions are reaped, in whole milliseconds above 0;
+// refused rather than guessed: `-5` used to be taken as given, and a negative
+// delay reaps without pause.
+const lspSweepMs = (): number => {
+  const raw = process.env.QUALY_LSP_SWEEP_MS
+  if (raw === undefined || raw === '') return 15_000
+  if (/^\d{1,9}$/.test(raw) && Number(raw) > 0) return Number(raw)
+  console.error(
+    `QUALY_LSP_SWEEP_MS must be a whole number of milliseconds above 0, not ${JSON.stringify(raw)}`,
+  )
+  process.exit(1)
+}
+
 const handlers = FormulaAuthoringRpcs.toLayer(
   Effect.gen(function* () {
     const lsp = makeLspManager()
     yield* Effect.addFinalizer(() => Effect.promise(() => lsp.closeAll()))
     // the idle/absolute reaper: one fiber, owned by this layer's scope
-    const sweepEvery = Number(process.env.QUALY_LSP_SWEEP_MS ?? '') || 15_000
+    const sweepEvery = lspSweepMs()
     yield* Effect.promise(() => lsp.sweepOnce()).pipe(
       Effect.delay(sweepEvery),
       Effect.forever,

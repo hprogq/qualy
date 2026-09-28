@@ -54,6 +54,14 @@ const settingsOf = (exit: Configured) =>
   Exit.isSuccess(exit) && 'settings' in exit.value ? exit.value.settings : undefined
 
 describe('the relay settings', () => {
+  it('refuse a port that is not one, naming the variable', async () => {
+    for (const wrong of ['0', '70000', '25.5', 'smtp']) {
+      const exit = await configured({ QUALY_MAIL_SMTP_PORT: wrong })
+      expect(Exit.isFailure(exit), wrong).toBe(true)
+      expect(refusal(exit), wrong).toContain('QUALY_MAIL_SMTP_PORT')
+    }
+  })
+
   it('hand development mail to the local catcher, in the clear', async () => {
     expect(settingsOf(await configured({}))).toEqual({
       host: '127.0.0.1',

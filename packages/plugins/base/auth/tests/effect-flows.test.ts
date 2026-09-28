@@ -39,6 +39,7 @@ import {
   PUBLIC_URL_INSECURE,
   PUBLIC_URL_MALFORMED,
   PUBLIC_URL_REQUIRED,
+  SESSION_TTL_TOO_SHORT,
 } from '../src/server/auth-config.ts'
 import { Iam, serviceLayer as authLayer } from '../src/server/index.ts'
 import { AnonymousTenantResolver } from '../src/server/tenancy.ts'
@@ -313,6 +314,36 @@ describe('the address this deployment is reached at', () => {
     expect(Cause.pretty((insecure as Exit.Failure<unknown, unknown>).cause)).toContain(
       PUBLIC_URL_INSECURE,
     )
+  })
+})
+
+describe('how long a session lasts', () => {
+  const lifetime = (env: Record<string, string>) =>
+    Effect.runPromiseExit(
+      Effect.flatMap(AuthConfig, (settings) => Effect.succeed(settings.sessionTtlSeconds)).pipe(
+        Effect.provide(
+          authConfigLayer({}, { manifestDir: '/somewhere' }).pipe(
+            Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env }))),
+          ),
+        ),
+      ),
+    )
+
+  it('is a week unless a deployment says otherwise, in whole seconds of at least ten minutes', async () => {
+    expect(ok(await lifetime({}))).toBe(604_800)
+    expect(ok(await lifetime({ QUALY_SESSION_TTL_SECONDS: '86400' }))).toBe(86_400)
+    for (const wrong of ['1.5', 'a-week']) {
+      const exit = await lifetime({ QUALY_SESSION_TTL_SECONDS: wrong })
+      expect(Cause.pretty((exit as Exit.Failure<unknown, unknown>).cause), wrong).toContain(
+        'QUALY_SESSION_TTL_SECONDS',
+      )
+    }
+    for (const short of ['-1', '0', '599']) {
+      const exit = await lifetime({ QUALY_SESSION_TTL_SECONDS: short })
+      expect(Cause.pretty((exit as Exit.Failure<unknown, unknown>).cause), short).toContain(
+        SESSION_TTL_TOO_SHORT,
+      )
+    }
   })
 })
 

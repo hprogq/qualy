@@ -1,6 +1,7 @@
 import { Cause, Effect, Exit, Layer, References, Scope, type LogLevel } from 'effect'
 import type { Resolution } from '@qualy/assembly'
 import { loadAssembly } from '@qualy/assembly/runtime'
+import { shutdownTimeoutMs } from '@qualy/assembly/host'
 import { headlessGraph, headlessHost } from '@qualy/api-kit/headless'
 import { CliRefused, type RuntimeCliCommand } from '@qualy/plugin-kit/cli'
 import { stillFinalizing, traceLayerLifecycle } from '@qualy/plugin-kit/shutdown-trace'
@@ -68,12 +69,18 @@ export async function runRuntimeCommand(
     console.error(MIGRATIONS_REFUSED)
     return 1
   }
+  let deadline: number
+  try {
+    deadline = shutdownTimeoutMs(process.env)
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error))
+    return 1
+  }
   const loaded = loadAssembly(resolution, { host: [headlessHost] })
   // the one narrowing of this edge: the assembled layers carry erased
   // channels, and whether the graph closes is the build's answer
   const graph = headlessGraph(loaded, { env: process.env }) as Layer.Layer<unknown, unknown>
   const implementation = await command.load()
-  const deadline = Number(process.env.QUALY_SHUTDOWN_TIMEOUT ?? 30) * 1000
   traceLayerLifecycle({ finalizing: () => {}, finalized: () => {} })
   let code = 1
   const built = await Effect.runPromiseExit(

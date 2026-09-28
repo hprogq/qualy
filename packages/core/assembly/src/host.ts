@@ -100,3 +100,24 @@ export async function readEntries(options: {
       disabled: plugin.state === 'disabled' || undefined,
     }))
 }
+
+/** the variable a host reads how long a stopping process waits before forcing its exit from */
+export const SHUTDOWN_TIMEOUT_VARIABLE = 'QUALY_SHUTDOWN_TIMEOUT'
+
+/**
+ * How long, in milliseconds, a stopping server or CLI command waits for its
+ * finalizers before it forces the exit; 0 never forces it. Whole seconds in
+ * the environment, 30 when unset. Anything else is refused rather than read
+ * as something: `Number('30s')` is NaN, and a NaN deadline never fires, so a
+ * typo used to switch the forced exit off without a word.
+ */
+export const shutdownTimeoutMs = (env: Readonly<Record<string, string | undefined>>): number => {
+  const raw = env[SHUTDOWN_TIMEOUT_VARIABLE]
+  if (raw === undefined || raw === '') return 30_000
+  if (!/^\d{1,5}$/.test(raw)) {
+    throw new Error(
+      `${SHUTDOWN_TIMEOUT_VARIABLE} must be a whole number of seconds (0 never forces the exit), not ${JSON.stringify(raw)}`,
+    )
+  }
+  return Number(raw) * 1000
+}

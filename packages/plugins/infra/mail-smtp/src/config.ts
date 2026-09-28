@@ -69,7 +69,8 @@ export const config = (
       if (production && tls === 'none' && !plaintextAllowed) {
         return SmtpConfig.of({ refusal: SMTP_PLAINTEXT_REFUSED })
       }
-      const port = yield* Config.Number('QUALY_MAIL_SMTP_PORT').pipe(
+      // a whole number from 1 to 65535, or refused by name
+      const port = yield* Config.Port('QUALY_MAIL_SMTP_PORT').pipe(
         Config.withDefault(host._tag === 'None' ? 1025 : PORTS[tls]),
       )
       const user = yield* Config.option(Config.String('QUALY_MAIL_SMTP_USER'))

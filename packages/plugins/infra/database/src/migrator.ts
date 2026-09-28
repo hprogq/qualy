@@ -66,9 +66,16 @@ export const MIGRATION_LOCK_KEY = BigInt.asIntN(
 export const MIGRATION_LOCK_TIMEOUT_VARIABLE = 'QUALY_MIGRATION_LOCK_TIMEOUT_MS'
 const DEFAULT_LOCK_TIMEOUT_MS = 120_000
 
+/** unset is the default; anything but whole milliseconds above 0 is refused, not ignored */
 const lockTimeoutMs = (): number => {
-  const declared = Number(process.env[MIGRATION_LOCK_TIMEOUT_VARIABLE])
-  return Number.isFinite(declared) && declared > 0 ? declared : DEFAULT_LOCK_TIMEOUT_MS
+  const raw = process.env[MIGRATION_LOCK_TIMEOUT_VARIABLE]
+  if (raw === undefined || raw === '') return DEFAULT_LOCK_TIMEOUT_MS
+  if (!/^\d{1,9}$/.test(raw) || Number(raw) === 0) {
+    throw new Error(
+      `${MIGRATION_LOCK_TIMEOUT_VARIABLE} must be a whole number of milliseconds above 0, not ${JSON.stringify(raw)}`,
+    )
+  }
+  return Number(raw)
 }
 
 /**

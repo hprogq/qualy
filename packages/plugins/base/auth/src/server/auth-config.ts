@@ -71,6 +71,9 @@ export class AuthConfig extends Context.Service<
 export const PRIVATE_ALLOWLIST_MALFORMED =
   'QUALY_AUTH_PRIVATE_PROVIDER_ALLOWLIST must be a comma-separated list of hostnames, addresses or CIDR blocks'
 
+export const SESSION_TTL_TOO_SHORT =
+  'QUALY_SESSION_TTL_SECONDS must be a whole number of seconds, at least 600'
+
 export const SESSION_IDLE_MALFORMED =
   'QUALY_SESSION_IDLE_SECONDS must be a whole number of seconds, at least 600, or 0 for no idle limit'
 
@@ -179,6 +182,12 @@ export const config = (
       if (!allowlisted.every(allowlistEntryValid)) {
         return yield* Effect.die(new Error(PRIVATE_ALLOWLIST_MALFORMED))
       }
+      // whole seconds, at least ten minutes, or refused by name: a negative
+      // or fractional lifetime used to be taken as given
+      const sessionTtl = yield* Config.Int('QUALY_SESSION_TTL_SECONDS').pipe(
+        Config.withDefault(604_800),
+      )
+      if (sessionTtl < 600) return yield* Effect.die(new Error(SESSION_TTL_TOO_SHORT))
       const sessionIdle = sessionIdleFrom(
         yield* Config.String('QUALY_SESSION_IDLE_SECONDS').pipe(Config.withDefault('')),
       )
@@ -198,9 +207,7 @@ export const config = (
           Config.withDefault('default'),
         ),
         ...(publicUrl === undefined ? {} : { publicUrl }),
-        sessionTtlSeconds: yield* Config.Number('QUALY_SESSION_TTL_SECONDS').pipe(
-          Config.withDefault(604_800),
-        ),
+        sessionTtlSeconds: sessionTtl,
         ...(sessionIdle === undefined ? {} : { sessionIdleSeconds: sessionIdle }),
         secureCookies,
         sessionCookieName: sessionCookieNameFor(secureCookies),

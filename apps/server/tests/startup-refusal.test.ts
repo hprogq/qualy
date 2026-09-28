@@ -71,6 +71,15 @@ const said = (refusal: Refusal): readonly string[] =>
     })
 
 describe('a boot refused by a layer outside the application', () => {
+  // a NaN deadline never fires: `30s` used to switch the forced exit off
+  it('refuses a shutdown timeout that is not whole seconds, naming it', async () => {
+    const refusal = await boot({ QUALY_SHUTDOWN_TIMEOUT: '30s' })
+    expect(refusal.code).toBe(1)
+    const lines = said(refusal)
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toContain('QUALY_SHUTDOWN_TIMEOUT must be a whole number of seconds')
+  }, 90_000)
+
   // every plugin whose configuration refused, in one start: a deployment
   // missing three settings used to learn of them one restart at a time
   it('names every plugin whose configuration it refused, at once', async () => {

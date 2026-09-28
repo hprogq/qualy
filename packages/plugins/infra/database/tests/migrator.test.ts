@@ -42,7 +42,7 @@ const emptyDatabase = async (label: string) => {
 }
 
 /** the lock timeout, for one call */
-const withLockTimeout = async <A>(ms: number, body: () => Promise<A>): Promise<A> => {
+const withLockTimeout = async <A>(ms: number | string, body: () => Promise<A>): Promise<A> => {
   const before = process.env[MIGRATION_LOCK_TIMEOUT_VARIABLE]
   process.env[MIGRATION_LOCK_TIMEOUT_VARIABLE] = String(ms)
   try {
@@ -120,6 +120,23 @@ describe.runIf(postgresAvailable)('applying a lineage', () => {
   // A validate-only start is the one path whose whole purpose is to leave
   // the database exactly as it found it, and production's default is that
   // path. Asking the migrator its own question used to create the ledger.
+  // a typo used to fall back to the default in silence
+  it('refuses a lock timeout that is not whole milliseconds, naming the variable', async () => {
+    const target = await emptyDatabase('migrator-lock-timeout-refused')
+    const folder = lineage({ '00000000000001_probe.sql': 'create table refused_probe (id int);\n' })
+    try {
+      for (const wrong of ['2m', '-1', '0', '1.5']) {
+        await expect(
+          withLockTimeout(wrong, () => runMigrations(target.db.url, { folder, entities: [] })),
+          wrong,
+        ).rejects.toThrow(MIGRATION_LOCK_TIMEOUT_VARIABLE)
+      }
+    } finally {
+      await target.dispose()
+      fs.rmSync(folder, { recursive: true, force: true })
+    }
+  })
+
   it('counts what is pending without writing anything', async () => {
     const target = await emptyDatabase('migrator-read-only-count')
     const folder = lineage({

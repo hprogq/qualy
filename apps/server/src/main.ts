@@ -2,6 +2,7 @@ import { inspect } from 'node:util'
 import { NodeRuntime } from '@effect/platform-node'
 import { Cause, Effect, Exit, Layer } from 'effect'
 import { readManifest } from '@qualy/assembly'
+import { shutdownTimeoutMs } from '@qualy/assembly/host'
 import { telemetryLayer } from '@qualy/telemetry'
 import { logLine, loggingLayer, resolveLogging } from './logging.ts'
 import { mark, reportBootTiming } from './boot-timing.ts'
@@ -277,7 +278,13 @@ traceLayerLifecycle({
     logLine(logging, 'Debug', `shutdown finalizer done:  ${name} ${String(elapsedMs)}ms`),
 })
 
-const forceExitAfter = Number(process.env.QUALY_SHUTDOWN_TIMEOUT ?? 30) * 1000
+const forceExitAfter = (() => {
+  try {
+    return shutdownTimeoutMs(process.env)
+  } catch (error) {
+    return refuse(error)
+  }
+})()
 let stoppingSince: number | null = null
 // what a timed-out shutdown exits with: a signal's own code when a signal
 // asked, a plain failure when the supervisor's channel did
