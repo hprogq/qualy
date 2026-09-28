@@ -22,16 +22,23 @@
 #   TENCENT_CLS_SECRET_KEY   and nothing else
 #   QUALY_INSTANCE_ID        a stable name for this host, the same one the
 #                            server carries in its resource
+#   TENCENT_TMP_REMOTE_WRITE_URL
+#                            the TMP instance's Remote Write address, on its
+#                            private network (http://<address>:9090/api/v1/prom/write)
+#   TENCENT_TMP_TOKEN        the instance's token, sent as a bearer token
 #
-# Metrics go to APM with the traces, and the console's sync rules carry them
-# on into TMP. A remote-write exporter to the TMP instance replaces that once
-# its private address is measured reachable from the server.
+# Metrics go to TMP by remote write, and nowhere else. They used to ride to
+# APM with the traces for the console's sync rules to carry on, which waited
+# only on the instance's private address being reachable from the server:
+# it is (measured 2026-09-29: the unauthenticated query and write endpoints
+# both answer 401 from the host). APM's own figures come from the spans, not
+# from these.
 #
 # Validated against the pinned image, with placeholder values:
 #   docker run --rm -v ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro \
 #     -e TENCENT_APM_ENDPOINT=x:4320 -e TENCENT_APM_TOKEN=x -e TENCENT_CLS_ENDPOINT=https://x \
 #     -e TENCENT_CLS_TOPIC_ID=x -e TENCENT_CLS_SECRET_ID=x -e TENCENT_CLS_SECRET_KEY=x \
-#     -e QUALY_INSTANCE_ID=x \
+#     -e QUALY_INSTANCE_ID=x -e TENCENT_TMP_REMOTE_WRITE_URL=http://x/ -e TENCENT_TMP_TOKEN=x \
 #     otel/opentelemetry-collector-contrib:0.159.0 validate --config=/etc/otelcol-contrib/config.yaml
 
 extensions:
@@ -100,6 +107,14 @@ exporters:
       authenticator: basicauth/tencent_cls
     headers:
       topic_id: ${env:TENCENT_CLS_TOPIC_ID}
+  # Metrics to the TMP instance over Prometheus remote write. The resource's
+  # service.name and service.instance.id become each series' job and
+  # instance; the rest of the resource goes to target_info rather than onto
+  # every series.
+  prometheusremotewrite/tencent_tmp:
+    endpoint: ${env:TENCENT_TMP_REMOTE_WRITE_URL}
+    headers:
+      authorization: Bearer ${env:TENCENT_TMP_TOKEN}
 
 service:
   extensions: [health_check, basicauth/tencent_cls]
@@ -111,10 +126,13 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, resource/tencent_apm, batch]
       exporters: [otlp_grpc/tencent_apm]
+    # Not through resource/tencent_apm: that processor writes the APM token
+    # into the resource, and a remote write carries resource attributes on
+    # (target_info) - the token would be a label in TMP.
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, resource/tencent_apm, batch]
-      exporters: [otlp_grpc/tencent_apm]
+      processors: [memory_limiter, batch]
+      exporters: [prometheusremotewrite/tencent_tmp]
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]

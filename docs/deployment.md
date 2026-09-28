@@ -192,9 +192,11 @@ host key(不用 runner 自带的 known_hosts)。发布制品(tag)与批准部署
   (`docker compose run --rm tools <命令>`),`QUALY_MIGRATIONS=off`。备份、恢复、基线导入与运维 CLI(`auth set-password`、
   `storage export`)都经它,不点名颜色,也不按带 project 前缀的名字找卷。
 - `otel-collector`(profile `telemetry`):`deploy/otel-collector.yaml` + `deploy/collector.env`(凭据只给这个容器),镜像按 digest 固定,
-  `mem_limit: 256m`,不发布端口;启动一次,升级不动它。traces 与 metrics 走 APM 内网接入点(gRPC over TLS 4320;同一地址的 4319 是明文,token 随每次上报发送,
-  所以走加密的那个——2026-09-28 从服务器实测协商出 h2、证书名含该主机;metrics 由控制台同步规则转入 TMP,
-  TMP 实例的 remote write 从服务器实测可达后再改直写),logs 经 OTLP/HTTP 进 CLS 内网域名。server 经 `.env` 的
+  `mem_limit: 256m`,不发布端口;启动一次,升级不动它——改了它的配置,要从新 release 的 `deploy/` 以同一 `collector.env` 重建这一个容器
+  (`docker compose --profile telemetry up -d otel-collector`),凭据先填再重建。traces 走 APM 内网接入点(gRPC over TLS 4320;同一地址的 4319 是明文,
+  token 随每次上报发送,所以走加密的那个——2026-09-28 从服务器实测协商出 h2、证书名含该主机);metrics 以 Prometheus remote write 直写 TMP 实例的内网地址
+  (`TENCENT_TMP_REMOTE_WRITE_URL`,Bearer `TENCENT_TMP_TOKEN`;2026-09-29 服务器与云联网打通后实测查询与写入端点不带凭据均答 401),不再经 APM
+  与控制台同步规则,且不过写入 APM token 的资源处理器(remote write 会把资源属性带进 `target_info`);logs 经 OTLP/HTTP 进 CLS 内网域名。server 经 `.env` 的
   `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318` 与 `OTEL_LOGS_EXPORTER=otlp` 上报,接入点不可达只是后台重试。
 - `postgres` 另有:`shared_buffers` 256MB、`effective_cache_size` 1GB、`work_mem` 8MB、`maintenance_work_mem` 64MB(`QUALY_PG_*` 可覆盖;
   PostgreSQL 自己的缺省假设整台机器归它)、`oom_score_adj: -500`(内存耗尽时先杀别的:server 被杀会重启,库被杀是一次恢复)、
