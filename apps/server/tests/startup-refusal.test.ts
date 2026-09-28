@@ -71,6 +71,24 @@ const said = (refusal: Refusal): readonly string[] =>
     })
 
 describe('a boot refused by a layer outside the application', () => {
+  // every plugin whose configuration refused, in one start: a deployment
+  // missing three settings used to learn of them one restart at a time
+  it('names every plugin whose configuration it refused, at once', async () => {
+    const refusal = await boot({
+      QUALY_RUM_REPORTING: 'yes',
+      QUALY_STORAGE_COS_SECRET_ID: 'half-a-credential',
+      QUALY_STORAGE_COS_SECRET_KEY: '',
+    })
+    expect(refusal.code).toBe(1)
+    const lines = said(refusal)
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toContain('the configuration of 2 plugin(s) was refused')
+    expect(lines[0]).toContain('@qualy/plugin-rum: ')
+    expect(lines[0]).toContain('QUALY_RUM_REPORTING')
+    expect(lines[0]).toContain('@qualy/plugin-storage-cos: ')
+    expect(lines[0]).toContain('QUALY_STORAGE_COS_SECRET_KEY')
+  }, 90_000)
+
   it('says which setting it refused, rather than exiting silently', async () => {
     const refusal = await boot({
       OTEL_EXPORTER_OTLP_ENDPOINT: 'http://127.0.0.1:4318',

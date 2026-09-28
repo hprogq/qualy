@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { Layer } from 'effect'
+import { Cause, Context, Effect, Exit, Layer } from 'effect'
 import type { AnyLayer, PluginDescriptor } from '@qualy/plugin-kit'
 import { assemble, type Assembled } from '@qualy/plugin-kit/assemble'
 import { runtimeLayers, runtimeLevels } from './runtime-plan.ts'
@@ -29,6 +29,56 @@ export interface LoadedAssembly extends Assembled {
 }
 
 /**
+ * Every plugin whose configuration was refused, each in its own words.
+ *
+ * A deployment missing three settings used to learn of them one start at a
+ * time: the configuration layers were built together and the first refusal
+ * ended the build. Now all of them are built, and the start fails once,
+ * naming every plugin that refused and why.
+ */
+export class ConfigurationRefused extends Error {
+  readonly _tag = 'ConfigurationRefused'
+  readonly refusals: readonly { readonly plugin: string; readonly reason: string }[]
+  constructor(refusals: readonly { readonly plugin: string; readonly reason: string }[]) {
+    super(
+      `the configuration of ${String(refusals.length)} plugin(s) was refused:\n${refusals
+        .map((refusal) => `  ${refusal.plugin}: ${refusal.reason}`)
+        .join('\n')}`,
+    )
+    this.name = 'ConfigurationRefused'
+    this.refusals = refusals
+  }
+}
+
+/** a refusal's own words on one line: a config error says which variable */
+const reasonOf = (cause: Cause.Cause<unknown>) => {
+  const error = Cause.squash(cause)
+  return (error instanceof Error ? error.message : String(error)).replace(/\s*\n\s*/g, ' ')
+}
+
+/** builds every plugin's configuration, and refuses once with all that failed */
+const configurationOf = (
+  configs: readonly { readonly plugin: string; readonly layer: AnyLayer }[],
+) =>
+  Layer.effectContext(
+    Effect.gen(function* () {
+      const built = yield* Effect.forEach(
+        configs,
+        ({ plugin, layer }) =>
+          Effect.map(Effect.exit(Layer.build(layer)), (exit) => ({ plugin, exit })),
+        { concurrency: 'unbounded' },
+      )
+      const refusals = built.flatMap(({ plugin, exit }) =>
+        Exit.isFailure(exit) ? [{ plugin, reason: reasonOf(exit.cause) }] : [],
+      )
+      if (refusals.length > 0) return yield* Effect.fail(new ConfigurationRefused(refusals))
+      return Context.mergeAll(
+        ...built.flatMap(({ exit }) => (Exit.isSuccess(exit) ? [exit.value] : [])),
+      )
+    }),
+  ) as AnyLayer
+
+/**
  * Every active plugin's descriptor, in dependency order.
  *
  * The descriptors were imported by resolution - a plugin IS its default
@@ -47,20 +97,20 @@ export function loadAssembly(
   const order = runtimeLevels(runtimeLayers(resolution)).flat()
 
   const descriptors: PluginDescriptor[] = []
-  const configs: AnyLayer[] = []
+  const configs: { plugin: string; layer: AnyLayer }[] = []
   for (const entry of order) {
     const descriptor = resolution.descriptors.get(entry.id)!
     descriptors.push(descriptor)
     if (entry.config !== undefined) {
       // presence was validated at resolve; the channel turns the block into
       // the plugin's own config service
-      configs.push(descriptor.config!(entry.config, { manifestDir }))
+      configs.push({ plugin: entry.id, layer: descriptor.config!(entry.config, { manifestDir }) })
     }
   }
 
   const assembled = assemble([...descriptors, ...(options.host ?? [])])
   return {
     ...assembled,
-    configs: Layer.mergeAll(Layer.empty, ...configs),
+    configs: configurationOf(configs),
   }
 }
