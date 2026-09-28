@@ -11,6 +11,7 @@ import {
 import type { DatabaseContribution } from './contribution.ts'
 import { structuralDiff } from './diff.ts'
 import { DESTRUCTIVE_APPROVED, destructiveIn, scanDestructive } from './drop-guard.ts'
+import { classifyRollout, rolloutLine } from './rollout.ts'
 import { asState, type DatabaseState } from './state.ts'
 import { databaseWork } from './work.ts'
 
@@ -89,17 +90,19 @@ export async function generateDatabase(
 }
 
 /**
- * What a generated migration is committed as: the SQL, and - when it drops
- * something - the approval, written where the guard reads it.
+ * What a generated migration is committed as: its rollout (rollout.ts), the
+ * SQL, and - when it drops something - the approval, written where the
+ * guard reads it.
  *
  * Getting past the refusal with ALLOW_DESTRUCTIVE=1 IS the approval. The file
  * used to be written without a word of it, so the full-lineage scan CI runs
  * stayed red for good unless somebody remembered the marker by hand, and
  * nothing in the repository could put it right afterwards: a committed
- * migration may not be edited.
+ * migration may not be edited. The rollout is generation's guess, for the
+ * reviewer to confirm or change before the migration is committed.
  */
 export const migrationText = (sql: string, destructive: readonly string[]): string =>
-  destructive.length === 0 ? sql : `${DESTRUCTIVE_APPROVED}\n${sql}`
+  `${rolloutLine(classifyRollout(sql))}\n${destructive.length === 0 ? '' : `${DESTRUCTIVE_APPROVED}\n`}${sql}`
 
 const stampOf = (at: Date) => at.toISOString().replace(/\D/g, '').slice(0, 14)
 
@@ -197,7 +200,9 @@ export function blankMigration(migrations: string, name: string | undefined): st
   // have already run, and two calls in one second with one name would leave
   // one file where there should be two
   const file = path.join(migrations, `${nextStamp(migrations)}_${slug(name ?? 'custom')}.sql`)
-  writeMigration(file, '-- owner: @qualy/plugin-<name>\n')
+  // maintenance until whoever writes it has checked that the release before
+  // it keeps working on what it leaves
+  writeMigration(file, `-- owner: @qualy/plugin-<name>\n${rolloutLine('maintenance')}\n`)
   return file
 }
 

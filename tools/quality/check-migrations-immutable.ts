@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { MIGRATION_FILE } from '../../packages/plugins/infra/database/src/defaults.ts'
+import { rolloutOf } from '../../packages/plugins/infra/database/src/assembly/rollout.ts'
 import { repoRoot } from '../lib/manifest.ts'
 
 // A committed migration is history: once it is on main it has been applied
@@ -17,6 +18,12 @@ import { repoRoot } from '../lib/manifest.ts'
 // clock behind the lineage produces anywhere. So every added file must be
 // named by the lineage's rule and stamped strictly after the base's last
 // migration. Until it is merged it can still be renamed to a later instant.
+//
+// And say how it rolls out: `-- rollout: expand` when the release before it
+// keeps working on what it leaves, `-- rollout: maintenance` when it does not
+// (packages/plugins/infra/database/src/assembly/rollout.ts). Generation
+// writes its guess; a migration added without either is refused, because the
+// upgrade script would have to guess instead.
 //
 //   node tools/quality/check-migrations-immutable.ts <base-ref>
 //
@@ -170,6 +177,17 @@ if (early.length > 0) {
   process.exit(1)
 }
 
+const silent = added.filter(
+  (name) => rolloutOf(git(['show', `HEAD:db/migrations/${name}`])) === undefined,
+)
+if (silent.length > 0) {
+  console.error(
+    `check-migrations-immutable: ${String(silent.length)} added migration(s) do not say how they roll out. Add a line \`-- rollout: expand\` when the release before this one keeps working on what the migration leaves (it only adds), or \`-- rollout: maintenance\` when it does not; pnpm qualy generate writes its guess:`,
+  )
+  for (const name of silent) console.error(`  ${name}`)
+  process.exit(1)
+}
+
 console.log(
-  `check-migrations-immutable: the lineage only grew since ${base}, at its end (${String(added.length)} migration(s) added after ${head ?? 'nothing'})`,
+  `check-migrations-immutable: the lineage only grew since ${base}, at its end (${String(added.length)} migration(s) added after ${head ?? 'nothing'}, each saying how it rolls out)`,
 )

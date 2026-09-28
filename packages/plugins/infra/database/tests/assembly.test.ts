@@ -431,8 +431,9 @@ describe('the instant a migration is named by', () => {
       expect(() => writeMigration(path.join(dir, first), 'drop table everything;\n')).toThrow(
         /already exists; a migration never replaces another/,
       )
+      // maintenance until whoever writes it says otherwise
       expect(fs.readFileSync(path.join(dir, first), 'utf8')).toBe(
-        '-- owner: @qualy/plugin-<name>\n',
+        '-- owner: @qualy/plugin-<name>\n-- rollout: maintenance\n',
       )
       expect(fs.readdirSync(dir).filter((name) => name.endsWith('.tmp'))).toEqual([])
     } finally {
@@ -502,8 +503,8 @@ describe('drop guard', () => {
       expect(scanDestructive([file])).toEqual([])
       expect(() => guardDestructive(allMigrationFiles(dir))).not.toThrow()
 
-      // a migration with nothing to approve is written exactly as generated
-      expect(migrationText(sql, [])).toBe(sql)
+      // a migration with nothing to approve carries only its rollout
+      expect(migrationText(sql, [])).toBe(`-- rollout: maintenance\n${sql}`)
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })
     }
