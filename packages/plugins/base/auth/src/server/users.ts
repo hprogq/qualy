@@ -15,6 +15,7 @@ import { LoginDrivers } from '@qualy/auth-contract/login'
 import { actorOf } from './audit-actor.ts'
 import { secretSubjectOf } from './secret-subject.ts'
 import { retireChallenges } from './email-flows.ts'
+import { recoveryDoorTypes } from './recovery.ts'
 import { normalizeEmail } from '@qualy/auth-contract/email'
 import {
   BindingRevoked,
@@ -1383,6 +1384,140 @@ export const make = Effect.fn('Iam.users.make')(function* () {
             details: { providerId, bindingId, replaced: standing !== undefined, endedSessions },
           })
           return bindingId
+        }),
+      ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+    }),
+
+    /**
+     * Sets somebody's password from the operator's shell rather than from a
+     * screen (`qualy auth set-password`): how the accounts an imported
+     * baseline carries are given this deployment's own passwords before it
+     * is opened.
+     *
+     * Nobody is signed in, so nobody's authority is asked; the shell and the
+     * database are the authority, and the audit trail names the system as the
+     * actor, from the cli. Everything else is `putBinding`'s: the tenant's
+     * password door, the same strength rules judged against the person, the
+     * same locked write, and the sessions and pending address changes end
+     * with the old credential. It is also the one way to reach the system
+     * account, which no screen may change - rotating its password keeps the
+     * recovery channel whole rather than breaking it.
+     */
+    setPasswordAsOperator: Effect.fn('Iam.users.setPasswordAsOperator')(function* (input: {
+      tenantSlug: string
+      email: string
+      secret: string
+    }) {
+      const refused = (reason: string) => Effect.succeed({ refused: reason } as const)
+      const email = normalizeEmail(input.email)
+      if (email === null) return yield* refused(`${input.email} is not an email address`)
+      const tenant = yield* withDb(
+        db.query((k) =>
+          k
+            .selectFrom('Tenant')
+            .select('id')
+            .where('slug', '=', input.tenantSlug)
+            .executeTakeFirst(),
+        ),
+      ).pipe(Effect.orDie)
+      if (tenant === undefined) return yield* refused(`no tenant ${input.tenantSlug}`)
+      const tenantId = tenant.id
+      const user = yield* withDb(
+        db.query((k) =>
+          k
+            .selectFrom('User')
+            .select(['id', 'userTypeId'])
+            .where('tenantId', '=', tenantId)
+            .where('email', '=', email)
+            .where('deletedAt', 'is', null)
+            .executeTakeFirst(),
+        ),
+      ).pipe(Effect.orDie)
+      if (user === undefined) return yield* refused(`nobody in ${input.tenantSlug} has ${email}`)
+      const doorTypes = recoveryDoorTypes(yield* drivers.all)
+      const door = yield* withDb(
+        db.query((k) =>
+          k
+            .selectFrom('AuthProvider')
+            .select(['id', 'type'])
+            .where('tenantId', '=', tenantId)
+            .where('isSystem', '=', true)
+            .where('deletedAt', 'is', null)
+            .where('type', 'in', doorTypes.length === 0 ? [''] : doorTypes)
+            .executeTakeFirst(),
+        ),
+      ).pipe(Effect.orDie)
+      const binding = door === undefined ? undefined : (yield* drivers.forType(door.type))?.driver
+      if (door === undefined || binding?.binding?.mode !== 'managed') {
+        return yield* refused(`${input.tenantSlug} has no password door`)
+      }
+      const prepared = yield* binding.binding.prepare({
+        secret: input.secret,
+        subject: yield* withDb(secretSubjectOf(tenantId, user.id)).pipe(Effect.orDie),
+      })
+      if (!prepared.ok) {
+        const failed = Object.entries(prepared.checks)
+          .filter(([, holds]) => !holds)
+          .map(([rule]) => rule)
+        return yield* refused(`the password is not acceptable: ${failed.join(', ')}`)
+      }
+      return yield* writeBinding(tenantId, () =>
+        Effect.gen(function* () {
+          const current = yield* db.query((k) =>
+            k
+              .selectFrom('User')
+              .select(['id', 'displayName', 'primaryOrgNodeId', 'userTypeId'])
+              .where('tenantId', '=', tenantId)
+              .where('id', '=', user.id)
+              .where('deletedAt', 'is', null)
+              .executeTakeFirst(),
+          )
+          if (current === undefined) return { refused: `${email} was removed meanwhile` } as const
+          const admitted = yield* entrancesOf(tenantId, current.id, current.userTypeId)
+          if (admitted.find((entrance) => entrance.providerId === door.id)?.admits !== true) {
+            return { refused: `the password door does not admit ${email}` } as const
+          }
+          const standing = yield* liveBinding(tenantId, current.id, door.id)
+          const bindingId =
+            standing === undefined
+              ? (yield* db.query((k) =>
+                  k
+                    .insertInto('UserAuthBinding')
+                    .values({
+                      tenantId,
+                      userId: current.id,
+                      authProviderId: door.id,
+                      subject: null,
+                      credentialHash: prepared.credentialHash,
+                    })
+                    .returning('id')
+                    .executeTakeFirstOrThrow(),
+                )).id
+              : (yield* db.query((k) =>
+                  k
+                    .updateTable('UserAuthBinding')
+                    .set({ credentialHash: prepared.credentialHash })
+                    .where('tenantId', '=', tenantId)
+                    .where('id', '=', standing.id)
+                    .returning('id')
+                    .executeTakeFirstOrThrow(),
+                )).id
+          const endedSessions = yield* deleteUserSessions(tenantId, current.id)
+          yield* retireChallenges(tenantId, current.id, ['change'])
+          yield* audit.record(BindingWritten, {
+            tenantId,
+            actor: { kind: 'system', label: 'qualy auth set-password' },
+            source: 'cli',
+            target: { id: current.id, label: current.displayName },
+            organizationId: current.primaryOrgNodeId!,
+            details: {
+              providerId: door.id,
+              bindingId,
+              replaced: standing !== undefined,
+              endedSessions,
+            },
+          })
+          return { userId: current.id, replaced: standing !== undefined, endedSessions } as const
         }),
       ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
     }),

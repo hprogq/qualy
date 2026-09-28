@@ -1253,6 +1253,92 @@ describe.runIf(postgresAvailable).concurrent('the way in written for a person', 
       await db.dispose()
     }
   })
+
+  // An imported baseline's accounts are given this deployment's passwords
+  // from the operator's shell (`qualy auth set-password`): nobody signed in,
+  // no authority asked, the system as the actor - and the system account,
+  // which no screen may touch, among them.
+  it('sets a password from the operator shell, the system account included', async () => {
+    const db = await createTestContext('effect-binding-operator')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const iam = yield* Iam
+          const provider = yield* providerOf(f.tenant)
+          // the platform's password door, as provisioning leaves it
+          yield* runSql(sql`update auth_providers set is_system = true where id = ${provider}`)
+          const systemType = one_<{ id: string }>(
+            yield* runSql(sql`
+              insert into user_types (tenant_id, code, name, placement_mode, is_system)
+              values (${f.tenant}, 'system-account', 'System', 'unrestricted', true)
+              returning id`),
+          ).id
+          const system = one_<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, email)
+              values (${f.tenant}, 'System', ${systemType}, ${f.root}, 'root@school.edu')
+              returning id`),
+          ).id
+          yield* addressed(f.onLeft, 'ada@school.edu')
+          yield* iam.users.putBinding(
+            f.tenant,
+            f.onLeft,
+            provider,
+            { secret: 'first-secret' },
+            f.as,
+          )
+          yield* runSql(sql`
+            insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at)
+            values (${f.tenant}, ${f.onLeft}, ${provider}, 'ada-session', now() + interval '1 day')`)
+          const set = (email: string, secret: string) =>
+            iam.users.setPasswordAsOperator({ tenantSlug: 't', email, secret })
+          const person = yield* set('Ada@School.edu', 'operator-secret')
+          const root = yield* set('root@school.edu', 'rotated-secret')
+          const weak = yield* set('ada@school.edu', 'short')
+          const nobody = yield* set('nobody@school.edu', 'operator-secret')
+          const elsewhere = yield* iam.users.setPasswordAsOperator({
+            tenantSlug: 'nowhere',
+            email: 'ada@school.edu',
+            secret: 'operator-secret',
+          })
+          const events = (yield* runSql(sql`
+            select actor_kind, actor_label, source from audit_events
+             where target_id = ${f.onLeft} order by occurred_at, id`)) as unknown as {
+            rows: { actor_kind: string; actor_label: string | null; source: string }[]
+          }
+          return {
+            person,
+            root,
+            weak,
+            nobody,
+            elsewhere,
+            ada: yield* bindingsOf(f.onLeft),
+            system: yield* bindingsOf(system),
+            events: events.rows,
+          }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.person).toMatchObject({ replaced: true, endedSessions: 1 })
+      expect(answer.ada.map((row) => row.credential_hash)).toEqual(['digest:operator-secret'])
+      expect(answer.root).toMatchObject({ replaced: false })
+      expect(answer.system.map((row) => row.credential_hash)).toEqual(['digest:rotated-secret'])
+      // judged by the door's own rules, against the person it is for
+      expect(answer.weak).toEqual({ refused: expect.stringContaining('length') })
+      expect(answer.nobody).toEqual({ refused: expect.stringContaining('nobody@school.edu') })
+      expect(answer.elsewhere).toEqual({ refused: 'no tenant nowhere' })
+      // the first write was the manager's; the second the operator's, as the system
+      expect(answer.events.at(-1)).toEqual({
+        actor_kind: 'system',
+        actor_label: 'qualy auth set-password',
+        source: 'cli',
+      })
+    } finally {
+      await db.dispose()
+    }
+  })
 })
 
 describe

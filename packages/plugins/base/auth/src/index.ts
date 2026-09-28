@@ -3,6 +3,7 @@ import { OrgUsage } from '@qualy/org-contract/plugin'
 import { peopleAtNode } from './server/node-usage.ts'
 import { message } from '@qualy/i18n-contract'
 import { Plugin } from '@qualy/plugin-kit'
+import { Cli } from '@qualy/plugin-kit/cli'
 import { Api } from '@qualy/api-kit/plugin'
 import { Db } from '@qualy/plugin-database/plugin'
 import { Login } from '@qualy/auth-contract/plugin'
@@ -70,6 +71,15 @@ const plugin = Plugin.define(
   },
   Db.entities(entities, { compositeForeignKeys, dependsOn: ['@qualy/plugin-org'] }),
   Audit.actions('auth', userActions),
+  // an operator's way to give an imported account this deployment's password,
+  // run over the assembled services and never by the serving process
+  Cli.command({
+    namespace: 'auth',
+    name: 'set-password',
+    summary: "set a person's password from a variable in this process's environment",
+    context: 'runtime',
+    load: () => import('./cli/set-password.ts'),
+  }),
   // the words a tenant may choose for this domain, compiled by the settings plugin
   Settings.definitions({
     categories: Object.values(authTermCategories),
