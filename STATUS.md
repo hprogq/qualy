@@ -20632,5 +20632,5 @@ W12 审查意见收尾（十一组，分组见仓库外 `audit-2026-09-25/wave13
 ### 下一步
 
 - 用户：建 `qualy-ci-storage` 与两个 CI 桶，把 `QUALY_STORAGE_COS_SECRET_ID`/`_SECRET_KEY`（secret）与 `QUALY_STORAGE_COS_REGION`/`_BUCKET`/`QUALY_TEST_COS_VERSIONED_BUCKET`（variable）放进 `cos-test` 环境。
-- 推送后看 CI 的 image job 在 Linux 上走真 Caddy 通过。
+- ~~推送后看 CI 的 image job 在 Linux 上走真 Caddy 通过~~：run 36388456257 五个 job 全绿；image job 的冒烟打出 `caddy in front, serving the maintenance page`，首色、升级、回滚、恢复后各一行 `caddy sends traffic to 127.0.0.1:<port>, and it answers`（升级后换到 green 的端口，回滚与恢复后回到 blue 的），`RECONCILED` 一步在 Caddy 模式下照常，`release-smoke: ci ok`。
 - 之后是服务器侧（D1，逐步同意）：deploy 用户、sudoers、launcher、`deploy.conf`、只读令牌 `docker login`、`production` 环境的 `QUALY_DEPLOY_SSH_KEY` 与 `QUALY_DEPLOY_KNOWN_HOSTS`。
