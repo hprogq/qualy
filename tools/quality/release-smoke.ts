@@ -167,6 +167,10 @@ const compose = (
 
 let failed = false
 const step = (line: string) => console.log(`release-smoke: ${line}`)
+
+/** a line of the env file, exactly: a release name's dots are dots */
+const envLine = (line: string) =>
+  new RegExp(`^${line.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm')
 class SmokeFailed extends Error {}
 // a declaration, not an arrow in a const: only a name with an explicit type
 // narrows the code after the call, and `never` is what the callers lean on
@@ -516,7 +520,7 @@ try {
     if (await reachable(blue)) refuse('blue still answers after the upgrade')
     const env = fs.readFileSync(envFile, 'utf8')
     expectIn('env after upgrade', env, /^QUALY_ACTIVE_COLOR=green$/m)
-    expectIn('env after upgrade', env, new RegExp(`^QUALY_RELEASE_GREEN=${next}$`, 'm'))
+    expectIn('env after upgrade', env, envLine(`QUALY_RELEASE_GREEN=${next}`))
     step(`upgrade.sh: green serves ${next}, blue stopped with ${release} kept for rollback`)
     await edgeOn('after the upgrade', greenPort)
   }
@@ -548,7 +552,7 @@ try {
     expectIn('reconcile', ran.out, `RECONCILED: the edge serves green running ${next}`)
     const env = fs.readFileSync(envFile, 'utf8')
     expectIn('env after reconcile', env, /^QUALY_ACTIVE_COLOR=green$/m)
-    expectIn('env after reconcile', env, new RegExp(`^QUALY_RELEASE=${next}$`, 'm'))
+    expectIn('env after reconcile', env, envLine(`QUALY_RELEASE=${next}`))
     step('rollback.sh: .env left naming blue is brought back to green, which serves')
     if (ran.code === 0) refuse('a rollback past an unknown migration did not refuse')
     expectIn('unknown rollback', ran.out, unknown)

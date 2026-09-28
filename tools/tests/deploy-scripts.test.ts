@@ -65,21 +65,17 @@ let envFile: string
 let snippet: string
 
 const run = (script: string, extra: Record<string, string> = {}) =>
-  spawnSync(
-    'sh',
-    ['-c', `here=${JSON.stringify(path.dirname(LIB))}; . ${JSON.stringify(LIB)}; ${script}`],
-    {
-      env: {
-        ...process.env,
-        PATH: `${path.join(fake, 'bin')}:${process.env.PATH ?? ''}`,
-        FAKE: fake,
-        QUALY_ENV_FILE: envFile,
-        QUALY_PROXY_UPSTREAM: snippet,
-        ...extra,
-      },
-      encoding: 'utf8',
+  spawnSync('sh', ['-c', `here="$1"; . "$2"; ${script}`, 'sh', path.dirname(LIB), LIB], {
+    env: {
+      ...process.env,
+      PATH: `${path.join(fake, 'bin')}:${process.env.PATH ?? ''}`,
+      FAKE: fake,
+      QUALY_ENV_FILE: envFile,
+      QUALY_PROXY_UPSTREAM: snippet,
+      ...extra,
     },
-  )
+    encoding: 'utf8',
+  })
 
 const serverRuns = (color: string, release: string) => {
   fs.mkdirSync(path.join(fake, 'running'), { recursive: true })
@@ -250,10 +246,7 @@ describe('one deployment step at a time', () => {
   it('refuses a second step while the first holds the lock', async () => {
     const holder = spawn(
       'sh',
-      [
-        '-c',
-        `here=${JSON.stringify(path.dirname(LIB))}; . ${JSON.stringify(LIB)}; take_lock; echo held; sleep 3`,
-      ],
+      ['-c', 'here="$1"; . "$2"; take_lock; echo held; sleep 3', 'sh', path.dirname(LIB), LIB],
       { env: { ...process.env, QUALY_ENV_FILE: envFile } },
     )
     await new Promise<void>((resolve) => holder.stdout.once('data', () => resolve()))

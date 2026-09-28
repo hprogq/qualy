@@ -55,7 +55,9 @@ fs.writeFileSync(rootManifestPath, JSON.stringify(rootManifest, null, 2) + '\n')
 // plugin do". This script's own job is the part that is only true inside
 // this repository - the workspace dependency.
 const manifestPath = 'qualy.yml'
-const selected = new RegExp(`^\\s*'?${name}'?:`, 'm').test(fs.readFileSync(manifestPath, 'utf8'))
+// the name as written, not as a pattern: a plugin name may carry a dot
+const literal = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const selected = new RegExp(`^\\s*'?${literal}'?:`, 'm').test(fs.readFileSync(manifestPath, 'utf8'))
 
 const pluginManifest = (() => {
   const stack = ['packages']

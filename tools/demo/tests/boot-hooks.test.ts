@@ -10,7 +10,7 @@ import { BOOT_HOOKS } from '../boot-hooks.ts'
 const PLUGINS = path.resolve(import.meta.dirname, '../../../packages/plugins')
 
 /** boot hooks register a name and a run, perhaps with a comment between; readiness probes register a probe */
-const REGISTERED = /\.register\(\{\s*name:\s*'([^']+)',(?:\s*\/\/[^\n]*)*\s*run:/g
+const REGISTERED = /\.register\(\{\s*name:\s*'([^']+)',(?:\s|\/\/[^\n]*\n)*run:/g
 
 const sources = (dir: string): string[] =>
   fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
