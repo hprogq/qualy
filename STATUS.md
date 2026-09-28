@@ -20592,7 +20592,19 @@ W12 审查意见收尾（十一组，分组见仓库外 `audit-2026-09-25/wave13
 - 发布冒烟（本机 `pnpm release:build --platform linux/arm64` 出的 `9599ec55-dirty`；`-dirty` 来自一个 git 忽略、docker 不忽略的本地文件 `skills-lock.json`；CI 的 image job 按 amd64 跑同一脚本）：第一次在首个 `upgrade.sh` 失败（变量覆盖），第二次在 `restore.sh` 失败（停着的服务色），两处修复后 `release-smoke: 9599ec55-dirty ok`。新增一步：回滚前把 `.env` 改回记 blue，`rollback.sh` 打出 `RECONCILED: the edge serves green running 9599ec55-dirty-next` 并记回 green，再按不认识的迁移拒绝；「待应用迁移不是 expand」的拒绝照常（藏起的那条没有 rollout 行）。
 - `pnpm typecheck`、`pnpm lint`、`pnpm lint:types` exit 0；改动文件 `oxfmt --check` 通过。
 
+- CI（推送 `bf4b21a05`…`d146eb616`）：run 36382747134 五个 job 全绿（static、ci、browser、browser-webkit、image——image 即 amd64 上的发布冒烟，含新增的 `RECONCILED` 一步）。**A 关账。**
+
+## 发布流水线：tag → 镜像仓库，按 digest 记录（2026-09-28）
+
+- `5047195f4`：`ci.yml` 加 `workflow_call`（输入 `skip-image`）；`release.yml` 由 `v*` tag 触发，`needs` 同一 commit 上的完整 CI（不查 API），tag 必须在 main 上、同名 release 未发布过 → `build-images.ts <tag> --check --platform linux/amd64` → `release-smoke.ts <tag>` → 推 `vars.QUALY_REGISTRY`（CNB）→ `tools/release/push-images.ts` 写 `release.json`（三个镜像的 `ref@sha256`、revision、平台、web release id）挂到该 tag 的 GitHub release。推送令牌只在 `release` 环境。`connectivity.yml` 手动运行：同一脚本以 `connectivity-<run>` 推一遍并逐个计时，另对服务器 SSH 端口扫 host key。docs/deployment.md §2.5。
+- `push-images.ts` 在推之前拒绝：标签的 version 不是该 release、三者 revision 或平台不一致、revision 带 `-dirty`（本机实测：`9599ec55-dirty was built from a working directory, not a commit`）、服务器镜像不带 web release。
+
+### 验收（实际执行）
+
+- actionlint（`rhysd/actionlint` 镜像）对 ci.yml、release.yml、connectivity.yml：exit 0，无输出。
+- `pnpm vitest run tools/tests`：`Test Files  57 passed (57)`，`Tests  367 passed (367)`；`pnpm typecheck`、`pnpm lint`、`pnpm lint:types` exit 0。
+
 ### 下一步
 
-- 推送后看 CI 五个 job 全绿，A 关账。
-- 进入 B：`ci.yml` 加 `workflow_call`，tag 触发的发布工作流 `needs` 它；连通性任务先测推 CNB 的耗时；受限 SSH 的部署任务在服务器侧准备（D1）得到同意之后才能真跑。
+- 需要用户：CNB 仓库路径与推送令牌（进 GitHub `release` 环境）→ 跑 connectivity，看推送耗时。
+- 部署任务（B3）与服务器侧准备（D1）待定：部署脚本随镜像走还是在服务器手动更新；COS 真桶门禁与「dev 密钥不进 GitHub」的冲突。
