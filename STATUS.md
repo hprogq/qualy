@@ -20634,3 +20634,27 @@ W12 审查意见收尾（十一组，分组见仓库外 `audit-2026-09-25/wave13
 - 用户：建 `qualy-ci-storage` 与两个 CI 桶，把 `QUALY_STORAGE_COS_SECRET_ID`/`_SECRET_KEY`（secret）与 `QUALY_STORAGE_COS_REGION`/`_BUCKET`/`QUALY_TEST_COS_VERSIONED_BUCKET`（variable）放进 `cos-test` 环境。
 - ~~推送后看 CI 的 image job 在 Linux 上走真 Caddy 通过~~：run 36388456257 五个 job 全绿；image job 的冒烟打出 `caddy in front, serving the maintenance page`，首色、升级、回滚、恢复后各一行 `caddy sends traffic to 127.0.0.1:<port>, and it answers`（升级后换到 green 的端口，回滚与恢复后回到 blue 的），`RECONCILED` 一步在 Caddy 模式下照常，`release-smoke: ci ok`。
 - 之后是服务器侧（D1，逐步同意）：deploy 用户、sudoers、launcher、`deploy.conf`、只读令牌 `docker login`、`production` 环境的 `QUALY_DEPLOY_SSH_KEY` 与 `QUALY_DEPLOY_KNOWN_HOSTS`。
+
+## D1：发布候选走通，服务器准备到只差 fetch-only（2026-09-28）
+
+- 仓库：`deploy.yml` 校验 `release.json` 的 revision 就是 tag 指向的 commit，`v*` tag 由 ruleset 24103910 禁止移动与删除（`9a5a88265`）；launcher 的 helper 变量一律 `local`（只有 release / revision / held 共享），`check` 与 `fetch` 在没有 `.env` 时也能跑（`2c26ddc84`）；拉取用 launcher 自己的 docker 配置 `/etc/qualy/docker`，不动 root 默认配置——服务器上 tuimian 与 Algryth 也从 `docker.cnb.cool` 拉，一个配置里同一仓库只有一份凭据（`bf79f4929`）；`deploy.yml` 加 `fetch`（与 `deploy` 共用 release 解析，只差命令前缀）、job 超时 30 分钟、SSH 只认 `production` 里那一行 host key（`UserKnownHostsFile` + `GlobalKnownHostsFile=/dev/null`）、私钥在 `umask 077` 下写出、`--maintenance` 只给 deploy（`d54357258`）；`current` 只表示正在服务的 release，fetch 不再在没有它时建它，首次手工部署的最后一步在 README 里写明，rollback 带 release 参数即拒绝（`34b206afb`）。
+- 发布候选 `v0.1.0-rc.1`（`9a5a88265`，run 36395128544）：CI 全绿（image 按设计跳过）；`cos` job 第一次在 GitHub 上以 `qualy-ci-storage` 对两个 CI 桶跑真桶套件：`Test Files  8 passed (8)`，`Tests  58 passed (58)`，无跳过；`release` job：`deploy/: 15 file(s), every one byte for byte`，冒烟在真 Caddy 后面 `v0.1.0-rc.1 ok`，推 CNB 26s / 15s / 17s；`release.json` 的 revision `9a5a88265d65…` 与 tag 指向的 commit 相同。
+- 服务器（每步前说明，只动 Qualy 自己的部分与计划里定下的宿主机设置）：
+  - Algryth `compose stop`（重启策略 `unless-stopped`，重启机器也不会自己回来；卷、Caddy 站点、DNS 不动），可用内存 2081 → 2651 MB。
+  - zram 1 GiB（zstd，优先级 100，高于 1.9G 的 swap 文件），`vm.swappiness=100`、`vm.page-cluster=0` 写入 `/etc/sysctl.d/99-qualy-memory.conf`，均开机生效。基线：主机已用 1094 MB、可用 2629 MB，swap 共 3011 MB；tuimian web 205 MB、db 83 MB。
+  - launcher 按提交内容核对 sha256 后以 root:root 0755 装到 `/usr/local/sbin/qualy-deploy`（现为 `34b206afb`，sha256 `d5085a63…`）；`/etc/qualy/deploy.conf` 指向 `docker.cnb.cool/hprogq/qualy`；`/opt/qualy` 已建。
+  - `qualy-deploy` 系统账户：密码锁定（`passwd -S` 为 `L`）、不进 docker 组、shell `/bin/sh`；sudoers 只允许 launcher 这一个路径（`visudo -cf` 通过）。现有的 `deploy` 账户（docker 组，Algryth 与 tuimian 的 CI）未动。
+  - Actions 的 key（ed25519，`SHA256:O2+6bFa5…`）：公钥以 `restrict,no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding,command="/usr/local/sbin/qualy-deploy"` 装入，私钥从文件导入 `production` 的 `QUALY_DEPLOY_SSH_KEY`。实测：`check` 可用；`sh -c id` 得 usage 拒绝；`sha256:abc` 得 digest 拒绝；经转发连接得 `administratively prohibited`；要 PTY 得 `PTY allocation request failed`。
+  - host key：服务器上的公钥文件、从本机扫描、本机 known_hosts、腾讯云控制台 VNC 四处指纹一致 `SHA256:K6IrwIeKSqNJYtBQyvv4Z+crma2dhGEcyBmpngpd5rk`；由公钥文件生成的那一行在只用它、严格校验下连接成功后放入 `production` 的 `QUALY_DEPLOY_KNOWN_HOSTS`。
+  - CNB 只读令牌由用户登录进 `/etc/qualy/docker`：目录 root:root 700、`config.json` root:root 600，只有 `docker.cnb.cool`；root 默认配置仍为空；按 digest 拉 `qualy-server` 成功（21s）。明文存储的警告接受：文件权限加只读、只对 qualy 仓库有效的令牌就是这里的保护。
+  - root SSH 登录关闭（`/etc/ssh/sshd_config.d/10-no-root-login.conf`，Include 在主配置的 `PermitRootLogin yes` 之前，`sshd -t` 通过后 reload）；之后 `ubuntu` 新开连接与 sudo 正常，root 被断开，Actions 的 key 照常可用。
+- 数据库的 OOM 保护：两份评审分歧（运行时写 `/proc` + 改 compose 不重建，对「不碰 tuimian、不写临时状态」）。取两者之长，落在各自仓库：tuimian `infra/production/compose.yml` 的 db 设 `oom_score_adj: -500`（其仓库 `7da6e51`，用户随后自行部署，服务器上 `tuimian-db` 与内核里均为 -500、healthy）；Algryth 同样一行（其仓库 `6e3c3a36`，未推送、未部署，Algryth 继续停着，面试前恢复时带上）。
+- fetch-only（`deploy.yml`，`action=fetch`、`release=v0.1.0-rc.1`，run 36402334701，经 `production` 审批）：工作流按 `release.json` 发出 `fetch v0.1.0-rc.1 sha256:0fde9a15… sha256:d034e795… sha256:6c00be19…`，launcher 回报三个本机名与 `deploy scripts are in /opt/qualy/releases/v0.1.0-rc.1/deploy`。服务器核对：三个镜像的 RepoDigests 即上述 digest、revision 都是 `9a5a88265d65…`、version `v0.1.0-rc.1`、`linux/amd64`；`/opt/qualy/releases/v0.1.0-rc.1/` 16 个文件（`deploy/` 15 个 + `server-digest`），无一不属 root 或可被组与其他人写；`current` 不存在；运行中的容器只有 tuimian 的两个。`check`：`docker 29.6.1`、`serving:`（空）、`current: none`、`releases: v0.1.0-rc.1`。
+- 镜像在这台机器上的尺寸：压缩（传输）152.7 / 70.1 / 91.8 MB，共 314.6 MB；两个沙箱镜像落盘增量 495 MB（server 已在验证只读令牌时拉过，`df` 24777M → 25272M）；`docker images` 显示 849 / 327 / 424 MB（containerd 存储下为解压加压缩内容，三者共享 node 基础层，不可相加）；整套约 1.3 GB，磁盘余 32.5 GB。
+- 本机那份 Actions 私钥已删除，私钥只在 GitHub `production` 环境；服务器只有受限的公钥。
+- 公开仓库的 Actions 日志里有服务器 IP 与端口：IP 由 DNS 公开（站点不接 CDN），端口一次扫描可得，不构成新的暴露；仍按「日志全世界可见」对待今后打印的内容。
+
+### 下一步
+
+- D2：在 `/opt/qualy` 写生产 `.env`（从本 release 的 `deploy/.env.example`，`QUALY_BACKUP_ROOT` 第一天就设）与 `collector.env`；Caddy 站点与上游片段（维护页读 `/opt/qualy/current/deploy/demo`）。
+- 之后 D3（预发上一次升级与回滚）、D4（生产：开版本控制 → 迁移 → 导入基线 → 轮换密码 → 启动，首次手工部署的最后一步把 `current` 指向服务中的 release）。备份桶与只写账号由用户在第一次真实升级前建好。
