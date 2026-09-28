@@ -162,6 +162,9 @@ jobs:
   sourcemaps:
     needs: release
     runs-on: ubuntu-latest
+    # a stalled upload is abandoned after two minutes and tried again, so a
+    # run that takes longer than this is stuck rather than slow
+    timeout-minutes: 30
     environment: rum-sourcemaps
     env:
       RELEASE: ${{ github.ref_name }}

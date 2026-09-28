@@ -125,6 +125,10 @@ compose 与 `upgrade.sh` 不需要知道镜像仓库。`connectivity.yml` 是手
 交给 `sourcemaps` job。后者在 `rum-sourcemaps` 环境(只允许 `v*` tag)里,先核对 map 属于已发布 `release.json` 的 `webRelease`,再以
 `qualy rum sourcemaps` 按与浏览器相同的版本映射交给腾讯 RUM;上传凭据(`QUALY_RUM_TENCENT_SOURCEMAP_*`,子账号 `qualy-rum-uploader`)
 只给上传那一步。它排在发布之后:map 没交上是一个要看的红 job,不是一个没发出去的 release(docs/rum.md 的失败策略)。
+runner 在境外、RUM 的桶在境内,桶会以 `RequestTimeOut`「User network is too slow」丢弃过慢的连接(SDK 对 4xx 不重试;
+v0.1.0-rc.3 的 job 因此跑了十分钟,一个 map 也没登记上),所以上传器 4 路并发、单个请求两分钟无进展即放弃、每个 map 换新 key 重试三次、
+每 32 个登记一次记录,job 设 30 分钟上限。失败的一次留下已登记的部分,重跑只补缺的;重跑 job 用的是 tag 当时的代码,
+所以修了上传器之后,用本机检出对该 release 的 `web-dist` artifact(保留一天,先按上面同样核对 `webRelease`)跑同一条命令补交。
 
 ### 2.6 部署:按 digest,脚本随 release(2026-09-28)
 

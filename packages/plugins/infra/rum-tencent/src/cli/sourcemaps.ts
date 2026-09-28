@@ -38,6 +38,23 @@ const CREDENTIAL_LEAST_SECONDS = 300
 /** enough to keep the wire busy, few enough to stay well inside the api's rate */
 const CONCURRENCY = 8
 
+// The maps cross an ocean: the pipeline runs on a hosted runner abroad and
+// the platform's bucket is in China. The bucket drops a connection it judges
+// too slow ("User network is too slow", a 400 the sdk never retries), which is
+// how the v0.1.0-rc.3 run lost ten minutes and every map. So fewer uploads
+// share the line, a stalled one is abandoned rather than waited out, each map
+// is tried again on a fresh key, and records are filed as groups finish - a
+// run that still fails keeps what it filed, and the next run starts there.
+
+/** uploads at once, so each connection keeps a speed the bucket accepts */
+const UPLOAD_CONCURRENCY = 4
+/** tries per map before the run gives up */
+const UPLOAD_ATTEMPTS = 3
+/** a request that has moved nothing for this long is abandoned */
+const STALL_MS = 120_000
+/** maps uploaded between records */
+const FILE_EVERY = 32
+
 const refuse = (message: string): never => {
   throw new CliRefused(message)
 }
@@ -101,8 +118,12 @@ const certificateFor = async (
   }
 }
 
-const md5 = (file: string): string =>
-  crypto.createHash('md5').update(fs.readFileSync(file)).digest('hex')
+const md5 = (bytes: Buffer): string => crypto.createHash('md5').update(bytes).digest('hex')
+
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const messageOf = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error)
 
 /** every map beside a chunk, named the way the platform will hold it */
 const mapsUnder = (dist: string): { readonly file: string; readonly name: string }[] => {
@@ -123,10 +144,14 @@ const mapsUnder = (dist: string): { readonly file: string; readonly name: string
   return found.sort((a, b) => a.name.localeCompare(b.name))
 }
 
-const inBatches = async <T, R>(items: readonly T[], run: (item: T) => Promise<R>): Promise<R[]> => {
+const inBatches = async <T, R>(
+  items: readonly T[],
+  run: (item: T) => Promise<R>,
+  size = CONCURRENCY,
+): Promise<R[]> => {
   const out: R[] = []
-  for (let at = 0; at < items.length; at += CONCURRENCY) {
-    out.push(...(await Promise.all(items.slice(at, at + CONCURRENCY).map(run))))
+  for (let at = 0; at < items.length; at += size) {
+    out.push(...(await Promise.all(items.slice(at, at + size).map(run))))
   }
   return out
 }
@@ -193,7 +218,7 @@ export async function run(context: CliContext): Promise<void> {
     }
   }
 
-  const pending = maps.filter(({ file, name }) => filed.get(name) !== md5(file))
+  const pending = maps.filter(({ file, name }) => filed.get(name) !== md5(fs.readFileSync(file)))
   const skipped = maps.length - pending.length
   if (pending.length === 0) {
     console.log(`rum: all ${String(maps.length)} map(s) are already filed; nothing to do`)
@@ -207,16 +232,18 @@ export async function run(context: CliContext): Promise<void> {
     SecretId: certificate.secretId,
     SecretKey: certificate.secretKey,
     SecurityToken: certificate.sessionToken,
+    Timeout: STALL_MS,
   })
-  const put = (key: string, file: string) =>
+  // the bytes rather than a stream, so an attempt that failed can be sent again
+  const put = (key: string, bytes: Buffer) =>
     new Promise<void>((resolve, reject) => {
       cos.putObject(
         {
           Bucket: certificate.bucket,
           Region: certificate.region,
           Key: key,
-          Body: fs.createReadStream(file),
-          ContentLength: fs.statSync(file).size,
+          Body: bytes,
+          ContentLength: bytes.length,
         },
         (error) => {
           if (error) reject(error instanceof Error ? error : new Error(String(error)))
@@ -225,19 +252,43 @@ export async function run(context: CliContext): Promise<void> {
       )
     })
 
-  const uploaded = await inBatches(pending, async ({ file, name }) => {
-    // the shape the platform's own records use: project, version, when, and
-    // the file - unique per attempt, so a retry never writes over an object an
-    // existing record points at
-    const key = `${String(projectId)}-${version}-${String(Date.now())}-${name}`
-    await put(key, file)
-    return { Version: version, FileKey: key, FileName: name, FileHash: md5(file) }
-  })
-  console.log(`rum: uploaded ${String(uploaded.length)} map(s)`)
+  const upload = async (name: string, bytes: Buffer): Promise<string> => {
+    for (let attempt = 1; ; attempt += 1) {
+      // the shape the platform's own records use: project, version, when, and
+      // the file - unique per attempt, so a retry never writes over an object
+      // an existing record points at
+      const key = `${String(projectId)}-${version}-${String(Date.now())}-${name}`
+      try {
+        await put(key, bytes)
+        return key
+      } catch (error) {
+        if (attempt >= UPLOAD_ATTEMPTS) {
+          throw new Error(`${name} did not upload in ${String(attempt)} attempts`, { cause: error })
+        }
+        console.log(`rum: ${name} did not upload (${messageOf(error)}); trying again`)
+        await pause(attempt * 5_000)
+      }
+    }
+  }
 
-  // The records, last. The platform checks each object is really there before
-  // it makes one, so a record that exists is a map that can be read.
-  await client.CreateReleaseFile({ ProjectID: projectId, Files: uploaded })
+  // Each group's records as soon as its maps are up. The platform checks each
+  // object is really there before it makes one, so a record that exists is a
+  // map that can be read.
+  const uploaded: { Version: string; FileKey: string; FileName: string; FileHash: string }[] = []
+  for (let at = 0; at < pending.length; at += FILE_EVERY) {
+    const group = await inBatches(
+      pending.slice(at, at + FILE_EVERY),
+      async ({ file, name }) => {
+        const bytes = fs.readFileSync(file)
+        const key = await upload(name, bytes)
+        return { Version: version, FileKey: key, FileName: name, FileHash: md5(bytes) }
+      },
+      UPLOAD_CONCURRENCY,
+    )
+    await client.CreateReleaseFile({ ProjectID: projectId, Files: group })
+    uploaded.push(...group)
+    console.log(`rum: filed ${String(uploaded.length)}/${String(pending.length)}`)
+  }
 
   // Read back by name, for the same reason the check above is by name.
   const missing = (
