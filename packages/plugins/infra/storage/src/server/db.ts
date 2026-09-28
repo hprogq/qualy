@@ -671,3 +671,60 @@ export const attachmentCountsIn = (backends: readonly string[]) =>
             rows.map((row) => ({ backend: row.backend, attachments: Number(row.attachments) })),
           ),
         )
+
+/** what a backup needs of one attachment to fetch it as it completed and check it */
+export interface ExportRow {
+  readonly id: string
+  readonly tenantId: string
+  readonly backend: string
+  readonly storageKey: string
+  readonly storageVersion: string | null
+  readonly size: bigint
+  readonly integrityAlgorithm: string
+  readonly integrityValue: string
+}
+
+/**
+ * One page of the attachments a backup takes, in id order - which is the
+ * order they were made in - leaving out those in the stores named: a store
+ * whose files a backup already archives whole needs nothing fetched.
+ */
+export const attachmentsToExport = (input: {
+  readonly except: readonly string[]
+  readonly after: string | undefined
+  readonly limit: number
+}) =>
+  db
+    .query((k) => {
+      let query = k
+        .selectFrom('Attachment')
+        .select([
+          'id',
+          'tenantId',
+          'backend',
+          'storageKey',
+          'storageVersion',
+          'size',
+          'integrityAlgorithm',
+          'integrityValue',
+        ])
+        .orderBy('id')
+        .limit(input.limit)
+      if (input.except.length > 0) query = query.where('backend', 'not in', [...input.except])
+      if (input.after !== undefined) query = query.where('id', '>', input.after)
+      return query.execute()
+    })
+    .pipe(
+      Effect.map((rows) =>
+        rows.map((row): ExportRow => ({
+          id: row.id,
+          tenantId: row.tenantId,
+          backend: row.backend,
+          storageKey: row.storageKey,
+          storageVersion: row.storageVersion ?? null,
+          size: BigInt(row.size),
+          integrityAlgorithm: row.integrityAlgorithm,
+          integrityValue: row.integrityValue,
+        })),
+      ),
+    )

@@ -61,6 +61,8 @@ const REGISTERED: Record<string, string> = {
     'a capability module whose one step is deploy, loaded by the assembly tooling',
   'packages/plugins/assessment/core/src/index.ts':
     'a runtime-tier CLI command, loaded by the command runner rather than by a running server',
+  'packages/plugins/infra/storage/src/index.ts':
+    'a runtime-tier CLI command that exports the attachments for a backup, loaded by the command runner rather than by a running server',
   'packages/plugins/base/auth/src/index.ts':
     'a runtime-tier CLI command that sets a password from the environment, loaded by the command runner rather than by a running server',
   'packages/plugins/infra/rum-tencent/src/index.ts':

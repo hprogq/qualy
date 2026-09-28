@@ -1,4 +1,5 @@
 import { Plugin } from '@qualy/plugin-kit'
+import { Cli } from '@qualy/plugin-kit/cli'
 import { Db } from '@qualy/plugin-database/plugin'
 import { entities } from './db/entities.ts'
 import { Storage } from './plugin.ts'
@@ -17,6 +18,15 @@ const plugin = Plugin.define(
   Db.entities(entities),
   Storage.provider,
   Plugin.layer(serviceLayer),
+  // what a backup fetches of the attachments, each at the version it
+  // completed with; run by an operator, never by the serving process
+  Cli.command({
+    namespace: 'storage',
+    name: 'export',
+    summary: 'write every attachment, as it completed, into a directory for a backup',
+    context: 'runtime',
+    load: () => import('./cli/export.ts'),
+  }),
 )
 
 export default plugin
