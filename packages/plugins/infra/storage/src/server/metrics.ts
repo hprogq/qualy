@@ -19,6 +19,7 @@ const OPERATIONS = [
   'receive_upload',
   'sweep_abandoned_uploads',
   'sweep_staged_attachments',
+  'reconcile_revisions',
 ] as const
 
 type Operation = (typeof OPERATIONS)[number]

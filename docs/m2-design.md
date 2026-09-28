@@ -206,7 +206,7 @@ attachments/{tenantId}/{attachmentId}
 
 服务端生成 `attachmentId` 和 key，客户端永远不能自选。
 
-COS 通过三层约束直接保证对象不可变：
+COS 通过三层约束限定**谁能写哪个对象**：
 
 ```text
 server-generated UUID key
@@ -214,7 +214,30 @@ server-generated UUID key
 ∩ x-cos-forbid-overwrite = true
 ```
 
-Bucket 版本控制保持关闭，因为腾讯云的禁止覆盖头在开启版本控制后不再提供“禁止同名写入”的语义。
+**附件不可变的含义是「完成的附件永远读回完成时校验过的那份字节」**,桶是否开启版本控制决定它靠什么成立
+(2026-09-28 改写;原先的「版本控制保持关闭」一句作废):
+
+- **从未开启版本控制**:禁止覆盖头有效,凭据未过期时的第二次同名写入被 COS 拒绝(409)。附件不记版本。
+- **开启版本控制(Enabled)**:腾讯云文档明确禁止覆盖头在此状态下**不生效**——凭据有效期内的第二次写入会成为
+  新的当前版本。于是附件的物理身份改为 `backend + storage_key + storage_version`:`completeUpload` 从
+  服务端 HEAD 的 `x-cos-version-id` 取版本并与 size/CRC64 一起固化进 `storage_attachments.storage_version`,
+  下载签名带 `versionId`,之后写进同一 key 的任何版本都读不到。开启前就存在的对象版本号是字面 `"null"`,
+  归一为「无版本」,读时不带 `versionId`,即当前版本。
+- **暂停(Suspended)**:两种语义都不成立,**启动拒绝**并说明原因。
+
+模式在 COS provider 注册时读一次 `GetBucketVersioning`(`bucketModeOf`),凭据缺该权限即拒启。
+
+版本控制下多出来的版本与删除标记由核心存储清理,不交给桶生命周期规则(附件读的未必是最新版本,「只留最新
+N 个」会删掉正在读的那份):
+
+- 删除(弃用上传、未保存附件的清扫)在该模式下**删除该 key 的全部版本与删除标记**,否则字节只是被隐藏。
+- 周期对账 `reconcileRevisions`(每小时,挂在已有的 `storage/cleanup-scheduler` 里):列出 `attachments/`
+  前缀下的全部版本,按 `revisionVerdict` 判定——预留的 `cleanupAfter`(grant 过期 + grace)之前一律保留
+  (上传可能还在路上);之后已完成附件只留冻结版本、其余版本与标记删除;列表里看不到冻结版本时整个 key
+  不动;没有任何预留记得的 key 满一天才删。每轮最多删 1000 个,失败留给下一轮。
+- 生产桶**不设**非当前版本的生命周期规则。
+
+上线顺序写死:带冻结能力的镜像验证通过 → 开生产桶版本控制 → 启动 → 第一个附件。
 
 M2 因此明确删除：
 
@@ -559,9 +582,11 @@ filename 只进 DB 展示字段，不进入 object identity。
 
 1. key 由 Backend 生成。
 2. 一个 Attachment 一个 UUIDv7 key。
-3. 第一次成功写入后禁止同名覆盖。
+3. 完成后的附件永远读回完成时校验过的字节:要么第一次成功写入后禁止同名覆盖,要么记下完成时的版本并只读它。
 
-COS 依赖 `x-cos-forbid-overwrite: true`；Local 使用“临时文件 + 原子 rename/create-no-replace”达到同一语义。
+未开版本控制的 COS 依赖 `x-cos-forbid-overwrite: true`,开了的 COS 依赖 `storage_version`(见 §3.3);
+Local 使用“临时文件 + 原子 rename/create-no-replace”达到第一种语义。后端契约
+(`@qualy/plugin-storage/testkit/contract`)对两种写法同一问:第二次写入之后读回的仍是第一次的字节。
 
 ### 5.3 quota：Object 还没存在，上传能力已经占额度
 
@@ -839,6 +864,10 @@ deny × 4(每个 header 一条独立 statement):
 Browser 永远拿不到 `QUALY_STORAGE_COS_SECRET_ID/KEY`。
 
 父 CAM 用户 `qualy-dev-storage` 仍按最小权限限制在开发桶；建议 PutObject statement 也强制 `cos:x-cos-forbid-overwrite=true`，Head/Get/Delete 另行允许。不要关联 COS FullAccess。
+
+版本控制(§3.3)另需三项,缺第一项启动即拒:`GetBucketVersioning`(桶级,读模式)、`GetBucketObjectVersions`
+(桶级,条件 `string_like {"cos:prefix": "attachments/*"}`——对账按 `attachments/` 列,删除按完整 key 作前缀列,`string_equal` 会挡住后者)、`DeleteObject` 覆盖带 `versionId` 的
+删除(同一 resource `attachments/*`)。从未开启版本控制的桶只用到第一项。
 
 ### 5.8 Browser upload helper
 

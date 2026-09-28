@@ -343,6 +343,9 @@ const make = () =>
               integrityValue: stat.integrityValue,
               etag: stat.etag ?? null,
               storageKey: reservation.storageKey,
+              // the revision the checks above were about, and so the only
+              // one this attachment will ever read back
+              storageVersion: stat.revision ?? null,
               now,
             })
             return yield* attachmentOf({
@@ -420,13 +423,16 @@ const make = () =>
         yield* authorize(meta)
         // the backend that wrote it, not the one this deployment writes to
         const backend = yield* backends.resolve(row.backend)
-        const target = yield* backend.open(row.storageKey, {
-          filename: row.filename,
-          // never the uploader's word for it: a backend that signs its own
-          // url puts this straight on the response, where it is the one
-          // thing `nosniff` holds the browser to
-          mime: servedTypeOf(row.declaredMime),
-        })
+        const target = yield* backend.open(
+          { key: row.storageKey, revision: row.storageVersion },
+          {
+            filename: row.filename,
+            // never the uploader's word for it: a backend that signs its own
+            // url puts this straight on the response, where it is the one
+            // thing `nosniff` holds the browser to
+            mime: servedTypeOf(row.declaredMime),
+          },
+        )
         return { meta, target }
       }).pipe(
         Effect.catchTag('QueryFailed', (error) => Effect.die(error)),

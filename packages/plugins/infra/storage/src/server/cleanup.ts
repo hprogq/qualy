@@ -4,11 +4,14 @@ import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/serv
 import { StorageConfig } from './config.ts'
 import { StorageBackends } from './registry.ts'
 import { measured } from './metrics.ts'
+import type { RevisionEntry } from './backend.ts'
 import {
   claimAbandonedReservations,
   claimStagedAttachments,
   deleteStagedAttachment,
   expireReservation,
+  factsForKeys,
+  type KeyFacts,
 } from './db.ts'
 
 // The two things nobody comes back for: an upload ticket that was never used,
@@ -42,6 +45,64 @@ export interface SweepReport {
   readonly removed: number
 }
 
+/**
+ * How old a revision at a key nobody issued has to be before it is removed.
+ *
+ * A key is issued before anything is written to it, so an unknown key is
+ * nearly always left over from a sweep that died between its two halves. A
+ * day of patience costs nothing and keeps this away from anything a test run
+ * or a second process is doing to the same bucket right now.
+ */
+export const UNKNOWN_KEY_GRACE_MS = 24 * 60 * 60 * 1000
+
+/** how many revisions one reconciliation pass removes at most, so a large backlog drains over several */
+const RECONCILE_LIMIT = 1000
+
+/** the part of a store's key space attachments live in */
+const ATTACHMENT_PREFIX = 'attachments/'
+
+export type RevisionVerdict = 'keep' | 'remove'
+
+const sameRevision = (a: string | null | undefined, b: string | null | undefined) =>
+  (a ?? null) === (b ?? null)
+
+/**
+ * Whether one revision or marker in a store that keeps revisions stays.
+ *
+ * Kept: anything at a key whose ticket can still be written with - an upload
+ * may be arriving - and the one revision an attachment completed with.
+ * Removed: every other revision and marker at a key whose writes are over,
+ * and anything at a key no ticket ever named once it is a day old.
+ *
+ * `frozenSeen` is whether the listing that produced this entry also showed
+ * the attachment's own revision alive at the key. When it did not, nothing
+ * at the key is removed: the only revision this attachment can be read by
+ * must be where the store says it is before anything beside it goes.
+ */
+export const revisionVerdict = (input: {
+  readonly entry: RevisionEntry
+  readonly facts: KeyFacts
+  readonly frozenSeen: boolean
+  readonly now: number
+}): RevisionVerdict => {
+  const { entry, facts, now } = input
+  if (facts.reservation !== undefined && now < facts.reservation.cleanupAfter) return 'keep'
+  if (facts.attachment !== undefined) {
+    if (!entry.deleteMarker && sameRevision(entry.revision, facts.attachment.storageVersion)) {
+      return 'keep'
+    }
+    if (!input.frozenSeen) return 'keep'
+    // an attachment always has its ticket; one without is older than this
+    // code, and is only tidied once it is plainly settled
+    if (facts.reservation === undefined && now - entry.modifiedAt < UNKNOWN_KEY_GRACE_MS) {
+      return 'keep'
+    }
+    return 'remove'
+  }
+  if (facts.reservation !== undefined) return 'remove'
+  return now - entry.modifiedAt >= UNKNOWN_KEY_GRACE_MS ? 'remove' : 'keep'
+}
+
 export class StorageCleanup extends Context.Service<
   StorageCleanup,
   {
@@ -49,6 +110,11 @@ export class StorageCleanup extends Context.Service<
     readonly sweepAbandonedUploads: Effect.Effect<SweepReport>
     /** attachments that never entered anyone's history */
     readonly sweepStagedAttachments: Effect.Effect<SweepReport>
+    /**
+     * In every store that keeps revisions: the revisions and markers no
+     * attachment reads, once nothing can write to their key any more.
+     */
+    readonly reconcileRevisions: Effect.Effect<SweepReport>
   }
 >()('@qualy/plugin-storage/StorageCleanup') {}
 
@@ -130,9 +196,72 @@ const make = () =>
       measured('sweep_staged_attachments'),
     )
 
+    /**
+     * Walks every revision under the attachment prefix of each store that
+     * keeps them, and removes what `revisionVerdict` says goes.
+     *
+     * Two things leave such revisions behind, and nothing else would ever
+     * remove them: a write to a key after its attachment completed, while the
+     * upload credential was still good - the attachment reads the revision it
+     * completed with, and the later one is bytes nobody pays for - and a sweep
+     * that removed some of a key's revisions and then died. A bucket rule that
+     * expires old versions cannot do this job: the revision an attachment
+     * reads is not always the newest.
+     */
+    const reconcileRevisions = Effect.gen(function* () {
+      const now = yield* Clock.currentTimeMillis
+      let examined = 0
+      let removed = 0
+      for (const code of yield* backends.installed) {
+        const backend = yield* backends.resolve(code)
+        const store = backend.revisions
+        if (store === undefined) continue
+        let cursor: string | undefined
+        do {
+          const page = yield* store.list(ATTACHMENT_PREFIX, cursor)
+          const keys = [...new Set(page.entries.map((entry) => entry.key))]
+          const facts = yield* factsForKeys({ backend: code, keys })
+          for (const entry of page.entries) {
+            examined += 1
+            const known = facts.get(entry.key) ?? { attachment: undefined, reservation: undefined }
+            const frozen = known.attachment?.storageVersion
+            const frozenSeen =
+              known.attachment !== undefined &&
+              page.entries.some(
+                (other) =>
+                  other.key === entry.key &&
+                  !other.deleteMarker &&
+                  sameRevision(other.revision, frozen),
+              )
+            if (revisionVerdict({ entry, facts: known, frozenSeen, now }) === 'keep') continue
+            yield* store.remove(entry.key, entry.revision)
+            removed += 1
+            if (removed >= RECONCILE_LIMIT) break
+          }
+          cursor = removed >= RECONCILE_LIMIT ? undefined : page.next
+        } while (cursor !== undefined)
+      }
+      return { claimed: examined, removed }
+    }).pipe(
+      Effect.catchTags({
+        QueryFailed: (error) =>
+          Effect.logError('revision reconciliation failed', error).pipe(
+            Effect.as({ claimed: 0, removed: 0 }),
+          ),
+        STORAGE_BACKEND_UNAVAILABLE: (error) =>
+          Effect.logWarning(
+            'revision reconciliation stopped; retrying on the next pass',
+            error,
+          ).pipe(Effect.as({ claimed: 0, removed: 0 })),
+      }),
+      Effect.withSpan('Storage.reconcileRevisions'),
+      measured('reconcile_revisions'),
+    )
+
     return StorageCleanup.of({
       sweepAbandonedUploads: withDb(sweepAbandonedUploads),
       sweepStagedAttachments: withDb(sweepStagedAttachments),
+      reconcileRevisions: withDb(reconcileRevisions),
     })
   })
 
@@ -144,6 +273,9 @@ export const cleanupLayer: Layer.Layer<
 
 /** how often the sweeps run; nothing here is urgent to the minute */
 export const SWEEP_INTERVAL = '5 minutes'
+
+/** how often the revisions in stores that keep them are reconciled: it lists the whole prefix */
+export const RECONCILE_INTERVAL = '1 hour'
 
 const sweep = Effect.gen(function* () {
   const cleanup = yield* StorageCleanup
@@ -172,14 +304,33 @@ export const schedulerLayer: Layer.Layer<never, never, StorageCleanup | Assemble
     Effect.gen(function* () {
       const scope = yield* Effect.scope
       const assembled = yield* Assembled
+      const cleanup = yield* StorageCleanup
       const loop = Effect.repeat(sweep, Schedule.fixed(SWEEP_INTERVAL)).pipe(
-        Effect.provideService(StorageCleanup, yield* StorageCleanup),
+        Effect.provideService(StorageCleanup, cleanup),
+      )
+      const reconcile = Effect.repeat(
+        cleanup.reconcileRevisions.pipe(
+          Effect.flatMap((report) =>
+            report.removed > 0
+              ? Effect.logInfo(
+                  `removed ${report.removed} unread revision(s) of ${report.claimed} examined`,
+                )
+              : Effect.void,
+          ),
+          Effect.catchCause((cause) =>
+            Effect.logError('revision reconciliation failed; retrying on the next pass', cause),
+          ),
+        ),
+        Schedule.fixed(RECONCILE_INTERVAL),
       )
       yield* assembled.register({
         name: 'storage/cleanup-scheduler',
         run: Effect.gen(function* () {
           yield* Effect.forkIn(loop, scope)
-          yield* Effect.logDebug(`storage sweeping every ${SWEEP_INTERVAL}`)
+          yield* Effect.forkIn(reconcile, scope)
+          yield* Effect.logDebug(
+            `storage sweeping every ${SWEEP_INTERVAL}, reconciling revisions every ${RECONCILE_INTERVAL}`,
+          )
         }),
       })
     }),

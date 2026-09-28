@@ -20477,3 +20477,22 @@ W12 审查意见收尾（十一组，分组见仓库外 `audit-2026-09-25/wave13
 
 - Linux 容器（4 核，与 GitHub ubuntu-latest 同规格）`pnpm test:browser`：修复前 `Tests  1 failed | 1562 passed (1563)`（unit-path，stage-plan 已先修）；修复后 `Test Files  121 passed (121)`，`Tests  1563 passed (1563)`。本机 stage-plan `26 passed`、unit-path `10 passed`、sign-in 与 batch-workspace `44 passed`；`pnpm typecheck`、`pnpm lint`、`pnpm lint:types` exit 0；`tools/tests/release-inputs.test.ts` 通过。
 - GitHub Actions run 36352912465（`b5ad65692`）：static、ci、browser、browser-webkit、image 全部 success。
+
+## 附件按完成时的版本读取（2026-09-28）
+
+- 起因：腾讯云文档写明，桶开启版本控制后 `x-cos-forbid-overwrite` 不生效，上传凭据有效期内同名的第二次写入会成为新的当前版本。生产桶要开版本控制（备份按版本拉取），所以附件不可变不能再只靠拒绝覆盖。
+- 做法（设计写进 `docs/m2-design.md` §3.3、§5.2、§5.7）：附件多一列 `storage_version`（迁移 `20260928014855_attachment-storage-version.sql`，可空，旧行为空）。`completeUpload` 把服务端 HEAD 看到的版本连同大小、校验和一起存下，下载签名带 `versionId`。COS provider 注册时读一次 `GetBucketVersioning`：从未开启走拒绝覆盖，Enabled 走版本冻结，Suspended 拒启。版本控制下删除会删掉该 key 的全部版本与删除标记；新的每小时对账 `reconcileRevisions`（挂在已有的 `storage/cleanup-scheduler` 上，不新增启动钩子）在 `cleanupAfter` 之后删掉没有附件读取的版本，判定是纯函数 `revisionVerdict`。
+- 后端契约的「拒绝第二次写入」改成「第二次写入之后读回的仍是第一次的字节」，两种桶问的是同一个问题；带版本的内存后端也跑这套契约。
+- 真桶测试加了带版本的桶（`QUALY_TEST_COS_VERSIONED_BUCKET`）：契约、用同一张 STS 再写一次后仍读到校验过的版本、按版本删除。**本会话没有跑**：dev 账号还缺 `GetBucketVersioning` / `GetBucketObjectVersions` 权限（部署计划 C1），加上之后由用户跑。
+
+### 验收（实际执行）
+
+- `pnpm qualy database verify`（5433 临时库）：89 条迁移，零漂移。
+- storage / storage-cos / storage-local：`Test Files  11 passed | 3 skipped (14)`，`Tests  101 passed | 27 skipped (128)`（跳过的是需要凭据的真桶套件）；其中新的 `effect-revisions.test.ts` 22 条、`bucket-mode.test.ts` 4 条。
+- `tools/tests`：`Test Files  56 passed (56)`，`Tests  356 passed (356)`。
+- `pnpm typecheck`、`pnpm lint`、`pnpm lint:types` exit 0；改动文件 `oxfmt --check` 通过。
+
+### 下一步
+
+- 用户：给 `qualy-dev-storage` 加 CAM 权限后跑 `QUALY_TEST_COS=1 QUALY_TEST_COS_VERSIONED_BUCKET=qualy-dev-files-versioned-1301296774 node --env-file=.env node_modules/vitest/vitest.mjs run packages/plugins/infra/storage-cos`。
+- A2：COS 配置语义（用户确认中）与发布清单。

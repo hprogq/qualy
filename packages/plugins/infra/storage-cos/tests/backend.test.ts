@@ -101,10 +101,13 @@ describe('what the store is asked, and what comes back', () => {
       })
     })
     const opened = await Effect.runPromise(
-      cosBackend(settings).open('attachments/t/a', {
-        filename: 'a "report"\r\nX-Evil: 1.svg',
-        mime: 'image/svg+xml',
-      }),
+      cosBackend(settings).open(
+        { key: 'attachments/t/a' },
+        {
+          filename: 'a "report"\r\nX-Evil: 1.svg',
+          mime: 'image/svg+xml',
+        },
+      ),
     )
     // a redirect rather than bytes through this process, and one that expires
     expect(opened.kind).toBe('redirect')
@@ -153,5 +156,124 @@ describe('what the store is asked, and what comes back', () => {
       Region: 'ap-beijing',
       Key: 'attachments/t/a',
     })
+  })
+})
+
+// In a bucket that keeps versions a second write to a key, made while the
+// upload credential is still good, becomes the newest version - the header
+// that forbids it is ignored there. What protects an attachment is that the
+// version its checks were made against is the one every read names.
+describe('a bucket that keeps a version of every write', () => {
+  it('reports the version a head answered about, and none for what came before versions', async () => {
+    answers('headObject', async () => ({
+      headers: {
+        'content-length': '3',
+        'x-cos-hash-crc64ecma': '42',
+        'x-cos-version-id': 'MTg0NDUxNTc2NjcxNDQ3NzE5MjY',
+      },
+    }))
+    const stat = await Effect.runPromise(cosBackend(settings, 'versioned').stat('attachments/t/a'))
+    expect(stat?.revision).toBe('MTg0NDUxNTc2NjcxNDQ3NzE5MjY')
+
+    // an object from before the bucket kept versions is called "null"
+    answers('headObject', async () => ({
+      headers: {
+        'content-length': '3',
+        'x-cos-hash-crc64ecma': '42',
+        'x-cos-version-id': 'null',
+      },
+    }))
+    const older = await Effect.runPromise(cosBackend(settings, 'versioned').stat('attachments/t/a'))
+    expect(older?.revision).toBeUndefined()
+  })
+
+  it('signs the version into a read, and signs none where there is none', async () => {
+    let asked: Record<string, unknown> = {}
+    answers('getObjectUrl', (options: never, done: never) => {
+      asked = options
+      ;(done as unknown as (error: null, data: { Url: string }) => void)(null, {
+        Url: 'https://bucket.example/signed',
+      })
+    })
+    await Effect.runPromise(
+      cosBackend(settings, 'versioned').open(
+        { key: 'attachments/t/a', revision: 'v1' },
+        { filename: 'a.pdf', mime: 'application/pdf' },
+      ),
+    )
+    // in the query the signature covers, so the link cannot be pointed at
+    // another version by editing it
+    expect((asked['Query'] as Record<string, string>)['versionId']).toBe('v1')
+
+    await Effect.runPromise(
+      cosBackend(settings, 'versioned').open(
+        { key: 'attachments/t/a', revision: null },
+        { filename: 'a.pdf', mime: 'application/pdf' },
+      ),
+    )
+    expect((asked['Query'] as Record<string, string>)['versionId']).toBeUndefined()
+  })
+
+  it('deletes every version and marker under exactly the key, page after page', async () => {
+    const pages = [
+      {
+        Versions: [
+          { Key: 'attachments/t/a', VersionId: 'v2', LastModified: '2026-09-28T00:00:00Z' },
+          { Key: 'attachments/t/a', VersionId: 'v1', LastModified: '2026-09-27T00:00:00Z' },
+          // a longer key the prefix also matches: not this object
+          { Key: 'attachments/t/ab', VersionId: 'x1', LastModified: '2026-09-27T00:00:00Z' },
+        ],
+        DeleteMarkers: [],
+        IsTruncated: 'true',
+        NextKeyMarker: 'attachments/t/ab',
+        NextVersionIdMarker: 'x1',
+      },
+      {
+        Versions: [
+          { Key: 'attachments/t/a', VersionId: 'null', LastModified: '2026-09-01T00:00:00Z' },
+        ],
+        DeleteMarkers: [
+          { Key: 'attachments/t/a', VersionId: 'm1', LastModified: '2026-09-28T01:00:00Z' },
+        ],
+        IsTruncated: 'false',
+      },
+    ]
+    const listed: Record<string, unknown>[] = []
+    answers('listObjectVersions', async (options: never) => {
+      listed.push(options)
+      return pages[listed.length - 1]
+    })
+    const deleted: { Key: string; VersionId?: string }[] = []
+    answers('deleteObject', async (options: never) => {
+      deleted.push(options)
+      return {}
+    })
+    await Effect.runPromise(cosBackend(settings, 'versioned').delete('attachments/t/a'))
+    // the second page was asked for from where the first ended
+    expect(listed[1]).toMatchObject({ KeyMarker: 'attachments/t/ab', VersionIdMarker: 'x1' })
+    expect(deleted.map((one) => `${one.Key}@${one.VersionId}`)).toEqual([
+      'attachments/t/a@v2',
+      'attachments/t/a@v1',
+      'attachments/t/a@null',
+      'attachments/t/a@m1',
+    ])
+  })
+
+  it('deletes plainly in a bucket that never kept versions', async () => {
+    let asked: Record<string, unknown> = {}
+    let listed = false
+    answers('listObjectVersions', async () => {
+      listed = true
+      return { Versions: [], DeleteMarkers: [], IsTruncated: 'false' }
+    })
+    answers('deleteObject', async (options: never) => {
+      asked = options
+      return {}
+    })
+    const backend = cosBackend(settings, 'single')
+    expect(backend.revisions).toBeUndefined()
+    await Effect.runPromise(backend.delete('attachments/t/a'))
+    expect(listed).toBe(false)
+    expect(asked['VersionId']).toBeUndefined()
   })
 })

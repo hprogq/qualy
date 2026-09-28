@@ -80,6 +80,7 @@ export interface AttachmentRow {
   integrityValue: string
   etag: string | null
   storageKey: string
+  storageVersion: string | null
   status: AttachmentStatus
   boundAt: number | null
   createdAt: number
@@ -134,6 +135,7 @@ const attachmentColumns = [
   'integrityValue',
   'etag',
   'storageKey',
+  'storageVersion',
   'status',
 ] as const
 
@@ -151,6 +153,7 @@ const toAttachment = (row: Record<string, unknown>): AttachmentRow => ({
   integrityValue: String(row['integrityValue']),
   etag: row['etag'] == null ? null : String(row['etag']),
   storageKey: String(row['storageKey']),
+  storageVersion: row['storageVersion'] == null ? null : String(row['storageVersion']),
   status: String(row['status']) as AttachmentStatus,
   boundAt: msOf(row['boundMs']),
   createdAt: msOf(row['createdMs']) ?? 0,
@@ -372,6 +375,7 @@ export const insertAttachment = (input: {
   integrityValue: string
   etag: string | null
   storageKey: string
+  storageVersion: string | null
   now: number
 }) =>
   db.query((k) =>
@@ -389,6 +393,7 @@ export const insertAttachment = (input: {
         integrityValue: input.integrityValue,
         etag: input.etag,
         storageKey: input.storageKey,
+        storageVersion: input.storageVersion,
         status: 'staged',
         createdAt: at(input.now),
       })
@@ -587,3 +592,63 @@ export const deleteStagedAttachment = (input: { id: string; claimedAt: number })
         .executeTakeFirst(),
     )
     .pipe(Effect.map((row) => row !== undefined))
+
+/** what storage knows about one object key, for deciding which of the store's revisions to keep */
+export interface KeyFacts {
+  /** the attachment written at the key, and the revision it completed with */
+  readonly attachment: { readonly storageVersion: string | null } | undefined
+  /** the ticket the key was issued under, and when writes to it can no longer arrive */
+  readonly reservation:
+    | { readonly status: ReservationStatus; readonly cleanupAfter: number }
+    | undefined
+}
+
+/**
+ * The attachment and the reservation behind each of these keys in one backend.
+ *
+ * Both tables hold one row per backend and key at most, so each key gets at
+ * most one of each.
+ */
+export const factsForKeys = (input: { backend: string; keys: readonly string[] }) =>
+  Effect.gen(function* () {
+    if (input.keys.length === 0) return new Map<string, KeyFacts>()
+    const attachments = yield* db.query((k) =>
+      k
+        .selectFrom('Attachment')
+        .select(['storageKey', 'storageVersion'])
+        .where('backend', '=', input.backend)
+        .where('storageKey', 'in', [...input.keys])
+        .execute(),
+    )
+    const reservations = yield* db.query((k) =>
+      k
+        .selectFrom('UploadReservation')
+        .select(['storageKey', 'status'])
+        .select(epoch('cleanup_after').as('cleanupAfterMs'))
+        .where('backend', '=', input.backend)
+        .where('storageKey', 'in', [...input.keys])
+        .execute(),
+    )
+    const facts = new Map<string, KeyFacts>()
+    for (const key of input.keys) facts.set(key, { attachment: undefined, reservation: undefined })
+    for (const row of attachments) {
+      const known = facts.get(row.storageKey)
+      if (known === undefined) continue
+      facts.set(row.storageKey, {
+        ...known,
+        attachment: { storageVersion: row.storageVersion ?? null },
+      })
+    }
+    for (const row of reservations) {
+      const known = facts.get(row.storageKey)
+      if (known === undefined) continue
+      facts.set(row.storageKey, {
+        ...known,
+        reservation: {
+          status: String(row.status) as ReservationStatus,
+          cleanupAfter: msOf(row.cleanupAfterMs) ?? 0,
+        },
+      })
+    }
+    return facts
+  })

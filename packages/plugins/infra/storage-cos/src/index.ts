@@ -4,7 +4,7 @@ import { Browser } from '@qualy/plugin-kit/browser'
 import { ShellPolicy } from '@qualy/api-kit/shell-policy'
 import { Storage } from '@qualy/plugin-storage/plugin'
 import { StorageBackends, StorageConfig } from '@qualy/plugin-storage/server'
-import { cosBackend } from './server/backend.ts'
+import { bucketModeOf, cosBackend } from './server/backend.ts'
 import { config, CosStorageConfig } from './server/config.ts'
 import { cosDownloadOrigin, cosOrigin } from './server/policy.ts'
 import { MAX_DURATION, MIN_DURATION } from './server/sts.ts'
@@ -40,7 +40,28 @@ const registration: Layer.Layer<
         ),
       )
     }
-    yield* registry.register(cosBackend(settings))
+    // Read once, here. A bucket that keeps versions is safe only because every
+    // attachment names the version it completed with; one that has never kept
+    // them is safe only because a second write is refused. Switching a bucket
+    // between the two while this process runs is a change it will not see, so
+    // the order is: switch, then start.
+    const mode = yield* bucketModeOf(settings).pipe(
+      Effect.mapError(
+        (cause) =>
+          new Error(
+            `could not read whether cos bucket ${settings.bucket} keeps versions (the storage credential needs cos:GetBucketVersioning): ${cause.message}`,
+          ),
+      ),
+      Effect.orDie,
+    )
+    if (mode === 'suspended') {
+      return yield* Effect.die(
+        new Error(
+          `cos bucket ${settings.bucket} had versioning switched on and then suspended: it neither refuses a second write to a key nor keeps the version an attachment completed with, so attachments there would not be immutable. Switch versioning back on, or use a bucket that never had it`,
+        ),
+      )
+    }
+    yield* registry.register(cosBackend(settings, mode))
     // the browser writes to the bucket itself, so the shell's content
     // security policy has to let it connect there; the origin is this
     // deployment's, known only once the configuration is read
@@ -58,7 +79,9 @@ const registration: Layer.Layer<
       'connect-src': readsFrom === writesTo ? [writesTo] : [writesTo, readsFrom],
       'img-src': [readsFrom],
     })
-    yield* Effect.logDebug(`cos storage writing to ${settings.bucket} in ${settings.region}`)
+    yield* Effect.logDebug(
+      `cos storage writing to ${settings.bucket} in ${settings.region} (${mode === 'versioned' ? 'versions kept, reads pinned' : 'second writes refused'})`,
+    )
   }),
 )
 

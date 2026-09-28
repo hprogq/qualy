@@ -240,7 +240,9 @@ export const localBackend = (root: string): StorageBackend => ({
 
   stat: (key) => Effect.tryPromise({ try: () => statLocal(root, key), catch: fault('stat') }),
 
-  open: (key) =>
+  // a file is written once and a second write refused, so a key names one
+  // object and there is no revision to honour
+  open: ({ key }) =>
     Effect.tryPromise({
       try: async () => {
         const info = await statFile(objectPath(root, key), { bigint: true })

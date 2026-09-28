@@ -1,5 +1,6 @@
 import { Effect, Exit, Layer, Redacted } from 'effect'
-import { describe, expect, it } from 'vitest'
+import COS from 'cos-nodejs-sdk-v5'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ShellPolicy, shellPolicyLayer } from '@qualy/api-kit/shell-policy'
 import { DEFAULT_LIMITS, StorageBackends, StorageConfig } from '@qualy/plugin-storage/server'
 import plugin from '../src/index.ts'
@@ -15,6 +16,19 @@ import { CosStorageConfig } from '../src/server/config.ts'
 // urls point: a signed redirect is fetched by the browser itself, and an
 // image among the evidence is drawn. Registering only the first blocked the
 // product's own files with its own policy.
+
+// The registration asks the bucket whether it keeps versions before it
+// registers anything; these cases are about the policy, so the bucket answers
+// that it never has.
+type Prototype = Record<string, unknown>
+const prototype = COS.prototype as unknown as Prototype
+const asked = prototype['getBucketVersioning']
+beforeEach(() => {
+  prototype['getBucketVersioning'] = async () => ({ VersioningConfiguration: {} })
+})
+afterEach(() => {
+  prototype['getBucketVersioning'] = asked
+})
 
 const settings = CosStorageConfig.of({
   region: 'ap-beijing',

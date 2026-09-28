@@ -14,8 +14,12 @@ const region = process.env['QUALY_STORAGE_COS_REGION']
 const bucket = process.env['QUALY_STORAGE_COS_BUCKET']
 const secretId = process.env['QUALY_STORAGE_COS_SECRET_ID']
 const secretKey = process.env['QUALY_STORAGE_COS_SECRET_KEY']
+// a second bucket with versioning switched on, reached with the same
+// credential; the suites that need one skip without it
+const versionedBucket = process.env['QUALY_TEST_COS_VERSIONED_BUCKET']
 
 export const cosConfigured = Boolean(enabled && region && bucket && secretId && secretKey)
+export const versionedConfigured = Boolean(cosConfigured && versionedBucket)
 export const cosAndPostgres = cosConfigured && postgresAvailable
 
 if (enabled && !cosConfigured) {
@@ -31,11 +35,16 @@ export const cosSettings: CosSettings = {
   secretKey: Redacted.make(secretKey ?? ''),
 }
 
+export const versionedSettings: CosSettings = { ...cosSettings, bucket: versionedBucket ?? '' }
+
 export const backend = () => cosBackend(cosSettings)
 
-export const grantFor = (key: string, maxBytes: bigint) =>
+/** the backend as a deployment builds it over the versioned bucket */
+export const versionedBackend = () => cosBackend(versionedSettings, 'versioned')
+
+export const grantFor = (key: string, maxBytes: bigint, settings: CosSettings = cosSettings) =>
   Effect.runPromise(
-    backend()
+    cosBackend(settings)
       .prepareUpload({
         tenantId: crypto.randomUUID(),
         ownerUserId: crypto.randomUUID(),

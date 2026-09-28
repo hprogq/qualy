@@ -113,6 +113,12 @@ export const Attachment = defineEntity({
     integrityValue: p.string().length(127),
     etag: p.string().length(127).nullable(),
     storageKey: p.string().length(255),
+    /**
+     * The store's revision of the key this attachment completed with, where
+     * the store keeps several: every read names it, so a later write to the
+     * same key is never what comes back. Null where the store keeps one.
+     */
+    storageVersion: p.string().length(255).nullable(),
     status: p.string().length(31).default('staged'),
     boundAt: p.datetime().nullable(),
     createdAt: p.datetime().defaultRaw('now()'),
