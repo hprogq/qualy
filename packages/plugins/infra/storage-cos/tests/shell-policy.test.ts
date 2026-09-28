@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ShellPolicy, shellPolicyLayer } from '@qualy/api-kit/shell-policy'
 import { DEFAULT_LIMITS, StorageBackends, StorageConfig } from '@qualy/plugin-storage/server'
 import plugin from '../src/index.ts'
+import type { CosSettings } from '../src/server/backend.ts'
 import { CosStorageConfig } from '../src/server/config.ts'
 
 // What this plugin tells the shell about itself: the origins a browser
@@ -30,12 +31,12 @@ afterEach(() => {
   prototype['getBucketVersioning'] = asked
 })
 
-const settings = CosStorageConfig.of({
+const settings: CosSettings = {
   region: 'ap-beijing',
   bucket: 'qualy-files-1301296774',
   secretId: Redacted.make('id'),
   secretKey: Redacted.make('key'),
-})
+}
 
 /** the bare layer the descriptor carries, which is where the registration lives */
 const registration = plugin.features.find((feature) => feature._tag === 'Layer')!
@@ -54,7 +55,7 @@ const withLimits = (minutes: number) =>
             Layer.provideMerge(
               Layer.mergeAll(
                 shellPolicyLayer,
-                Layer.succeed(CosStorageConfig, settings),
+                Layer.succeed(CosStorageConfig, CosStorageConfig.of({ settings })),
                 Layer.succeed(
                   StorageConfig,
                   StorageConfig.of({
@@ -69,6 +70,8 @@ const withLimits = (minutes: number) =>
                     resolve: () => Effect.die('not asked'),
                     forWrite: Effect.die('not asked'),
                     installed: Effect.succeed([]),
+                    unconfigured: () => Effect.die('not asked'),
+                    unconfiguredCodes: Effect.succeed([]),
                   }),
                 ),
               ),
@@ -79,7 +82,7 @@ const withLimits = (minutes: number) =>
     ),
   )
 
-const entriesFor = (config: typeof settings) =>
+const entriesFor = (config: CosSettings) =>
   Effect.runPromise(
     Effect.flatMap(ShellPolicy, (policy) => policy.entries).pipe(
       Effect.provide(
@@ -87,7 +90,7 @@ const entriesFor = (config: typeof settings) =>
           Layer.provideMerge(
             Layer.mergeAll(
               shellPolicyLayer,
-              Layer.succeed(CosStorageConfig, config),
+              Layer.succeed(CosStorageConfig, CosStorageConfig.of({ settings: config })),
               // the registration refuses a grant lifetime cam cannot mint,
               // so the stub carries the product's own default
               Layer.succeed(
@@ -101,6 +104,8 @@ const entriesFor = (config: typeof settings) =>
                   resolve: () => Effect.die('not asked'),
                   forWrite: Effect.die('not asked'),
                   installed: Effect.succeed([]),
+                  unconfigured: () => Effect.die('not asked'),
+                  unconfiguredCodes: Effect.succeed([]),
                 }),
               ),
             ),
@@ -135,9 +140,7 @@ describe('the shell policy contribution', () => {
   })
 
   it('names the download domain as well, when a deployment has one', async () => {
-    const entries = await entriesFor(
-      CosStorageConfig.of({ ...settings, downloadDomain: 'files.qualy.example' }),
-    )
+    const entries = await entriesFor({ ...settings, downloadDomain: 'files.qualy.example' })
     expect(entries).toEqual([
       {
         owner: '@qualy/plugin-storage-cos',

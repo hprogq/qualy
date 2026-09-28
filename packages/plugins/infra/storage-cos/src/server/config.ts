@@ -1,4 +1,4 @@
-import { Config, Context, Effect, Layer, Schema } from 'effect'
+import { Config, Context, Effect, Layer, Option, Schema } from 'effect'
 import type { CosSettings } from './backend.ts'
 import { decodePluginConfig } from '@qualy/plugin-kit/config'
 
@@ -7,10 +7,18 @@ import { decodePluginConfig } from '@qualy/plugin-kit/config'
 // Split down the middle on purpose. Region, bucket and download domain are
 // deployment facts a reviewer should be able to read in the committed
 // manifest; the two secrets exist only in the environment and are never
-// defaulted, so a deployment that forgets them fails at startup rather than at
-// the first upload.
+// defaulted.
+//
+// The secrets decide whether this store is reachable at all. Without either,
+// the plugin takes part unconfigured: a deployment that writes to a disk - a
+// laptop, a CI job - starts without a bucket, and only making cos the default
+// is refused. With one, everything must be there, because half a
+// configuration is a typo and not a choice.
 
-export class CosStorageConfig extends Context.Service<CosStorageConfig, CosSettings>()(
+/** the store's settings, or what it is missing to be reached */
+export type CosConfiguration = { readonly settings: CosSettings } | { readonly refusal: string }
+
+export class CosStorageConfig extends Context.Service<CosStorageConfig, CosConfiguration>()(
   '@qualy/plugin-storage-cos/CosStorageConfig',
 ) {}
 
@@ -20,6 +28,9 @@ export const CosManifestConfig = Schema.Struct({
   downloadDomain: Schema.optional(Schema.String),
 })
 export type CosManifestConfig = typeof CosManifestConfig.Type
+
+export const COS_CREDENTIALS_MISSING =
+  'set QUALY_STORAGE_COS_SECRET_ID and QUALY_STORAGE_COS_SECRET_KEY, with its bucket and region, to reach it'
 
 /** the environment may name it; the manifest is the fallback, not the reverse */
 const stringOr = (name: string, declared: string | undefined) =>
@@ -35,19 +46,44 @@ export const config = (
     CosStorageConfig,
     Effect.gen(function* () {
       const declared = yield* decodePluginConfig(CosManifestConfig, manifest)
-      const region = yield* stringOr('QUALY_STORAGE_COS_REGION', declared.region)
-      const bucket = yield* stringOr('QUALY_STORAGE_COS_BUCKET', declared.bucket)
-      const secretId = yield* Config.Redacted('QUALY_STORAGE_COS_SECRET_ID')
-      const secretKey = yield* Config.Redacted('QUALY_STORAGE_COS_SECRET_KEY')
-      const downloadDomain = yield* Config.String('QUALY_STORAGE_COS_DOWNLOAD_DOMAIN').pipe(
-        Config.withDefault(declared.downloadDomain ?? ''),
+      // a blank variable is a missing one: the environment provider reads ""
+      // as absent
+      const secretId = yield* Config.option(Config.Redacted('QUALY_STORAGE_COS_SECRET_ID'))
+      const secretKey = yield* Config.option(Config.Redacted('QUALY_STORAGE_COS_SECRET_KEY'))
+      if (Option.isNone(secretId) && Option.isNone(secretKey)) {
+        return CosStorageConfig.of({ refusal: COS_CREDENTIALS_MISSING })
+      }
+      const region = yield* Config.option(stringOr('QUALY_STORAGE_COS_REGION', declared.region))
+      const bucket = yield* Config.option(stringOr('QUALY_STORAGE_COS_BUCKET', declared.bucket))
+      if (
+        Option.isSome(secretId) &&
+        Option.isSome(secretKey) &&
+        Option.isSome(bucket) &&
+        Option.isSome(region)
+      ) {
+        const downloadDomain = yield* Config.String('QUALY_STORAGE_COS_DOWNLOAD_DOMAIN').pipe(
+          Config.withDefault(declared.downloadDomain ?? ''),
+        )
+        return CosStorageConfig.of({
+          settings: {
+            region: region.value,
+            bucket: bucket.value,
+            secretId: secretId.value,
+            secretKey: secretKey.value,
+            ...(downloadDomain === '' ? {} : { downloadDomain }),
+          },
+        })
+      }
+      const missing = [
+        ...(Option.isNone(secretId) ? ['QUALY_STORAGE_COS_SECRET_ID'] : []),
+        ...(Option.isNone(secretKey) ? ['QUALY_STORAGE_COS_SECRET_KEY'] : []),
+        ...(Option.isNone(bucket) ? ['QUALY_STORAGE_COS_BUCKET'] : []),
+        ...(Option.isNone(region) ? ['QUALY_STORAGE_COS_REGION'] : []),
+      ]
+      return yield* Effect.die(
+        new Error(
+          `cos storage is only partly configured: ${missing.join(', ')} not set while the rest is; set the missing ones, or unset the cos credentials to start without the bucket`,
+        ),
       )
-      return CosStorageConfig.of({
-        region,
-        bucket,
-        secretId,
-        secretKey,
-        ...(downloadDomain === '' ? {} : { downloadDomain }),
-      })
     }),
   )

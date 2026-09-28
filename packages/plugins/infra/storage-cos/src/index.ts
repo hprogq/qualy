@@ -14,7 +14,8 @@ import { MAX_DURATION, MIN_DURATION } from './server/sts.ts'
 // Installing this plugin is a deployment decision and nothing more: no
 // business plugin depends on it, no screen mentions it, and the attachments it
 // wrote stay readable through it even after a deployment starts writing
-// somewhere else.
+// somewhere else - as long as the deployment still gives it its credentials.
+// Without them it takes part unconfigured and touches no network (config.ts).
 
 const registration: Layer.Layer<
   never,
@@ -22,7 +23,7 @@ const registration: Layer.Layer<
   StorageBackends | CosStorageConfig | ShellPolicy | StorageConfig
 > = Layer.effectDiscard(
   Effect.gen(function* () {
-    const settings = yield* CosStorageConfig
+    const configured = yield* CosStorageConfig
     const registry = yield* StorageBackends
     // A ticket this backend cannot honour is refused here rather than
     // quietly rewritten. The upload grant's lifetime is the product's
@@ -40,6 +41,8 @@ const registration: Layer.Layer<
         ),
       )
     }
+    if ('refusal' in configured) return yield* registry.unconfigured('cos', configured.refusal)
+    const settings = configured.settings
     // Read once, here. A bucket that keeps versions is safe only because every
     // attachment names the version it completed with; one that has never kept
     // them is safe only because a second write is refused. Switching a bucket

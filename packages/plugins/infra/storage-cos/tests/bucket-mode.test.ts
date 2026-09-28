@@ -5,7 +5,11 @@ import { shellPolicyLayer, type ShellPolicy } from '@qualy/api-kit/shell-policy'
 import type { StorageBackend } from '@qualy/plugin-storage/backend'
 import { DEFAULT_LIMITS, StorageBackends, StorageConfig } from '@qualy/plugin-storage/server'
 import plugin from '../src/index.ts'
-import { CosStorageConfig } from '../src/server/config.ts'
+import {
+  COS_CREDENTIALS_MISSING,
+  CosStorageConfig,
+  type CosConfiguration,
+} from '../src/server/config.ts'
 
 // What the deployment does with the bucket's versioning, read once as it
 // starts. A bucket that never kept versions refuses a second write; one that
@@ -24,6 +28,15 @@ const answers = (answer: () => Promise<unknown>) => {
   prototype['getBucketVersioning'] = answer
 }
 
+const reachable: CosConfiguration = {
+  settings: {
+    region: 'ap-beijing',
+    bucket: 'qualy-files-1301296774',
+    secretId: Redacted.make('id'),
+    secretKey: Redacted.make('key'),
+  },
+}
+
 const registration = plugin.features.find((feature) => feature._tag === 'Layer')!
   .layer as Layer.Layer<
   never,
@@ -32,8 +45,9 @@ const registration = plugin.features.find((feature) => feature._tag === 'Layer')
 >
 
 /** the backend the registration hands the registry, or how it refused */
-const registered = async () => {
+const registered = async (configuration: CosConfiguration = reachable, defaultBackend = 'cos') => {
   const seen: StorageBackend[] = []
+  const unconfigured: { code: string; refusal: string }[] = []
   const exit = await Effect.runPromiseExit(
     Effect.void.pipe(
       Effect.provide(
@@ -41,18 +55,10 @@ const registered = async () => {
           Layer.provide(
             Layer.mergeAll(
               shellPolicyLayer,
-              Layer.succeed(
-                CosStorageConfig,
-                CosStorageConfig.of({
-                  region: 'ap-beijing',
-                  bucket: 'qualy-files-1301296774',
-                  secretId: Redacted.make('id'),
-                  secretKey: Redacted.make('key'),
-                }),
-              ),
+              Layer.succeed(CosStorageConfig, CosStorageConfig.of(configuration)),
               Layer.succeed(
                 StorageConfig,
-                StorageConfig.of({ defaultBackend: 'cos', limits: DEFAULT_LIMITS }),
+                StorageConfig.of({ defaultBackend, limits: DEFAULT_LIMITS }),
               ),
               Layer.succeed(
                 StorageBackends,
@@ -64,6 +70,11 @@ const registered = async () => {
                   resolve: () => Effect.die('not asked'),
                   forWrite: Effect.die('not asked'),
                   installed: Effect.succeed([]),
+                  unconfigured: (code, refusal) =>
+                    Effect.sync(() => {
+                      unconfigured.push({ code, refusal })
+                    }),
+                  unconfiguredCodes: Effect.succeed([]),
                 }),
               ),
             ),
@@ -72,7 +83,7 @@ const registered = async () => {
       ),
     ),
   )
-  return { exit, backend: seen[0] }
+  return { exit, backend: seen[0], unconfigured }
 }
 
 const said = (exit: Exit.Exit<unknown, unknown>) => (Exit.isFailure(exit) ? String(exit.cause) : '')
@@ -109,5 +120,21 @@ describe('the bucket a deployment starts against', () => {
     expect(Exit.isFailure(exit)).toBe(true)
     expect(backend).toBeUndefined()
     expect(said(exit)).toContain('cos:GetBucketVersioning')
+  })
+
+  it('takes part unconfigured without credentials, and never asks the bucket', async () => {
+    let asked = false
+    answers(async () => {
+      asked = true
+      return { VersioningConfiguration: {} }
+    })
+    const { exit, backend, unconfigured } = await registered(
+      { refusal: COS_CREDENTIALS_MISSING },
+      'local',
+    )
+    expect(Exit.isSuccess(exit)).toBe(true)
+    expect(backend).toBeUndefined()
+    expect(unconfigured).toEqual([{ code: 'cos', refusal: COS_CREDENTIALS_MISSING }])
+    expect(asked).toBe(false)
   })
 })

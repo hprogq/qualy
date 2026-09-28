@@ -1252,7 +1252,7 @@ x-cos-hash-crc64ecma
     root: ./data/storage # 相对 manifest 解析，与 cwd 无关
 ```
 
-`@qualy/plugin-storage-cos`（region/bucket 进清单，密钥永不进）：
+`@qualy/plugin-storage-cos`(region/bucket 可进清单、env 优先,密钥永不进):
 
 ```yaml
 '@qualy/plugin-storage-cos':
@@ -1262,12 +1262,26 @@ x-cos-hash-crc64ecma
     downloadDomain: https://files.qualy.hprogq.com
 ```
 
-本地开发 secret：
+secret:
 
 ```env
 QUALY_STORAGE_COS_SECRET_ID=...
 QUALY_STORAGE_COS_SECRET_KEY=...
 ```
+
+**凭据决定这个后端是否可达,选没选它为默认不决定**(2026-09-28 定):
+
+- 两个 secret 都没给(空值即未给):以「未配置」参与,不读 region/bucket、不碰网络、不登记 CSP 来源。
+  此时把它设为 `defaultBackend` 在建层时拒启并点名缺什么;读到一条 `backend = 'cos'` 的附件,
+  storage 返回 `BackendNotConfigured`(沿用 `STORAGE_BACKEND_UNAVAILABLE` 标签,各调用方已有处理),
+  带 api-kit 的 `unavailable` 标记,请求答 503 `SERVICE_UNAVAILABLE`,日志点名后端与缺的变量。
+- 给了任一个 secret:四项(两个 secret、bucket、region)必须齐,缺哪个就点名拒启——半套配置是笔误,不是选择。
+  齐了则完整激活,启动时读一次桶的版本控制状态(§3.3)。
+
+所以 CI 与 `pnpm dev` 不给凭据就是只写 local、什么都不连;生产给了凭据就是完整形态。与 mail 的同一规则
+(未被选中的后端缺配置时等待)差在读路径:附件记着自己写在哪个后端,默认改回 local 之后,已经在 COS 的附件
+仍要能读,所以按凭据定而不按选中定。所有 `STORAGE_BACKEND_UNAVAILABLE` 都带同一个标记:存储后端失败对
+请求方而言就是依赖暂不可用(503),原因只进日志。
 
 同一份清单要在两台机器上写不同地方时，用 env 覆盖（env 优先于清单）：
 

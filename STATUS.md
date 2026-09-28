@@ -20483,7 +20483,7 @@ W12 审查意见收尾（十一组，分组见仓库外 `audit-2026-09-25/wave13
 - 起因：腾讯云文档写明，桶开启版本控制后 `x-cos-forbid-overwrite` 不生效，上传凭据有效期内同名的第二次写入会成为新的当前版本。生产桶要开版本控制（备份按版本拉取），所以附件不可变不能再只靠拒绝覆盖。
 - 做法（设计写进 `docs/m2-design.md` §3.3、§5.2、§5.7）：附件多一列 `storage_version`（迁移 `20260928014855_attachment-storage-version.sql`，可空，旧行为空）。`completeUpload` 把服务端 HEAD 看到的版本连同大小、校验和一起存下，下载签名带 `versionId`。COS provider 注册时读一次 `GetBucketVersioning`：从未开启走拒绝覆盖，Enabled 走版本冻结，Suspended 拒启。版本控制下删除会删掉该 key 的全部版本与删除标记；新的每小时对账 `reconcileRevisions`（挂在已有的 `storage/cleanup-scheduler` 上，不新增启动钩子）在 `cleanupAfter` 之后删掉没有附件读取的版本，判定是纯函数 `revisionVerdict`。
 - 后端契约的「拒绝第二次写入」改成「第二次写入之后读回的仍是第一次的字节」，两种桶问的是同一个问题；带版本的内存后端也跑这套契约。
-- 真桶测试加了带版本的桶（`QUALY_TEST_COS_VERSIONED_BUCKET`）：契约、用同一张 STS 再写一次后仍读到校验过的版本、按版本删除。**本会话没有跑**：dev 账号还缺 `GetBucketVersioning` / `GetBucketObjectVersions` 权限（部署计划 C1），加上之后由用户跑。
+- 真桶测试加了带版本的桶（`QUALY_TEST_COS_VERSIONED_BUCKET`）：契约、用同一张 STS 再写一次后仍读到校验过的版本、按版本删除。用户给 dev 账号加权限后在本机跑：第一次列版本 403，原因是 `cos:prefix` 条件值没有 URL 编码（腾讯云文档要求 `/` 写成 `%2F`），改成 `attachments%2F*` 后全部通过；文档已更正（`21499b26e`）。
 
 ### 验收（实际执行）
 
@@ -20494,5 +20494,14 @@ W12 审查意见收尾（十一组，分组见仓库外 `audit-2026-09-25/wave13
 
 ### 下一步
 
-- 用户：给 `qualy-dev-storage` 加 CAM 权限后跑 `QUALY_TEST_COS=1 QUALY_TEST_COS_VERSIONED_BUCKET=qualy-dev-files-versioned-1301296774 node --env-file=.env node_modules/vitest/vitest.mjs run packages/plugins/infra/storage-cos`。
-- A2：COS 配置语义（用户确认中）与发布清单。
+- A2：发布清单（启用 storage-cos、RUM 显式开关、重新 resolve）。
+
+## COS 后端按凭据决定是否可达（2026-09-28）
+
+- 审计定下的规则（写进 `docs/m2-design.md` 与 CLAUDE.md「多实现能力怎么选实现」）：两个 secret 都没给就以「未配置」参与，不读 bucket/region、不碰网络、不登记 CSP 来源；此时选它为默认在建层时拒启并点名缺什么。给了任一个 secret，四项（两个 secret、bucket、region）缺哪个点名拒启；齐了才完整激活并读桶的版本控制状态。与 mail 的差别在读路径：已写进 COS 的附件在默认改回 local 后仍要能读，所以按凭据定、不按选中定。
+- 读到一条指向未配置后端的附件：`BackendNotConfigured`（沿用 `STORAGE_BACKEND_UNAVAILABLE` 标签，四个调用方已有处理）。所有 `STORAGE_BACKEND_UNAVAILABLE` 带上 api-kit 的 `unavailable` 标记（与数据库的 `QueryFailed` 同一做法），调用方 die 之后请求答 503 `SERVICE_UNAVAILABLE` 而不是 500，日志点名后端与缺的变量。没有为此新增线上错误码。
+
+### 验收（实际执行）
+
+- `pnpm typecheck`、`pnpm lint`、`pnpm lint:types` exit 0。
+- `tools/tests` + `packages/plugins/infra` + assessment 附件 + directory-import + auth：`Test Files  150 passed | 3 skipped (153)`，`Tests  1083 passed | 27 skipped (1110)`；其中 storage-cos 新 `config.test.ts` 6 条、`bucket-mode.test.ts` 5 条（加「无凭据不碰桶」），registry 12 条（加未配置的读取、未配置作默认、屏障放行）。

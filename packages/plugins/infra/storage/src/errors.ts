@@ -1,3 +1,5 @@
+import { unavailable } from '@qualy/api-kit/unavailable'
+
 // What storage can refuse, as tags a caller can act on.
 //
 // Every one of these is somebody's next move: ask for less, wait, upload
@@ -102,9 +104,14 @@ export class AttachmentInvalid extends Error {
  * do fixes it. The driver's error rides along on `cause`, so it reaches the log
  * without any of it reaching whoever was uploading - a bucket name or an sts
  * message is exactly what a stable refusal exists to keep inside.
+ *
+ * Marked as a dependency being unavailable: a caller that lets it end the
+ * request answers with the api's 503 rather than a 500, the way a database
+ * that cannot hand out a connection does.
  */
 export class BackendUnavailable extends Error {
   readonly _tag = 'STORAGE_BACKEND_UNAVAILABLE'
+  readonly [unavailable] = 'storage'
   readonly operation: string
   constructor(operation: string, cause?: unknown) {
     super(
@@ -119,6 +126,25 @@ export class BackendUnavailable extends Error {
 
 export const backendFailure = (operation: string, cause: unknown): BackendUnavailable =>
   new BackendUnavailable(operation, cause)
+
+/**
+ * The attachment is in a store this deployment was given no credentials for.
+ *
+ * A provider without its credentials still takes part - an attachment it wrote
+ * before names it, and that must not read as "no such attachment" - but it
+ * reaches nothing. Kept under the same tag as any other store failure, so
+ * every caller already handles it, and named for what it is, so the log says
+ * which store and what it is missing rather than that a request failed.
+ */
+export class BackendNotConfigured extends BackendUnavailable {
+  readonly backend: string
+  constructor(backend: string, refusal: string) {
+    super('resolve', new Error(refusal))
+    this.name = 'BackendNotConfigured'
+    this.message = `storage backend "${backend}" is not configured: ${refusal}`
+    this.backend = backend
+  }
+}
 
 export type StorageError =
   | UploadRefused

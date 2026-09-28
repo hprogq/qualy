@@ -1,6 +1,7 @@
-import { Effect, Exit, Layer } from 'effect'
+import { Cause, Effect, Exit, Layer, Option } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { assembledLayer, runBootHooks } from '@qualy/api-kit/assembled'
+import { unavailableIn } from '@qualy/api-kit/unavailable'
 import { DeclaredBackends } from '../src/plugin.ts'
 import { DEFAULT_LIMITS, StorageConfig } from '../src/server/config.ts'
 import { barrierLayer, registryLayer, StorageBackends } from '../src/server/registry.ts'
@@ -57,6 +58,37 @@ describe('the storage backend registry', () => {
     expect(Exit.isFailure(exit)).toBe(true)
   })
 
+  // an attachment written to a bucket before the deployment stopped giving
+  // it credentials exists, and must not read as missing
+  it('answers an attachment in a store without credentials as that store being unavailable', async () => {
+    const exit = await run(
+      Effect.gen(function* () {
+        const registry = yield* StorageBackends
+        yield* registry.register(memoryBackend('local'))
+        yield* registry.unconfigured('cos', 'set the cos credentials')
+        return yield* registry.resolve('cos')
+      }),
+      'local',
+    )
+    if (!Exit.isFailure(exit)) throw new Error('resolved a store it cannot reach')
+    const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause))
+    expect(failure._tag).toBe('STORAGE_BACKEND_UNAVAILABLE')
+    expect(failure.message).toContain('"cos" is not configured')
+    // a caller that lets it end the request answers 503, not 500
+    expect(unavailableIn(Cause.die(failure))).toBe('storage')
+  })
+
+  it('refuses a default backend that has no credentials, in its own words', async () => {
+    const exit = await run(
+      Effect.flatMap(StorageBackends, (registry) =>
+        registry.unconfigured('cos', 'set the cos credentials'),
+      ),
+      'cos',
+    )
+    expect(Exit.isFailure(exit)).toBe(true)
+    expect(Exit.isFailure(exit) && Cause.pretty(exit.cause)).toContain('set the cos credentials')
+  })
+
   it('refuses two plugins claiming one backend name', async () => {
     const exit = await run(
       Effect.gen(function* () {
@@ -82,12 +114,14 @@ const boot = (
   declared: readonly { code: string; uploadDriver: string; pluginId: string }[],
   defaultBackend: string,
   register: readonly string[],
+  unconfigured: readonly string[] = [],
 ) =>
   Effect.runPromiseExit(
     Effect.scoped(
       Effect.gen(function* () {
         const registry = yield* StorageBackends
         for (const code of register) yield* registry.register(memoryBackend(code))
+        for (const code of unconfigured) yield* registry.unconfigured(code, 'no credentials')
         yield* runBootHooks
       }).pipe(Effect.provide(barrier(declared).pipe(Layer.provide(config(defaultBackend))))),
     ),
@@ -110,6 +144,19 @@ describe('what the assembly refuses to start with', () => {
       ['local'],
     )
     expect(Exit.isFailure(exit)).toBe(true)
+  })
+
+  it('starts with a provider that takes part without credentials', async () => {
+    const exit = await boot(
+      [
+        { code: 'local', uploadDriver: 'local', pluginId: '@qualy/plugin-storage-local' },
+        { code: 'cos', uploadDriver: 'cos', pluginId: '@qualy/plugin-storage-cos' },
+      ],
+      'local',
+      ['local'],
+      ['cos'],
+    )
+    expect(Exit.isSuccess(exit)).toBe(true)
   })
 
   it('refuses a provider that declared a backend and never registered it', async () => {
