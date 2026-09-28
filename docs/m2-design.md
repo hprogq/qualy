@@ -239,6 +239,11 @@ N 个」会删掉正在读的那份):
 
 上线顺序写死:带冻结能力的镜像验证通过 → 开生产桶版本控制 → 启动 → 第一个附件。
 
+**桶开启版本控制之前完成的附件**(`storage_version` 为空)在开启之后读的是当前版本,禁止覆盖头对它已不生效。
+它仍然不可变,靠的是另一件事:key 只在一张预留上签发过一次,能写它的只有那张预留的 STS,有效期至多两小时、
+早已过期;服务端的长期凭据虽有 PutObject 权限(STS 由它派生),代码从不用它写对象。这不是漏洞。按上面的顺序
+上线,生产里不会有这种记录。
+
 M2 因此明确删除：
 
 ```text
@@ -865,9 +870,23 @@ Browser 永远拿不到 `QUALY_STORAGE_COS_SECRET_ID/KEY`。
 
 父 CAM 用户 `qualy-dev-storage` 仍按最小权限限制在开发桶；建议 PutObject statement 也强制 `cos:x-cos-forbid-overwrite=true`，Head/Get/Delete 另行允许。不要关联 COS FullAccess。
 
-版本控制(§3.3)另需三项,缺第一项启动即拒:`GetBucketVersioning`(桶级,读模式)、`GetBucketObjectVersions`
-(桶级,条件 `string_like {"cos:prefix": "attachments/*"}`——对账按 `attachments/` 列,删除按完整 key 作前缀列,`string_equal` 会挡住后者)、`DeleteObject` 覆盖带 `versionId` 的
-删除(同一 resource `attachments/*`)。从未开启版本控制的桶只用到第一项。
+版本控制(§3.3)另需两项,缺第一项启动即拒:`GetBucketVersioning`(桶级,读模式)、`GetBucketObjectVersions`
+(桶级,对账与按版本删除要列版本)。后者的前缀条件**必须 URL 编码**——`/` 写成 `%2F`,腾讯云条件键文档的原话是
+「prefix 的值若为特殊字符(中文、`/` 等),写入存储桶策略前需要先经过 urlencode」;2026-09-28 实测
+`string_like {"cos:prefix": "attachments/*"}` 被拒(403),改成下面这样才通过。用 `string_like` 而不是
+`string_equal`:对账按 `attachments/` 列,删除按完整 key 作前缀列。
+
+```json
+{
+  "effect": "allow",
+  "action": ["name/cos:GetBucketObjectVersions"],
+  "resource": ["qcs::cos:ap-beijing:uid/1301296774:<bucket>/*"],
+  "condition": { "string_like": { "cos:prefix": "attachments%2F*" } }
+}
+```
+
+带 `versionId` 的删除与不带的是同一个 action `DeleteObject`,已有的 `attachments/*` 授权覆盖,不另加。
+从未开启版本控制的桶只用到 `GetBucketVersioning`。
 
 ### 5.8 Browser upload helper
 
