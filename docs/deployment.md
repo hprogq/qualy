@@ -136,7 +136,7 @@ launcher 以非 root 身份被调起时把 `SSH_ORIGINAL_COMMAND` 按空白切�
 所以这把密钥能做的只有:在已发布的 release 之间选一个部署,或回滚一步;给不了脚本、换不了镜像仓库。脚本最终仍以 root 操作 docker 与 Caddy,
 这一层权限本身就高,要再降需要 rootless Docker 或另设窄接口,现在不做。安装步骤见 `ops/deploy-host/README.md`。
 
-`.github/workflows/deploy.yml` 只能从 main 手动运行,`production` 环境要审批后才拿得到密钥:读该 release 的 `release.json`,核对平台与每个镜像都在
+`.github/workflows/deploy.yml` 只能从 main 手动运行,`production` 环境要审批后才拿得到密钥:读该 release 的 `release.json`,核对它的 revision 就是该 tag 指向的 commit(`v*` tag 由仓库 ruleset 禁止移动与删除,一个 release 名永远对应一个 commit)、平台与每个镜像都在
 `vars.QUALY_REGISTRY` 之下,只把 release 名与三个 digest 发给 launcher。发布制品(tag)与批准部署是两件事,tag 工作流不进 `production`。
 
 ## 3. 部署(`deploy/`)
