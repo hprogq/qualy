@@ -176,7 +176,7 @@ host key(不用 runner 自带的 known_hosts)。发布制品(tag)与批准部署
   `storage export`)都经它,不点名颜色,也不按带 project 前缀的名字找卷。
 - `otel-collector`(profile `telemetry`):`deploy/otel-collector.yaml` + `deploy/collector.env`(凭据只给这个容器),镜像按 digest 固定,
   `mem_limit: 256m`,不发布端口;启动一次,升级不动它。traces 与 metrics 走 APM 内网接入点(gRPC over TLS 4320;同一地址的 4319 是明文,token 随每次上报发送,
-所以走加密的那个——2026-09-28 从服务器实测协商出 h2、证书名含该主机;metrics 由控制台同步规则转入 TMP,
+  所以走加密的那个——2026-09-28 从服务器实测协商出 h2、证书名含该主机;metrics 由控制台同步规则转入 TMP,
   TMP 实例的 remote write 从服务器实测可达后再改直写),logs 经 OTLP/HTTP 进 CLS 内网域名。server 经 `.env` 的
   `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318` 与 `OTEL_LOGS_EXPORTER=otlp` 上报,接入点不可达只是后台重试。
 - `postgres` 另有:`shared_buffers` 256MB、`effective_cache_size` 1GB、`work_mem` 8MB、`maintenance_work_mem` 64MB(`QUALY_PG_*` 可覆盖;
