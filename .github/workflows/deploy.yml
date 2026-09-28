@@ -1,6 +1,9 @@
 name: deploy
 
-# Moves production onto a published release, or back to the one before it.
+# Moves production onto a published release, or back to the one before it,
+# or only fetches a release onto the host: pulled by digest, verified and its
+# deploy/ extracted, nothing started - a first deployment's first step, and a
+# way to have the images there before the deploy itself.
 # Run by hand from main: publishing a release (release.yml) and approving
 # its deployment are two separate acts, and the production environment asks
 # for the approval before this job gets the key.
@@ -23,14 +26,14 @@ on:
     inputs:
       action:
         type: choice
-        options: [deploy, rollback]
+        options: [deploy, fetch, rollback]
         default: deploy
       release:
-        description: 'The published release to deploy, e.g. v0.1.0 (a rollback ignores it)'
+        description: 'The published release to deploy or fetch, e.g. v0.1.0 (a rollback ignores it)'
         type: string
         required: false
       maintenance:
-        description: 'Take the site down while migrations that do not roll out as expand apply'
+        description: 'Deploy only: take the site down while migrations that do not roll out as expand apply'
         type: boolean
         default: false
 
@@ -45,7 +48,11 @@ jobs:
   production:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment: production
+    # an upgrade waits up to three minutes for the new color, migrations first
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: https://qualy.hprogq.com
     env:
       ACTION: ${{ inputs.action }}
       RELEASE: ${{ inputs.release }}
@@ -57,6 +64,9 @@ jobs:
     steps:
       - name: what to send the server
         run: |
+          if [ "$MAINTENANCE" = true ] && [ "$ACTION" != deploy ]; then
+            echo "maintenance applies to a deploy, not to $ACTION"; exit 1
+          fi
           if [ "$ACTION" = rollback ]; then
             echo "COMMAND=rollback" >> "$GITHUB_ENV"
             exit 0
@@ -70,7 +80,7 @@ jobs:
           commit=$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE" --jq .sha)
           jq -e --arg commit "$commit" '.revision == $commit' release.json > /dev/null ||
             { echo "release.json was built from $(jq -r .revision release.json); $RELEASE is $commit"; exit 1; }
-          command="deploy $RELEASE"
+          command="$ACTION $RELEASE"
           for image in qualy-server qualy-sandbox-runtime qualy-sandbox-authoring; do
             ref=$(jq -r --arg image "$image" '.images[$image]' release.json)
             digest=${ref#"$REGISTRY/$image@"}
@@ -80,18 +90,21 @@ jobs:
           done
           if [ "$MAINTENANCE" = true ]; then command="$command --maintenance"; fi
           echo "COMMAND=$command" >> "$GITHUB_ENV"
-          jq . release.json >> "$GITHUB_STEP_SUMMARY"
+          { echo "### $ACTION $RELEASE"; echo; echo '```json'; jq . release.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: run it on the server
         env:
           KEY: ${{ secrets.QUALY_DEPLOY_SSH_KEY }}
           KNOWN_HOSTS: ${{ vars.QUALY_DEPLOY_KNOWN_HOSTS }}
         run: |
-          install -d -m 0700 ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/deploy && chmod 0600 ~/.ssh/deploy
+          umask 077
+          install -d ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy
+          # the one host key checked in the console; nothing the runner ships
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           ssh -i ~/.ssh/deploy -p "$PORT" \
-            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
-            -o ServerAliveInterval=30 \
+            -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o GlobalKnownHostsFile=/dev/null \
+            -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=4 \
             "qualy-deploy@$HOST" "$COMMAND"
       - if: always()
         run: rm -f ~/.ssh/deploy

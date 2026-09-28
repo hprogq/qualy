@@ -137,7 +137,9 @@ launcher 以非 root 身份被调起时把 `SSH_ORIGINAL_COMMAND` 按空白切�
 这一层权限本身就高,要再降需要 rootless Docker 或另设窄接口,现在不做。安装步骤见 `ops/deploy-host/README.md`。
 
 `.github/workflows/deploy.yml` 只能从 main 手动运行,`production` 环境要审批后才拿得到密钥:读该 release 的 `release.json`,核对它的 revision 就是该 tag 指向的 commit(`v*` tag 由仓库 ruleset 禁止移动与删除,一个 release 名永远对应一个 commit)、平台与每个镜像都在
-`vars.QUALY_REGISTRY` 之下,只把 release 名与三个 digest 发给 launcher。发布制品(tag)与批准部署是两件事,tag 工作流不进 `production`。
+`vars.QUALY_REGISTRY` 之下,只把 release 名与三个 digest 发给 launcher。三个动作:`deploy`、`rollback`,以及只拉取不启动的 `fetch`
+(按 digest 拉取、核对、取出 `deploy/`,首次部署的第一步,也可以在部署前先把镜像拉到机器上)。连接只认 `production` 里那一行在控制台核对过的
+host key(不用 runner 自带的 known_hosts)。发布制品(tag)与批准部署是两件事,tag 工作流不进 `production`。
 
 ## 3. 部署(`deploy/`)
 

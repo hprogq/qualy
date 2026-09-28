@@ -63,8 +63,8 @@ reviewed checkout, never by a release or by the workflow.
 ## Using it
 
 The deploy workflow (`.github/workflows/deploy.yml`) runs
-`deploy <release> <three digests>` from the release's `release.json`, or
-`rollback`. By hand, as root:
+`deploy <release> <three digests>` or `fetch <release> <three digests>` from
+the release's `release.json`, or `rollback`. By hand, as root:
 
 ```sh
 qualy-deploy check
