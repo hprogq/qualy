@@ -19,12 +19,11 @@ QUALY_DEMO_DATABASE_URL=postgres://qualy:qualy@localhost:5434/qualy_demo pnpm de
 
 `demo:check` 清点下文每个演示身份应当看到的情况，任何一项为 0 就以非零退出，这时不要打快照。生成时带了
 `--stage` 或 `--migration-state` 的，检查时带上同样的参数：它据此不要求那次生成本来就不会有的申诉、复查与流程调整。
-「辅导员能从名单打开参评人」一项等待裁决（docs/assessment-design.md §30 第 12 条），只打印、不判失败。
 它还核对库里没有只要文字的补件、没有不带文件的答复、没有与原件相同的答复，也没有落在 23:00 至 08:00 的审核动作。
 得到 `data/demo-baseline/qualy-demo.dump` 与 `storage.tar.gz`，上传到服务器的 `/opt/qualy/demo-baseline/`。
 
-- 两个密码都只来自环境变量，不进仓库，也不写进任何文档。2026-09-25 之前生成的基线里，四个演示身份的密码是仓库里公开的值，
-  不能再用来部署：重新生成，或者导入后立即给这四个账号改密码。
+- 两个密码都只来自环境变量，不进仓库，也不写进任何文档。它们只在开发机上用：导入时 `restore.sh` 把五个账号的密码换成服务器 `.env`
+  里的五个值（见第 3 节），基线里带的密码在服务器上从不生效。
 - `demo:snapshot` 拒绝打包带有会话、限流桶、待确认邮件、已用验证码挑战的库（在这份库上登录过就会有），
   确认可以清掉时加 `--clear-runtime`。它同样拒绝带有本机密钥加密数据的库，服务器用自己的 `QUALY_SECRETS_MASTER_KEY` 即可。
 - 基线里进行中的推免批次按生成当天定时间（「材料审核」阶段、前几天刚开始），会随时间变旧，建议每月重新生成一次。
@@ -35,36 +34,32 @@ QUALY_DEMO_DATABASE_URL=postgres://qualy:qualy@localhost:5434/qualy_demo pnpm de
 
 - `QUALY_TRUSTED_PROXIES`：保持示例里的 `172.30.53.1`（compose 网络的网关，Caddy 连到发布端口时容器看到的就是它）。
   留空会让所有访客在登录限流里共用一个地址，一个人就能让全站登录不了。
-- `QUALY_STORAGE_DEFAULT_BACKEND=local`：附件放在 `storage` 卷里，才能随基线一起复原。
-- `QUALY_CSP_MODE=enforce`：上线前用 enforce 打开登录页、批次列表、审核工作台、公式编辑器、题目设置各一次，
+- 附件：基线里的附件记在 local 后端上，随基线解进 `storage` 卷，经 local 读回；新上传的去 `QUALY_STORAGE_DEFAULT_BACKEND`
+  指的后端（生产形态是 `cos`，同时给齐 COS 的四个变量）。复原只回到基线里的那些。
+- `QUALY_CSP_MODE=enforce`（模板里已是）：上线前打开登录页、批次列表、审核工作台、公式编辑器、题目设置各一次，
   浏览器控制台里没有 CSP 报错再保留；有报错就先退回 `report` 并记下是哪一页。
+- `QUALY_BASELINE_PASSWORD_ADMIN`、`_STUDENT`、`_CLASS_LEAD`、`_COUNSELLOR`、`_LEAD`：五个账号在这台服务器上的密码，
+  每个至少 15 位、不含本人的名字或邮箱。缺任何一个，导入在停服之前就拒绝。
 - `QUALY_PUBLIC_URL`：站点的 https 地址。找回密码、验证邮箱与第三方登录都用它拼回跳地址。
 - 不设 `QUALY_DEMO_ACCOUNTS`。它会把演示账号连同密码列在登录页上并冻结其凭据，只给将来开放受限演示时用。
 
-Caddy（与 `ops/reverse-proxy/Caddyfile` 相同，另加维护页）：
+Caddy 用 `ops/reverse-proxy/Caddyfile` 那一份：站点导入 `/etc/caddy/qualy/upstream.caddy`，由脚本改写指向服务中的那一色，
+502/503/504 时服务本目录的 `maintenance.html`。首次导入前先放一个指向维护页的片段，站点才加载得起来：
 
-```caddyfile
-demo.example.com {
-	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
-	reverse_proxy 127.0.0.1:3000 {
-		header_up X-Forwarded-Host {http.request.host}
-		flush_interval -1
-	}
-	handle_errors 502 503 504 {
-		root * /opt/qualy/deploy/demo
-		rewrite * /maintenance.html
-		file_server
-	}
-}
+```sh
+sudo mkdir -p /etc/caddy/qualy
+echo 'error "maintenance" 503' | sudo tee /etc/caddy/qualy/upstream.caddy
 ```
 
 ## 3. 首次导入
 
 ```sh
 docker compose -f deploy/compose.yaml up -d postgres
-deploy/demo/restore.sh /opt/qualy/demo-baseline      # 导入基线、跑迁移、启动全部服务
-curl -sf http://127.0.0.1:3000/health/ready
+deploy/demo/restore.sh /opt/qualy/demo-baseline      # 导入基线、跑迁移、换五个账号的密码、以 blue 启动并把代理指过去
+curl -sf http://127.0.0.1:3001/health/ready
 ```
+
+`.env` 里先填好 `QUALY_RELEASE`（要跑的 release）。之后的升级与回滚用 `deploy/upgrade.sh` / `deploy/rollback.sh`（`deploy/README.md`）。
 
 导入后经公网地址登录一次，到「我的 → 账号安全」的登录记录里看来源地址：应当是你自己的公网地址。
 看到 `172.30.53.1` 说明代理没被信任，回头检查 `QUALY_TRUSTED_PROXIES`。
@@ -77,7 +72,8 @@ curl -sf http://127.0.0.1:3000/health/ready
 deploy/demo/restore.sh /opt/qualy/demo-baseline
 ```
 
-- 先把 dump 还原进一个临时库，这一步站点照常服务；成功后才停服、换库、换附件、跑迁移、启动，并等服务就绪。
+- 先把 dump 还原进一个临时库，这一步站点照常服务；成功后才停下服务中的那一色、换库、换附件、跑迁移、换五个账号的密码、
+  再启动这一色，并等服务就绪。
 - 被换下来的库留作 `<库名>_previous`，到下一次复原时才删除，出了问题可以手工换回。
 - 中途失败会说明停在哪一步，站点停在维护页；再运行一次即可接着完成。两次复原不能同时进行。
 - 需要定时复原时（例如每周一次），日志写到当前用户能写的位置：
@@ -88,7 +84,7 @@ deploy/demo/restore.sh /opt/qualy/demo-baseline
 
 ## 5. 演示身份
 
-四个身份共用生成基线时给的 `QUALY_DEMO_PERSONA_PASSWORD`：
+四个身份在服务器上各用 `.env` 里自己的 `QUALY_BASELINE_PASSWORD_*`（开发机上共用生成基线时给的 `QUALY_DEMO_PERSONA_PASSWORD`）：
 
 | 账号                               | 能看到什么                                                                                                                                                                                                                                                                                       |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -97,4 +93,4 @@ deploy/demo/restore.sh /opt/qualy/demo-baseline
 | counsellor@demo.qualy.example      | 推免材料审核的待办、补件往返、驳回、上提、发起复查、考核表申诉的复核意见，以及单独录入与撤回重录的行政认定                                                                                                                                                                                       |
 | assessment-lead@demo.qualy.example | 批次与阶段管理、题目与计分公式、名单对账、无人可审的告警；推免工作组待审的申诉、多轮条目、复查与班级合议分歧，一条自己发出尚未答复的补件；以「综测督查」身份重新认定                                                                                                                             |
 
-系统管理员的密码只在生成基线时由环境变量给出，同样不公开。
+系统管理员（`admin@demo.example.edu`）在服务器上用 `QUALY_BASELINE_PASSWORD_ADMIN`，同样不公开。

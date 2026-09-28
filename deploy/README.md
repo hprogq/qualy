@@ -39,28 +39,39 @@ docker save qualy-server:<release> qualy-sandbox-runtime:<release> qualy-sandbox
   | ssh host docker load
 ```
 
+## Two colors
+
+`compose.yaml` runs the release in two colors, blue and green, each a whole
+set - the server and both sandboxes - on a port of its own (`QUALY_PORT_BLUE`,
+`QUALY_PORT_GREEN`, 3001 and 3002 on loopback). One serves; the other is idle,
+stopped on the release it last ran. The edge proxy is pointed at the serving
+color through a snippet the site imports (`/etc/caddy/qualy/upstream.caddy`,
+see `ops/reverse-proxy/Caddyfile`), which the scripts rewrite, validate and
+reload. `.env` records which color serves and which release each color last
+ran (`QUALY_ACTIVE_COLOR`, `QUALY_RELEASE_BLUE`, `QUALY_RELEASE_GREEN`); the
+scripts write those, not the operator.
+
 ## First deployment
 
 ```sh
 cp .env.example .env         # then fill it in: QUALY_RELEASE, the database password, DATABASE_URL, QUALY_PUBLIC_URL
 openssl rand -base64 32      # QUALY_SECRETS_MASTER_KEY: required, and kept with the backups
+sudo mkdir -p /etc/caddy/qualy
+echo 'error "maintenance" 503' | sudo tee /etc/caddy/qualy/upstream.caddy   # the site needs the snippet to load
 docker compose up -d postgres
 docker compose run --rm migrate          # applies the release's migrations and installs its web release, once
-docker compose up -d                     # server, sandbox-runtime, sandbox-authoring
-curl -sf http://127.0.0.1:3000/health/ready
+# the seed, below
+deploy/upgrade.sh <release>              # starts blue, waits for it, points the edge at it
 ```
 
-Then put the edge in front of the published port: `ops/reverse-proxy/` has
-the Caddy and nginx shapes (TLS, HSTS, forwarded headers), and
-`QUALY_TRUSTED_PROXIES` in `.env` names the peer the container sees, the
-compose network's gateway (`.env.example` has it). Check it once the edge is
-up: sign in through the public address and look at the sign-in record under
-the account's security page, or at the server's json access log. The address
-there must be your own public one; a `172.30.53.1` means the proxy is not
-trusted and every visitor shares that address in the rate limits. The server
-also says so itself: the first request a private or loopback peer forwards
-without being named there is logged once, at Warn, naming
-`QUALY_TRUSTED_PROXIES`.
+Then check the edge: `QUALY_TRUSTED_PROXIES` in `.env` names the peer the
+container sees, the compose network's gateway (`.env.example` has it). Sign in
+through the public address and look at the sign-in record under the account's
+security page, or at the server's json access log. The address there must be
+your own public one; a `172.30.53.1` means the proxy is not trusted and every
+visitor shares that address in the rate limits. The server also says so
+itself: the first request a private or loopback peer forwards without being
+named there is logged once, at Warn, naming `QUALY_TRUSTED_PROXIES`.
 
 Do not run these commands from a development checkout's working copy against
 its own Docker: the deployment is its own project (`qualy-deployment`), but
@@ -84,7 +95,8 @@ creates the tenant by that name, and the server looks for it by that name.
 A production server refuses to start while the default tenant does not exist
 (never seeded, or the name differs), and while any tenant's system account
 has no email or no password at its door, and says which; the order is always
-migrate, then seed when it is needed, then start.
+migrate, then seed when it is needed, then start. A demonstration instance
+imports a baseline instead of seeding (`demo/README.md`).
 
 The first `migrate` builds the whole schema on the empty database. The
 server never migrates on its own: its production command keeps
@@ -97,50 +109,68 @@ there last refuses to start and says to run `migrate`.
 ## Upgrading
 
 ```sh
-deploy/backup.sh /var/backups/qualy      # first, always: an image rollback is not a schema rollback
 # load the new release's three images, then:
-sed -i 's/^QUALY_RELEASE=.*/QUALY_RELEASE=<new>/' .env
-docker compose run --rm migrate
-docker compose up -d
-curl -sf http://127.0.0.1:3000/health/ready
+deploy/upgrade.sh <new>
 ```
+
+It checks that the images are here and that the host has room for two colors
+at once (`QUALY_UPGRADE_MIN_MEMORY_MB`, `QUALY_UPGRADE_MIN_DISK_MB`), backs up
+to `QUALY_BACKUP_ROOT`, runs the deploy job for the new release, starts the
+idle color on it and waits until it is ready, points the edge at it and asks
+the public address which release it serves, and then, after
+`QUALY_DRAIN_SECONDS`, stops the color that served. Nobody sees the switch: a
+page that was open keeps working, its live channel reconnects on its own
+within seconds, and a tab of the previous release keeps loading its chunks
+from `web_releases`. Until the edge has moved, the old color serves as it
+did; a failure before then stops the new color, puts the old release back as
+the web store's current one and says what failed.
+
+While the colors overlap, both releases run against one database, so each
+must work on the schema the other leaves: migrations expand, and what a
+release stops using is removed a release later. A pending migration approved
+as destructive (`-- destructive: approved`) breaks that, and the upgrade
+refuses it unless run with `--maintenance`: the edge shows the maintenance
+page, the serving color stops, the job runs, the new color starts. That
+should be rare.
 
 When the release notes say an upgrade needs the seed (the one that moved the
 password door to email sign-in does: the existing system account has no email
-until the seed gives it one), run it between `migrate` and `up -d`.
+until the seed gives it one), run `docker compose run --rm migrate` and the
+seed first, then `deploy/upgrade.sh`.
 
-`migrate` runs first and alone. It takes the database's migration lock, so
-a second copy waits and then finds nothing to do; a migration that fails is
-not recorded, the job exits non-zero, and the old server keeps running until
-it is fixed forward. `up -d` then recreates the containers whose image
-changed.
-
-`migrate` also installs the new release's web bundle into `web_releases`,
+`migrate` takes the database's migration lock, so a second copy waits and
+then finds nothing to do; a migration that fails is not recorded, the job
+exits non-zero, and the serving color keeps serving until it is fixed
+forward. It also installs the new release's web bundle into `web_releases`,
 beside the ones before it: the newest five and everything installed in the
 last 72 hours stay (`QUALY_WEB_RELEASE_RETAIN_COUNT` and
-`QUALY_WEB_RELEASE_RETAIN_HOURS` in `.env`). A tab still running the previous
-release keeps loading its chunks from there, and when the release did not
-change which plugins are enabled its requests are answered as before; it is
-offered the new release in a notice and moves when its reader chooses. A
-release that enabled or disabled a plugin is the exception: tabs of the
-previous one are asked to reload on their next request, because the screens
-they carry may no longer have an api behind them.
+`QUALY_WEB_RELEASE_RETAIN_HOURS` in `.env`). When the release did not change
+which plugins are enabled, a tab of the previous one has its requests
+answered as before and is offered the new release in a notice; a release
+that enabled or disabled a plugin asks those tabs to reload on their next
+request, because the screens they carry may no longer have an api behind
+them.
 
 ## Rolling back
 
-Setting `QUALY_RELEASE` back, running `docker compose run --rm migrate` and
-then `docker compose up -d` rolls the **image** back. The `migrate` step
-finds no migration to apply (the database is ahead of the older release,
-and applied migrations it does not know are left alone) and makes the older
-release's web bundle the current one again, which its server requires
-before it starts. None of this rolls the **schema** back: applied migrations
-stay applied, and the older code now runs against the newer schema. That is
-safe when the release's migrations only added (columns, tables, indexes),
-which is what a reviewed migration should be until the release that
-depended on it has settled. If the release's migrations removed or
-rewrote something the older code needs, the way back is a fix-forward
-release, or a restore from the backup taken before the upgrade, accepting
-the writes made since. Take that backup first (next section).
+```sh
+deploy/rollback.sh
+```
+
+goes back to the release the idle color last ran: the deploy job makes that
+release's web bundle the current one again (it applies nothing - the
+database is ahead of it, and migrations it does not know are left alone), the
+idle color starts, the edge moves, and the other color stops, the same way
+an upgrade does. For any other release, use `upgrade.sh`.
+
+None of this rolls the **schema** back: applied migrations stay applied, and
+the older code now runs against the newer schema. That is safe when the
+release's migrations only added (columns, tables, indexes), which is what a
+reviewed migration should be until the release that depended on it has
+settled. When one of them was approved as destructive, or is unknown to the
+release that brought it, `rollback.sh` refuses unless `--force` says the
+operator has checked; the ways back from there are a fix-forward release, or
+a restore from the backup the upgrade took, accepting the writes made since.
 
 ## Backup and restore
 
@@ -163,11 +193,11 @@ in the database can be read without it, so keep it - with the rest of
 `.env` - somewhere that is not beside the backups.
 
 `restore.sh` puts one back. It checks the files against their sums, restores
-the dump into a scratch database while the server still serves (all or
-nothing), then stops the server, swaps the databases (the live one is kept as
-`<name>_previous` until the next restore), swaps the attachments in, runs
+the dump into a scratch database while the serving color still serves (all
+or nothing), then stops that color, swaps the databases (the live one is kept
+as `<name>_previous` until the next restore), swaps the attachments in, runs
 `migrate` - which brings a backup from an older release up to this one - and
-starts everything again:
+starts the color again:
 
 ```sh
 deploy/restore.sh /var/backups/qualy/<stamp>
@@ -179,20 +209,41 @@ release smoke (`pnpm release:smoke`) drills both scripts on every CI run: a
 row and an attachment written before the backup are read back after the
 database and the attachments were destroyed and restored.
 
+## Telemetry
+
+The collector is the one process that knows Tencent Cloud: `otel-collector.yaml`
+beside `compose.yaml`, with its credentials in `collector.env` (copied from
+`collector.env.example`; the server never sees any of it). Start it once, and
+upgrades leave it running:
+
+```sh
+docker compose --profile telemetry up -d otel-collector
+```
+
+and point the server at it in `.env` (`OTEL_EXPORTER_OTLP_ENDPOINT`,
+`OTEL_LOGS_EXPORTER`, `QUALY_INSTANCE_ID`). Traces, metrics and logs then go
+out over the region's private-network endpoints. An endpoint it cannot reach
+is a retry in the background, never a failed start.
+
 ## Looking
 
 ```sh
 docker compose ps
-docker compose logs -f server                    # json lines; QUALY_LOG_FORMAT in .env
-curl -sf http://127.0.0.1:3000/health/live       # the process answers
-curl -sf http://127.0.0.1:3000/health/ready      # the assembly is up and its dependencies answer
+docker compose logs -f server-blue               # json lines; QUALY_LOG_FORMAT in .env
+curl -sf http://127.0.0.1:3001/health/live       # the process answers
+curl -sf http://127.0.0.1:3001/health/ready      # the assembly is up and its dependencies answer
 ```
+
+(3001 is blue, 3002 green; `QUALY_ACTIVE_COLOR` in `.env` says which serves.)
 
 ## Verifying a release before it goes anywhere
 
 From a checkout with the release's images loaded, the release smoke drives
-this compose file on a throwaway project: database up, migrate, server up
-and ready, shell and manifest served, backup, restore, start again, down.
+this compose file and these scripts on a throwaway project: database up,
+migrate, seed, the first color up through `upgrade.sh`, shell and manifest
+served, an upgrade to the other color and a rollback, both refusals (a
+destructive migration pending, a migration the older release does not know),
+backup, restore, start again, down.
 
 ```sh
 node tools/quality/release-smoke.ts <release>

@@ -96,34 +96,29 @@ purely local stack.
 
 ## Production (Tencent Cloud)
 
-`collector.production.yaml` is the one place Tencent Cloud exists. The
-application keeps exporting to `http://127.0.0.1:4318` exactly as in
-development; the Collector fans out:
+`deploy/otel-collector.yaml` is the one place Tencent Cloud exists; it runs
+as the `otel-collector` service of `deploy/compose.yaml` (profile
+`telemetry`), and the servers export to it over the compose network
+(`OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318`,
+`OTEL_LOGS_EXPORTER=otlp` in `deploy/.env`). The Collector fans out over the
+region's private-network endpoints:
 
 ```text
-traces  → Tencent APM  (OTLP gRPC; token + host.name injected by the
-                        resource processor, never set by the application)
-metrics → Tencent TMP  (Prometheus remote write, bearer token)
+traces  → Tencent APM  (OTLP gRPC in the clear on 4319; token + host.name
+                        injected by the resource processor, never set by
+                        the application)
+metrics → Tencent APM  (the same uplink; the console's sync rules carry them
+                        on into TMP until a remote write to the TMP instance
+                        is measured reachable from the server)
+logs    → Tencent CLS  (OTLP/HTTP, Basic Auth over a CAM credential)
 ```
 
-Credentials and endpoints come from the Collector's environment only —
-deployment secrets, never the Qualy process, never this repository:
-
-```text
-TENCENT_APM_OTLP_ENDPOINT     regional APM OTLP endpoint (prefer private network)
-TENCENT_APM_TOKEN             APM business system token
-TENCENT_TMP_REMOTE_WRITE_URL  TMP remote-write URL
-TENCENT_TMP_TOKEN             TMP bearer token
-QUALY_INSTANCE_ID             same stable instance id the application carries
-```
-
-Run it beside the server (the config binds receivers to `127.0.0.1` only):
+Credentials and endpoints come from `deploy/collector.env` only (copied from
+`deploy/collector.env.example`, never committed) - never the Qualy process,
+never this repository. Start it once; upgrades leave it running:
 
 ```bash
-docker run -d --name qualy-otel-collector --network host \
-  -v /path/to/collector.production.yaml:/etc/otelcol/config.yaml:ro \
-  --env-file /path/to/collector.env \
-  otel/opentelemetry-collector-contrib:0.159.0 --config=/etc/otelcol/config.yaml
+docker compose --profile telemetry up -d otel-collector
 ```
 
 Health probe: `curl -sf http://127.0.0.1:13133`. An unreachable APM/TMP
@@ -189,16 +184,12 @@ The container versions are pinned in `docker-compose.yml`:
 - `otel/opentelemetry-collector-contrib:0.159.0`
 - `grafana/otel-lgtm:0.31.0`
 
-After upgrading the Collector, validate both configurations against the
-pinned image:
+After upgrading the Collector, validate the development configuration
+against the pinned image, and the deployment's as the comment at the top of
+`deploy/otel-collector.yaml` says (the deployment pins the same version by
+digest in `deploy/compose.yaml`):
 
 ```bash
 docker compose --profile observability run --rm --no-deps \
   otel-collector validate --config=/etc/otelcol/config.yaml
-
-docker run --rm -v ./ops/observability/collector.production.yaml:/etc/otelcol/config.yaml:ro \
-  -e TENCENT_APM_OTLP_ENDPOINT=host:4317 -e TENCENT_APM_TOKEN=placeholder \
-  -e TENCENT_TMP_REMOTE_WRITE_URL=https://host/write -e TENCENT_TMP_TOKEN=placeholder \
-  -e QUALY_INSTANCE_ID=placeholder \
-  otel/opentelemetry-collector-contrib:0.159.0 validate --config=/etc/otelcol/config.yaml
 ```

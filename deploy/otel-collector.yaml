@@ -1,0 +1,117 @@
+# The deployment's collector: the one place Tencent Cloud exists.
+#
+# The server exports to it over the compose network
+# (OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318, OTEL_LOGS_EXPORTER=otlp
+# in .env); everything vendor-specific - the APM token, the CLS credential,
+# the regional endpoints - lives in collector.env beside this file, given to
+# this container only. None of it ever enters the Qualy process.
+#
+# The endpoints are the private-network ones, reached from a server in the
+# same region without spending its public bandwidth (measured from the
+# server, 2026-09-28: both resolve to 169.254.x.x and accept connections):
+#
+#   TENCENT_APM_ENDPOINT     pl.ap-beijing.apm.tencentcs.com:4319, gRPC in
+#                            the clear
+#   TENCENT_APM_TOKEN        the APM business system token
+#   TENCENT_CLS_ENDPOINT     https://ap-beijing.cls.tencentyun.com
+#   TENCENT_CLS_TOPIC_ID     the log topic
+#   TENCENT_CLS_SECRET_ID    a CAM credential allowed to upload to that topic
+#   TENCENT_CLS_SECRET_KEY   and nothing else
+#   QUALY_INSTANCE_ID        a stable name for this host, the same one the
+#                            server carries in its resource
+#
+# Metrics go to APM with the traces, and the console's sync rules carry them
+# on into TMP. A remote-write exporter to the TMP instance replaces that once
+# its private address is measured reachable from the server.
+#
+# Validated against the pinned image, with placeholder values:
+#   docker run --rm -v ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro \
+#     -e TENCENT_APM_ENDPOINT=x:4319 -e TENCENT_APM_TOKEN=x -e TENCENT_CLS_ENDPOINT=https://x \
+#     -e TENCENT_CLS_TOPIC_ID=x -e TENCENT_CLS_SECRET_ID=x -e TENCENT_CLS_SECRET_KEY=x \
+#     -e QUALY_INSTANCE_ID=x \
+#     otel/opentelemetry-collector-contrib:0.159.0 validate --config=/etc/otelcol-contrib/config.yaml
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  # CLS OTLP/HTTP authenticates with HTTP Basic Auth over SecretId/SecretKey;
+  # the extension builds the header from this container's environment, so no
+  # encoded credential ever appears in a file
+  basicauth/tencent_cls:
+    client_auth:
+      username: ${env:TENCENT_CLS_SECRET_ID}
+      password: ${env:TENCENT_CLS_SECRET_KEY}
+
+receivers:
+  otlp:
+    protocols:
+      # on the compose network only: nothing publishes these ports
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # memory_limiter first, batch second: refuse before buffering, bounded
+  # growth even when the uplink stalls; under the container's 256m ceiling
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 192
+    spike_limit_mib: 48
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+  # APM identifies the business system by a `token` resource attribute (the
+  # console's own instructions) and separates instances by `host.name`; both
+  # are injected here, so the application never carries either
+  resource/tencent_apm:
+    attributes:
+      - key: token
+        action: upsert
+        value: ${env:TENCENT_APM_TOKEN}
+      - key: host.name
+        action: upsert
+        value: ${env:QUALY_INSTANCE_ID}
+
+exporters:
+  otlp_grpc/tencent_apm:
+    endpoint: ${env:TENCENT_APM_ENDPOINT}
+    # the private-network endpoint speaks gRPC in the clear
+    tls:
+      insecure: true
+    # the header the public endpoint was verified with from a development
+    # machine (ops/observability/collector.staging.yaml), beside the attribute
+    headers:
+      authorization: ${env:TENCENT_APM_TOKEN}
+  # Logs go to CLS directly over its OTLP/HTTP endpoint - not through APM,
+  # no LogListener, no machine group. The endpoint is a BASE url; the
+  # exporter appends /v1/logs itself.
+  otlp_http/tencent_cls:
+    endpoint: ${env:TENCENT_CLS_ENDPOINT}
+    # CLS ignores Content-Encoding and proto-parses the raw bytes, so the
+    # exporter's default gzip arrives as "invalid wire-format" (probed:
+    # identity 200, gzip 400) - compression stays off on this uplink
+    compression: none
+    auth:
+      authenticator: basicauth/tencent_cls
+    headers:
+      topic_id: ${env:TENCENT_CLS_TOPIC_ID}
+
+service:
+  extensions: [health_check, basicauth/tencent_cls]
+  pipelines:
+    traces:
+      # a future tail_sampling processor slots in between memory_limiter and
+      # resource/tencent_apm - errors 100%, slow 100%, ordinary 10-20% - once
+      # real span volume or cost says so (design §20); none today on purpose
+      receivers: [otlp]
+      processors: [memory_limiter, resource/tencent_apm, batch]
+      exporters: [otlp_grpc/tencent_apm]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/tencent_apm, batch]
+      exporters: [otlp_grpc/tencent_apm]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp_http/tencent_cls]

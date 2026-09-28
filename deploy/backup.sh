@@ -4,9 +4,11 @@
 #   deploy/backup.sh [backup-root]
 #
 # Each run writes <backup-root>/<UTC stamp>/ with qualy.dump (pg_dump custom
-# format), storage.tar.gz (the local storage backend's volume) and SHA256SUMS,
-# and only then puts the directory in place, so a directory with a stamp for
-# a name is a whole backup. The newest QUALY_BACKUP_KEEP (default 14) stay.
+# format), storage.tar.gz (the local storage backend's volume),
+# attachments.tar.gz (every attachment kept anywhere else - a bucket - fetched
+# at the version it completed with, with attachments.tsv naming each) and
+# SHA256SUMS, and only then puts the directory in place, so a directory with a
+# stamp for a name is a whole backup. The newest QUALY_BACKUP_KEEP (default 14) stay.
 # QUALY_BACKUP_OFFSITE, when set, is run by sh with the new directory as $1
 # to copy it off this machine, for example
 #
@@ -28,9 +30,9 @@ set -eu
 umask 077
 
 here=$(cd "$(dirname "$0")" && pwd)
+. "$here/lib.sh"
 root=${1:-/var/backups/qualy}
 keep=${QUALY_BACKUP_KEEP:-14}
-env_file=${QUALY_ENV_FILE:-$here/.env}
 
 case $keep in '' | *[!0-9]* | 0)
   echo "QUALY_BACKUP_KEEP must be a whole number above 0, not $keep" >&2
@@ -38,10 +40,6 @@ case $keep in '' | *[!0-9]* | 0)
   ;;
 esac
 [ -f "$env_file" ] || { echo "no $env_file" >&2; exit 1; }
-
-compose() {
-  docker compose -f "$here/compose.yaml" --env-file "$env_file" "$@"
-}
 
 sums() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi
@@ -63,11 +61,21 @@ compose exec -T postgres pg_restore --list < "$partial/qualy.dump" > /dev/null
 # Then the attachments, after the database: a file the dump names may be
 # newer than the dump, which a restore survives; a row naming a file that the
 # archive lacks it would not.
-compose run --rm --no-deps -T --user 0:0 --entrypoint sh server \
+compose run --rm --no-deps -T --user 0:0 --entrypoint sh tools \
   -c 'tar -czf - -C /var/lib/qualy/storage .' > "$partial/storage.tar.gz"
 gzip -t "$partial/storage.tar.gz"
 
-(cd "$partial" && sums qualy.dump storage.tar.gz > SHA256SUMS)
+# And the attachments kept anywhere but the volume, each as it completed: a
+# bucket that keeps versions reads back the newest write to a key, which is
+# not always the one an attachment names, so a copy of the bucket would not
+# do. Written as this script's own user, so it can archive and remove them.
+compose run --rm --no-deps -T --user "$(id -u):$(id -g)" -v "$partial:/backup" tools \
+  node apps/cli/src/main.ts storage export --to /backup/attachments --except local < /dev/null
+tar -czf "$partial/attachments.tar.gz" -C "$partial/attachments" .
+rm -rf "$partial/attachments"
+gzip -t "$partial/attachments.tar.gz"
+
+(cd "$partial" && sums qualy.dump storage.tar.gz attachments.tar.gz > SHA256SUMS)
 mv "$partial" "$root/$stamp"
 trap - EXIT
 

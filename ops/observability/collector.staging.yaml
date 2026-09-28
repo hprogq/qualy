@@ -6,7 +6,7 @@
 # collector.local.yaml - selecting this file must not change what Grafana on
 # :3001 sees - and the only addition is the second traces exporter. Metrics
 # stay local in step one; the APM→TMP metric sync is configured in the
-# Tencent console, and the in-VPC remote-write path (collector.production.yaml)
+# Tencent console, and the deployment's own collector (deploy/otel-collector.yaml)
 # waits until a collector actually lives in that VPC.
 #
 # Credentials come from the collector container's own environment

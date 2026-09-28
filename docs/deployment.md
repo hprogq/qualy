@@ -115,12 +115,28 @@ devDependencies 里的包,在每个开发机上都能解析,在镜像第一次�
 - `migrate`(profile `deploy`):server 镜像跑 `deploy`,`docker compose run --rm migrate` 按需运行。先按 ledger 应用迁移
   (migrator 持数据库级 advisory lock,第二个 writer 排队后发现无事可做;失败的迁移不进 ledger,job 非零退出,旧 server 继续跑),
   再把镜像带的 web release 装进 `web_releases` 卷(可写挂载,`QUALY_WEB_RELEASE_STORE=/var/lib/qualy/web`,见 §3.1)。
-- `server`:`env_file: .env`,容器内路径由 compose 覆盖(`PORT`、存储根、两条 socket 路径、`QUALY_VERSION=<release>`);
-  只发布到 `127.0.0.1:3000`(边缘代理见 `ops/reverse-proxy/`);`read_only` 根 + tmpfs `/tmp`;卷:`storage`(附件)、
-  `web_releases`(**只读挂载**,从这里服务 shell 与资源)、`sandbox_runtime`、`sandbox_authoring`(**只读挂载**:server 只 connect;Linux 对只读挂载的 EROFS 写检查不覆盖 unix socket,实测 `:ro` 客户端照常连通、写文件报 EROFS;创建与删除 socket 归沙箱自己的读写挂载)。
-- `sandbox-runtime` / `sandbox-authoring`:按 `docs/sandbox-process-isolation.md`:`network_mode: none`、只读根、`cap_drop: ALL`、
+- **两色**(2026-09-28 用户裁决,§3.1):`server-blue` / `sandbox-runtime-blue` / `sandbox-authoring-blue` 与同样三个 `-green`,
+  每色一整套,profile 各自 `blue` / `green`;一色服务、另一色停在它上次跑的 release 上。两色共享的只有数据库、`storage` 与 `web_releases`。
+  `.env` 记 `QUALY_ACTIVE_COLOR` 与每色的 `QUALY_RELEASE_BLUE` / `_GREEN`,由脚本写。
+- `server-<色>`:`env_file: .env`,容器内路径由 compose 覆盖(`PORT`、存储根、两条 socket 路径、`QUALY_VERSION=<该色的 release>`、
+  `NODE_OPTIONS=--max-old-space-size`);各发布到回环地址的一个端口(`QUALY_PORT_BLUE` 3001、`QUALY_PORT_GREEN` 3002,边缘代理见
+  `ops/reverse-proxy/`);`read_only` 根 + tmpfs `/tmp`;`mem_limit`(`QUALY_SERVER_MEMORY`,默认 768m,堆上限 `QUALY_SERVER_HEAP_MB`
+  默认 512,低于容器上限,进程先回收而不是被杀)、`stop_grace_period: 40s`(`QUALY_SHUTDOWN_TIMEOUT` 30s 加余量);卷:`storage`(附件)、
+  `web_releases`(**只读挂载**,从这里服务 shell 与资源)、本色的 `sandbox_runtime_<色>`、`sandbox_authoring_<色>`(**只读挂载**:server 只 connect;Linux 对只读挂载的 EROFS 写检查不覆盖 unix socket,实测 `:ro` 客户端照常连通、写文件报 EROFS;创建与删除 socket 归沙箱自己的读写挂载)。
+  每色的沙箱卷分开,server 只连得到本色、也就是本 release 的沙箱。
+- `sandbox-runtime-<色>` / `sandbox-authoring-<色>`:按 `docs/sandbox-process-isolation.md`:`network_mode: none`、只读根、`cap_drop: ALL`、
   非 root、pids / mem / cpu 限额、各自一个卷;**不给 `.env`**——沙箱环境只有自己的 socket 路径与限额,没有业务 secret。
   两个卷分开,runtime 看不到 authoring 的 socket,反之亦然。没有 TCP fallback:socket 不可达时公式发布 / 计分失败,不退回主进程。
+- `tools`(profile `tools`):当前 release 的 server 镜像 + 部署的 `.env` + `storage` 与 `web_releases` 卷,只跑一次性命令
+  (`docker compose run --rm tools <命令>`),`QUALY_MIGRATIONS=off`。备份、恢复、基线导入与运维 CLI(`auth set-password`、
+  `storage export`)都经它,不点名颜色,也不按带 project 前缀的名字找卷。
+- `otel-collector`(profile `telemetry`):`deploy/otel-collector.yaml` + `deploy/collector.env`(凭据只给这个容器),镜像按 digest 固定,
+  `mem_limit: 256m`,不发布端口;启动一次,升级不动它。traces 与 metrics 走 APM 内网接入点(明文 gRPC 4319,metrics 由控制台同步规则转入 TMP,
+  TMP 实例的 remote write 从服务器实测可达后再改直写),logs 经 OTLP/HTTP 进 CLS 内网域名。server 经 `.env` 的
+  `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318` 与 `OTEL_LOGS_EXPORTER=otlp` 上报,接入点不可达只是后台重试。
+- `postgres` 另有:`shared_buffers` 256MB、`effective_cache_size` 1GB、`work_mem` 8MB、`maintenance_work_mem` 64MB(`QUALY_PG_*` 可覆盖;
+  PostgreSQL 自己的缺省假设整台机器归它)、`oom_score_adj: -500`(内存耗尽时先杀别的:server 被杀会重启,库被杀是一次恢复)、
+  `stop_grace_period: 60s`(干净关机写检查点)。
 
 没有 Redis:源码里没有任何使用,不为「将来也许」加一个空转的服务。
 
@@ -176,9 +192,39 @@ URL 原样交给驱动,应用连接池、迁移器与通知监听用的是同一
 (两个 provider 同时启用在装配时被拒),并在 `.env` 填 `QUALY_CAPTCHA_TURNSTILE_SITE_KEY` / `QUALY_CAPTCHA_TURNSTILE_SECRET_KEY`(缺失即拒绝启动)。
 启用 Turnstile 会让 shell 的 CSP 在 `script-src` 与 `frame-src` 加入 `https://challenges.cloudflare.com`;浏览器端加载 Cloudflare 失败时只能重试,不会放行。
 
-### 3.1 升级
+### 3.1 升级(2026-09-28 起双色零空窗)
 
-装入新 release 的三个镜像 → 改 `.env` 的 `QUALY_RELEASE` → `docker compose run --rm migrate` →(需要时)`pnpm seed` → `docker compose up -d` → `/health/ready`。
+装入新 release 的三个镜像 → `deploy/upgrade.sh <release>`。首次部署先 `docker compose run --rm migrate` 与 seed,再跑同一条命令。
+
+`upgrade.sh` 的顺序,每一步失败时服务中的那一色照旧服务:
+
+1. 镜像在本机;内存与磁盘够两色同时跑(`QUALY_UPGRADE_MIN_MEMORY_MB` 默认 600、`QUALY_UPGRADE_MIN_DISK_MB` 默认 2048,Linux 上实测,
+   量不到的主机明说);
+2. 待应用迁移里有 `-- destructive: approved` 的(按库里的 `mikro_orm_migrations` 与新镜像的 `db/migrations` 比对)即拒绝,除非 `--maintenance`;
+3. 设了 `QUALY_BACKUP_ROOT` 就先备份(§3.3);
+4. 以新 release 跑 deploy job(迁移 + 把 web release 设为 store 的 current);
+5. 空闲色以新 release 起来,等 `/health/ready`(`QUALY_READY_TIMEOUT` 默认 180s),先请求一次 shell 与 manifest 预热;
+6. 改写边缘代理导入的片段(`QUALY_PROXY_UPSTREAM`,默认 `/etc/caddy/qualy/upstream.caddy`)指向新色端口,`caddy validate` 通过才
+   `systemctl reload caddy`;校验或重载失败则片段还原、新色停下;
+7. 经公网地址问 `/__qualy/release`,答的必须是新色自己报的那个 release id,否则代理指回旧色、新色停下;
+8. `.env` 记下新的 `QUALY_ACTIVE_COLOR` 与 `QUALY_RELEASE`,旧色排空 `QUALY_DRAIN_SECONDS`(默认 20s)后 `stop -t 40`,停在旧 release 上留给回滚。
+
+第 5 步之后的失败都会再以旧 release 跑一次 deploy job,把 web store 的 current 指回旧 release(旧色万一重启要找得到自己的),
+并把 `.env` 里新色的 release 还原,之后的回滚不会指向一个从没服务过的 release。
+
+**切换期间谁看见什么**:代理重载后新请求进新色;重载前已在旧色上的请求在排空时间内做完;旧色停下时它的实时通道(批次 SSE)断开,
+浏览器里的 `useApiStream` 自己重拨(连接活过 15s 的 3s 后重拨,不是 EventSource,SSE 的 `retry:` 字段无人读取,所以不加),
+新色先发 `sync`,页面据此刷新数据,不整页重载。开着的旧 tab 照常从 `web_releases` 取自己的 chunk(见下)。
+
+**迁移纪律**(同一时刻两个 release 对着一个库):新 release 必须能在旧 release 留下的 schema 上跑,旧 release 也必须能在新 schema 上跑,
+所以迁移先 expand(加表、加列、加索引、backfill),旧 release 不再用的东西晚一个 release 再 contract。带 `-- destructive: approved`
+的迁移违反这一点,`upgrade.sh` 拒走零空窗,要 `--maintenance`:代理先指向维护页(片段写 `error "maintenance" 503`,站点的
+`handle_errors` 服务 `deploy/demo/maintenance.html`),服务中的那一色停下,job 跑完、新色就绪后代理再指过去。正常走 expand 再 contract,
+这个开关应该很少被用到。
+
+**仍有停机的两种情形**:PostgreSQL 镜像升级(两色共用一个库),宿主机重启。
+
+不做的仍然不做:这是两份 shell 脚本加一个 compose 文件,不是发布框架;没有多副本协调、没有编排器、没有自动回滚。
 
 **入口密钥的主密钥**:`QUALY_SECRETS_MASTER_KEY`(32 字节 base64)是 `.env` 里的必填项,登录入口的 client secret 之类都用它加密。
 生产进程缺它或格式不对直接拒启;换了这把 key,已存的密文就读不回来(不会自动重加密),所以它要和数据库备份一起保管。
@@ -228,7 +274,8 @@ server 照旧服务镜像或 checkout 自带的 store,deploy 这一步什么都�
 
 ### 3.2 镜像回滚 ≠ schema 回滚
 
-把 `QUALY_RELEASE` 改回去、`docker compose run --rm migrate`、再 `up -d`,回滚的是**代码**。回滚也要跑 `migrate`:旧镜像的
+`deploy/rollback.sh` 回到空闲色上次跑的 release,切换方式与升级相同(不停服)。它回滚的是**代码**。回滚也要跑 `migrate`
+(脚本代跑):旧镜像的
 deploy 对领先于自己的库无事可做(上游 migrator 只挑「文件在、账本里没有」的迁移,账本里多出来的名字不理会,
 `repos/mikro-orm/packages/core/src/utils/AbstractMigrator.ts` 的 `filterUp`),但会把旧 release 重新设为 `web_releases` 的
 current,旧镜像的 server 要这一步才肯启动;旧 release 已被保留策略收走时从旧镜像重新装一份。回滚到本机制之前构建的 release 时,
@@ -239,6 +286,8 @@ current,旧镜像的 server 要这一步才肯启动;旧 release 已被保留策
 - 迁移含破坏性变更(drop guard 要求 `ALLOW_DESTRUCTIVE=1` 或 `-- destructive: approved` 才放行)时,旧代码可能直接报错,
   这时「回滚」只有两条路:fix-forward 一个新 release,或从升级前的备份恢复并接受这段时间的写入丢失。
 - 因此升级前先备份(`deploy/README.md`「Backup and restore」),这不是可选项。
+- `rollback.sh` 先比对:库里已应用、旧 release 的 lineage 里没有的迁移,在当前镜像里标了 `-- destructive: approved` 的,或当前镜像也不认识的,
+  一律拒绝回滚,除非 `--force`(运维确认旧 release 能在这个 schema 上跑)。
 
 这也是启动校验的另一半:server 对着**落后于自己**的库拒绝启动(`database is N migration(s) behind ... run the migration job`),
 对着**领先于自己**的库(回滚后的镜像)不拒绝——ledger 里多出来的迁移它不认识也不需要认识,能否运行取决于上面的加法规则。
@@ -248,12 +297,19 @@ current,旧镜像的 server 要这一步才肯启动;旧 release 已被保留策
 之前只有 README 里一条手动 `pg_dump`(写到执行者当前目录、没有定时、没有保留、没有异机),附件只有备份命令没有恢复步骤,
 数据库恢复先 `dropdb` 再导入、不带 `--exit-on-error`,演练只覆盖数据库。现在:
 
-- `deploy/backup.sh <root>`:`umask 077`;`pg_dump -Fc` 后以 `pg_restore --list` 验证;再 tar `storage` 卷(用 server 镜像,不另拉镜像)
-  并 `gzip -t`;写 `SHA256SUMS`;整个目录写完才改名就位(以时间戳命名的目录一定是完整备份);保留最近 `QUALY_BACKUP_KEEP`(默认 14)份;
-  `QUALY_BACKUP_OFFSITE` 设了就以新目录为 `$1` 执行(rclone / scp / coscli 由运维选),失败则整次失败;成功后写 `<root>/last-success`,
+- `deploy/backup.sh <root>`:`umask 077`;`pg_dump -Fc` 后以 `pg_restore --list` 验证;再 tar `storage` 卷(经 `tools`,用 server 镜像,不另拉镜像)
+  并 `gzip -t`;然后经 `tools` 跑 `qualy storage export --except local`(2026-09-28):local 以外每个后端(COS)里的每个附件,经写它的后端、按库里记的
+  `storage_version` 取回,核对大小(指纹是 sha256 时也核对),连同 `attachments.tsv`(附件 id、租户、后端、key、版本、大小、指纹)打成
+  `attachments.tar.gz`,任何一个取不回或对不上整次失败——开了版本控制的桶,「拷一份桶」拿到的是每个 key 的最新写入,不一定是附件读的那个版本;
+  写 `SHA256SUMS`;整个目录写完才改名就位(以时间戳命名的目录一定是完整备份);保留最近 `QUALY_BACKUP_KEEP`(默认 14)份;
+  `QUALY_BACKUP_OFFSITE` 设了就以新目录为 `$1` 执行(rclone / scp / coscli 由运维选),失败则整次失败;异机副本写进另建的备份桶,
+  用一个只能写的独立账号(`PutObject`,以及大文件分块上传要的 `InitiateMultipartUpload` / `UploadPart` / `CompleteMultipartUpload`,
+  没有读与删),例如 `QUALY_BACKUP_OFFSITE='coscli cp -r "$1" cos://<备份桶>/qualy/"$(basename "$1")"/'`;成功后写 `<root>/last-success`,
   供监控按时间判断备份是否停了。主密钥不进备份,与备份分开保管。
-- `deploy/restore.sh <dir>`:先核对 `SHA256SUMS`;导入临时库(`--exit-on-error`,全有或全无,期间照常服务)→ 停 server → 换名(旧库留作
-  `_previous`)→ 附件解包到 `.incoming` 再换入、`chown 1000:1000` → `migrate`(旧版本备份追平到当前,并装入当前 web release)→ 启动并等待。
+- `deploy/restore.sh <dir>`:先核对 `SHA256SUMS`;导入临时库(`--exit-on-error`,全有或全无,期间照常服务)→ 停服务中的那一色 → 换名(旧库留作
+  `_previous`)→ 附件解包到 `.incoming` 再换入、`chown 1000:1000` → `migrate`(旧版本备份追平到当前,并装入当前 web release)→ 该色启动并等待。
+  桶里的附件不放回:恢复出来的行指向的版本仍在桶里(对账只删没有附件读的版本),只有备份之后被清扫的未保存附件不在了;
+  `attachments.tar.gz` 留给桶本身丢失的那一天,届时逐个重新上传、按新版本改写 `storage_version`,是人工步骤。
   停服之前失败则实例原样;之后失败则点名步骤,重跑即补完。流程与演示部署的 `deploy/demo/restore.sh` 同一做法。
 - 两个脚本经 `COMPOSE_PROJECT_NAME`、`QUALY_ENV_FILE` 指向具体部署;`release-smoke.ts` 每次 CI 都调用它们演练:备份前写一行数据与一个附件,
   销库、清空附件,恢复后两样都读回。
@@ -274,19 +330,23 @@ current,旧镜像的 server 要这一步才肯启动;旧 release 已被保留策
 | 9   | 最终 server 镜像无仓库源码 / 开发工具链也能启动                                | `check-release-image.ts`(镜像内 resolve、无库启动停在数据库)+ `release-smoke.ts`(对真库启动到 ready)                                                                                                                                                                                                                                                                                                                                                                                                     |
 | 10  | Web production build 能加载                                                    | `smoke-production.ts`(CI)+ `release-smoke.ts`(镜像内 shell、manifest、一个哈希资源)                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | 11  | Sandbox RPC / ABI 冒烟                                                         | `qualy sandbox status`:从 server 容器内对两条 socket 取 capabilities,核对 rpc / abi 版本;`release-smoke.ts` 在 compose 栈上执行它                                                                                                                                                                                                                                                                                                                                                                        |
-| 12  | 备份 → 恢复 → 启动                                                             | `release-smoke.ts`:`deploy/backup.sh`(数据库 + 附件)→ 销库、清空附件 → `deploy/restore.sh`(临时库导入、换名、附件换入、`migrate`、启动)→ 备份前写入的一行数据与一个附件都读回(§3.3)                                                                                                                                                                                                                                                                                                                      |
+| 12  | 备份 → 恢复 → 启动                                                             | `release-smoke.ts`:`deploy/backup.sh`(数据库 + 附件 + 按版本导出的附件清单)→ 销库、清空附件 → `deploy/restore.sh`(临时库导入、换名、附件换入、`migrate`、启动)→ 备份前写入的一行数据与一个附件都读回(§3.3)                                                                                                                                                                                                                                                                                               |
+| 15  | 双色升级与回滚不停服,两种拒绝在动手之前                                        | `release-smoke.ts`:`upgrade.sh` 起第一色 → 藏起一条破坏性迁移的账本行,升级被拒、原色照常服务 → 升级到另一色、原色停下且保留旧 release → 账本里放一条旧 release 不认识的迁移,回滚被拒 → 回滚到原色、另一色停下(§3.1、§3.2)                                                                                                                                                                                                                                                                                |
 | 13  | 文档:镜像回滚 ≠ schema 回滚                                                    | 本文 §3.2                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | 14  | 发版后开着的旧 tab 仍取得到自己的 chunk,启动不越过部署                         | `release-store.test.ts`「promoting」(下一个镜像进来后上一个 release 与资源仍在、同镜像重跑幂等、回滚把旧 release 设回 current)+ `web-release-deploy.test.ts`(deploy 步骤)+ `effect-web.test.ts`(卷里 current 不是本镜像的 release 或卷为空即拒启、从卷服务并认得之前的 release)+ `release-smoke.ts`(见下)                                                                                                                                                                                                |
 
-`tools/quality/release-smoke.ts <release>` 在一个一次性的 compose project 上驾驭 `deploy/compose.yaml`:
+`tools/quality/release-smoke.ts <release>` 在一个一次性的 compose project 上驾驭 `deploy/compose.yaml` 与 `deploy/` 下的脚本
+(`QUALY_PROXY=none`,没有边缘代理,脚本直接问各色端口):
 postgres 起 → **未迁移就启动 server 必须被拒**(项 9 的另一半)→ `migrate`(迁移 + 把 web release 装进 `web_releases`)→
-server + 两个 sandbox 起 → `/health/ready` → `/__qualy/release` 就是 `migrate` 装的那个 → shell / manifest / 哈希资源 →
+未 seed 就启动必须被拒(点名 `QUALY_DEFAULT_TENANT`)→ 经 `compose.seed.yaml` 从本检出执行 seed → `upgrade.sh` 起第一色 →
+`/health/ready` → `/__qualy/release` 就是 `migrate` 装的那个 → shell / manifest / 哈希资源 →
 **指向没装过本 release 的 store 启动必须被拒**(项 14)→ `qualy sandbox status` → 第二次 `migrate` 报 up to date 且 release 已装 →
-`backup.sh` 备份、销库并清空附件、`restore.sh` 恢复到 ready 且数据与附件读回 → `down -v`。migrate 之后、服务启动之前另有两步:
-未 seed 就启动必须被拒(点名 `QUALY_DEFAULT_TENANT`),然后经 `compose.seed.yaml` 从本检出执行 seed。
+`auth set-password` 从环境变量给系统账户设密码 → 项 15 的升级与回滚(同一组镜像另打一个 `-next` 标签当第二个 release)→
+`backup.sh` 备份、销库并清空附件、`restore.sh` 恢复到 ready 且数据与附件读回 → `down -v`,删掉 `-next` 标签。
 CI 的 `image` job 构建三个镜像后跑它。
 
 ## 5. 明确不做
 
-零停机发布框架、Kubernetes operator、多副本协调器、通用发布平台、任意插件 sidecar、客户自定义镜像。
-单机 compose、一次性迁移 job、明确的备份与回滚规则,就是 Qualy 现在需要的全部;再多一层都要等真实需求来触发。
+发布框架、Kubernetes operator、多副本协调器、通用发布平台、任意插件 sidecar、客户自定义镜像、自动回滚。
+单机 compose、一次性迁移 job、两色切换的两份脚本、明确的备份与回滚规则,就是 Qualy 现在需要的全部;再多一层都要等真实需求来触发。
+(2026-09-28 修订:原先这里写「零停机发布框架」不做;用户裁决要零空窗切换,做法是两色加两份脚本,仍然不是框架。)

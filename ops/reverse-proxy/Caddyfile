@@ -1,4 +1,4 @@
-# The edge in front of one Qualy process, as Caddy.
+# The edge in front of a Qualy deployment, as Caddy.
 #
 # What the application does NOT do for itself, and expects the edge to do:
 # terminate TLS, say so to browsers for a year, and forward the request
@@ -7,7 +7,47 @@
 # framing, referrer, the content security policy) is set by the process and
 # passes through here untouched.
 #
-# Replace the site address and the upstream port; the rest is the contract.
+# Replace the site address; the rest is the contract.
+#
+# Where requests go is not written here. deploy/compose.yaml runs the
+# application in two colors on two ports, and deploy/upgrade.sh and
+# rollback.sh point the edge at the serving one by rewriting the snippet
+# this site imports, validating and reloading - so an upgrade never edits
+# this file. What the scripts write there, for the color on port 3001:
+#
+#   reverse_proxy 127.0.0.1:3001 {
+#   	# The application judges where a request came from (the request-origin
+#   	# guard, the websocket handshake) against the PUBLIC host, and it
+#   	# reads that host from X-Forwarded-Host only when the peer is a
+#   	# trusted proxy. Caddy forwards the Host header as received and adds
+#   	# X-Forwarded-For / X-Forwarded-Proto by default; X-Forwarded-Host is
+#   	# added so the two agree. On the application side set
+#   	# QUALY_TRUSTED_PROXIES to the peer the process sees, or none of these
+#   	# headers are believed: under deploy/compose.yaml that is the compose
+#   	# network's gateway (172.30.53.1, deploy/.env.example), not 127.0.0.1;
+#   	# only a process running directly on this host sees 127.0.0.1.
+#   	header_up X-Forwarded-Host {http.request.host}
+#   	# Server-sent events (the batch live channel) are answered as an open
+#   	# response that trickles: a buffering proxy would hold the first bytes
+#   	# until the buffer fills, which for an event stream is never. -1
+#   	# flushes every write immediately.
+#   	flush_interval -1
+#   	# one pool of upstream connections rather than a handshake per request
+#   	transport http {
+#   		keepalive 90s
+#   		keepalive_idle_conns 32
+#   	}
+#   }
+#
+# and, for an upgrade that has to take the site down, `error "maintenance" 503`,
+# which the handle_errors block below answers with the maintenance page.
+# Websocket upgrades (the formula editor's language bridge under /api) pass
+# through reverse_proxy as-is; nothing to enable.
+#
+# Before the first deployment the snippet has to exist for the site to load:
+#
+#   sudo mkdir -p /etc/caddy/qualy
+#   echo 'error "maintenance" 503' | sudo tee /etc/caddy/qualy/upstream.caddy
 
 qualy.example.com {
 	# TLS is Caddy's default: certificates are obtained and renewed for the
@@ -18,33 +58,13 @@ qualy.example.com {
 	# whole registrable domain and is a decision for its owner, not this file.
 	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 
-	reverse_proxy 127.0.0.1:3000 {
-		# The application judges where a request came from (the request-origin
-		# guard, the websocket handshake) against the PUBLIC host, and it
-		# reads that host from X-Forwarded-Host only when the peer is a
-		# trusted proxy. Caddy forwards the Host header as received and adds
-		# X-Forwarded-For / X-Forwarded-Proto by default; X-Forwarded-Host is
-		# added here so the two agree. On the application side set
-		# QUALY_TRUSTED_PROXIES to the peer the process sees, or none of these
-		# headers are believed: under deploy/compose.yaml that is the compose
-		# network's gateway (172.30.53.1, deploy/.env.example), not 127.0.0.1;
-		# only a process running directly on this host sees 127.0.0.1.
-		header_up X-Forwarded-Host {http.request.host}
+	import /etc/caddy/qualy/upstream.caddy
 
-		# Server-sent events (the batch live channel) are answered as an
-		# open response that trickles: a buffering proxy would hold the
-		# first bytes until the buffer fills, which for an event stream is
-		# never. -1 flushes every write immediately.
-		flush_interval -1
-
-		# Websocket upgrades (the formula editor's language bridge under
-		# /api) pass through reverse_proxy as-is; nothing to enable.
-
-		# One pool of upstream connections rather than a handshake per
-		# request: the process behind this is a single node server.
-		transport http {
-			keepalive 90s
-			keepalive_idle_conns 32
-		}
+	# no color answering (both down, or the maintenance snippet): a page that
+	# says so, rather than the proxy's bare error
+	handle_errors 502 503 504 {
+		root * /opt/qualy/deploy/demo
+		rewrite * /maintenance.html
+		file_server
 	}
 }

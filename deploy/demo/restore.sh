@@ -17,18 +17,28 @@
 #      as <name>_previous until the next restore
 #   4. the attachments are unpacked beside the old ones, then swapped in
 #   5. the release's migrations bring the baseline up to the running image
-#   6. the server and the sandboxes start, and the script waits for them
+#   6. the five accounts that sign in with a password - the administrator
+#      and the four demonstration people - are given this deployment's own
+#      passwords, from .env: a baseline carries the ones it was generated
+#      with, and those are not this deployment's
+#   7. the serving color starts again (the first import starts blue), and
+#      the script waits for it
 #
 # A failure before step 2 leaves the site as it was. A failure after it
 # stops with the step named; running the script again finishes the job.
 set -eu
 
 here=$(cd "$(dirname "$0")/.." && pwd)
+. "$here/lib.sh"
 baseline=${1:-/opt/qualy/demo-baseline}
 
-compose() {
-  docker compose -f "$here/compose.yaml" --env-file "$here/.env" "$@"
-}
+# who signs in with a password in the baseline, and where .env keeps the
+# password this deployment gives them (tools/demo/seed.ts, seed/personas.ts)
+ACCOUNTS='admin@demo.example.edu QUALY_BASELINE_PASSWORD_ADMIN
+student@demo.qualy.example QUALY_BASELINE_PASSWORD_STUDENT
+class-lead@demo.qualy.example QUALY_BASELINE_PASSWORD_CLASS_LEAD
+counsellor@demo.qualy.example QUALY_BASELINE_PASSWORD_COUNSELLOR
+assessment-lead@demo.qualy.example QUALY_BASELINE_PASSWORD_LEAD'
 
 # The database commands run inside the postgres container, which already
 # knows the deployment's user and database: .env is compose's to read, and a
@@ -37,9 +47,17 @@ in_postgres() {
   compose exec -T postgres sh -c "$1"
 }
 
-[ -f "$here/.env" ] || { echo "no $here/.env" >&2; exit 1; }
-[ -f "$baseline/qualy-demo.dump" ] || { echo "no $baseline/qualy-demo.dump" >&2; exit 1; }
-[ -f "$baseline/storage.tar.gz" ] || { echo "no $baseline/storage.tar.gz" >&2; exit 1; }
+[ -f "$env_file" ] || refuse "no $env_file"
+[ -f "$baseline/qualy-demo.dump" ] || refuse "no $baseline/qualy-demo.dump"
+[ -f "$baseline/storage.tar.gz" ] || refuse "no $baseline/storage.tar.gz"
+release=$(env_get QUALY_RELEASE)
+[ -n "$release" ] || refuse "no QUALY_RELEASE in $env_file: which release runs the baseline?"
+# every password is there before the site goes down, not found missing after
+unset_passwords=$(printf '%s\n' "$ACCOUNTS" | while read -r email variable; do
+  [ -n "$(env_get "$variable")" ] || printf '%s ' "$variable"
+done)
+[ -z "$unset_passwords" ] || refuse "set these in $env_file first: $unset_passwords"
+active=$(env_get QUALY_ACTIVE_COLOR)
 
 # One restore at a time: two would drop each other's scratch database.
 lock="${TMPDIR:-/tmp}/qualy-demo-restore.lock"
@@ -68,9 +86,9 @@ compose exec -T postgres sh -c \
   'pg_restore -U "$POSTGRES_USER" -d "${POSTGRES_DB}_restore" --no-owner --no-acl --exit-on-error' \
   < "$baseline/qualy-demo.dump"
 
-step="stopping the server"
+step="stopping the serving color"
 echo "$step"
-compose stop server
+if [ -n "$active" ]; then compose stop -t 40 $(color_services "$active"); fi
 
 step="swapping the restored database in"
 echo "$step"
@@ -91,7 +109,7 @@ echo "$step"
 # The server image, as root, on the storage volume: the volume is found by
 # its role in compose.yaml rather than by a project-prefixed name.
 compose run --rm --no-deps -T --user 0:0 --entrypoint sh \
-  -v "$baseline:/in:ro" server -c '
+  -v "$baseline:/in:ro" tools -c '
     set -eu
     root=/var/lib/qualy/storage
     rm -rf "$root/.incoming"
@@ -104,11 +122,28 @@ compose run --rm --no-deps -T --user 0:0 --entrypoint sh \
 
 step="applying the release's migrations"
 echo "$step"
-compose --profile deploy run --rm migrate
+deploy_job "$release"
 
-step="starting the server and the sandboxes"
+step="giving the imported accounts this deployment's passwords"
 echo "$step"
-compose up -d --wait server sandbox-runtime sandbox-authoring
+# the password never leaves the container's own environment: the command is
+# told which variable holds it
+printf '%s\n' "$ACCOUNTS" | while read -r email variable; do
+  compose run --rm --no-deps -T tools \
+    node apps/cli/src/main.ts auth set-password --email "$email" --from-env "$variable" < /dev/null
+done
+
+if [ -n "$active" ]; then
+  step="starting $active again"
+  echo "$step"
+  compose up -d $(color_services "$active")
+  wait_ready "$(color_address "$active")" "$(setting QUALY_READY_TIMEOUT 180)" ||
+    refuse "$active did not become ready"
+else
+  step="starting blue, the first color"
+  echo "$step"
+  take_over blue "$release" '' || refuse "blue did not start"
+fi
 
 step="done"
 echo "restored from $baseline"

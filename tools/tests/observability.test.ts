@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 // credential leak with a git history; an image tag that says `latest` is a
 // config that validates today and means something else tomorrow.
 
-const PRODUCTION = 'ops/observability/collector.production.yaml'
+const PRODUCTION = 'deploy/otel-collector.yaml'
 const STAGING = 'ops/observability/collector.staging.yaml'
 const LOCAL = 'ops/observability/collector.local.yaml'
 
@@ -30,16 +30,21 @@ describe('the collector configurations', () => {
     }
   })
 
-  it('keeps the collector credential file out of git, and its example empty', () => {
-    expect(fs.readFileSync('.gitignore', 'utf8')).toContain('ops/observability/collector.env')
-    // the tracked example names the variables; every secret value is blank
-    const example = fs.readFileSync('ops/observability/collector.env.example', 'utf8')
-    const secrets = example
-      .split('\n')
-      .filter((line) => /^[A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD)[A-Z0-9_]*=/.test(line))
-    expect(secrets.length).toBeGreaterThan(0)
-    for (const line of secrets) {
-      expect(line).toMatch(/=$/)
+  it('keeps the collector credential files out of git, and their examples empty', () => {
+    for (const [file, example] of [
+      ['ops/observability/collector.env', 'ops/observability/collector.env.example'],
+      ['deploy/collector.env', 'deploy/collector.env.example'],
+    ] as const) {
+      expect(fs.readFileSync('.gitignore', 'utf8')).toContain(file)
+      // the tracked example names the variables; every secret value is blank
+      const secrets = fs
+        .readFileSync(example, 'utf8')
+        .split('\n')
+        .filter((line) => /^[A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD)[A-Z0-9_]*=/.test(line))
+      expect(secrets.length, example).toBeGreaterThan(0)
+      for (const line of secrets) {
+        expect(line, example).toMatch(/=$/)
+      }
     }
   })
 
@@ -55,15 +60,18 @@ describe('the collector configurations', () => {
     expect(configuration).not.toContain('${env:')
   })
 
-  it('pins the observability images to exact versions', () => {
-    const compose = fs.readFileSync('docker-compose.yml', 'utf8')
-    const images = [...compose.matchAll(/image: (\S+)/g)].map((match) => match[1]!)
-    const observability = images.filter(
-      (image) => image.includes('otel') || image.includes('collector'),
-    )
-    expect(observability.length).toBeGreaterThan(0)
-    for (const image of observability) {
+  it('pins the observability images to exact versions, and the deployed one to a digest', () => {
+    const imagesOf = (file: string) =>
+      [...fs.readFileSync(file, 'utf8').matchAll(/image: (\S+)/g)]
+        .map((match) => match[1]!)
+        .filter((image) => image.includes('otel') || image.includes('collector'))
+    const development = imagesOf('docker-compose.yml')
+    expect(development.length).toBeGreaterThan(0)
+    for (const image of development) {
       expect(image).toMatch(/:\d+\.\d+\.\d+$/)
     }
+    const deployed = imagesOf('deploy/compose.yaml')
+    expect(deployed.length).toBe(1)
+    expect(deployed[0]).toMatch(/:\d+\.\d+\.\d+@sha256:[0-9a-f]{64}$/)
   })
 })

@@ -16,15 +16,20 @@ import { repoRoot } from '../lib/manifest.ts'
 // order: the database comes up; a server started before the migration job
 // refuses; the job applies the lineage and installs the image's web release
 // into the deployment's release store; a server started before the seed
-// refuses; the seed runs from this checkout through compose.seed.yaml; the server and both sandboxes come
-// up and the server reports ready, serving that release; the shell, the
-// manifest and one hashed asset are served; a server pointed at a store its
-// release was never installed in refuses, naming the job; both sandboxes
-// answer the RPC handshake from inside the server container; a second
-// migration run finds nothing to do; deploy/backup.sh backs the database and
-// the attachments up, both are destroyed, and deploy/restore.sh brings them
-// back, up to date and served, with a row and an attachment written before
-// the backup intact. Then everything, volumes included, is removed.
+// refuses; the seed runs from this checkout through compose.seed.yaml;
+// deploy/upgrade.sh brings the first color up and it reports ready, serving
+// that release; the shell, the manifest and one hashed asset are served; a
+// server pointed at a store its release was never installed in refuses,
+// naming the job; both sandboxes answer the RPC handshake from inside the
+// server container; a second migration run finds nothing to do; the operator
+// sets a password from the environment; an upgrade with a destructive
+// migration pending refuses, and one without moves the deployment onto the
+// other color; a rollback whose older release does not know a migration the
+// database ran refuses, and one that does moves it back; deploy/backup.sh
+// backs the database and the attachments up, both are destroyed, and
+// deploy/restore.sh brings them back, up to date and served, with a row and
+// an attachment written before the backup intact. Then everything, volumes
+// and the second release's tags included, is removed.
 
 const release = process.argv[2]
 if (!release) {
@@ -51,9 +56,14 @@ const freePort = (): Promise<number> =>
       })
     })
   })
-const port = await freePort()
+const bluePort = await freePort()
+const greenPort = await freePort()
 const seedPort = await freePort()
-const base = `http://127.0.0.1:${String(port)}`
+const blue = `http://127.0.0.1:${String(bluePort)}`
+const green = `http://127.0.0.1:${String(greenPort)}`
+// the same images under a second name: an upgrade and a rollback need two
+// releases, and what differs between them is not what is under test
+const next = `${release}-next`
 
 fs.writeFileSync(
   envFile,
@@ -74,8 +84,12 @@ fs.writeFileSync(
     'QUALY_MAIL_RESEND_API_KEY=re_smoke_only',
     // the address it is reached at, which a production process needs to start
     `QUALY_PUBLIC_URL=https://qualy.invalid`,
-    `QUALY_PORT=${String(port)}`,
+    `QUALY_PORT_BLUE=${String(bluePort)}`,
+    `QUALY_PORT_GREEN=${String(greenPort)}`,
     `QUALY_SEED_PORT=${String(seedPort)}`,
+    // no edge in front of it here; the scripts ask each color directly
+    'QUALY_PROXY=none',
+    'QUALY_DRAIN_SECONDS=2',
     // an address plan of its own, clear of a deployment on the same host
     'QUALY_NETWORK_SUBNET=172.30.54.0/24',
     'QUALY_NETWORK_GATEWAY=172.30.54.1',
@@ -141,7 +155,7 @@ const expectIn = (label: string, haystack: string, needle: string | RegExp) => {
   if (!found) refuse(`${label}: expected ${String(needle)} in:\n${haystack.slice(-2000)}`)
 }
 
-const waitReady = async (label: string, timeoutMs = 120_000) => {
+const waitReady = async (label: string, base = blue, timeoutMs = 120_000) => {
   const deadline = Date.now() + timeoutMs
   let last = ''
   while (Date.now() < deadline) {
@@ -170,6 +184,40 @@ const psql = (sql: string): Ran =>
     `psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -c ${JSON.stringify(sql)}`,
   ])
 
+// the deploy scripts, as an operator runs them, on this project and env file
+const deployScript = (name: string, args: readonly string[]) => {
+  const ran = spawnSync(path.join(repoRoot, 'deploy', name), args, {
+    cwd: work,
+    env: { ...process.env, COMPOSE_PROJECT_NAME: project, QUALY_ENV_FILE: envFile },
+    encoding: 'utf8',
+    timeout: 600_000,
+  })
+  return { code: ran.status ?? 1, out: `${ran.stdout}${ran.stderr}`.trim() }
+}
+
+const IMAGES = ['qualy-server', 'qualy-sandbox-runtime', 'qualy-sandbox-authoring'] as const
+const tag = (from: string, to: string) => {
+  for (const image of IMAGES) {
+    const ran = spawnSync('docker', ['tag', `${image}:${from}`, `${image}:${to}`])
+    if (ran.status !== 0) refuse(`docker tag ${image}:${from} ${image}:${to} failed`)
+  }
+}
+const untag = (name: string) => {
+  for (const image of IMAGES) spawnSync('docker', ['rmi', `${image}:${name}`])
+}
+
+// every color and every one-off service, so teardown reaches them all
+const EVERY_PROFILE = ['blue', 'green', 'tools', 'deploy'].flatMap((name) => ['--profile', name])
+
+const reachable = async (base: string) => {
+  try {
+    await fetch(`${base}/health/live`, { signal: AbortSignal.timeout(3000) })
+    return true
+  } catch {
+    return false
+  }
+}
+
 try {
   // --- the database
   expectCode('postgres up', compose(['up', '-d', '--wait', 'postgres']), 0)
@@ -177,7 +225,7 @@ try {
 
   // --- a start before the migration job: refused, naming the job
   {
-    const ran = compose(['run', '--rm', '--no-deps', 'server'], { timeoutMs: 120_000 })
+    const ran = compose(['run', '--rm', '--no-deps', 'tools'], { timeoutMs: 120_000 })
     if (ran.code === 0) refuse('a server started before the migration job did not refuse')
     expectIn('start before migrate', ran.out, /migration\(s\) behind/)
     expectIn('start before migrate', ran.out, 'startup failed')
@@ -199,7 +247,7 @@ try {
 
   // --- a start before the seed: refused, naming the default tenant
   {
-    const ran = compose(['run', '--rm', '--no-deps', 'server'], { timeoutMs: 120_000 })
+    const ran = compose(['run', '--rm', '--no-deps', 'tools'], { timeoutMs: 120_000 })
     if (ran.code === 0) refuse('a server started before the seed did not refuse')
     expectIn('start before seed', ran.out, 'QUALY_DEFAULT_TENANT')
     step('a server started before the seed refuses, naming the default tenant')
@@ -238,16 +286,19 @@ try {
     step('seed: the default tenant and its system account, then the database off the host again')
   }
 
-  // --- the server and the sandboxes
-  expectCode(
-    'services up',
-    compose(['up', '-d', '--wait', 'server', 'sandbox-runtime', 'sandbox-authoring']),
-    0,
-  )
+  // --- the first color, through the script every later release goes through
+  {
+    const ran = deployScript('upgrade.sh', [release])
+    if (ran.code !== 0)
+      refuse(`upgrade.sh (first) exited ${String(ran.code)}:\n${ran.out.slice(-3000)}`)
+    expectIn('first upgrade', ran.out, `upgraded to ${release} on blue`)
+    step('upgrade.sh: the first color, blue, up and serving')
+  }
   await waitReady('first start')
 
   // --- what it serves: the release the job installed, the shell, one hashed asset, the manifest
   {
+    const base = blue
     const probe = await fetch(`${base}/__qualy/release`)
     if (probe.status !== 200) refuse(`GET /__qualy/release status ${String(probe.status)}`)
     const served = ((await probe.json()) as { releaseId?: unknown }).releaseId
@@ -273,7 +324,7 @@ try {
   // --- a store the image's release was never installed in: refused, naming the job
   {
     const ran = compose(
-      ['run', '--rm', '--no-deps', '-e', 'QUALY_WEB_RELEASE_STORE=/tmp', 'server'],
+      ['run', '--rm', '--no-deps', '-e', 'QUALY_WEB_RELEASE_STORE=/tmp', 'tools'],
       { timeoutMs: 120_000 },
     )
     if (ran.code === 0) refuse('a server whose release store lacks its release did not refuse')
@@ -286,7 +337,7 @@ try {
     const ran = compose([
       'exec',
       '-T',
-      'server',
+      'server-blue',
       'node',
       'apps/cli/src/main.ts',
       'sandbox',
@@ -305,6 +356,98 @@ try {
     expectIn('migrate again', ran.out, 'is up to date')
     expectIn('migrate again', ran.out, `web-release: ${installed} was already installed`)
     step('migrate again: up to date, the web release already installed')
+  }
+
+  // --- the operator gives an account a password, from the environment only
+  {
+    const ran = compose([
+      'run',
+      '--rm',
+      '--no-deps',
+      '-T',
+      '-e',
+      `SMOKE_PASSWORD=${randomBytes(18).toString('base64url')}`,
+      'tools',
+      'node',
+      'apps/cli/src/main.ts',
+      'auth',
+      'set-password',
+      '--email',
+      'admin@qualy.invalid',
+      '--from-env',
+      'SMOKE_PASSWORD',
+    ])
+    expectCode('auth set-password', ran, 0)
+    expectIn('auth set-password', ran.out, 'password for admin@qualy.invalid in default replaced')
+    step('auth set-password: the system account given a password from the environment')
+  }
+
+  // --- an upgrade with a destructive migration pending: refused, nothing changed
+  const ledger = (sql: string) => psql(sql)
+  {
+    const destructive = '20260809085658_batch-scope-node-set.sql'
+    expectCode(
+      'hide a ledger row',
+      ledger(`delete from mikro_orm_migrations where name = '${destructive}'`),
+      0,
+    )
+    tag(release, next)
+    const ran = deployScript('upgrade.sh', [next])
+    expectCode(
+      'restore the ledger row',
+      ledger(
+        `insert into mikro_orm_migrations (name, executed_at) values ('${destructive}', now())`,
+      ),
+      0,
+    )
+    if (ran.code === 0) refuse('an upgrade with a destructive migration pending did not refuse')
+    expectIn('destructive upgrade', ran.out, destructive)
+    expectIn('destructive upgrade', ran.out, '--maintenance')
+    if ((await fetch(`${blue}/health/ready`)).status !== 200)
+      refuse('blue stopped serving after a refused upgrade')
+    step('upgrade.sh: a destructive migration pending is refused, blue still serving')
+  }
+
+  // --- an upgrade: green takes over, blue stops
+  {
+    const ran = deployScript('upgrade.sh', [next])
+    if (ran.code !== 0) refuse(`upgrade.sh exited ${String(ran.code)}:\n${ran.out.slice(-3000)}`)
+    expectIn('upgrade', ran.out, `upgraded to ${next} on green`)
+    await waitReady('after the upgrade', green)
+    if (await reachable(blue)) refuse('blue still answers after the upgrade')
+    const env = fs.readFileSync(envFile, 'utf8')
+    expectIn('env after upgrade', env, /^QUALY_ACTIVE_COLOR=green$/m)
+    expectIn('env after upgrade', env, new RegExp(`^QUALY_RELEASE_GREEN=${next}$`, 'm'))
+    step(`upgrade.sh: green serves ${next}, blue stopped with ${release} kept for rollback`)
+  }
+
+  // --- a rollback past a migration the older release does not know: refused
+  {
+    const unknown = '29990101000000_not-in-any-release.sql'
+    expectCode(
+      'an unknown ledger row',
+      ledger(`insert into mikro_orm_migrations (name, executed_at) values ('${unknown}', now())`),
+      0,
+    )
+    const ran = deployScript('rollback.sh', [])
+    expectCode(
+      'remove the unknown row',
+      ledger(`delete from mikro_orm_migrations where name = '${unknown}'`),
+      0,
+    )
+    if (ran.code === 0) refuse('a rollback past an unknown migration did not refuse')
+    expectIn('unknown rollback', ran.out, unknown)
+    step('rollback.sh: a migration the older release does not know is refused')
+  }
+
+  // --- a rollback: blue takes over again, green stops
+  {
+    const ran = deployScript('rollback.sh', [])
+    if (ran.code !== 0) refuse(`rollback.sh exited ${String(ran.code)}:\n${ran.out.slice(-3000)}`)
+    expectIn('rollback', ran.out, `rolled back to ${release} on blue`)
+    await waitReady('after the rollback', blue)
+    if (await reachable(green)) refuse('green still answers after the rollback')
+    step(`rollback.sh: blue serves ${release} again, green stopped`)
   }
 
   // --- backup, destroy, restore, serve again: the scripts a deployment runs
@@ -327,7 +470,7 @@ try {
       '0:0',
       '--entrypoint',
       'sh',
-      'server',
+      'tools',
       '-c',
       script,
     ])
@@ -338,15 +481,6 @@ try {
     ),
     0,
   )
-  const deployScript = (name: string, args: readonly string[]) => {
-    const ran = spawnSync(path.join(repoRoot, 'deploy', name), args, {
-      cwd: work,
-      env: { ...process.env, COMPOSE_PROJECT_NAME: project, QUALY_ENV_FILE: envFile },
-      encoding: 'utf8',
-      timeout: 600_000,
-    })
-    return { code: ran.status ?? 1, out: `${ran.stdout}${ran.stderr}`.trim() }
-  }
   const backups = path.join(work, 'backups')
   {
     const ran = deployScript('backup.sh', [backups])
@@ -355,10 +489,25 @@ try {
     const dump = fs.statSync(path.join(backups, stamp, 'qualy.dump')).size
     const storage = fs.statSync(path.join(backups, stamp, 'storage.tar.gz')).size
     if (dump < 1024) refuse(`backup.sh wrote a ${String(dump)}-byte dump`)
-    step(`backup: ${stamp}, dump ${String(dump)} bytes, attachments ${String(storage)} bytes`)
+    // the attachments kept anywhere but the volume, fetched by the release's
+    // own export command - none here, so the manifest alone
+    const listed = spawnSync('tar', [
+      '-xzOf',
+      path.join(backups, stamp, 'attachments.tar.gz'),
+      './attachments.tsv',
+    ])
+    if (listed.status !== 0) refuse('the backup carries no attachments.tar.gz with its manifest')
+    expectIn(
+      'attachment manifest',
+      listed.stdout.toString('utf8'),
+      /^id\ttenant\tbackend\tkey\tversion/,
+    )
+    step(
+      `backup: ${stamp}, dump ${String(dump)} bytes, attachments ${String(storage)} bytes, exported attachments listed`,
+    )
   }
 
-  expectCode('server stop', compose(['stop', 'server']), 0)
+  expectCode('blue stop', compose(['stop', 'server-blue']), 0)
   expectCode(
     'drop and recreate',
     compose([
@@ -382,7 +531,7 @@ try {
   }
   await waitReady('after restore')
   {
-    const shell = await fetch(`${base}/`)
+    const shell = await fetch(`${blue}/`)
     if (shell.status !== 200) refuse(`GET / after restore: status ${String(shell.status)}`)
     const found = psql('select value from release_smoke_marker')
     expectCode('marker after restore', found, 0)
@@ -390,7 +539,7 @@ try {
     const attachment = compose([
       'exec',
       '-T',
-      'server',
+      'server-blue',
       'cat',
       '/var/lib/qualy/storage/smoke/marker.txt',
     ])
@@ -403,10 +552,26 @@ try {
   console.error(
     `release-smoke: FAIL ${error instanceof SmokeFailed ? error.message : error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
   )
-  const logs = compose(['logs', '--no-color', '--tail', '60', 'server', 'postgres'])
+  const logs = compose([
+    'logs',
+    '--no-color',
+    '--tail',
+    '60',
+    'server-blue',
+    'server-green',
+    'postgres',
+  ])
   console.error(logs.out)
 } finally {
-  const down = compose(['down', '--volumes', '--remove-orphans', '--timeout', '20'])
+  const down = compose([
+    ...EVERY_PROFILE,
+    'down',
+    '--volumes',
+    '--remove-orphans',
+    '--timeout',
+    '20',
+  ])
+  untag(next)
   if (down.code !== 0)
     console.error(`release-smoke: compose down exited ${String(down.code)}:\n${down.out}`)
   fs.rmSync(work, { recursive: true, force: true })

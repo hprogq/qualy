@@ -4,8 +4,13 @@
 #   deploy/restore.sh <backup-dir>
 #
 # The backup directory holds qualy.dump, storage.tar.gz and SHA256SUMS. It
-# replaces the database and the attachments; everything written since the
-# backup is lost, which is what a restore is for. Runs from anywhere: it
+# replaces the database and the attachments the local backend keeps;
+# everything written since the backup is lost, which is what a restore is
+# for. Attachments in a bucket are not put back: the versions the restored
+# rows name are still there, except for an attachment nobody saved that was
+# swept since the backup. attachments.tar.gz, when the backup has one, holds
+# those and everything else in the bucket, for the day the bucket itself is
+# lost (docs/deployment.md). Runs from anywhere: it
 # drives deploy/compose.yaml beside it, with the .env there (QUALY_ENV_FILE
 # names another; COMPOSE_PROJECT_NAME another project).
 #
@@ -14,26 +19,22 @@
 #   1. the files are checked against their sums
 #   2. the dump goes into a scratch database, all or nothing, while the
 #      server still serves
-#   3. the server stops
+#   3. the serving color stops
 #   4. the scratch database takes the live one's name; the live one is kept
 #      as <name>_previous until the next restore
 #   5. the attachments are unpacked beside the old ones, then swapped in
 #   6. the release's migrations bring a backup from an older release up to
 #      this one, and its web release is installed
-#   7. the server and the sandboxes start, and the script waits for them
+#   7. the serving color starts again, and the script waits for it
 #
 # A failure before step 3 leaves the deployment as it was. A failure after it
 # stops with the step named; running the script again finishes the job.
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
+. "$here/lib.sh"
 backup=${1:?usage: deploy/restore.sh <backup-dir>}
 backup=$(cd "$backup" && pwd)
-env_file=${QUALY_ENV_FILE:-$here/.env}
-
-compose() {
-  docker compose -f "$here/compose.yaml" --env-file "$env_file" "$@"
-}
 
 sums() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi
@@ -66,9 +67,13 @@ compose exec -T postgres sh -c \
   'pg_restore -U "$POSTGRES_USER" -d "${POSTGRES_DB}_restore" --no-owner --no-acl --exit-on-error' \
   < "$backup/qualy.dump"
 
-step="stopping the server"
+active=$(env_get QUALY_ACTIVE_COLOR)
+release=$(env_get QUALY_RELEASE)
+[ -n "$release" ] || refuse "no QUALY_RELEASE in $env_file: which release is this deployment?"
+
+step="stopping the serving color"
 echo "$step"
-compose stop server
+if [ -n "$active" ]; then compose stop -t 40 $(color_services "$active"); fi
 
 step="swapping the restored database in"
 echo "$step"
@@ -89,7 +94,7 @@ echo "$step"
 # The server image, as root, on the storage volume: the volume is found by
 # its role in compose.yaml rather than by a project-prefixed name.
 compose run --rm --no-deps -T --user 0:0 --entrypoint sh \
-  -v "$backup:/in:ro" server -c '
+  -v "$backup:/in:ro" tools -c '
     set -eu
     root=/var/lib/qualy/storage
     rm -rf "$root/.incoming"
@@ -102,11 +107,17 @@ compose run --rm --no-deps -T --user 0:0 --entrypoint sh \
 
 step="applying the release's migrations"
 echo "$step"
-compose --profile deploy run --rm migrate
+deploy_job "$release"
 
-step="starting the server and the sandboxes"
-echo "$step"
-compose up -d --wait server sandbox-runtime sandbox-authoring
+if [ -n "$active" ]; then
+  step="starting $active again"
+  echo "$step"
+  compose up -d $(color_services "$active")
+  wait_ready "$(color_address "$active")" "$(setting QUALY_READY_TIMEOUT 180)" ||
+    refuse "$active did not become ready after the restore"
+else
+  echo "nothing served before the restore; start it with deploy/upgrade.sh $release"
+fi
 
 step="done"
 echo "restored from $backup"

@@ -1,21 +1,19 @@
-# One Qualy deployment: the three release images of one release, PostgreSQL,
+# One Qualy deployment: PostgreSQL, the release's three images in two colors,
 # and the volumes that outlive them.
 #
 # Everything here runs from images built by `pnpm release:build <release>`
 # (tools/release/build-images.ts). Nothing is built here, no source is
 # mounted, no host node_modules is seen: what runs is what the release
-# carries. `.env` beside this file (copy .env.example) names the release and
-# the deployment's own settings.
+# carries. `.env` beside this file (copy .env.example) holds the deployment's
+# own settings, and the scripts beside it write which release each color runs.
 #
-# The four moves, in order (deploy/README.md spells them out):
-#
-#   docker compose up -d postgres            the database, once
-#   docker compose run --rm migrate          apply the release's committed
-#                                            lineage and install its web
-#                                            release - one writer, once per
-#                                            release, before the server
-#   docker compose up -d                     the server and both sandboxes
-#   curl -sf http://127.0.0.1:3000/health/ready
+# Two colors, blue and green, each a whole set - the server and both
+# sandboxes - on a port of its own. One serves while the other is idle; an
+# upgrade starts the idle color on the new release, waits for it, points the
+# edge at it and then stops the old one, so nobody sees the switch.
+# deploy/upgrade.sh and deploy/rollback.sh make the moves; deploy/README.md
+# spells them out. What the colors share is the database and the stores that
+# outlive a release: the attachments and the installed web releases.
 #
 # The server never migrates: the image's production command defaults
 # QUALY_MIGRATIONS to off, and `migrate` is the only place the lineage is
@@ -24,7 +22,7 @@
 # docs/deployment.md is about - an image rollback is not a schema rollback.
 #
 # The edge (TLS, HSTS, forwarded headers) is not here: ops/reverse-proxy has
-# the Caddy and nginx shapes, both pointed at the port published below.
+# the Caddy and nginx shapes, pointed at the active color's published port.
 # There is no Redis: nothing in the application uses one.
 #
 # The project is not called `qualy`: a checkout's development compose file
@@ -35,7 +33,7 @@
 name: qualy-deployment
 
 # A fixed address plan, so the address the server sees an edge proxy on this
-# host connect from is known in advance: a connection to the loopback-bound
+# host connect from is known in advance: a connection to a loopback-bound
 # published port reaches the container from this network's gateway, and
 # QUALY_TRUSTED_PROXIES in .env names that gateway. Without it every visitor
 # would share the gateway's address in the rate limits. Change both together
@@ -47,6 +45,82 @@ networks:
         - subnet: ${QUALY_NETWORK_SUBNET:-172.30.53.0/24}
           gateway: ${QUALY_NETWORK_GATEWAY:-172.30.53.1}
 
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '20m'
+    max-file: '10'
+
+# the server, as either color runs it; a color adds its image, port and sockets
+x-server: &server
+  restart: unless-stopped
+  init: true
+  depends_on:
+    postgres:
+      condition: service_healthy
+  # the deployment's own settings; the release smoke points this at a file
+  # of its own, a deployment leaves it at .env
+  env_file: ${QUALY_ENV_FILE:-.env}
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,noexec,nosuid,nodev
+  security_opt:
+    - no-new-privileges:true
+  # a ceiling, not a reservation: two colors overlap only while one takes
+  # over from the other. The heap is held under it so the process collects
+  # garbage rather than being killed.
+  mem_limit: ${QUALY_SERVER_MEMORY:-768m}
+  # QUALY_SHUTDOWN_TIMEOUT (default 30s) for in-flight work, and a margin
+  stop_grace_period: 40s
+  # liveness is the image's HEALTHCHECK (/health/live); readiness is asked
+  # from outside at /health/ready, once the assembly has finished starting
+  logging: *logging
+
+x-server-environment:
+  &server-environment # the container's own view of the deployment; these win over .env
+  PORT: '3000'
+  QUALY_STORAGE_LOCAL_ROOT: /var/lib/qualy/storage
+  QUALY_WEB_RELEASE_STORE: /var/lib/qualy/web
+  QUALY_SANDBOX_RUNTIME_SOCKET: /run/qualy-sandbox/runtime/runtime.sock
+  QUALY_SANDBOX_AUTHORING_SOCKET: /run/qualy-sandbox/authoring/authoring.sock
+  NODE_OPTIONS: --max-old-space-size=${QUALY_SERVER_HEAP_MB:-512}
+
+# The sandbox pair, hardened as docs/sandbox-process-isolation.md requires:
+# no network, read-only root, no capabilities, non-root, one unix socket
+# each on a volume of its own. Neither is given .env: a sandbox's
+# environment is its own socket path and limits, never a business secret.
+x-sandbox: &sandbox
+  restart: unless-stopped
+  init: true
+  network_mode: none
+  read_only: true
+  user: '1000:1000'
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+  stop_grace_period: 10s
+  logging: *logging
+
+x-sandbox-runtime: &sandbox-runtime
+  <<: *sandbox
+  pids_limit: 64
+  tmpfs:
+    - /tmp:size=32m,noexec,nosuid,nodev
+  mem_limit: 256m
+  cpus: 1
+  environment:
+    # one QuickJS worker per CPU of quota: the scoring deadline is
+    # wall-clock, and two workers on one core interrupted healthy formulas
+    QUALY_SANDBOX_POOL_SIZE: ${QUALY_SANDBOX_POOL_SIZE:-1}
+
+x-sandbox-authoring: &sandbox-authoring
+  <<: *sandbox
+  pids_limit: 128
+  tmpfs:
+    - /tmp:size=256m,noexec,nosuid,nodev
+  mem_limit: 512m
+  cpus: 2
+
 services:
   postgres:
     image: pgvector/pgvector:pg18-bookworm@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
@@ -57,12 +131,29 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:?set in .env}
       TZ: ${TZ:-Asia/Shanghai}
       LANG: en_US.utf8
+    # Sized for a small host shared with other work, each overridable in .env.
+    # The defaults are PostgreSQL's own for a machine it assumes it has alone.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=${QUALY_PG_SHARED_BUFFERS:-256MB}
+      - -c
+      - effective_cache_size=${QUALY_PG_EFFECTIVE_CACHE_SIZE:-1GB}
+      - -c
+      - work_mem=${QUALY_PG_WORK_MEM:-8MB}
+      - -c
+      - maintenance_work_mem=${QUALY_PG_MAINTENANCE_WORK_MEM:-64MB}
     volumes:
       # the pg18 image keeps the cluster at /var/lib/postgresql itself
       - pg_data:/var/lib/postgresql
     # no `ports`: the database is reachable from this project's network only
+    # When the host runs out of memory, anything else goes first: a killed
+    # server restarts and serves again, a killed database is a recovery.
+    oom_score_adj: -500
+    # a clean shutdown writes a checkpoint instead of leaving one to replay
+    stop_grace_period: 60s
     logging:
-      driver: json-file
+      <<: *logging
       options:
         max-size: '10m'
         max-file: '5'
@@ -73,16 +164,17 @@ services:
       retries: 5
       start_period: 20s
 
-  # The one-off deploy job: the same image as the server, running the deploy
-  # CLI once. `docker compose run --rm migrate` starts it on demand (its
-  # profile keeps `up` from starting it). It applies the release's migrations
-  # - the migrator takes the database's migration lock, so a second run waits
-  # and then finds nothing to do - and then installs the web release the image
+  # The one-off deploy job: the release's server image, running the deploy CLI
+  # once. `docker compose run --rm migrate` starts it on demand (its profile
+  # keeps `up` from starting it). It applies the release's migrations - the
+  # migrator takes the database's migration lock, so a second run waits and
+  # then finds nothing to do - and then installs the web release the image
   # carries into `web_releases`, beside the releases before it, so tabs still
   # running the previous one keep finding their chunks. A failed step is not
   # recorded and the job exits non-zero; nothing else is started until it
   # passes, and a server whose release is not the store's current one refuses
-  # to start.
+  # to start. QUALY_RELEASE is the release being deployed: the scripts pass
+  # it, and keep .env's copy naming the one that serves.
   migrate:
     image: qualy-server:${QUALY_RELEASE:?set in .env}
     profiles: [deploy]
@@ -90,8 +182,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    # the deployment's own settings; the release smoke points this at a file
-    # of its own, a deployment leaves it at .env
     env_file: ${QUALY_ENV_FILE:-.env}
     environment:
       QUALY_WEB_RELEASE_STORE: /var/lib/qualy/web
@@ -102,30 +192,76 @@ services:
       - /tmp:size=16m,noexec,nosuid,nodev
     command: ['node', 'apps/cli/src/main.ts', 'deploy']
     logging:
-      driver: json-file
+      <<: *logging
       options:
         max-size: '10m'
         max-file: '2'
 
-  server:
+  # One-off commands against the deployment, never a service: the release's
+  # server image with the deployment's settings and the stores that outlive
+  # a release. The backup, restore and baseline scripts run through it -
+  # `docker compose run --rm tools <command>` - so none of them names a
+  # color, and none reaches a volume by a project-prefixed name.
+  tools:
     image: qualy-server:${QUALY_RELEASE:?set in .env}
-    restart: unless-stopped
-    init: true
+    profiles: [tools]
+    restart: 'no'
     depends_on:
       postgres:
         condition: service_healthy
     env_file: ${QUALY_ENV_FILE:-.env}
     environment:
-      # the container's own view of the deployment; these win over .env
-      PORT: '3000'
-      QUALY_STORAGE_LOCAL_ROOT: /var/lib/qualy/storage
-      QUALY_WEB_RELEASE_STORE: /var/lib/qualy/web
-      QUALY_SANDBOX_RUNTIME_SOCKET: /run/qualy-sandbox/runtime/runtime.sock
-      QUALY_SANDBOX_AUTHORING_SOCKET: /run/qualy-sandbox/authoring/authoring.sock
-      QUALY_VERSION: ${QUALY_RELEASE}
+      <<: *server-environment
+      # a command runs beside a serving color and never applies the lineage
+      QUALY_MIGRATIONS: 'off'
+    volumes:
+      - storage:/var/lib/qualy/storage
+      - web_releases:/var/lib/qualy/web:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid,nodev
+    logging:
+      <<: *logging
+      options:
+        max-size: '10m'
+        max-file: '2'
+
+  # The telemetry uplink, when a deployment has one: otel-collector.yaml
+  # beside this file, credentials in collector.env (never .env - none of them
+  # ever enters the Qualy process). Started once with
+  # `docker compose --profile telemetry up -d otel-collector` and left
+  # running across upgrades; the server exports to it when .env says so
+  # (OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318).
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.159.0@sha256:1f2c54a30e713fac6b3ae77a1ec84010c2007e29ced8ec666214fc2f6739c1cc
+    profiles: [telemetry]
+    restart: unless-stopped
+    command: ['--config=/etc/otelcol-contrib/config.yaml']
+    env_file:
+      - path: collector.env
+        required: false
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    read_only: true
+    # the collector's own memory_limiter stays under this
+    mem_limit: 256m
+    # no `ports`: the servers reach it on this project's network
+    logging:
+      <<: *logging
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+  server-blue:
+    <<: *server
+    image: qualy-server:${QUALY_RELEASE_BLUE:-none}
+    profiles: [blue]
+    environment:
+      <<: *server-environment
+      QUALY_VERSION: ${QUALY_RELEASE_BLUE:-none}
     ports:
       # loopback by default: the edge proxy on this host is the public face
-      - '${QUALY_BIND:-127.0.0.1}:${QUALY_PORT:-3000}:3000'
+      - '${QUALY_BIND:-127.0.0.1}:${QUALY_PORT_BLUE:-3001}:3000'
     volumes:
       - storage:/var/lib/qualy/storage
       # the web releases the deploy job installed; the server only reads them
@@ -135,76 +271,53 @@ services:
       # check on write covers files, directories and links, not sockets;
       # measured: a client on an :ro mount gets its answer, a write there
       # gets EROFS). Creating and removing the socket is the sandbox's, on
-      # its read-write mount. The two stay separate volumes: neither sandbox
-      # sees the other's.
-      - sandbox_runtime:/run/qualy-sandbox/runtime:ro
-      - sandbox_authoring:/run/qualy-sandbox/authoring:ro
-    read_only: true
-    tmpfs:
-      - /tmp:size=64m,noexec,nosuid,nodev
-    security_opt:
-      - no-new-privileges:true
-    # liveness is the image's HEALTHCHECK (/health/live); readiness is asked
-    # from outside at /health/ready, once the assembly has finished starting
-    logging:
-      driver: json-file
-      options:
-        max-size: '20m'
-        max-file: '10'
+      # its read-write mount. Each color's pair has volumes of its own, so a
+      # server only ever reaches the sandboxes of its own release.
+      - sandbox_runtime_blue:/run/qualy-sandbox/runtime:ro
+      - sandbox_authoring_blue:/run/qualy-sandbox/authoring:ro
 
-  # The sandbox pair, hardened as docs/sandbox-process-isolation.md requires:
-  # no network, read-only root, no capabilities, non-root, one unix socket
-  # each on a volume of its own. Neither is given .env: a sandbox's
-  # environment is its own socket path and limits, never a business secret.
-  sandbox-runtime:
-    image: qualy-sandbox-runtime:${QUALY_RELEASE:?set in .env}
-    restart: unless-stopped
-    init: true
-    network_mode: none
-    read_only: true
-    user: '1000:1000'
-    cap_drop: [ALL]
-    security_opt:
-      - no-new-privileges:true
-    pids_limit: 64
-    tmpfs:
-      - /tmp:size=32m,noexec,nosuid,nodev
-    mem_limit: 256m
-    cpus: 1
+  sandbox-runtime-blue:
+    <<: *sandbox-runtime
+    image: qualy-sandbox-runtime:${QUALY_RELEASE_BLUE:-none}
+    profiles: [blue]
+    volumes:
+      - sandbox_runtime_blue:/run/qualy-sandbox/runtime
+
+  sandbox-authoring-blue:
+    <<: *sandbox-authoring
+    image: qualy-sandbox-authoring:${QUALY_RELEASE_BLUE:-none}
+    profiles: [blue]
+    volumes:
+      - sandbox_authoring_blue:/run/qualy-sandbox/authoring
+
+  server-green:
+    <<: *server
+    image: qualy-server:${QUALY_RELEASE_GREEN:-none}
+    profiles: [green]
     environment:
-      # one QuickJS worker per CPU of quota: the scoring deadline is
-      # wall-clock, and two workers on one core interrupted healthy formulas
-      QUALY_SANDBOX_POOL_SIZE: ${QUALY_SANDBOX_POOL_SIZE:-1}
+      <<: *server-environment
+      QUALY_VERSION: ${QUALY_RELEASE_GREEN:-none}
+    ports:
+      - '${QUALY_BIND:-127.0.0.1}:${QUALY_PORT_GREEN:-3002}:3000'
     volumes:
-      - sandbox_runtime:/run/qualy-sandbox/runtime
-    logging:
-      driver: json-file
-      options:
-        max-size: '10m'
-        max-file: '5'
+      - storage:/var/lib/qualy/storage
+      - web_releases:/var/lib/qualy/web:ro
+      - sandbox_runtime_green:/run/qualy-sandbox/runtime:ro
+      - sandbox_authoring_green:/run/qualy-sandbox/authoring:ro
 
-  sandbox-authoring:
-    image: qualy-sandbox-authoring:${QUALY_RELEASE:?set in .env}
-    restart: unless-stopped
-    init: true
-    network_mode: none
-    read_only: true
-    user: '1000:1000'
-    cap_drop: [ALL]
-    security_opt:
-      - no-new-privileges:true
-    pids_limit: 128
-    tmpfs:
-      - /tmp:size=256m,noexec,nosuid,nodev
-    mem_limit: 512m
-    cpus: 2
+  sandbox-runtime-green:
+    <<: *sandbox-runtime
+    image: qualy-sandbox-runtime:${QUALY_RELEASE_GREEN:-none}
+    profiles: [green]
     volumes:
-      - sandbox_authoring:/run/qualy-sandbox/authoring
-    logging:
-      driver: json-file
-      options:
-        max-size: '10m'
-        max-file: '5'
+      - sandbox_runtime_green:/run/qualy-sandbox/runtime
+
+  sandbox-authoring-green:
+    <<: *sandbox-authoring
+    image: qualy-sandbox-authoring:${QUALY_RELEASE_GREEN:-none}
+    profiles: [green]
+    volumes:
+      - sandbox_authoring_green:/run/qualy-sandbox/authoring
 
 volumes:
   pg_data: {}
@@ -213,5 +326,7 @@ volumes:
   # the web releases the deploy job installs, the current one and those
   # before it (QUALY_WEB_RELEASE_RETAIN_COUNT / _HOURS in .env)
   web_releases: {}
-  sandbox_runtime: {}
-  sandbox_authoring: {}
+  sandbox_runtime_blue: {}
+  sandbox_authoring_blue: {}
+  sandbox_runtime_green: {}
+  sandbox_authoring_green: {}
