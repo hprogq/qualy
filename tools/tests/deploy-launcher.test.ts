@@ -194,6 +194,23 @@ describe('deploying a published release', () => {
   })
 })
 
+describe('before the deployment has its settings', () => {
+  it('checks and fetches, and refuses to run a script', () => {
+    fs.rmSync(path.join(root, '.env'))
+    const digests = publish('v1.0.0', '1')
+    expect(run(['check']).status).toBe(0)
+    const fetched = run(['fetch', 'v1.0.0', ...digests])
+    expect(fetched.status, fetched.stderr).toBe(0)
+    expect(fs.existsSync(path.join(root, 'releases/v1.0.0/deploy/upgrade.sh'))).toBe(true)
+    for (const args of [['deploy', 'v1.0.0', ...digests], ['rollback']]) {
+      const refused = run(args)
+      expect(refused.status).toBe(1)
+      expect(refused.stderr).toContain('write the deployment')
+    }
+    expect(ran()).toBe('')
+  })
+})
+
 describe('rolling back', () => {
   it("runs the serving release's rollback, not the older one's", () => {
     const older = publish('v1.0.0', '1')

@@ -74,10 +74,15 @@ root=${root:-/opt/qualy}
 printf '%s' "$registry" | grep -Eqx '[a-z0-9.-]+(:[0-9]+)?(/[a-z0-9._-]+)+' ||
   refuse "QUALY_DEPLOY_REGISTRY in $conf is not a registry path like docker.cnb.cool/<org>/<repo>"
 case $root in /*) ;; *) refuse "QUALY_DEPLOY_ROOT in $conf is not an absolute path" ;; esac
+[ -d "$root" ] || refuse "no $root"
 env_file=$root/.env
-[ -f "$env_file" ] || refuse "no $env_file"
 
+# check and fetch run before a deployment has its settings; the scripts do not
+need_env() {
+  [ -f "$env_file" ] || refuse "no $env_file: write the deployment's settings first (deploy/.env.example)"
+}
 env_value() {
+  [ -f "$env_file" ] || return 0
   sed -n "s/^$1=//p" "$env_file" | tail -n 1
 }
 
@@ -202,12 +207,14 @@ case ${1:-} in
     ;;
   deploy)
     [ $# -eq 5 ] || { [ $# -eq 6 ] && [ "$6" = --maintenance ]; } || usage
+    need_env
     take_lock
     fetch "$2" "$3" "$4" "$5"
     if [ $# -eq 6 ]; then run "$2" upgrade.sh "$2" --maintenance; else run "$2" upgrade.sh "$2"; fi
     ;;
   rollback)
     [ $# -eq 1 ] || usage
+    need_env
     take_lock
     serving=$(env_value QUALY_RELEASE)
     [ -n "$serving" ] || refuse "nothing serves yet; there is nothing to roll back"
