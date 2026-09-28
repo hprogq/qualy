@@ -72,6 +72,15 @@ qualy-deploy fetch v0.1.0 sha256:... sha256:... sha256:...   # pull, verify, ext
 QUALY_ENV_FILE=/opt/qualy/.env /opt/qualy/current/deploy/backup.sh /var/backups/qualy
 ```
 
-A first deployment fetches the release, then imports its data with the
-release's own scripts (`/opt/qualy/releases/<release>/deploy/demo/restore.sh`,
-or migrate and seed as `deploy/README.md` says) before the first `deploy`.
+`current` always names the release `.env` records as serving, and only the
+launcher moves it, after it has run one of a release's scripts; a fetch
+never touches it. A first deployment is the one step taken by hand: fetch
+the release, import its data with the release's own scripts
+(`/opt/qualy/releases/<release>/deploy/demo/restore.sh`, which starts the
+first color, or migrate and seed as `deploy/README.md` says and then the
+first `deploy`). When the first color was started by hand, point `current`
+at it once it serves - after that every step keeps it:
+
+```sh
+ln -sfn releases/<release> /opt/qualy/current
+```

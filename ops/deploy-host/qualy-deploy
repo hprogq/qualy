@@ -28,6 +28,8 @@
 # launcher's lock, with <root>/.env as their env file; afterwards
 # <root>/current points at the release .env records as serving, which is
 # where backups, restores and the edge's maintenance page find their files.
+# current means that and nothing else: fetch never touches it, and nothing
+# points it at a release that does not serve.
 #
 # The deploy workflow reaches it over SSH through a forced command. That
 # account has no docker and no sudo beyond this one file, so the command
@@ -175,8 +177,6 @@ fetch() {
     shift
   done
   extract "$server"
-  # before the first deployment, the edge's maintenance page is found here too
-  [ -e "$root/current" ] || ln -s "releases/$release" "$root/current"
 }
 
 # runs one of a release's scripts, then points current at what serves

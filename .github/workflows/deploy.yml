@@ -29,7 +29,7 @@ on:
         options: [deploy, fetch, rollback]
         default: deploy
       release:
-        description: 'The published release to deploy or fetch, e.g. v0.1.0 (a rollback ignores it)'
+        description: 'The published release to deploy or fetch, e.g. v0.1.0 (empty for a rollback)'
         type: string
         required: false
       maintenance:
@@ -68,6 +68,8 @@ jobs:
             echo "maintenance applies to a deploy, not to $ACTION"; exit 1
           fi
           if [ "$ACTION" = rollback ]; then
+            # the release a rollback goes to is the one the idle color last ran
+            [ -z "$RELEASE" ] || { echo "a rollback takes no release; it returns to the one before"; exit 1; }
             echo "COMMAND=rollback" >> "$GITHUB_ENV"
             exit 0
           fi

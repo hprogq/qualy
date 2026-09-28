@@ -188,9 +188,9 @@ describe('deploying a published release', () => {
   it('refuses a release name this host already knows as other images', () => {
     const first = publish('v1.0.0', '1')
     expect(run(['fetch', 'v1.0.0', ...first]).status).toBe(0)
-    // fetched, nothing run: a first deployment's edge finds its maintenance page
+    // fetched, nothing run, and nothing claims it serves
     expect(ran()).toBe('')
-    expect(fs.readlinkSync(path.join(root, 'current'))).toBe('releases/v1.0.0')
+    expect(fs.existsSync(path.join(root, 'current'))).toBe(false)
     const other = publish('v1.0.0', '5')
     const refused = run(['deploy', 'v1.0.0', ...other])
     expect(refused.status).toBe(1)
