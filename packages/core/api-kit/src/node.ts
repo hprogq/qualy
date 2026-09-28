@@ -42,6 +42,17 @@ export type ConnectMiddleware = (
  * with `if (nodeResponse.writableEnded) return`, which is what makes this
  * handoff supported rather than a trick.
  *
+ * A third outcome is not an answer at all: the client went away while the
+ * middleware was still writing. The head is out and the body never ended, so
+ * the platform's guard does not hold, and the platform itself then answers
+ * the abort with a 499 of its own, written as a second head - "Cannot write
+ * headers after they are sent", once per abandoned asset. So the response is
+ * ended here, where nothing can reach the client any more anyway: that is
+ * the fact the guard reads. The request then ends with the answer that went
+ * out - the head the client was sent - as any other finished one does;
+ * interrupting it from here instead would carry no client-abort mark and
+ * read to the platform as its own failure, a 503.
+ *
  * `next(error)` is a defect, not a decline. Treating them alike would turn a
  * middleware's own crash into a 404 and lose it, and there is no domain failure
  * here for a caller to act on: the fallback either serves or it is broken.
@@ -58,14 +69,18 @@ export const fromConnect = (middleware: ConnectMiddleware) =>
         if (settled) return
         settled = true
         nodeResponse.off('finish', onFinish)
-        nodeResponse.off('close', onFinish)
+        nodeResponse.off('close', onClose)
         resume(effect)
       }
       const onFinish = () => settle(Effect.succeed(false))
+      // close before the answer ended is a client that went away
+      // mid-response: the request is over, and nothing is left to write
+      const onClose = () => {
+        if (!nodeResponse.writableEnded) nodeResponse.end()
+        settle(Effect.succeed(false))
+      }
       nodeResponse.once('finish', onFinish)
-      // close without finish is a client that went away mid-response; the
-      // request is over either way, and there is nothing left to fall back to
-      nodeResponse.once('close', onFinish)
+      nodeResponse.once('close', onClose)
       const fault = (error: unknown) =>
         Effect.die(error instanceof Error ? error : new Error(String(error)))
       try {

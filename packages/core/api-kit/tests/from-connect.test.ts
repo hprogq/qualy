@@ -1,5 +1,5 @@
 import { NodeHttpServer } from '@effect/platform-node'
-import { Effect, Exit, Layer, Scope } from 'effect'
+import { Cause, Effect, Exit, Layer, Scope } from 'effect'
 import { HttpRouter, HttpServerResponse } from 'effect/unstable/http'
 import { createServer } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -26,12 +26,21 @@ const middleware: ConnectMiddleware = (request, response, next) => {
     response.writeHead(206, { 'content-length': '100', 'content-type': 'text/plain' })
     throw new Error('thrown after the head went out')
   }
+  if (request.url === '/streaming') {
+    // a large file on its way: the head and a first piece out, the rest
+    // still to come when the client leaves
+    response.writeHead(200, { 'content-length': '1000000', 'content-type': 'text/plain' })
+    response.write('x'.repeat(1024))
+    return
+  }
   if (request.url !== '/handled') return next()
   response.writeHead(201, { 'content-type': 'text/plain', 'x-from': 'middleware' })
   response.end('served by the middleware')
 }
 
 let scope: Scope.Scope
+/** how each request to /streaming ended, as the server saw it, write included */
+const streamingExits: Exit.Exit<HttpServerResponse.HttpServerResponse, unknown>[] = []
 
 beforeAll(async () => {
   const routes = Layer.mergeAll(
@@ -39,9 +48,14 @@ beforeAll(async () => {
     HttpRouter.add('GET', '/declared', HttpServerResponse.text('declared')),
     HttpRouter.add('*', '/*', fromConnect(middleware)),
   )
-  const application = HttpRouter.serve(routes).pipe(
-    Layer.provide(NodeHttpServer.layer(createServer, { port })),
-  )
+  const application = HttpRouter.serve(routes, {
+    middleware: (httpApp) =>
+      Effect.onExit(httpApp, (exit) =>
+        Effect.sync(() => {
+          streamingExits.push(exit)
+        }),
+      ),
+  }).pipe(Layer.provide(NodeHttpServer.layer(createServer, { port })))
   scope = await Effect.runPromise(Scope.make())
   await Effect.runPromise(Layer.buildWithScope(application, scope))
 })
@@ -102,5 +116,29 @@ describe('a connect middleware as a route handler', () => {
       )
     expect(outcome).not.toBe('TimeoutError')
     expect(outcome).not.toBe('finished')
+  })
+})
+
+describe('a client that leaves while the middleware is writing', () => {
+  it('ends the request with the head it sent, not with a second head over the first', async () => {
+    streamingExits.length = 0
+    const leaving = new AbortController()
+    const response = await fetch(`${base}/streaming`, { signal: leaving.signal })
+    const reader = response.body!.getReader()
+    await reader.read()
+    leaving.abort()
+    await reader.read().catch(() => undefined)
+    for (let attempt = 0; attempt < 40 && streamingExits.length === 0; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 25))
+    }
+    expect(streamingExits).toHaveLength(1)
+    const exit = streamingExits[0]!
+    // nothing went wrong on this side: no defect, and no second head
+    if (Exit.isFailure(exit)) {
+      expect(Cause.pretty(exit.cause)).not.toContain('Cannot write headers')
+      expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true)
+    } else {
+      expect(exit.value.status).toBe(200)
+    }
   })
 })
