@@ -1218,6 +1218,8 @@ CPU 1
 
 **校准记录（2026-09-11，Phase 7.6）**：QuickJS worker pool 必须与 CPU 配额对齐——`cpus: 1` 配 `QUALY_SANDBOX_POOL_SIZE=1`（代码默认 2 是给多核配额用的）。计分的 soft deadline 是 wall-clock（worker 里 `Date.now() + softDeadlineMs` 做 interrupt handler），两个 worker 共享一核时健康的 passthrough 公式也会被调度延迟打穿 25 ms（审计 7600 次评估、4 in flight，每次 1–4 次 soft 超时）；一核一 worker 后同一负载在宿主相对空闲时 0 超时，且吞吐不变（QuickJS 在一核上本就只能逐个执行）；但 25 ms 是 wall-clock 预算，起算点在 QuickJS runtime 创建之后、bootstrap 与 artifact 加载之前，对严重的宿主调度抖动仍有极低概率敏感（181,200 次 invocation 里出现 1 次，发生在宿主刚跑完整套测试的那一分钟）。pool = 2 是此前稳定假超时的主要原因；deadline 的最终取值由 Phase 7.6 的校准实验定，数字见 STATUS。
 
+**生产硬件上的后续（2026-09-29）**：上面的校准在开发机上做。生产机（2 vCPU Xeon Gold 6148 2.4GHz）上 `cpus: 1` 不够：求值只占一个线程，但 V8 编译 QuickJS 的 WASM 与 GC 在别的线程，容器每个调度周期都被节流，10 ms 的求值尖峰到 117 ms；且新 worker 的第一次调用（WASM 首次用到时才编译）要 131–183 ms，超过 hard 100 ms 被换掉后新来的又从第一次开始，计分永不恢复。改为一个 worker 配 2 核、worker 就绪前预热，实测第一次 24–45 ms、全部 ≤58 ms、0 节流。「一个 worker」不变；变的是配额要给 V8 自己的线程留出一核。测量方法与各组数字见 `docs/deployment.md` §3。
+
 ---
 
 # 31. Docker Authoring Sandbox

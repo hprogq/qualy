@@ -305,6 +305,112 @@ const execute = (request: InvokeRequest): InvokeResponse => {
   }
 }
 
+/**
+ * A program that goes where a formula goes - JSON in and out, a class with
+ * private state and a getter, an error subclass thrown and caught, bigint
+ * arithmetic (the decimal runtime rests on it), a regular expression, maps,
+ * sets, the array and string methods - run before the worker says it is
+ * ready.
+ *
+ * The engine's machine code is compiled as each part of it is first used,
+ * not when the module loads, so a worker's first evaluation costs several
+ * times its later ones. The pool's hard deadline starts at dispatch, and it
+ * replaces a worker that misses it with a new one - whose first evaluation
+ * is again the slow one. On the production host that first evaluation took
+ * 131-183ms against a 100ms deadline, so scoring never recovered; after this
+ * warm-up it took 24-45ms (docs/deployment.md, 2026-09-29). A narrower
+ * program left it near 55ms: what is not run here is compiled on a caller's
+ * clock.
+ */
+const WARM_UP = `(() => {
+  class Refusal extends Error {
+    constructor(path, reason) {
+      super(reason)
+      this.name = 'Refusal'
+      this.path = path
+    }
+  }
+  class Amount {
+    #units
+    #scale
+    constructor(units, scale) {
+      this.#units = units
+      this.#scale = scale
+    }
+    get units() {
+      return this.#units
+    }
+    plus(other) {
+      return new Amount(this.#units + other.units, this.#scale)
+    }
+    times(factor) {
+      return new Amount((this.#units * BigInt(factor)) / 10n ** BigInt(this.#scale), this.#scale)
+    }
+    toString() {
+      const sign = this.#units < 0n ? '-' : ''
+      const digits = (this.#units < 0n ? -this.#units : this.#units).toString().padStart(this.#scale + 1, '0')
+      return sign + digits.slice(0, -this.#scale) + '.' + digits.slice(-this.#scale)
+    }
+  }
+  const parse = (text, scale) => {
+    const match = /^(-?)(\\d+)(?:\\.(\\d+))?$/.exec(String(text).trim())
+    if (match === null) throw new Refusal('value', \`not a decimal: \${text}\`)
+    const [, sign, whole, fraction = ''] = match
+    const units = BigInt(whole + fraction.padEnd(scale, '0').slice(0, scale))
+    return new Amount(sign === '-' ? -units : units, scale)
+  }
+  const levels = new Map(Object.entries({ national: 4, provincial: 3, municipal: 2, school: 1 }))
+  const seen = new Set()
+  globalThis.warm = (text) => {
+    const { round, values = ['12.50', '-3.25', '100', '0.05'] } = JSON.parse(text)
+    const amounts = values.map((value) => parse(value, 4))
+    const total = amounts.reduce((sum, amount) => sum.plus(amount), parse('0', 4))
+    const ranked = [...levels.keys()].sort((a, b) => levels.get(b) - levels.get(a)).filter((key) => !seen.has(key))
+    for (const key of ranked.slice(0, 2)) seen.add(key)
+    let refused = ''
+    try {
+      parse('not a number', 4)
+    } catch (error) {
+      refused = error instanceof Refusal ? \`\${error.path}: \${error.message}\` : String(error)
+    }
+    const quotient = 1234567890123456789n / 7n
+    const remainder = 1234567890123456789n % 7n
+    return JSON.stringify(
+      Object.freeze({
+        round,
+        total: total.times(3).toString(),
+        ranked: ranked.join(','),
+        found: ranked.find((key) => key.startsWith('p')) ?? null,
+        every: amounts.every((amount) => amount.units !== 0n),
+        words: Object.fromEntries(ranked.map((key, at) => [key.toUpperCase(), at])),
+        quotient: \`\${quotient}:\${remainder}:\${quotient > remainder}\`,
+        fixed: (round / 3).toFixed(2),
+        refused,
+      }),
+    )
+  }
+})()`
+
+for (let round = 0; round < 3; round += 1) {
+  const warmed = execute({
+    id: 0,
+    artifact: WARM_UP,
+    entrypoint: 'warm',
+    arguments: [JSON.stringify({ round })],
+    softDeadlineMs: 60_000,
+    memoryBytes: 32 * 1024 * 1024,
+    stackBytes: 512 * 1024,
+    outputBytes: 4096,
+  })
+  // an engine that cannot run this cannot run a formula: fail the worker
+  // before it is ready rather than answer every caller with the same defect
+  if (warmed.verdict !== 'completed') {
+    throw new Error(
+      `the engine failed its warm-up: ${warmed.verdict} ${warmed.problem?.message ?? ''}`,
+    )
+  }
+}
+
 const port = parentPort!
 port.on('message', (request: InvokeRequest) => {
   port.postMessage(execute(request))

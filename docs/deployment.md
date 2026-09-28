@@ -180,6 +180,14 @@ host key(不用 runner 自带的 known_hosts)。发布制品(tag)与批准部署
 - `sandbox-runtime-<色>` / `sandbox-authoring-<色>`:按 `docs/sandbox-process-isolation.md`:`network_mode: none`、只读根、`cap_drop: ALL`、
   非 root、pids / mem / cpu 限额、各自一个卷;**不给 `.env`**——沙箱环境只有自己的 socket 路径与限额,没有业务 secret。
   两个卷分开,runtime 看不到 authoring 的 socket,反之亦然。没有 TCP fallback:socket 不可达时公式发布 / 计分失败,不退回主进程。
+  **计分沙箱的时间(2026-09-29 在生产机上量):** v0.1.0-rc.4 上学生「我的成绩」每次 500(`ASSESSMENT_SCORING_EVALUATION_FAILED`,
+  `execution`:hard deadline 100ms)。生产机是 2 vCPU Xeon Gold 6148 2.4GHz;用 rc.4 的 sandbox-runtime 镜像按线上限额起临时容器,
+  11 个演示公式产物各跑两遍、每轮一个新 worker:原样 1 核时新 worker 的第一次调用 131–183 ms(引擎的 WASM 在首次用到时才编译),
+  之后中位 10–13 ms、但尖峰到 117 ms,容器 43/43 个调度周期被节流(求值是一个线程,V8 的编译与 GC 在别的线程);超时的 worker
+  被换掉,新来的又从第一次调用开始,所以永不恢复。实测组合:只放宽到 2 核,第一次 88–100 ms、无节流;只预热(1 核),仍每周期节流、
+  尖峰 93–111 ms;worker 就绪前跑一段覆盖类、私有字段、BigInt、正则、Map/Set、数组与字符串方法的程序 **且** 2 核:第一次 24–45 ms、
+  全部 ≤58 ms、0/110 超过 100 ms、0 节流。于是 `sandbox-runtime` 为一个 worker 配 2 核,worker 在报告就绪前预热三次
+  (`packages/core/sandbox-engine/src/worker.ts`)。只覆盖 JSON / BigInt / 正则的窄版预热只把第一次降到约 55 ms。
 - `tools`(profile `tools`):当前 release 的 server 镜像 + 部署的 `.env` + `storage` 与 `web_releases` 卷,只跑一次性命令
   (`docker compose run --rm tools <命令>`),`QUALY_MIGRATIONS=off`。备份、恢复、基线导入与运维 CLI(`auth set-password`、
   `storage export`)都经它,不点名颜色,也不按带 project 前缀的名字找卷。

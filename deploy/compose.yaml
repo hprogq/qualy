@@ -107,10 +107,16 @@ x-sandbox-runtime: &sandbox-runtime
   tmpfs:
     - /tmp:size=32m,noexec,nosuid,nodev
   mem_limit: 256m
-  cpus: 1
+  # Two CPUs of quota for ONE worker. The worker's evaluations are one
+  # thread, but V8 compiles the engine and collects garbage on others, and
+  # under a one-CPU quota the container was throttled in every scheduling
+  # period it ran: measured on the production host, evaluations that take
+  # 10ms spiked to 117ms, over the 100ms hard deadline. With two, no period
+  # was throttled and nothing passed 58ms (docs/deployment.md, 2026-09-29).
+  cpus: 2
   environment:
-    # one QuickJS worker per CPU of quota: the scoring deadline is
-    # wall-clock, and two workers on one core interrupted healthy formulas
+    # one QuickJS worker at a time: the scoring deadline is wall-clock, and
+    # two workers sharing the quota interrupted healthy formulas
     QUALY_SANDBOX_POOL_SIZE: ${QUALY_SANDBOX_POOL_SIZE:-1}
 
 x-sandbox-authoring: &sandbox-authoring
