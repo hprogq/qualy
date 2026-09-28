@@ -21,6 +21,7 @@ import { FormulaSettings } from '@qualy/plugin-assessment-formula/config'
 import { MailConfig } from '@qualy/plugin-mail/server'
 import { SmtpConfig } from '@qualy/plugin-mail-smtp/config'
 import { ResendConfig } from '@qualy/plugin-mail-resend/config'
+import { RumReporting } from '@qualy/plugin-rum/server'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { Api } from '@qualy/api-kit/plugin'
 import { Plugin } from '@qualy/plugin-kit'
@@ -234,6 +235,8 @@ const shell = (url: string) => {
           LocalStorageConfig,
           LocalStorageConfig.of({ root: path.join(tmpdir(), 'qualy-effect-api-storage') }),
         ),
+        // reporting off, as CI runs
+        Layer.succeed(RumReporting, RumReporting.of({ on: false })),
         // mail is assembled too and nothing here sends any: a relay nobody
         // listens on and a key nobody checks, for whichever backend the
         // manifest enables

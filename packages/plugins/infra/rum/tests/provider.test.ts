@@ -1,9 +1,10 @@
-import { Effect, Exit, Layer } from 'effect'
+import { Cause, ConfigProvider, Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 import type { Contributed, ProvideExtension } from '@qualy/plugin-kit'
 import { assembledLayer, runBootHooks } from '@qualy/api-kit/assembled'
 import { DeclaredRumProvider, Rum, type RumProviderDeclaration } from '../src/plugin.ts'
 import { barrierLayer, registryLayer, RumProviders } from '../src/server/registry.ts'
+import { config, RumReporting } from '../src/server/config.ts'
 import { RUM_SETTINGS_SCHEMA } from '../src/api.ts'
 
 // Who reports, and what happens when the answer is nobody - or two.
@@ -52,8 +53,12 @@ describe('choosing a reporting provider', () => {
   })
 })
 
-const run = <A, E>(effect: Effect.Effect<A, E, RumProviders>) =>
-  Effect.runPromiseExit(Effect.provide(effect, registryLayer))
+/** the registry as a deployment that reports - or, told so, one that does not - builds it */
+const registry = (on = true) =>
+  registryLayer.pipe(Layer.provide(Layer.succeed(RumReporting, { on })))
+
+const run = <A, E>(effect: Effect.Effect<A, E, RumProviders>, on = true) =>
+  Effect.runPromiseExit(Effect.provide(effect, registry(on)))
 
 describe('the settings a provider offers', () => {
   it('are nothing until a provider registers', async () => {
@@ -75,6 +80,16 @@ describe('the settings a provider offers', () => {
     })
   })
 
+  it('refuse a provider while reporting is off', async () => {
+    const exit = await run(
+      Effect.flatMap(RumProviders, (providers) =>
+        providers.register({ code: 'tencent', publicConfig: { id: 'abc' } }),
+      ),
+      false,
+    )
+    expect(Exit.isFailure(exit)).toBe(true)
+  })
+
   it('refuse a second registration, which the assembly should already have stopped', async () => {
     const exit = await run(
       Effect.gen(function* () {
@@ -93,6 +108,7 @@ const declaredLayer = (declared: { code: string; pluginId: string } | null) =>
 const boot = (
   declared: { code: string; pluginId: string } | null,
   register: Effect.Effect<void, never, RumProviders>,
+  on = true,
 ) =>
   Effect.runPromiseExit(
     Effect.gen(function* () {
@@ -101,7 +117,7 @@ const boot = (
     }).pipe(
       Effect.provide(
         barrierLayer.pipe(
-          Layer.provideMerge(registryLayer),
+          Layer.provideMerge(registry(on)),
           Layer.provideMerge(declaredLayer(declared)),
           Layer.provideMerge(assembledLayer),
         ),
@@ -111,7 +127,22 @@ const boot = (
 
 describe('starting up', () => {
   it('is fine with a deployment that reports nowhere', async () => {
-    expect(Exit.isSuccess(await boot(null, Effect.void))).toBe(true)
+    expect(Exit.isSuccess(await boot(null, Effect.void, false))).toBe(true)
+  })
+
+  it('leaves a declared provider idle while reporting is off', async () => {
+    const exit = await boot(
+      { code: 'tencent', pluginId: '@qualy/plugin-rum-tencent' },
+      Effect.void,
+      false,
+    )
+    expect(Exit.isSuccess(exit)).toBe(true)
+  })
+
+  it('refuses reporting switched on with no provider to report through', async () => {
+    const exit = await boot(null, Effect.void)
+    expect(Exit.isFailure(exit)).toBe(true)
+    expect(Exit.isFailure(exit) && Cause.pretty(exit.cause)).toContain('QUALY_RUM_REPORTING=on')
   })
 
   it('refuses to finish starting when a declared provider never registered', async () => {
@@ -141,11 +172,11 @@ describe('what the browser is told', () => {
   const answered = (registered: { code: string; publicConfig: Record<string, unknown> } | null) =>
     Effect.runSync(
       Effect.gen(function* () {
-        const registry = yield* RumProviders
-        if (registered !== null) yield* registry.register(registered)
-        const selected = yield* registry.selected
+        const providers = yield* RumProviders
+        if (registered !== null) yield* providers.register(registered)
+        const selected = yield* providers.selected
         return { schema: RUM_SETTINGS_SCHEMA, config: selected?.publicConfig ?? null }
-      }).pipe(Effect.provide(registryLayer)),
+      }).pipe(Effect.provide(registry(registered !== null))),
     )
 
   it('carries the selected provider settings and no vendor name', () => {
@@ -159,5 +190,32 @@ describe('what the browser is told', () => {
     // told apart from "reports, with no settings", which a provider may
     // legitimately answer: one brings a vendor up and the other does not
     expect(answered(null)).toEqual({ schema: 2, config: null })
+  })
+})
+
+describe('the reporting switch', () => {
+  const switched = (env: Record<string, string>) =>
+    Effect.runPromiseExit(
+      Effect.flatMap(RumReporting, Effect.succeed).pipe(
+        Effect.provide(
+          config({}, { manifestDir: '/somewhere' }).pipe(
+            Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env }))),
+          ),
+        ),
+      ),
+    )
+
+  it('is off unless a deployment says on', async () => {
+    const exit = await switched({})
+    expect(Exit.isSuccess(exit) && exit.value.on).toBe(false)
+  })
+
+  it('is on when a deployment says so', async () => {
+    const exit = await switched({ QUALY_RUM_REPORTING: 'on' })
+    expect(Exit.isSuccess(exit) && exit.value.on).toBe(true)
+  })
+
+  it('refuses anything else rather than reading it as off', async () => {
+    expect(Exit.isFailure(await switched({ QUALY_RUM_REPORTING: 'yes' }))).toBe(true)
   })
 })

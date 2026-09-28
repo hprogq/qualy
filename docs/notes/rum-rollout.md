@@ -141,6 +141,8 @@ error regression 人工观察。不要一开始就对每个 4xx、每个资源�
 
 ### 7. 切 production
 
+(自 2026-09-28 起,部署还要设 `QUALY_RUM_REPORTING=on`,缺省 off 时 provider 闲置,见 docs/rum.md §11。)
+
 staging soak 没问题后:production 域名进白名单 → `QUALY_RUM_TENCENT_ENV=production` →
 上传 production release 的 SourceMap → 开正式告警。
 

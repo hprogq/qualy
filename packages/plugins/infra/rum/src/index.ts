@@ -3,7 +3,7 @@ import { Browser } from '@qualy/plugin-kit/browser'
 import { Api } from '@qualy/api-kit/plugin'
 import { Rum } from './plugin.ts'
 import { rumApiGroup } from './api.ts'
-import { rumApiHandlers, barrierLayer, registryLayer } from './server/index.ts'
+import { config, rumApiHandlers, barrierLayer, registryLayer } from './server/index.ts'
 
 // Browser reporting as a capability, with no idea where reports go.
 //
@@ -21,6 +21,8 @@ import { rumApiHandlers, barrierLayer, registryLayer } from './server/index.ts'
 
 const plugin = Plugin.define(
   '@qualy/plugin-rum',
+  // whether this deployment reports at all: QUALY_RUM_REPORTING, off unless on
+  { config },
   Rum.owner,
   Plugin.layer(registryLayer),
   Plugin.layer(barrierLayer),

@@ -768,10 +768,21 @@ production superset 下，这意味着 disabled RUM 仍会多一次很小的 con
 Provider 激活后，建议主要使用 deployment environment：
 
 ```text
+QUALY_RUM_REPORTING=on
 QUALY_RUM_TENCENT_ID=
 QUALY_RUM_TENCENT_ENV=production
 QUALY_RUM_TENCENT_SAMPLE_RATE=1
 ```
+
+**上不上报是显式开关**(2026-09-28 定):`QUALY_RUM_REPORTING=on|off` 归能力插件 `@qualy/plugin-rum`,
+缺省 off,其他值拒启。它决定的是「release 带着的那家 provider 用不用」,不是「选哪一家」(那由清单定,
+因为它决定浏览器产物),所以与 CLAUDE.md「环境变量不能选择影响浏览器产物的实现」不冲突。
+
+- off:provider 闲置,不注册、不向 shell policy 登记上报域名、不要求 ID;`GET /api/app/observability` 答 `config: null`,
+  浏览器到此为止,不拉 vendor 代码。开发机与 CI 用同一个启用了 provider 的 release 就是这样启动的。
+- on:provider 缺 `QUALY_RUM_TENCENT_ID` 即拒启并点名;清单里没启用任何 provider 也拒启。
+  **不再把「缺 ID」当成关闭。**
+- 环境名与采样率无论开关都照常校验,写错即拒启。
 
 第一版不提供任意 `hostUrl`。
 

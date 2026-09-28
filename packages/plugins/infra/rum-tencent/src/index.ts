@@ -22,8 +22,12 @@ import { publicConfigOf, TENCENT_RUM_HOST, TENCENT_RUM_PROVIDER } from './settin
 const registration: Layer.Layer<never, never, RumProviders | TencentRumConfig | ShellPolicy> =
   Layer.effectDiscard(
     Effect.gen(function* () {
-      const settings = yield* TencentRumConfig
+      const configured = yield* TencentRumConfig
       const registry = yield* RumProviders
+      // off: no settings served, no host in the policy, and no id asked for
+      if (!registry.reporting) return
+      if ('refusal' in configured) return yield* Effect.die(new Error(configured.refusal))
+      const settings = configured.settings
       yield* registry.register({
         code: TENCENT_RUM_PROVIDER,
         // projected field by field, never spread: what a browser receives is

@@ -517,6 +517,9 @@ importers:
       '@qualy/plugin-ping':
         specifier: workspace:*
         version: link:../../packages/plugins/demo/ping
+      '@qualy/plugin-rum':
+        specifier: workspace:*
+        version: link:../../packages/plugins/infra/rum
       '@qualy/plugin-secrets':
         specifier: workspace:*
         version: link:../../packages/plugins/infra/secrets

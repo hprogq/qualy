@@ -1,14 +1,13 @@
-import { Effect, Layer } from 'effect'
+import { Effect } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { Api } from '@qualy/api-kit/plugin'
 import { rumApiGroup, RUM_SETTINGS_SCHEMA } from '../api.ts'
-import { RumProviders, registryLayer } from './registry.ts'
+import { RumProviders } from './registry.ts'
 
 // The server half: a slot a provider fills, and one endpoint that reads it.
 
 export { RumProviders, barrierLayer, registryLayer } from './registry.ts'
-
-export const layer: Layer.Layer<RumProviders> = registryLayer
+export { config, RUM_REPORTING_VARIABLE, RumReporting } from './config.ts'
 
 const local = Api.local(rumApiGroup)
 

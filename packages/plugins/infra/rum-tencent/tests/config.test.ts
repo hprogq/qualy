@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ConfigProvider, Effect, Layer } from 'effect'
-import { TencentRumConfig, config } from '../src/server/config.ts'
+import { TENCENT_RUM_ID_MISSING, TencentRumConfig, config } from '../src/server/config.ts'
 import { rumVersionForRelease } from '../src/version.ts'
 import { explainRefusal } from '../src/cli/preflight.ts'
 
@@ -11,7 +11,7 @@ import { explainRefusal } from '../src/cli/preflight.ts'
 // but all of it is one deployment's fact, which is why it is read here and
 // served rather than built into a bundle that several deployments share.
 
-const configured = (declared: Record<string, unknown>, env: Record<string, string> = {}) =>
+const configuration = (declared: Record<string, unknown>, env: Record<string, string> = {}) =>
   Effect.runPromise(
     Effect.flatMap(TencentRumConfig, Effect.succeed).pipe(
       Effect.provide(
@@ -21,6 +21,13 @@ const configured = (declared: Record<string, unknown>, env: Record<string, strin
       ),
     ),
   )
+
+/** the settings, for the cases that name a project */
+const configured = async (declared: Record<string, unknown>, env: Record<string, string> = {}) => {
+  const answer = await configuration(declared, env)
+  if ('refusal' in answer) throw new Error(answer.refusal)
+  return answer.settings
+}
 
 describe('the reporting project', () => {
   it('comes from the manifest when the manifest names it', async () => {
@@ -35,10 +42,14 @@ describe('the reporting project', () => {
     expect(settings.id).toBe('from-environment')
   })
 
-  it('refuses to start when nothing names it', async () => {
-    // an operator who installed this plugin meant to report; coming up quietly
-    // reporting nowhere is the failure nobody notices until they go looking
-    await expect(configured({})).rejects.toThrow()
+  it('records that nothing names it, for the registration to refuse while reporting is on', async () => {
+    // whether a missing id stops the product is the reporting switch's
+    // question; the answer here is only that it is missing, and why that matters
+    expect(await configuration({})).toEqual({ refusal: TENCENT_RUM_ID_MISSING })
+  })
+
+  it('refuses a malformed sample rate even with no project named', async () => {
+    await expect(configuration({ sampleRate: 2 })).rejects.toThrow()
   })
 
   it('reports production at full rate unless told otherwise', async () => {
