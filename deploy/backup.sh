@@ -23,23 +23,27 @@
 #
 # Runs from anywhere: it drives deploy/compose.yaml beside it, with the .env
 # there (QUALY_ENV_FILE names another; COMPOSE_PROJECT_NAME another project).
-# Daily from cron, for example:
+# The backup root, QUALY_BACKUP_KEEP and QUALY_BACKUP_OFFSITE are read from
+# the environment first, then that .env, as every deploy setting is - so an
+# upgrade's backup and cron's copy off the machine alike. Daily from cron,
+# on a host the launcher keeps (ops/deploy-host/README.md), for example:
 #
-#   17 3 * * * /opt/qualy/deploy/backup.sh /var/backups/qualy >> /var/log/qualy-backup.log 2>&1
+#   17 3 * * * QUALY_ENV_FILE=/opt/qualy/.env /opt/qualy/current/deploy/backup.sh >> /var/log/qualy-backup.log 2>&1
 set -eu
 umask 077
 
 here=$(cd "$(dirname "$0")" && pwd)
 . "$here/lib.sh"
-root=${1:-/var/backups/qualy}
-keep=${QUALY_BACKUP_KEEP:-14}
+[ -f "$env_file" ] || { echo "no $env_file" >&2; exit 1; }
+root=${1:-$(setting QUALY_BACKUP_ROOT /var/backups/qualy)}
+keep=$(setting QUALY_BACKUP_KEEP 14)
+offsite=$(setting QUALY_BACKUP_OFFSITE)
 
 case $keep in '' | *[!0-9]* | 0)
   echo "QUALY_BACKUP_KEEP must be a whole number above 0, not $keep" >&2
   exit 1
   ;;
 esac
-[ -f "$env_file" ] || { echo "no $env_file" >&2; exit 1; }
 
 sums() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi
@@ -79,8 +83,8 @@ gzip -t "$partial/attachments.tar.gz"
 mv "$partial" "$root/$stamp"
 trap - EXIT
 
-if [ -n "${QUALY_BACKUP_OFFSITE:-}" ]; then
-  sh -c "$QUALY_BACKUP_OFFSITE" offsite "$root/$stamp"
+if [ -n "$offsite" ]; then
+  sh -c "$offsite" offsite "$root/$stamp"
 fi
 
 # the newest few stay; stamps sort as they were taken
