@@ -1,0 +1,42 @@
+# Staging: the same deployment, pulled up on demand beside production and
+# taken down when it has been checked, with its mail caught instead of sent.
+#
+#   docker compose -f compose.yaml -f compose.staging.yaml --env-file staging.env <command>
+#
+# A project of its own (COMPOSE_PROJECT_NAME=qualy-staging in staging.env) keeps its containers, volumes and network apart
+# from production's; staging.env (from .env.example) gives it its own ports,
+# address plan, release store snippet and database. Its sender is this
+# Mailpit, which nothing outside the host can reach: every mail staging
+# sends - a reset link, an address proof - lands here and goes nowhere else.
+# Read it through an SSH tunnel to the published port:
+#
+#   ssh -L 8025:127.0.0.1:${QUALY_MAILPIT_UI_PORT} <host>
+#
+# and in staging.env:
+#
+#   QUALY_MAIL_DEFAULT_BACKEND=smtp
+#   QUALY_MAIL_SMTP_HOST=mailpit
+#   QUALY_MAIL_SMTP_PORT=1025
+#   QUALY_MAIL_SMTP_TLS=none
+#   QUALY_MAIL_SMTP_ALLOW_PLAINTEXT=1
+#   QUALY_RUM_TENCENT_ENV=pre
+#
+# The scripts find it through staging.env itself - QUALY_COMPOSE_OVERLAY=
+# compose.staging.yaml and COMPOSE_PROJECT_NAME=qualy-staging in it - so
+# upgrading and rolling back staging is the same command with that file:
+#
+#   QUALY_ENV_FILE=/opt/qualy/deploy/staging.env deploy/upgrade.sh <release>
+
+services:
+  mailpit:
+    image: axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d
+    restart: unless-stopped
+    ports:
+      # the inbox, on loopback only; SMTP stays on the project's network
+      - '127.0.0.1:${QUALY_MAILPIT_UI_PORT:-18025}:8025'
+    mem_limit: 64m
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '2'

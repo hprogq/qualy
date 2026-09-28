@@ -20549,3 +20549,28 @@ W12 审查意见收尾（十一组，分组见仓库外 `audit-2026-09-25/wave13
 - `pnpm typecheck`、`pnpm lint`、`pnpm lint:types` exit 0。
 - `packages/plugins/assessment` + `tools/demo` + `tools/tests`（5433 一次性库）：`Test Files  196 passed (196)`，`Tests  1456 passed (1456)`；其中改写的「录入者打开覆盖范围内账页、只见行政条目」一条，与 roster-accounts 里录入者名单、单位树、逐页总分三处。
 - `pnpm test:browser packages/plugins/assessment`：`Test Files  39 passed (39)`，`Tests  941 passed (941)`；新增「录入者的侧栏出现结果页」一条。
+
+## 上线前仓库侧收尾：双色部署、运维命令、配置校验（2026-09-28）
+
+- `demo:check`（用户在演示环境跑，第 12 条落地之后）：辅导员「能从名册打开参评人」为 1，其余各项齐全，没有 missing。
+- 推送：`c5193d873`…`e332e27e8` 已推，CI run 36371922271 五个 job 全绿；之后的提交未推。
+- 启动告警（`003d65213`）：COS 未配置而附件表里有指向它的记录时，`storage/backends` 屏障记一条带条数的 Warn，不拒启。
+- A3（`940ed1fbb`、`998c089c1`）：§30 第 12 条落地；第 10、11 条与 §32.72/74/92 的待确认点按现状确认，§32.94 仍待确认。
+- A6 `qualy auth set-password --email … --from-env <变量>`（`a4d1b4deb`）：运维以系统行为者、cli 来源设密码，走本地入口同一套强度规则与锁内写入，结束会话，系统账户也能设。
+- A8 `qualy storage export --to … --except local`（`ef7ce6d2c`）：每个附件经写它的后端按记下的版本取回，核对大小（sha256 的也核对指纹），带 `attachments.tsv`；取不回或对不上整次失败。
+- A4/A5（`f6c436809`）：compose 双色（server + 两沙箱按 blue/green 成套，3001/3002）、`tools` 一次性服务、otel-collector（profile telemetry，内网 APM/CLS，logs 管线）、内存上限与 pg 参数；`deploy/lib.sh` + `upgrade.sh`（预检、破坏性迁移拒绝或 `--maintenance`、可选备份、deploy job、空闲色就绪、Caddy 片段 validate+reload、公网核对、排空、停旧色）与 `rollback.sh`（跨破坏性或不认识的迁移拒绝，`--force`）；备份多 `attachments.tar.gz`；基线导入换五个账号的密码、首次导入起 blue。docs/deployment.md 与 CLAUDE.md 写入双色裁决、迁移纪律、两种仍停机的情形。**没做**：Node 编译缓存（切换在新色就绪之后，冷启对用户不可见，只读根还要另开卷）；SSE `retry:`（实时通道由 `useApiStream` 自己 3s 重拨，不是 EventSource）。
+- A7：启动一次报出所有拒绝配置的插件（`a54f0791c`，`ConfigurationRefused`）；`QUALY_SHUTDOWN_TIMEOUT`、`QUALY_MIGRATION_LOCK_TIMEOUT_MS`、`QUALY_MAIL_SMTP_PORT`、`QUALY_SESSION_TTL_SECONDS`、`QUALY_SANDBOX_POOL_SIZE`、`QUALY_LSP_SWEEP_MS` 不合法即点名拒启而不是猜（`b2820ba14`）；`seed-cli.ts` 不再自己读所在目录的 `.env`，部署从检出直接跑这个文件（`fa9965565`，此前开发机的 `QUALY_SEED_DEMO=1` 会被带进生产 seed）。
+- 预发：`deploy/compose.staging.yaml`（Mailpit，只在预发）+ `staging.env`（`COMPOSE_PROJECT_NAME=qualy-staging`、`QUALY_COMPOSE_OVERLAY`、自己的端口/子网/片段/公开地址）；脚本经 `QUALY_ENV_FILE` 驱动它。
+
+### 验收（实际执行）
+
+- 发布冒烟（本机 `pnpm release:build --platform linux/arm64` 出的 `998c089c-dirty`；CI 的 image job 按 amd64 跑同一脚本）：`release-smoke: 998c089c-dirty ok`，逐步：未迁移拒启 → migrate（89 条、web release 装入）→ 未 seed 拒启 → seed → `upgrade.sh` 起 blue → release/shell/资源/manifest → 缺 release 的 store 拒启 → 两个沙箱握手 → 二次 migrate 无事可做 → `auth set-password` → 藏一条破坏性迁移的账本行，升级被拒、blue 照常 → 升级到 green、blue 停下保留旧 release → 账本放一条旧 release 不认识的迁移，回滚被拒 → 回滚到 blue、green 停下 → 备份（含导出附件清单）→ 销库清附件 → 恢复 → 数据与附件读回。第一次构建因我在构建中改了文件被指纹检查拒绝（冒烟随之对着被删的标签失败），不改文件重建后通过。
+- collector 配置经固定镜像 `validate` 通过；`docker compose config` 对生产与预发两种文件组合都通过。
+- `pnpm test`（`DATABASE_URL` 指向 5433 的一次性库）：`Test Files  387 passed | 3 skipped (390)`，`Tests  2960 passed | 27 skipped (2987)`。
+- `pnpm test:browser`：`Test Files  1 failed | 120 passed (121)`，`Tests  1 failed | 1563 passed (1564)`；失败的是 import-wizard「draws the path the file lands on…」整套并行时等点击超时（STATUS 已记过的一类），单独跑 `Tests  8 passed (8)`。
+- `pnpm typecheck`、`pnpm lint`、`pnpm lint:types` exit 0；改动文件 `oxfmt --check` 通过。
+
+### 下一步
+
+- A 已完成。进入 B（CI/CD）：连通性任务、tag 发布推 CNB、受限 SSH 部署任务、分支保护；C 为控制台上的准备（见部署计划）。
+- 本地 main 领先 origin 若干提交（`003d65213` 起），待用户同意后推送。

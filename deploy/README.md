@@ -230,6 +230,39 @@ and point the server at it in `.env` (`OTEL_EXPORTER_OTLP_ENDPOINT`,
 out over the region's private-network endpoints. An endpoint it cannot reach
 is a retry in the background, never a failed start.
 
+## Staging
+
+The same compose file, pulled up on demand on the same host and taken down
+once a release has been checked on it, with `compose.staging.yaml` adding a
+Mailpit that catches every mail it sends. It has an env file of its own,
+`staging.env` (from `.env.example`), which keeps it apart from production:
+
+```sh
+COMPOSE_PROJECT_NAME=qualy-staging          # its own containers, volumes and network
+QUALY_COMPOSE_OVERLAY=compose.staging.yaml  # the scripts add the overlay
+QUALY_PORT_BLUE=3011
+QUALY_PORT_GREEN=3012
+QUALY_NETWORK_SUBNET=172.30.54.0/24
+QUALY_NETWORK_GATEWAY=172.30.54.1           # and QUALY_TRUSTED_PROXIES to match
+QUALY_PROXY_UPSTREAM=/etc/caddy/qualy-staging/upstream.caddy
+QUALY_PUBLIC_URL=https://qualy-staging.example.edu
+QUALY_MAIL_DEFAULT_BACKEND=smtp             # into Mailpit, see compose.staging.yaml
+QUALY_RUM_TENCENT_ENV=pre
+```
+
+Every script takes it through `QUALY_ENV_FILE`:
+
+```sh
+QUALY_ENV_FILE=/opt/qualy/deploy/staging.env deploy/upgrade.sh <release>
+QUALY_ENV_FILE=/opt/qualy/deploy/staging.env deploy/rollback.sh
+docker compose -f compose.yaml -f compose.staging.yaml --env-file staging.env \
+  --profile blue --profile green --profile telemetry down   # when it has been checked
+```
+
+Nothing is shared with production but the host: while both run, the host
+carries two databases and up to four colors, so staging is up only while a
+release is being checked.
+
 ## Looking
 
 ```sh
