@@ -78,7 +78,8 @@ export const sanitizePath = (pathname: string): string => {
  * an origin is one more thing that could carry a token in a subdomain.
  */
 export const sanitizeUrl = (href: string): string => {
-  const cut = href.replace(/[?#].*$/, '')
+  const end = href.search(/[?#]/)
+  const cut = end === -1 ? href : href.slice(0, end)
   const withoutOrigin = cut.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]*/i, '')
   return sanitizePath(withoutOrigin === '' ? '/' : withoutOrigin)
 }

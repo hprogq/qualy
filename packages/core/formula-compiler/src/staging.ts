@@ -136,7 +136,9 @@ export interface ParsedDiagnostics {
   readonly truncated: boolean
 }
 
-const DIAGNOSTIC_HEAD = /^(.*?)\((\d+),(\d+)\): error (TS\d+): (.*)$/
+// the file before "(" is the staged file's path, which this module names and
+// which has no parenthesis in it; saying so keeps the match from backtracking
+const DIAGNOSTIC_HEAD = /^([^(]*)\((\d+),(\d+)\): error (TS\d+): (.*)$/
 const BARE_DIAGNOSTIC = /^error (TS\d+): (.*)$/
 
 const MAX_DIAGNOSTICS = 50

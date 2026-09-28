@@ -58,7 +58,10 @@ const API_LEVELS = new Set([
  * nothing after them - but a url that did carry a query would carry it here.
  */
 const withoutQueryStrings = (text: string): string =>
-  text.replaceAll(/(https?:\/\/[^\s)'"]+?)\?[^\s)'"]*/g, '$1')
+  text.replaceAll(/https?:\/\/[^\s)'"]+/g, (url) => {
+    const query = url.indexOf('?')
+    return query === -1 ? url : url.slice(0, query)
+  })
 
 /**
  * One address, reduced to whatever may be said about it.

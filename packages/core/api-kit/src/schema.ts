@@ -265,7 +265,8 @@ export const codeFrom = (name: string, prefix: string): string => {
   const slug = name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+    // a run is one dash by now, so one at either end is all there is
+    .replace(/^-|-$/g, '')
     .slice(0, 40)
     .replace(/-+$/, '')
   // globalThis.crypto, not node:crypto - this module travels to the browser

@@ -76,7 +76,10 @@ const statusOf = (context: unknown): number => {
 
 /** the path, when the address is this origin's; otherwise nothing */
 const samePathOf = (url: string): string | undefined => {
-  const withoutQuery = (path: string): string => path.replace(/[?#].*$/, '')
+  const withoutQuery = (path: string): string => {
+    const cut = path.search(/[?#]/)
+    return cut === -1 ? path : path.slice(0, cut)
+  }
   if (url.startsWith('/')) return withoutQuery(url)
   try {
     const parsed = new URL(url, location.href)

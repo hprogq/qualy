@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import {
   checkFormulaWorkspace,
   dropWorkspace,
+  parseDiagnostics,
   stageFormulaWorkspace,
   tscEntry,
 } from './support/workspace.ts'
@@ -71,6 +72,22 @@ export default defineFormula({
     )
     expect(outcome.code).not.toBe(0)
     expect(outcome.output).toContain('toUpperCase')
+  }, 90_000)
+
+  // the compiler's own output, read back the way publication reports it: a
+  // line above zero is a row that named its place in the file
+  it('reads a refusal back as a row at its line and column', async () => {
+    const outcome = await check(
+      COMPETITION.replace(
+        'const decline',
+        'const wrong = input.ordinal.toUpperCase()\n    const decline',
+      ),
+    )
+    const [first] = parseDiagnostics(outcome.output).diagnostics
+    expect(first).toMatchObject({ code: 'TS2339' })
+    expect(first!.line).toBeGreaterThan(0)
+    expect(first!.column).toBeGreaterThan(0)
+    expect(first!.message).toContain('toUpperCase')
   }, 90_000)
 
   it('derives choices as literal unions', async () => {
