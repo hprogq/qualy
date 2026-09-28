@@ -42,6 +42,7 @@ jobs:
   # skipping the tests that need it.
   cos:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment: cos-test
     env:
       QUALY_TEST_COS: '1'
@@ -89,6 +90,7 @@ jobs:
   release:
     needs: [ci, cos]
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: release
     permissions:
       contents: write

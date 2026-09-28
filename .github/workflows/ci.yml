@@ -20,6 +20,11 @@ jobs:
   # is its own step rather than the default `pnpm lint` a developer runs.
   static:
     runs-on: ubuntu-latest
+    # Every job states how long it may take, at about three times what it
+    # takes: without one GitHub waits six hours, and on 2026-09-28 a browser
+    # suite that stopped reporting would have held the v0.1.0-rc.4 release
+    # that long.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -35,6 +40,7 @@ jobs:
 
   ci:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       # this job provisions a postgres service: integration tests must not
       # silently skip when it is unreachable
@@ -206,6 +212,7 @@ jobs:
   # clients, so this leg runs parallel to the integration job.
   browser:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -223,13 +230,17 @@ jobs:
           key: playwright-${{ steps.playwright.outputs.version }}
       - name: install chromium
         run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm test:browser
+      # One line per test as it finishes, not per file: a file whose page
+      # stops answering never finishes, and the default reporter then says
+      # nothing about which of its tests was running.
+      - run: pnpm test:browser --reporter=verbose
 
   # The cold start and the brand once more in WebKit: the two screens whose
   # defects were engine timing, not logic, and which Chromium hid. A smoke
   # leg of two files, not the suite - see vitest.browser.webkit.config.ts.
   browser-webkit:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -261,6 +272,7 @@ jobs:
   image:
     if: ${{ !inputs.skip-image }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
