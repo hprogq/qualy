@@ -6,6 +6,7 @@ import tencentcloud from 'tencentcloud-sdk-nodejs-rum'
 import { CliRefused, type CliContext } from '@qualy/plugin-kit/cli'
 import { parseWebReleaseIdentity } from '@qualy/release-contract/private'
 import { rumVersionForRelease } from '../version.ts'
+import { planFiling, type FiledMap } from './filing-plan.ts'
 
 // `qualy rum sourcemaps [dist]` - filing this build's source maps with the
 // reporting platform.
@@ -195,52 +196,101 @@ export async function run(context: CliContext): Promise<void> {
 
   console.log(`rum: release ${identity.releaseId} files as version ${version}`)
 
-  // What this release already has.
+  // What the platform already holds under each map's name, in any version.
   //
   // Asked per NAME rather than by listing, because the listing answers with at
   // most ten records and offers no way to page past them - which is how a run
   // that had filed everything correctly still reported most of it missing. A
-  // name is exact, and this only asks at all when the version has been seen
-  // before: a release is filed once, so the ordinary run is one call.
-  const anyFiled = await client.DescribeReleaseFiles({ ProjectID: projectId, FileVersion: version })
-  const resuming = (anyFiled.Files ?? []).length > 0
-  const filed = new Map<string, string>()
-  if (resuming) {
-    console.log(`rum: version ${version} has been filed before; checking each map`)
-    for (const found of await inBatches(maps, async ({ name }) =>
-      client.DescribeReleaseFiles({ ProjectID: projectId, FileName: name }),
-    )) {
-      for (const file of found.Files ?? []) {
-        if (file.FileName !== undefined && file.Version === version) {
-          filed.set(file.FileName, file.FileHash ?? '')
-        }
-      }
+  // name is exact. A name filed under more than ten versions may not show the
+  // one that matches; that map is uploaded again, which is only slower.
+  const hashes = new Map(maps.map(({ file, name }) => [name, md5(fs.readFileSync(file))]))
+  const filedByName = new Map<string, FiledMap[]>()
+  for (const found of await inBatches(maps, async ({ name }) =>
+    client.DescribeReleaseFiles({ ProjectID: projectId, FileName: name }),
+  )) {
+    for (const file of found.Files ?? []) {
+      if (file.FileName === undefined || file.Version === undefined) continue
+      const known = filedByName.get(file.FileName) ?? []
+      known.push({ version: file.Version, key: file.FileKey ?? '', hash: file.FileHash ?? '' })
+      filedByName.set(file.FileName, known)
     }
   }
-
-  const pending = maps.filter(({ file, name }) => filed.get(name) !== md5(fs.readFileSync(file)))
-  const skipped = maps.length - pending.length
-  if (pending.length === 0) {
+  const plan = planFiling(
+    maps.map(({ name }) => ({ name, hash: hashes.get(name)! })),
+    filedByName,
+    version,
+  )
+  console.log(
+    `rum: ${String(maps.length)} map(s): ${String(plan.done.length)} filed under this version already, ` +
+      `${String(plan.reuse.length)} held from earlier versions, ${String(plan.upload.length)} to upload`,
+  )
+  if (plan.reuse.length === 0 && plan.upload.length === 0) {
     console.log(`rum: all ${String(maps.length)} map(s) are already filed; nothing to do`)
     return
   }
 
-  // One credential for the whole batch; the pipeline's own key never touches
-  // the object store.
-  const certificate = await certificateFor(client, projectId)
-  const cos = new COS({
-    SecretId: certificate.secretId,
-    SecretKey: certificate.secretKey,
-    SecurityToken: certificate.sessionToken,
-    Timeout: STALL_MS,
-  })
+  type ReleaseRecord = { Version: string; FileKey: string; FileName: string; FileHash: string }
+  const filed: ReleaseRecord[] = []
+  // A group's records at once. The platform checks each object is really
+  // there before it makes one, so a record that exists is a map that can be
+  // read - and a run that fails part way keeps what it filed.
+  const fileGroup = async (group: ReleaseRecord[]) => {
+    await client.CreateReleaseFile({ ProjectID: projectId, Files: group })
+    filed.push(...group)
+    console.log(
+      `rum: filed ${String(filed.length)}/${String(plan.reuse.length + plan.upload.length)}`,
+    )
+  }
+
+  const reused = plan.reuse.map(({ name, hash, key }) => ({
+    Version: version,
+    FileKey: key,
+    FileName: name,
+    FileHash: hash,
+  }))
+  // A record pointing at an object another version uploaded is taken on the
+  // platform's word that it checks the object, not the key it was written
+  // under. Should it ever refuse one, those maps are uploaded like any other:
+  // slower, never missing.
+  const refused: string[] = []
+  for (let at = 0; at < reused.length; at += FILE_EVERY) {
+    const group = reused.slice(at, at + FILE_EVERY)
+    try {
+      await fileGroup(group)
+    } catch (error) {
+      console.log(
+        `rum: ${String(group.length)} record(s) pointing at earlier uploads were refused (${messageOf(error)}); uploading those maps instead`,
+      )
+      refused.push(...group.map((record) => record.FileName))
+    }
+  }
+
+  const toUpload = new Set([...plan.upload.map(({ name }) => name), ...refused])
+  const pending = maps.filter(({ name }) => toUpload.has(name))
+
+  // One credential for the whole batch, asked for only when something has to
+  // be uploaded; the pipeline's own key never touches the object store.
+  const certificate = pending.length > 0 ? await certificateFor(client, projectId) : undefined
+  const cos =
+    certificate === undefined
+      ? undefined
+      : new COS({
+          SecretId: certificate.secretId,
+          SecretKey: certificate.secretKey,
+          SecurityToken: certificate.sessionToken,
+          Timeout: STALL_MS,
+          // one connection carried from map to map: most maps are small, and a
+          // fresh connection across an ocean spends its first round trips on
+          // the handshake and on a window that starts small every time
+          KeepAlive: true,
+        })
   // the bytes rather than a stream, so an attempt that failed can be sent again
   const put = (key: string, bytes: Buffer) =>
     new Promise<void>((resolve, reject) => {
-      cos.putObject(
+      cos!.putObject(
         {
-          Bucket: certificate.bucket,
-          Region: certificate.region,
+          Bucket: certificate!.bucket,
+          Region: certificate!.region,
           Key: key,
           Body: bytes,
           ContentLength: bytes.length,
@@ -271,28 +321,24 @@ export async function run(context: CliContext): Promise<void> {
     }
   }
 
-  // Each group's records as soon as its maps are up. The platform checks each
-  // object is really there before it makes one, so a record that exists is a
-  // map that can be read.
-  const uploaded: { Version: string; FileKey: string; FileName: string; FileHash: string }[] = []
+  // each group filed as soon as its maps are up
   for (let at = 0; at < pending.length; at += FILE_EVERY) {
-    const group = await inBatches(
-      pending.slice(at, at + FILE_EVERY),
-      async ({ file, name }) => {
-        const bytes = fs.readFileSync(file)
-        const key = await upload(name, bytes)
-        return { Version: version, FileKey: key, FileName: name, FileHash: md5(bytes) }
-      },
-      UPLOAD_CONCURRENCY,
+    await fileGroup(
+      await inBatches(
+        pending.slice(at, at + FILE_EVERY),
+        async ({ file: source, name }) => {
+          const bytes = fs.readFileSync(source)
+          const key = await upload(name, bytes)
+          return { Version: version, FileKey: key, FileName: name, FileHash: md5(bytes) }
+        },
+        UPLOAD_CONCURRENCY,
+      ),
     )
-    await client.CreateReleaseFile({ ProjectID: projectId, Files: group })
-    uploaded.push(...group)
-    console.log(`rum: filed ${String(uploaded.length)}/${String(pending.length)}`)
   }
 
   // Read back by name, for the same reason the check above is by name.
   const missing = (
-    await inBatches(uploaded, async (file) => {
+    await inBatches(filed, async (file) => {
       const found = await client.DescribeReleaseFiles({
         ProjectID: projectId,
         FileName: file.FileName,
@@ -306,10 +352,10 @@ export async function run(context: CliContext): Promise<void> {
   ).filter((name): name is string => name !== null)
   if (missing.length > 0) {
     refuse(
-      `${String(missing.length)} map(s) were uploaded but are not filed under ${version}: ${missing.slice(0, 5).join(', ')}`,
+      `${String(missing.length)} map(s) were filed but are not under ${version}: ${missing.slice(0, 5).join(', ')}`,
     )
   }
   console.log(
-    `rum: ${String(uploaded.length)} filed under ${version}, ${String(skipped)} already there`,
+    `rum: ${String(filed.length)} filed under ${version} (${String(pending.length)} uploaded), ${String(plan.done.length)} already there`,
   )
 }

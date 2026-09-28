@@ -129,6 +129,11 @@ runner 在境外、RUM 的桶在境内,桶会以 `RequestTimeOut`「User network
 v0.1.0-rc.3 的 job 因此跑了十分钟,一个 map 也没登记上),所以上传器 4 路并发、单个请求两分钟无进展即放弃、每个 map 换新 key 重试三次、
 每 32 个登记一次记录,job 设 30 分钟上限。失败的一次留下已登记的部分,重跑只补缺的;重跑 job 用的是 tag 当时的代码,
 所以修了上传器之后,用本机检出对该 release 的 `web-dist` artifact(保留一天,先按上面同样核对 `webRelease`)跑同一条命令补交。
+慢的是字节进境这一段,不是 API:`rum.tencentcloudapi.com` 就近接入,桶却在广州(`DescribeFileCertificate` 不认 `Site`;
+旧接口 `DescribeReleaseFileSign` 的 `Site=1` 凭据同样写得进广州桶、也不给境外桶名,而 `CreateReleaseFile` 只收项目与文件列表,
+2026-09-28 实测后放弃;桶未开全球加速,`BucketAccelerateNotEnabled`)。所以上传器先按文件名查平台已有的记录:chunk 名带内容哈希,
+某个旧版本登记过同样字节(md5 相同)的 map 只登记一条指向那个对象的新记录,不再上传。rc.2 → rc.3 有 125/189 个 map、
+23.3 / 28.0 MB 不变;rc.3 → rc.4 因为改了分块只剩 3/316。平台若拒绝这种记录,那些 map 照常上传。
 
 ### 2.6 部署:按 digest,脚本随 release(2026-09-28)
 
