@@ -20520,8 +20520,8 @@ W12 审查意见收尾（十一组，分组见仓库外 `audit-2026-09-25/wave13
 - `pnpm test:browser`：第一次与 `pnpm install` 重叠（install 10:42:24 结束，套件 10:40:21–10:42:40），导入失败、iframe 60 秒未就绪，不计；机器空闲时重跑 `Test Files  3 failed | 118 passed (121)`，`Tests  5 failed | 1558 passed (1563)`，五条都是 36–41 秒超时（import-wizard 2、record-recognition 2、stage-plan 1，前两者即 STATUS 记过的整套并行偶发超时），三个文件单独跑 `Test Files  3 passed (3)`，`Tests  43 passed (43)`。
 - 开关提交的中间状态（清单未改）单独验过：`pnpm typecheck` exit 0，effect-api + rum + rum-tencent `Tests  41 passed (41)`。
 - 最终状态：`pnpm typecheck`、`pnpm lint`、`pnpm lint:types` exit 0；改动文件 `oxfmt --check` 通过；`pnpm qualy resolve --frozen-lockfile` 通过；`pnpm-lock.yaml` 与验证时逐字节相同。
+- 真桶（CI 没有凭据，这些只在本机真跑）：`QUALY_TEST_COS=1 QUALY_TEST_COS_VERSIONED_BUCKET=qualy-dev-files-versioned-1301296774 node --env-file=.env node_modules/vitest/vitest.mjs run packages/plugins/infra/storage-cos`，在 `042b33165` 上：`Test Files  8 passed (8)`，`Tests  58 passed (58)`，无跳过。含未开版本控制的桶（模式识别、契约、签名下载）、开了版本控制的桶（模式识别、契约含「同一张凭据再写一次仍读回校验过的版本」与删净全部版本、按版本删除后当前版本回到校验过的那份）、凭据越权用例（hostile）与上传链路。
 
 ### 下一步
 
 - A3：§30 第 12 条落地与 §30 / §32 文档改为已裁决；demo:check 辅导员一项改为必需。
-- 未推送：本地 main 领先 origin 6 个提交（`c5193d873` 起）。
