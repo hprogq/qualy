@@ -1,3 +1,4 @@
+import { captureException } from '@qualy/browser-observability'
 import {
   QUALY_RELEASE_CHANNEL,
   QUALY_RELEASE_ENDPOINT,
@@ -213,8 +214,16 @@ export function createReleaseCoordinator(options: ReleaseCoordinatorOptions): Re
   }
 
   // a chunk this page needs did not load: ask the host why, and block either way
-  const onPreloadError = (event: { preventDefault(): void }) => {
+  const onPreloadError = (event: { preventDefault(): void; readonly payload?: unknown }) => {
     event.preventDefault()
+    // What failed, said out loud. A module that downloaded and then threw
+    // while it was evaluated arrives here as well as one that never came,
+    // and nothing else reports it: cancelling the event is what keeps its
+    // error off the console, so the page would block with no trace of why
+    // (a visitor's browser did exactly that before this was written).
+    const cause = event.payload ?? new Error('a module failed to load and gave no reason')
+    console.error('[qualy] a module this page needs did not load', cause)
+    captureException(cause)
     void check({ force: true }).then((answer) => {
       if (answer !== undefined && answer.releaseId !== current.releaseId) {
         requireReload('release-skew', answer)

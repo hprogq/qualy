@@ -34,9 +34,9 @@ releases.start()
 // forced to reload because the store no longer keeps its release says
 // something about retention, and one refused by protocol says a deployment
 // went out that old tabs cannot talk to. An update being available is neither,
-// and a chunk that failed to load is already reported as the resource failure
-// it is, so neither is sent. Once per reason: a page that cannot go on will
-// keep saying so.
+// and a chunk that failed to load is reported by the coordinator itself, as
+// the exception that failed it, so neither is sent here. Once per reason: a
+// page that cannot go on will keep saying so.
 let told = ''
 releases.subscribe(() => {
   const state = releases.getSnapshot()

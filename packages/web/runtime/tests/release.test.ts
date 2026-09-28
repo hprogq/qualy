@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { installSink } from '@qualy/browser-observability'
 import { QUALY_RELEASE_ENDPOINT, type ReleaseProbe } from '@qualy/release-contract'
 import { createReleaseCoordinator, type ChannelLike } from '../src/release.ts'
 
@@ -191,6 +192,37 @@ describe('when a chunk fails to load', () => {
       reason: 'release-skew',
       latest: probeFor('B'),
     })
+  })
+
+  // a module that arrived and threw while it was evaluated comes this way too;
+  // the event is cancelled, so this is the only place its error is told
+  it('tells what failed, on the console and to the reporting port', async () => {
+    const reported: unknown[] = []
+    const dispose = installSink({
+      captureException: (error) => reported.push(error),
+      captureDiagnostic: () => {},
+      setPage: () => {},
+    })
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { coordinator, window } = setUp(() => probeFor('A'))
+      coordinator.start()
+      const failure = new TypeError('evaluating c-Example.js: something is undefined')
+      const event = Object.assign(new Event('vite:preloadError', { cancelable: true }), {
+        payload: failure,
+      })
+      window.dispatchEvent(event)
+      await settled()
+      expect(logged).toHaveBeenCalledWith('[qualy] a module this page needs did not load', failure)
+      expect(reported).toContain(failure)
+      expect(coordinator.getSnapshot()).toEqual({
+        kind: 'reload-required',
+        reason: 'asset-load-failed',
+      })
+    } finally {
+      logged.mockRestore()
+      dispose()
+    }
   })
 
   it('is a loading failure when the host serves the same release', async () => {
