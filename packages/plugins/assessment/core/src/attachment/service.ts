@@ -123,12 +123,15 @@ export const makeAttachmentMethods = (deps: AttachmentDeps): AttachmentMethods =
         ...(yield* withDb(supplementCitingEntries(tenantId, meta.id))),
       ]
       if (entries.some((entry) => entry.subjectUserId === as.userId)) return
-      for (const batchId of new Set(entries.map((entry) => entry.batchId))) {
+      // everybody else reads what was handed in: a file only the owner's
+      // working version cites is still on their desk
+      const handedIn = entries.filter((entry) => entry.handedIn)
+      for (const batchId of new Set(handedIn.map((entry) => entry.batchId))) {
         if (yield* deps.rosterReach(as, tenantId, batchId)) return
       }
       // and whoever may read the filing itself, which a recorder's own
       // administrative fact is
-      for (const entry of entries) {
+      for (const entry of handedIn) {
         if (yield* deps.mayReadEntry(tenantId, entry.entryId, as)) return
       }
       const instances = [

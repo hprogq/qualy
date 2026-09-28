@@ -510,7 +510,8 @@ export const personaSituations = Effect.gen(function* () {
     // Whether the roster opens for this account at all: the persona student
     // stands on it, so reaching them is reaching the roster. Counsellors hold
     // the recording permission, which reads the accounts it covers
-    // (docs/assessment-design.md §30, item 12, ruled 2026-09-28).
+    // (docs/assessment-design.md §30, item 12, ruled 2026-09-28), and viewing
+    // all claims, which opens the claims in them (ruled 2026-09-29).
     const standing = (
       (yield* runSql(sql`
         select p.id from batch_participants p
@@ -518,16 +519,33 @@ export const personaSituations = Effect.gen(function* () {
     ).rows[0]
     const opened =
       standing === undefined
-        ? false
-        : (yield* Effect.result(
+        ? null
+        : yield* Effect.result(
             assessment.getParticipant(
               tenantId,
               current,
               standing.id,
               principalOf(tenantId, counsellor),
             ),
-          ))._tag === 'Success'
-    add('counsellor', 'running: opens a participant from the roster', opened ? 1 : 0)
+          )
+    add(
+      'counsellor',
+      'running: opens a participant from the roster',
+      opened?._tag === 'Success' ? 1 : 0,
+    )
+    const claims =
+      standing === undefined || opened?._tag !== 'Success' || !opened.success.claims
+        ? 0
+        : (yield* assessment
+            .listParticipantEntries(
+              tenantId,
+              current,
+              standing.id,
+              {},
+              principalOf(tenantId, counsellor),
+            )
+            .pipe(Effect.orElseSucceed(() => ({ entries: [] })))).entries.length
+    add('counsellor', "running: reads that participant's claims", claims)
   }
 
   return situations

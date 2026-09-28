@@ -24,7 +24,7 @@ import { evaluateEntry, type EvaluationFact } from './evaluate.ts'
 import { countEvaluation, mapResultFailure, mapRuntimeFailure } from './failure-boundary.ts'
 import { frozenCalculatorOf, readScoringPlan } from './plan.ts'
 import type { ScoringPlan } from './plan.ts'
-import { administrativeEntryIdsOf, participantEntries, participantRowByUser } from './db.ts'
+import { participantEntries, participantRowByUser } from './db.ts'
 import { linkingOnly } from './linking.ts'
 import type { AccountReading } from '../entry/db.ts'
 
@@ -566,11 +566,12 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
       Effect.gen(function* () {
         const batch = yield* oneBatch(tenantId, batchId)
         if (!batch) return yield* new BatchNotFound()
-        // Administering this roster, or re-determining or recording over
-        // this person, is the whole authorization: a reader without any
-        // learns nothing about who is on somebody else's roster, not even
-        // whether the id they guessed is one. A recorder reads every line and
-        // amount, but no line names a claim it cannot open.
+        // Administering this roster, or viewing all claims, re-determining
+        // or recording over this person, is the whole authorization: a
+        // reader without any learns nothing about who is on somebody else's
+        // roster, not even whether the id they guessed is one. A recorder
+        // reads every line and amount, and no line names a claim, since they
+        // open none of this person's claims here.
         const reading = yield* deps.requireAccountReach(as, tenantId, batchId, participantId)
         // scoped to this batch by the query itself, so an id from another
         // round reads as no such participant rather than as somebody else's
@@ -578,7 +579,7 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
         if (participant === null) return yield* new ParticipantNotFound()
         const account = yield* accountOf(tenantId, batchId, participant.id, runtime)
         if (reading === 'whole') return account
-        return linkingOnly(account, yield* administrativeEntryIdsOf(tenantId, participant.id))
+        return linkingOnly(account, new Set())
       }).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
     )
   })

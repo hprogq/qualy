@@ -577,12 +577,17 @@ export type UserBatchRow = Effect.Success<ReturnType<typeof userBatchesPage>>[nu
 
 /**
  * What one person filed, newest first, each claim only when the reader may
- * read that claim (ruling of 2026-09-25 #21): the same four doors
- * `mayReadEntry` asks one at a time, pushed into the statement - the
- * claim's own person, whoever administers its round, whoever may
- * re-determine over its participant, and for an administrative fact
- * whoever may record over them. Working on a round in any other capacity,
- * or merely being in it, reads none of its claims.
+ * read that claim (ruling of 2026-09-25 #21), pushed into the statement:
+ * the claim's own person, and for a claim handed in, whoever administers
+ * its round or may view all claims or re-determine over its participant.
+ *
+ * Three of the four doors `mayReadEntry` asks, not all four. The fourth -
+ * a recorder reading an administrative fact over the people they record
+ * on - is a reading with a task behind it, and the task is on the record
+ * page; listing somebody's claims here has none (ruling of 2026-09-29).
+ * Working on a round in any other capacity, or merely being in it, reads
+ * none of its claims, and no door but the first opens onto a draft never
+ * handed in.
  */
 export const userEntriesPage = (
   tenantId: string,
@@ -619,7 +624,7 @@ export const userEntriesPage = (
       .where('e.tenantId', '=', tenantId)
       .where('bp.userId', '=', userId)
       .where((eb) => {
-        const reachOver = (permissionCode: string) =>
+        const reachOver = (permissionCode: readonly string[]) =>
           staffReachOver({
             tenantId,
             batchId: sql.ref('e.batch_id'),
@@ -630,11 +635,12 @@ export const userEntriesPage = (
           })
         return eb.or([
           eb('bp.userId', '=', viewer.userId),
-          withinReach(viewer.held),
-          reachOver('assessment.entry.redetermine'),
           eb.and([
-            eb('e.source', 'in', ['record', 'import']),
-            reachOver('assessment.entry.record'),
+            eb('e.lastSubmittedRevisionId', 'is not', null),
+            eb.or([
+              withinReach(viewer.held),
+              reachOver(['assessment.entry.read-all', 'assessment.entry.redetermine']),
+            ]),
           ]),
         ])
       })

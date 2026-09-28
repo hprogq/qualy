@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   createTestContext,
   lineageBefore,
@@ -17,6 +17,9 @@ import { auditStoredPlans, sweepScoringPlans } from '../src/scoring/backfill.ts'
 import { CalculatorRuntimeError, type CalculatorRegistration } from '../src/plugin.ts'
 import { semanticPlanBody } from '../src/scoring/plan.ts'
 import { hashCanonicalJson } from '@qualy/value-schema/hash'
+import { Assessment } from '../src/server/index.ts'
+import { recordItem } from './support/administrative.ts'
+import { GATED, ok, run, runningBatch, seed } from './support/round.ts'
 
 // The scope migration carries a data step - every batch's single scope node
 // moves into batch_scope_nodes before the columns drop - and replaying the
@@ -1833,5 +1836,180 @@ describe.runIf(postgresAvailable)('the appeal-once migration', () => {
     } finally {
       await db.dispose()
     }
+  })
+})
+
+// The migration that gives every claim its last handed-in version fills it
+// in from history - the rounds opened on a version, the determinations made
+// on one - and replaying the lineage into an empty database proves nothing
+// about that. So the claims are made the way the service makes them, in
+// every standing the backfill tells apart; the service's own answer for each
+// is noted; the column and its constraints are taken off again, which is the
+// shape the release before this one left behind; and the migration's SQL is
+// run over them. It has to arrive at the service's answer, claim by claim.
+
+const LAST_SUBMITTED = '20260928193127_entry-last-submitted-revision.sql'
+const LAST_SUBMITTED_PROFILE = [...GATED, 'assessment.review.process']
+
+describe.runIf(postgresAvailable)('the last-submitted-revision migration', () => {
+  let db: Awaited<ReturnType<typeof createTestContext>>
+
+  beforeAll(async () => {
+    db = await createTestContext('assessment-last-submitted-upgrade')
+  })
+
+  afterAll(async () => {
+    await db?.dispose()
+  })
+
+  it('arrives at the version each claim last handed in', async () => {
+    const made = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ls-upgrade')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: LAST_SUBMITTED_PROFILE })
+          const admin = f.principal(f.admin)
+          const s1 = f.principal(f.s1)
+          const question = (title: string, reviewPolicy: unknown) =>
+            Effect.gen(function* () {
+              const item = yield* assessment.createItem(
+                f.t,
+                g.batch.id,
+                {
+                  itemType: 'evidence',
+                  title,
+                  scoreGroupId: g.item.scoreGroupId,
+                  maxEntries: null,
+                  config: {
+                    entryChannels: ['participant'],
+                    formConfig: { files: {} },
+                    scoringConfig: {
+                      calculator: { ref: 'fixed@1', config: { value: '1.00' } },
+                      aggregator: { ref: 'sum@1', config: {} },
+                    },
+                    reviewPolicy,
+                  },
+                },
+                admin,
+              )
+              yield* assessment.setItemStatus(f.t, item.id, { status: 'active' }, admin)
+              return item.id
+            })
+          const reviewed = yield* question('审核题', {
+            normal: {
+              stages: [
+                {
+                  id: 's1',
+                  selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+                  quorum: { type: 'any' },
+                },
+              ],
+            },
+            escalation: { stages: [] },
+          })
+          const unreviewed = yield* question('无需审核题', { mode: 'none' })
+          const file = (itemId: string) =>
+            assessment.createEntry(f.t, { itemId, participantId: g.p1, payload: {} }, s1)
+          const send = (entryId: string) => assessment.setEntryStatus(f.t, entryId, 'in_review', s1)
+          const giveBack = (entryId: string) =>
+            assessment.interveneOnEntry(
+              f.t,
+              entryId,
+              { kind: 'return-for-revision', reason: '请补充证明材料' },
+              admin,
+            )
+          const revise = (entryId: string) =>
+            assessment.appendEntryRevision(f.t, entryId, { payload: {} }, s1)
+
+          const draft = yield* file(reviewed)
+          const inReview = yield* file(reviewed)
+          yield* send(inReview.id)
+          // handed in, sent back, and a new version on its owner's desk
+          const revising = yield* file(reviewed)
+          yield* send(revising.id)
+          yield* giveBack(revising.id)
+          yield* revise(revising.id)
+          // handed in and taken back to draft before anybody began
+          const withdrawn = yield* file(reviewed)
+          yield* send(withdrawn.id)
+          yield* assessment.setEntryStatus(f.t, withdrawn.id, 'draft', s1)
+          // approved by the rule at submission - no round ever existed - then
+          // sent back and revised: only the determination tells the version
+          const ruled = yield* file(unreviewed)
+          yield* send(ruled.id)
+          yield* giveBack(ruled.id)
+          yield* revise(ruled.id)
+          // given up before it was ever sent
+          const abandoned = yield* file(reviewed)
+          yield* assessment.setEntryStatus(f.t, abandoned.id, 'voided', s1)
+          const office = yield* recordItem(f, g.batch.id)
+          const recorded = yield* assessment.createEntry(
+            f.t,
+            { itemId: office.id, participantId: g.p1, payload: {}, note: '校发〔2026〕9 号' },
+            f.principal(f.recorder),
+          )
+          return {
+            tenant: f.t,
+            ids: {
+              draft: draft.id,
+              inReview: inReview.id,
+              revising: revising.id,
+              withdrawn: withdrawn.id,
+              ruled: ruled.id,
+              abandoned: abandoned.id,
+              recorded: recorded.id,
+            },
+          }
+        }),
+      ),
+    )
+    const standings = async () =>
+      (
+        await db.query<{
+          id: string
+          status: string
+          current_revision_id: string | null
+          last_submitted_revision_id: string | null
+        }>(
+          `select id, status, current_revision_id, last_submitted_revision_id
+             from entries where tenant_id = $1 order by id`,
+          [made.tenant],
+        )
+      ).rows
+    const written = await standings()
+    const byId = new Map(written.map((row) => [row.id, row]))
+    const { ids } = made
+    // the service's own answers, which are what the backfill has to reach
+    expect(byId.get(ids.draft)?.last_submitted_revision_id).toBeNull()
+    expect(byId.get(ids.abandoned)?.last_submitted_revision_id).toBeNull()
+    for (const id of [ids.inReview, ids.recorded]) {
+      expect(byId.get(id)?.last_submitted_revision_id).toBe(byId.get(id)?.current_revision_id)
+    }
+    for (const id of [ids.revising, ids.ruled]) {
+      const row = byId.get(id)!
+      expect(row.status).toBe('draft')
+      expect(row.last_submitted_revision_id).not.toBeNull()
+      expect(row.last_submitted_revision_id).not.toBe(row.current_revision_id)
+    }
+    expect(byId.get(ids.withdrawn)?.status).toBe('draft')
+    expect(byId.get(ids.withdrawn)?.last_submitted_revision_id).toBe(
+      byId.get(ids.withdrawn)?.current_revision_id,
+    )
+
+    // the shape the release before left behind
+    await db.query(`alter table entries drop constraint chk_entries_handed_in`)
+    await db.query(`alter table entries drop constraint fk_entries_last_submitted_revision`)
+    await db.query(`alter table entries drop column last_submitted_revision_id`)
+    await db.query(fs.readFileSync(path.join(MIGRATIONS_FOLDER, LAST_SUBMITTED), 'utf8'))
+
+    expect(await standings()).toEqual(written)
+    // and the constraints are back, refusing a claim under review without one
+    await expect(
+      db.query(`update entries set last_submitted_revision_id = null where id = $1`, [
+        ids.inReview,
+      ]),
+    ).rejects.toThrow(/chk_entries_handed_in/)
   })
 })

@@ -854,6 +854,15 @@ export const Entry = defineEntity({
     itemId: p.uuid(),
     participantId: p.uuid(),
     currentRevisionId: p.uuid().nullable(),
+    /**
+     * The version last handed to the institution (ruling of 2026-09-29):
+     * set by submitting, by a rule approving at submission, and by an
+     * administrative write, never cleared. Its owner reads the current
+     * version, which after a return is the one on their desk; everybody
+     * else reads this one, and a claim without it - a draft never sent -
+     * is nobody's business but its owner's.
+     */
+    lastSubmittedRevisionId: p.uuid().nullable(),
     // the latest round, while one is open; history stays on the instances
     currentReviewInstanceId: p.uuid().nullable(),
     // what the institution currently recognises this claim as. An approved
@@ -888,6 +897,13 @@ export const Entry = defineEntity({
     {
       name: 'chk_entries_approved_has_recognition',
       expression: `status <> 'approved' OR current_recognition_id IS NOT NULL`,
+    },
+    // A claim anybody has judged, is judging or has sent back was handed in.
+    // Only a draft (never sent, or taken back and being revised) and a claim
+    // given up can be without it.
+    {
+      name: 'chk_entries_handed_in',
+      expression: `status IN ('draft', 'voided') OR last_submitted_revision_id IS NOT NULL`,
     },
     {
       name: 'chk_entries_status',
@@ -2163,6 +2179,10 @@ export const compositeForeignKeys = [
      foreign key (tenant_id, batch_id, participant_id) references batch_participants (tenant_id, batch_id, id) on delete restrict`,
   `alter table entries add constraint fk_entries_current_revision
      foreign key (tenant_id, id, current_revision_id) references entry_revisions (tenant_id, entry_id, id) on delete set null (current_revision_id)`,
+  // a version handed in is history: nothing removes one short of the claim
+  // itself going, which takes its versions with it
+  `alter table entries add constraint fk_entries_last_submitted_revision
+     foreign key (tenant_id, id, last_submitted_revision_id) references entry_revisions (tenant_id, entry_id, id) on delete restrict`,
   // A determination belongs to one entry, in one round, about one question -
   // and every one of those is held by a composite key rather than a bare
   // uuid, so no row can cite another entry's filing or another round's word.

@@ -50,7 +50,14 @@ const batch = (over: Record<string, unknown> = {}) => ({
   descriptionMd: null,
   manageable: true,
   reviewReasons: { reject: [], escalate: [] },
-  capabilities: { personal: false, review: false, record: false, manage: true, redetermine: false },
+  capabilities: {
+    personal: false,
+    review: false,
+    record: false,
+    manage: true,
+    redetermine: false,
+    readAll: false,
+  },
   participantCount: 45,
   materialRange: { start: '2026-03-01', end: '2026-09-01' },
   timezone: 'Asia/Shanghai',
@@ -157,6 +164,7 @@ const open = (
         getParticipant: (request: Request) =>
           Effect.succeed({
             participant: EVERYONE.find((one) => one.id === request.params?.['participantId']),
+            claims: true,
           }),
         getParticipantResult: () =>
           Effect.succeed({ mode: 'provisional', total: '80.00', groups: [], lines: [] }),
@@ -939,6 +947,7 @@ describe('the roster on the results page', () => {
               record: false,
               manage: false,
               redetermine: true,
+              readAll: false,
             },
           }),
         }),
@@ -1504,6 +1513,7 @@ describe('people the review steps find nowhere', () => {
               record: false,
               manage: false,
               redetermine: true,
+              readAll: false,
             },
           }),
         }),

@@ -2,6 +2,7 @@ import { sql } from 'kysely'
 import { Effect, Exit } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
+import type { Principal } from '@qualy/rbac-contract'
 import { Assessment } from '../src/server/index.ts'
 import { twoFactScoring } from './support/catalogs.ts'
 import { appointStaff } from './support/correction.ts'
@@ -15,6 +16,18 @@ import { errorOf, GATED, ok, one, run, runningBatch, seed } from './support/roun
 // anybody else's.
 
 const OPEN = [...GATED, 'assessment.review.process']
+
+/** the results roster as this reader reads it: the people they may open */
+const accounts = (tenantId: string, batchId: string, as: Principal) =>
+  Effect.gen(function* () {
+    const assessment = yield* Assessment
+    return (yield* assessment.listParticipantAccounts(
+      tenantId,
+      batchId,
+      { filter: {}, order: 'name', page: 1, limit: 50 },
+      as,
+    )).rows
+  })
 
 describe.runIf(postgresAvailable)('what re-determining reads', () => {
   let db: Awaited<ReturnType<typeof createTestContext>>
@@ -60,7 +73,11 @@ describe.runIf(postgresAvailable)('what re-determining reads', () => {
           )
 
           const batch = yield* assessment.getBatch(f.t, g.batch.id, as)
-          const roster = yield* assessment.listParticipants(f.t, g.batch.id, { limit: 50 }, as)
+          const roster = yield* accounts(f.t, g.batch.id, as)
+          // the record page's roster is recording's, which this is not
+          const recordRoster = yield* Effect.exit(
+            assessment.listParticipants(f.t, g.batch.id, { limit: 50 }, as),
+          )
           const person = yield* assessment.getParticipant(f.t, g.batch.id, g.p1, as)
           const account = yield* assessment.getParticipantResult(f.t, g.batch.id, g.p1, as)
           const claims = yield* assessment.listParticipantEntries(f.t, g.batch.id, g.p1, {}, as)
@@ -102,9 +119,11 @@ describe.runIf(postgresAvailable)('what re-determining reads', () => {
           return {
             capabilities: batch.capabilities,
             roster: roster.map((row) => row.id),
+            recordRoster,
             p2: g.p2,
             p3: g.p3,
-            person: person.id,
+            person: person.participant.id,
+            personClaims: person.claims,
             accountLines: account.lines.length,
             claims: claims.entries.map((row) => row.entry.id),
             detail: detail.id,
@@ -128,7 +147,9 @@ describe.runIf(postgresAvailable)('what re-determining reads', () => {
     // the people the authority covers, and no others
     expect(result.roster).toEqual(expect.arrayContaining([result.p1, result.p2]))
     expect(result.roster).not.toContain(result.p3)
+    expect(errorOf<{ _tag: string }>(result.recordRoster)?._tag).toBe('ACCESS_DENIED')
     expect(result.person).toBe(result.p1)
+    expect(result.personClaims).toBe(true)
     expect(result.accountLines).toBeGreaterThan(0)
     expect(result.claims).toEqual([result.entryId])
     expect(result.detail).toBe(result.entryId)
@@ -148,10 +169,12 @@ describe.runIf(postgresAvailable)('what re-determining reads', () => {
   })
 
   // Recording on somebody reads their account (2026-09-28, assessment-design
-  // §30 #12) - every line and amount, the total is the account's - but opens
-  // only the administrative claims: a line standing on the participant's own
-  // claim names none, neither in its provenance nor in its id.
-  it('opens to a recorder the accounts it covers, with only the administrative claims in them', async () => {
+  // §30 #12) - every line and amount, the total is the account's - and none
+  // of their claims (ruling of 2026-09-29): listing them has no task behind
+  // it, and recording is a power to write. No line names a claim, neither in
+  // its provenance nor in its id. The office's own record still opens by
+  // itself, which is how the record page reads it.
+  it('opens to a recorder the accounts it covers, with none of the claims in them', async () => {
     const result = ok(
       await run(
         db.url,
@@ -183,7 +206,13 @@ describe.runIf(postgresAvailable)('what re-determining reads', () => {
           )
           const as = f.principal(f.recorder)
           const batch = yield* assessment.getBatch(f.t, g.batch.id, as)
-          const roster = yield* assessment.listParticipants(f.t, g.batch.id, { limit: 50 }, as)
+          const roster = yield* accounts(f.t, g.batch.id, as)
+          const recordRoster = yield* assessment.listParticipants(
+            f.t,
+            g.batch.id,
+            { limit: 50 },
+            as,
+          )
           const person = yield* assessment.getParticipant(f.t, g.batch.id, g.p1, as)
           const account = yield* assessment.getParticipantResult(f.t, g.batch.id, g.p1, as)
           const whole = yield* assessment.getParticipantResult(
@@ -192,19 +221,25 @@ describe.runIf(postgresAvailable)('what re-determining reads', () => {
             g.p1,
             f.principal(f.admin),
           )
-          const claims = yield* assessment.listParticipantEntries(f.t, g.batch.id, g.p1, {}, as)
+          const claims = yield* Effect.exit(
+            assessment.listParticipantEntries(f.t, g.batch.id, g.p1, {}, as),
+          )
           const ownClaim = yield* Effect.exit(assessment.getEntry(f.t, filed.id, as))
+          const officeRecord = yield* assessment.getEntry(f.t, recorded.id, as)
           const farAccount = yield* Effect.exit(
             assessment.getParticipantResult(f.t, g.batch.id, g.p3, as),
           )
           return {
             capabilities: batch.capabilities,
             roster: roster.map((row) => row.id),
-            person: person.id,
+            recordRoster: recordRoster.map((row) => row.id),
+            person: person.participant.id,
+            personClaims: person.claims,
             account,
             whole,
-            claims: claims.entries.map((row) => row.entry.id),
+            claims,
             ownClaim,
+            officeRecord: officeRecord.id,
             farAccount,
             filed: filed.id,
             recorded: recorded.id,
@@ -219,24 +254,25 @@ describe.runIf(postgresAvailable)('what re-determining reads', () => {
     )
     expect(result.roster).toContain(result.p1)
     expect(result.roster).not.toContain(result.p3)
+    expect(result.recordRoster).toContain(result.p1)
     expect(result.person).toBe(result.p1)
+    expect(result.personClaims).toBe(false)
     // the account is the account: the same total and the same lines
     expect(result.account.total).toBe(result.whole.total)
     expect(result.account.lines.map((line) => line.value)).toEqual(
       result.whole.lines.map((line) => line.value),
     )
-    // the participant's own claim is on the whole account, and nowhere in
-    // the recorder's - its line is named by its place instead
+    // both claims are on the whole account, and neither is in the
+    // recorder's - their lines are named by their place instead
     expect(JSON.stringify(result.whole)).toContain(result.filed)
+    expect(JSON.stringify(result.whole)).toContain(result.recorded)
     expect(JSON.stringify(result.account)).not.toContain(result.filed)
+    expect(JSON.stringify(result.account)).not.toContain(result.recorded)
     expect(result.account.lines.some((line) => line.lineId.startsWith('line:'))).toBe(true)
-    // the administrative claim still links
-    expect(result.account.lines.some((line) => line.provenance?.entryId === result.recorded)).toBe(
-      true,
-    )
-    expect(result.claims).toEqual([result.recorded])
+    expect(errorOf<{ _tag: string }>(result.claims)?._tag).toBe('ACCESS_DENIED')
     // a claim a reader may not open reads as no such claim (`mayReadEntry`)
     expect(errorOf<{ _tag: string }>(result.ownClaim)?._tag).toBe('ASSESSMENT_ENTRY_NOT_FOUND')
+    expect(result.officeRecord).toBe(result.recorded)
     expect(errorOf<{ _tag: string }>(result.farAccount)?._tag).toBe('ACCESS_DENIED')
   })
 

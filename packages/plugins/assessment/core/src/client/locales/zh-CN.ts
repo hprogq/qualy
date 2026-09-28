@@ -2084,6 +2084,8 @@ export default {
   'assessment/permission-hint/review-reopen': '可代参评人员对已有结论发起复查，走完整复核流程。',
   'assessment/permission-hint/entry-redetermine':
     '可直接更正已有结论的认定结果，参评人员可对新结果申诉。',
+  'assessment/permission-hint/entry-read-all':
+    '可查看覆盖范围内参评人员提交过的全部申报与成绩账页，仅能查看、不能修改。',
   'assessment/permission-hint/result-view-peers': '可查看其他参评人员的成绩。',
   'assessment/permission-hint/ranking-view': '可查看本批次的排名情况。',
 
@@ -2101,10 +2103,12 @@ export default {
   'assessment/permission/review-process': '审核申报',
   'assessment/permission/review-reopen': '复查',
   'assessment/permission/entry-redetermine': '重新认定',
+  'assessment/permission/entry-read-all': '查看全部申报',
   'assessment/permission/result-view-peers': '查看他人成绩',
   'assessment/permission/ranking-view': '查看排名',
   'assessment/permission-short/entry-record': '统一认定',
   'assessment/permission-short/entry-redetermine': '重新认定',
+  'assessment/permission-short/entry-read-all': '全部申报',
   'assessment/permission-short/review-process': '审核申报',
   'assessment/permission-short/review-reopen': '复查',
   'assessment/permission-short/result-view-peers': '他人成绩',

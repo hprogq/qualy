@@ -1184,7 +1184,7 @@ describe.runIf(postgresAvailable)('item configuration', () => {
           const entry = one<{ id: string }>(
             yield* runSql(sql`
               insert into entries (tenant_id, batch_id, item_id, participant_id, source, status)
-              values (${f.tenant}, ${batch.id}, ${item.id}, ${participant}, 'self', 'in_review')
+              values (${f.tenant}, ${batch.id}, ${item.id}, ${participant}, 'self', 'draft')
               returning id`),
           ).id
           const revision = one<{ id: string }>(
@@ -1195,7 +1195,10 @@ describe.runIf(postgresAvailable)('item configuration', () => {
               returning id`),
           ).id
           yield* runSql(
-            sql`update entries set current_revision_id = ${revision} where id = ${entry}`,
+            sql`update entries
+                set current_revision_id = ${revision}, last_submitted_revision_id = ${revision},
+                    status = 'in_review'
+                where id = ${entry}`,
           )
 
           const tighter = studentConfig({ formConfig: { required: ['certificate'] } })
@@ -1332,7 +1335,8 @@ describe.runIf(postgresAvailable)('item configuration', () => {
               ).id
               yield* runSql(sql`
                 update entries
-                set current_revision_id = ${revision}, current_recognition_id = ${recognition},
+                set current_revision_id = ${revision}, last_submitted_revision_id = ${revision},
+                    current_recognition_id = ${recognition},
                     status = 'approved'
                 where id = ${entry}`)
               return entry
@@ -1446,6 +1450,7 @@ describe.runIf(postgresAvailable)('item configuration', () => {
           yield* runSql(
             sql`update entries
                 set current_revision_id = ${revision},
+                    last_submitted_revision_id = ${revision},
                     current_recognition_id = ${recognition},
                     status = 'approved'
                 where id = ${entry}`,
@@ -1970,6 +1975,7 @@ describe.runIf(postgresAvailable)('item configuration', () => {
           yield* runSql(
             sql`update entries
                 set current_revision_id = ${revision},
+                    last_submitted_revision_id = ${revision},
                     current_recognition_id = ${recognition},
                     status = 'approved'
                 where id = ${entry}`,

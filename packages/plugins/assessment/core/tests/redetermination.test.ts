@@ -391,11 +391,14 @@ describe.runIf(postgresAvailable)('re-determining a concluded claim', () => {
           const assessment = yield* Assessment
           const w = yield* world(f)
           const entryId = yield* judged(f, w.g, 'approve')
-          const draft = yield* assessment.createEntry(
+          // handed in but not concluded: a draft never sent is its owner's
+          // alone and is not on this page at all (ruling of 2026-09-29)
+          const pending = yield* assessment.createEntry(
             f.t,
             { itemId: w.g.item.id, participantId: w.g.p2, payload: {} },
             f.principal(f.s2),
           )
+          yield* assessment.setEntryStatus(f.t, pending.id, 'in_review', f.principal(f.s2))
           const asInspector = yield* assessment.listParticipantEntries(
             f.t,
             w.g.batch.id,
@@ -403,7 +406,7 @@ describe.runIf(postgresAvailable)('re-determining a concluded claim', () => {
             {},
             f.principal(w.inspector),
           )
-          const asInspectorDraft = yield* assessment.listParticipantEntries(
+          const asInspectorPending = yield* assessment.listParticipantEntries(
             f.t,
             w.g.batch.id,
             w.g.p2,
@@ -417,17 +420,16 @@ describe.runIf(postgresAvailable)('re-determining a concluded claim', () => {
             {},
             f.principal(f.admin),
           )
-          void draft
           return {
             inspector: asInspector.entries.find((one) => one.entry.id === entryId)!.corrections,
-            onDraft: asInspectorDraft.entries[0]!.corrections,
+            onPending: asInspectorPending.entries[0]!.corrections,
             admin: asAdmin.entries.find((one) => one.entry.id === entryId)!.corrections,
           }
         }),
       ),
     )
     expect(result.inspector.redetermine).toEqual({ state: 'available', reason: null })
-    expect(result.onDraft.redetermine).toEqual({ state: 'hidden', reason: null })
+    expect(result.onPending.redetermine).toEqual({ state: 'hidden', reason: null })
     expect(result.admin.redetermine).toEqual({ state: 'hidden', reason: null })
   })
 })

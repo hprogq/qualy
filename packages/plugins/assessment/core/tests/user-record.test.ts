@@ -116,11 +116,20 @@ describe.runIf(postgresAvailable)('what one person’s record says about assessm
           const assessment = yield* Assessment
           const g = yield* runningBatch(f, { profile: [...GATED] })
           const s1 = f.principal(f.s1)
+          const idsBy = (who: string) =>
+            Effect.map(
+              assessment.listUserEntries(f.t, f.s1, { limit: 10 }, f.principal(who)),
+              (rows) => rows.map((row) => row.id).sort(),
+            )
           const filed = yield* assessment.createEntry(
             f.t,
             { itemId: g.item.id, participantId: g.p1, payload: {} },
             s1,
           )
+          // a draft never handed in is its owner's alone (ruling of 2026-09-29)
+          const draftByAdmin = yield* idsBy(f.admin)
+          const draftByOwner = yield* idsBy(f.s1)
+          yield* assessment.setEntryStatus(f.t, filed.id, 'in_review', s1)
           const office = yield* recordItem(f, g.batch.id)
           const recorded = yield* assessment.createEntry(
             f.t,
@@ -138,12 +147,9 @@ describe.runIf(postgresAvailable)('what one person’s record says about assessm
             at: yield* classB(f),
             codes: ['assessment.entry.redetermine'],
           })
-          const idsBy = (who: string) =>
-            Effect.map(
-              assessment.listUserEntries(f.t, f.s1, { limit: 10 }, f.principal(who)),
-              (rows) => rows.map((row) => row.id).sort(),
-            )
           return {
+            draftByAdmin,
+            draftByOwner,
             byAdmin: yield* idsBy(f.admin),
             byOwner: yield* idsBy(f.s1),
             byRecorder: yield* idsBy(f.recorder),
@@ -157,12 +163,14 @@ describe.runIf(postgresAvailable)('what one person’s record says about assessm
         }),
       ),
     )
+    expect(result.draftByAdmin).toEqual([])
+    expect(result.draftByOwner).toEqual([result.filed])
     const both = [result.filed, result.recorded].sort()
     expect(result.byAdmin).toEqual(both)
     expect(result.byOwner).toEqual(both)
-    // recording authority reads the facts it could have written, not what
-    // the student filed about themselves
-    expect(result.byRecorder).toEqual([result.recorded])
+    // listing somebody's claims has no task behind it, and recording is a
+    // power to write: the office's own facts are read on the record page
+    expect(result.byRecorder).toEqual([])
     // re-determining reads every claim of the people it covers, and no others
     expect(result.byNear).toEqual(both)
     expect(result.byFar).toEqual([])

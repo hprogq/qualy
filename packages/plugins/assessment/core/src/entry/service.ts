@@ -35,7 +35,7 @@ import { fillBoundEvidence } from '../scoring/bound-evidence.ts'
 import { boundedCounter } from '@qualy/telemetry/metrics'
 import { transaction, type Orm, type QueryFailed } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
-import type { AccessDenied } from '@qualy/rbac-contract/effect'
+import { AccessDenied } from '@qualy/rbac-contract/effect'
 import type { AttachmentMeta } from '@qualy/plugin-storage/server'
 import type { AttachmentRef, ItemTypeDriver } from '../plugin.ts'
 import type { GateContext } from '../phase/gate.ts'
@@ -613,11 +613,12 @@ export interface EntryDeps {
     batchId: string,
   ) => Effect.Effect<void, AccessDenied>
   /**
-   * Who may read one participant's claims as staff, and which: administering
-   * the roster or re-determining over this participant reads every claim;
-   * recording over them reads the administrative claims only
-   * (`AccountReading`, assessment-design §30 #12). The same refusal whether
-   * the id names nobody or somebody out of reach.
+   * Who may read one participant as staff, and how much: administering the
+   * roster, viewing all claims or re-determining over this participant reads
+   * the account and every claim handed in; recording over them reads the
+   * account alone (`AccountReading`, assessment-design §30 #12, ruling of
+   * 2026-09-29). The same refusal whether the id names nobody or somebody
+   * out of reach.
    */
   readonly requireAccountReach: (
     as: Principal,
@@ -976,6 +977,22 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
     }
   }
 
+  /**
+   * The version of a claim this reader is shown (ruling of 2026-09-29): its
+   * owner reads the one on their desk; everybody else the one last handed
+   * in, which a claim being revised after a return goes on showing until the
+   * revision is sent. A draft never handed in shows nothing to anybody but
+   * its owner, and `mayReadEntry` keeps them from asking.
+   */
+  const shownRevisionOf = (
+    entry: EntryRow,
+    participant: { readonly userId: string } | null,
+    as: Principal,
+  ) =>
+    participant !== null && participant.userId === as.userId
+      ? entry.currentRevisionId
+      : entry.lastSubmittedRevisionId
+
   const revisionView = (tenantId: string, revisionId: string | null) =>
     Effect.gen(function* () {
       if (revisionId === null) return null
@@ -1307,29 +1324,44 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
    * `assessment.entry.record` is the power to write facts about people, not
    * the power to read what they submitted about themselves.
    *
-   * And a fourth (ruling of 2026-09-25 #33): whoever may re-determine claims
-   * over this participant reads every claim of theirs, filed or recorded -
-   * a result cannot be re-made by somebody who may not read what it was
-   * made from. `userEntriesPage` asks the same four in sql.
+   * And a fourth: whoever may view all claims over this participant (ruling
+   * of 2026-09-29), or re-determine them (2026-09-25 #33: a result cannot be
+   * re-made by somebody who may not read what it was made from), reads
+   * every claim of theirs, filed or recorded.
+   *
+   * The recorder's door is a reading with a task behind it: the record page
+   * lists the facts and opens them here. The lists of somebody's claims with
+   * no task behind them - their account, their user page - open to the
+   * other three only (ruling of 2026-09-29), `userEntriesPage` in sql.
+   *
+   * Every door but the first opens only onto a claim that was handed in
+   * (ruling of 2026-09-29): a draft never sent is its owner's desk, and no
+   * authority reads it. What the others read of a claim handed in is the
+   * version last handed in (`shownRevisionOf`).
    */
   const mayReadEntry = (
     tenantId: string,
-    entry: { readonly batchId: string; readonly source: string },
+    entry: {
+      readonly batchId: string
+      readonly source: string
+      readonly lastSubmittedRevisionId: string | null
+    },
     participant: ParticipantAnchor & { readonly userId: string },
     as: Principal,
   ) =>
     Effect.gen(function* () {
       if (participant.userId === as.userId) return true
+      if (entry.lastSubmittedRevisionId === null) return false
       const roster = yield* Effect.result(deps.requireRosterReach(as, tenantId, entry.batchId))
       if (Result.isSuccess(roster)) return true
-      const redetermines = yield* staffReachesParticipant({
+      const readsAll = yield* staffReachesParticipant({
         tenantId,
         batchId: entry.batchId,
         userId: as.userId,
-        permissionCode: 'assessment.entry.redetermine',
+        permissionCode: ['assessment.entry.read-all', 'assessment.entry.redetermine'],
         participant,
       })
-      if (redetermines) return true
+      if (readsAll) return true
       if (entry.source !== 'record' && entry.source !== 'import') return false
       return yield* staffReachesParticipant({
         tenantId,
@@ -1484,7 +1516,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           return veil(
             view(
               entry,
-              yield* revisionView(tenantId, entry.currentRevisionId),
+              yield* revisionView(tenantId, shownRevisionOf(entry, participant, as)),
               as,
               participant,
               undefined,
@@ -1815,6 +1847,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                     entryId,
                     from: ['draft', 'rejected'],
                     to: 'approved',
+                    handedIn: true,
                     currentRecognitionId: recognitionId,
                     // A claim that was refused, and is now approved by a rule
                     // instead, no longer stands on that refusal. Leaving the
@@ -1918,6 +1951,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                   entryId,
                   from: ['draft', 'rejected'],
                   to: 'in_review',
+                  handedIn: true,
                   currentReviewInstanceId: instanceId,
                 })
                 // unreachable while the batch lock is held over a fresh read;
@@ -2374,16 +2408,22 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
         // one refusal for an id out of reach and an id naming nobody, so a
         // reader without reach cannot learn whether an id is on this roster
         const reading = yield* deps.requireAccountReach(as, tenantId, batchId, participantId)
+        // somebody's claims with no task in hand are read by a reading power
+        // (ruling of 2026-09-29); a recorder reads the account beside them
+        // and the office's own records on the record page
+        if (reading !== 'whole') {
+          return yield* new AccessDenied({ reason: 'cannot view the claims of this participant' })
+        }
         const participant = yield* participantOf(tenantId, batchId, participantId)
         if (participant === null) return yield* new ParticipantNotFound()
-        // the claims this reader may open one by one (`mayReadEntry`), and
-        // no others: a page that listed the rest would offer rows that
-        // answer with a refusal
+        // the claims handed in, which is what `mayReadEntry` opens to
+        // anybody but their owner: a page that listed the rest would offer
+        // rows that answer with a refusal
         const rows = yield* entriesOfParticipantPage({
           tenantId,
           batchId,
           participantId,
-          administrativeOnly: reading === 'administrative',
+          handedInOnly: participant.userId !== as.userId,
           after: key === undefined ? undefined : [key[0]!, key[1]!],
           limit: limit + 1,
         })
@@ -2438,7 +2478,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             entry: veil(
               view(
                 entry,
-                yield* revisionView(tenantId, entry.currentRevisionId),
+                yield* revisionView(tenantId, shownRevisionOf(entry, participant, as)),
                 as,
                 participant,
                 undefined,
@@ -2500,7 +2540,16 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               return yield* new EntryNotFound()
             }
           }
-          const revisions = yield* entryRevisionsOf(tenantId, entryId)
+          // Everybody but the owner reads as far as the version last handed
+          // in (ruling of 2026-09-29): what was written after it is still on
+          // the owner's desk, and becomes history when it is sent.
+          const written = yield* entryRevisionsOf(tenantId, entryId)
+          const shown = shownRevisionOf(entry, participant, as)
+          const reach =
+            participant.userId === as.userId
+              ? Number.POSITIVE_INFINITY
+              : (written.find((revision) => revision.id === shown)?.revisionNo ?? 0)
+          const revisions = written.filter((revision) => revision.revisionNo <= reach)
           const forms = new Map<string, unknown>()
           for (const itemRevisionId of new Set(revisions.map((r) => r.itemRevisionId))) {
             const cited = yield* revisionOf(tenantId, itemRevisionId)
@@ -2548,7 +2597,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             entry: veil(
               view(
                 entry,
-                yield* revisionView(tenantId, entry.currentRevisionId),
+                yield* revisionView(tenantId, shownRevisionOf(entry, participant, as)),
                 as,
                 participant,
                 undefined,
@@ -2712,7 +2761,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             const gone_ = (yield* entryOf(tenantId, entryId))!
             return view(
               gone_,
-              yield* revisionView(tenantId, gone_.currentRevisionId),
+              yield* revisionView(tenantId, shownRevisionOf(gone_, participant, as)),
               as,
               participant,
             )
@@ -2784,7 +2833,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           const written = (yield* entryOf(tenantId, entryId))!
           return view(
             written,
-            yield* revisionView(tenantId, written.currentRevisionId),
+            yield* revisionView(tenantId, shownRevisionOf(written, participant, as)),
             as,
             participant,
           )

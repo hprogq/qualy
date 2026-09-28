@@ -38,6 +38,7 @@ import { useQueueRefresh } from '../review/queue.ts'
 import { StandingNotice } from '../entry/workspace/StandingNotice.tsx'
 import { ResultLedger, ResultUnavailable } from './ResultLedger.tsx'
 import { ParticipantEntries } from './ParticipantEntries.tsx'
+import { WorkspaceSkeleton } from '../entry/workspace/WorkspaceSkeleton.tsx'
 import { useParticipantEntries } from './participant-entries.ts'
 import { unitChainOf, unitPathOf } from '../roster/unit-path.ts'
 import { ROSTER_MAX_WAIT, ROSTER_SETTLE, settler, SYNC_FRESH } from '../roster/live-settle.ts'
@@ -403,7 +404,7 @@ export function ParticipantResultDetail({
   manageable,
   writable,
   mayRecord,
-  view,
+  view: addressed,
   step,
   entryId,
   neighbors,
@@ -542,17 +543,30 @@ export function ParticipantResultDetail({
   const who = useQuery({
     ...query.assessment.getParticipant.queryOptions({ params: { batchId, participantId } }),
     enabled: shaped,
-    placeholderData:
+    // whether the claims open is the reader's standing over the person
+    // before, which on one list is nearly always the same answer
+    placeholderData: (before) =>
       listed !== undefined && listed !== null && listed.id === participantId
-        ? { participant: listed }
+        ? { participant: listed, claims: before?.claims ?? true }
         : undefined,
   })
+  // Whether this reader opens the person's claims, or reads their account
+  // alone (ruling of 2026-09-29): the claims half is offered only where they
+  // open, and an address naming it lands on the account otherwise. Unknown
+  // while the person is on their way.
+  const claimsOpen = who.data?.claims
+  const view = claimsOpen === false ? 'score' : addressed
   const result = useQuery({
     ...query.assessment.getParticipantResult.queryOptions({ params: { batchId, participantId } }),
     enabled: shaped,
   })
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
-  const entries = useQuery({ ...useParticipantEntries(batchId, participantId), enabled: shaped })
+  const entries = useQuery({
+    ...useParticipantEntries(batchId, participantId),
+    enabled: shaped && claimsOpen === true,
+  })
+  // a reader who opens no claims is not waiting for any
+  const claimsPending = claimsOpen !== false && entries.isPending
   // The person this page is about is not there, or not this reader's to see,
   // or could not be read at all: said once, in the room their work would
   // have had, with the way back to the list. The column keeps the list
@@ -749,9 +763,18 @@ export function ParticipantResultDetail({
   // nothing while they are on their way, the half said nobody had filed.
   const counted = entries.data === undefined ? null : claims.length
   const halves = [
-    { key: 'entries', label: m.participantResultsEntriesTab, count: counted, total: false },
-    { key: 'score', label: m.participantResultsScoreTab, count: null, total: true },
-  ] as const
+    ...(claimsOpen === false
+      ? []
+      : [
+          {
+            key: 'entries',
+            label: m.participantResultsEntriesTab,
+            count: counted,
+            total: false,
+          } as const,
+        ]),
+    { key: 'score', label: m.participantResultsScoreTab, count: null, total: true } as const,
+  ]
 
   const halvesNav = (
     <nav aria-label={format(m.participantResultsViews)} {...stylex.props(styles.halves)}>
@@ -977,10 +1000,10 @@ export function ParticipantResultDetail({
               failure={absent}
               size="section"
               // the rest of the account failed with the person, and comes back with them
+              // the claims come back with the person, where they open
               onRetry={() => {
                 void who.refetch()
                 void result.refetch()
-                void entries.refetch()
               }}
               retrying={who.isFetching}
               extra={
@@ -992,7 +1015,12 @@ export function ParticipantResultDetail({
           </div>
         ) : (
           <Swap swapKey={view} className={stylex.props(filled && styles.swapFilled).className}>
-            {view === 'entries' ? (
+            {view === 'entries' && claimsOpen !== true ? (
+              // whether the claims open is said with the person: until then
+              // the claims are not asked for, since a reader who reads the
+              // account alone would only be refused them
+              <WorkspaceSkeleton viewer="staff" open={false} />
+            ) : view === 'entries' ? (
               <ParticipantEntries
                 batchId={batchId}
                 participantId={participantId}
@@ -1016,9 +1044,7 @@ export function ParticipantResultDetail({
                   />
                 ) : (
                   <AsyncSection
-                    pending={
-                      result.isPending || items.isPending || entries.isPending || who.isPending
-                    }
+                    pending={result.isPending || items.isPending || claimsPending || who.isPending}
                     // a read that failed with nothing to show; one that failed
                     // later keeps what it showed, and the account says it may
                     // be behind
@@ -1036,7 +1062,7 @@ export function ParticipantResultDetail({
                     onRetry={() => {
                       void result.refetch()
                       void items.refetch()
-                      void entries.refetch()
+                      if (claimsOpen === true) void entries.refetch()
                     }}
                     skeleton={
                       <div>
@@ -1096,13 +1122,16 @@ export function ParticipantResultDetail({
                           // a number leads back to the filing it came from, on
                           // the question it was filed under; this is the reason
                           // the two halves are one page
-                          onEntryOpen={(id) =>
-                            onFollow(
-                              id,
-                              claims.find((one) => one.entry.id === id)?.entry.itemId ?? null,
-                            )
-                          }
-                          onItemOpen={onItem}
+                          {...(claimsOpen === true
+                            ? {
+                                onEntryOpen: (id: string) =>
+                                  onFollow(
+                                    id,
+                                    claims.find((one) => one.entry.id === id)?.entry.itemId ?? null,
+                                  ),
+                                onItemOpen: onItem,
+                              }
+                            : {})}
                         />
                       </>
                     )}

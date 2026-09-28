@@ -84,7 +84,8 @@ describe.runIf(postgresAvailable)("one participant's account, read by staff", ()
     )
     // the same account, line for line: one arithmetic, two doors
     expect(result.theirs).toEqual(result.mine)
-    expect(result.who.id).toBe(result.claims.participantId)
+    expect(result.who.participant.id).toBe(result.claims.participantId)
+    expect(result.who.claims).toBe(true)
     expect(result.claims.entries.map((one) => one.entry.id)).toEqual([result.entryId])
     // and the determination the amount was computed from is readable, which
     // the owner's own page never carried
@@ -247,6 +248,8 @@ describe.runIf(postgresAvailable)("one participant's account, read by staff", ()
             { itemId: g.item.id, participantId: g.p1, payload: {} },
             s1,
           )
+          // handed in: a draft never sent is its owner's alone
+          yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
           yield* assessment.setParticipantStatus(
             f.t,
             g.batch.id,
@@ -264,7 +267,7 @@ describe.runIf(postgresAvailable)("one participant's account, read by staff", ()
         }),
       ),
     )
-    expect(result.who.status).toBe('excluded')
+    expect(result.who.participant.status).toBe('excluded')
     expect(result.claims.entries.map((one) => one.entry.id)).toEqual([result.entryId])
     expect(result.account.mode).toBe('provisional')
   })
@@ -293,21 +296,37 @@ describe.runIf(postgresAvailable)("one participant's account, read by staff", ()
           )
           yield* assessment.setItemStatus(f.t, second.id, { status: 'active' }, admin)
           const s1 = f.principal(f.s1)
-          yield* assessment.createEntry(
-            f.t,
-            { itemId: g.item.id, participantId: g.p1, payload: {} },
-            s1,
-          )
-          yield* assessment.createEntry(
-            f.t,
-            { itemId: second.id, participantId: g.p1, payload: {} },
-            s1,
-          )
-          yield* assessment.createEntry(
-            f.t,
-            { itemId: g.item.id, participantId: g.p2, payload: {} },
-            f.principal(f.s2),
-          )
+          const s2 = f.principal(f.s2)
+          // handed in, each: a draft never sent is its owner's alone
+          const filed = [
+            [
+              yield* assessment.createEntry(
+                f.t,
+                { itemId: g.item.id, participantId: g.p1, payload: {} },
+                s1,
+              ),
+              s1,
+            ],
+            [
+              yield* assessment.createEntry(
+                f.t,
+                { itemId: second.id, participantId: g.p1, payload: {} },
+                s1,
+              ),
+              s1,
+            ],
+            [
+              yield* assessment.createEntry(
+                f.t,
+                { itemId: g.item.id, participantId: g.p2, payload: {} },
+                s2,
+              ),
+              s2,
+            ],
+          ] as const
+          for (const [entry, owner] of filed) {
+            yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', owner)
+          }
           const first = yield* assessment.listParticipantEntries(
             f.t,
             g.batch.id,

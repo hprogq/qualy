@@ -311,10 +311,17 @@ export const buildWorld = (input: {
       student,
       '年级',
     )
+    // looking over a student's whole account is the counsellor's own
+    // reading, not something recording or reviewing lends them
     const counsellor = yield* role(
       'counsellor',
       '辅导员',
-      ['assessment.review.process', 'assessment.review.reopen', 'assessment.entry.record'],
+      [
+        'assessment.review.process',
+        'assessment.review.reopen',
+        'assessment.entry.record',
+        'assessment.entry.read-all',
+      ],
       faculty,
       '年级',
     )

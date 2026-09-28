@@ -350,13 +350,14 @@ describe.runIf(postgresAvailable)('the roster, as the results page reads it', ()
       found.units.map((unit) => unit.id).sort()
     const sorted = (...units: string[]) => [...units].sort()
     expect(idsOf(result.recorderAccounts)).toEqual(sorted(f.root, ids.collegeA, f.classA))
-    // the record page reads what recording and re-determining cover together
-    expect(idsOf(result.record)).toEqual(
+    // the record page reads what recording covers, and nothing a reading
+    // power lends (ruling of 2026-09-29)
+    expect(idsOf(result.record)).toEqual(sorted(f.root, ids.collegeA, f.classA))
+    // the results page reads what recording and re-determining cover
+    // together: no unit whose list would be empty for this reader
+    expect(idsOf(result.accounts)).toEqual(
       sorted(f.root, ids.collegeA, f.classA, ids.collegeB, ids.classB),
     )
-    // and the results page the same people, since recording opens the
-    // accounts it covers: no unit whose list would be empty for this reader
-    expect(idsOf(result.accounts)).toEqual(idsOf(result.record))
     expect(idsOf(result.active)).toEqual(sorted(f.root, ids.collegeA, f.classA))
     expect(idsOf(result.everyone)).toEqual(
       sorted(f.root, ids.collegeA, f.classA, ids.collegeB, ids.classB),
@@ -705,6 +706,7 @@ describe.runIf(postgresAvailable)('the totals on a page of the roster', () => {
           update entries e
           set status = 'approved',
               current_revision_id = (select id from entry_revisions where entry_id = e.id),
+              last_submitted_revision_id = (select id from entry_revisions where entry_id = e.id),
               current_recognition_id = (select id from entry_recognitions where entry_id = e.id)
           where e.id = any(${ids}::uuid[])`)
       })

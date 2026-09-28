@@ -33,6 +33,8 @@ export interface EntryRow {
   itemId: string
   participantId: string
   currentRevisionId: string | null
+  /** the version last handed in, which everybody but its owner reads; null for a draft never sent */
+  lastSubmittedRevisionId: string | null
   currentReviewInstanceId: string | null
   /** what it currently stands recognised as, which is what an appeal contests */
   currentRecognitionId: string | null
@@ -47,6 +49,7 @@ const entryColumns = [
   'itemId',
   'participantId',
   'currentRevisionId',
+  'lastSubmittedRevisionId',
   'currentReviewInstanceId',
   'currentRecognitionId',
   'status',
@@ -59,6 +62,8 @@ const toEntry = (row: Record<string, unknown>): EntryRow => ({
   itemId: String(row['itemId']),
   participantId: String(row['participantId']),
   currentRevisionId: row['currentRevisionId'] == null ? null : String(row['currentRevisionId']),
+  lastSubmittedRevisionId:
+    row['lastSubmittedRevisionId'] == null ? null : String(row['lastSubmittedRevisionId']),
   currentReviewInstanceId:
     row['currentReviewInstanceId'] == null ? null : String(row['currentReviewInstanceId']),
   currentRecognitionId:
@@ -441,6 +446,12 @@ export const approveNewEntries = (tenantId: string, entryIds: readonly string[])
                 .select('r.id')
                 .whereRef('r.tenantId', '=', 'Entry.tenantId')
                 .whereRef('r.entryId', '=', 'Entry.id'),
+              // an administrative fact is handed in by being written
+              lastSubmittedRevisionId: eb
+                .selectFrom('EntryRevision as r')
+                .select('r.id')
+                .whereRef('r.tenantId', '=', 'Entry.tenantId')
+                .whereRef('r.entryId', '=', 'Entry.id'),
               currentRecognitionId: eb
                 .selectFrom('EntryRecognition as c')
                 .select('c.id')
@@ -778,6 +789,14 @@ export const setEntryState = (input: {
    * statement would be a moment the database is right to reject.
    */
   currentRecognitionId?: string
+  /**
+   * The claim is being handed to the institution by this move - submitted,
+   * or approved by rule at submission - and the version it now stands on
+   * becomes the one everybody but its owner reads. Never passed by a move
+   * that only answers a claim already handed in: those leave the version
+   * they were handed exactly where it was.
+   */
+  handedIn?: true
 }) =>
   db
     .query((k) =>
@@ -788,6 +807,14 @@ export const setEntryState = (input: {
           updatedAt: sql`now()`,
           ...(input.currentRevisionId !== undefined
             ? { currentRevisionId: input.currentRevisionId }
+            : {}),
+          // the version the row stands on after this statement: the one it
+          // names, or the one it already had (a SET reads the row as it was)
+          ...(input.handedIn === true
+            ? {
+                lastSubmittedRevisionId:
+                  input.currentRevisionId ?? sql<string>`current_revision_id`,
+              }
             : {}),
           ...(input.currentReviewInstanceId !== undefined
             ? { currentReviewInstanceId: input.currentReviewInstanceId }
@@ -879,10 +906,12 @@ export const participantOf = (tenantId: string, batchId: string, participantId: 
 
 /**
  * How much of one participant a member of staff reads once they may open
- * them: the whole account and every claim, or the account and only the
- * administrative claims (record and import).
+ * them: the whole account and every claim handed in, or the account alone
+ * (ruling of 2026-09-29: listing somebody's claims with no task in hand
+ * takes a reading power, and recording is a writing one - the office's own
+ * records are read where they are made, on the record page).
  */
-export type AccountReading = 'whole' | 'administrative'
+export type AccountReading = 'whole' | 'account'
 
 /**
  * Whether this member of staff may act on this participant, with the whole
@@ -900,7 +929,8 @@ export const staffReachesParticipant = (input: {
   tenantId: string
   batchId: string
   userId: string
-  permissionCode: string
+  /** several read as any one of them covering the participant */
+  permissionCode: string | readonly string[]
   participant: ParticipantAnchor
 }) =>
   db
@@ -1382,8 +1412,8 @@ export const entriesOfParticipantPage = (input: {
   tenantId: string
   batchId: string
   participantId: string
-  /** the administrative claims only, for a reader who may open no others */
-  administrativeOnly?: boolean
+  /** the claims handed in only, for anybody but their owner (ruling of 2026-09-29) */
+  handedInOnly?: boolean
   after?: readonly [string, string] | undefined
   limit: number
 }) =>
@@ -1396,8 +1426,8 @@ export const entriesOfParticipantPage = (input: {
         .where('tenantId', '=', input.tenantId)
         .where('batchId', '=', input.batchId)
         .where('participantId', '=', input.participantId)
-        .$if(input.administrativeOnly === true, (narrowed) =>
-          narrowed.where('source', 'in', ['record', 'import']),
+        .$if(input.handedInOnly === true, (narrowed) =>
+          narrowed.where('lastSubmittedRevisionId', 'is not', null),
         )
         .orderBy('createdAt')
         .orderBy('id')

@@ -483,6 +483,7 @@ describe.runIf(postgresAvailable)('the platform ceilings', () => {
             update entries e
             set status = 'approved',
                 current_revision_id = (select id from entry_revisions where entry_id = e.id),
+                last_submitted_revision_id = (select id from entry_revisions where entry_id = e.id),
                 current_recognition_id = (select id from entry_recognitions where entry_id = e.id)
             where e.id = any(${ids}::uuid[])`)
           const before = evaluations

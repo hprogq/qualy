@@ -958,6 +958,7 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
           yield* runSql(
             sql`update entries
                 set current_revision_id = ${revision},
+                    last_submitted_revision_id = ${revision},
                     current_recognition_id = ${recognition},
                     status = 'approved'
                 where id = ${planted}`,

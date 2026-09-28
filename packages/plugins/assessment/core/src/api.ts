@@ -273,6 +273,7 @@ const batchView = Schema.Struct({
     record: Schema.Boolean,
     manage: Schema.Boolean,
     redetermine: Schema.Boolean,
+    readAll: Schema.Boolean,
   }),
 })
 
@@ -3991,7 +3992,16 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       '/assessment/batches/:batchId/participants/:participantId',
       {
         params: Schema.Struct({ batchId: uuidInput, participantId: uuidInput }),
-        success: Schema.Struct({ participant: participantView }),
+        success: Schema.Struct({
+          participant: participantView,
+          /**
+           * Whether this reader opens the person's claims (administering the
+           * roster, viewing all claims or re-determining over them), or reads
+           * their account alone (recording over them): a page about them
+           * offers the claims only where they open.
+           */
+          claims: Schema.Boolean,
+        }),
         error: [BatchNotFound, ParticipantNotFound, AccessDenied],
       },
     ).middleware(Authenticated),

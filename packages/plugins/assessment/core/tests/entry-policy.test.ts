@@ -912,6 +912,12 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
             s1,
           )
           const stranger = yield* Effect.exit(assessment.getEntry(f.t, entry.id, f.principal(f.s2)))
+          // a draft never handed in is its owner's alone, the administrator
+          // included (ruling of 2026-09-29); sent, it is the round's record
+          const adminDraft = yield* Effect.exit(
+            assessment.getEntry(f.t, entry.id, f.principal(f.admin)),
+          )
+          yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
           const admin = yield* assessment.getEntry(f.t, entry.id, f.principal(f.admin))
           // excluded: history stays readable, the pen is gone (§32.56)
           yield* assessment.setParticipantStatus(
@@ -926,13 +932,14 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
           const ownEdit = yield* Effect.exit(
             assessment.appendEntryRevision(f.t, entry.id, { payload: {} }, s1),
           )
-          return { stranger, admin, ownRead, ownEdit }
+          return { stranger, adminDraft, admin, ownRead, ownEdit }
         }),
       ),
     )
 
     // another student learns nothing, not even that it exists
     expect(refusalOf(result.stranger)?._tag).toBe('ASSESSMENT_ENTRY_NOT_FOUND')
+    expect(refusalOf(result.adminDraft)?._tag).toBe('ASSESSMENT_ENTRY_NOT_FOUND')
     expect(result.admin.id).toBeDefined()
     // an excluded person is offered nothing, not even disabled buttons:
     // the acts are not theirs any more, so they are not spoken of

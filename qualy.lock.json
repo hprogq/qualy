@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
   "manifestHash": "sha256:5981ac1966d5b429f0b6290b636f57344bd8daad4ddefb73292fc6ea6d48d213",
-  "resolutionHash": "sha256:f551ae1c0d7edd7b8a7bb341d87cbe3c9571c72affbca6d8b0c88c63b0e719e4",
+  "resolutionHash": "sha256:64709b6dd57c93d9f5bdcbf05a0c11db09eab929faf3b5b7b1a0e724057c5128",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -59,6 +59,7 @@
           "codes": [
             "assessment.batch.force-advance",
             "assessment.batch.manage",
+            "assessment.entry.read-all",
             "assessment.entry.record",
             "assessment.entry.redetermine",
             "assessment.ranking.view",

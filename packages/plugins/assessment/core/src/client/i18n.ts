@@ -6980,6 +6980,11 @@ const i18n = definePluginMessages({
       defaultMessage:
         'Correct the result of a concluded claim directly; the participant can appeal the new result.',
     },
+    'permission-hint.assessment.entry.read-all': {
+      id: 'assessment/permission-hint/entry-read-all',
+      defaultMessage:
+        'See every claim a participant has submitted and their whole account; nothing can be changed with this alone.',
+    },
     'permission-hint.assessment.result.view-peers': {
       id: 'assessment/permission-hint/result-view-peers',
       defaultMessage: 'View the results of other participants.',
@@ -7047,6 +7052,10 @@ const i18n = definePluginMessages({
       id: 'assessment/permission/entry-redetermine',
       defaultMessage: 'Re-determine concluded claims',
     },
+    'permission.assessment.entry.read-all': {
+      id: 'assessment/permission/entry-read-all',
+      defaultMessage: 'View all claims',
+    },
     'permission.assessment.result.view-peers': {
       id: 'assessment/permission/result-view-peers',
       defaultMessage: 'View other participants\u2019 results',
@@ -7063,6 +7072,10 @@ const i18n = definePluginMessages({
     'permission-short.assessment.entry.redetermine': {
       id: 'assessment/permission-short/entry-redetermine',
       defaultMessage: 'Re-determine',
+    },
+    'permission-short.assessment.entry.read-all': {
+      id: 'assessment/permission-short/entry-read-all',
+      defaultMessage: 'All claims',
     },
     'permission-short.assessment.review.process': {
       id: 'assessment/permission-short/review-process',

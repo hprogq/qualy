@@ -70,7 +70,14 @@ const batch = (over: Partial<BatchDto> = {}): BatchDto => ({
   descriptionMd: null,
   manageable: true,
   reviewReasons: { reject: [], escalate: [] },
-  capabilities: { personal: false, review: false, record: false, manage: true, redetermine: false },
+  capabilities: {
+    personal: false,
+    review: false,
+    record: false,
+    manage: true,
+    redetermine: false,
+    readAll: false,
+  },
   participantCount: 12,
   materialRange: { start: '2026-03-01', end: '2026-09-01' },
   timezone: 'Asia/Shanghai',
@@ -2961,12 +2968,19 @@ describe('what the open round offers the rail', () => {
       ],
       route: `/assessment/batches/${BATCH_ID}`,
     })
-  const none = { personal: false, review: false, record: false, manage: false, redetermine: false }
+  const none = {
+    personal: false,
+    review: false,
+    record: false,
+    manage: false,
+    redetermine: false,
+    readAll: false,
+  }
 
   // re-determining reads the accounts it covers (ruling of 2026-09-25 #33),
   // so the results section is offered without the roster's own doors
   it('offers the results to whoever re-determines here, and no administration with them', async () => {
-    await open({ ...none, redetermine: true })
+    await open({ ...none, redetermine: true, readAll: false })
     await expect
       .element(page.getByTestId('published'))
       .toHaveAttribute('data-values', 'assessment/results')

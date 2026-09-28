@@ -416,6 +416,8 @@ export interface BatchCapabilities {
   readonly manage: boolean
   /** may re-determine claims here, and so read the accounts it covers (ruling #33) */
   readonly redetermine: boolean
+  /** may view every claim handed in over the people it covers, and their accounts (ruling of 2026-09-29) */
+  readonly readAll: boolean
 }
 
 /** one phase as a plan write states it; instants already parsed to epoch ms */
@@ -724,9 +726,29 @@ const specToEngine = (spec: PhaseSpecInput): NewPhaseSpec => ({
 const MANAGE = BATCH_MANAGE
 const FORCE_ADVANCE = 'assessment.batch.force-advance'
 const REDETERMINE = 'assessment.entry.redetermine'
+const READ_ALL = 'assessment.entry.read-all'
 const RECORD = 'assessment.entry.record'
-/** the staff authorities that read the part of a roster they act on */
-const ROSTER_READING_CODES: readonly string[] = [RECORD, REDETERMINE]
+/**
+ * The powers that read a participant's whole account and every claim they
+ * submitted with no task in hand (ruling of 2026-09-29): viewing all claims,
+ * and re-determining, which cannot re-make a result without reading what it
+ * was made from. Judging, re-examining and recording read only what their own
+ * task puts in front of them.
+ */
+const WHOLE_READING_CODES: readonly string[] = [READ_ALL, REDETERMINE]
+/**
+ * Who reads the results roster, the people they may open: the whole
+ * readings, and recording, which opens an account's administrative claims
+ * (assessment-design §30 #12).
+ */
+const ACCOUNT_ROSTER_CODES: readonly string[] = [...WHOLE_READING_CODES, RECORD]
+/**
+ * Who reads the record page's roster: whoever may record on it, and nobody
+ * a reading power alone lets in - a roster of people to record on, shown to
+ * somebody who may not record, reads as a power they do not have (ruling of
+ * 2026-09-29).
+ */
+const RECORD_ROSTER_CODES: readonly string[] = [RECORD]
 
 /**
  * A page of the results roster when the reader names none: small, because
@@ -1315,7 +1337,14 @@ export class Assessment extends Context.Service<
       batchId: string,
       participantId: string,
       as: Principal,
-    ) => Effect.Effect<ParticipantRow, BatchNotFound | ParticipantNotFound | AccessDenied>
+    ) => Effect.Effect<
+      {
+        readonly participant: ParticipantRow
+        /** whether this reader opens their claims, or reads their account alone */
+        readonly claims: boolean
+      },
+      BatchNotFound | ParticipantNotFound | AccessDenied
+    >
     /** administrative facts in bulk: a workbook in, an import out, and taking one back */
     readonly administrativeImportTemplate: AdministrativeImportMethods['administrativeImportTemplate']
     readonly prepareAdministrativeImportUpload: AdministrativeImportMethods['prepareAdministrativeImportUpload']
@@ -2928,20 +2957,28 @@ export const make = Effect.fn('Assessment.make')(function* () {
   })
 
   /**
-   * How much of a roster this reader reads, on the record page and the
-   * results page alike: all of it when they administer it; otherwise the
-   * people their recording or re-determining authority in this round
-   * covers, intersected in sql (a re-determination needs the person it is
-   * about, ruling of 2026-09-25 #33; recording reads the accounts it covers,
-   * 2026-09-28, assessment-design §30 #12); and nothing, refused, when they
-   * hold neither. Undefined is "all of it".
+   * How much of a roster this reader reads: all of it when they administer
+   * it; otherwise the people the named authorities they hold in this round
+   * cover, intersected in sql; and nothing, refused, when they hold none of
+   * them. Undefined is "all of it".
+   *
+   * Which authorities is the page's question, not this one's: the results
+   * roster is read by whoever may open an account (ACCOUNT_ROSTER_CODES),
+   * the record page's by whoever may record (RECORD_ROSTER_CODES) - two
+   * lists that used to be one, which let a power to re-determine read the
+   * roster of people to record on (ruling of 2026-09-29).
    */
-  const rosterReadingOf = (tenantId: string, batchId: string, as: Principal) =>
+  const rosterReadingOf = (
+    tenantId: string,
+    batchId: string,
+    as: Principal,
+    readingCodes: readonly string[],
+  ) =>
     Effect.gen(function* () {
       const roster = yield* Effect.result(requireRosterReach(as, tenantId, batchId))
       if (Result.isSuccess(roster)) return undefined
       const authority = yield* batchAuthority(tenantId, batchId, as.userId)
-      const codes = ROSTER_READING_CODES.filter((code) => authority.has(code))
+      const codes = readingCodes.filter((code) => authority.has(code))
       if (codes.length === 0) return yield* roster.failure
       return { userId: as.userId, permissionCode: codes }
     })
@@ -2964,18 +3001,20 @@ export const make = Effect.fn('Assessment.make')(function* () {
   /**
    * Who may open one participant, and how much of them they read.
    *
-   * The same people the results roster lists (rosterReadingOf), so nobody is
-   * listed who cannot then be opened: whoever administers the roster, and
-   * whoever may re-determine or record over this participant in this round.
-   * Administering and re-determining read the whole account and every claim
-   * (ruling of 2026-09-25 #33: the power to change a result carries the
-   * reading it takes). Recording reads the whole account too - every line
-   * and amount, the total is the account's - but opens only the
-   * administrative claims (#21, and 2026-09-28, assessment-design §30 #12),
-   * which the readers below honour: the claims listed are those, and a line
-   * standing on any other claim names none. Re-determining wins where both
-   * cover the person. An id naming nobody and an id out of reach get the
-   * same refusal.
+   * The same people the results roster lists (rosterReadingOf over
+   * ACCOUNT_ROSTER_CODES), so nobody is listed who cannot then be opened:
+   * whoever administers the roster, and whoever may view all claims,
+   * re-determine or record over this participant in this round.
+   * Administering, viewing all claims and re-determining read the whole
+   * account and every claim handed in (ruling of 2026-09-29; re-determining
+   * since 2026-09-25 #33, the power to change a result carrying the reading
+   * it takes). Recording reads the account alone - every line and amount,
+   * the total is the account's (2026-09-28, assessment-design §30 #12) - and
+   * none of the claims: listing them has no task behind it, and recording
+   * is a power to write (ruling of 2026-09-29), so the claims are refused
+   * and no line names one. A whole reading wins where both cover the
+   * person. An id naming nobody and an id out of reach get the same
+   * refusal.
    */
   const requireAccountReach = (
     as: Principal,
@@ -2988,7 +3027,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
       if (Result.isSuccess(roster)) return 'whole' as const
       const participant = yield* dieQuery(withDb(participantOf(tenantId, batchId, participantId)))
       if (participant === null) return yield* roster.failure
-      const covers = (permissionCode: string) =>
+      const covers = (permissionCode: string | readonly string[]) =>
         dieQuery(
           withDb(
             staffReachesParticipant({
@@ -3000,8 +3039,8 @@ export const make = Effect.fn('Assessment.make')(function* () {
             }),
           ),
         )
-      if (yield* covers(REDETERMINE)) return 'whole' as const
-      if (yield* covers(RECORD)) return 'administrative' as const
+      if (yield* covers(WHOLE_READING_CODES)) return 'whole' as const
+      if (yield* covers(RECORD)) return 'account' as const
       return yield* roster.failure
     })
 
@@ -3016,7 +3055,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
       const roster = yield* Effect.result(requireRosterReach(as, tenantId, batchId))
       const reach = Result.isSuccess(roster)
         ? undefined
-        : { userId: as.userId, permissionCode: ROSTER_READING_CODES }
+        : { userId: as.userId, permissionCode: ACCOUNT_ROSTER_CODES }
       const found = yield* dieQuery(
         withDb(participantIdsWithin(tenantId, batchId, participantIds, reach)),
       )
@@ -3622,6 +3661,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
         record: authority.has('assessment.entry.record'),
         manage,
         redetermine: authority.has(REDETERMINE),
+        readAll: authority.has(READ_ALL),
       } satisfies BatchCapabilities
     }),
 
@@ -3913,6 +3953,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
           record: authority.has('assessment.entry.record'),
           manage: detail.manageable,
           redetermine: authority.has(REDETERMINE),
+          readAll: authority.has(READ_ALL),
         } satisfies BatchCapabilities,
       }
     }),
@@ -5354,15 +5395,17 @@ export const make = Effect.fn('Assessment.make')(function* () {
         const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
         if (!batch) return yield* new BatchNotFound()
         // the same door as the roster that listed them: administering it, or
-        // re-determining or recording over this person; a reader without any
-        // learns nothing about who is on it, not even whether an id they
-        // hold is one of them
-        yield* requireAccountReach(as, tenantId, batchId, participantId)
+        // viewing all claims, re-determining or recording over this person;
+        // a reader without any learns nothing about who is on it, not even
+        // whether an id they hold is one of them
+        const reading = yield* requireAccountReach(as, tenantId, batchId, participantId)
         const participant = yield* dieQuery(
           withDb(oneParticipant(tenantId, batchId, participantId)),
         )
         if (participant === null) return yield* new ParticipantNotFound()
-        return participant
+        // said with the person, so a page about them offers their claims
+        // only to somebody who may open them
+        return { participant, claims: reading === 'whole' }
       },
     ),
 
@@ -5468,13 +5511,13 @@ export const make = Effect.fn('Assessment.make')(function* () {
       function* (tenantId, batchId, filter, as) {
         const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
         if (!batch) return yield* new BatchNotFound()
-        // Administering the roster reads all of it. Recording on it, or
-        // re-determining on it, reads the part that authority covers - a
-        // staff member acting on a person has to be able to name them, and
-        // the write still checks anchored reach. The authority is anchored,
-        // so the reading is anchored too - in sql, because a page filtered
+        // The record page's roster. Administering it reads all of it;
+        // recording on it reads the part that authority covers - a staff
+        // member recording on a person has to be able to name them, and the
+        // write still checks anchored reach. The authority is anchored, so
+        // the reading is anchored too - in sql, because a page filtered
         // afterwards has already read and counted everybody else's people.
-        const reach = yield* rosterReadingOf(tenantId, batchId, as)
+        const reach = yield* rosterReadingOf(tenantId, batchId, as, RECORD_ROSTER_CODES)
         return yield* dieQuery(
           withDb(
             listParticipantsPage(tenantId, batchId, {
@@ -5492,7 +5535,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
         if (!batch) return yield* new BatchNotFound()
         // the reach is part of the question, so the count and the page are
         // both of the people this reader may open and nobody else
-        const reach = yield* rosterReadingOf(tenantId, batchId, as)
+        const reach = yield* rosterReadingOf(tenantId, batchId, as, ACCOUNT_ROSTER_CODES)
         const filter = { ...query.filter, ...(reach === undefined ? {} : { reach }) }
         const total = yield* dieQuery(withDb(rosterAccountsTotal(tenantId, batchId, filter)))
         // Where one person stands is asked of the same filter - reach and
@@ -5564,16 +5607,20 @@ export const make = Effect.fn('Assessment.make')(function* () {
         const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
         if (!batch) return yield* new BatchNotFound()
         // the same ways in as the list it stands beside: administering the
-        // roster reads all of it; otherwise both the record page and the
-        // results page read what recording or re-determining covers (since
-        // recording opens accounts too, assessment-design §30 #12, the two
-        // readings are the same people). A finding recorded by unit reaches
-        // only whom recording covers (resolveRecordTargets), administrator
-        // or not, so that tree is read over recording alone.
+        // roster reads all of it; otherwise the results page reads whom its
+        // account readings cover and the record page whom recording covers.
+        // A finding recorded by unit reaches only whom recording covers
+        // (resolveRecordTargets), administrator or not, so that tree is read
+        // over recording alone.
         const reach =
           filter.reading === 'recordable'
             ? yield* recordingReachOf(tenantId, batchId, as)
-            : yield* rosterReadingOf(tenantId, batchId, as)
+            : yield* rosterReadingOf(
+                tenantId,
+                batchId,
+                as,
+                filter.reading === 'accounts' ? ACCOUNT_ROSTER_CODES : RECORD_ROSTER_CODES,
+              )
         const members = {
           ...(filter.status === undefined ? {} : { status: filter.status }),
           ...(reach === undefined ? {} : { reach }),
@@ -6914,8 +6961,9 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           principal,
         )
         // who reads everybody's totals on the results roster: its
-        // administrators, and whoever re-determines (ruling #33)
-        const readsAccounts = standing.manage || standing.redetermine
+        // administrators, whoever re-determines (ruling #33) and whoever
+        // views all claims (ruling of 2026-09-29)
+        const readsAccounts = standing.manage || standing.redetermine || standing.readAll
         const wanted = (event: AssessmentLiveEvent): boolean => {
           if (event.tenantId !== principal.tenantId || event.batchId !== params.batchId) {
             return false
@@ -7923,13 +7971,13 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
       Effect.fn('assessment.getParticipant.handler')(function* ({ params }) {
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
-        const participant = yield* assessment.getParticipant(
+        const found = yield* assessment.getParticipant(
           principal.tenantId,
           params.batchId,
           params.participantId,
           principal,
         )
-        return { participant: toParticipantDto(participant) }
+        return { participant: toParticipantDto(found.participant), claims: found.claims }
       }),
     )
     .handle(

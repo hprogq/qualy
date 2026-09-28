@@ -32,7 +32,14 @@ const batch = {
   descriptionMd: null,
   manageable: true,
   reviewReasons: { reject: [], escalate: [] },
-  capabilities: { personal: false, review: false, record: false, manage: true, redetermine: false },
+  capabilities: {
+    personal: false,
+    review: false,
+    record: false,
+    manage: true,
+    redetermine: false,
+    readAll: false,
+  },
   participantCount: 2,
   materialRange: { start: '2026-03-01', end: '2026-09-01' },
   timezone: 'Asia/Shanghai',
@@ -215,7 +222,10 @@ const screen = (
         listParticipantCandidates: () =>
           Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }),
         getParticipant: (request: Request) =>
-          Effect.succeed({ participant: participant({ id: request.params?.['participantId'] }) }),
+          Effect.succeed({
+            participant: participant({ id: request.params?.['participantId'] }),
+            claims: true,
+          }),
         getParticipantResult: () => Effect.succeed(account),
         // where the person stands, named for the heading over their account
         listRosterUnits: () =>
@@ -612,7 +622,7 @@ describe('the participant results screen', () => {
     const reader = {
       ...batch,
       manageable: false,
-      capabilities: { ...batch.capabilities, manage: false, redetermine: true },
+      capabilities: { ...batch.capabilities, manage: false, redetermine: true, readAll: false },
     }
     const redetermineEntry = vi.fn((_request: Request) =>
       Effect.succeed({
@@ -646,6 +656,33 @@ describe('the participant results screen', () => {
     await userEvent.fill(page.getByRole('textbox'), '证书与本人不符')
     await page.getByRole('dialog').getByRole('button', { name: '重新认定' }).click()
     await vi.waitFor(() => expect(redetermineEntry).toHaveBeenCalledTimes(1))
+  })
+
+  // Recording over somebody reads their account and none of their claims
+  // (ruling of 2026-09-29): the page offers the score half alone, an address
+  // naming the claims lands on it, and the claims are never asked for.
+  it('offers a reader who records the account alone, with no claims half', async () => {
+    const reader = {
+      ...batch,
+      manageable: false,
+      capabilities: { ...batch.capabilities, manage: false, record: true, readAll: false },
+    }
+    const listParticipantEntries = vi.fn(() => Effect.never as never)
+    await screen(
+      {
+        getBatch: () => Effect.succeed({ batch: reader }),
+        getParticipant: (request: Request) =>
+          Effect.succeed({
+            participant: participant({ id: request.params?.['participantId'] }),
+            claims: false,
+          }),
+        listParticipantEntries,
+      },
+      `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}`,
+    )
+    await expect.element(page.getByTestId('result-total')).toHaveTextContent('1.00')
+    expect(page.getByTestId('participant-tab-entries').elements()).toHaveLength(0)
+    expect(listParticipantEntries).not.toHaveBeenCalled()
   })
 
   // the hand-back is the server's to offer: an approved claim whose owner
@@ -902,7 +939,7 @@ describe('the participant results screen', () => {
   })
 
   it('asks nobody about an address that cannot name a person', async () => {
-    const getParticipant = vi.fn(() => Effect.succeed({ participant: participant() }))
+    const getParticipant = vi.fn(() => Effect.succeed({ participant: participant(), claims: true }))
     await screen(
       { getParticipant },
       `/assessment/batches/${BATCH_ID}/results?participant=not-a-person`,
@@ -924,6 +961,7 @@ describe('the participant results screen', () => {
             ? Effect.fail(apiError('SOMETHING_ELSE'))
             : Effect.succeed({
                 participant: participant({ id: request.params?.['participantId'] }),
+                claims: true,
               }),
         // the rest of the account failed with the person, and comes back with them
         listParticipantEntries: () =>
@@ -1028,7 +1066,7 @@ describe('one account beside its person', () => {
               unreachable: { routes: [], cannotSubmit: 0, cannotAppeal: 0 },
             }),
           getParticipant: () =>
-            Effect.succeed({ participant: participant({ anchorLineage: lineage }) }),
+            Effect.succeed({ participant: participant({ anchorLineage: lineage }), claims: true }),
           getParticipantResult: () => Effect.succeed(account),
           listRosterUnits: () =>
             Effect.succeed({
@@ -1432,6 +1470,7 @@ describe('the list beside an open account', () => {
             Effect.succeed({
               participant:
                 PEOPLE.find((one) => one.id === request.params?.['participantId']) ?? PEOPLE[0],
+              claims: true,
             }),
           getParticipantResult: () => Effect.succeed(account),
           listRosterUnits: () => Effect.succeed({ units: [] }),

@@ -10,6 +10,12 @@ export interface CitingEntryRow {
   entryId: string
   batchId: string
   subjectUserId: string
+  /**
+   * Cited by a version that was handed in: the last one or an earlier one.
+   * A file only the owner's working version cites is still on their desk
+   * (ruling of 2026-09-29), and reads to nobody else until it is sent.
+   */
+  handedIn: boolean
 }
 
 export const citingEntries = (tenantId: string, attachmentId: string) =>
@@ -26,7 +32,14 @@ export const citingEntries = (tenantId: string, attachmentId: string) =>
         .innerJoin('BatchParticipant as bp', (join) =>
           join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
         )
+        .leftJoin('EntryRevision as handed', (join) =>
+          join
+            .onRef('handed.tenantId', '=', 'e.tenantId')
+            .onRef('handed.id', '=', 'e.lastSubmittedRevisionId'),
+        )
         .select(['e.id as entryId', 'e.batchId', 'bp.userId as subjectUserId'])
+        // null where nothing was ever handed in, which reads as false below
+        .select((eb) => eb('er.revisionNo', '<=', eb.ref('handed.revisionNo')).as('handedIn'))
         .distinct()
         .where('era.tenantId', '=', tenantId)
         .where('era.attachmentId', '=', attachmentId)
@@ -38,6 +51,7 @@ export const citingEntries = (tenantId: string, attachmentId: string) =>
           entryId: row.entryId,
           batchId: row.batchId,
           subjectUserId: row.subjectUserId,
+          handedIn: row.handedIn === true,
         })),
       ),
     )
@@ -87,6 +101,8 @@ export const supplementCitingEntries = (tenantId: string, attachmentId: string) 
           entryId: row.entryId,
           batchId: row.batchId,
           subjectUserId: row.subjectUserId,
+          // an answer is given on a round, to a claim already handed in
+          handedIn: true,
         })),
       ),
     )

@@ -33,6 +33,7 @@ const batch = (capabilities: Record<string, boolean> = {}) => ({
     record: false,
     manage: true,
     redetermine: false,
+    readAll: false,
     ...capabilities,
   },
   participantCount: 2,
@@ -249,7 +250,7 @@ const screen = ({
             groups: [],
             unreachable: { routes: [], cannotSubmit: 0, cannotAppeal: 0 },
           }),
-        getParticipant: () => Effect.succeed({ participant: who }),
+        getParticipant: () => Effect.succeed({ participant: who, claims: true }),
         getParticipantResult: () => Effect.succeed(account()),
         // the list the page was opened from; nobody on it unless a case says
         listParticipantAccounts: () =>

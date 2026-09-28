@@ -13,6 +13,7 @@ export type StaffCode = (typeof BATCH_STAFF_CODES)[number]
 
 const LABELS = {
   'assessment.entry.record': m['permission.assessment.entry.record'],
+  'assessment.entry.read-all': m['permission.assessment.entry.read-all'],
   'assessment.entry.redetermine': m['permission.assessment.entry.redetermine'],
   'assessment.review.process': m['permission.assessment.review.process'],
   'assessment.review.reopen': m['permission.assessment.review.reopen'],
@@ -22,6 +23,7 @@ const LABELS = {
 
 const HINTS = {
   'assessment.entry.record': m['permission-hint.assessment.entry.record'],
+  'assessment.entry.read-all': m['permission-hint.assessment.entry.read-all'],
   'assessment.entry.redetermine': m['permission-hint.assessment.entry.redetermine'],
   'assessment.review.process': m['permission-hint.assessment.review.process'],
   'assessment.review.reopen': m['permission-hint.assessment.review.reopen'],
@@ -29,9 +31,10 @@ const HINTS = {
   'assessment.ranking.view': m['permission-hint.assessment.ranking.view'],
 } as const satisfies Record<StaffCode, MessageDescriptor>
 
-// the same six, short enough to head a column of their own
+// the same seven, short enough to head a column of their own
 const SHORT = {
   'assessment.entry.record': m['permission-short.assessment.entry.record'],
+  'assessment.entry.read-all': m['permission-short.assessment.entry.read-all'],
   'assessment.entry.redetermine': m['permission-short.assessment.entry.redetermine'],
   'assessment.review.process': m['permission-short.assessment.review.process'],
   'assessment.review.reopen': m['permission-short.assessment.review.reopen'],

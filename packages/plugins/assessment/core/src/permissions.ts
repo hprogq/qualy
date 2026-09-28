@@ -58,6 +58,23 @@ export const permissions = [
     target: 'org-node',
   },
   {
+    // Looking over a participant with no task in hand (ruling of
+    // 2026-09-29): their whole account and every claim they have submitted,
+    // within the reach the batch accepted - what a counsellor needs without
+    // the power to change a result. Re-determining carries this reading too;
+    // judging, re-examining and recording read only what their own task
+    // puts in front of them.
+    code: 'assessment.entry.read-all',
+    name: message('assessment/permission/entry-read-all', 'View all claims'),
+    description: message(
+      'assessment/permission-hint/entry-read-all',
+      'See every claim a participant has submitted and their whole account; nothing can be changed with this alone.',
+    ),
+    groupKey: 'assessment',
+    group: message('assessment/permission-group/assessment', 'Assessment'),
+    target: 'org-node',
+  },
+  {
     code: 'assessment.review.process',
     name: message('assessment/permission/review-process', 'Review submissions'),
     groupKey: 'assessment',
@@ -166,6 +183,8 @@ export const REVIEW_ACTION_CODES = [
 
 export const BATCH_STAFF_CODES = [
   'assessment.entry.record',
+  // not phase gated either: reading is not a window the calendar opens
+  'assessment.entry.read-all',
   // not phase gated: correcting a conclusion is not a window the calendar
   // opens, and the batch's acceptance is what bounds it
   'assessment.entry.redetermine',
