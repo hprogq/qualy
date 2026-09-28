@@ -20658,3 +20658,22 @@ W12 审查意见收尾（十一组，分组见仓库外 `audit-2026-09-25/wave13
 
 - D2：在 `/opt/qualy` 写生产 `.env`（从本 release 的 `deploy/.env.example`，`QUALY_BACKUP_ROOT` 第一天就设）与 `collector.env`；Caddy 站点与上游片段（维护页读 `/opt/qualy/current/deploy/demo`）。
 - 之后 D3（预发上一次升级与回滚）、D4（生产：开版本控制 → 迁移 → 导入基线 → 轮换密码 → 启动，首次手工部署的最后一步把 `current` 指向服务中的 release）。备份桶与只写账号由用户在第一次真实升级前建好。
+
+## D2：生产设置、Caddy 站点、异地备份（2026-09-28）
+
+- 仓库：
+  - 发布时上传 sourcemap（`e67784589`、`88dbc8939`、`1c7feedc8`）：上传器的三项设置改名为 `QUALY_RUM_TENCENT_SOURCEMAP_*`（原 `TENCENTCLOUD_SECRET_ID/KEY` 是 tccli 与部分腾讯云 SDK 默认凭据链读的名字，`QUALY_TENCENT_RUM_PROJECT_ID` 颠倒了命名顺序）；`build-images.ts --export-web` 经只含文件的 `web-dist` 阶段（`FROM scratch`，门禁放行 scratch）导出带 map 的 `dist`，核对 web release id 与 server 镜像相同；`release.yml` 的 `sourcemaps` job 在 `rum-sourcemaps` 环境（只允许 `v*` tag，凭据只给上传那一步）里核对后执行 `qualy rum sourcemaps`，排在发布之后。第一次用整个 web 阶段打镜像导出，撑满了本机 Docker 虚拟机的磁盘（`no space left on device`），改为 `--output type=local` 只导出文件；本机导出 189 个 map、42 MB，web 阶段各层全部命中缓存。
+  - `backup.sh` 的备份根目录、`QUALY_BACKUP_KEEP`、`QUALY_BACKUP_OFFSITE` 改为先环境变量、再 `.env`（`62927edb7`）：此前只读进程环境，`.env` 里的异地命令在升级前的那次备份里从不执行。先实测 compose 对含 `"$1"` 的 env 值原样传递。冒烟在 env 文件里设一条复制到工作目录的异地命令并断言副本存在（CI run 36409124817：`backup: copied off the machine by the command the env file names`）。
+  - `.env.example` 说明：Caddyfile 运行时从环境文件读密钥（DNS 验证令牌）时，`QUALY_PROXY_VALIDATE` 要带 `--envfile`（`0966d8d8e`）。
+- 服务器：
+  - `/opt/qualy/.env`（root 600）由服务器上的脚本从 `v0.1.0-rc.1` 的模板生成：`POSTGRES_PASSWORD`、`DATABASE_URL`、`QUALY_SECRETS_MASTER_KEY` 在服务器上随机生成、未经本机；非秘密值（公开地址、COS 桶与地域、默认后端 cos、RUM on/production、CSP enforce、`QUALY_PROXY_VALIDATE` 带 `--envfile /etc/caddy/cloudflare.env`）由脚本写入；生产 COS 凭据、RUM 上报 ID、发件人、Resend key 由用户填写。核对：无空值、无重复键、无引号与多余空格，COS SecretId 以 `AKID` 开头、Resend key 以 `re_` 开头；RUM 上报 ID 与开发配置同一项目（与 SourceMap ProjectID 159421 对应）；Resend key 是仅发送的受限 key（`restricted_api_key`），发件域名 `qualy.hprogq.com` 的验证由用户在控制台确认。
+  - 实测：不带环境文件时 `caddy validate` 在加载 Cloudflare DNS 模块处失败，带 `--envfile` 通过——不写进 `.env` 的话第一次零空窗升级会在边缘处被拒并回退。
+  - Caddy：备份原 Caddyfile 后追加 `qualy.hprogq.com` 站点（HSTS、`import /etc/caddy/qualy/upstream.caddy`、维护页读 `/opt/qualy/current/deploy/demo`），片段初始为维护状态；校验通过后 reload，tuimian 前后均 302。证书申请先失败：Cloudflare 令牌设了客户端 IP 过滤，服务器经 IPv6 访问被拒（`HTTP 403 Code 9109`），这也会让 rec 与 api.algryth 续期失败；用户在 Cloudflare 放行后自动签发（Let's Encrypt 正式环境 YE1，12 月 27 日到期），站点现答 503（维护状态，`current` 首次部署前不存在）并带 HSTS。
+  - 异地备份：`/var/backups/qualy`（root 700）；`coscli` v1.0.9 按官方 `sha256sum.log` 在本机与服务器两次核对后安装到 `/usr/local/bin`；配置 `/etc/qualy/coscli.yaml`（root 600，用户交互输入只写账号 `qualy-prod-backup` 的密钥，加密保存；关闭自动切换备用域名与自动获取桶类型——后者要读桶权限）；`.env` 的 `QUALY_BACKUP_OFFSITE` 为 `coscli … cp -r "$1" cos://qualy-prod-backups-1301296774/qualy/"$(basename "$1")"/`。COS 地址在服务器上解析到内网 169.254.0.49。实测：一个小文件加 40 MB 随机文件经该命令上传成功（33.78 MB/s，1.2 秒，分块上传只用 PutObject 与三项分块权限）；同一密钥列目录、下载、删除、查询文件信息全部 403，本地无文件落下。
+  - 备份桶 `qualy-prod-backups`（北京，私有，开版本控制，SSE-COS）与生命周期规则 `expire-backups-30d`（前缀 `qualy/`，当前版本 30 天、历史版本 30 天、碎片 3 天）由用户建好。
+- 取舍：不把 COS 挂载成本地磁盘做异地备份——FUSE 挂载需要列出与读取（放备份根目录还要删除）权限，服务器失守即可读、可删全部备份；挂载掉线后写入落回本机目录而不报错。`coscli cp` 失败则整次备份失败。
+
+### 下一步
+
+- 用户：`collector.env`（APM 保留现业务系统与 token——只能上报、不能读取；CLS 为生产新建一对密钥，只放服务器，D4 在 CLS 看到生产日志后删除旧的那对）；控制台确认异地测试目录的路径结构；Resend 确认发件域名已验证。
+- 之后在 `.env` 加 `QUALY_INSTANCE_ID` 与 OTEL 两项，校验 collector 配置；D3 预发演练、D4 首次部署（生产桶开版本控制 → 迁移 → 导入基线 → 轮换密码 → 启动 → `current` 指向服务中的 release → 备份进 crontab）。
