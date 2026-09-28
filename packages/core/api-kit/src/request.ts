@@ -1,8 +1,9 @@
-import { Context, Effect, Layer, Metric, Option, Tracer } from 'effect'
+import { Cause, Clock, Context, Effect, Exit, Layer, Metric, Option, Tracer } from 'effect'
 import {
   HttpMiddleware,
   HttpServerError,
   HttpServerRequest,
+  HttpServerResponse,
   HttpTraceContext,
 } from 'effect/unstable/http'
 import { randomUUID } from 'node:crypto'
@@ -392,30 +393,67 @@ export const serverSpans = (options?: {
     Effect.withFiber((fiber) => {
       const request = Context.getUnsafe(fiber.context, HttpServerRequest.HttpServerRequest)
       const parent = Option.getOrUndefined(HttpTraceContext.fromHeaders(request.headers))
-      return Effect.useSpan(
-        `http.server ${request.method}`,
-        {
+      return Effect.flatMap(
+        Effect.makeSpan(`http.server ${request.method}`, {
           kind: 'server',
           ...(parent === undefined ? {} : { parent }),
           attributes: {
             'http.request.method': request.method,
             'url.scheme': schemeOf(request, trusted),
           },
-        },
+        }),
         (span) =>
           Effect.withParentSpan(httpApp, span).pipe(
             Effect.tap((response) =>
               Effect.sync(() => span.attribute('http.response.status_code', response.status)),
             ),
-            Effect.onExit(() =>
-              Effect.sync(() => {
-                const route = span.attributes.get('http.route')
-                span.attribute('url.path', typeof route === 'string' ? route : pathOf(request.url))
-              }),
+            Effect.onExit((exit) =>
+              Effect.flatMap(Clock.currentTimeNanos, (now) =>
+                Effect.sync(() => {
+                  const route = span.attributes.get('http.route')
+                  span.attribute(
+                    'url.path',
+                    typeof route === 'string' ? route : pathOf(request.url),
+                  )
+                  if (span.status._tag === 'Ended') return
+                  span.end(now, spanExitOf(exit, span))
+                }),
+              ),
             ),
           ),
       )
     })
+}
+
+/**
+ * The exit a server span ends with, which is not always the request's own.
+ *
+ * A response that was already on its way comes back inside a failed exit
+ * when the client hangs up while it is being written - an event stream's
+ * every ending, when somebody leaves the page - and the upstream server
+ * wants that exit as it is. The span wants the answer the client was given:
+ * with the response taken out of the cause, nothing left means the request
+ * went as it should, and it ends as that response. This is what the
+ * platform's own tracer does, which this one replaced; without it every
+ * event stream reached the trace backend as an error whose message was its
+ * own 200.
+ */
+const spanExitOf = <A, E>(
+  exit: Exit.Exit<A, E>,
+  span: { attribute(key: string, value: unknown): void },
+): Exit.Exit<unknown, unknown> => {
+  if (Exit.isSuccess(exit)) return exit
+  const carried = exit.cause.reasons.some(
+    (reason) => reason._tag === 'Die' && HttpServerResponse.isHttpServerResponse(reason.defect),
+  )
+  const [response, rest] = HttpServerError.causeResponseStripped(exit.cause)
+  // no response came back: a client gone before one was written is a 499,
+  // not the 500 a failure would be, or the trace backend counts it as ours
+  span.attribute(
+    'http.response.status_code',
+    carried ? response.status : Cause.hasInterruptsOnly(exit.cause) ? 499 : 500,
+  )
+  return Option.isSome(rest) ? Exit.failCause(rest.value) : Exit.succeed(response)
 }
 
 /** the path alone: no query, no fragment, whatever form the url came in */

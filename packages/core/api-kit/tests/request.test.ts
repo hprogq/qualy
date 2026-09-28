@@ -1,5 +1,5 @@
 import { NodeHttpClient, NodeHttpServer } from '@effect/platform-node'
-import { Effect, Exit, Layer, Logger, Metric, Option, Scope } from 'effect'
+import { Effect, Exit, Layer, Logger, Metric, Option, Schedule, Scope, Stream } from 'effect'
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
 import { OtlpSerialization, OtlpTracer } from 'effect/unstable/observability'
 import { createServer, type Server } from 'node:http'
@@ -99,7 +99,9 @@ const receiverPort = 3209
 interface ExportedSpan {
   name: string
   traceId: string
-  attributes: { key: string; value: { stringValue?: string } }[]
+  attributes: { key: string; value: { stringValue?: string; intValue?: string | number } }[]
+  /** OTLP's status: 1 is ok, 2 is error */
+  status?: { code?: number; message?: string }
 }
 
 const exported: ExportedSpan[] = []
@@ -135,6 +137,20 @@ beforeAll(async () => {
   const routes = Layer.mergeAll(
     HttpRouter.add('GET', '/context', echo),
     HttpRouter.add('GET', '/things/:thingId', echo),
+    // an event stream that never ends by itself: it ends when its reader goes
+    HttpRouter.add(
+      'GET',
+      '/events',
+      Effect.succeed(
+        HttpServerResponse.stream(
+          Stream.fromSchedule(Schedule.spaced('20 millis')).pipe(
+            Stream.map((tick) => new TextEncoder().encode(`data: ${String(tick)}\n\n`)),
+          ),
+          { contentType: 'text/event-stream' },
+        ),
+      ),
+    ),
+    HttpRouter.add('GET', '/defect', Effect.die(new Error('a defect in the handler'))),
     HttpRouter.add(
       'GET',
       '/bound',
@@ -320,6 +336,39 @@ describe('the span a request exports', () => {
     const path = span.attributes.find((attribute) => attribute.key === 'url.path')
     expect(path?.value.stringValue).toBe('/things/:thingId')
     expect(JSON.stringify(span)).not.toContain(ticket)
+  })
+
+  it('ends an event stream the reader left as the answer it was given, not as an error', async () => {
+    // Leaving a page closes its event stream mid-write, and the platform
+    // hands back a failed exit carrying the 200 it had been sending. Every
+    // one of those reached the trace backend as an error whose message was
+    // that response.
+    const inbound = '1234123412341234abcdabcdabcdabcd'
+    const leaving = new AbortController()
+    const response = await fetch(`${base}/events`, {
+      headers: { traceparent: `00-${inbound}-00f067aa0ba902b7-01` },
+      signal: leaving.signal,
+    })
+    const reader = response.body!.getReader()
+    await reader.read()
+    leaving.abort()
+    await reader.read().catch(() => undefined)
+    const span = await exportedSpan((candidate) => candidate.traceId === inbound)
+    expect(span.status?.code).not.toBe(2)
+    const status = span.attributes.find(
+      (attribute) => attribute.key === 'http.response.status_code',
+    )
+    expect(Number(status?.value.intValue)).toBe(200)
+  })
+
+  it('still ends a request that failed on its own as an error', async () => {
+    const inbound = '5678567856785678abcdabcdabcdabcd'
+    await fetch(`${base}/defect`, {
+      headers: { traceparent: `00-${inbound}-00f067aa0ba902b7-01` },
+    })
+    const span = await exportedSpan((candidate) => candidate.traceId === inbound)
+    expect(span.status?.code).toBe(2)
+    expect(span.status?.message).toContain('a defect in the handler')
   })
 
   it('keeps the method-only name when no route matched', async () => {
