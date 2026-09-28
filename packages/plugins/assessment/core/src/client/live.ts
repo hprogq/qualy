@@ -72,6 +72,13 @@ export function useBatchLive(batchId: string, onWake: (wake: BatchWake) => void)
         maxWait: LIVE_MAX_WAIT,
         fire: (gathered) => {
           const pending = new Map<string, QueryKey>()
+          // an edited diary is this hook's own concern before any screen's:
+          // the alarm below is set from the timetable, and so is every
+          // screen that shows it
+          if (gathered.includes('plan-changed')) {
+            const timetable = query.assessment.getTimeline.key({ params: { batchId } })
+            pending.set(hashKey(timetable), timetable)
+          }
           try {
             handler.current({
               kinds: new Set(gathered),
@@ -86,7 +93,7 @@ export function useBatchLive(batchId: string, onWake: (wake: BatchWake) => void)
           }
         },
       }),
-    [queryClient],
+    [queryClient, query.assessment.getTimeline, batchId],
   )
   useEffect(() => () => burst.cancel(), [burst])
 

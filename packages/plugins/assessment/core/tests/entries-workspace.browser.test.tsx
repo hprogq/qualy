@@ -2690,3 +2690,35 @@ describe('the page’s own words', () => {
     expect(document.body.textContent).not.toContain('·')
   })
 })
+
+describe('an edited diary', () => {
+  // A stage moved or reworded, with nothing in effect changed: what shows the
+  // timetable, and the alarm set from it, read it again. No screen has to ask.
+  it('reads the timetable again when the plan is edited', async () => {
+    await page.viewport(1440, 900)
+    const timeline = vi.fn(() => Effect.succeed({ timeline: [] }))
+    let release = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await workspace({
+      route: base,
+      stubs: {
+        getTimeline: timeline,
+        watchBatch: () =>
+          Effect.succeed(
+            Stream.concat(
+              Stream.fromEffect(
+                Effect.promise(() => gate).pipe(Effect.as({ kind: 'plan-changed' as const })),
+              ),
+              Stream.never,
+            ),
+          ),
+      },
+    })
+    await vi.waitFor(() => expect(timeline).toHaveBeenCalled())
+    const before = timeline.mock.calls.length
+    release()
+    await vi.waitFor(() => expect(timeline.mock.calls.length).toBeGreaterThan(before))
+  })
+})

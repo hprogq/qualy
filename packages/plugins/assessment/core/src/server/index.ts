@@ -5027,7 +5027,32 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 null,
               )
             }
-            yield* announce(tenantId, batchId, [{ kind: 'plan-changed' }])
+            // What a stage opens - its permissions, and to which questions
+            // and people - is what every screen reads to say what somebody
+            // may do now and what they will be able to do later. Changing it
+            // moves that answer for everyone in the round, which is the
+            // wake-up that re-reads everything, not only the timetable's: a
+            // participant's filing key stayed shut after the stage in hand
+            // was opened to filing, until the page was reloaded.
+            const openingsChanged =
+              insertedKeys.length > 0 ||
+              rows.some((row) => !kept.has(row.id)) ||
+              specs.some((spec) => {
+                if (spec.id === undefined) return false
+                const existing = existingById.get(spec.id)!
+                const over = specOver(spec, existing)
+                return (
+                  JSON.stringify(over.permissionProfile) !==
+                    JSON.stringify(existing.permissionProfile) ||
+                  JSON.stringify(over.itemScope) !== JSON.stringify(existing.itemScope) ||
+                  JSON.stringify(over.participantScope) !==
+                    JSON.stringify(existing.participantScope)
+                )
+              })
+            yield* announce(tenantId, batchId, [
+              { kind: 'plan-changed' },
+              ...(openingsChanged ? [{ kind: 'phase-changed' as const }] : []),
+            ])
             const phases = yield* readPlan(tenantId, batchId)
             return { phases, warnings }
           }),

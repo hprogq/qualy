@@ -689,6 +689,117 @@ describe.runIf(postgresAvailable)('the alarm the phase loop aims by', () => {
   })
 })
 
+// What a running round's plan edit wakes. A stage's openings - what it lets
+// people do, on which questions, for whom - are what every screen reads to
+// say what somebody may do now and later; an edit to them is the wake-up
+// that re-reads everything. A rename is only the timetable's.
+describe.runIf(postgresAvailable)('an edit to a running plan, on the live channel', () => {
+  let db: Awaited<ReturnType<typeof createTestContext>>
+
+  beforeAll(async () => {
+    db = await createTestContext('assessment-plan-live')
+  })
+
+  afterAll(async () => {
+    await db?.dispose()
+  })
+
+  it('announces a change to what a stage opens as a phase change, and a rename as a diary edit only', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse('2026-09-01T00:00:00Z'))
+        const assessment = yield* Assessment
+        const notifications = yield* DatabaseNotifications
+        const heard: string[] = []
+        yield* Effect.forkChild(
+          Stream.runForEach(notifications.listen(ASSESSMENT_LIVE_CHANNEL), (payload) =>
+            Effect.sync(() => {
+              heard.push(payload)
+            }),
+          ),
+        )
+        // Notifications reach a listener in commit order, so once a probe
+        // sent after a write is heard, everything that write announced has
+        // been heard before it: each probe closes one write's share.
+        const probe = (mark: string) =>
+          untilWritten(
+            Effect.gen(function* () {
+              yield* runSql(sql`select pg_notify(${ASSESSMENT_LIVE_CHANNEL}, ${mark})`)
+              return heard.includes(mark)
+            }),
+            (arrived) => arrived,
+          )
+        yield* probe('standing')
+
+        const f = yield* seed('opening-announce')
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'opened mid-round',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.node], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          { specs: [phase({ phaseKey: 'entry' }), phase({ phaseKey: 'archive' })] },
+          f.principal,
+        )
+        const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        yield* assessment.advancePhase(f.tenant, batch.id, { to: plan[0]!.id }, f.principal)
+        yield* probe('running')
+
+        const named = (row: (typeof plan)[number]) => ({
+          id: row.id,
+          phaseKey: row.phaseKey,
+          displayName: row.displayName,
+        })
+        // renamed: the timetable changed, nothing anybody may do did
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          { specs: [named(plan[0]!), { ...named(plan[1]!), displayName: 'Archive' }] },
+          f.principal,
+        )
+        yield* probe('renamed')
+        // the stage in hand opened to filing, which is the case that left a
+        // participant's filing key shut until the page was reloaded
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          {
+            specs: [
+              { ...named(plan[0]!), permissionProfile: ['assessment.entry.create'] },
+              { ...named(plan[1]!), displayName: 'Archive' },
+            ],
+          },
+          f.principal,
+        )
+        yield* probe('opened')
+
+        const kindsBetween = (from: string, to: string) =>
+          heard
+            .slice(heard.indexOf(from) + 1, heard.indexOf(to))
+            // a probe is sent again until it is heard, so repeats sit here too
+            .filter((payload) => payload.startsWith('{'))
+            .map((payload) => JSON.parse(payload) as { kind: string; batchId: string })
+            .filter((event) => event.batchId === batch.id)
+            .map((event) => event.kind)
+        return {
+          renamed: kindsBetween('running', 'renamed'),
+          opened: kindsBetween('renamed', 'opened'),
+        }
+      }),
+    )
+    const { renamed, opened } = ok(exit)
+    expect(renamed).toEqual(['plan-changed'])
+    expect(opened).toEqual(['plan-changed', 'phase-changed'])
+  })
+})
+
 // The pause on its own: the one decision the phase loop makes.
 describe('the phase pause', () => {
   const at = (value: Duration.Duration) => Duration.toMillis(value)
