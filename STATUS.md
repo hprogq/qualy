@@ -20677,3 +20677,16 @@ W12 审查意见收尾（十一组，分组见仓库外 `audit-2026-09-25/wave13
 
 - 用户：`collector.env`（APM 保留现业务系统与 token——只能上报、不能读取；CLS 为生产新建一对密钥，只放服务器，D4 在 CLS 看到生产日志后删除旧的那对）；控制台确认异地测试目录的路径结构；Resend 确认发件域名已验证。
 - 之后在 `.env` 加 `QUALY_INSTANCE_ID` 与 OTEL 两项，校验 collector 配置；D3 预发演练、D4 首次部署（生产桶开版本控制 → 迁移 → 导入基线 → 轮换密码 → 启动 → `current` 指向服务中的 release → 备份进 crontab）。
+
+## 上线：首次部署与第一次经 Actions 的升级（2026-09-28）
+
+- 仓库（本节期间）：
+  - collector 改走 APM 内网 4320 的 gRPC over TLS（`d642fcf76`）：4319 是同一地址的明文，token 随每次上报发送；从服务器实测 4320 协商出 h2、证书的备用名称含 `pl.ap-beijing.apm.tencentcs.com`。用真实 `collector.env` 起临时 collector 送一条追踪与一条日志，APM（实例 `qualy-prod-1`、`deployment.environment=production`）与 CLS 均收到。
+  - sourcemap 上传（`7d28a6666`、`832c08142`）：`DescribeReleaseFileSign` 被平台改为按项目前缀签发，rc.2 的 `sourcemaps` job 失败（发布本身照常，这正是它排在发布之后的原因）。改为按名字调用 `DescribeFileCertificate`（npm 上 RUM 单包停在 4.1.281、完整 SDK 4.1.319 都还没有这个方法），桶与地域从返回的 `BucketAddress` 读；该接口默认签发 10 秒的密钥，上传中途过期时 COS 报「Access Key Id does not exist」，现显式要 3600 秒并拒绝不足 5 分钟的。上传子账号加 `rum:DescribeFileCertificate`。rc.2 的 189 个 map 从该次发布的 artifact 补传成功，重跑认出全部已登记。
+  - 模块执行失败可见（`4555c10b6`）：一位访客的 Firefox 登录后整页「页面加载失败」（`data-release-recovery="asset-load-failed"`），HAR 里所有请求都是 200——是某个模块下载后执行时抛错；Vite 把这种情况也发成 preload error，协调器取消该事件显示恢复页，错误从未进控制台，组合根又因「资源失败已被上报」跳过它。现把事件的 payload 打到控制台并交给 `captureException`。同一访客换干净浏览器正常；根因待 rc.3 上线后在原浏览器里读控制台。
+  - 仓库安全：private vulnerability reporting 与 CodeQL default setup 打开（secret scanning 与 push protection 原已开）；`SECURITY.md`（`87060b9c5`）。全部 git 历史经 gitleaks 扫描：10 条均为测试与开发常量，无真实凭据。两份公开审计逐条对照当前代码复核：涉及安全的全部已修，文首补现状（`5bf727a3a`）；仓库保持公开（理由与转私有的触发条件见会话记录：转私有在个人 Pro 上会失去部署审批、secret scanning 与 CodeQL）。CNB 镜像仓库改为私有：匿名拉取 `pull access denied`，launcher 用只读凭据按 digest 拉 rc.2 成功（30s）。
+- 服务器：
+  - 生产桶：版本控制在首次启动前开启；CORS（来源 `https://qualy.hprogq.com`，PUT/GET/HEAD，Allow-Headers `*`，暴露 ETag / Content-Length / x-cos-request-id，Vary: Origin）；SSE-COS。不开防盗链、公开读、历史版本清理规则、复制、日志存储、MetaInsight。
+  - 首次部署（唯一的手工步骤）：`.env` 记 `QUALY_RELEASE=v0.1.0-rc.1`；collector 从 rc.2 的目录启动（rc.1 带的是明文 4319 的配置）；以 root 执行 rc.1 自带的 `demo/restore.sh`：导入验收过的基线（dump `809c5acb…`、附件 `82e94f86…`，服务器上 sha256 复核）、补跑 1 条迁移、装入 web release、五个账号换成服务器上生成的 24 位密码、起 blue、Caddy 带 `--envfile` 校验并 reload、公网核对通过；`current` 指向 rc.1。外部：`/__qualy/release` 为 rc.1 的 web release，`/health/ready` 与首页 200，tuimian 仍 302；内存：server 235 MB / 768 MB、两沙箱约 210 MB、库 156 MB，主机余 2.3 GB。
+  - 生产账号缺 `GetBucketObjectVersions`（前缀条件须写 `attachments%2F*`），版本对账报 Access Denied 后按轮重试；待用户补策略。
+  - 第一次经 Actions 的升级（run 36420221527，审批后）：launcher 核对 digest、取出 rc.2 的脚本 → 预检（内存 2350 MB、磁盘 30.9 GB）→ 备份（本地 18 MB，异地经内网 4 个文件 17.9 MB、29 MB/s）→ green 以 rc.2 就绪 → Caddy 切换、公网核对 → blue 排空后停下。公网为 rc.2 的 web release，`current` 指向 rc.2。
