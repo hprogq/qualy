@@ -7,6 +7,7 @@ import { BROWSER_SURFACE_MAP } from './release-vite.ts'
 import { workerDependencyScan } from './dependency-scan.ts'
 import { buildPluginModuleSource, buildPluginScanSource, buildSurfaceMapSource } from './collect.ts'
 
+export { qualyChunkGraph } from './chunk-graph.ts'
 export {
   BROWSER_SURFACE_MAP,
   BUILD_REVISION_VARIABLE,

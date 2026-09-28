@@ -5,7 +5,7 @@ import * as stylexUnpluginModule from '@stylexjs/unplugin/vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
-import { qualyBootFrame, qualyPlugins, qualyRelease } from '@qualy/web-build/vite'
+import { qualyBootFrame, qualyChunkGraph, qualyPlugins, qualyRelease } from '@qualy/web-build/vite'
 import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
 
 const stylexUnplugin =
@@ -61,6 +61,12 @@ export default defineConfig(({ mode }) => ({
       lightningcssOptions: { minify: mode === 'production' },
     }),
     react(),
+    // A build whose chunks import one another, or whose first screen grew
+    // past this, fails here rather than in a visitor's browser. The first
+    // screen weighed 1.4 MiB before compression when this was set; 2 MiB
+    // leaves room to grow and none for a library a page should load itself
+    // (the formula editor's alone is 2.7 MiB).
+    qualyChunkGraph({ root: repoRoot, bootBudget: 2 * 1024 * 1024 }),
   ],
   resolve: {
     // one react instance for the host and every plugin chunk
@@ -80,8 +86,9 @@ export default defineConfig(({ mode }) => ({
         //
         // Splitting is not free the way it looks in a `dist` listing. On the
         // link a phone actually has, a request costs a round trip whatever it
-        // carries, and only six are in flight at once - so a chunk under a
-        // kilobyte is almost entirely latency. Opening the batch list asked
+        // carries, and over HTTP/1.1 only six are in flight at once - so a
+        // chunk under a kilobyte is almost entirely latency. Opening the
+        // batch list asked
         // for 61 files; 22 of them were under 2 KB and held 13 KB between
         // them.
         codeSplitting: {
@@ -119,21 +126,34 @@ export default defineConfig(({ mode }) => ({
             // one-line wrapper, `cn`. Reached by two page chunks, each became
             // a chunk. `entriesAware` keeps the pooling honest - modules are
             // grouped by WHICH entries reach them, so a page still does not
-            // download another page's code - and the threshold folds pools
-            // too small to be worth a request into the nearest neighbour.
+            // download another page's code.
             //
             // The kilobyte ceiling is what keeps this from becoming a vendor
             // chunk. Raise it and larger shared modules pool with the boot
             // graph, which buys the saved requests with first paint: measured
-            // at 4 KB the boot wave costs 600 ms more. At 1 KB the boot wave
-            // gets slightly smaller and the page needs 32 files instead of
-            // 61, for four kilobytes more on the wire.
+            // at 4 KB the boot wave costs 600 ms more.
+            //
+            // Pools are NOT merged into a neighbour, however small. Merging
+            // (it was 48 KB) is what produced both failures of v0.1.0-rc.2 and
+            // rc.3: two sets of chunks that imported one another, one of which
+            // broke every page after sign-in for a browser that fetched them
+            // in the other order, and the shell's one-kilobyte modules folded
+            // into the formula editor's chunk, so every first screen carried
+            // the editor's 2.7 MB. It moves with the code, too - measured on
+            // one tree, 4 KB and 8 KB each left a ring and 8 KB brought the
+            // editor back. Unmerged, the first screen is 394 KB compressed
+            // instead of 1124, for 25 files instead of 16, and a page asks
+            // for a median of 28 more instead of 9: requests that HTTP/2
+            // sends side by side on one connection, which is how production
+            // is served. qualyChunkGraph below fails the build on either
+            // failure, so trading requests back for bytes is a measurement
+            // and a green build, not a guess.
             {
               name: 'shared',
               minShareCount: 2,
               maxModuleSize: 1024,
               entriesAware: true,
-              entriesAwareMergeThreshold: 48 * 1024,
+              entriesAwareMergeThreshold: 0,
             },
           ],
         },
