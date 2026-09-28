@@ -1650,6 +1650,13 @@ Aegis reporting id
 
 Uploader 通过腾讯 Cloud API permanent credential 换取短时 SourceMap COS credential。
 
+> **接口更换（2026-09-28）**:`DescribeReleaseFileSign` 已被平台改为按项目前缀签发、且要求项目 ID;新接口
+> `DescribeFileCertificate({ ID })` 返回临时密钥与 `BucketAddress`(`region:bucket`),凭据只覆盖以 `<项目ID>-` 开头的对象键
+> (cloud.tencent.com/document/product/248/97909)。截至当日 npm 上 `tencentcloud-sdk-nodejs-rum` 停在 4.1.281、完整 SDK 4.1.319
+> 都还没有这个方法,uploader 经 SDK 客户端的通用 `request` 按名字调用,并逐项核对返回字段;桶与地域从返回值读,不再写死
+> `rumprod-1258344699`。上传子账号的 CAM 策略需要 `rum:DescribeFileCertificate`(v0.1.0-rc.2 的 `sourcemaps` job 因接口更换失败,
+> 发布本身不受影响——这正是它排在发布之后的原因)。
+
 ---
 
 # 29. Uploader 与正常 build 解耦

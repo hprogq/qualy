@@ -23,25 +23,6 @@ import { rumVersionForRelease } from '../version.ts'
 // goes through the same mapping the browser stamps its reports with, so a map
 // filed under a version no report carries is not a mistake this can make.
 
-/**
- * Where the platform keeps uploaded maps: Tencent's own bucket, the same one
- * for every customer, from the vendor's documented upload flow.
- *
- * It is a constant because it cannot be discovered - the credential grants
- * access to a bucket in THEIR account, so nothing in this account can list or
- * name it - and because it is not this deployment's choice.
- */
-const BUCKET = 'rumprod-1258344699'
-const BUCKET_REGION = 'ap-guangzhou'
-
-/**
- * How long the upload credential lasts.
- *
- * Stated because the default is TEN SECONDS, which is documented nowhere and
- * is not enough for one file, let alone a build's worth.
- */
-const CREDENTIAL_SECONDS = 3600
-
 /** enough to keep the wire busy, few enough to stay well inside the api's rate */
 const CONCURRENCY = 8
 
@@ -55,6 +36,51 @@ const need = (name: string): string => {
     refuse(`${name} is not set; it belongs to the release pipeline, never to the application`)
   }
   return value!
+}
+
+/**
+ * A credential for this project's part of the platform's own bucket, and
+ * which bucket that is.
+ *
+ * The platform issues it per project (DescribeFileCertificate, which replaced
+ * DescribeReleaseFileSign; cloud.tencent.com/document/product/248/97909): it
+ * reaches only keys that begin with `<project id>-`, which the keys below
+ * already do, and the answer names the bucket as `region:bucket` - so the
+ * bucket is read from it rather than kept as a constant nothing here could
+ * check. The sdk does not name the action yet; it is asked by name, and every
+ * field the upload needs is checked before anything is sent.
+ */
+const certificateFor = async (
+  client: InstanceType<typeof tencentcloud.rum.v20210622.Client>,
+  projectId: number,
+) => {
+  const answer = (await client.request('DescribeFileCertificate', { ID: projectId })) as Record<
+    string,
+    unknown
+  >
+  const field = (name: string): string => {
+    const value = answer[name]
+    return typeof value === 'string' && value !== ''
+      ? value
+      : refuse(`DescribeFileCertificate answered without ${name}`)
+  }
+  const [region, bucket, ...rest] = field('BucketAddress').split(':')
+  if (
+    region === undefined ||
+    region === '' ||
+    bucket === undefined ||
+    bucket === '' ||
+    rest.length > 0
+  ) {
+    refuse(`DescribeFileCertificate named no bucket as region:bucket`)
+  }
+  return {
+    secretId: field('SecretID'),
+    secretKey: field('SecretKey'),
+    sessionToken: field('SessionToken'),
+    region: region!,
+    bucket: bucket!,
+  }
 }
 
 const md5 = (file: string): string =>
@@ -158,18 +184,18 @@ export async function run(context: CliContext): Promise<void> {
 
   // One credential for the whole batch; the pipeline's own key never touches
   // the object store.
-  const sign = await client.DescribeReleaseFileSign({ Timeout: CREDENTIAL_SECONDS })
+  const certificate = await certificateFor(client, projectId)
   const cos = new COS({
-    SecretId: sign.SecretID,
-    SecretKey: sign.SecretKey,
-    SecurityToken: sign.SessionToken,
+    SecretId: certificate.secretId,
+    SecretKey: certificate.secretKey,
+    SecurityToken: certificate.sessionToken,
   })
   const put = (key: string, file: string) =>
     new Promise<void>((resolve, reject) => {
       cos.putObject(
         {
-          Bucket: BUCKET,
-          Region: BUCKET_REGION,
+          Bucket: certificate.bucket,
+          Region: certificate.region,
           Key: key,
           Body: fs.createReadStream(file),
           ContentLength: fs.statSync(file).size,
