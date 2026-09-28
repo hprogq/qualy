@@ -20573,3 +20573,26 @@ W12 审查意见收尾（十一组，分组见仓库外 `audit-2026-09-25/wave13
 
 - A 已完成。进入 B（CI/CD）：连通性任务、tag 发布推 CNB、受限 SSH 部署任务、分支保护；C 为控制台上的准备（见部署计划）。
 - 本地 main 领先 origin 若干提交（`003d65213` 起），待用户同意后推送。
+
+## 上线前收尾：迁移自报上线方式、部署步骤互斥与自愈、版本对账不看分页（2026-09-28）
+
+- 迁移自报上线方式（`bf4b21a05`）：每条迁移一行 `-- rollout: expand|maintenance`，回答「上一个 release 在它留下的 schema 上还能不能跑」，与 `-- destructive: approved`（丢不丢数据）分开。`qualy generate` 按 SQL 猜（只有新表、对新表的一切、普通索引、可空或带默认值的新列、注释等纯加法才猜 expand），`database custom` 的空白迁移写 maintenance，review 时可改；`check-migrations-immutable.ts` 拒绝 base..HEAD 新增而没写这一行的迁移。已提交的 89 条不回填：首次部署时一起应用，那时没有服务中的一色；`storage_version` 那条也在其中。
+- 部署步骤（`5075b606f`）：`upgrade.sh`、`rollback.sh`、`restore.sh`、演示重置在 `.env` 旁取同一把锁（`flock`，没有时 `mkdir`），第二个步骤拒绝；嵌套调用继承。每步开始先从 Caddy 片段读服务中的颜色（`QUALY_PROXY=none` 时看哪一色的 server 在跑）与 `.env` 比对：答案唯一而记录不同就写回并打 `RECONCILED: …`，片段指向的颜色没在跑、维护页而 `.env` 记着一色、两色都在跑而无片段可看都拒绝。`.env` 一律同目录临时文件整份替换、多键一次写完、保留权限与属主。零空窗的闸门改看 rollout 行：待应用迁移不是 expand（没写的按 maintenance）要 `--maintenance`，回滚跨过它要 `--force`；首次部署不检查。
+- 版本对账（`9599ec55e`）：冻结版本在不在改为按 key 问一次存储（`RevisionStore.exists`，COS 是带 `VersionId` 的 HEAD），且只在该 key 已不可能再被写入之后问；每一页单独判定，同一 key 的版本跨页不再让整页不动或漏删。内存后端按给定页大小分页、游标记位置（与桶的 key/version marker 同义，删除不移动下一页起点）。
+- 部署库的变量互相覆盖（发布冒烟抓到）：`deploy/lib.sh` 被脚本 source，sh 只有一个命名空间。`replace_file` 赋 `target`，把 `take_over` 的颜色换成了文件路径（冒烟里 `.env` 被写进 `QUALY_RELEASE_/VAR/FOLDERS/…=`，compose 从此读不了它）；`reconcile` 赋 `release`，会让之后的每次升级都「升级」到正在服务的 release。另有两处更早的（`f6c436809` 起，已推送）只在有 Caddy 时触发、冒烟走 `QUALY_PROXY=none` 所以从没跑到：`proxy_point` 赋 `previous`（片段原文）与 `target`（上游地址），盖掉 `take_over` 的旧颜色与新颜色——第一次真的零空窗升级会把 `QUALY_ACTIVE_COLOR` 记成地址、停错服务。修法：库里每个函数的名字一律 `local`（dash、bash、busybox 都有；文件头写明）。`deploy-scripts.test.ts` 加三条：Caddy 边缘下 `take_over` 成功（片段指向新色、`.env` 三键、只停旧色）、校验失败（片段与记录原样、新色停下且记回原 release、旧色不动）、调用方的 `release`/`target`/`previous` 经过 `reconcile`/`env_set`/`proxy_point`/`wait_ready` 后不变；三条对着修复前的 `lib.sh` 全红。
+- 恢复遇上停着的服务色（发布冒烟抓到）：冒烟先停 blue、销库再跑 `restore.sh`，严格的 `reconcile` 以「边缘什么都不服务而 `.env` 记着 blue」拒绝——但恢复本来就在服务停着时跑，头注还承诺「停在半路重跑一次即可完成」，那时服务色也已停。`restore.sh` 与演示重置改用 `reconcile --stopped-ok`：没有边缘且什么都没在跑、或边缘指着的正是记录的那一色而它停着，照记录继续；边缘指着另一色而它停着仍拒绝（不知道它跑的是哪个 release）。测试一条。
+- 文档：docs/deployment.md §3.1/§3.2、deploy/README.md、docs/m2-design.md、CLAUDE.md 两处同步。
+
+### 验收（实际执行）
+
+- `pnpm vitest run packages/plugins/infra/storage packages/plugins/infra/storage-cos packages/plugins/infra/storage-local`：`Test Files  12 passed | 3 skipped (15)`，`Tests  113 passed | 27 skipped (140)`；新增「一个 key 的七次改写跨三页，一轮全删」一条（此前内存后端的偏移游标在删除后跳页，删了 4 条）。
+- `tools/tests/deploy-scripts.test.ts`（10 条，假 `docker` 与 `curl` 在 PATH 上驱动真 `deploy/lib.sh`）与 `rollout.test.ts`（4 条）通过；新增的三条对着修复前的 `lib.sh`：`Tests  3 failed | 7 passed (10)`。
+- 迁移检查实测（一次性 worktree，用后删除）：新增一条无 rollout 行的迁移 → `1 added migration(s) do not say how they roll out … 20270101000000_probe-silent.sql`，exit 1；删掉它只留带 `-- rollout: expand` 的 → `the lineage only grew … each saying how it rolls out`，exit 0。
+- `pnpm test`（`DATABASE_URL` 指向 5433 的一次性库）：`Test Files  4 failed | 385 passed | 3 skipped (392)`，`Tests  12 failed | 2954 passed | 33 skipped (2999)`；12 条全是超时（appeal-once、provisional-scoring 的 afterAll 30s，clean-room-parity 180s，migrator 120s），当时机器负载 24.9（系统的 mediaanalysisd 占满 CPU）。四个文件单独重跑：`Test Files  4 passed (4)`，`Tests  21 passed (21)`。
+- 发布冒烟（本机 `pnpm release:build --platform linux/arm64` 出的 `9599ec55-dirty`；`-dirty` 来自一个 git 忽略、docker 不忽略的本地文件 `skills-lock.json`；CI 的 image job 按 amd64 跑同一脚本）：第一次在首个 `upgrade.sh` 失败（变量覆盖），第二次在 `restore.sh` 失败（停着的服务色），两处修复后 `release-smoke: 9599ec55-dirty ok`。新增一步：回滚前把 `.env` 改回记 blue，`rollback.sh` 打出 `RECONCILED: the edge serves green running 9599ec55-dirty-next` 并记回 green，再按不认识的迁移拒绝；「待应用迁移不是 expand」的拒绝照常（藏起的那条没有 rollout 行）。
+- `pnpm typecheck`、`pnpm lint`、`pnpm lint:types` exit 0；改动文件 `oxfmt --check` 通过。
+
+### 下一步
+
+- 推送后看 CI 五个 job 全绿，A 关账。
+- 进入 B：`ci.yml` 加 `workflow_call`，tag 触发的发布工作流 `needs` 它；连通性任务先测推 CNB 的耗时；受限 SSH 的部署任务在服务器侧准备（D1）得到同意之后才能真跑。
