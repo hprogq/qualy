@@ -1,15 +1,19 @@
 name: release
 
-# A release is a tag on a commit main already has. CI runs on it in full,
-# then the three images are built once under the tag's name, driven through
+# A release is a tag on a commit main already has. CI runs on it in full and
+# the COS backend runs against real buckets, then the three images are built
+# once under the tag's name, driven through
 # the release smoke, and pushed to the registry production pulls from.
 # release.json on the tag's GitHub release names each image by digest; the
 # deploy workflow pulls those digests and nothing else. A release name is
 # published once: a second run for a tag that already has its release.json
 # stops before building.
 #
-# Needs the repository variable QUALY_REGISTRY (docker.cnb.cool/<org>/<repo>)
-# and the release environment's secret QUALY_REGISTRY_PUSH_TOKEN.
+# Needs the repository variable QUALY_REGISTRY (docker.cnb.cool/<org>/<repo>),
+# the release environment's secret QUALY_REGISTRY_PUSH_TOKEN, and the
+# cos-test environment's QUALY_STORAGE_COS_SECRET_ID / _SECRET_KEY (secrets)
+# and QUALY_STORAGE_COS_REGION / _BUCKET / QUALY_TEST_COS_VERSIONED_BUCKET
+# (variables).
 on:
   push:
     tags: ['v*']
@@ -27,8 +31,61 @@ jobs:
     with:
       skip-image: true
 
+  # The COS backend against real buckets: what an ordinary CI run cannot
+  # hold credentials for. Its own job in its own environment, so it gets
+  # only the COS test identity and the release job only the registry token.
+  # That identity (qualy-ci-storage) reaches two buckets kept for CI and
+  # nothing else - never production's, never the ones a developer tests
+  # against. Every suite must run: a missing setting fails here rather than
+  # skipping the tests that need it.
+  cos:
+    runs-on: ubuntu-latest
+    environment: cos-test
+    env:
+      QUALY_TEST_COS: '1'
+      QUALY_REQUIRE_POSTGRES_TESTS: '1'
+      QUALY_STORAGE_COS_SECRET_ID: ${{ secrets.QUALY_STORAGE_COS_SECRET_ID }}
+      QUALY_STORAGE_COS_SECRET_KEY: ${{ secrets.QUALY_STORAGE_COS_SECRET_KEY }}
+      QUALY_STORAGE_COS_REGION: ${{ vars.QUALY_STORAGE_COS_REGION }}
+      QUALY_STORAGE_COS_BUCKET: ${{ vars.QUALY_STORAGE_COS_BUCKET }}
+      QUALY_TEST_COS_VERSIONED_BUCKET: ${{ vars.QUALY_TEST_COS_VERSIONED_BUCKET }}
+    services:
+      postgres:
+        # same image as ci.yml
+        image: pgvector/pgvector:pg18-bookworm@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
+        env:
+          POSTGRES_USER: qualy
+          POSTGRES_PASSWORD: qualy
+          POSTGRES_DB: qualy
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U qualy"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: every credential and bucket is set
+        run: |
+          for name in QUALY_STORAGE_COS_SECRET_ID QUALY_STORAGE_COS_SECRET_KEY QUALY_STORAGE_COS_REGION \
+            QUALY_STORAGE_COS_BUCKET QUALY_TEST_COS_VERSIONED_BUCKET; do
+            [ -n "${!name}" ] || { echo "$name is not set in the cos-test environment"; exit 1; }
+          done
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.20.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: the COS backend against the CI buckets, nothing skipped
+        run: |
+          pnpm vitest run packages/plugins/infra/storage-cos --reporter=default --reporter=json --outputFile=cos.json
+          jq -e '.numPendingTests == 0 and .numTodoTests == 0 and .numFailedTests == 0' cos.json > /dev/null ||
+            { echo 'COS tests were skipped or failed'; jq '{numTotalTests, numPassedTests, numPendingTests, numFailedTests}' cos.json; exit 1; }
+
   release:
-    needs: ci
+    needs: [ci, cos]
     runs-on: ubuntu-latest
     environment: release
     permissions:

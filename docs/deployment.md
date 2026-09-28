@@ -114,6 +114,11 @@ digest 与 server 镜像携带的 web release id,写成 `release.json` 挂在该
 compose 与 `upgrade.sh` 不需要知道镜像仓库。`connectivity.yml` 是手动运行的测量:同一脚本以 `connectivity-<run>` 推一遍并逐个计时,
 另对服务器的 SSH 端口做一次 host key 扫描。
 
+**真桶门禁**(同一工作流的 `cos` job,与 `ci` 并行、`release` 等它):COS 后端的真桶套件在 GitHub 上以 CI 专用身份
+`qualy-ci-storage` 跑,只对两个 CI 专用桶有权限(不碰生产桶,也不与开发者本机测试用的桶共用,免得两边的版本对账互删)。
+凭据只在 `cos-test` 环境(只允许 `v*` tag),所以这个 job 只拿到 COS 测试身份、`release` job 只拿到镜像推送令牌;
+缺任何一个设置即失败,套件里有被跳过的用例也算失败。本机跑一遍不算门禁——机器执行不了。
+
 ### 2.6 部署:按 digest,脚本随 release(2026-09-28)
 
 `deploy/` 进 server 镜像(`prune-server-image.mjs` 保留它;`check-release-image.ts` 逐字节比对它、并确认其中没有任何部署自己的
