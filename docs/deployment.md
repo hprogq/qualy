@@ -367,7 +367,8 @@ current,旧镜像的 server 要这一步才肯启动;旧 release 已被保留策
   写 `SHA256SUMS`;整个目录写完才改名就位(以时间戳命名的目录一定是完整备份);保留最近 `QUALY_BACKUP_KEEP`(默认 14)份;
   `QUALY_BACKUP_OFFSITE` 设了就以新目录为 `$1` 执行(rclone / scp / coscli 由运维选),失败则整次失败;异机副本写进另建的备份桶,
   用一个只能写的独立账号(`PutObject`,以及大文件分块上传要的 `InitiateMultipartUpload` / `UploadPart` / `CompleteMultipartUpload`,
-  没有读与删),例如 `QUALY_BACKUP_OFFSITE='coscli cp -r "$1" cos://<备份桶>/qualy/"$(basename "$1")"/'`;成功后写 `<root>/last-success`,
+  没有读与删),例如 `QUALY_BACKUP_OFFSITE=coscli -c /etc/qualy/coscli.yaml cp -r "$1" cos://<备份桶>/qualy/`(`cp -r` 把目录本身放进目标下,
+  目标只写到 `qualy/`;再拼一层目录名会得到 `qualy/<stamp>/<stamp>/`,2026-09-28 实测);成功后写 `<root>/last-success`,
   供监控按时间判断备份是否停了。主密钥不进备份,与备份分开保管。
 - `deploy/restore.sh <dir>`:先核对 `SHA256SUMS`;导入临时库(`--exit-on-error`,全有或全无,期间照常服务)→ 停服务中的那一色 → 换名(旧库留作
   `_previous`)→ 附件解包到 `.incoming` 再换入、`chown 1000:1000` → `migrate`(旧版本备份追平到当前,并装入当前 web release)→ 该色启动并等待。
