@@ -31,6 +31,8 @@ db/data
 STATUS.md
 **/.DS_Store
 # the collector's credentials and the brand exporter's renders: neither is
-# an input of any image
+# an input of any image. deploy/ goes into the server image; a deployment's
+# own env files beside the scripts (collector.env, staging.env) never do.
 ops/observability/collector.env
+deploy/*.env
 tools/brand/out

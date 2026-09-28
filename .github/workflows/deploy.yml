@@ -1,0 +1,91 @@
+name: deploy
+
+# Moves production onto a published release, or back to the one before it.
+# Run by hand from main: publishing a release (release.yml) and approving
+# its deployment are two separate acts, and the production environment asks
+# for the approval before this job gets the key.
+#
+# A deploy reads the release's release.json from its GitHub release and
+# sends the server's launcher (ops/deploy-host/qualy-deploy) the release name
+# and the three image digests - nothing else; the launcher pulls them from
+# the registry it is configured with, checks they are one release, and runs
+# that release's own upgrade.sh. A rollback runs the serving release's
+# rollback.sh.
+#
+# Needs QUALY_DEPLOY_HOST and QUALY_DEPLOY_PORT (repository variables), and in
+# the production environment the secret QUALY_DEPLOY_SSH_KEY (the key the
+# server's forced command accepts) and the variable QUALY_DEPLOY_KNOWN_HOSTS
+# (the server's host key line, as ssh-keyscan prints it).
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        type: choice
+        options: [deploy, rollback]
+        default: deploy
+      release:
+        description: 'The published release to deploy, e.g. v0.1.0 (a rollback ignores it)'
+        type: string
+        required: false
+      maintenance:
+        description: 'Take the site down while migrations that do not roll out as expand apply'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  production:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      ACTION: ${{ inputs.action }}
+      RELEASE: ${{ inputs.release }}
+      MAINTENANCE: ${{ inputs.maintenance }}
+      REGISTRY: ${{ vars.QUALY_REGISTRY }}
+      HOST: ${{ vars.QUALY_DEPLOY_HOST }}
+      PORT: ${{ vars.QUALY_DEPLOY_PORT }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: what to send the server
+        run: |
+          if [ "$ACTION" = rollback ]; then
+            echo "COMMAND=rollback" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          printf '%s' "$RELEASE" | grep -Eqx 'v[0-9A-Za-z][0-9A-Za-z._-]{0,62}' ||
+            { echo "'$RELEASE' is not a release name"; exit 1; }
+          gh release download "$RELEASE" --repo "$GITHUB_REPOSITORY" --pattern release.json
+          jq -e --arg release "$RELEASE" '.schema == 1 and .release == $release and .platform == "linux/amd64"' release.json > /dev/null ||
+            { echo "release.json is not $RELEASE's for linux/amd64"; exit 1; }
+          command="deploy $RELEASE"
+          for image in qualy-server qualy-sandbox-runtime qualy-sandbox-authoring; do
+            ref=$(jq -r --arg image "$image" '.images[$image]' release.json)
+            digest=${ref#"$REGISTRY/$image@"}
+            printf '%s' "$digest" | grep -Eqx 'sha256:[0-9a-f]{64}' ||
+              { echo "release.json names $image as $ref, not $REGISTRY/$image@sha256:..."; exit 1; }
+            command="$command $digest"
+          done
+          if [ "$MAINTENANCE" = true ]; then command="$command --maintenance"; fi
+          echo "COMMAND=$command" >> "$GITHUB_ENV"
+          jq . release.json >> "$GITHUB_STEP_SUMMARY"
+      - name: run it on the server
+        env:
+          KEY: ${{ secrets.QUALY_DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.QUALY_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy && chmod 0600 ~/.ssh/deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy -p "$PORT" \
+            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o ServerAliveInterval=30 \
+            "qualy-deploy@$HOST" "$COMMAND"
+      - if: always()
+        run: rm -f ~/.ssh/deploy

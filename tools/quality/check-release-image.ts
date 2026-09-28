@@ -8,8 +8,9 @@ import { repoRoot } from '../lib/manifest.ts'
 //
 // A Dockerfile says what goes in; this says what came out, on the image a
 // release actually ships. The claims: it runs the node the Dockerfile pins; it
-// carries this checkout's manifest, lock and lineage byte for byte (compared
-// by SHA-256); it carries no tests, no browser sources and
+// carries this checkout's manifest, lock, lineage and deploy scripts byte for
+// byte (compared by SHA-256), and no deployment's env file beside the
+// scripts; it carries no tests, no browser sources and
 // no development toolchain; the assembly resolves from inside it against its
 // own lock with nothing mounted; and a start reaches the database before it
 // stops - which is as far as a start can get without one.
@@ -57,12 +58,15 @@ expectOut('runs as the unprivileged node user', 'id -u', '1000')
   else fail(`node is ${out}, the Dockerfile pins v${pinned}`)
 }
 
-// --- what a release is: this checkout's manifest, lock and lineage
+// --- what a release is: this checkout's manifest, lock, lineage and deploy/
 //
 // Compared by SHA-256 of the bytes, and computed by one script run twice - by
 // this node against the checkout and by the image's node against /app - so
 // the two sides cannot differ in how they read, sort or hash. A lineage with
-// the right names and different SQL is a different release.
+// the right names and different SQL is a different release; deploy/ is what
+// the deployment host runs as root to move onto it. A deployment's own env
+// files are left out of the walk here (a developer's deploy/.env is not
+// part of the checkout) and refused inside the image below.
 const RELEASE_DIGEST = `
 const fs = require('node:fs')
 const path = require('node:path')
@@ -74,16 +78,27 @@ const migrations = {}
 for (const name of fs.readdirSync(lineage).filter((one) => one.endsWith('.sql')).sort()) {
   migrations[name] = sha(path.join(lineage, name))
 }
+const deploy = {}
+const walk = (dir) => {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name)
+    if (entry.isDirectory()) walk(full)
+    else if (!entry.name.endsWith('.env')) deploy[path.relative(root, full)] = sha(full)
+  }
+}
+walk(path.join(root, 'deploy'))
 process.stdout.write(JSON.stringify({
   'qualy.yml': sha(path.join(root, 'qualy.yml')),
   'qualy.lock.json': sha(path.join(root, 'qualy.lock.json')),
   migrations,
+  deploy: Object.fromEntries(Object.entries(deploy).sort()),
 }))
 `
 interface ReleaseDigest {
   readonly 'qualy.yml': string
   readonly 'qualy.lock.json': string
   readonly migrations: Readonly<Record<string, string>>
+  readonly deploy: Readonly<Record<string, string>>
 }
 {
   const local = JSON.parse(
@@ -127,8 +142,27 @@ interface ReleaseDigest {
           .join(', ')}`,
       )
     }
+    const scripts = new Set([...Object.keys(local.deploy), ...Object.keys(shipped.deploy)])
+    const drifted = [...scripts]
+      .sort()
+      .filter((name) => local.deploy[name] !== shipped.deploy[name])
+    if (drifted.length === 0 && scripts.size > 0) {
+      ok(`deploy/: ${String(scripts.size)} file(s), every one byte for byte`)
+    } else {
+      fail(`deploy/ differs from the checkout: ${drifted.join(', ') || 'no files at all'}`)
+    }
   }
 }
+expectOut(
+  "no deployment's env file among the deploy scripts",
+  `find /app/deploy -type f \\( -name .env -o -name '*.env' \\) | wc -l | tr -d ' '`,
+  '0',
+)
+expectOut(
+  'the deploy scripts can be run',
+  'test -x /app/deploy/upgrade.sh && test -x /app/deploy/rollback.sh && echo runnable',
+  'runnable',
+)
 expectOut(
   'the web release store points at a release',
   'test -f /app/packages/plugins/infra/web/client-dist/current.json && echo present',

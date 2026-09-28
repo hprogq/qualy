@@ -1,0 +1,212 @@
+#!/bin/sh
+# The deployment host's launcher: the one part of a deployment that is not
+# part of a release. Installed once by root as /usr/local/sbin/qualy-deploy,
+# owned by root, writable by nobody else, and never replaced by a release
+# (ops/deploy-host/README.md).
+#
+#   qualy-deploy check
+#   qualy-deploy fetch    <release> <server> <sandbox-runtime> <sandbox-authoring>
+#   qualy-deploy deploy   <release> <server> <sandbox-runtime> <sandbox-authoring> [--maintenance]
+#   qualy-deploy rollback
+#
+# A release carries its own deploy/ - the scripts and compose files that move
+# a deployment onto it - because the scripts and the images are one
+# compatible unit. This takes that deploy/ out of the exact server image it
+# was asked for and runs it. What it trusts is a digest in the registry
+# /etc/qualy/deploy.conf names, which only root writes; it never runs a script
+# handed to it, and the caller chooses nothing but the release and the three
+# digests (sha256:<64 hex>, in the order above).
+#
+# fetch pulls the three images by digest, checks that they are one release -
+# each labelled <release>, one committed revision - names them
+# qualy-*:<release> on this host (refusing a name that already names other
+# images) and extracts the server image's deploy/ to
+# <root>/releases/<release>/, owned by root. deploy fetches, then runs that
+# release's upgrade.sh. rollback runs the serving release's rollback.sh: the
+# release it goes back to is the older one, and its scripts may not know
+# what the newer ones wrote to .env. Either way the scripts run under this
+# launcher's lock, with <root>/.env as their env file; afterwards
+# <root>/current points at the release .env records as serving, which is
+# where backups, restores and the edge's maintenance page find their files.
+#
+# The deploy workflow reaches it over SSH through a forced command. That
+# account has no docker and no sudo beyond this one file, so the command
+# line arrives as SSH_ORIGINAL_COMMAND, is split into words here and handed
+# to this same file through sudo, where every word is checked.
+set -eu
+umask 022
+
+if [ "$(id -u)" -ne 0 ]; then
+  if [ -n "${SSH_ORIGINAL_COMMAND:-}" ]; then
+    set -f
+    # split into words on purpose; each is checked below, as root
+    # shellcheck disable=SC2086
+    set -- $SSH_ORIGINAL_COMMAND
+  fi
+  exec sudo -n /usr/local/sbin/qualy-deploy "$@"
+fi
+
+conf=/etc/qualy/deploy.conf
+IMAGES='qualy-server qualy-sandbox-runtime qualy-sandbox-authoring'
+
+say() {
+  printf 'qualy-deploy: %s\n' "$*"
+}
+refuse() {
+  printf 'qualy-deploy: %s\n' "$*" >&2
+  exit 1
+}
+usage() {
+  refuse "usage: qualy-deploy check | fetch <release> <server> <sandbox-runtime> <sandbox-authoring> | deploy <release> <server> <sandbox-runtime> <sandbox-authoring> [--maintenance] | rollback"
+}
+
+# settings are read, never sourced
+[ -f "$conf" ] || refuse "no $conf"
+setting() {
+  sed -n "s/^$1=//p" "$conf" | tail -n 1
+}
+registry=$(setting QUALY_DEPLOY_REGISTRY)
+root=$(setting QUALY_DEPLOY_ROOT)
+root=${root:-/opt/qualy}
+printf '%s' "$registry" | grep -Eqx '[a-z0-9.-]+(:[0-9]+)?(/[a-z0-9._-]+)+' ||
+  refuse "QUALY_DEPLOY_REGISTRY in $conf is not a registry path like docker.cnb.cool/<org>/<repo>"
+case $root in /*) ;; *) refuse "QUALY_DEPLOY_ROOT in $conf is not an absolute path" ;; esac
+env_file=$root/.env
+[ -f "$env_file" ] || refuse "no $env_file"
+
+env_value() {
+  sed -n "s/^$1=//p" "$env_file" | tail -n 1
+}
+
+# the lock the release's scripts take (deploy/lib.sh), taken here first so
+# that fetching and running are one step; the scripts inherit it
+held=
+take_lock() {
+  if command -v flock > /dev/null 2>&1; then
+    exec 9> "$env_file.lock"
+    flock -n 9 || refuse "another deployment step holds $env_file.lock"
+  else
+    mkdir "$env_file.lock.d" 2> /dev/null || refuse "another deployment step holds $env_file.lock.d"
+    held=$env_file.lock.d
+    trap 'rmdir "$held"' EXIT
+  fi
+  QUALY_DEPLOY_LOCK_HELD=$env_file
+  export QUALY_DEPLOY_LOCK_HELD
+}
+
+revision=
+# pulls one image and checks it belongs to the release; names nothing yet
+pull() {
+  ref=$registry/$1@$2
+  docker pull --quiet "$ref" > /dev/null || refuse "could not pull $ref"
+  labels=$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.version"}} {{index .Config.Labels "org.opencontainers.image.revision"}}' "$ref")
+  version=${labels%% *}
+  commit=${labels#* }
+  [ "$version" = "$release" ] || refuse "$ref is labelled release ${version:-none}, not $release"
+  case $commit in '' | *-dirty) refuse "$ref was not built from a commit (${commit:-no revision})" ;; esac
+  [ -z "$revision" ] || [ "$revision" = "$commit" ] ||
+    refuse "$ref was built from $commit, the images before it from $revision"
+  revision=$commit
+  id=$(docker image inspect -f '{{.Id}}' "$ref")
+  named=$(docker image inspect -f '{{.Id}}' "$1:$release" 2> /dev/null || true)
+  [ -z "$named" ] || [ "$named" = "$id" ] ||
+    refuse "$1:$release already names another image on this host; a release name names one set of images"
+}
+
+extract() {
+  dest=$root/releases/$release
+  if [ "$(cat "$dest/server-digest" 2> /dev/null || true)" = "$1" ]; then
+    say "$release's deploy scripts are in $dest/deploy"
+    return 0
+  fi
+  mkdir -p "$root/releases"
+  work=$(mktemp -d "$root/releases/.$release.XXXXXX")
+  chmod 755 "$work"
+  container=$(docker create "$registry/qualy-server@$1")
+  if ! docker cp "$container:/app/deploy" "$work/deploy" > /dev/null; then
+    docker rm "$container" > /dev/null 2>&1 || true
+    rm -rf "$work"
+    refuse "the server image of $release carries no deploy/"
+  fi
+  docker rm "$container" > /dev/null
+  # root runs these: nobody else may change them
+  chown -R 0:0 "$work"
+  chmod -R go-w "$work"
+  printf '%s\n' "$1" > "$work/server-digest"
+  rm -rf "$dest"
+  mv "$work" "$dest"
+  say "$release's deploy scripts are in $dest/deploy"
+}
+
+fetch() {
+  release=$1
+  printf '%s' "$release" | grep -Eqx 'v[0-9A-Za-z][0-9A-Za-z._-]{0,62}' ||
+    refuse "$release is not a release name (v...)"
+  for digest in "$2" "$3" "$4"; do
+    printf '%s' "$digest" | grep -Eqx 'sha256:[0-9a-f]{64}' ||
+      refuse "$digest is not an image digest (sha256:<64 hex>)"
+  done
+  server=$2
+  digests="$2 $3 $4"
+  set -- $digests
+  for image in $IMAGES; do
+    pull "$image" "$1"
+    shift
+  done
+  # all three are the release: only now do they get its name
+  set -- $digests
+  for image in $IMAGES; do
+    docker tag "$registry/$image@$1" "$image:$release"
+    say "$image:$release is $registry/$image@$1"
+    shift
+  done
+  extract "$server"
+  # before the first deployment, the edge's maintenance page is found here too
+  [ -e "$root/current" ] || ln -s "releases/$release" "$root/current"
+}
+
+# runs one of a release's scripts, then points current at what serves
+run() {
+  scripts=$root/releases/$1/deploy
+  script=$2
+  shift 2
+  [ -x "$scripts/$script" ] || refuse "no $scripts/$script; fetch that release first"
+  status=0
+  QUALY_ENV_FILE=$env_file "$scripts/$script" "$@" || status=$?
+  serving=$(env_value QUALY_RELEASE)
+  if [ -n "$serving" ] && [ -d "$root/releases/$serving/deploy" ]; then
+    ln -sfn "releases/$serving" "$root/current"
+  fi
+  return "$status"
+}
+
+case ${1:-} in
+  check)
+    [ $# -eq 1 ] || usage
+    say "docker $(docker version --format '{{.Server.Version}}' 2> /dev/null || echo unreachable)"
+    say "serving: $(env_value QUALY_ACTIVE_COLOR) $(env_value QUALY_RELEASE)"
+    say "current: $(readlink "$root/current" 2> /dev/null || echo none)"
+    say "releases: $(ls "$root/releases" 2> /dev/null | tr '\n' ' ')"
+    ;;
+  fetch)
+    [ $# -eq 5 ] || usage
+    take_lock
+    fetch "$2" "$3" "$4" "$5"
+    ;;
+  deploy)
+    [ $# -eq 5 ] || { [ $# -eq 6 ] && [ "$6" = --maintenance ]; } || usage
+    take_lock
+    fetch "$2" "$3" "$4" "$5"
+    if [ $# -eq 6 ]; then run "$2" upgrade.sh "$2" --maintenance; else run "$2" upgrade.sh "$2"; fi
+    ;;
+  rollback)
+    [ $# -eq 1 ] || usage
+    take_lock
+    serving=$(env_value QUALY_RELEASE)
+    [ -n "$serving" ] || refuse "nothing serves yet; there is nothing to roll back"
+    printf '%s' "$serving" | grep -Eqx 'v[0-9A-Za-z][0-9A-Za-z._-]{0,62}' ||
+      refuse "$env_file records $serving as serving, which is not a release name"
+    run "$serving" rollback.sh
+    ;;
+  *) usage ;;
+esac

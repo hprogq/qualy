@@ -22,9 +22,13 @@ here=${here:?lib.sh expects $here to name the deploy directory}
 env_file=${QUALY_ENV_FILE:-$here/.env}
 
 # QUALY_COMPOSE_OVERLAY names one more file beside compose.yaml - staging's
-# compose.staging.yaml - read from the environment first, then the env file
+# compose.staging.yaml - read from the environment first, then the env file.
+# The collector's credentials live beside .env, wherever that is: a release's
+# scripts run from a directory of their own (ops/deploy-host/qualy-deploy).
 compose() {
   local overlay
+  QUALY_COLLECTOR_ENV_FILE=${QUALY_COLLECTOR_ENV_FILE:-$(dirname "$env_file")/collector.env}
+  export QUALY_COLLECTOR_ENV_FILE
   overlay=${QUALY_COMPOSE_OVERLAY:-$(sed -n 's/^QUALY_COMPOSE_OVERLAY=//p' "$env_file" 2> /dev/null | tail -n 1)}
   if [ -n "$overlay" ]; then
     docker compose -f "$here/compose.yaml" -f "$here/$overlay" --env-file "$env_file" "$@"

@@ -28,9 +28,12 @@ const keep = new Set(
 )
 if (keep.size === 0) throw new Error('the runtime closure is empty; is this the workspace root?')
 
-// The root files a release is: what installed it, what selected it, and the
-// lineage it deploys. The lock is the reviewed assembly the image was built
-// from and the server checks the manifest against at every start.
+// The root files a release is: what installed it, what selected it, the
+// lineage it deploys, and the scripts that deploy it. The lock is the
+// reviewed assembly the image was built from and the server checks the
+// manifest against at every start. deploy/ is taken out of the image by the
+// deployment host's launcher (ops/deploy-host/qualy-deploy), so the scripts
+// that move a deployment onto a release are that release's own.
 const TOP_KEEP = new Set([
   'apps',
   'packages',
@@ -41,6 +44,7 @@ const TOP_KEEP = new Set([
   'qualy.yml',
   'qualy.lock.json',
   'db',
+  'deploy',
   'LICENSE',
 ])
 

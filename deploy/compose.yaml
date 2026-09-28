@@ -227,8 +227,9 @@ services:
         max-file: '2'
 
   # The telemetry uplink, when a deployment has one: otel-collector.yaml
-  # beside this file, credentials in collector.env (never .env - none of them
-  # ever enters the Qualy process). Started once with
+  # beside this file, credentials in collector.env beside .env (never .env
+  # itself - none of them ever enters the Qualy process; the scripts name it
+  # with QUALY_COLLECTOR_ENV_FILE). Started once with
   # `docker compose --profile telemetry up -d otel-collector` and left
   # running across upgrades; the server exports to it when .env says so
   # (OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318).
@@ -238,7 +239,7 @@ services:
     restart: unless-stopped
     command: ['--config=/etc/otelcol-contrib/config.yaml']
     env_file:
-      - path: collector.env
+      - path: ${QUALY_COLLECTOR_ENV_FILE:-collector.env}
         required: false
     volumes:
       - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro

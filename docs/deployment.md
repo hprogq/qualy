@@ -114,6 +114,26 @@ digest 与 server 镜像携带的 web release id,写成 `release.json` 挂在该
 compose 与 `upgrade.sh` 不需要知道镜像仓库。`connectivity.yml` 是手动运行的测量:同一脚本以 `connectivity-<run>` 推一遍并逐个计时,
 另对服务器的 SSH 端口做一次 host key 扫描。
 
+### 2.6 部署:按 digest,脚本随 release(2026-09-28)
+
+`deploy/` 进 server 镜像(`prune-server-image.mjs` 保留它;`check-release-image.ts` 逐字节比对它、并确认其中没有任何部署自己的
+env 文件)。服务器上只有一个不随 release 更新的东西:root 安装的 launcher `ops/deploy-host/qualy-deploy`,读 root 所有的
+`/etc/qualy/deploy.conf`(镜像仓库路径)。它接受的只有 `deploy <release> <三个 sha256 digest> [--maintenance]`、`rollback`、`fetch`、`check`:
+按 digest 从配置里的仓库拉三个镜像,核对都标着该 release、同一个非 dirty 的 revision,本机名 `qualy-*:<release>` 若已指向别的镜像即拒绝,
+三个都通过才命名;从该 server 镜像 `docker create` + `docker cp` 取出 `deploy/` 到 `/opt/qualy/releases/<release>/`(属 root、去掉组与其他人的写权限),
+以 `/opt/qualy/.env` 为 env 文件、在 launcher 持有的同一把锁下执行其 `upgrade.sh`。回滚执行**正在服务的**(较新的)release 的
+`rollback.sh`——回到的那个更旧,它的脚本未必认得新脚本写进 `.env` 的东西;按名字部署一个更旧的 release 则用它自己的脚本,所以
+`.env` 的格式只增不改。每步之后 `/opt/qualy/current` 指向 `.env` 记为服务中的 release:备份的 cron、手工恢复、边缘的维护页都从这里找文件。
+`.env`、`collector.env`(脚本经 `QUALY_COLLECTOR_ENV_FILE` 在 `.env` 旁边找它)与 Caddy 片段永远在镜像之外。
+
+SSH 用专门的 `qualy-deploy` 账户:`authorized_keys` 里 `restrict,command="/usr/local/sbin/qualy-deploy"`,不在 docker 组,sudo 只允许这一个文件;
+launcher 以非 root 身份被调起时把 `SSH_ORIGINAL_COMMAND` 按空白切词(不做通配展开)经 `sudo -n` 交给自己,以 root 逐个校验。
+所以这把密钥能做的只有:在已发布的 release 之间选一个部署,或回滚一步;给不了脚本、换不了镜像仓库。脚本最终仍以 root 操作 docker 与 Caddy,
+这一层权限本身就高,要再降需要 rootless Docker 或另设窄接口,现在不做。安装步骤见 `ops/deploy-host/README.md`。
+
+`.github/workflows/deploy.yml` 只能从 main 手动运行,`production` 环境要审批后才拿得到密钥:读该 release 的 `release.json`,核对平台与每个镜像都在
+`vars.QUALY_REGISTRY` 之下,只把 release 名与三个 digest 发给 launcher。发布制品(tag)与批准部署是两件事,tag 工作流不进 `production`。
+
 ## 3. 部署(`deploy/`)
 
 `deploy/compose.yaml` + 从 `deploy/.env.example` 填出的 `.env`,就是部署单元。只有 `image:`,不 build、不 bind 源码、不挂宿主 node_modules。

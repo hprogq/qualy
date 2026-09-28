@@ -32,7 +32,15 @@ built they are inspected: same platform, same revision, or the release is
 removed. Each image records the commit it came from as
 `org.opencontainers.image.revision`.
 
-and moved to the host either through a registry or as a file:
+A production release is built by the release workflow instead: a `v*` tag
+builds, smokes and pushes the three images and records their digests in
+`release.json` on the tag's GitHub release. The deploy workflow sends those
+digests to the host's launcher (`ops/deploy-host/`), which pulls them, checks
+they are one release, takes this directory out of the release's own server
+image and runs its `upgrade.sh` - so on that host the scripts below live in
+`/opt/qualy/releases/<release>/deploy/`, `.env` and `collector.env` in
+`/opt/qualy/`, and `/opt/qualy/current` points at the serving release's
+scripts. Elsewhere, images can also be moved as a file:
 
 ```sh
 docker save qualy-server:<release> qualy-sandbox-runtime:<release> qualy-sandbox-authoring:<release> \

@@ -61,9 +61,11 @@ qualy.example.com {
 	import /etc/caddy/qualy/upstream.caddy
 
 	# no color answering (both down, or the maintenance snippet): a page that
-	# says so, rather than the proxy's bare error
+	# says so, rather than the proxy's bare error. current is the serving
+	# release's deploy/, which the host's launcher keeps pointed there
+	# (ops/deploy-host/README.md).
 	handle_errors 502 503 504 {
-		root * /opt/qualy/deploy/demo
+		root * /opt/qualy/current/deploy/demo
 		rewrite * /maintenance.html
 		file_server
 	}
