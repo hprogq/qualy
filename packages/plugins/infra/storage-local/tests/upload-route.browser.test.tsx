@@ -16,10 +16,15 @@ import { fetched, installImmediateRequests } from './support/requests.tsx'
 // page, and module resets do not reach across that - so each case below
 // states the page it inherits from the one before.
 
-// counted where the declaration hands the routes to reporting
-const declared = vi.hoisted(() => ({ count: 0 }))
+// counted where the declaration hands the routes to reporting. `built` says
+// whether this page loaded the counting stand-in at all: CI once saw reporting
+// learn the route while the count stayed at zero, and the two ways that can
+// happen (the page got the real module, or the upload holds another copy of
+// the stand-in) fail at different assertions below.
+const declared = vi.hoisted(() => ({ built: false, count: 0 }))
 vi.mock('@qualy/browser-observability/api-routes', async (actual) => {
   const real = (await actual()) as typeof import('@qualy/browser-observability/api-routes')
+  declared.built = true
   return {
     ...real,
     registerApiRoutes: (routes: Parameters<typeof real.registerApiRoutes>[0]) => {
@@ -39,6 +44,7 @@ const grant = (url: string) =>
 
 describe('the local upload route, as reporting learns it', () => {
   it('costs a page that never uploads nothing', async () => {
+    expect(declared.built, 'this page loaded the real route registry, not the stand-in').toBe(true)
     const dispose = plugin.setup?.({ release: {} } as never)
     // no start hook is left to fetch the contract in the background
     expect(plugin.start).toBeUndefined()
@@ -67,15 +73,21 @@ describe('the local upload route, as reporting learns it', () => {
     // what reporting would have filed the request under, at the moment it opened
     expect(opened[0]!.claimed).toMatch(/:reservationId$/)
     expect(fetched(CONTRACT)).toBe(1)
+    // reporting knows the route, so the upload declared it: through the
+    // stand-in this file counts with, or through some other copy
+    expect(declared.count, 'the upload declared the route past the stand-in').toBe(1)
   })
 
+  // Measured from where the page stands rather than from zero, so a retry of
+  // this case asks the same question instead of counting the first try's.
   it('is declared once, however many uploads follow', async () => {
+    const before = { opened: opened.length, declared: declared.count }
     await Promise.all([
       localUploadDriver.upload(grant(address), new Blob(['a']), {}),
       localUploadDriver.upload(grant(address), new Blob(['b']), {}),
     ])
     await localUploadDriver.upload(grant(address), new Blob(['c']), {})
-    expect(opened).toHaveLength(4)
-    expect(declared.count).toBe(1)
+    expect(opened.length - before.opened).toBe(3)
+    expect(declared.count - before.declared).toBe(0)
   })
 })
