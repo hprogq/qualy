@@ -881,7 +881,11 @@ export function EntryDetail({
           </Swap>
         </ScrollArea>
 
-        <div {...stylex.props(styles.actionBar)}>{footer}</div>
+        {footer !== undefined && footer !== null && (
+          <div {...stylex.props(styles.actionBar)} data-testid="entry-actions">
+            {footer}
+          </div>
+        )}
       </SheetContent>
     </Sheet>
   )

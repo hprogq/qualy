@@ -604,6 +604,34 @@ describe('reading somebody’s entries', () => {
     await expect.element(page.getByRole('dialog')).toBeVisible()
   })
 
+  it('draws no action bar under a claim the reader can do nothing with', async () => {
+    await page.viewport(1440, 900)
+    // the participant's own filing, concluded, with every correction hidden
+    // and nothing of it waiting on this reader
+    await screen({ route: `${base}&view=entries&entry=${entryId(1)}` })
+    await expect.element(page.getByRole('dialog')).toBeVisible()
+    expect(page.getByTestId('entry-actions').elements()).toHaveLength(0)
+  })
+
+  it('draws the action bar once there is something to do', async () => {
+    await page.viewport(1440, 900)
+    await screen({
+      route: `${base}&view=entries&entry=${entryId(1)}`,
+      claims: [
+        {
+          ...claim(1, OWN_ITEM, 'approved'),
+          corrections: {
+            returnForRevision: hidden,
+            reopen: { state: 'available', reason: null },
+            redetermine: hidden,
+          },
+        },
+      ],
+    })
+    await expect.element(page.getByRole('dialog')).toBeVisible()
+    await expect.element(page.getByTestId('entry-actions')).toBeVisible()
+  })
+
   it('walks a phone from the structure into one question', async () => {
     await page.viewport(390, 844)
     await screen({ route: `${base}&view=entries` })

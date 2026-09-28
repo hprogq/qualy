@@ -161,6 +161,16 @@ export function ManagedEntrySheet({
       : !administrative && (entry.status === 'in_review' || entry.status === 'approved'))
   const returnBlocked =
     returnOffer !== undefined && returnOffer.state === 'blocked' ? why(returnOffer.reason) : null
+  const offersRedetermine = corrections !== undefined && corrections.redetermine.state !== 'hidden'
+  const offersReopen = corrections !== undefined && corrections.reopen.state !== 'hidden'
+  // A reader with nothing to do here gets no bar at all rather than an empty
+  // one, which drew as a sliver under the claim.
+  const acts =
+    (provenance !== undefined && provenance !== null) ||
+    offersRedetermine ||
+    offersReopen ||
+    withdrawable ||
+    returnable
 
   return (
     <>
@@ -173,55 +183,57 @@ export function ManagedEntrySheet({
         {...(summary === undefined ? {} : { summary })}
         aside={<Determination recognition={recognition} entry={entry} itemId={item.id} />}
         footer={
-          <>
-            {provenance}
-            <span {...stylex.props(styles.spacer)} />
-            {corrections !== undefined && corrections.redetermine.state !== 'hidden' && (
-              <CorrectionKey
-                act="redetermine"
-                label={format(m.staffRedetermine)}
-                blocked={
-                  corrections.redetermine.state === 'blocked'
-                    ? why(corrections.redetermine.reason)
-                    : null
-                }
-                busy={busy}
-                onPress={() => setCorrecting('redetermine')}
-              />
-            )}
-            {corrections !== undefined && corrections.reopen.state !== 'hidden' && (
-              <CorrectionKey
-                act="reopen"
-                label={format(m.staffReopen)}
-                blocked={
-                  corrections.reopen.state === 'blocked' ? why(corrections.reopen.reason) : null
-                }
-                busy={busy}
-                onPress={() => setCorrecting('reopen')}
-              />
-            )}
-            {withdrawable && (
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={busy}
-                className={stylex.props(styles.ghostInk).className}
-                onClick={() => setAsking('void')}
-              >
-                {format(m.staffVoidEntry)}
-              </Button>
-            )}
-            {returnable && (
-              <CorrectionKey
-                act="return"
-                variant="default"
-                label={format(m.staffReturnEntry)}
-                blocked={returnBlocked}
-                busy={busy}
-                onPress={() => setAsking('return-for-revision')}
-              />
-            )}
-          </>
+          acts ? (
+            <>
+              {provenance}
+              <span {...stylex.props(styles.spacer)} />
+              {offersRedetermine && (
+                <CorrectionKey
+                  act="redetermine"
+                  label={format(m.staffRedetermine)}
+                  blocked={
+                    corrections.redetermine.state === 'blocked'
+                      ? why(corrections.redetermine.reason)
+                      : null
+                  }
+                  busy={busy}
+                  onPress={() => setCorrecting('redetermine')}
+                />
+              )}
+              {offersReopen && (
+                <CorrectionKey
+                  act="reopen"
+                  label={format(m.staffReopen)}
+                  blocked={
+                    corrections.reopen.state === 'blocked' ? why(corrections.reopen.reason) : null
+                  }
+                  busy={busy}
+                  onPress={() => setCorrecting('reopen')}
+                />
+              )}
+              {withdrawable && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy}
+                  className={stylex.props(styles.ghostInk).className}
+                  onClick={() => setAsking('void')}
+                >
+                  {format(m.staffVoidEntry)}
+                </Button>
+              )}
+              {returnable && (
+                <CorrectionKey
+                  act="return"
+                  variant="default"
+                  label={format(m.staffReturnEntry)}
+                  blocked={returnBlocked}
+                  busy={busy}
+                  onPress={() => setAsking('return-for-revision')}
+                />
+              )}
+            </>
+          ) : undefined
         }
       />
 
