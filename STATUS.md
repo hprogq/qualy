@@ -20606,5 +20606,31 @@ W12 审查意见收尾（十一组，分组见仓库外 `audit-2026-09-25/wave13
 
 ### 下一步
 
-- 需要用户：CNB 仓库路径与推送令牌（进 GitHub `release` 环境）→ 跑 connectivity，看推送耗时。
-- 部署任务（B3）与服务器侧准备（D1）待定：部署脚本随镜像走还是在服务器手动更新；COS 真桶门禁与「dev 密钥不进 GitHub」的冲突。
+- 已完成，见下一节。
+
+## 部署：固定 launcher + release 自带 deploy/；真桶门禁；冒烟走真 Caddy（2026-09-28）
+
+- 连通性（用户配置 `QUALY_REGISTRY=docker.cnb.cool/hprogq/qualy` 与推送令牌后触发，run 36385287028，两个 job 成功）：从 GitHub 推三个镜像到 CNB 分别 25s、20s、18s，共约一分钟；服务器 2222 端口应答 host key 扫描。CNB 里留着 `connectivity-36385287028` 三个测试 tag，可删。
+- 两份评审的裁决按下列方式合并：
+  - 部署脚本随 release：`deploy/` 进 server 镜像（`prune-server-image.mjs` 保留；`.dockerignore` 排除 `deploy/*.env`；`check-release-image.ts` 逐字节比对 `deploy/`、确认其中无任何 env 文件、两个脚本可执行）。
+  - 宿主机只装一个不随 release 更新的 launcher `ops/deploy-host/qualy-deploy`（root 所有，读 root 所有的 `/etc/qualy/deploy.conf`）：只收 release 名与三个 digest，从固定仓库按 digest 拉取，核对三者标着该 release、同一非 dirty revision，本机名已指向别的镜像即拒；三个都过才命名；`docker create`+`docker cp` 取出 `deploy/` 到 `/opt/qualy/releases/<release>/`（root 所有、去组与其他人写权限），在 launcher 持有的同一把锁下以 `/opt/qualy/.env` 执行其 `upgrade.sh`。
+  - 回滚执行正在服务的（较新的）release 的 `rollback.sh`；每步后 `/opt/qualy/current` 指向服务中的 release；`fetch` 在没有 `current` 时也建它（首次部署前边缘的维护页）。
+  - SSH 走 `restrict,command=` 的 `qualy-deploy` 账户，launcher 把 `SSH_ORIGINAL_COMMAND` 切词（不展开）经 `sudo -n` 交给自己以 root 校验；安装步骤 `ops/deploy-host/README.md`。
+  - `collector.env` 改由 `QUALY_COLLECTOR_ENV_FILE` 指定（lib.sh 缺省为 `.env` 旁边），Caddy 维护页的 root 改为 `/opt/qualy/current/deploy/demo`。
+- `deploy.yml`：只在 main 手动运行，`production` 环境审批后才拿到 `QUALY_DEPLOY_SSH_KEY`；读该 release 的 `release.json`，核对平台与每个镜像都在 `QUALY_REGISTRY` 之下，只发 release 名与三个 digest（可选 `--maintenance`），或 `rollback`。
+- 真桶门禁：采用「CI 专用身份 + CI 专用桶」，凭据放单独的 `cos-test` 环境（已建，只允许 `v*` tag）而不是 `release` 环境——两份评审里第一份的隔离，第二份的桶。`release.yml` 的 `cos` job 与 `ci` 并行、`release` 等两者；缺任何设置即失败，套件里有跳过的用例也算失败（vitest json 报告的 pending 为 0）。
+- 冒烟走真 Caddy：Linux 上（CI 的 image job）`release-smoke.ts` 起一个按 digest 固定的 `caddy:2.11.4-alpine` 容器（host 网络，片段目录挂进去），脚本经 `docker exec … caddy validate/reload` 改片段，经它问 release；首色、升级、回滚、恢复后各核对片段指向的端口且边缘应答 200。Docker Desktop 的 host 网络不是本机的（本机实测探针 000），Mac 上仍无边缘并在输出里说明。为此 lib.sh 加 `QUALY_PROXY_CHECK_URL`（脚本经边缘核对 release 的地址，缺省 `QUALY_PUBLIC_URL`；冒烟的 server 要求 https 公开地址，而它的边缘是回环上的 http）。
+
+### 验收（实际执行）
+
+- `tools/tests/deploy-launcher.test.ts`（6 条，假 `docker`/`id`/`chown`/`sudo`）：部署按 digest 拉取、命名、以宿主锁执行该 release 的 upgrade、`current` 指向它；只收 release 名与三个 digest（逐条核对拒绝原因）；标签不是该 release、dirty、revision 不一致都拒且不命名任何一个；本机名已指向别的镜像即拒；回滚执行较新 release 的脚本；SSH 命令按词交给 sudo、`*` 与 `$(id)` 原样。
+- Caddyfile 与两种片段在同一镜像里 `caddy validate` 通过、`caddy reload` exit 0，经目录挂载被 `mv` 替换的片段生效。
+- 本机 `pnpm release:build --check --platform linux/arm64`（`2ee666d3-dirty`）：`check-release-image: deploy/: 15 file(s), every one byte for byte`、`no deployment's env file among the deploy scripts`、`the deploy scripts can be run`，其余各项照旧，`qualy-server:2ee666d3-dirty ok`。照 launcher 的做法 `docker create` + `docker cp` 取出 `/app/deploy`：15 个文件、脚本可执行位保留。
+- 发布冒烟（同一组镜像，Mac 上无边缘）：`release-smoke: 2ee666d3-dirty ok`，并打出 `no edge: docker's host network is not this machine's on darwin`；走真 Caddy 的那条路要看 CI 的 image job（Linux）。
+- actionlint 对四个工作流 exit 0；`pnpm vitest run tools/tests`：`Test Files  58 passed (58)`，`Tests  373 passed (373)`；`pnpm typecheck`、`pnpm lint`、`pnpm lint:types` exit 0。
+
+### 下一步
+
+- 用户：建 `qualy-ci-storage` 与两个 CI 桶，把 `QUALY_STORAGE_COS_SECRET_ID`/`_SECRET_KEY`（secret）与 `QUALY_STORAGE_COS_REGION`/`_BUCKET`/`QUALY_TEST_COS_VERSIONED_BUCKET`（variable）放进 `cos-test` 环境。
+- 推送后看 CI 的 image job 在 Linux 上走真 Caddy 通过。
+- 之后是服务器侧（D1，逐步同意）：deploy 用户、sudoers、launcher、`deploy.conf`、只读令牌 `docker login`、`production` 环境的 `QUALY_DEPLOY_SSH_KEY` 与 `QUALY_DEPLOY_KNOWN_HOSTS`。
