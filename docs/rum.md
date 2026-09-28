@@ -1616,12 +1616,18 @@ Uploader 需要的 Tencent Cloud credential 与 browser reporting ID 完全不�
 建议 CI secrets：
 
 ```text
-TENCENTCLOUD_SECRET_ID
-TENCENTCLOUD_SECRET_KEY
-QUALY_TENCENT_RUM_PROJECT_ID
+QUALY_RUM_TENCENT_SOURCEMAP_SECRET_ID
+QUALY_RUM_TENCENT_SOURCEMAP_SECRET_KEY
+QUALY_RUM_TENCENT_SOURCEMAP_PROJECT_ID
 ```
 
 这里 `PROJECT_ID` 是 numeric RUM control-plane project ID。
+
+> **改名（2026-09-28）**:原为 `TENCENTCLOUD_SECRET_ID` / `TENCENTCLOUD_SECRET_KEY` / `QUALY_TENCENT_RUM_PROJECT_ID`。
+> 前两个是 tccli 与部分腾讯云 SDK 默认凭据链读的名字:开发机的 `.env` 会被 CLI 加载,任何走默认凭据的腾讯云工具都会悄悄用上这把
+> 只该用于上传 SourceMap 的密钥;同一个 `.env` 里还有 COS 的另一组凭据,通用名字看不出是哪个子账号。第三个颠倒了
+> `QUALY_<能力>_<服务商>_<项>` 的顺序,和运行时的 reporting id `QUALY_RUM_TENCENT_ID` 只差词序。三者统一为
+> `QUALY_RUM_TENCENT_SOURCEMAP_*`。CI 里它们在 `rum-sourcemaps` 环境(只允许 `v*` tag),见 docs/deployment.md §2.5。
 
 不是：
 

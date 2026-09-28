@@ -29,12 +29,12 @@ if (('' + response).indexOf('403 forbidden') > -1) {
 
 腾讯云 RUM 控制台。两个 id 不是一回事,不要互相代入:
 
-| 值                                   | 给谁     | 进哪里                                            |
-| ------------------------------------ | -------- | ------------------------------------------------- |
-| browser reporting id(形如 `pGUV...`) | 浏览器   | `QUALY_RUM_TENCENT_ID`,部署环境变量               |
-| numeric SourceMap ProjectID          | uploader | `QUALY_TENCENT_RUM_PROJECT_ID`,**只进 CI secret** |
+| 值                                   | 给谁     | 进哪里                                                      |
+| ------------------------------------ | -------- | ----------------------------------------------------------- |
+| browser reporting id(形如 `pGUV...`) | 浏览器   | `QUALY_RUM_TENCENT_ID`,部署环境变量                         |
+| numeric SourceMap ProjectID          | uploader | `QUALY_RUM_TENCENT_SOURCEMAP_PROJECT_ID`,**只进 CI secret** |
 
-另外 uploader 需要 `TENCENTCLOUD_SECRET_ID` / `TENCENTCLOUD_SECRET_KEY`。这三个
+另外 uploader 需要 `QUALY_RUM_TENCENT_SOURCEMAP_SECRET_ID` / `QUALY_RUM_TENCENT_SOURCEMAP_SECRET_KEY`。这三个
 **永远不进** qualy.yml、qualy.lock.json、`.env.example` 的真实值、应用进程、浏览器、日志。
 应用进程只拿 reporting id。
 
@@ -68,7 +68,7 @@ the platform is returning a sample rate of 0        ← 平台把采样压到 0,
 
 ```bash
 QUALY_RELEASE_ID=<release> pnpm build
-QUALY_TENCENT_RUM_PROJECT_ID=... TENCENTCLOUD_SECRET_ID=... TENCENTCLOUD_SECRET_KEY=... \
+QUALY_RUM_TENCENT_SOURCEMAP_PROJECT_ID=... QUALY_RUM_TENCENT_SOURCEMAP_SECRET_ID=... QUALY_RUM_TENCENT_SOURCEMAP_SECRET_KEY=... \
   pnpm qualy rum sourcemaps
 # 然后部署这次构建的产物
 ```

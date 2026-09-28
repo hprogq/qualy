@@ -108,15 +108,15 @@ export async function run(context: CliContext): Promise<void> {
     refuse(`${dist} holds no .js.map; the build did not write source maps`)
   }
 
-  const projectId = Number(need('QUALY_TENCENT_RUM_PROJECT_ID'))
+  const projectId = Number(need('QUALY_RUM_TENCENT_SOURCEMAP_PROJECT_ID'))
   if (!Number.isInteger(projectId)) {
-    refuse('QUALY_TENCENT_RUM_PROJECT_ID must be the numeric project id, not the reporting id')
+    refuse('QUALY_RUM_TENCENT_SOURCEMAP_PROJECT_ID must be the numeric project id, not the reporting id')
   }
 
   const client = new tencentcloud.rum.v20210622.Client({
     credential: {
-      secretId: need('TENCENTCLOUD_SECRET_ID'),
-      secretKey: need('TENCENTCLOUD_SECRET_KEY'),
+      secretId: need('QUALY_RUM_TENCENT_SOURCEMAP_SECRET_ID'),
+      secretKey: need('QUALY_RUM_TENCENT_SOURCEMAP_SECRET_KEY'),
     },
     region: '',
     profile: { httpProfile: { endpoint: 'rum.tencentcloudapi.com' } },
