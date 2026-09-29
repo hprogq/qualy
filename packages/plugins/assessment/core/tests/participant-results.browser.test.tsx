@@ -1221,6 +1221,8 @@ describe('one account beside its person', () => {
     expect(Math.round(drawn.left)).toBe(Math.round(box.left))
     expect(Math.round(drawn.right)).toBe(Math.round(box.right))
     expect(Math.round(drawn.top)).toBe(Math.round(box.top))
+    // and down to the foot of the room, as the workspace will
+    expect(Math.round(drawn.bottom)).toBe(Math.round(box.bottom))
   })
 
   it('counts the claims only once they are read', async () => {

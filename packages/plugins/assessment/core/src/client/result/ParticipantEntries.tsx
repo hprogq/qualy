@@ -73,6 +73,17 @@ const styles = stylex.create({
     flexBasis: '0%',
     flexDirection: 'column',
   },
+  // the outline stands in the whole seat while it loads, down to the foot
+  // of the room, as the workspace will
+  fill: {
+    display: 'flex',
+    minWidth: 0,
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+  },
   inset: {
     paddingInline: { default: 24, [breakpoints.phone]: 16 },
     paddingTop: { default: 20, [breakpoints.phone]: 16 },
@@ -304,6 +315,9 @@ export function ParticipantEntries({
         }}
         // the workspace it is about to become, edge to edge like it
         skeleton={<WorkspaceSkeleton viewer="staff" open={openItem !== ''} />}
+        // only the outline is stood in the whole seat: what it becomes, and
+        // why it could not, keep the room the seat gives them
+        {...(pending ? { xstyle: styles.fill } : {})}
       >
         {rows.length === 0 ? (
           <p {...stylex.props(styles.empty)}>{format(m.entriesNoItems)}</p>
