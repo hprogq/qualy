@@ -321,6 +321,15 @@ const execute = (request: InvokeRequest): InvokeResponse => {
  * warm-up it took 24-45ms (docs/deployment.md, 2026-09-29). A narrower
  * program left it near 55ms: what is not run here is compiled on a caller's
  * clock.
+ *
+ * Its size matters as much as its breadth. Run as it is, a worker's first
+ * formula still took a median 46ms and up to 139ms there, its second 40ms:
+ * the soft deadline (50ms) was crossed on a fresh worker, and its retry -
+ * the second evaluation - could cross it again. Copied until it is the size
+ * of a formula artifact (`WARM_UP_PROGRAM`) and run four times, the first
+ * formula took a median 15ms and at most 21ms, every evaluation at most
+ * 36ms, and none was interrupted (same page, later the same day). Disabling
+ * V8's lazy wasm compilation or its baseline tier bought nothing there.
  */
 const WARM_UP = `(() => {
   class Refusal extends Error {
@@ -391,16 +400,29 @@ const WARM_UP = `(() => {
   }
 })()`
 
-for (let round = 0; round < 3; round += 1) {
+/** copies of the program above, about the size of one formula artifact */
+const WARM_UP_COPIES = 12
+const WARM_UP_ROUNDS = 4
+const WARM_UP_PROGRAM = [
+  ...Array.from({ length: WARM_UP_COPIES }, (_, copy) =>
+    WARM_UP.replace('globalThis.warm =', `globalThis.warm${String(copy)} =`),
+  ),
+  `globalThis.warm = (text) => [${Array.from(
+    { length: WARM_UP_COPIES },
+    (_, copy) => `warm${String(copy)}(text)`,
+  ).join(', ')}].join('')`,
+].join(';\n')
+
+for (let round = 0; round < WARM_UP_ROUNDS; round += 1) {
   const warmed = execute({
     id: 0,
-    artifact: WARM_UP,
+    artifact: WARM_UP_PROGRAM,
     entrypoint: 'warm',
     arguments: [JSON.stringify({ round })],
     softDeadlineMs: 60_000,
     memoryBytes: 32 * 1024 * 1024,
     stackBytes: 512 * 1024,
-    outputBytes: 4096,
+    outputBytes: 64 * 1024,
   })
   // an engine that cannot run this cannot run a formula: fail the worker
   // before it is ready rather than answer every caller with the same defect

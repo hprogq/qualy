@@ -52,6 +52,41 @@ describe('the worker pool', () => {
     expect(healed.value).toBe('alive')
   }, 30_000)
 
+  it('starts a warm pool whole before it is asked, and answers from it', async () => {
+    const pool = new WorkerPool({ size: 2, variant: 'release', keepWarm: true })
+    onTestFinished(() => pool.shutdown())
+    await pool.start()
+    const answers = await Promise.all(
+      ['one', 'two'].map((word) =>
+        run(pool, `globalThis.say = () => "${word}"`, 'say', {
+          softDeadlineMs: 5_000,
+          hardDeadlineMs: 10_000,
+        }),
+      ),
+    )
+    expect(answers.map((answer) => answer.value)).toEqual(['one', 'two'])
+  }, 30_000)
+
+  it('replaces a worker the watchdog took, before anybody asks again', async () => {
+    const pool = new WorkerPool({ size: 1, variant: 'release', keepWarm: true })
+    onTestFinished(() => pool.shutdown())
+    await pool.start()
+    const wedged = await run(pool, 'globalThis.wedge = () => { for (;;) {} }', 'wedge', {
+      softDeadlineMs: 60_000,
+      hardDeadlineMs: 250,
+    }).then(
+      () => undefined,
+      (problem: PoolProblem) => problem,
+    )
+    expect(wedged).toEqual({ kind: 'hard-timeout', reason: 'watchdog' })
+    // the one worker there is now is the replacement, and it answers
+    const healed = await run(pool, 'globalThis.ok = () => "alive"', 'ok', {
+      softDeadlineMs: 5_000,
+      hardDeadlineMs: 10_000,
+    })
+    expect(healed.value).toBe('alive')
+  }, 30_000)
+
   it('queues beyond the pool size and completes everything', async () => {
     const pool = new WorkerPool({ size: 2, variant: 'release' })
     onTestFinished(() => pool.shutdown())

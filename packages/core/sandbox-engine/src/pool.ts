@@ -1,9 +1,14 @@
 /**
  * The worker pool, imperative on purpose: workers are OS resources with
  * their own lifecycle, and the Effect world holds exactly one handle to all
- * of it (create in acquire, shutdown in release). Workers spawn lazily — a
- * boot that never scores never pays for an engine — and one worker runs one
+ * of it (create in acquire, shutdown in release). One worker runs one
  * invocation at a time.
+ *
+ * Workers spawn lazily unless the pool is kept warm. A process that exists
+ * to score keeps it warm: it starts every worker before it serves anything
+ * (`start`), so engine load and warm-up never fall inside somebody's request
+ * - not the first one after a deployment, either - and a worker thrown away
+ * is replaced at once rather than by the next caller.
  *
  * The hard deadline lives here, not in the engine: a worker that blows past
  * it is terminated and replaced, because past the interrupt handler there is
@@ -16,6 +21,8 @@ import type { InvokeRequest, InvokeResponse, WorkerMessage } from './protocol.ts
 interface Slot {
   worker: Worker
   ready: Promise<void>
+  /** it reported ready once: only such a worker is replaced when it goes */
+  readied: boolean
   busy: boolean
 }
 
@@ -34,6 +41,8 @@ export interface PoolProblem {
 export interface PoolOptions {
   readonly size: number
   readonly variant: 'release' | 'debug'
+  /** replace a worker the moment it is thrown away, instead of when next asked */
+  readonly keepWarm?: boolean
 }
 
 export class WorkerPool {
@@ -52,6 +61,16 @@ export class WorkerPool {
     return this.#sequence
   }
 
+  /**
+   * Every worker, spawned and ready. Rejects when one cannot come up: an
+   * engine that does not load will not load for a caller either, and a
+   * process that says so at start is restarted rather than serving refusals.
+   */
+  async start(): Promise<void> {
+    while (this.#slots.length < this.#options.size) this.#spawn()
+    await Promise.all(this.#slots.map((slot) => slot.ready))
+  }
+
   run(request: InvokeRequest, hardDeadlineMs: number): Promise<InvokeResponse> {
     if (this.#closed) return Promise.reject({ kind: 'worker-lost', reason: 'pool is shut down' })
     return new Promise((resolve, reject) => {
@@ -68,10 +87,12 @@ export class WorkerPool {
     const slot: Slot = {
       worker,
       busy: false,
+      readied: false,
       ready: new Promise((resolve, reject) => {
         const onMessage = (message: WorkerMessage) => {
           if ('ready' in message) {
             worker.off('message', onMessage)
+            slot.readied = true
             resolve()
           }
         }
@@ -79,6 +100,11 @@ export class WorkerPool {
         worker.once('error', reject)
       }),
     }
+    // A worker spawned ahead of any caller has nobody awaiting it yet: its
+    // failure to load is handled here - the slot goes, unreplaced, and the
+    // next caller spawns afresh - rather than as an unhandled rejection
+    // that would take the process down. Whoever awaits it still hears why.
+    slot.ready.catch(() => this.#discard(slot))
     this.#slots.push(slot)
     return slot
   }
@@ -160,8 +186,15 @@ export class WorkerPool {
 
   #discard(slot: Slot): void {
     const at = this.#slots.indexOf(slot)
-    if (at !== -1) this.#slots.splice(at, 1)
+    if (at === -1) return
+    this.#slots.splice(at, 1)
     void slot.worker.terminate().catch(() => undefined)
+    // one that never came up is not replaced here: an engine that cannot
+    // load would be respawned forever
+    if (this.#options.keepWarm === true && slot.readied && !this.#closed) {
+      this.#spawn()
+      this.#dispatch()
+    }
   }
 
   async shutdown(): Promise<void> {

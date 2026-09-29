@@ -4,6 +4,10 @@
  * words — and everything the wire says is validated again in invoke.ts,
  * because whatever connects to this socket is not a friend.
  *
+ * The pool comes up before the socket does: every worker is spawned, loaded
+ * and warmed before anything can connect, so a deployment's readiness check
+ * finds an engine that is already warm, and nobody's request pays for one.
+ *
  * The socket file is this process's own: stale ones are removed before
  * listening (a crash leaves them behind and listen would refuse), and the
  * file is unlinked again on shutdown. Defects stay per-request
@@ -14,7 +18,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { Effect, Layer } from 'effect'
+import { Context, Effect, Layer } from 'effect'
 import { NodeRuntime, NodeSocketServer } from '@effect/platform-node'
 import { SocketServer } from 'effect/unstable/socket'
 import { RpcSerialization, RpcServer } from 'effect/unstable/rpc'
@@ -40,12 +44,25 @@ const poolSize = (() => {
   process.exit(1)
 })()
 
+class Pool extends Context.Service<Pool, WorkerPool>()('@qualy/sandbox-runtime/Pool') {}
+
+// kept warm: started whole before the socket listens, and a worker thrown
+// away is replaced at once
+const poolLayer = Layer.effect(
+  Pool,
+  Effect.acquireRelease(
+    Effect.promise(async () => {
+      const pool = new WorkerPool({ size: poolSize, variant: 'release', keepWarm: true })
+      await pool.start()
+      return pool
+    }),
+    (acquired) => Effect.promise(() => acquired.shutdown()),
+  ),
+)
+
 const handlers = RuntimeSandboxRpcs.toLayer(
   Effect.gen(function* () {
-    const pool = yield* Effect.acquireRelease(
-      Effect.sync(() => new WorkerPool({ size: poolSize, variant: 'release' })),
-      (acquired) => Effect.promise(() => acquired.shutdown()),
-    )
+    const pool = yield* Pool
     // minted once per process: the identity every answer carries, so a
     // caller can tell this serving instance from the one before it
     const runtimeInstanceId = randomUUID()
@@ -87,6 +104,8 @@ const server = RpcServer.layer(RuntimeSandboxRpcs, { disableFatalDefects: true }
   Layer.provideMerge(RpcServer.layerProtocolSocketServer),
   Layer.provideMerge(socketServerLayer),
   Layer.provide(RpcSerialization.layerNdjsonWith({ maxBufferSize: SANDBOX_RPC_MAX_FRAME_BYTES })),
+  // outermost, so it is built - every worker ready - before the socket is
+  Layer.provide(poolLayer),
 )
 
 NodeRuntime.runMain(
