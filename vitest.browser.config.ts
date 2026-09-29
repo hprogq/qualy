@@ -69,7 +69,12 @@ export default defineConfig({
   test: {
     // measured only when asked (`pnpm test:browser:coverage`); Chromium only -
     // V8 coverage needs a V8 engine, so the WebKit leg is never measured
-    coverage: coverageScope(repoRoot, path.join(repoRoot, 'apps/web'), 'coverage/browser'),
+    coverage: coverageScope(
+      'browser',
+      repoRoot,
+      path.join(repoRoot, 'apps/web'),
+      'coverage/browser',
+    ),
     // The host's own tests, and every plugin's - one runner, wherever the
     // file lives. A test belongs to whatever it is about, and the runner
     // stays single because React, the router, StyleX and the widget library

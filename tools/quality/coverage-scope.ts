@@ -12,12 +12,19 @@ import type { CoverageV8Options } from 'vitest/node'
 // hard-to-reach parts included - a figure that improves by dropping them
 // would say less, not more.
 //
-// The node suite and the browser suite are measured against this same list,
-// each counting what it ran; Codecov merges the two uploads. Code that only
-// runs inside a child process or a container (the server host booted by a
-// smoke, the sandboxes) stays in the denominator and is mostly uncounted:
-// V8 sees the test process only. The figure means "reached by the node and
-// Chromium suites", not "tested".
+// Every file is measured by ONE suite: browser code (the web host, the web
+// packages, every plugin's src/client) by Chromium, everything else by node.
+// Measured by both, a browser file counted twice over - node lists it whole
+// and unrun, every line including JSX and types, while Chromium lists only
+// the lines it can execute - and Codecov, merging by line number, could
+// never cover the lines only node had listed: the first upload read 54.8%
+// of 69,883 lines where the same runs, taken one file per suite, are near
+// 79% of 49,000. Shared code the browser also loads is node's.
+//
+// Code that only runs inside a child process or a container (the server
+// host booted by a smoke, the sandboxes) stays in node's denominator and is
+// mostly uncounted: V8 sees the test process only. The figure means
+// "reached by the node and Chromium suites", not "tested".
 //
 // Globs, not package names: which plugins exist is the assembly's business.
 
@@ -28,6 +35,13 @@ const SOURCES = [
   'packages/web/*/src/**/*.{ts,tsx}',
   'packages/build/*/src/**/*.{ts,tsx}',
   'packages/plugins/*/*/src/**/*.{ts,tsx}',
+]
+
+/** the browser's share of SOURCES; every .tsx in the product lies inside it */
+const BROWSER = [
+  'apps/web/src/**/*.{ts,tsx}',
+  'packages/web/*/src/**/*.{ts,tsx}',
+  'packages/plugins/*/*/src/client/**/*.{ts,tsx}',
 ]
 
 const NOT_PRODUCT = ['**/*.d.ts', '**/testkit.ts', '**/testkit/**']
@@ -41,18 +55,21 @@ const NOT_PRODUCT = ['**/*.d.ts', '**/testkit.ts', '**/testkit/**']
  * browser suite's apps/web root counted five files instead of six hundred).
  */
 export const coverageScope = (
+  suite: 'node' | 'browser',
   repoRoot: string,
   suiteRoot: string,
   reports: string,
-): { provider: 'v8' } & CoverageV8Options => ({
-  provider: 'v8',
-  include: SOURCES.map((glob) =>
-    path.resolve(suiteRoot) === path.resolve(repoRoot) ? glob : path.join(repoRoot, glob),
-  ),
-  exclude: NOT_PRODUCT,
-  allowExternal: true,
-  reportsDirectory: path.join(repoRoot, reports),
-  // lcov paths relative to the repository, so the two uploads name one file
-  // the same way whichever root the suite ran under
-  reporter: [['text-summary'], ['json-summary'], ['lcov', { projectRoot: repoRoot }]],
-})
+): { provider: 'v8' } & CoverageV8Options => {
+  const inside = path.resolve(suiteRoot) === path.resolve(repoRoot)
+  const at = (glob: string) => (inside ? glob : path.join(repoRoot, glob))
+  return {
+    provider: 'v8',
+    include: (suite === 'browser' ? BROWSER : SOURCES).map(at),
+    exclude: [...NOT_PRODUCT, ...(suite === 'node' ? BROWSER.map(at) : [])],
+    allowExternal: true,
+    reportsDirectory: path.join(repoRoot, reports),
+    // lcov paths relative to the repository, so the two uploads name one file
+    // the same way whichever root the suite ran under
+    reporter: [['text-summary'], ['json-summary'], ['lcov', { projectRoot: repoRoot }]],
+  }
+}
