@@ -134,10 +134,16 @@ jobs:
             cat release.json
             echo '```'
           } > notes.md
+          # a release candidate, beta or alpha is a prerelease, and says so on
+          # GitHub; deploy.yml fetches by tag, so it reads either the same way
+          case $RELEASE in
+            *-alpha* | *-beta* | *-rc*) stage=--prerelease ;;
+            *) stage=--latest ;;
+          esac
           if gh release view "$RELEASE" > /dev/null 2>&1; then
             gh release upload "$RELEASE" release.json
           else
-            gh release create "$RELEASE" release.json --verify-tag --title "$RELEASE" --notes-file notes.md
+            gh release create "$RELEASE" release.json --verify-tag --title "$RELEASE" --notes-file notes.md "$stage"
           fi
           cat notes.md >> "$GITHUB_STEP_SUMMARY"
       # The source is public; the maps are kept for a week so a filing that
