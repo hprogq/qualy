@@ -16,8 +16,8 @@ import { serveMiddleware } from '../src/serve-middleware.ts'
 // behind the chain production serves behind, with a real fault beside them
 // that all three must still call one.
 
-const port = 3287
-const receiverPort = 3288
+const port = 3334
+const receiverPort = 3335
 const base = `http://127.0.0.1:${port}${QUALY_API_PREFIX}`
 
 interface ExportedSpan {

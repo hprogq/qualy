@@ -28,7 +28,7 @@ export const deviceAtStart: Effect.Effect<SignInDevice> = Effect.map(currentRequ
 export const recordFlowDevice = (device: SignInDevice): Effect.Effect<void> =>
   Effect.flatMap(currentRequest, (request) =>
     Effect.sync(() => {
-      if (request !== undefined) fromFlows.set(request.source as object, device)
+      if (request !== undefined) fromFlows.set(request.source, device)
     }),
   )
 
@@ -36,5 +36,5 @@ export const recordFlowDevice = (device: SignInDevice): Effect.Effect<void> =>
 export const signInDevice: Effect.Effect<SignInDevice> = Effect.map(currentRequest, (request) =>
   request === undefined
     ? 'personal'
-    : (fromFlows.get(request.source as object) ?? deviceOfCookieHeader(request.headers.cookie)),
+    : (fromFlows.get(request.source) ?? deviceOfCookieHeader(request.headers.cookie)),
 )

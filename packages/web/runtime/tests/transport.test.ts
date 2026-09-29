@@ -309,7 +309,7 @@ describe('the fetch a request goes through', () => {
         if (this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation')
         monitored.push(String(input instanceof Request ? input.url : input))
         return found.call(globalThis, input, init)
-      } as typeof globalThis.fetch
+      }
 
       // the api asks again: through the monitor, and on to the fetch it wrapped
       await Effect.runPromise(client.ping.hello())
