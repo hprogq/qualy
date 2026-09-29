@@ -31,12 +31,19 @@ import { holdsStanding, useBatchAbsence, type BatchStanding } from './absence.ts
 // replaced.
 
 const styles = stylex.create({
+  // At a desk a section is a workbench that scrolls inside itself, so the
+  // column is held to the room it is given. On a phone the section is part
+  // of the page and the shell's own scroller moves it: held to that room, it
+  // spilled past its own end instead of growing, and the scroller's room for
+  // the bar at the foot (padding) came after the column, not after what
+  // spilled - the last row of a long list stayed under the bar. So on a
+  // phone the column grows with what it holds, and still fills a short page.
   fillColumn: {
     display: 'flex',
     minHeight: 0,
     flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
+    flexShrink: { default: 1, [breakpoints.phone]: 0 },
+    flexBasis: { default: '0%', [breakpoints.phone]: 'auto' },
     flexDirection: 'column',
   },
   band: {
@@ -106,8 +113,9 @@ const styles = stylex.create({
     display: 'flex',
     minHeight: 0,
     flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
+    // as fillColumn, and for the same reason
+    flexShrink: { default: 1, [breakpoints.phone]: 0 },
+    flexBasis: { default: '0%', [breakpoints.phone]: 'auto' },
     flexDirection: 'column',
   },
   bareNote: {

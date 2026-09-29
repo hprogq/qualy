@@ -3512,3 +3512,64 @@ describe('a round longer than one page', () => {
     await expect.element(moving).toHaveAttribute('data-drafts', '1')
   })
 })
+
+describe('a round longer than a phone', () => {
+  afterEach(() => page.viewport(1280, 800))
+
+  it('lets the last question scroll clear of the room the shell keeps for its bar', async () => {
+    await page.viewport(390, 664)
+    // more questions than a phone's screen, as a real round has
+    const items = Array.from({ length: 30 }, (_, at) =>
+      item({
+        id: `22222222-2222-4222-8222-${String(at).padStart(12, '0')}`,
+        title: `事项 ${String(at + 1)}`,
+        sortOrder: at,
+      }),
+    )
+    await screen(
+      {
+        listItems: () => Effect.succeed({ items, capabilities: { canManage: false } }),
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [],
+            nextCursor: null,
+            attention: { unreadEntryIds: [] },
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [
+        {
+          path: '/assessment/batches/:batchId/my-entries',
+          // the shell's scroller on a phone: a flex column the height of the
+          // room under its head, holding the bar's height clear at its foot
+          element: (
+            <main
+              data-testid="page-scroller"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                height: 568,
+                overflowY: 'auto',
+                paddingBottom: 56,
+                boxSizing: 'border-box',
+              }}
+            >
+              <MyEntriesPage />
+            </main>
+          ),
+        },
+      ],
+    )
+    const rail = page.getByTestId('structure-rail')
+    await expect.element(rail.getByText('事项 30')).toBeInTheDocument()
+    const scroller = page.getByTestId('page-scroller').element()
+    scroller.scrollTop = scroller.scrollHeight
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+
+    const rows = [...rail.element().querySelectorAll('li')]
+    const lastBottom = rows.at(-1)!.getBoundingClientRect().bottom
+    const clearOfBar = scroller.getBoundingClientRect().bottom - 56
+    expect(lastBottom).toBeLessThanOrEqual(clearOfBar + 1)
+  })
+})
