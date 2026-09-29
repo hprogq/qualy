@@ -1,5 +1,8 @@
 import { Context, Effect, Layer, Schema } from 'effect'
 import { decodePluginConfig } from '@qualy/plugin-kit/config'
+import { FormulaScoringBudget, scoringBudgetLayer } from '../scoring/budget.ts'
+
+export { FormulaScoringBudget, scoringBudgetLayer }
 
 // What the manifest says about this plugin.
 //
@@ -29,14 +32,22 @@ export const FormulaManifestConfig = Schema.Struct({
 })
 export type FormulaManifestConfig = typeof FormulaManifestConfig.Type
 
+/**
+ * The plugin's settings: the manifest's switch, and beside it the scoring
+ * budget, which is the deployment's (../scoring/budget.ts) and says nothing
+ * the manifest could.
+ */
 export const config = (
   manifest: unknown,
   _context: { readonly manifestDir: string },
-): Layer.Layer<FormulaSettings, Schema.SchemaError> =>
-  Layer.effect(
-    FormulaSettings,
-    Effect.gen(function* () {
-      const declared = yield* decodePluginConfig(FormulaManifestConfig, manifest)
-      return FormulaSettings.of({ authoring: declared.authoring ?? false })
-    }),
+): Layer.Layer<FormulaSettings | FormulaScoringBudget, Schema.SchemaError> =>
+  Layer.merge(
+    Layer.effect(
+      FormulaSettings,
+      Effect.gen(function* () {
+        const declared = yield* decodePluginConfig(FormulaManifestConfig, manifest)
+        return FormulaSettings.of({ authoring: declared.authoring ?? false })
+      }),
+    ),
+    scoringBudgetLayer,
   )

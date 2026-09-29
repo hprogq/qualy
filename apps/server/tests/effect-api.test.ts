@@ -17,7 +17,7 @@ import { masterKeyFrom, SecretsConfig } from '@qualy/plugin-secrets/server'
 import { TEST_MASTER_KEY } from '@qualy/plugin-secrets/testkit'
 import { DEFAULT_LIMITS, StorageConfig } from '@qualy/plugin-storage/server'
 import { LocalStorageConfig } from '@qualy/plugin-storage-local/config'
-import { FormulaSettings } from '@qualy/plugin-assessment-formula/config'
+import { FormulaSettings, scoringBudgetLayer } from '@qualy/plugin-assessment-formula/config'
 import { MailConfig } from '@qualy/plugin-mail/server'
 import { SmtpConfig } from '@qualy/plugin-mail-smtp/config'
 import { ResendConfig } from '@qualy/plugin-mail-resend/config'
@@ -266,6 +266,7 @@ const shell = (url: string) => {
         // the formula writer is pinned closed here on purpose: this suite's
         // subject is the api aggregate, not the rollout
         Layer.succeed(FormulaSettings, FormulaSettings.of({ authoring: false })),
+        scoringBudgetLayer,
       ),
     ),
   ) as unknown as Layer.Layer<never>

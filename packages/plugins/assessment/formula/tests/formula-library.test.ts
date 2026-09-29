@@ -11,6 +11,7 @@ import { FormulaAuthoring } from '../src/server/authoring.ts'
 import { FormulaLibrary, layer as formulaLayer } from '../src/server/index.ts'
 import { FormulaRuntimeStore, runtimeStoreLayer } from '../src/server/runtime-store.ts'
 import { one, seedFormulaFixture, servicesFor } from './support/stack.ts'
+import { scoringBudgetLayer } from '../src/scoring/budget.ts'
 
 // The library end to end on a real database: authoring, optimistic
 // concurrency, the whole publish pipeline (typecheck, bundle, sandbox
@@ -25,7 +26,7 @@ const stack = (url: string) =>
       Layer.provide(formulaAuthoringLocalLayer),
     ),
     runtimeStoreLayer,
-  ).pipe(Layer.provideMerge(servicesFor(url)))
+  ).pipe(Layer.provideMerge(servicesFor(url)), Layer.provideMerge(scoringBudgetLayer))
 
 const run = <A, E>(
   url: string,
@@ -673,6 +674,7 @@ export default defineFormula({
               ),
             ),
             Layer.provideMerge(servicesFor(db.url)),
+            Layer.provideMerge(scoringBudgetLayer),
           ),
         ),
       ),

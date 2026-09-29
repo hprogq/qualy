@@ -51,6 +51,7 @@ import { UserPlacement } from '@qualy/auth-contract'
 import { formulaLanguageLayer } from '../src/server/language.ts'
 import { formulaLspQuotaLayer } from '../src/server/lsp-bridge.ts'
 import { FormulaSettings } from '../src/server/config.ts'
+import { scoringBudgetLayer } from '../src/scoring/budget.ts'
 
 // The layer the service suite cannot see: the HttpApi wire itself. Every
 // request here is the byte-for-byte shape the browser client sends - method,
@@ -186,7 +187,7 @@ beforeAll(async () => {
     // stands is borne against the real placement in its own suite - so the
     // port is answered rather than assembled
     Layer.succeed(UserPlacement, { primaryNode: () => Effect.succeed(null) }),
-  ).pipe(Layer.provideMerge(services))
+  ).pipe(Layer.provideMerge(services), Layer.provideMerge(scoringBudgetLayer))
   // two servers over the same library and database, apart only in what the
   // manifest says about the writer: the main one has it open, as every
   // authoring bearing here assumes, and the second has it closed

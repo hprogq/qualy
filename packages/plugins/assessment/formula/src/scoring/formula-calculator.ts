@@ -44,7 +44,8 @@ import {
 import { BindableFormulaCatalog, type FormulaNotBindable } from '../server/binding-catalog.ts'
 import { contractIdentityOf, sha256Hex } from '../server/contract-identity.ts'
 import { decodeFormulaEnvelope } from '../server/envelope.ts'
-import { FORMULA_SCORING_LIMITS } from './limits.ts'
+import type { FormulaScoringLimits } from './limits.ts'
+import { FormulaScoringBudget } from './budget.ts'
 import { invokeForScore } from './invoke.ts'
 import { SUPPORTED_VALUE_SCHEMA_PROFILES } from '../server/runtime-compatibility.ts'
 
@@ -242,10 +243,10 @@ const resolveFrozenWith = (
 /** the sandbox's refusals, sorted into the failure taxonomy; a tag this
  *  build has never heard of reads as an execution failure - fail closed,
  *  never retried forever */
-const evaluationFailure = (error: {
-  readonly _tag: string
-  readonly phase?: 'soft' | 'hard'
-}): CalculatorEvaluationError => {
+const evaluationFailure = (
+  error: { readonly _tag: string; readonly phase?: 'soft' | 'hard' },
+  limits: FormulaScoringLimits,
+): CalculatorEvaluationError => {
   switch (error._tag) {
     case 'SandboxUnavailable':
     case 'SandboxWorkerLost':
@@ -253,21 +254,22 @@ const evaluationFailure = (error: {
         'unavailable',
         `the sandbox is unavailable: ${error._tag}`,
       )
-    case 'SandboxTimeout': {
-      // the same kind either way - a program that did not finish is a
-      // program that failed to compute - but which deadline it crossed is
-      // the one fact that tells a scheduler starved of cpu from a worker
-      // that wedged, so it rides in the reason
-      const phase = error.phase ?? 'hard'
-      const deadline =
-        phase === 'soft'
-          ? FORMULA_SCORING_LIMITS.softDeadlineMs
-          : FORMULA_SCORING_LIMITS.hardDeadlineMs
-      return new CalculatorEvaluationError(
-        'execution',
-        `the formula did not finish within the ${phase} deadline of ${deadline}ms: SandboxTimeout`,
-      )
-    }
+    case 'SandboxTimeout':
+      // Two different findings. The soft deadline is the engine interrupting
+      // a program that was still running: the formula overran its budget,
+      // twice. The hard one is the host's watchdog on a worker that did not
+      // come back at all - a stalled engine or a descheduled machine, which
+      // says nothing about the formula and is not the claimant's to carry:
+      // the account is unavailable for now, never scored from a guess.
+      return error.phase === 'soft'
+        ? new CalculatorEvaluationError(
+            'execution',
+            `the formula did not finish within the soft deadline of ${limits.softDeadlineMs}ms: SandboxTimeout`,
+          )
+        : new CalculatorEvaluationError(
+            'unavailable',
+            `the sandbox worker did not answer within the hard deadline of ${limits.hardDeadlineMs}ms: SandboxTimeout`,
+          )
     case 'SandboxMemoryExceeded':
     case 'SandboxStackExceeded':
     case 'SandboxOutputTooLarge':
@@ -310,7 +312,7 @@ type Answer =
   | { readonly ok: false; readonly message: string }
 
 export const formula1: CalculatorRegistration<
-  FormulaRuntimeStore | BindableFormulaCatalog | Sandbox | FormulaSettings
+  FormulaRuntimeStore | BindableFormulaCatalog | Sandbox | FormulaSettings | FormulaScoringBudget
 > = {
   kind: 'calculator',
   ref: REF,
@@ -320,6 +322,7 @@ export const formula1: CalculatorRegistration<
     const bindable = yield* BindableFormulaCatalog
     const sandbox = yield* Sandbox
     const settings = yield* FormulaSettings
+    const { limits } = yield* FormulaScoringBudget
 
     // held by this binding, so it lives as long as the layer and no longer;
     // a Map iterates in insertion order and a hit is put back at the end,
@@ -351,8 +354,8 @@ export const formula1: CalculatorRegistration<
         const key = `${resolved.runtimeSha256}:${sha256Hex(JSON.stringify(input))}`
         const known = recall(key)
         if (known !== undefined) return said(known)
-        return invokeForScore(sandbox, resolved, input).pipe(
-          Effect.mapError(evaluationFailure),
+        return invokeForScore(sandbox, resolved, input, limits).pipe(
+          Effect.mapError((error) => evaluationFailure(error, limits)),
           Effect.flatMap((answer) => {
             const read = decodeFormulaEnvelope(answer.output)
             if (read._tag === 'malformed') {

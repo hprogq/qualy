@@ -18,6 +18,7 @@ import { formulaAuthoringLayer } from '../src/server/authoring.ts'
 import { formulaAuthoringLocalLayer } from '@qualy/plugin-assessment-formula/testkit'
 import { FormulaLibrary, layer as formulaLayer } from '../src/server/index.ts'
 import { harnessClosure, seedFormulaFixture, servicesFor } from './support/stack.ts'
+import { scoringBudgetLayer } from '../src/scoring/budget.ts'
 
 // The parity ruling for stage D: the full publication - compile on the
 // authoring sandbox, contract and examples on the runtime sandbox, all
@@ -160,6 +161,7 @@ describe.runIf(postgresAvailable)('publication through the real sandbox processe
                 ),
               ),
           Layer.provideMerge(servicesFor(db.url)),
+          Layer.provideMerge(scoringBudgetLayer),
         ),
       ),
       Effect.runPromiseExit,

@@ -10,6 +10,7 @@ import type { Rbac } from '@qualy/rbac-contract/effect'
 import { FormulaLibrary, layer as formulaLayer } from '../src/server/index.ts'
 import { seedFormulaFixture, servicesFor } from './support/stack.ts'
 import { publishedVersion } from './support/versions.ts'
+import { scoringBudgetLayer } from '../src/scoring/budget.ts'
 
 // Trying a published version runs what publication froze: the stored
 // artifact and contract, proven again by the runtime store, and never the
@@ -23,6 +24,7 @@ const stack = (url: string) =>
     Layer.provide(sandboxLocalLayer({ size: 1, variant: 'release' })),
     Layer.provide(formulaAuthoringLocalLayer),
     Layer.provideMerge(servicesFor(url)),
+    Layer.provideMerge(scoringBudgetLayer),
   )
 
 const run = <A, E>(url: string, effect: Effect.Effect<A, E, FormulaLibrary | Rbac | Orm>) =>

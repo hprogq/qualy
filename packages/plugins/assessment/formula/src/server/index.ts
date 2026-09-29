@@ -96,6 +96,7 @@ import {
 import { BindableFormulaCatalog } from './binding-catalog.ts'
 import { contractWordsIssues } from '../contract-words.ts'
 import { invokeForScore } from '../scoring/invoke.ts'
+import { FormulaScoringBudget } from '../scoring/budget.ts'
 import { REFERENCE_INPUT, REFERENCE_SOURCE } from '../scoring/reference.ts'
 import { CASE_NOT_RUN, FAILED_UNDER_SCORING_BUDGET, OVER_SCORING_BUDGET } from '../report-codes.ts'
 
@@ -747,6 +748,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
   const sandbox = yield* Sandbox
   const authoring = yield* FormulaAuthoring
   const runtimeStore = yield* FormulaRuntimeStore
+  const { limits: scoringLimits } = yield* FormulaScoringBudget
 
   const actorOf = (as: Principal) => ({ kind: 'user', userId: as.userId }) as const
 
@@ -1543,13 +1545,17 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         )
       const reference = Effect.gen(function* () {
         const yardstick = yield* referenceArtifact
-        return yield* outageOrVerdict(invokeForScore(sandbox, yardstick, REFERENCE_INPUT))
+        return yield* outageOrVerdict(
+          invokeForScore(sandbox, yardstick, REFERENCE_INPUT, scoringLimits),
+        )
       })
       const report = [...compiled.report]
       for (const [index, test] of tests.entries()) {
         let verdict: string | null = null
         for (let round = 0; round < SCORING_BUDGET_ROUNDS; round += 1) {
-          verdict = yield* outageOrVerdict(invokeForScore(sandbox, artifact, test.input))
+          verdict = yield* outageOrVerdict(
+            invokeForScore(sandbox, artifact, test.input, scoringLimits),
+          )
           if (verdict !== OVER_SCORING_BUDGET) break
           if ((yield* reference) !== null) {
             yield* Effect.logWarning(

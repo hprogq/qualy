@@ -48,6 +48,7 @@ import { formula1 } from '../src/scoring/formula-calculator.ts'
 import { formulaAuthoringPolicy } from '../src/scoring/authoring-policy.ts'
 import { FormulaSettings } from '../src/server/config.ts'
 import { one, seedFormulaFixture, servicesFor } from './support/stack.ts'
+import { scoringBudgetLayer } from '../src/scoring/budget.ts'
 
 // The whole 7.3 protocol in one walk, against the REAL sandbox-runtime
 // process: publish a FormulaVersion, bind it to an assessment item as a V2
@@ -107,7 +108,11 @@ const stack = (
   const services = servicesFor(url)
   const sandbox = sandboxLayer({ socketPath })
   const formulaServices = Layer.mergeAll(
-    formulaLayer.pipe(Layer.provide(sandbox), Layer.provide(formulaAuthoringLocalLayer)),
+    formulaLayer.pipe(
+      Layer.provide(sandbox),
+      Layer.provide(formulaAuthoringLocalLayer),
+      Layer.provide(scoringBudgetLayer),
+    ),
     runtimeStoreLayer,
     bindingCatalogLayer.pipe(Layer.provide(configurationAccessLayer)),
   ).pipe(Layer.provideMerge(services))
@@ -127,6 +132,7 @@ const stack = (
     ),
   ).pipe(
     Layer.provide(Layer.succeed(FormulaSettings, FormulaSettings.of(settings))),
+    Layer.provide(scoringBudgetLayer),
     Layer.provide(formulaServices),
     Layer.provide(sandbox),
     Layer.provide(catalogLayers),

@@ -13,6 +13,7 @@ import { FormulaRuntimeStore, runtimeStoreLayer } from '../src/server/runtime-st
 import { FORMULA_SCORING_LIMITS } from '../src/scoring/limits.ts'
 import { REFERENCE_INPUT } from '../src/scoring/reference.ts'
 import { seedFormulaFixture, servicesFor } from './support/stack.ts'
+import { scoringBudgetLayer } from '../src/scoring/budget.ts'
 
 // The runtime sandbox is one worker in production, shared by everything that
 // scores and everything authors try. Scoring must not wait behind a queue of
@@ -74,7 +75,10 @@ const stack = (url: string, probe: Probe) =>
   Layer.mergeAll(
     formulaLayer.pipe(Layer.provide(formulaAuthoringLocalLayer)),
     runtimeStoreLayer,
-  ).pipe(Layer.provideMerge(Layer.merge(counted(probe), servicesFor(url))))
+  ).pipe(
+    Layer.provideMerge(Layer.merge(counted(probe), servicesFor(url))),
+    Layer.provideMerge(scoringBudgetLayer),
+  )
 
 const run = <A, E>(
   url: string,

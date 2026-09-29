@@ -11,6 +11,7 @@ import type { Rbac } from '@qualy/rbac-contract/effect'
 import { FormulaLibrary, layer as formulaLayer } from '../src/server/index.ts'
 import { FormulaRuntimeStore, runtimeStoreLayer } from '../src/server/runtime-store.ts'
 import { one, seedFormulaFixture, servicesFor } from './support/stack.ts'
+import { scoringBudgetLayer } from '../src/scoring/budget.ts'
 
 // The runtime half held to its charter: resolution by exact identity, row
 // integrity proven on every read, and nothing about the function's or its
@@ -27,7 +28,7 @@ const stack = (url: string) =>
       Layer.provide(formulaAuthoringLocalLayer),
     ),
     runtimeStoreLayer,
-  ).pipe(Layer.provideMerge(servicesFor(url)))
+  ).pipe(Layer.provideMerge(servicesFor(url)), Layer.provideMerge(scoringBudgetLayer))
 
 const run = <A, E>(
   url: string,

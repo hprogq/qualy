@@ -54,6 +54,7 @@ import { scoringAuthoringAccessLayer } from '@qualy/plugin-assessment/server/sco
 import { bindingCatalogLayer } from '../src/server/binding-catalog.ts'
 import { templateLibraryLayer } from '../src/server/template-library.ts'
 import { UserPlacement } from '@qualy/auth-contract'
+import { scoringBudgetLayer } from '../src/scoring/budget.ts'
 
 // The browser's whole language path, end to end and byte for byte: the
 // ambient session cookie opens the handshake, the Origin header is the
@@ -381,7 +382,7 @@ beforeAll(async () => {
     Layer.succeed(UserPlacement, { primaryNode: () => Effect.succeed(null) }),
     // the binding-options handler reads the writer switch; nothing here asks it
     Layer.succeed(FormulaSettings, FormulaSettings.of({ authoring: true })),
-  ).pipe(Layer.provideMerge(services))
+  ).pipe(Layer.provideMerge(services), Layer.provideMerge(scoringBudgetLayer))
   const application = HttpRouter.serve(
     HttpApiBuilder.layer(Api.local(formulaApiGroup)).pipe(
       Layer.provide(

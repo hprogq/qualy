@@ -9,6 +9,7 @@ import { formulaAuthoringLocalLayer } from '@qualy/plugin-assessment-formula/tes
 import type { Rbac } from '@qualy/rbac-contract/effect'
 import { FormulaLibrary, TESTS_LIMIT, layer as formulaLayer } from '../src/server/index.ts'
 import { seedFormulaFixture, servicesFor } from './support/stack.ts'
+import { scoringBudgetLayer } from '../src/scoring/budget.ts'
 
 // A formula's life as one model: one draft that is edited, a revision left
 // behind by every save that changed what could be published, and publications
@@ -22,6 +23,7 @@ const stack = (url: string) =>
     Layer.provide(sandboxLocalLayer({ size: 1, variant: 'release' })),
     Layer.provide(formulaAuthoringLocalLayer),
     Layer.provideMerge(servicesFor(url)),
+    Layer.provideMerge(scoringBudgetLayer),
   )
 
 const run = <A, E>(url: string, effect: Effect.Effect<A, E, FormulaLibrary | Rbac | Orm>) =>

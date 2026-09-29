@@ -24,6 +24,7 @@ import { BindableFormulaCatalog, bindingCatalogLayer } from '../src/server/bindi
 import { formula1, formulaConfigSchema } from '../src/scoring/formula-calculator.ts'
 import { FormulaSettings } from '../src/server/config.ts'
 import { one, seedFormulaFixture, servicesFor } from './support/stack.ts'
+import { FormulaScoringBudget, scoringBudgetLayer } from '../src/scoring/budget.ts'
 
 // formula@1 itself: the administrator's whole configuration is one exact
 // version UUID; compile freezes that version's identity, verify and prepare
@@ -40,14 +41,20 @@ const stack = (url: string) =>
     runtimeStoreLayer,
     bindingCatalogLayer.pipe(Layer.provide(configurationAccessLayer)),
     sandboxLocalLayer({ size: 1, variant: 'release' }),
-  ).pipe(Layer.provideMerge(servicesFor(url)))
+  ).pipe(Layer.provideMerge(servicesFor(url)), Layer.provideMerge(scoringBudgetLayer))
 
 const run = <A, E>(
   url: string,
   effect: Effect.Effect<
     A,
     E,
-    FormulaLibrary | FormulaRuntimeStore | BindableFormulaCatalog | Sandbox | Rbac | Orm
+    | FormulaLibrary
+    | FormulaRuntimeStore
+    | BindableFormulaCatalog
+    | Sandbox
+    | FormulaScoringBudget
+    | Rbac
+    | Orm
   >,
 ) => Effect.runPromiseExit(Effect.provide(effect, stack(url)))
 
@@ -544,8 +551,10 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
       ),
     )
     expect(outcome.answered).toBe('7.5')
-    // a starved host is asked once more; a wedged worker is not
-    expect(outcome.asked).toEqual({ soft: 2, hard: 1 })
+    // either deadline is asked once more: a starved host and a worker that
+    // was replaced both deserve a second try, and a formula that is really
+    // slow fails again
+    expect(outcome.asked).toEqual({ soft: 2, hard: 2 })
     const refusal = failureOf(outcome.refused) as CalculatorEvaluationError
     expect(refusal.kind).toBe('refusal')
     expect(refusal.reason).toBe('refused by policy')
@@ -556,9 +565,11 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
     const soft = failureOf(outcome.soft) as CalculatorEvaluationError
     expect(soft.kind).toBe('execution')
     expect(soft.reason).toContain('soft deadline')
+    // a worker that did not come back says nothing about the formula: the
+    // account is unavailable for now, not scored and not blamed on the claim
     const hard = failureOf(outcome.hard) as CalculatorEvaluationError
-    expect(hard.kind).toBe('execution')
-    expect(hard.reason).toContain('hard deadline')
+    expect(hard.kind).toBe('unavailable')
+    expect(hard.reason).toContain('hard deadline of 500ms')
     expect(hard.reason).not.toContain('soft')
   }, 120_000)
 

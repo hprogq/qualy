@@ -14,6 +14,7 @@ import {
   layer as formulaLayer,
 } from '../src/server/index.ts'
 import { seedFormulaFixture, servicesFor } from './support/stack.ts'
+import { scoringBudgetLayer } from '../src/scoring/budget.ts'
 
 // How much draft history one formula keeps. Every save keeps a whole
 // snapshot, so the history is bounded formula by formula: the current draft
@@ -26,6 +27,7 @@ const stack = (url: string) =>
     Layer.provide(sandboxLocalLayer({ size: 1, variant: 'release' })),
     Layer.provide(formulaAuthoringLocalLayer),
     Layer.provideMerge(servicesFor(url)),
+    Layer.provideMerge(scoringBudgetLayer),
   )
 
 const run = <A, E>(url: string, effect: Effect.Effect<A, E, FormulaLibrary | Rbac | Orm>) =>

@@ -1,6 +1,6 @@
 /**
  * One run of a formula the way scoring runs it: the scoring budget, and one
- * more try when only the soft deadline was crossed.
+ * more try when either deadline was crossed.
  *
  * Scoring and the publication gate both call this, so "it finished within
  * the budget when it was published" and "it finishes within the budget when
@@ -9,12 +9,13 @@
 
 import { Effect } from 'effect'
 import type { Sandbox } from '@qualy/plugin-sandbox/service'
-import { FORMULA_SCORING_LIMITS } from './limits.ts'
+import type { FormulaScoringLimits } from './limits.ts'
 
 export const invokeForScore = (
   sandbox: Sandbox['Service'],
   artifact: { readonly runtimeJs: string; readonly runtimeSha256: string },
   input: unknown,
+  limits: FormulaScoringLimits,
 ) =>
   sandbox
     .invoke({
@@ -22,15 +23,13 @@ export const invokeForScore = (
       artifactHash: artifact.runtimeSha256,
       entrypoint: '__qualyInvoke',
       arguments: [JSON.stringify(input)],
-      limits: FORMULA_SCORING_LIMITS,
+      limits,
     })
     .pipe(
-      // the soft deadline is wall clock over the whole worker envelope, so a
-      // starved host crosses it for a healthy formula; the program is pure,
-      // so asking once more costs nothing and a formula that is really slow
-      // fails again
-      Effect.retry({
-        times: 1,
-        while: (error) => error._tag === 'SandboxTimeout' && error.phase === 'soft',
-      }),
+      // The soft deadline is wall clock over the whole worker envelope, so a
+      // starved host crosses it for a healthy formula; the hard one is a
+      // watchdog whose worker is replaced at once, so the second try lands
+      // on a worker already up. The program is pure: asking once more costs
+      // nothing, and a formula that is really slow fails again.
+      Effect.retry({ times: 1, while: (error) => error._tag === 'SandboxTimeout' }),
     )
