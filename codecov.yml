@@ -1,0 +1,18 @@
+# Coverage is shown, never enforced: the statuses are informational, pull
+# requests get no comment and no patch check (they do not run coverage at
+# all, see .github/workflows/coverage.yml). The node and browser uploads of
+# one commit are merged by flag.
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch: off
+
+comment: false
+
+flags:
+  node:
+    carryforward: false
+  browser:
+    carryforward: false

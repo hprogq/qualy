@@ -5,9 +5,11 @@ import * as stylexUnpluginModule from '@stylexjs/unplugin/vite'
 import react from '@vitejs/plugin-react'
 import { playwright } from '@vitest/browser-playwright'
 import type { BrowserCommand } from 'vitest/node'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 import { qualyPlugins, qualyRelease } from '@qualy/web-build/vite'
+import { coverageScope } from './tools/quality/coverage-scope.ts'
 
 const stylexUnplugin =
   stylexUnpluginModule.default as unknown as (typeof stylexUnpluginModule)['default']['default']
@@ -65,6 +67,9 @@ export default defineConfig({
     include: ['react-dom/client'],
   },
   test: {
+    // measured only when asked (`pnpm test:browser:coverage`); Chromium only -
+    // V8 coverage needs a V8 engine, so the WebKit leg is never measured
+    coverage: coverageScope(repoRoot, path.join(repoRoot, 'apps/web'), 'coverage/browser'),
     // The host's own tests, and every plugin's - one runner, wherever the
     // file lives. A test belongs to whatever it is about, and the runner
     // stays single because React, the router, StyleX and the widget library

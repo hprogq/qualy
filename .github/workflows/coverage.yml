@@ -1,0 +1,155 @@
+name: coverage
+
+# How much of the product the node and Chromium suites reach, measured on
+# every commit main's CI has already passed, and handed to Codecov for the
+# history and the file view. A measurement, not a gate: nothing here is part
+# of release-eligible, no threshold fails it, and pull requests do not run it.
+# It starts only after CI succeeds, so a release never waits on it and a
+# failing commit never gets a figure. The suites themselves failing turns
+# this red - that is a real problem in this repository; Codecov failing to
+# take the upload is a warning - a third party's outage is not one.
+#
+# What the percentages are a fraction of is tools/quality/coverage-scope.ts.
+# Uploads authenticate by OIDC: no Codecov token is stored anywhere.
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coverage-${{ github.event.workflow_run.head_sha || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  node:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      QUALY_REQUIRE_POSTGRES_TESTS: '1'
+      QUALY_REQUIRE_MAILPIT_TESTS: '1'
+      NODE_COMPILE_CACHE: /tmp/node-compile-cache
+    services:
+      postgres:
+        # same image as ci.yml and the compose stacks (release-inputs.test.ts)
+        image: pgvector/pgvector:pg18-bookworm@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
+        env:
+          POSTGRES_USER: qualy
+          POSTGRES_PASSWORD: qualy
+          POSTGRES_DB: qualy
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U qualy"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      mailpit:
+        image: axllent/mailpit:v1.31.2
+        ports:
+          - 1025:1025
+          - 8025:8025
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.20.0
+          cache: pnpm
+      - uses: actions/cache@v6
+        with:
+          path: /tmp/node-compile-cache
+          key: node-compile-24.20.0-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: node-compile-24.20.0-
+      - run: pnpm install --frozen-lockfile
+      - name: a database nobody has to recover
+        env:
+          PGPASSWORD: qualy
+        run: |
+          for setting in fsync=off synchronous_commit=off full_page_writes=off; do
+            psql -h localhost -U qualy -d qualy -c "alter system set ${setting/=/ = }"
+          done
+          psql -h localhost -U qualy -d qualy -c 'select pg_reload_conf()'
+      - run: pnpm qualy resolve --frozen-lockfile
+      - run: pnpm test:coverage
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-node
+          path: coverage/node
+          retention-days: 7
+      - name: hand the node report to Codecov
+        id: codecov
+        continue-on-error: true
+        uses: codecov/codecov-action@v7
+        with:
+          use_oidc: true
+          files: coverage/node/lcov.info
+          disable_search: true
+          flags: node
+          override_commit: ${{ github.event.workflow_run.head_sha || github.sha }}
+          override_branch: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+      - if: steps.codecov.outcome == 'failure'
+        run: echo "::warning::Codecov did not take the node report; the report itself is in this run's artifacts"
+
+  browser:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.20.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: resolve playwright version
+        id: playwright
+        run: echo "version=$(node -e "console.log(require('playwright/package.json').version)")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ steps.playwright.outputs.version }}
+      - name: install chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:browser:coverage --reporter=verbose
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-browser
+          path: coverage/browser
+          retention-days: 7
+      - name: hand the browser report to Codecov
+        id: codecov
+        continue-on-error: true
+        uses: codecov/codecov-action@v7
+        with:
+          use_oidc: true
+          files: coverage/browser/lcov.info
+          disable_search: true
+          flags: browser
+          override_commit: ${{ github.event.workflow_run.head_sha || github.sha }}
+          override_branch: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+      - if: steps.codecov.outcome == 'failure'
+        run: echo "::warning::Codecov did not take the browser report; the report itself is in this run's artifacts"

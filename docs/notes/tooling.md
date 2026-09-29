@@ -179,3 +179,19 @@ ui-registry(统一 API runtime 拉 manifest 契约;页面组件用 useApi)。这
 | `typescript/unbound-method`、`no-base-to-string`、`no-misused-spread` | off                                      | 分别是方法语法声明的接口、有意的 `String(unknown)`、按码点计数的展开                                                                        |
 
 **两条路径**:`pnpm lint` 不看类型(约 0.5 秒);`pnpm lint:types` 开 tsgolint(本机 16 秒、峰值约 4.7 GB,CI 4 核 16 GB 可承受),失效 disable 注释只在这一路报——类型感知规则的抑制注释在快路径上必然显得「失效」。CI 新增 `static` job(无数据库,与其他 job 并行):`format:check → lint → typecheck → lint:types`,`typecheck` 从主 job 挪到这里。
+
+## 覆盖率:V8 + Codecov,只展示不门禁(2026-09-30 接入)
+
+- **口径**:分母写死在 `tools/quality/coverage-scope.ts`——`apps/*/src` 与各正式包 `src` 下全部 ts/tsx,只排除类型声明与
+  testkit。显式 include 让没有任何测试加载的文件以 0% 出现,而不是从报告里消失。数字的含义是「node 与 Chromium 套件触达了
+  多少」,不是「测了多少」:以子进程或容器运行的代码(smoke 启动的 server、两个沙箱)留在分母里、基本不计数,V8 只看得见测试进程。
+- **命令**:`pnpm test:coverage`(报告在 `coverage/node`)、`pnpm test:browser:coverage`(`coverage/browser`,只有 Chromium;
+  WebKit 不是 V8,不测)。浏览器配置的 root 是 apps/web,include 必须是绝对路径:写 `../../packages/...` 实测只统计到 5 个文件。
+  lcov 以仓库根为 `projectRoot`,两份报告对同一文件给出同一路径。
+- **CI**:`.github/workflows/coverage.yml` 在 main 上的 ci 成功后经 `workflow_run` 触发,不进 `release-eligible`、PR 不跑、
+  不设阈值。测试本身失败则 workflow 红;Codecov 收不下报告只记 warning(报告同时作为 artifact 留 7 天)。上传走 OIDC,
+  不存任何 Codecov token;`codecov.yml` 让状态只作参考、不发 PR 评论。
+- **首次测量**(2026-09-30,本机,Effect rc.118):按文件取两份较高者合并(真实并集的下界)行 78.0%、分支 72.3%,
+  1121 个文件、48,488 行、47 个文件完全未触达;服务端与共享 78.3% / 74.7%,前端 81.4% / 72.6%,以进程运行的宿主 26.6%。
+  开覆盖率的代价:node 套件 120 → 147 s,浏览器套件 231 → 243 s。
+- **以后再议**:PR 上给 informational 的 patch 覆盖率(需要 PR 也跑覆盖率);阈值只考虑「不明显倒退」,不写死百分比。

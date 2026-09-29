@@ -15,6 +15,12 @@ import { describe, expect, it } from 'vitest'
 
 const ROOT = path.resolve(import.meta.dirname, '../..')
 const read = (file: string) => fs.readFileSync(path.join(ROOT, file), 'utf8')
+/** every workflow, so one added later is held to the same pins */
+const workflows = () =>
+  fs
+    .readdirSync(path.join(ROOT, '.github/workflows'))
+    .filter((name) => /\.ya?ml$/.test(name))
+    .map((name) => `.github/workflows/${name}`)
 const DOCKERFILES = [
   'Dockerfile',
   'apps/sandbox-runtime/Dockerfile',
@@ -50,27 +56,24 @@ describe('what a release is built on', () => {
   })
 
   it('runs the suite on that same node', () => {
-    const versions = [...read('.github/workflows/ci.yml').matchAll(/node-version:\s*(\S+)/g)].map(
-      (m) => m[1],
+    const versions = workflows().flatMap((file) =>
+      [...read(file).matchAll(/node-version:\s*(\S+)/g)].map((m) => m[1]),
     )
     expect(versions.length).toBeGreaterThan(0)
     expect([...new Set(versions)]).toEqual([toolchainNode()])
   })
 
   it('runs one postgres, by digest, wherever a database is started', () => {
-    const images = [
-      'deploy/compose.yaml',
-      'docker-compose.yml',
-      '.github/workflows/ci.yml',
-    ].flatMap((file) =>
+    const images = ['deploy/compose.yaml', 'docker-compose.yml', ...workflows()].flatMap((file) =>
       [...read(file).matchAll(/image:\s*(\S*postgres\S*|\S*pgvector\S*)/g)].map((m) => ({
         file,
         image: m[1]!,
       })),
     )
     // the release compose, the development stack's three clusters (its own,
-    // the test one, and the one that holds the demo data), and CI
-    expect(images.length).toBe(5)
+    // the test one, and the one that holds the demo data), CI, the release's
+    // real-bucket job and coverage
+    expect(images.length).toBe(7)
     for (const { file, image } of images) {
       expect(image, file).toMatch(/@sha256:[0-9a-f]{64}$/)
     }

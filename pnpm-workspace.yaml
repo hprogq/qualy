@@ -82,6 +82,8 @@ catalog:
   '@types/pg': 8.23.1
   yaml: 2.9.0
   vitest: 5.0.1
+  # the V8 coverage provider moves with vitest: it peers on the exact version
+  '@vitest/coverage-v8': 5.0.1
   # not the repository's formatter (that is oxfmt): the formula editor's
   # language server in sandbox-authoring formats documents with it at runtime
   prettier: 3.9.6

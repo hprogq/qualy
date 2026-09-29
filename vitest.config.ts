@@ -1,5 +1,7 @@
 import fs from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { defineConfig, defaultExclude } from 'vitest/config'
+import { coverageScope } from './tools/quality/coverage-scope.ts'
 
 // Where the scratch databases go.
 //
@@ -17,9 +19,13 @@ const testDatabaseUrl = (): Record<string, string> => {
   return declared ? { QUALY_TEST_DATABASE_URL: declared[1]!.trim() } : {}
 }
 
+const repoRoot = fileURLToPath(new URL('.', import.meta.url))
+
 export default defineConfig({
   test: {
     env: testDatabaseUrl(),
+    // measured only when asked (`pnpm test:coverage`); see the scope module
+    coverage: coverageScope(repoRoot, repoRoot, 'coverage/node'),
     // A suite that touches postgres creates a scratch database and applies the
     // whole lineage to it before its first assertion, and several of them run
     // at once. The 5s default was already close and stopped being enough once
