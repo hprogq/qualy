@@ -36,6 +36,9 @@ import {
 
 const spin = stylex.keyframes({ '100%': { transform: 'rotate(360deg)' } })
 
+/** the head's column gap, which the counts fold away with them */
+const HEAD_GAP = 12
+
 const styles = stylex.create({
   root: {
     display: 'flex',
@@ -52,7 +55,7 @@ const styles = stylex.create({
     display: 'flex',
     flexShrink: 0,
     flexDirection: 'column',
-    gap: 12,
+    gap: HEAD_GAP,
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.divider,
@@ -857,7 +860,7 @@ export function StructureRail({
         </div>
         {/* put away, nothing is lost: what waits on the reader is still
             counted on the "to do" key below */}
-        <Appear show={stats.length > 0 && statsShown} collapse>
+        <Appear show={stats.length > 0 && statsShown} collapse gap={HEAD_GAP}>
           <div id={statsId} data-testid="entries-stats" {...stylex.props(styles.stats)}>
             {stats.map((stat) => (
               <span

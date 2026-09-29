@@ -532,6 +532,7 @@ export function Appear({
   show,
   className,
   collapse = false,
+  gap,
   children,
 }: {
   show: boolean
@@ -546,10 +547,21 @@ export function Appear({
    * element there is no room to give back.
    */
   collapse?: boolean
+  /**
+   * The gap of the flex or grid column it collapses in.
+   *
+   * A child folded to no height still has the column's gap on its far side,
+   * and gives that back only when it is removed - the last few pixels of the
+   * close then drop in one step. Named here, the fold draws the gap in with
+   * it, so there is nothing left to drop.
+   */
+  gap?: number
   children: ReactNode
 }) {
   const reduced = useReducedMotion()
   const still = reduced === true
+  const folded = { height: 0, ...(gap === undefined ? {} : { marginTop: -gap }) }
+  const open = { height: 'auto', ...(gap === undefined ? {} : { marginTop: 0 }) }
   return (
     <AnimatePresence initial={false}>
       {show && (
@@ -558,12 +570,12 @@ export function Appear({
           style={collapse ? { overflow: 'hidden' } : undefined}
           initial={{
             opacity: 0,
-            ...(collapse ? { height: 0 } : { y: still ? 0 : 12, scale: still ? 1 : 0.98 }),
+            ...(collapse ? folded : { y: still ? 0 : 12, scale: still ? 1 : 0.98 }),
           }}
-          animate={{ opacity: 1, ...(collapse ? { height: 'auto' } : { y: 0, scale: 1 }) }}
+          animate={{ opacity: 1, ...(collapse ? open : { y: 0, scale: 1 }) }}
           exit={{
             opacity: 0,
-            ...(collapse ? { height: 0 } : { y: still ? 0 : 8, scale: still ? 1 : 0.98 }),
+            ...(collapse ? folded : { y: still ? 0 : 8, scale: still ? 1 : 0.98 }),
           }}
           transition={{ duration: still ? 0 : 0.18, ease: [0.4, 0, 0.2, 1] }}
         >
