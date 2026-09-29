@@ -6,6 +6,7 @@ import tencentcloud from 'tencentcloud-sdk-nodejs-rum'
 import { CliRefused, type CliContext } from '@qualy/plugin-kit/cli'
 import { parseWebReleaseIdentity } from '@qualy/release-contract/private'
 import { rumVersionForRelease } from '../version.ts'
+import { cosFailure } from './cos-failure.ts'
 import { planFiling, type FiledMap } from './filing-plan.ts'
 
 // `qualy rum sourcemaps [dist]` - filing this build's source maps with the
@@ -320,7 +321,7 @@ export async function run(context: CliContext): Promise<void> {
           ContentLength: bytes.length,
         },
         (error) => {
-          if (error) reject(error instanceof Error ? error : new Error(String(error)))
+          if (error) reject(cosFailure(error))
           else resolve()
         },
       )
