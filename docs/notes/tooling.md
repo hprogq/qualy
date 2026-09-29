@@ -197,3 +197,11 @@ ui-registry(统一 API runtime 拉 manifest 契约;页面组件用 useApi)。这
   1121 个文件、48,488 行、47 个文件完全未触达;服务端与共享 78.3% / 74.7%,前端 81.4% / 72.6%,以进程运行的宿主 26.6%。
   开覆盖率的代价:node 套件 120 → 147 s,浏览器套件 231 → 243 s。
 - **以后再议**:PR 上给 informational 的 patch 覆盖率(需要 PR 也跑覆盖率);阈值只考虑「不明显倒退」,不写死百分比。
+
+## 镜像漏洞扫描:Trivy,只报告(2026-09-30)
+
+- ci.yml 的 `image` 在三个发布镜像构建完后各扫一次(`aquasecurity/trivy-action`,按提交 SHA 固定到 v0.36.0 的 `ed142fd0…`:
+  tag 能被挪动,这个 action 的 tag 今年被篡改过),只要**有修复版本的 HIGH / CRITICAL**,SARIF 以 `trivy-<镜像>` 分类传进代码扫描
+  (仓库 Security 页)。扫描与上传都 `continue-on-error`、`exit-code: 0`:发现项由人分诊,不让 CI 变红;扫描器或上传故障也不。
+  第一轮看过发现项再定策略(例如「CRITICAL 且有修复」才拦),在那之前不进 `release-eligible`。
+- CodeQL 早已是仓库的默认设置(javascript-typescript 与 actions 两种分析,每次推送都跑),不另写 workflow。

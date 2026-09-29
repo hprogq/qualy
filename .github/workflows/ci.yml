@@ -309,7 +309,12 @@ jobs:
   # upon, and the three scripts import nothing beyond node.
   image:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
+    # code scanning takes the vulnerability report below; nothing else here
+    # writes to the repository
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -323,6 +328,61 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: build the release images, and inspect the server image
         run: node tools/release/build-images.ts ci --check
+      # What the three images carry that has a published, fixable, high or
+      # critical vulnerability, into the repository's code scanning (the
+      # Security tab), one category per image. Reported only: a finding is a
+      # person's to triage, not a reason for this run to fail - nor is a
+      # scanner or upload outage. Pinned by commit: a tag can be moved.
+      - name: scan qualy-server for known vulnerabilities
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: qualy-server:ci
+          format: sarif
+          output: trivy-qualy-server.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '0'
+      - name: report qualy-server's findings to code scanning
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: trivy-qualy-server.sarif
+          category: trivy-qualy-server
+      - name: scan qualy-sandbox-runtime for known vulnerabilities
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: qualy-sandbox-runtime:ci
+          format: sarif
+          output: trivy-qualy-sandbox-runtime.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '0'
+          skip-setup-trivy: true
+      - name: report qualy-sandbox-runtime's findings to code scanning
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: trivy-qualy-sandbox-runtime.sarif
+          category: trivy-qualy-sandbox-runtime
+      - name: scan qualy-sandbox-authoring for known vulnerabilities
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: qualy-sandbox-authoring:ci
+          format: sarif
+          output: trivy-qualy-sandbox-authoring.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '0'
+          skip-setup-trivy: true
+      - name: report qualy-sandbox-authoring's findings to code scanning
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: trivy-qualy-sandbox-authoring.sarif
+          category: trivy-qualy-sandbox-authoring
       - name: the release deploys, migrates, serves, backs up and restores
         run: node tools/quality/release-smoke.ts ci
 
