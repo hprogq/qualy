@@ -38,6 +38,11 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # the one token Codecov accepts from this job: an OIDC identity for the
+    # upload below, nothing that can write to the repository
+    permissions:
+      contents: read
+      id-token: write
     env:
       # this job provisions a postgres service: integration tests must not
       # silently skip when it is unreachable
@@ -142,8 +147,24 @@ jobs:
       # is a suite coupled to it, and the web plugin's own tests were: they
       # pointed at client-dist and died here with WebUnservable. Reordering
       # this would have hidden that instead of fixing it, and made every test
-      # run wait for a bundle.
-      - run: pnpm test
+      # run wait for a bundle. Measured while it runs: V8 coverage costs this
+      # suite about a fifth of its time, not a second run.
+      - run: pnpm test:coverage
+      # The coverage of the run just made, for Codecov's history and file view
+      # (tools/quality/coverage-scope.ts says what it is a fraction of). Only
+      # shown, never a gate: a failed upload - Codecov down, or a pull
+      # request from a fork, which gets no OIDC token - is a warning.
+      - name: hand the node coverage to Codecov
+        id: codecov
+        continue-on-error: true
+        uses: codecov/codecov-action@v7
+        with:
+          use_oidc: true
+          files: coverage/node/lcov.info
+          disable_search: true
+          flags: node
+      - if: steps.codecov.outcome == 'failure'
+        run: echo "::warning::Codecov did not take the node coverage report"
       - name: build web superset and stage assets
         run: pnpm build
       - name: the staged web release is whole
@@ -210,6 +231,11 @@ jobs:
   browser:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    # the one token Codecov accepts from this job: an OIDC identity for the
+    # upload below, nothing that can write to the repository
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -230,7 +256,22 @@ jobs:
       # One line per test as it finishes, not per file: a file whose page
       # stops answering never finishes, and the default reporter then says
       # nothing about which of its tests was running.
-      - run: pnpm test:browser --reporter=verbose
+      - run: pnpm test:browser:coverage --reporter=verbose
+      # The coverage of the run just made, for Codecov's history and file view
+      # (tools/quality/coverage-scope.ts says what it is a fraction of). Only
+      # shown, never a gate: a failed upload - Codecov down, or a pull
+      # request from a fork, which gets no OIDC token - is a warning.
+      - name: hand the Chromium coverage to Codecov
+        id: codecov
+        continue-on-error: true
+        uses: codecov/codecov-action@v7
+        with:
+          use_oidc: true
+          files: coverage/browser/lcov.info
+          disable_search: true
+          flags: browser
+      - if: steps.codecov.outcome == 'failure'
+        run: echo "::warning::Codecov did not take the Chromium coverage report"
 
   # The cold start and the brand once more in WebKit: the two screens whose
   # defects were engine timing, not logic, and which Chromium hid. A smoke

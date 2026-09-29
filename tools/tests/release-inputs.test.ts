@@ -71,9 +71,9 @@ describe('what a release is built on', () => {
       })),
     )
     // the release compose, the development stack's three clusters (its own,
-    // the test one, and the one that holds the demo data), CI, the release's
-    // real-bucket job and coverage
-    expect(images.length).toBe(7)
+    // the test one, and the one that holds the demo data), CI and the
+    // release's real-bucket job
+    expect(images.length).toBe(6)
     for (const { file, image } of images) {
       expect(image, file).toMatch(/@sha256:[0-9a-f]{64}$/)
     }

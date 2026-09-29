@@ -1,7 +1,6 @@
-# Coverage is shown, never enforced: the statuses are informational, pull
-# requests get no comment and no patch check (they do not run coverage at
-# all, see .github/workflows/coverage.yml). The node and browser uploads of
-# one commit are merged by flag.
+# Coverage is shown, never enforced: the statuses are informational, and
+# pull requests get no comment and no patch check. ci.yml uploads the node
+# and Chromium reports of one run; Codecov merges them by flag.
 coverage:
   status:
     project:

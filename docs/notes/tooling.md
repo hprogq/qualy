@@ -188,9 +188,11 @@ ui-registry(统一 API runtime 拉 manifest 契约;页面组件用 useApi)。这
 - **命令**:`pnpm test:coverage`(报告在 `coverage/node`)、`pnpm test:browser:coverage`(`coverage/browser`,只有 Chromium;
   WebKit 不是 V8,不测)。浏览器配置的 root 是 apps/web,include 必须是绝对路径:写 `../../packages/...` 实测只统计到 5 个文件。
   lcov 以仓库根为 `projectRoot`,两份报告对同一文件给出同一路径。
-- **CI**:`.github/workflows/coverage.yml` 在 main 上的 ci 成功后经 `workflow_run` 触发,不进 `release-eligible`、PR 不跑、
-  不设阈值。测试本身失败则 workflow 红;Codecov 收不下报告只记 warning(报告同时作为 artifact 留 7 天)。上传走 OIDC,
-  不存任何 Codecov token;`codecov.yml` 让状态只作参考、不发 PR 评论。
+- **CI**:就在 ci.yml 原有的那一次测试里收集——`ci` 跑 `pnpm test:coverage`、`browser` 跑 `pnpm test:browser:coverage`,
+  各自上传,不另跑一遍。起初写成独立的 `coverage.yml`(main 的 ci 成功后经 `workflow_run` 把两套测试整个重跑),同一天撤掉:
+  为多一份数据付出一整次重跑,而开着覆盖率的全量在本机与不开时结果一致,插桩不构成门禁风险。上传 `continue-on-error`,
+  Codecov 收不下(服务故障、fork 来的 PR 拿不到 OIDC)只记 warning,不影响 `release-eligible`;不设阈值。上传走 OIDC(job 级
+  `id-token: write`),不存任何 Codecov token;`codecov.yml` 让状态只作参考、不发 PR 评论。
 - **首次测量**(2026-09-30,本机,Effect rc.118):按文件取两份较高者合并(真实并集的下界)行 78.0%、分支 72.3%,
   1121 个文件、48,488 行、47 个文件完全未触达;服务端与共享 78.3% / 74.7%,前端 81.4% / 72.6%,以进程运行的宿主 26.6%。
   开覆盖率的代价:node 套件 120 → 147 s,浏览器套件 231 → 243 s。
