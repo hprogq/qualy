@@ -37,14 +37,14 @@ catalogs:
       specifier: 9.6.1
       version: 9.6.1
     '@mikro-orm/core':
-      specifier: 7.2.0
-      version: 7.2.0
+      specifier: 7.2.2
+      version: 7.2.2
     '@mikro-orm/migrations':
-      specifier: 7.2.0
-      version: 7.2.0
+      specifier: 7.2.2
+      version: 7.2.2
     '@mikro-orm/postgresql':
-      specifier: 7.2.0
-      version: 7.2.0
+      specifier: 7.2.2
+      version: 7.2.2
     '@shikijs/langs':
       specifier: 4.4.3
       version: 4.4.3
@@ -118,8 +118,8 @@ catalogs:
       specifier: 5.11.1
       version: 5.11.1
     kysely:
-      specifier: 0.29.5
-      version: 0.29.5
+      specifier: 0.29.6
+      version: 0.29.6
     lightningcss:
       specifier: 1.33.0
       version: 1.33.0
@@ -371,7 +371,7 @@ importers:
         version: 4.4.0
       kysely:
         specifier: 'catalog:'
-        version: 0.29.5
+        version: 0.29.6
       lightningcss:
         specifier: 'catalog:'
         version: 1.33.0
@@ -540,7 +540,7 @@ importers:
         version: link:../../packages/web/runtime
       kysely:
         specifier: 'catalog:'
-        version: 0.29.5
+        version: 0.29.6
 
   apps/web:
     dependencies:
@@ -744,7 +744,7 @@ importers:
         version: 4.0.0-rc.115
       kysely:
         specifier: 'catalog:'
-        version: 0.29.5
+        version: 0.29.6
     devDependencies:
       '@qualy/auth-contract':
         specifier: workspace:*
@@ -894,7 +894,7 @@ importers:
     dependencies:
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.0
+        version: 7.2.2
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
@@ -981,7 +981,7 @@ importers:
         version: 4.4.0
       kysely:
         specifier: 'catalog:'
-        version: 0.29.5
+        version: 0.29.6
       lucide-react:
         specifier: ^0.552.0
         version: 0.552.0(react@19.2.8)
@@ -1039,7 +1039,7 @@ importers:
         version: 4.0.0-rc.115(effect@4.0.0-rc.115)(redis@6.2.1)
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.0
+        version: 7.2.2
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
@@ -1120,7 +1120,7 @@ importers:
         version: 4.0.0-rc.115
       kysely:
         specifier: 'catalog:'
-        version: 0.29.5
+        version: 0.29.6
       lucide-react:
         specifier: ^0.552.0
         version: 0.552.0(react@19.2.8)
@@ -1166,7 +1166,7 @@ importers:
     dependencies:
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.0
+        version: 7.2.2
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
@@ -1220,7 +1220,7 @@ importers:
         version: 4.0.0-rc.115
       kysely:
         specifier: 'catalog:'
-        version: 0.29.5
+        version: 0.29.6
       lucide-react:
         specifier: ^0.552.0
         version: 0.552.0(react@19.2.8)
@@ -1242,7 +1242,7 @@ importers:
     dependencies:
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.0
+        version: 7.2.2
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
@@ -1323,7 +1323,7 @@ importers:
         version: 5.11.1
       kysely:
         specifier: 'catalog:'
-        version: 0.29.5
+        version: 0.29.6
       lucide-react:
         specifier: ^0.552.0
         version: 0.552.0(react@19.2.8)
@@ -1559,7 +1559,7 @@ importers:
     dependencies:
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.0
+        version: 7.2.2
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
@@ -1631,7 +1631,7 @@ importers:
         version: 4.0.0-rc.115
       kysely:
         specifier: 'catalog:'
-        version: 0.29.5
+        version: 0.29.6
       lucide-react:
         specifier: ^0.552.0
         version: 0.552.0(react@19.2.8)
@@ -1714,7 +1714,7 @@ importers:
     dependencies:
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.0
+        version: 7.2.2
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
@@ -1768,7 +1768,7 @@ importers:
         version: 4.0.0-rc.115
       kysely:
         specifier: 'catalog:'
-        version: 0.29.5
+        version: 0.29.6
       lucide-react:
         specifier: ^0.552.0
         version: 0.552.0(react@19.2.8)
@@ -1802,7 +1802,7 @@ importers:
     dependencies:
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.0
+        version: 7.2.2
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
@@ -1862,7 +1862,7 @@ importers:
         version: 4.0.0-rc.115
       kysely:
         specifier: 'catalog:'
-        version: 0.29.5
+        version: 0.29.6
       lucide-react:
         specifier: ^0.552.0
         version: 0.552.0(react@19.2.8)
@@ -1887,7 +1887,7 @@ importers:
     dependencies:
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.0
+        version: 7.2.2
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
@@ -1941,7 +1941,7 @@ importers:
         version: 4.0.0-rc.115
       kysely:
         specifier: 'catalog:'
-        version: 0.29.5
+        version: 0.29.6
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -1969,7 +1969,7 @@ importers:
     dependencies:
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.0
+        version: 7.2.2
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
@@ -2005,7 +2005,7 @@ importers:
         version: 4.0.0-rc.115
       kysely:
         specifier: 'catalog:'
-        version: 0.29.5
+        version: 0.29.6
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -2073,7 +2073,7 @@ importers:
     dependencies:
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.0
+        version: 7.2.2
       '@qualy/plugin-captcha':
         specifier: workspace:*
         version: link:../captcha
@@ -2097,7 +2097,7 @@ importers:
         version: 4.0.0-rc.115
       kysely:
         specifier: 'catalog:'
-        version: 0.29.5
+        version: 0.29.6
     devDependencies:
       '@qualy/testkit':
         specifier: workspace:*
@@ -2141,13 +2141,13 @@ importers:
     dependencies:
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.0
+        version: 7.2.2
       '@mikro-orm/migrations':
         specifier: 'catalog:'
-        version: 7.2.0(@mikro-orm/core@7.2.0)
+        version: 7.2.2(@mikro-orm/core@7.2.2)
       '@mikro-orm/postgresql':
         specifier: 'catalog:'
-        version: 7.2.0(@mikro-orm/core@7.2.0)
+        version: 7.2.2(@mikro-orm/core@7.2.2)
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
@@ -2165,7 +2165,7 @@ importers:
         version: 4.0.0-rc.115
       kysely:
         specifier: 'catalog:'
-        version: 0.29.5
+        version: 0.29.6
       pg:
         specifier: 'catalog:'
         version: 8.23.0
@@ -2334,7 +2334,7 @@ importers:
     dependencies:
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.0
+        version: 7.2.2
       '@qualy/plugin-database':
         specifier: workspace:*
         version: link:../database
@@ -2346,13 +2346,13 @@ importers:
         version: 4.0.0-rc.115
       kysely:
         specifier: 'catalog:'
-        version: 0.29.5
+        version: 0.29.6
 
   packages/plugins/infra/storage:
     dependencies:
       '@mikro-orm/core':
         specifier: 'catalog:'
-        version: 7.2.0
+        version: 7.2.2
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
@@ -2370,7 +2370,7 @@ importers:
         version: 4.0.0-rc.115
       kysely:
         specifier: 'catalog:'
-        version: 0.29.5
+        version: 0.29.6
 
   packages/plugins/infra/storage-cos:
     dependencies:
@@ -2431,7 +2431,7 @@ importers:
         version: 4.0.0-rc.115
       kysely:
         specifier: 'catalog:'
-        version: 0.29.5
+        version: 0.29.6
     devDependencies:
       '@qualy/tsconfig':
         specifier: workspace:*
@@ -3182,8 +3182,8 @@ packages:
   '@messageformat/parser@5.1.1':
     resolution: {integrity: sha512-3p0YRGCcTUCYvBKLIxtDDyrJ0YijGIwrTRu1DT8gIviIDZru8H23+FkY6MJBzM1n9n20CiM4VeDYuBsrrwnLjg==}
 
-  '@mikro-orm/core@7.2.0':
-    resolution: {integrity: sha512-a4RoZXfzVJqiaOwsw2k7EH1Vv+BOdOokB+F4TofUz0mLz4XPewwaKUQIUeqRNmf0fKpOFJxlgTxsZYXhZoFxCQ==}
+  '@mikro-orm/core@7.2.2':
+    resolution: {integrity: sha512-+KNiaYK4GHOYohPJzhhogIu5hD3kE5YZi+V+zmx50Jaw1UNJsDP8MCaVNAZ8yFWiODIACZuIFsEYQClSdTNvcA==}
     engines: {node: '>= 22.17.0'}
     peerDependencies:
       dataloader: 2.2.3
@@ -3191,23 +3191,23 @@ packages:
       dataloader:
         optional: true
 
-  '@mikro-orm/migrations@7.2.0':
-    resolution: {integrity: sha512-C0lhvyreASOf8GelzdqCuXHo3pjg6cPDUJAFggT8kKkCNgA4x34bXQVUWOWw/Vqwpu0BuWTsMEveX/Ln3cQCmw==}
+  '@mikro-orm/migrations@7.2.2':
+    resolution: {integrity: sha512-CZwJQbljVkiZrcUy/4xkGmmuPhdwlL/IyQz/hVBUM4G5f7qlCLIwiqJ+SJspTZu+NiPznmMmS9GpcknzfGNhMw==}
     engines: {node: '>= 22.17.0'}
     peerDependencies:
-      '@mikro-orm/core': 7.2.0
+      '@mikro-orm/core': 7.2.2
 
-  '@mikro-orm/postgresql@7.2.0':
-    resolution: {integrity: sha512-15M7ntKtiND22YAGYOzvKXtHJ8lm0ukRW+TaHjk9m/HFop4fXyHzqWC91cTb+kdcE+RzeLqOqbkmcIzFOC5BkA==}
+  '@mikro-orm/postgresql@7.2.2':
+    resolution: {integrity: sha512-aVdTt3LeOGT7KRoPlazQwB/KgdF4w6EUL9bVCHVMg5/ERZPpJPJ/Ku29iBVnlBvvSKvxiMcyE56/354rgc2A7w==}
     engines: {node: '>= 22.17.0'}
     peerDependencies:
-      '@mikro-orm/core': 7.2.0
+      '@mikro-orm/core': 7.2.2
 
-  '@mikro-orm/sql@7.2.0':
-    resolution: {integrity: sha512-ZpuCfBL6XAYrJsUglvXrah+erB9gVgkoSuIKR/x+o1o/OVOE8ljgRxYIIIMGE+LetR9s1wrDQjrwfm0gghqsiA==}
+  '@mikro-orm/sql@7.2.2':
+    resolution: {integrity: sha512-biH6xuFtrNEa7Lg130lD0WoncP+FGhDDVZJmeYhQCPljI9KRHw6iqFyOPNDkduaGbnvnpxE2diZIqS6NVCTfJA==}
     engines: {node: '>= 22.17.0'}
     peerDependencies:
-      '@mikro-orm/core': 7.2.0
+      '@mikro-orm/core': 7.2.2
 
   '@napi-rs/wasm-runtime@1.2.1':
     resolution: {integrity: sha512-KjZdi8Q1wh89gsVmghvbrMgWl6ZWmRmHV6wjB7/g4Zf0dyO+hH3neZUtuDNPO00qq5YE5RITVWvrIZKRaAmzGQ==}
@@ -4604,8 +4604,8 @@ packages:
   jszip@3.10.2:
     resolution: {integrity: sha512-3l+rb15IOWtUhU0H5MFqES/T6Kh7abYwjosBey/vD6hDt8zoEffkSC5Ws5SGtgVw3gBx2NEbhTeSW1+kWkpyTQ==}
 
-  kysely@0.29.5:
-    resolution: {integrity: sha512-ooa+eSbBNPTo3MycPEuW5jdrxQdQwdtB3LC3h43FiXQbIry5tR0C5lDG7eealK0E4D7XjrnOP5DIUg/LyjRMYQ==}
+  kysely@0.29.6:
+    resolution: {integrity: sha512-hHaB8C/rfzDDtr/t8YZwxAuPJTT0zHyaPoVzcXwDYhYNAgH/4sIfVhi/XLLIY+bL/FqaIJnjATDbi8ObSELmxg==}
     engines: {node: '>=22.0.0'}
 
   lazystream@1.0.1:
@@ -6085,18 +6085,18 @@ snapshots:
     dependencies:
       moo: 0.5.3
 
-  '@mikro-orm/core@7.2.0': {}
+  '@mikro-orm/core@7.2.2': {}
 
-  '@mikro-orm/migrations@7.2.0(@mikro-orm/core@7.2.0)':
+  '@mikro-orm/migrations@7.2.2(@mikro-orm/core@7.2.2)':
     dependencies:
-      '@mikro-orm/core': 7.2.0
-      '@mikro-orm/sql': 7.2.0(@mikro-orm/core@7.2.0)
+      '@mikro-orm/core': 7.2.2
+      '@mikro-orm/sql': 7.2.2(@mikro-orm/core@7.2.2)
 
-  '@mikro-orm/postgresql@7.2.0(@mikro-orm/core@7.2.0)':
+  '@mikro-orm/postgresql@7.2.2(@mikro-orm/core@7.2.2)':
     dependencies:
-      '@mikro-orm/core': 7.2.0
-      '@mikro-orm/sql': 7.2.0(@mikro-orm/core@7.2.0)
-      kysely: 0.29.5
+      '@mikro-orm/core': 7.2.2
+      '@mikro-orm/sql': 7.2.2(@mikro-orm/core@7.2.2)
+      kysely: 0.29.6
       pg: 8.23.0
       pg-cursor: 2.22.0(pg@8.23.0)
       postgres-array: 3.0.4
@@ -6105,10 +6105,10 @@ snapshots:
     transitivePeerDependencies:
       - pg-native
 
-  '@mikro-orm/sql@7.2.0(@mikro-orm/core@7.2.0)':
+  '@mikro-orm/sql@7.2.2(@mikro-orm/core@7.2.2)':
     dependencies:
-      '@mikro-orm/core': 7.2.0
-      kysely: 0.29.5
+      '@mikro-orm/core': 7.2.2
+      kysely: 0.29.6
 
   '@napi-rs/wasm-runtime@1.2.1(@emnapi/core@2.0.0-alpha.3)(@emnapi/runtime@2.0.0-alpha.3)':
     dependencies:
@@ -7288,7 +7288,7 @@ snapshots:
       readable-stream: 2.3.8
       setimmediate: 1.0.5
 
-  kysely@0.29.5: {}
+  kysely@0.29.6: {}
 
   lazystream@1.0.1:
     dependencies:

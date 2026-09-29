@@ -1,5 +1,9 @@
 # Upstream issue draft — MikroORM
 
+**Fixed upstream in 7.2.2** by [mikro-orm/mikro-orm#8337](https://github.com/mikro-orm/mikro-orm/issues/8337)
+("sql: cache kysely result maps and table name lookups", closes #8336). The catalog moved to 7.2.2 on
+2026-09-29; nothing here was patched, so nothing had to be removed. The text below is kept as filed.
+
 **Filed as [mikro-orm/mikro-orm#8336](https://github.com/mikro-orm/mikro-orm/issues/8336) on 2026-09-27.**
 The fix is prepared as a pull request (text and numbers under "Pull request" at the end), on the
 branch `perf/kysely-transformer-cache` of the fork `hprogq/mikro-orm`, based on upstream `master`
