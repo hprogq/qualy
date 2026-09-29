@@ -353,6 +353,22 @@ const styles = stylex.create({
     padding: 0,
     listStyle: 'none',
   },
+  // At a desk every row shares one set of columns, so the chips stand in one
+  // line down the list: what a claim is takes the width of the longest one
+  // (never more than 560px, cut beyond), where it stands takes all that is
+  // left with its chip in the middle - halfway between the words and the
+  // figure - and the figure takes the widest of its kind. A chip is never
+  // squeezed: the words give way first.
+  rowsDesk: {
+    display: 'grid',
+    gridTemplateColumns: 'fit-content(560px) minmax(max-content, 1fr) auto 14px',
+    columnGap: 14,
+  },
+  rowSeatDesk: {
+    display: 'grid',
+    gridColumn: '1 / -1',
+    gridTemplateColumns: 'subgrid',
+  },
   noMatch: {
     display: 'flex',
     flexDirection: 'column',
@@ -984,10 +1000,13 @@ export function ItemPane({
             it on their way. */}
         <LayoutGroup>
           {shown.length > 0 && (
-            <ul {...stylex.props(styles.rows)}>
+            <ul {...stylex.props(styles.rows, !compact && styles.rowsDesk)}>
               <Sift>
                 {shown.map((entry) => (
-                  <SiftRow key={entry.id}>
+                  <SiftRow
+                    key={entry.id}
+                    className={compact ? undefined : stylex.props(styles.rowSeatDesk).className}
+                  >
                     <EntryRow
                       entry={entry}
                       line={lines.get(entry.id)!}

@@ -43,10 +43,12 @@ const styles = stylex.create({
     transitionProperty: 'background-color',
     transitionDuration: '120ms',
   },
-  // at a desk the status stands in its own column; narrower it folds into
-  // the second line, beside the time
+  // at a desk the status stands in its own column, the list's columns
+  // (ItemPane's rowsDesk) shared by every row; narrower it folds into the
+  // second line, beside the time
   rowDesk: {
-    gridTemplateColumns: 'minmax(0, 1fr) 6.5rem auto 14px',
+    gridColumn: '1 / -1',
+    gridTemplateColumns: 'subgrid',
     paddingInline: 28,
   },
   rowCompact: {
