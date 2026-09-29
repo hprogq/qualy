@@ -1,5 +1,9 @@
 # Upstream issue draft — pnpm
 
+**Gone in 12.8.1** (measured 2026-09-29, never filed): the reproduction below reports
+`code=0 signal=null` three runs out of three under 12.8.1, while 12.0.0 on the same machine still
+reports `signal=SIGINT`. The pin moved to 12.8.1. The text below is kept as drafted.
+
 Submit at https://github.com/pnpm/pnpm/issues/new (Bug report).
 
 ---

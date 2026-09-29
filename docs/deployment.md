@@ -204,7 +204,9 @@ host key(不用 runner 自带的 known_hosts)。发布制品(tag)与批准部署
   不会停在半启动状态;「池起来之前 socket 不存在」由 `apps/sandbox-runtime/tests/serve.test.ts` 守住。生产 `.env` 显式写
   `QUALY_SANDBOX_HARD_DEADLINE_MS=500`,作为这台主机的校准值。软期限随后改为 worker 线程的 CPU 时间(从 BOOTSTRAP 之后起算,
   产物加载后与入口返回后各核对一次,编译成本计入):同一容器内加一条空转线程、限 1 核时,墙钟版 360 次里 28 次误判超预算,
-  CPU 版 0 次;无竞争时两者中位都是 11.3 ms(docs/sandbox-process-isolation.md 同名修订)。
+  CPU 版 0 次;无竞争时两者中位都是 11.3 ms(docs/sandbox-process-isolation.md 同名修订)。上线后按同样方法各测 100 轮新 worker
+  (1200 次,白天有真实流量):rc.11(墙钟软期限)中位 11.7 / p99 43.5 / 最大 71.8 ms、1 次软超时;rc.12(CPU 软期限)
+  中位 11.6 / p99 36.3 / 最大 56.1 ms、3 次墙钟超过 50 ms 但 0 次软超时,两者硬超时与节流都是 0。
 - `tools`(profile `tools`):当前 release 的 server 镜像 + 部署的 `.env` + `storage` 与 `web_releases` 卷,只跑一次性命令
   (`docker compose run --rm tools <命令>`),`QUALY_MIGRATIONS=off`。备份、恢复、基线导入与运维 CLI(`auth set-password`、
   `storage export`)都经它,不点名颜色,也不按带 project 前缀的名字找卷。
