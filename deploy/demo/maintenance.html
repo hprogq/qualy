@@ -1,53 +1,164 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-locale="zh-CN" data-mode="light">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta http-equiv="refresh" content="20" />
-    <title>正在维护</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="oklch(0.99 0.001 80)" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="oklch(0.17 0.006 80)" media="(prefers-color-scheme: dark)" />
+    <meta name="robots" content="noindex" />
+    <noscript><meta http-equiv="refresh" content="30" /></noscript>
+    <title>Qualy</title>
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20128%20128%22%3E%0A%20%20%3Cstyle%3Epath%7Bfill%3Aoklch(0.21%200.006%2080)%7D%40media%20(prefers-color-scheme%3Adark)%7Bpath%7Bfill%3Aoklch(0.93%200.004%2080)%7D%7D%3C%2Fstyle%3E%0A%20%20%3Cpath%20data-seg%3D%221-7%22%20d%3D%22M82.369%20108.346A48%2048%200%201%201%20108.346%2082.369L93.767%2076.33A32%2033.6%200%201%200%2076.763%2094.812Z%22%2F%3E%0A%20%20%3Cpath%20data-seg%3D%220%22%20d%3D%22M125.317%2099.339A48%2048%200%200%201%2099.339%20125.317L93.733%20111.783A32%2033.6%200%200%200%20110.738%2093.301Z%22%2F%3E%0A%3C%2Fsvg%3E"
+    />
+    <script>
+      ;(function () {
+        var choice = null
+        var stored = null
+        try {
+          choice = localStorage.getItem('qualy.theme')
+          stored = localStorage.getItem('qualy.locale')
+        } catch (error) {}
+        var dark =
+          choice === 'dark' ||
+          (choice !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
+        var root = document.documentElement
+        root.setAttribute('data-mode', dark ? 'dark' : 'light')
+        root.style.colorScheme = dark ? 'dark' : 'light'
+        var locales = ['zh-CN', 'en-US']
+        var locale = locales.indexOf(stored) < 0 ? null : stored
+        var languages = navigator.languages || [navigator.language]
+        for (var j = 0; j < languages.length && locale === null; j++) {
+          var language = String(languages[j] || '')
+          if (locales.indexOf(language) >= 0) locale = language
+          for (var k = 0; k < locales.length && locale === null; k++) {
+            if (locales[k].split('-')[0] === language.split('-')[0]) locale = locales[k]
+          }
+        }
+        if (locale === null) locale = 'zh-CN'
+        root.lang = locale
+        root.setAttribute('data-locale', locale)
+        function probe() {
+          fetch('/health/ready', { cache: 'no-store' }).then(function (response) {
+            if (response.ok) location.reload()
+            else later()
+          }, later)
+        }
+        function later() {
+          setTimeout(probe, 5000)
+        }
+        later()
+      })()
+    </script>
     <style>
+      html {
+        background: oklch(0.99 0.001 80);
+        color: oklch(0.21 0.006 80);
+        --muted: oklch(0.52 0.003 80);
+      }
+      html[data-mode='dark'] {
+        background: oklch(0.17 0.006 80);
+        color: oklch(0.93 0.004 80);
+        --muted: oklch(0.65 0.005 80);
+      }
       body {
         margin: 0;
-        min-height: 100vh;
-        display: grid;
-        place-items: center;
         font-family:
           system-ui,
           -apple-system,
           'PingFang SC',
+          'Microsoft YaHei',
           sans-serif;
-        background: #f7f7f5;
-        color: #1c1c1c;
+        -webkit-font-smoothing: antialiased;
       }
       main {
-        max-width: 26rem;
-        padding: 2rem;
+        position: fixed;
+        inset: 0;
+      }
+      main > div {
+        position: absolute;
+        top: var(--boot-top);
+        left: 0;
+        right: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 0 24px;
         text-align: center;
       }
+      svg {
+        display: block;
+        flex-shrink: 0;
+      }
+      [data-copy] {
+        display: none;
+        text-wrap: balance;
+        margin-top: var(--boot-hint-gap);
+        max-width: 22rem;
+      }
+      html[data-locale='zh-CN'] [data-copy='zh-CN'],
+      html[data-locale='en-US'] [data-copy='en-US'] {
+        display: block;
+      }
       h1 {
-        font-size: 1.25rem;
-        margin: 0 0 0.75rem;
+        margin: 0;
+        font-size: 20px;
+        line-height: 28px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
       }
       p {
-        margin: 0;
-        color: #666;
-        line-height: 1.6;
-      }
-      @media (prefers-color-scheme: dark) {
-        body {
-          background: #151515;
-          color: #eee;
-        }
-        p {
-          color: #aaa;
-        }
+        margin: 8px 0 0;
+        font-size: 15px;
+        line-height: 22px;
+        color: var(--muted);
       }
     </style>
   </head>
   <body>
-    <main>
-      <h1>站点正在维护</h1>
-      <p>稍后恢复，页面会自动刷新</p>
+    <main style="--boot-top: calc(44vh - 14.42px); --boot-hint-gap: 40px">
+      <div>
+        <svg
+          viewBox="0 -94.602 351.88 118.602"
+          width="105.711"
+          height="35.63"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <path
+            data-seg="1-7"
+            d="M66.369 -2.256A48 48 0 1 1 92.346 -28.233L77.767 -34.272A32 33.6 0 1 0 60.763 -15.79Z"
+          />
+          <path
+            data-seg="0"
+            d="M109.317 -11.263A48 48 0 0 1 83.339 14.715L77.733 1.181A32 33.6 0 0 0 94.738 -17.301Z"
+          />
+          <path
+            data-letter="u"
+            d="M109.654 -64L125.654 -64L125.654 -32A16 16.8 0 0 0 157.654 -32L157.654 -64L173.654 -64L173.654 -32A32 32 0 0 1 109.654 -32Z"
+          />
+          <path
+            data-letter="a"
+            d="M244.123 -32A32 32 0 1 1 180.123 -32A32 32 0 1 1 244.123 -32ZM228.123 -32A16 16.8 0 1 0 196.123 -32A16 16.8 0 1 0 228.123 -32ZM228.123 -64L244.123 -64L244.123 0L228.123 0Z"
+          />
+          <path data-letter="l" d="M259.643 -93.204L275.643 -93.204L275.643 0L259.643 0Z" />
+          <path
+            data-letter="y"
+            d="M287.88 -64L303.88 -64L303.88 -32A16 16.8 0 0 0 335.88 -32L335.88 -64L351.88 -64L351.88 -32A32 32 0 0 1 287.88 -32ZM335.88 -64L351.88 -64L351.88 24L335.88 24Z"
+          />
+        </svg>
+        <div lang="zh-CN" data-copy="zh-CN">
+          <h1>Qualy 正在维护</h1>
+          <p>稍后恢复，届时页面会自动刷新</p>
+        </div>
+        <div lang="en-US" data-copy="en-US">
+          <h1>Qualy is down for maintenance</h1>
+          <p>It will be back shortly, and the page will reload on its own.</p>
+        </div>
+      </div>
     </main>
   </body>
 </html>

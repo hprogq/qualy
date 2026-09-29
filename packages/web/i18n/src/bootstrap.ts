@@ -11,6 +11,11 @@ import type { SupportedLocale } from '@qualy/i18n-contract'
 // does not change hands when the catalogs arrive. The build writes the
 // watchdog's two lines into index.html from here; nothing is typed there.
 //
+// A third place speaks with no application at all: the edge's maintenance
+// page (deploy/demo/maintenance.html), served while no release answers. It
+// is a file the proxy hands out as it stands, so its lines are typed into
+// it, and tools/tests/maintenance-page.test.ts holds them to this table.
+//
 // Three of these are also messages of the common catalog, said again here
 // rather than imported from it: the catalog for a locale is a chunk loaded
 // on demand, and the whole of it is not worth carrying in the boot graph
@@ -45,6 +50,9 @@ export interface BootstrapMessages {
   readonly clientProtocolHint: string
   /** the one way out of any of the three */
   readonly reloadPage: string
+  /** the edge's own page while no release answers (deploy/demo/maintenance.html) */
+  readonly maintenanceTitle: string
+  readonly maintenanceHint: string
 }
 
 export const bootstrapMessages = {
@@ -66,6 +74,8 @@ export const bootstrapMessages = {
     clientProtocolTitle: '需要刷新页面',
     clientProtocolHint: '页面需要刷新后才能继续使用。',
     reloadPage: '刷新页面',
+    maintenanceTitle: 'Qualy 正在维护',
+    maintenanceHint: '稍后恢复，届时页面会自动刷新',
   },
   'en-US': {
     loading: 'Loading',
@@ -85,5 +95,7 @@ export const bootstrapMessages = {
     clientProtocolTitle: 'Reload needed',
     clientProtocolHint: 'Reload the page to continue.',
     reloadPage: 'Reload the page',
+    maintenanceTitle: 'Qualy is down for maintenance',
+    maintenanceHint: 'It will be back shortly, and the page will reload on its own.',
   },
 } as const satisfies Record<SupportedLocale, BootstrapMessages>

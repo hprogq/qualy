@@ -315,6 +315,13 @@ maintenance。CI 的 `check-migrations-immutable.ts` 拒绝 base..HEAD 之间新
 `handle_errors` 服务 `deploy/demo/maintenance.html`),服务中的那一色停下,job 跑完、新色就绪后代理再指过去。正常走 expand 再 contract,
 这个开关应该很少被用到。
 
+维护页(2026-09-29)是首帧的样子:同一个 wordmark 在同一个位置,应用的配色,标题与一行提示来自 `bootstrapMessages`(中英),主题与语言
+按 shell 的同一条规则取;整页自包含(图标是 data URI),因为它在的时候除 API 外每个请求都被答成它;每 5 s 探测 `/health/ready`,
+恢复即刷新。`handle_errors` 按问的人答:`/api/*` 是 API 自己的 503 `SERVICE_UNAVAILABLE`(开着的页面读成「稍后再试」而不是一段
+HTML),`/health/*` 只给状态,其余给维护页并带 `no-store`、`Retry-After` 与它自己的 CSP。页面是手写的静态文件,
+`tools/tests/maintenance-page.test.ts` 把它钉在首帧几何、配色 token、文案表与 Caddyfile 上。主机的 Caddyfile 不随 release 更新,
+改了 `ops/reverse-proxy/Caddyfile` 的这一段要在主机上照改。
+
 **一次只跑一个部署步骤,且先核对谁在服务**:`upgrade.sh`、`rollback.sh`、`restore.sh` 与演示重置开始时都在 `.env` 旁取同一把锁
 (Linux 用 `flock`,没有它的机器用 `mkdir`),第二个步骤直接拒绝并说明;嵌套调用的子步骤继承同一把锁。`.env` 只是记录,事实是边缘代理的
 片段:每个步骤先从片段读出服务中的是哪一色(`QUALY_PROXY=none` 时看哪一色的 server 在跑),与 `.env` 的 `QUALY_ACTIVE_COLOR` 比对。

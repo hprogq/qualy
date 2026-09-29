@@ -60,13 +60,39 @@ qualy.example.com {
 
 	import /etc/caddy/qualy/upstream.caddy
 
-	# no color answering (both down, or the maintenance snippet): a page that
-	# says so, rather than the proxy's bare error. current is the serving
-	# release's deploy/, which the host's launcher keeps pointed there
-	# (ops/deploy-host/README.md).
+	# no color answering (both down, or the maintenance snippet): each asker
+	# is answered in its own terms rather than with the proxy's bare error.
 	handle_errors 502 503 504 {
-		root * /opt/qualy/current/deploy/demo
-		rewrite * /maintenance.html
-		file_server
+		header Cache-Control no-store
+		header Retry-After 30
+
+		# the API in its own error shape, which an open page reads as a
+		# service that will be back
+		@api path /api/*
+		handle @api {
+			header Content-Type application/json
+			respond `{"_tag":"SERVICE_UNAVAILABLE","message":"The service is temporarily unavailable. Try again shortly."}` 503
+		}
+
+		# probes want the status and nothing else
+		@health path /health/*
+		handle @health {
+			respond 503
+		}
+
+		# everything else, the page included, gets the maintenance page:
+		# self-contained, so a favicon or a script asked for while it is up
+		# gets the page too and nothing breaks. The application's own headers
+		# are not here to cover it, so the few that matter are set. current is
+		# the serving release's deploy/, which the host's launcher keeps
+		# pointed there (ops/deploy-host/README.md).
+		handle {
+			header Content-Security-Policy "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+			header X-Content-Type-Options nosniff
+			header Referrer-Policy no-referrer
+			root * /opt/qualy/current/deploy/demo
+			rewrite * /maintenance.html
+			file_server
+		}
 	}
 }
