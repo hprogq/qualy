@@ -1,5 +1,5 @@
 import { NodeHttpClient, NodeHttpServer } from '@effect/platform-node'
-import { Effect, Exit, Layer, Logger, Metric, Option, Schedule, Scope, Stream } from 'effect'
+import { Cause, Effect, Exit, Layer, Logger, Metric, Option, Schedule, Scope, Stream } from 'effect'
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
 import { OtlpSerialization, OtlpTracer } from 'effect/unstable/observability'
 import { createServer, type Server } from 'node:http'
@@ -13,6 +13,7 @@ import {
   requestContext,
   routeSpanNames,
   serverSpans,
+  clientWentAway,
   trustedProxies,
 } from '../src/request.ts'
 
@@ -153,6 +154,8 @@ beforeAll(async () => {
       ),
     ),
     HttpRouter.add('GET', '/defect', Effect.die(new Error('a defect in the handler'))),
+    // an answer that takes a while, for a reader who does not wait for it
+    HttpRouter.add('GET', '/slow', Effect.andThen(Effect.sleep('2 seconds'), echo)),
     HttpRouter.add(
       'GET',
       '/bound',
@@ -377,6 +380,29 @@ describe('the span a request exports', () => {
     if (measured?.type === 'Histogram') expect(measured.state.max).toBeLessThan(0.2)
   })
 
+  it('ends a request the reader gave up on before its answer as a 499, not as an error', async () => {
+    // A page left while a slow read is still running: the browser drops the
+    // request, the platform interrupts the handler and answers with a 499 of
+    // its own. Nothing failed on this side, and the access log already says
+    // so by writing it at Debug; the trace said it with a red error whose
+    // message was that 499 response.
+    const inbound = '9999888877776666abcdabcdabcdabcd'
+    const leaving = new AbortController()
+    const asked = fetch(`${base}/slow`, {
+      headers: { traceparent: `00-${inbound}-00f067aa0ba902b7-01` },
+      signal: leaving.signal,
+    }).catch(() => undefined)
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    leaving.abort()
+    await asked
+    const span = await exportedSpan((candidate) => candidate.traceId === inbound)
+    expect(span.status?.code).not.toBe(2)
+    const status = span.attributes.find(
+      (attribute) => attribute.key === 'http.response.status_code',
+    )
+    expect(Number(status?.value.intValue)).toBe(499)
+  })
+
   it('still ends a request that failed on its own as an error', async () => {
     const inbound = '5678567856785678abcdabcdabcdabcd'
     await fetch(`${base}/defect`, {
@@ -526,5 +552,37 @@ describe('a proxy nobody declared', () => {
     expect(
       await warningsOver({ trustedProxies: [] }, [{ peer: '127.0.0.1', headers: forwarded }]),
     ).toEqual([])
+  })
+})
+
+describe('a client that went away', () => {
+  const closed = HttpServerResponse.empty({ status: 499 })
+  it('is every shape the platform leaves it in', () => {
+    // nothing but the interruption
+    expect(clientWentAway(Cause.interrupt())).toBe(true)
+    // the interruption and the 499 the platform answered with, as a defect
+    expect(clientWentAway(Cause.combine(Cause.interrupt(), Cause.die(closed)))).toBe(true)
+    // the same 499 carried as a failure, which stripping the defects misses:
+    // the shape that reached the trace backend as an error in production
+    expect(clientWentAway(Cause.fail(closed))).toBe(true)
+  })
+
+  it('is not a request that failed here', () => {
+    expect(clientWentAway(Cause.die(new Error('a defect in the handler')))).toBe(false)
+    expect(clientWentAway(Cause.fail(HttpServerResponse.empty({ status: 500 })))).toBe(false)
+    // a real fault beside the abort stays a fault
+    expect(clientWentAway(Cause.combine(Cause.die(new Error('broken')), Cause.die(closed)))).toBe(
+      false,
+    )
+    // an answer the platform carries, with nobody having left, is not an abort
+    expect(clientWentAway(Cause.die(HttpServerResponse.empty({ status: 200 })))).toBe(false)
+  })
+
+  it('is a reader who left while the answer was being written', () => {
+    expect(
+      clientWentAway(
+        Cause.combine(Cause.interrupt(), Cause.die(HttpServerResponse.empty({ status: 200 }))),
+      ),
+    ).toBe(true)
   })
 })

@@ -461,6 +461,64 @@ const isEventStream = (response: HttpServerResponse.HttpServerResponse): boolean
   (response.body.contentType ?? '').startsWith('text/event-stream')
 
 /**
+ * Whether a request ended because its client went away rather than because
+ * anything here failed. One answer for the access log and the server span,
+ * which disagreed: a request the log wrote at Debug as "client closed"
+ * reached the trace backend as a red error whose message was the 499 the
+ * platform answered with.
+ *
+ * The platform's cause does not keep one shape, so it is read reason by
+ * reason: an interruption, the 499 the platform answers a client abort with
+ * (carried as a defect or as a failure), or an interruption some layer
+ * already turned into an error value (the websocket handler dies this way on
+ * shutdown, where `hasInterruptsOnly` cannot see it) says the client left;
+ * the response the platform carries out beside them says nothing either
+ * way. Anything else is a fault of this process, and then it is not the
+ * client's doing whatever else the cause holds.
+ */
+export const clientWentAway = (cause: Cause.Cause<unknown>): boolean => {
+  let aborted = false
+  for (const reason of cause.reasons) {
+    if (reason._tag === 'Interrupt') {
+      aborted = true
+      continue
+    }
+    const value = reason._tag === 'Fail' ? reason.error : reason.defect
+    if (HttpServerResponse.isHttpServerResponse(value)) {
+      // the answer the platform carries out of a request, whatever it was;
+      // a 499 is its answer to a client abort
+      if (value.status === 499) aborted = true
+      else if (reason._tag === 'Fail') return false
+      continue
+    }
+    const materialized = Cause.prettyErrors(Cause.fromReasons([reason])).some(
+      (error) => error.name === 'InterruptError' || error.name === 'InterruptCause',
+    )
+    // anything else is a fault of this process, and the span and the log
+    // both owe it an error
+    if (!materialized) return false
+    aborted = true
+  }
+  return aborted
+}
+
+/**
+ * The status a request ended with, one answer for the span and the RED
+ * histogram: the response it was given; the 499 of a client that went away
+ * before one was written; a 500 for anything else that left none. Two
+ * answers let the trace go green while the metric still counted the same
+ * disconnect as a server error.
+ */
+export const endedStatus = (exit: Exit.Exit<{ readonly status: number }, unknown>): number => {
+  if (Exit.isSuccess(exit)) return exit.value.status
+  const carried = exit.cause.reasons.some(
+    (reason) => reason._tag === 'Die' && HttpServerResponse.isHttpServerResponse(reason.defect),
+  )
+  if (carried) return HttpServerError.causeResponseStripped(exit.cause)[0].status
+  return clientWentAway(exit.cause) ? 499 : 500
+}
+
+/**
  * The exit a server span ends with, which is not always the request's own.
  *
  * A response that was already on its way comes back inside a failed exit
@@ -478,16 +536,13 @@ const spanExitOf = <A, E>(
   span: { attribute(key: string, value: unknown): void },
 ): Exit.Exit<unknown, unknown> => {
   if (Exit.isSuccess(exit)) return exit
-  const carried = exit.cause.reasons.some(
-    (reason) => reason._tag === 'Die' && HttpServerResponse.isHttpServerResponse(reason.defect),
-  )
-  const [response, rest] = HttpServerError.causeResponseStripped(exit.cause)
   // no response came back: a client gone before one was written is a 499,
   // not the 500 a failure would be, or the trace backend counts it as ours
-  span.attribute(
-    'http.response.status_code',
-    carried ? response.status : Cause.hasInterruptsOnly(exit.cause) ? 499 : 500,
-  )
+  span.attribute('http.response.status_code', endedStatus(exit as Exit.Exit<never, unknown>))
+  const [response, rest] = HttpServerError.causeResponseStripped(exit.cause)
+  // a client that left is not this service failing: the span ends as the
+  // answer it was last given, as the log and the histogram say it
+  if (clientWentAway(exit.cause)) return Exit.succeed(response)
   return Option.isSome(rest) ? Exit.failCause(rest.value) : Exit.succeed(response)
 }
 
@@ -552,15 +607,7 @@ export const httpMetrics = (options?: {
         recorded = true
         return Effect.as(record(response.status), response)
       })
-      return Effect.onExit(httpApp, (exit) =>
-        recorded
-          ? Effect.void
-          : record(
-              exit._tag === 'Success'
-                ? exit.value.status
-                : HttpServerError.causeResponseStripped(exit.cause)[0].status,
-            ),
-      )
+      return Effect.onExit(httpApp, (exit) => (recorded ? Effect.void : record(endedStatus(exit))))
     })
 }
 

@@ -1,7 +1,7 @@
 import { Cause, Context, Effect, Option, type LogLevel } from 'effect'
 import { HttpServerError, HttpServerRequest } from 'effect/unstable/http'
 import { insideApi } from '@qualy/api-kit/route-fallback'
-import { RequestContext, type RequestContextShape } from '@qualy/api-kit/request'
+import { clientWentAway, RequestContext, type RequestContextShape } from '@qualy/api-kit/request'
 import type { LoggingSettings } from './logging.ts'
 
 // The access log, replacing the upstream one.
@@ -102,21 +102,8 @@ export const accessLog =
         // upstream strips it out of the cause - and a client hanging up is a
         // 499 or a bare interruption, not a fault of this process.
         const [response, remainder] = HttpServerError.causeResponseStripped(exit.cause)
-        // 499 IS the client-closed marker, whether or not the interrupt's
-        // own reason still sits beside it in the cause. An interrupt that
-        // was already MATERIALIZED into an InterruptError value somewhere in
-        // the http layers (the websocket handler dies this way on shutdown)
-        // counts the same: hasInterruptsOnly cannot see it once it is an
-        // error value, so every error the cause carries is inspected.
-        const materializedInterrupt = (cause: Cause.Cause<unknown>): boolean =>
-          Cause.prettyErrors(cause).some(
-            (error) => error.name === 'InterruptError' || error.name === 'InterruptCause',
-          )
-        const interrupted =
-          Cause.hasInterruptsOnly(exit.cause) ||
-          response.status === 499 ||
-          materializedInterrupt(exit.cause) ||
-          (Option.isSome(remainder) && materializedInterrupt(remainder.value))
+        // the same judgement the server span ends by (api-kit's clientWentAway)
+        const interrupted = clientWentAway(exit.cause)
         const log =
           interrupted || (isEventStream(response) && response.status < 400)
             ? Effect.logDebug(line(interrupted ? 'client closed' : response.status))
