@@ -74,6 +74,8 @@ const projects = [
   ...findClientProjects('packages'),
   ...findBrowserTestProjects('packages'),
   ...findBrowserTestProjects('tools/fixtures'),
+  // the end-to-end journeys: node, with the DOM for what runs in the page
+  'tools/e2e',
 ]
 // Build info per project, so a second run rechecks what changed rather than
 // every program from scratch - the difference between nine seconds and one.

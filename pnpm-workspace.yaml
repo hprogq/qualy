@@ -84,6 +84,8 @@ catalog:
   vitest: 5.0.1
   # the V8 coverage provider moves with vitest: it peers on the exact version
   '@vitest/coverage-v8': 5.0.1
+  # accessibility rules the end-to-end journeys run on key screens (tools/e2e)
+  axe-core: 4.13.0
   # not the repository's formatter (that is oxfmt): the formula editor's
   # language server in sandbox-authoring formats documents with it at runtime
   prettier: 3.9.6

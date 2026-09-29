@@ -119,3 +119,4 @@ qualy.supervisor-test.lock.json
 # sits in
 qualy.benchmark.yml
 qualy.benchmark.lock.json
+.qualy/e2e/
