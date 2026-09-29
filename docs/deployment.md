@@ -188,6 +188,19 @@ host key(不用 runner 自带的 known_hosts)。发布制品(tag)与批准部署
   尖峰 93–111 ms;worker 就绪前跑一段覆盖类、私有字段、BigInt、正则、Map/Set、数组与字符串方法的程序 **且** 2 核:第一次 24–45 ms、
   全部 ≤58 ms、0/110 超过 100 ms、0 节流。于是 `sandbox-runtime` 为一个 worker 配 2 核,worker 在报告就绪前预热三次
   (`packages/core/sandbox-engine/src/worker.ts`)。只覆盖 JSON / BigInt / 正则的窄版预热只把第一次降到约 55 ms。
+  **第二次(2026-09-29 白天,rc.9):** rc.9 上线后第一次计分又报 500(`execution`:hard deadline 100ms)。事实:那是上线后第一次计分,
+  池只有 1 个 worker,第一次调用在请求里懒拉起并预热(515 ms,预热不计入看门狗),第二次调用换了公式,在这个刚起的 worker 上越过
+  100 ms;沙箱容器 `nr_throttled` 为 0,主机负载 0.1、内存压力为 0。按原方式在生产机上复测(rc.9 镜像、线上限额、生产库里真实的
+  12 个公式产物、每轮一个新 worker、随机顺序):第一次调用中位 46–51 ms、p95 69–95 ms、最大 139 ms,第二次中位 40 ms、最大 101 ms,
+  480 次里 2 次超过 100 ms,3–5 次越过 50 ms 软期限(线上软超时只重试一次,重试落在第二次调用上,还可能再越过一次,那就是 `execution`)。
+  对照(每种 360 次):`--no-wasm-lazy-compilation` 就绪 454 ms、第一次中位 53 ms,无效,且 worker 线程里引擎加载会因事件循环
+  无引用而挂住;`--no-liftoff` 就绪 1843 ms、第一次中位 49 ms,无效;预热程序复制成公式产物的大小(12 份,约 30 KiB)跑 4 遍:
+  就绪 372 ms,第一次中位 15 ms、最大 21 ms,全部 ≤36 ms,0 次软超时,与先跑 4 次真实公式的对照(13 / 26 ms)相同。于是:
+  预热换成公式大小的程序;`sandbox-runtime` 启动时先拉起并预热全部 worker 再监听 socket,worker 被换掉立即在后台补一个(池大小仍 1、
+  2 核);计分的硬期限(看门狗)与沙箱默认值脱钩,默认 500 ms、`QUALY_SANDBOX_HARD_DEADLINE_MS` 可覆盖且不低于软期限的 3 倍
+  (软期限 50 ms 不动,它才是公式的预算);两种超时都重试一次,硬超时仍失败时归为 `unavailable`(「暂时无法计分」,503),
+  不再当作公式执行失败报 500;服务端记 `qualy.sandbox.invoke.duration`(按 `outcome`:completed / soft-timeout / hard-timeout /
+  refused / unavailable),进 TMP。
 - `tools`(profile `tools`):当前 release 的 server 镜像 + 部署的 `.env` + `storage` 与 `web_releases` 卷,只跑一次性命令
   (`docker compose run --rm tools <命令>`),`QUALY_MIGRATIONS=off`。备份、恢复、基线导入与运维 CLI(`auth set-password`、
   `storage export`)都经它,不点名颜色,也不按带 project 前缀的名字找卷。
