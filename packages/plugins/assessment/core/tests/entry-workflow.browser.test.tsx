@@ -2285,6 +2285,59 @@ describe('judging a submission', () => {
     ...over,
   })
 
+  // What the reader's step has asked for, back or still out: the same key on
+  // every row, named for what there is to do behind it - review what came
+  // back, look at an ask still with the person who filed
+  it('offers one key per ask, named for what waits behind it', async () => {
+    const asked = (over: Record<string, unknown>) => ({
+      requestId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+      instanceId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1',
+      entryId: 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1',
+      requestNo: 1,
+      status: 'open' as const,
+      participantName: '张三',
+      businessNo: '2023100001',
+      itemTitle: '退役复学',
+      asks: ['退役证明'],
+      requestedAt: '2026-03-03T00:00:00.000Z',
+      answeredAt: null,
+      ...over,
+    })
+    await screen(
+      {
+        // the queue itself is empty; the asks are what this view reads
+        listReviewInbox: () => Effect.succeed({ items: [], nextCursor: null, handledToday: 0 }),
+        listAwaitingSupplements: () =>
+          Effect.succeed({
+            items: [
+              asked({}),
+              asked({
+                requestId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2',
+                instanceId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2',
+                status: 'answered' as const,
+                participantName: '李四',
+                answeredAt: '2026-03-04T00:00:00.000Z',
+              }),
+            ],
+            nextCursor: null,
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/reviews?view=asked`,
+      [{ path: '/assessment/batches/:batchId/reviews', element: <ReviewInboxPage /> }],
+    )
+    const keys = page.getByTestId('awaiting-open')
+    await expect.poll(() => keys.elements().length).toBe(2)
+    const out = keys.elements().find((key) => key.dataset['answered'] === 'false')!
+    const back = keys.elements().find((key) => key.dataset['answered'] === 'true')!
+    // one key, whichever way the ask stands
+    expect(out.className).toBe(back.className)
+    // and each found by the name a reader finds it by
+    await expect.element(page.getByRole('button', { name: '查看' })).toBeVisible()
+    await expect.element(page.getByRole('button', { name: '审核' })).toBeVisible()
+    expect(page.getByRole('button', { name: '查看' }).element()).toBe(out)
+    expect(page.getByRole('button', { name: '审核' }).element()).toBe(back)
+  })
+
   it('walks from the queue to one submission and approves it', async () => {
     const decided = vi.fn(() =>
       Effect.succeed({ review: { ...review, state: 'completed' as const, outcome: 'approved' } }),

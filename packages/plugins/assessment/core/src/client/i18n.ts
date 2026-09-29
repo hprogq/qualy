@@ -1582,7 +1582,7 @@ const i18n = definePluginMessages({
     reviewRound: { id: 'assessment/review/round', defaultMessage: 'Review round' },
     reviewSubmittedAt: { id: 'assessment/review/submitted-at', defaultMessage: 'Submitted at' },
     reviewTrail: { id: 'assessment/review/trail', defaultMessage: 'Review history' },
-    reviewOpen: { id: 'assessment/review/open', defaultMessage: 'Review' },
+    reviewOpen: { id: 'assessment/review/open', defaultMessage: 'View' },
     reviewDetailTab: { id: 'assessment/review/detail-tab', defaultMessage: 'Review' },
     reviewApprove: { id: 'assessment/review/approve', defaultMessage: 'Approve' },
     reviewReject: { id: 'assessment/review/reject', defaultMessage: 'Return' },
@@ -4038,7 +4038,7 @@ const i18n = definePluginMessages({
     },
     reviewAwaitingAnswered: {
       id: 'assessment/review/awaiting-answered',
-      defaultMessage: 'Material submitted 　 awaiting review',
+      defaultMessage: 'Material submitted',
     },
     reviewAwaitingGo: { id: 'assessment/review/awaiting-go', defaultMessage: 'Review' },
     reviewAwaitingHint: {

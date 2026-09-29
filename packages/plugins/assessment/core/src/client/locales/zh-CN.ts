@@ -239,7 +239,7 @@ export default {
   'assessment/review/round': '轮次',
   'assessment/review/submitted-at': '提交时间',
   'assessment/review/trail': '审核记录',
-  'assessment/review/open': '审核',
+  'assessment/review/open': '查看',
   'assessment/review/detail-tab': '审核',
   'assessment/review/approve': '通过',
   'assessment/review/reject': '退回',
@@ -988,7 +988,7 @@ export default {
   'assessment/review/awaiting-col-waited': '等待时间',
   'assessment/review/awaiting-col-asked-at': '提出时间',
   'assessment/review/awaiting-want': '补充要求：{what}',
-  'assessment/review/awaiting-answered': '已完成补充，等待审核',
+  'assessment/review/awaiting-answered': '已完成补充',
   'assessment/review/awaiting-go': '审核',
   'assessment/review/awaiting-hint':
     '已要求补充材料的申报会暂时列入此区域，补充完成后重新进入待审核列表。',

@@ -439,9 +439,17 @@ function AwaitingRow({
         <span {...stylex.props(styles.askedAt)}>{clock(row.requestedAt)}</span>
         <span {...stylex.props(styles.mobileSpacer)} />
         <span {...stylex.props(styles.openSeat)}>
-          {/* one way in either way: the round is where both the answer and
-              the way to take the ask back are read */}
-          <Button variant={answered ? 'outline' : 'ghost'} size="sm" onClick={onOpen}>
+          {/* one way in either way, one key for it: the round is where both
+              the answer and the way to take the ask back are read. It says
+              what there is to do there - review what came back, or look at
+              an ask still out */}
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="awaiting-open"
+            data-answered={answered}
+            onClick={onOpen}
+          >
             {format(answered ? m.reviewAwaitingGo : m.reviewOpen)}
           </Button>
         </span>
