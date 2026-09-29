@@ -140,13 +140,15 @@ jobs:
             gh release create "$RELEASE" release.json --verify-tag --title "$RELEASE" --notes-file notes.md
           fi
           cat notes.md >> "$GITHUB_STEP_SUMMARY"
-      # the source is public; the maps are kept only as long as the next job needs them
+      # The source is public; the maps are kept for a week so a filing that
+      # failed can be finished after the uploader is fixed, without building
+      # the release again - a rebuild would be another web release.
       - uses: actions/upload-artifact@v7
         with:
           name: web-dist
           path: web-dist
           include-hidden-files: true
-          retention-days: 1
+          retention-days: 7
           if-no-files-found: error
       - if: always()
         run: docker logout "${REGISTRY%%/*}"

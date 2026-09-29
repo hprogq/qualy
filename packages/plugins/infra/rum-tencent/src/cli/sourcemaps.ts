@@ -7,6 +7,7 @@ import { CliRefused, type CliContext } from '@qualy/plugin-kit/cli'
 import { parseWebReleaseIdentity } from '@qualy/release-contract/private'
 import { rumVersionForRelease } from '../version.ts'
 import { cosFailure } from './cos-failure.ts'
+import { filingCopyOf } from './filing-copy.ts'
 import { planFiling, type FiledMap } from './filing-plan.ts'
 
 // `qualy rum sourcemaps [dist]` - filing this build's source maps with the
@@ -51,16 +52,32 @@ const CALLS_PER_SECOND = 16
 // the platform's bucket is in China. The bucket drops a connection it judges
 // too slow ("User network is too slow", a 400 the sdk never retries), which is
 // how the v0.1.0-rc.3 run lost ten minutes and every map. So fewer uploads
-// share the line, a stalled one is abandoned rather than waited out, each map
-// is tried again on a fresh key, and records are filed as groups finish - a
-// run that still fails keeps what it filed, and the next run starts there.
+// share the line, each map is tried again on a fresh key, and records are
+// filed as groups finish - a run that still fails keeps what it filed, and the
+// next run starts there. What crosses is the filing copy (./filing-copy.ts),
+// smallest first, so a large map holds up only the group it ends in.
+//
+// The platform's credential allows a whole-object PUT and nothing else: a
+// multipart upload initiates and then its first part is refused (probed
+// 2026-09-30), so a large map cannot be sent in pieces.
 
 /** uploads at once, so each connection keeps a speed the bucket accepts */
 const UPLOAD_CONCURRENCY = 4
 /** tries per map before the run gives up */
 const UPLOAD_ATTEMPTS = 3
-/** a request that has moved nothing for this long is abandoned */
+/**
+ * A request that has moved nothing for this long is abandoned. The sdk's
+ * `Timeout` is only this: an idle socket. A connection still crawling at a
+ * few KiB a second never idles, which is how v0.1.0-rc.15's editor map held a
+ * group for seventeen minutes - hence the deadline below as well.
+ */
 const STALL_MS = 120_000
+/** every PUT is cancelled after this, plus the time its size takes at the floor below */
+const DEADLINE_BASE_MS = 60_000
+/** bytes a second a PUT must average, or it is cancelled and tried again */
+const FLOOR_BYTES_PER_SECOND = 10 * 1024
+/** maps at least this large say how their upload went */
+const REPORTED_BYTES = 256 * 1024
 /** maps uploaded between records */
 const FILE_EVERY = 32
 
@@ -129,6 +146,8 @@ const certificateFor = async (
 const md5 = (bytes: Buffer): string => crypto.createHash('md5').update(bytes).digest('hex')
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const mebibytes = (bytes: number): string => (bytes / 1024 / 1024).toFixed(2)
 
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
@@ -228,7 +247,8 @@ export async function run(context: CliContext): Promise<void> {
   // that had filed everything correctly still reported most of it missing. A
   // name is exact. A name filed under more than ten versions may not show the
   // one that matches; that map is uploaded again, which is only slower.
-  const hashes = new Map(maps.map(({ file, name }) => [name, md5(fs.readFileSync(file))]))
+  const copies = new Map(maps.map(({ file, name }) => [name, filingCopyOf(fs.readFileSync(file))]))
+  const hashes = new Map([...copies].map(([name, bytes]) => [name, md5(bytes)]))
   const filedByName = new Map<string, FiledMap[]>()
   for (const found of await inBatches(maps, async ({ name }) =>
     call(() => client.DescribeReleaseFiles({ ProjectID: projectId, FileName: name })),
@@ -291,7 +311,17 @@ export async function run(context: CliContext): Promise<void> {
   }
 
   const toUpload = new Set([...plan.upload.map(({ name }) => name), ...refused])
-  const pending = maps.filter(({ name }) => toUpload.has(name))
+  const pending = maps
+    .filter(({ name }) => toUpload.has(name))
+    .sort((a, b) => copies.get(a.name)!.length - copies.get(b.name)!.length)
+  const sent = [...copies].filter(([name]) => toUpload.has(name))
+  const built = pending.reduce((sum, { file }) => sum + fs.statSync(file).size, 0)
+  if (sent.length > 0) {
+    const size = sent.reduce((sum, [, bytes]) => sum + bytes.length, 0)
+    console.log(
+      `rum: ${mebibytes(size)} MiB to send, from ${mebibytes(built)} MiB built (dependency sources left out)`,
+    )
+  }
 
   // One credential for the whole batch, asked for only when something has to
   // be uploaded; the pipeline's own key never touches the object store.
@@ -304,14 +334,25 @@ export async function run(context: CliContext): Promise<void> {
           SecretKey: certificate.secretKey,
           SecurityToken: certificate.sessionToken,
           Timeout: STALL_MS,
+          // the sdk queues past its own limit (3 by default), and a PUT waiting
+          // in that queue would be spending its deadline
+          FileParallelLimit: UPLOAD_CONCURRENCY,
           // one connection carried from map to map: most maps are small, and a
           // fresh connection across an ocean spends its first round trips on
           // the handshake and on a window that starts small every time
           KeepAlive: true,
         })
-  // the bytes rather than a stream, so an attempt that failed can be sent again
+  // The bytes rather than a stream, so an attempt that failed can be sent
+  // again. Past its deadline the task is cancelled, which aborts the request
+  // itself: a retry never races the attempt it replaces.
   const put = (key: string, bytes: Buffer) =>
     new Promise<void>((resolve, reject) => {
+      const deadline = DEADLINE_BASE_MS + (bytes.length / FLOOR_BYTES_PER_SECOND) * 1000
+      let task: string | undefined
+      const timer = setTimeout(() => {
+        if (task !== undefined) cos!.cancelTask(task)
+        reject(new Error(`no answer in ${String(Math.round(deadline / 1000))}s; cancelled`))
+      }, deadline)
       cos!.putObject(
         {
           Bucket: certificate!.bucket,
@@ -319,8 +360,12 @@ export async function run(context: CliContext): Promise<void> {
           Key: key,
           Body: bytes,
           ContentLength: bytes.length,
+          onTaskReady: (id) => {
+            task = id
+          },
         },
         (error) => {
+          clearTimeout(timer)
           if (error) reject(cosFailure(error))
           else resolve()
         },
@@ -333,8 +378,16 @@ export async function run(context: CliContext): Promise<void> {
       // the file - unique per attempt, so a retry never writes over an object
       // an existing record points at
       const key = `${String(projectId)}-${version}-${String(Date.now())}-${name}`
+      const started = Date.now()
       try {
         await put(key, bytes)
+        if (bytes.length >= REPORTED_BYTES) {
+          const seconds = (Date.now() - started) / 1000
+          console.log(
+            `rum: ${name} ${mebibytes(bytes.length)} MiB in ${seconds.toFixed(1)}s ` +
+              `(${String(Math.round(bytes.length / 1024 / seconds))} KiB/s, attempt ${String(attempt)})`,
+          )
+        }
         return key
       } catch (error) {
         if (attempt >= UPLOAD_ATTEMPTS) {
@@ -351,8 +404,8 @@ export async function run(context: CliContext): Promise<void> {
     await fileGroup(
       await inBatches(
         pending.slice(at, at + FILE_EVERY),
-        async ({ file: source, name }) => {
-          const bytes = fs.readFileSync(source)
+        async ({ name }) => {
+          const bytes = copies.get(name)!
           const key = await upload(name, bytes)
           return { Version: version, FileKey: key, FileName: name, FileHash: md5(bytes) }
         },

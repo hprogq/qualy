@@ -129,14 +129,21 @@ compose 与 `upgrade.sh` 不需要知道镜像仓库。`connectivity.yml` 是手
 
 **SourceMap**(同一工作流的 `sourcemaps` job,2026-09-28):浏览器构建以 `hidden` 生成 map,它们带着 `sourcesContent`,永不进镜像
 与 release store。`build-images.ts --export-web <dir>` 在同一个构建上下文里再取一次 `web` 阶段(命中同一批缓存层)导出 `apps/web/dist`,
-并核对它的 web release id 就是 server 镜像里 `current.json` 的那个,否则整个 release 作废;`release` job 把它作为保留一天的 artifact
+并核对它的 web release id 就是 server 镜像里 `current.json` 的那个,否则整个 release 作废;`release` job 把它作为保留七天的 artifact
 交给 `sourcemaps` job。后者在 `rum-sourcemaps` 环境(只允许 `v*` tag)里,先核对 map 属于已发布 `release.json` 的 `webRelease`,再以
 `qualy rum sourcemaps` 按与浏览器相同的版本映射交给腾讯 RUM;上传凭据(`QUALY_RUM_TENCENT_SOURCEMAP_*`,子账号 `qualy-rum-uploader`)
 只给上传那一步。它排在发布之后:map 没交上是一个要看的红 job,不是一个没发出去的 release(docs/rum.md 的失败策略)。
 runner 在境外、RUM 的桶在境内,桶会以 `RequestTimeOut`「User network is too slow」丢弃过慢的连接(SDK 对 4xx 不重试;
 v0.1.0-rc.3 的 job 因此跑了十分钟,一个 map 也没登记上),所以上传器 4 路并发、单个请求两分钟无进展即放弃、每个 map 换新 key 重试三次、
-每 32 个登记一次记录,job 设 30 分钟上限。失败的一次留下已登记的部分,重跑只补缺的;重跑 job 用的是 tag 当时的代码,
-所以修了上传器之后,用本机检出对该 release 的 `web-dist` artifact(保留一天,先按上面同样核对 `webRelease`)跑同一条命令补交。
+每 32 个登记一次记录,job 设 30 分钟上限。v0.1.0-rc.15 又卡住一次(2026-09-30 查明):SDK 的 `Timeout` 只是套接字空闲超时,
+9.7 MiB 的编辑器 map 以每秒几 KiB 爬了十几分钟从不空闲,把整组的登记挡住;而那个 map 里 7 MiB 是 monaco-editor 的源码正文。
+于是上传的是「登记副本」:`node_modules` 下来源的 `sourcesContent` 置 null(`sources`/`names`/`mappings` 不动,
+仍能还原到依赖的文件与行列;本产品源码的正文保留;没有可剥的 map 原样上传、哈希不变),rc.15 的 320 个 map 由 32.4 MiB 降到
+14.1 MiB、最大 2.65 MiB,对 94,920 个位置剥前剥后解析逐一相同;按大小从小到大上传;每个 PUT 另有墙钟时限
+(60 s + 按 10 KiB/s 折算),到点经 SDK `cancelTask` 真正中止请求再重试。RUM 签发的临时凭据只允许整对象 PUT:
+分片上传能发起、第一片即 403(实测),所以不走分片;凭据按申请时长签发(3600 s 实测给足),不是瓶颈;
+桶未开全球加速(`BucketAccelerateNotEnabled`,桶归腾讯)。失败的一次留下已登记的部分,重跑只补缺的;重跑 job 用的是 tag 当时的代码,
+所以修了上传器之后,用本机检出对该 release 的 `web-dist` artifact(保留七天,先按上面同样核对 `webRelease`)跑同一条命令补交。
 慢的是字节进境这一段,不是 API:`rum.tencentcloudapi.com` 就近接入,桶却在广州(`DescribeFileCertificate` 不认 `Site`;
 旧接口 `DescribeReleaseFileSign` 的 `Site=1` 凭据同样写得进广州桶、也不给境外桶名,而 `CreateReleaseFile` 只收项目与文件列表,
 2026-09-28 实测后放弃;桶未开全球加速,`BucketAccelerateNotEnabled`)。所以上传器先按文件名查平台已有的记录:chunk 名带内容哈希,
