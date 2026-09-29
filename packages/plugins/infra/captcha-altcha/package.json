@@ -4,7 +4,9 @@
   "private": true,
   "license": "AGPL-3.0-only",
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/client/driver.ts"
+  ],
   "exports": {
     ".": "./src/index.ts",
     "./client/register": "./src/client/register.ts",

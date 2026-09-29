@@ -4,7 +4,9 @@
   "private": true,
   "license": "AGPL-3.0-only",
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/client/monaco-setup.ts"
+  ],
   "exports": {
     ".": "./src/index.ts",
     "./actions": "./src/actions.ts",
