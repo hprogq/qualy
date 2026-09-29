@@ -151,7 +151,12 @@ export function renderScreen({
    * a route, so a test about navigation mounts every page it can reach rather
    * than the one it starts on.
    */
-  routes?: { path: string; element: ReactNode }[]
+  routes?: {
+    path: string
+    element: ReactNode
+    /** pages a layout renders in its outlet, as the app nests them under a shell */
+    children?: { path?: string; element: ReactNode }[]
+  }[]
   route?: string
   path?: string
   locale?: 'zh-CN' | 'en-US'
@@ -193,7 +198,15 @@ export function renderScreen({
                 {routes ? (
                   <Routes>
                     {routes.map((entry) => (
-                      <Route key={entry.path} path={entry.path} element={<>{entry.element}</>} />
+                      <Route key={entry.path} path={entry.path} element={<>{entry.element}</>}>
+                        {entry.children?.map((child) =>
+                          child.path === undefined ? (
+                            <Route key="index" index element={<>{child.element}</>} />
+                          ) : (
+                            <Route key={child.path} path={child.path} element={<>{child.element}</>} />
+                          ),
+                        )}
+                      </Route>
                     ))}
                   </Routes>
                 ) : path ? (

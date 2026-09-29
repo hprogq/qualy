@@ -501,6 +501,50 @@ describe('the workspace shell', () => {
     ).toHaveLength(1)
   })
 
+  it('lets the last row of a long page scroll clear of the bar at the foot of a phone', async () => {
+    await page.viewport(390, 844)
+    // a section longer than the screen, as a round's structure is
+    const rows = Array.from({ length: 60 }, (_, at) => at)
+    await renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(settledManifest()) } }),
+      routes: [
+        {
+          path: '/assessment/batches/:batchId/phases',
+          element: <WorkspaceShell />,
+          children: [
+            {
+              element: (
+                <ul>
+                  {rows.map((at) => (
+                    <li key={at} data-testid={at === rows.length - 1 ? 'last-row' : undefined}>
+                      row {at}
+                    </li>
+                  ))}
+                </ul>
+              ),
+            },
+          ],
+        },
+      ],
+      route: `/assessment/batches/${BATCH_ID}/phases`,
+    })
+    const foot = page.getByTestId('bottom-bar')
+    await expect.element(foot).toBeVisible()
+    const last = page.getByTestId('last-row')
+    await expect.element(last).toBeInTheDocument()
+
+    // as far down as the reader can scroll, whichever box it is that scrolls
+    for (let node: Element | null = last.element(); node !== null; node = node.parentElement) {
+      node.scrollTop = node.scrollHeight
+    }
+    document.scrollingElement!.scrollTop = document.scrollingElement!.scrollHeight
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+
+    const lastBottom = last.element().getBoundingClientRect().bottom
+    const barTop = foot.element().getBoundingClientRect().top
+    expect(lastBottom).toBeLessThanOrEqual(barTop + 1)
+  })
+
   it('keeps as many sections as fit across the foot and opens the rest behind one cell', async () => {
     // A batch has more sections than a phone has cells. The bar keeps the
     // first few in the rail's own order and hands the remainder to the last
