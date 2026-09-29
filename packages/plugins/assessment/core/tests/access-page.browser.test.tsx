@@ -226,7 +226,7 @@ describe('a name that runs long', () => {
         await expect.element(name).toBeVisible()
         const row = name.element().closest('[data-testid="access-subject"]')!
         expect(row.getAttribute('data-idle')).toBe('true')
-        const sources = row.querySelector('ul')!.getBoundingClientRect()
+        const sources = row.querySelector('[data-testid="access-source"]')!.getBoundingClientRect()
         const box = name.element().getBoundingClientRect()
         // it ends where its cell does, rather than under the next column
         expect(box.right).toBeLessThanOrEqual(sources.left)

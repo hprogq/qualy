@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -54,6 +54,7 @@ import {
 } from './view.ts'
 import {
   adjustableOf,
+  grantsOf,
   whereOf,
   type AccessSelection,
   type AccessSource,
@@ -232,6 +233,23 @@ const styles = stylex.create({
   // a row carries a list of roles, not one word, so it takes the air a
   // floor alone would not give it
   roomy: { paddingBlock: 10 },
+  // A person's roles, one line each, on the table's own columns: the role
+  // in the roles column and what it gives here in the columns after it, so
+  // a role whose name wraps keeps its own marks level with its first line.
+  perRole: {
+    gridColumn: '2 / -2',
+    display: 'grid',
+    gridTemplateColumns: 'subgrid',
+    alignItems: 'start',
+    rowGap: 12,
+    minWidth: 0,
+  },
+  cardRole: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 4,
+  },
   acts: {
     display: 'flex',
     minWidth: 0,
@@ -799,8 +817,6 @@ function SubjectRow({
 }) {
   const { format } = useI18n()
   const businessNo = useTerm(authTerms.businessNumber)
-  const effective = new Set(subject.effective)
-  const denied = new Set(subject.denied)
   const idle = subject.effective.length === 0
   // their own row, or nothing left to adjust: the server refuses the first
   // and the second would open onto an empty dialog
@@ -826,20 +842,12 @@ function SubjectRow({
     />
   )
 
-  const sourceList = (
-    <ul {...stylex.props(styles.sources)}>
-      {subject.sources.map((source) => (
-        <SourceLine key={source.sourceId} source={source} />
-      ))}
-    </ul>
-  )
-
   // what they may do, as words: the ones in force, then the ones this round
   // turned off, struck through - a shorter line looks like nothing happened
-  const inForce = inCatalogOrder(subject.effective)
-  const turnedOff = inCatalogOrder(subject.denied)
-  const grants =
-    inForce.length === 0 && turnedOff.length === 0 ? (
+  const wordsOf = (inForceCodes: readonly string[], turnedOffCodes: readonly string[]) => {
+    const inForce = inCatalogOrder(inForceCodes)
+    const turnedOff = inCatalogOrder(turnedOffCodes)
+    return inForce.length === 0 && turnedOff.length === 0 ? (
       <span {...stylex.props(styles.none)} data-testid="access-none">
         {format(m.accessNoPermission)}
       </span>
@@ -872,6 +880,16 @@ function SubjectRow({
         )}
       </span>
     )
+  }
+
+  // Role by role: somebody holding three roles is three lines, each with
+  // what that role gives here. One line for all of them said what the person
+  // may do but not which appointment it rests on - and the appointment is
+  // what gets adjusted, synced or taken back.
+  const perRole = subject.sources.map((source) => ({
+    source,
+    ...grantsOf(source, subject.denied),
+  }))
 
   const acts = (
     <span {...stylex.props(styles.acts, shape === 'cards' && styles.cardActs)}>
@@ -925,9 +943,8 @@ function SubjectRow({
     'data-adjustable': adjustable,
   }
 
-  // Narrow, what somebody holds is not a row of a table. It is three blocks
-  // of their own - who they are, where the duty comes from, what it grants -
-  // and the last two are lists, not values.
+  // Narrow, what somebody holds is not a row of a table. It is who they are,
+  // then each role with what it grants here under it - a list, not a value.
   if (shape === 'cards') {
     return (
       <div {...stylex.props(styles.card)} {...facts}>
@@ -937,11 +954,14 @@ function SubjectRow({
         </div>
         <div {...stylex.props(styles.cardBlock)}>
           <span {...stylex.props(styles.cardLabel)}>{format(m.accessColumnRoles)}</span>
-          {sourceList}
-        </div>
-        <div {...stylex.props(styles.cardBlock)}>
-          <span {...stylex.props(styles.cardLabel)}>{format(m.accessColumnPermissions)}</span>
-          {dim(grants)}
+          <ul {...stylex.props(styles.sources)}>
+            {perRole.map(({ source, inForce, turnedOff }) => (
+              <li key={source.sourceId} {...stylex.props(styles.cardRole)}>
+                <SourceLine source={source} element="div" />
+                {dim(wordsOf(inForce, turnedOff))}
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
     )
@@ -951,30 +971,47 @@ function SubjectRow({
     return (
       <TableRow xstyle={styles.roomy} {...facts}>
         <Cell lead>{dim(who)}</Cell>
-        <Cell>{sourceList}</Cell>
-        {BATCH_STAFF_CODES.map((code) => {
-          const state = effective.has(code) ? 'granted' : denied.has(code) ? 'withheld' : 'none'
-          return (
-            <span
-              key={code}
-              data-testid="access-grant"
-              data-permission={code}
-              data-state={state}
-              {...(state === 'withheld' ? { title: format(m.accessWithheldMark) } : {})}
-              {...stylex.props(styles.cellMark)}
-            >
-              {state === 'granted' && <CheckIcon aria-hidden {...stylex.props(styles.granted)} />}
-              {state === 'withheld' && <MinusIcon aria-hidden {...stylex.props(styles.withheld)} />}
-              {state !== 'none' && (
-                <VisuallyHidden>
-                  {state === 'withheld'
-                    ? format(m.accessPermissionWithheld, { name: format(permissionLabel(code)) })
-                    : format(permissionLabel(code))}
-                </VisuallyHidden>
-              )}
-            </span>
-          )
-        })}
+        <div {...stylex.props(styles.perRole)}>
+          {perRole.map(({ source, inForce, turnedOff }) => (
+            <Fragment key={source.sourceId}>
+              <SourceLine source={source} element="div" />
+              {BATCH_STAFF_CODES.map((code) => {
+                const state = inForce.includes(code)
+                  ? 'granted'
+                  : turnedOff.includes(code)
+                    ? 'withheld'
+                    : 'none'
+                return (
+                  <span
+                    key={code}
+                    data-testid="access-grant"
+                    data-source={source.sourceId}
+                    data-permission={code}
+                    data-state={state}
+                    {...(state === 'withheld' ? { title: format(m.accessWithheldMark) } : {})}
+                    {...stylex.props(styles.cellMark)}
+                  >
+                    {state === 'granted' && (
+                      <CheckIcon aria-hidden {...stylex.props(styles.granted)} />
+                    )}
+                    {state === 'withheld' && (
+                      <MinusIcon aria-hidden {...stylex.props(styles.withheld)} />
+                    )}
+                    {state !== 'none' && (
+                      <VisuallyHidden>
+                        {state === 'withheld'
+                          ? format(m.accessPermissionWithheld, {
+                              name: format(permissionLabel(code)),
+                            })
+                          : format(permissionLabel(code))}
+                      </VisuallyHidden>
+                    )}
+                  </span>
+                )
+              })}
+            </Fragment>
+          ))}
+        </div>
         {acts}
       </TableRow>
     )
@@ -983,8 +1020,14 @@ function SubjectRow({
   return (
     <TableRow xstyle={styles.roomy} {...facts}>
       <Cell lead>{dim(who)}</Cell>
-      <Cell>{sourceList}</Cell>
-      <Cell>{dim(grants)}</Cell>
+      <div {...stylex.props(styles.perRole)}>
+        {perRole.map(({ source, inForce, turnedOff }) => (
+          <Fragment key={source.sourceId}>
+            <SourceLine source={source} element="div" />
+            {dim(wordsOf(inForce, turnedOff))}
+          </Fragment>
+        ))}
+      </div>
       {acts}
     </TableRow>
   )
@@ -997,12 +1040,19 @@ function SubjectRow({
  * one this round made on its own is marked, and one that grants nothing any
  * more says why - withdrawn, run out, or no longer one this round can take.
  */
-function SourceLine({ source }: { source: AccessSource }) {
+function SourceLine({
+  source,
+  element: Element = 'li',
+}: {
+  source: AccessSource
+  /** `li` in a list of roles; a `div` where the role heads a line of the table */
+  element?: 'li' | 'div'
+}) {
   const { format } = useI18n()
   const role = source.roleName === '' ? format(m.accessRoleUnknown) : source.roleName
   const where = whereOf(source)
   return (
-    <li
+    <Element
       data-testid="access-source"
       data-source={source.sourceId}
       data-origin={source.origin}
@@ -1031,7 +1081,7 @@ function SourceLine({ source }: { source: AccessSource }) {
           </span>
         )}
       </span>
-    </li>
+    </Element>
   )
 }
 

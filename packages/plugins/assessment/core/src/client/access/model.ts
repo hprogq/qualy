@@ -47,3 +47,20 @@ export const whereOf = (
     : source.orgNodeName === null
       ? { kind: 'beyond' }
       : { kind: 'unit', name: source.orgNodeName }
+
+/**
+ * What one of a person's roles gives them in this round: what it carries
+ * that the round accepted, less what the round turned off for the person.
+ *
+ * The same sum the server makes (readAccess): a person's `effective` is
+ * these, each role's in force, put together - so a page that shows them
+ * role by role says exactly what the one line said, only which role says it.
+ * A role that has lapsed carries nothing here and gives nothing.
+ */
+export const grantsOf = (
+  source: Pick<AccessSource, 'current'>,
+  denied: readonly string[],
+): { inForce: string[]; turnedOff: string[] } => ({
+  inForce: source.current.filter((code) => !denied.includes(code)),
+  turnedOff: source.current.filter((code) => denied.includes(code)),
+})
