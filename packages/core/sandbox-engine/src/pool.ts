@@ -29,8 +29,16 @@ interface Slot {
 interface Pending {
   readonly request: InvokeRequest
   readonly hardDeadlineMs: number
-  readonly resolve: (response: InvokeResponse) => void
+  readonly queuedAt: number
+  readonly resolve: (timed: TimedResponse) => void
   readonly reject: (problem: PoolProblem) => void
+}
+
+/** a worker's answer, with how long it waited for the worker and how long it ran */
+export interface TimedResponse {
+  readonly response: InvokeResponse
+  readonly queueMs: number
+  readonly executeMs: number
 }
 
 export interface PoolProblem {
@@ -85,9 +93,17 @@ export class WorkerPool {
   }
 
   run(request: InvokeRequest, hardDeadlineMs: number): Promise<InvokeResponse> {
+    return this.runTimed(request, hardDeadlineMs).then((timed) => timed.response)
+  }
+
+  /**
+   * The same, with where the time went: waiting for a worker - a cold one
+   * coming up included - and then running on it.
+   */
+  runTimed(request: InvokeRequest, hardDeadlineMs: number): Promise<TimedResponse> {
     if (this.#closed) return Promise.reject({ kind: 'worker-lost', reason: 'pool is shut down' })
     return new Promise((resolve, reject) => {
-      this.#queue.push({ request, hardDeadlineMs, resolve, reject })
+      this.#queue.push({ request, hardDeadlineMs, queuedAt: performance.now(), resolve, reject })
       this.#dispatch()
     })
   }
@@ -138,6 +154,7 @@ export class WorkerPool {
     let watchdog: NodeJS.Timeout | undefined
     try {
       await this.#awaitReady(slot)
+      const startedAt = performance.now()
       const response = await new Promise<InvokeResponse>((resolve, reject) => {
         const onMessage = (message: WorkerMessage) => {
           if ('id' in message && message.id === pending.request.id) {
@@ -169,7 +186,12 @@ export class WorkerPool {
         slot.worker.postMessage(pending.request)
       })
       if (response.retire === true) this.#discard(slot)
-      pending.resolve(response)
+      const endedAt = performance.now()
+      pending.resolve({
+        response,
+        queueMs: startedAt - pending.queuedAt,
+        executeMs: endedAt - startedAt,
+      })
     } catch (problem) {
       this.#discard(slot)
       pending.reject(

@@ -34,6 +34,9 @@ describe('the migration golden', () => {
       expect(outcome.runtimeSha256).toBe(golden['identity']!.artifactSha256)
       expect(outcome.typescriptVersion).toMatch(/^7\./)
       expect(outcome.esbuildVersion).toMatch(/^0\.28\./)
+      // where the time went, beside what was made and never in it
+      for (const stage of ['policyMs', 'typecheckMs', 'bundleMs'] as const)
+        expect(outcome.timings[stage]).toBeGreaterThanOrEqual(0)
     }
   }, 60_000)
 })

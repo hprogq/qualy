@@ -30,6 +30,7 @@ import {
   SandboxWorkerLost,
   limitIssue,
   type RuntimeSandboxError,
+  type RuntimeTimings,
   type SandboxLimits,
 } from '@qualy/sandbox-rpc'
 import { createHash } from 'node:crypto'
@@ -86,7 +87,7 @@ const lost = (problem: PoolProblem): RuntimeSandboxError =>
 export const invoke = (
   pool: WorkerPool,
   request: WireInvoke,
-): Effect.Effect<{ output: string }, RuntimeSandboxError> => {
+): Effect.Effect<{ output: string; timings: RuntimeTimings }, RuntimeSandboxError> => {
   // before anything else is believed: a caller from another protocol
   // generation gets a refusal that names both sides, never a half-answer
   if (
@@ -132,7 +133,7 @@ export const invoke = (
     )
   return Effect.tryPromise({
     try: () =>
-      pool.run(
+      pool.runTimed(
         {
           id: pool.nextId(),
           artifact: request.artifact,
@@ -146,5 +147,12 @@ export const invoke = (
         request.limits.hardDeadlineMs,
       ),
     catch: (problem) => lost(problem as PoolProblem),
-  }).pipe(Effect.flatMap(settled))
+  }).pipe(
+    Effect.flatMap(({ response, queueMs, executeMs }) =>
+      Effect.map(settled(response), (answer) => ({
+        ...answer,
+        timings: { queueMs, executeMs },
+      })),
+    ),
+  )
 }

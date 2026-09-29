@@ -9,6 +9,13 @@ import { Rpc, RpcGroup } from 'effect/unstable/rpc'
 import { invokeErrors } from './errors.ts'
 import { SandboxLimitsSchema } from './protocol.ts'
 
+/** inside one invocation, in milliseconds */
+export const RuntimeTimings = Schema.Struct({
+  queueMs: Schema.Number,
+  executeMs: Schema.Number,
+})
+export type RuntimeTimings = typeof RuntimeTimings.Type
+
 export const RuntimeCapabilities = Schema.Struct({
   rpcApiVersion: Schema.Number,
   sandboxAbiVersion: Schema.Number,
@@ -59,6 +66,11 @@ export const RuntimeSandboxRpcs = RpcGroup.make(
       engineVersion: Schema.String,
       runtimeBuildId: Schema.String,
       runtimeInstanceId: Schema.String,
+      // where the time went inside, which the caller cannot see: waiting for
+      // a worker (a cold one's start included), then running. Advisory, so
+      // optional on the wire like every advisory field here - a runtime a
+      // generation apart stays readable - where the provenance above is not
+      timings: Schema.optional(RuntimeTimings),
     }),
     error: Schema.Union(invokeErrors),
   }),

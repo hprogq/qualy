@@ -15,7 +15,9 @@ import {
   FormulaAuthoringRpcs,
   SANDBOX_RPC_MAX_FRAME_BYTES,
   type AuthoringCompileError,
+  type CompileTimings,
 } from '@qualy/sandbox-rpc'
+import { DURATION_BOUNDARIES, boundedDurationHistogram } from '@qualy/telemetry/metrics'
 import {
   FormulaBundleFailed,
   FormulaCompileUnavailable,
@@ -98,6 +100,38 @@ const deadline = <A, E>(call: Effect.Effect<A, E>, refuse: () => E): Effect.Effe
     }).pipe(Effect.onInterrupt(() => abandon))
   })
 
+// Inside the compiler, which only the compiler can see: how long a compile
+// waited for it and how long each of its stages took. Said by the authoring
+// sandbox in its answer - it has no network to report from - and written
+// here as attributes of the compile's own span and as one histogram by
+// stage, never as child spans made up afterwards.
+const COMPILE_PHASES = ['queue', 'policy', 'typecheck', 'bundle'] as const
+const compilePhase = boundedDurationHistogram(
+  'qualy.sandbox.authoring.phase.duration',
+  { phase: COMPILE_PHASES },
+  DURATION_BOUNDARIES,
+)
+
+const insideCompile = (timings: CompileTimings | undefined) => {
+  if (timings === undefined) return Effect.void
+  const byPhase = {
+    queue: timings.queueMs,
+    policy: timings.policyMs,
+    typecheck: timings.typecheckMs,
+    bundle: timings.bundleMs,
+  }
+  return Effect.andThen(
+    Effect.annotateCurrentSpan(
+      Object.fromEntries(
+        COMPILE_PHASES.map((phase) => [`sandbox.${phase}.duration_ms`, byPhase[phase]]),
+      ),
+    ),
+    Effect.forEach(COMPILE_PHASES, (phase) => compilePhase({ phase }, byPhase[phase] / 1000), {
+      discard: true,
+    }),
+  )
+}
+
 export const formulaAuthoringLayer = (options?: {
   readonly socketPath?: string
 }): Layer.Layer<FormulaAuthoring> =>
@@ -108,6 +142,7 @@ export const formulaAuthoringLayer = (options?: {
       const compile = (source: string): Effect.Effect<CompiledAuthoring, AuthoringRefusal> =>
         deadline(
           client.CompileFormula({ source }).pipe(
+            Effect.tap((compiled) => insideCompile(compiled.timings)),
             Effect.catchTag('RpcClientError', () => Effect.fail(new FormulaCompileUnavailable())),
             Effect.catch((failure) =>
               failure instanceof FormulaCompileUnavailable
@@ -129,7 +164,7 @@ export const formulaAuthoringLayer = (options?: {
             }),
           ),
           () => new FormulaCompileUnavailable(),
-        )
+        ).pipe(Effect.withSpan('FormulaAuthoring.compile'))
       return { compile }
     }),
   ).pipe(

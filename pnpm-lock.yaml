@@ -1088,6 +1088,9 @@ importers:
       '@qualy/sandbox-rpc':
         specifier: workspace:*
         version: link:../../../core/sandbox-rpc
+      '@qualy/telemetry':
+        specifier: workspace:*
+        version: link:../../../core/telemetry
       '@qualy/ui':
         specifier: workspace:*
         version: link:../../../web/ui

@@ -36,6 +36,12 @@ export interface CompiledFormula {
   readonly formulaRuntimeSha256: string
   readonly typescriptVersion: string
   readonly esbuildVersion: string
+  /** where the time went, in milliseconds: never part of what was compiled */
+  readonly timings: {
+    readonly policyMs: number
+    readonly typecheckMs: number
+    readonly bundleMs: number
+  }
 }
 
 export type CompileOutcome =
@@ -59,7 +65,9 @@ export const compileFormula = async (source: string): Promise<CompileOutcome> =>
   if (Buffer.byteLength(source, 'utf8') > SOURCE_LIMIT)
     return { kind: 'source-too-large', limit: SOURCE_LIMIT }
 
+  const began = performance.now()
   const verdict = sourcePolicy(source)
+  const policed = performance.now()
   if (verdict.kind === 'syntax')
     return { kind: 'typecheck-failed', diagnostics: verdict.diagnostics, truncated: false }
   if (verdict.kind === 'refused') return { kind: 'source-refused', findings: verdict.findings }
@@ -81,6 +89,7 @@ export const compileFormula = async (source: string): Promise<CompileOutcome> =>
     }
   }
 
+  const checkedAt = performance.now()
   let bundled
   try {
     bundled = await bundleFormula(source)
@@ -99,6 +108,7 @@ export const compileFormula = async (source: string): Promise<CompileOutcome> =>
     }
   }
 
+  const bundledAt = performance.now()
   const artifactBytes = Buffer.byteLength(bundled.artifact, 'utf8')
   if (artifactBytes > MAX_COMPILED_ARTIFACT_BYTES)
     return {
@@ -121,5 +131,10 @@ export const compileFormula = async (source: string): Promise<CompileOutcome> =>
     formulaRuntimeSha256: runtimeDigest.digest('hex'),
     typescriptVersion: await typescriptVersion(),
     esbuildVersion,
+    timings: {
+      policyMs: policed - began,
+      typecheckMs: checkedAt - policed,
+      bundleMs: bundledAt - checkedAt,
+    },
   }
 }

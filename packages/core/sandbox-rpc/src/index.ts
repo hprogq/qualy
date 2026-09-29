@@ -26,7 +26,7 @@ export {
   type JsonValue,
   type SandboxLimits,
 } from './protocol.ts'
-export { RuntimeCapabilities, RuntimeSandboxRpcs } from './runtime.ts'
+export { RuntimeCapabilities, RuntimeSandboxRpcs, RuntimeTimings } from './runtime.ts'
 export {
   AuthoringCapabilities,
   CompileBundleFailed,
@@ -35,6 +35,7 @@ export {
   CompileSourceTooLarge,
   CompileTypecheckFailed,
   CompileTypecheckTimeout,
+  CompileTimings,
   CompiledFormulaWire,
   FormulaAuthoringRpcs,
   MAX_COMPILED_ARTIFACT_BYTES,

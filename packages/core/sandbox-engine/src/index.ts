@@ -6,7 +6,7 @@
  * in Effect services and typed errors.
  */
 
-export { WorkerPool, type PoolOptions, type PoolProblem } from './pool.ts'
+export { WorkerPool, type PoolOptions, type PoolProblem, type TimedResponse } from './pool.ts'
 export {
   ENTRYPOINT,
   type InvokeRequest,

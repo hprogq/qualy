@@ -36,6 +36,7 @@ import {
   SANDBOX_RPC_MAX_FRAME_BYTES,
   SOURCE_LIMIT,
   type AuthoringCompileError,
+  type CompileTimings,
 } from '@qualy/sandbox-rpc'
 import { createHash } from 'node:crypto'
 import { authoringBuildId } from './identity.ts'
@@ -84,15 +85,18 @@ interface CompiledWire {
   readonly esbuildVersion: string
   readonly formulaAbiVersion: number
   readonly authoringBuildId: string
+  readonly timings: CompileTimings
 }
 
 const compile = (source: string): Effect.Effect<CompiledWire, AuthoringCompileError> =>
   Effect.suspend((): Effect.Effect<CompiledWire, AuthoringCompileError> => {
     if (pendingCompiles >= MAX_PENDING_COMPILES) return Effect.fail(new CompileBusy())
     pendingCompiles += 1
+    const queuedAt = performance.now()
     return compiles
       .withPermits(1)(
         Effect.gen(function* () {
+          const queueMs = performance.now() - queuedAt
           const outcome = yield* Effect.promise(() => compileFormula(source))
           switch (outcome.kind) {
             case 'source-too-large':
@@ -120,6 +124,7 @@ const compile = (source: string): Effect.Effect<CompiledWire, AuthoringCompileEr
                 esbuildVersion: outcome.esbuildVersion,
                 formulaAbiVersion: FORMULA_ABI_VERSION,
                 authoringBuildId: authoringBuildId(),
+                timings: { queueMs, ...outcome.timings },
               }
           }
         }),

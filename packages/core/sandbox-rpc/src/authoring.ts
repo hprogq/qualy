@@ -87,6 +87,15 @@ export type AuthoringCompileError =
   | CompileTypecheckTimeout
   | CompileBundleFailed
 
+/** inside one compile, in milliseconds */
+export const CompileTimings = Schema.Struct({
+  queueMs: Schema.Number,
+  policyMs: Schema.Number,
+  typecheckMs: Schema.Number,
+  bundleMs: Schema.Number,
+})
+export type CompileTimings = typeof CompileTimings.Type
+
 export const CompiledFormulaWire = Schema.Struct({
   artifact: Schema.String,
   sourceSha256: Schema.String,
@@ -98,6 +107,9 @@ export const CompiledFormulaWire = Schema.Struct({
   esbuildVersion: Schema.String,
   formulaAbiVersion: Schema.Number,
   authoringBuildId: Schema.String,
+  // where the time went inside: waiting for the compiler, then its three
+  // stages. Advisory, so optional on the wire, where the provenance is not
+  timings: Schema.optional(CompileTimings),
 })
 
 export const FormulaAuthoringRpcs = RpcGroup.make(

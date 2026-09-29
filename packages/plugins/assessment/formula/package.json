@@ -50,6 +50,7 @@
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
     "@qualy/sandbox-rpc": "workspace:*",
+    "@qualy/telemetry": "workspace:*",
     "@qualy/ui": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "@qualy/value-schema": "workspace:*",

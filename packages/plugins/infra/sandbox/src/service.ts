@@ -28,6 +28,7 @@ import {
   limitIssue,
   type JsonValue,
   type RuntimeSandboxError,
+  type RuntimeTimings,
   type SandboxLimits,
 } from '@qualy/sandbox-rpc'
 import {
@@ -68,6 +69,8 @@ export interface SandboxRuntimeIdentity {
 export interface SandboxAnswer {
   readonly output: string
   readonly runtime: SandboxRuntimeIdentity
+  /** where the time went inside the runtime, when the runtime said */
+  readonly timings?: RuntimeTimings
 }
 
 /**
@@ -240,6 +243,7 @@ export const sandboxLayer = (options?: { readonly socketPath?: string }): Layer.
               runtimeBuildId: answer.runtimeBuildId,
               instanceId: answer.runtimeInstanceId,
             },
+            ...(answer.timings === undefined ? {} : { timings: answer.timings }),
           })),
           Effect.catchTag('RpcClientError', (failure) =>
             Effect.fail(
