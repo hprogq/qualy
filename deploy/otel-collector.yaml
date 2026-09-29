@@ -63,7 +63,7 @@ receivers:
   # When the last whole backup succeeded: deploy/backup.sh rewrites this file
   # only after the copy off the machine succeeds, so its modification time is
   # the answer. Absent until the first backup that sets QUALY_BACKUP_STATUS_DIR.
-  filestats/backup:
+  file_stats/backup:
     include: /var/lib/qualy/backup-status/last-success
     collection_interval: 60s
 
@@ -95,11 +95,11 @@ processors:
     metric_statements:
       - context: metric
         statements:
-          - set(name, "qualy.backup.last_success") where name == "file.mtime"
-          - set(description, "When the last whole backup, the copy off the machine included, succeeded (Unix seconds)") where name == "qualy.backup.last_success"
+          - set(metric.name, "qualy.backup.last_success") where metric.name == "file.mtime"
+          - set(metric.description, "When the last whole backup, the copy off the machine included, succeeded (Unix seconds)") where metric.name == "qualy.backup.last_success"
       - context: resource
         statements:
-          - delete_matching_keys(attributes, "file\\..*")
+          - delete_matching_keys(resource.attributes, "file\\..*")
   filter/backup:
     metrics:
       include:
@@ -159,7 +159,7 @@ service:
     # the backup's age, into the same TMP, for the alert in
     # docs/deployment.md ("备份新鲜度")
     metrics/backup:
-      receivers: [filestats/backup]
+      receivers: [file_stats/backup]
       processors: [memory_limiter, transform/backup, filter/backup, batch]
       exporters: [prometheus_remote_write/tencent_tmp]
     logs:

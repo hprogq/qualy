@@ -441,7 +441,7 @@ current,旧镜像的 server 要这一步才肯启动;旧 release 已被保留策
 - `pg_backups` 卷删除:只挂载、从没有东西写它。README 的升级步骤第一步改为 `backup.sh`。
 - **备份新鲜度**(2026-09-30):`backup.sh` 在**异地复制也成功之后**才写 `<root>/last-success`;设了 `QUALY_BACKUP_STATUS_DIR`
   (生产 `/var/lib/qualy/backup-status`)时,同时把这个时间戳写成那里的 `last-success`(目录 755、文件 644,只有时间戳)。备份根目录仍是 root 700,
-  collector 读不到也不该读。collector 挂载该目录(只读),`filestats/backup` 每分钟取它的修改时间,`transform/backup` 改名为
+  collector 读不到也不该读。collector 挂载该目录(只读),`file_stats/backup` 每分钟取它的修改时间,`transform/backup` 改名为
   `qualy.backup.last_success`,经已有的 remote write 进 TMP,名为 **`qualy_backup_last_success_seconds`**(gauge,Unix 秒;本机用生产同版本
   collector 实测命名)。不另起 exporter,不加新的监控系统。告警在 TMP 控制台配(仓库里不存告警规则),两条:
 
