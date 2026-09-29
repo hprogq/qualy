@@ -204,4 +204,9 @@ ui-registry(统一 API runtime 拉 manifest 契约;页面组件用 useApi)。这
   tag 能被挪动,这个 action 的 tag 今年被篡改过),只要**有修复版本的 HIGH / CRITICAL**,SARIF 以 `trivy-<镜像>` 分类传进代码扫描
   (仓库 Security 页)。扫描与上传都 `continue-on-error`、`exit-code: 0`:发现项由人分诊,不让 CI 变红;扫描器或上传故障也不。
   第一轮看过发现项再定策略(例如「CRITICAL 且有修复」才拦),在那之前不进 `release-eligible`。
+- 第一轮(run 36636245348,`ff0721c00`)的高危与严重,待用户分诊:server 镜像的 fast-xml-parser 4.5.0(CVE-2026-25896 严重,
+  -26278 / -33036 高危)——cos-js-sdk-v5 的依赖,浏览器上传驱动的,随插件依赖装进镜像但服务端不执行,与 Dependabot 那几条同源、上游仍固定;
+  两个沙箱镜像的 alpine OpenSSL 3.5.7-r0(CVE-2026-14456,libssl3 / libcrypto3)——要换基础镜像 digest(release-inputs 门禁要求各处一致);
+  authoring 沙箱的 brace-expansion 5.0.7(CVE-2026-14257,ReDoS)。两个沙箱都无网络。首轮 SARIF 忘了 `limit-severities-for-sarif`,
+  中低危也进了代码扫描,已补上。
 - CodeQL 早已是仓库的默认设置(javascript-typescript 与 actions 两种分析,每次推送都跑),不另写 workflow。
