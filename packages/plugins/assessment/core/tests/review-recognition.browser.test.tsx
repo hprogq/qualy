@@ -484,18 +484,19 @@ describe('approving with a determination', () => {
       form.querySelector('[data-parameter="rec-ordinal"] input') as HTMLInputElement,
       '3',
     )
-    const kept = await vi.waitFor(
+    // the draft is written a moment after each change, so a read can find the
+    // comment kept before the ordinal: wait for the one that holds both
+    await vi.waitFor(
       async () => {
         const row = await readDraft(id)
         if (row === null) throw new Error('nothing kept yet')
-        return row
+        expect(row.value).toMatchObject({
+          comment: '材料齐全，按一等奖认定',
+          values: { 'rec-ordinal': '3' },
+        })
       },
       { timeout: 4_000 },
     )
-    expect(kept.value).toMatchObject({
-      comment: '材料齐全，按一等奖认定',
-      values: { 'rec-ordinal': '3' },
-    })
     // and once it has been said for real, this browser has nothing to keep
     await confirmAndWait(decided)
     await expect.poll(() => readDraft(id), { timeout: 4_000 }).toBeNull()
