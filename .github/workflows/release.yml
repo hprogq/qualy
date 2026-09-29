@@ -1,9 +1,10 @@
 name: release
 
-# A release is a tag on a commit main already has. CI runs on it in full and
-# the COS backend runs against real buckets, then the three images are built
-# once under the tag's name, driven through
-# the release smoke, and pushed to the registry production pulls from.
+# A release is a tag on a commit main already has, and main's CI passed on:
+# the `v*` tag ruleset refuses the tag without that run's `release-eligible`
+# check, so CI is not run again here. The COS backend runs against real
+# buckets, then the three images are built once under the tag's name, driven
+# through the release smoke, and pushed to the registry production pulls from.
 # release.json on the tag's GitHub release names each image by digest; the
 # deploy workflow pulls those digests and nothing else. A release name is
 # published once: a second run for a tag that already has its release.json
@@ -28,11 +29,6 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  ci:
-    uses: ./.github/workflows/ci.yml
-    with:
-      skip-image: true
-
   # The COS backend against real buckets: what an ordinary CI run cannot
   # hold credentials for. Its own job in its own environment, so it gets
   # only the COS test identity and the release job only the registry token.
@@ -88,7 +84,7 @@ jobs:
             { echo 'COS tests were skipped or failed'; jq '{numTotalTests, numPassedTests, numPendingTests, numFailedTests}' cos.json; exit 1; }
 
   release:
-    needs: [ci, cos]
+    needs: cos
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: release

@@ -106,15 +106,23 @@ devDependencies 里的包,在每个开发机上都能解析,在镜像第一次�
 
 ### 2.5 发布:tag → 镜像仓库(2026-09-28)
 
-GitHub Actions 是唯一的发布构建者(`.github/workflows/release.yml`):推一个 `v*` tag → 以 `workflow_call` 在同一 commit 上跑完整 CI
-(其 `image` job 跳过,由下一步自己构建)→ tag 必须在 main 上、同名 release 没有发布过 → `build-images.ts <tag> --check --platform linux/amd64`
+GitHub Actions 是唯一的发布构建者(`.github/workflows/release.yml`):推一个 `v*` tag(tag 规则集先要求该 commit 带着 main CI 的
+`release-eligible` 检查,见下)→ tag 必须在 main 上、同名 release 没有发布过 → `build-images.ts <tag> --check --platform linux/amd64`
 → `release-smoke.ts <tag>` → 推到 `vars.QUALY_REGISTRY`(CNB,`docker.cnb.cool/<org>/<repo>`)→ `tools/release/push-images.ts` 记下三个镜像的
 digest 与 server 镜像携带的 web release id,写成 `release.json` 挂在该 tag 的 GitHub release 上。推送令牌只在 GitHub 的 `release` 环境里,
 服务器只持只读令牌。部署按 `release.json` 的 digest 拉取(tag 只是名字,有推送权的人都能挪),拉下后以本地的 `qualy-*:<release>` 命名,
 compose 与 `upgrade.sh` 不需要知道镜像仓库。`connectivity.yml` 是手动运行的测量:同一脚本以 `connectivity-<run>` 推一遍并逐个计时,
 另对服务器的 SSH 端口做一次 host key 扫描。
 
-**真桶门禁**(同一工作流的 `cos` job,与 `ci` 并行、`release` 等它):COS 后端的真桶套件在 GitHub 上以 CI 专用身份
+**CI 结论复用,不重跑**(2026-09-30):CI 只在 main 上跑一次。`ci.yml` 末尾的汇总 job 在 push 到 main 时名为
+`release-eligible`、在 PR 上名为 `ci-summary`(GitHub 把 skipped job 当作通过的检查,名字随事件变,未进 main 的 commit
+就不可能带着它),`if: always()` 并自行核对每个上游 job 都是 success。仓库规则集 `release tags`(目标 `refs/tags/v*`,
+无 bypass)禁止移动、删除,并要求 GitHub Actions 给出的 `release-eligible` 成功、建 tag 时即检查:不合格的 commit
+连 tag 都建不出来(2026-09-30 用临时规则集实测:缺检查被 `GH013` 拒绝,有检查放行)。规则集只认这一个名字,CI 增删 job
+只改汇总 job 的 `needs`。release 里的正式镜像构建与 smoke 仍然要跑:它们验的是带 release 名的那一组产物本身,
+与 main CI 的 `ci` 构建不是同一份字节(版本标签、web release id、sourcemap 都随构建而定)。
+
+**真桶门禁**(同一工作流的 `cos` job,`release` 等它):COS 后端的真桶套件在 GitHub 上以 CI 专用身份
 `qualy-ci-storage` 跑,只对两个 CI 专用桶有权限(不碰生产桶,也不与开发者本机测试用的桶共用,免得两边的版本对账互删)。
 凭据只在 `cos-test` 环境(只允许 `v*` tag),所以这个 job 只拿到 COS 测试身份、`release` job 只拿到镜像推送令牌;
 缺任何一个设置即失败,套件里有被跳过的用例也算失败。本机跑一遍不算门禁——机器执行不了。

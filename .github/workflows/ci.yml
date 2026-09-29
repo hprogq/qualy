@@ -4,13 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-  # the release workflow runs all of this first, on the tagged commit, and
-  # builds the release images itself
-  workflow_call:
-    inputs:
-      skip-image:
-        type: boolean
-        default: false
 
 # the token reads the checkout and nothing else; no job here writes to GitHub
 permissions:
@@ -274,7 +267,6 @@ jobs:
   # again. No pnpm install here on purpose: a release is used, not built
   # upon, and the three scripts import nothing beyond node.
   image:
-    if: ${{ !inputs.skip-image }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -292,3 +284,27 @@ jobs:
         run: node tools/release/build-images.ts ci --check
       - name: the release deploys, migrates, serves, backs up and restores
         run: node tools/quality/release-smoke.ts ci
+
+  # One check that says the whole of this run passed, and the only one the
+  # release tags ask for: the `v*` tag ruleset refuses to create a tag on a
+  # commit without a successful `release-eligible`, so a release starts from
+  # this run's verdict instead of running it again. Named so only a push to
+  # main can carry it - a pull request's run of the same job is `ci-summary`,
+  # because GitHub counts a skipped job as a passed check, and a job skipped
+  # by an `if` would have satisfied the ruleset for a commit main never had.
+  # For the same reason it always runs and reads every leg's result itself:
+  # left to `needs`, a failed leg would skip it. A job added above belongs in
+  # its `needs`; the ruleset does not change.
+  gate:
+    name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'release-eligible' || 'ci-summary' }}
+    if: ${{ always() }}
+    needs: [static, ci, browser, browser-webkit, image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: every leg of this run passed
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "$RESULTS"
+          [ "$(echo "$RESULTS" | jq -r 'all(. == "success")')" = true ]
