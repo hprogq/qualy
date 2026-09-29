@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 import type { Principal } from '@qualy/rbac-contract'
-import { FormulaLibrary } from '@qualy/plugin-assessment-formula/testkit'
-import { FORMULAS } from '../formulas.ts'
+import { FormulaLibrary, FormulaTemplateLibrary } from '@qualy/plugin-assessment-formula/testkit'
+import { ADMIN_FORMULAS, FORMULAS } from '../formulas.ts'
 import type { Story } from './context.ts'
 
 // Every formula the rules use, written and published through the formula
@@ -22,7 +22,7 @@ export const publishFormula = (
 ) =>
   Effect.gen(function* () {
     const library = yield* FormulaLibrary
-    const spec = FORMULAS.find((formula) => formula.key === key)
+    const spec = [...FORMULAS, ...ADMIN_FORMULAS].find((formula) => formula.key === key)
     if (spec === undefined) return yield* Effect.die(new Error(`no formula ${key}`))
     let functionId = existing?.functionId
     let revision = existing?.draftRevision ?? 1
@@ -69,4 +69,57 @@ export const publishFormula = (
       versionIds.push(published.versionId)
     }
     return { functionId, draftRevision: revision, versionIds }
+  })
+
+/** a formula written and tested but not yet published: its author's alone */
+export const draftFormula = (tenantId: string, key: string, author: Principal, story: Story) =>
+  Effect.gen(function* () {
+    const library = yield* FormulaLibrary
+    const spec = [...FORMULAS, ...ADMIN_FORMULAS].find((formula) => formula.key === key)
+    if (spec === undefined) return yield* Effect.die(new Error(`no formula ${key}`))
+    const version = spec.versions[0]!
+    const created = yield* story.step(
+      library.createFunction(tenantId, { name: spec.name, description: spec.description }, author),
+    )
+    yield* story.step(
+      library.updateDraft(
+        tenantId,
+        created.id,
+        {
+          expectedDraftRevision: created.draftRevision,
+          draftSourceTs: version.source,
+          draftTests: version.tests,
+        },
+        author,
+      ),
+      240,
+    )
+    return created.id
+  })
+
+/**
+ * Offer one published version to the authors under these units, the way its
+ * author would from the version's share dialog: read the audience, then
+ * replace it with the one wanted.
+ */
+export const shareVersion = (
+  tenantId: string,
+  functionId: string,
+  versionNo: number,
+  orgNodeIds: readonly string[],
+  author: Principal,
+  story: Story,
+) =>
+  Effect.gen(function* () {
+    const templates = yield* FormulaTemplateLibrary
+    const held = yield* templates.getSharing(tenantId, functionId, versionNo, author)
+    return yield* story.step(
+      templates.replaceSharing(
+        tenantId,
+        functionId,
+        versionNo,
+        { expectedToken: held.token, orgNodeIds },
+        author,
+      ),
+    )
   })

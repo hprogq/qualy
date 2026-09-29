@@ -480,6 +480,20 @@ export const personaSituations = Effect.gen(function* () {
       'running: determinations corrected outside any round',
       yield* eventsBy(lead, ['recognition-corrected', 'approval-revoked', 'rejection-overturned']),
     )
+    // the formula library as the lead opens it: versions of their own offered
+    // to the college, and one somebody else offered to them
+    const shared = (own: boolean) => sql`
+      select count(*)::int as n from assessment_formula_share_scopes s
+        join assessment_formula_versions v on v.tenant_id = s.tenant_id and v.id = s.version_id
+        join assessment_formula_functions f
+          on f.tenant_id = v.tenant_id and f.id = v.function_id
+       where f.created_by ${own ? sql`=` : sql`<>`} ${lead}`
+    add('lead', 'formulas: own versions shared with the college', yield* count(shared(true)))
+    add(
+      'lead',
+      'formulas: a formula shared with them by another author',
+      yield* count(shared(false)),
+    )
   }
 
   if (counsellor !== null) {

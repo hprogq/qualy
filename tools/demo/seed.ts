@@ -18,7 +18,7 @@ import { Timeline, rewrite } from './timeline.ts'
 import { FORMULAS } from './formulas.ts'
 import { SEED, Story, cst, makeRandom, principalOf } from './seed/context.ts'
 import { buildWorld } from './seed/world.ts'
-import { publishFormula } from './seed/formulas.ts'
+import { draftFormula, publishFormula, shareVersion } from './seed/formulas.ts'
 import { TERM_PLANS, dayAt, runTerm } from './seed/term.ts'
 import { betweenTerms, handOver, type Away } from './seed/movements.ts'
 import type { Student } from './seed/world.ts'
@@ -108,6 +108,9 @@ const story = new Story(timeline, cst('2023-08-18T10:05:00'))
 /** formulas written for the selection, a few weeks before it opens */
 const LATER_FORMULAS = ['scaled']
 
+/** the lead's formulas offered to the college once they are first published */
+const SHARED_FORMULAS = ['identity', 'competition', 'research', 'sport']
+
 const publishRemaining = (
   tenantId: string,
   author: ReturnType<typeof principalOf>,
@@ -165,6 +168,20 @@ const program = Effect.gen(function* () {
       draftRevision: published.draftRevision,
     })
   }
+
+  // the formulas every term leans on, offered to the college's other authors
+  // as first published - what the lead shares is a version, never a draft
+  story.set(cst('2024-02-26T10:20:00'))
+  for (const key of SHARED_FORMULAS) {
+    yield* shareVersion(tenantId, functions.get(key)!.functionId, 1, [world.college], author, story)
+  }
+  // and the system administrator's own: one published and offered to the
+  // college, which the lead finds among the formulas shared with them, and
+  // one still a draft
+  story.set(cst('2024-03-04T16:10:00'))
+  const weighted = yield* publishFormula(tenantId, 'weighted', admin, story)
+  yield* shareVersion(tenantId, weighted.functionId, 1, [world.college], admin, story)
+  yield* draftFormula(tenantId, 'capped', admin, story)
 
   const away: Away[] = []
   let leaving: Student[] = []

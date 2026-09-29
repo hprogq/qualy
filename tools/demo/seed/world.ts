@@ -71,6 +71,7 @@ export interface World {
     readonly manager: string
     readonly ruleKeeper: string
     readonly inspector: string
+    readonly formulaSharer: string
   }
   readonly staff: {
     readonly counsellors: readonly { id: string; name: string }[]
@@ -347,6 +348,17 @@ export const buildWorld = (input: {
       faculty,
       null,
     )
+    // offering what the lead wrote to the college's other authors: a unit's
+    // permission, so a role of its own anchored at the college - put into
+    // the lead's batch role it would carry a code no round hands out, and a
+    // round refuses a role it cannot take whole
+    const formulaSharer = yield* role(
+      'assessment-formula-share',
+      '综测公式共享',
+      ['assessment.formula.share'],
+      faculty,
+      '学院',
+    )
     // correcting a concluded claim outside any round is granted on purpose,
     // never implied by judging at the end of a route; the college's
     // inspection office holds it, and every batch accepts it at creation
@@ -412,6 +424,7 @@ export const buildWorld = (input: {
     for (const id of staffIds.slice(0, 2)) yield* grant(id, counsellor, grade, 'subtree')
     yield* grant(staffIds[2]!, manager, college, 'subtree')
     yield* grant(staffIds[2]!, inspector, college, 'subtree')
+    yield* grant(staffIds[2]!, formulaSharer, college, 'subtree')
     grants.set(
       `${staffIds[2]!}:${ruleKeeper}`,
       yield* story.step(
@@ -438,7 +451,16 @@ export const buildWorld = (input: {
       classes,
       userTypes: { student, faculty },
       students,
-      roles: { classLead, majorLead, gradeLead, counsellor, manager, ruleKeeper, inspector },
+      roles: {
+        classLead,
+        majorLead,
+        gradeLead,
+        counsellor,
+        manager,
+        ruleKeeper,
+        inspector,
+        formulaSharer,
+      },
       staff: {
         counsellors: staffIds
           .slice(0, 2)

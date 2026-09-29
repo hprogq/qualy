@@ -69,5 +69,6 @@ export const formulaAuthoringLocalLayer: Layer.Layer<FormulaAuthoring> = Layer.s
   },
 )
 
-/** the formula library's service, for tools that author formulas through it */
+/** the formula library's services, for tools that author and share formulas through them */
 export { FormulaLibrary } from './server/index.ts'
+export { FormulaTemplateLibrary } from './server/template-library.ts'

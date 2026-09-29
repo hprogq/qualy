@@ -58,6 +58,7 @@ export const MOVED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
   assessment_formula_functions: ['created_at', 'updated_at'],
   assessment_formula_draft_revisions: ['saved_at'],
   assessment_formula_versions: ['published_at', 'metadata_updated_at'],
+  assessment_formula_share_scopes: ['shared_at'],
   storage_upload_reservations: ['created_at', 'completed_at'],
   storage_attachments: ['created_at', 'bound_at'],
   review_panels: ['created_at', 'closed_at', 'recognition_locked_at'],
