@@ -1,0 +1,103 @@
+name: recovery-drill
+
+# The newest off-site backup, restored where nothing can reach it and checked
+# for being one (tools/release/recovery-drill.ts): its sums, a restore into
+# the PostgreSQL production runs, the migration ledger against this lineage,
+# every attachment against the size and fingerprint its row recorded - and
+# how long each part took, download included, which is the recovery time a
+# runbook can quote.
+#
+# It reads the backup bucket with an identity of its own, which can list and
+# read `qualy/` in that one bucket and nothing else. The production host's
+# identity stays write-only: a compromised server still cannot read the
+# backups back or delete them, and this identity cannot write one. Needs, in
+# the recovery-drill environment: the secrets QUALY_RECOVERY_COS_SECRET_ID /
+# _SECRET_KEY and the variables QUALY_RECOVERY_COS_BUCKET (the full bucket
+# name, with its appid) and QUALY_RECOVERY_COS_REGION. The CAM policy the
+# identity needs is in docs/deployment.md, "恢复演练".
+on:
+  schedule:
+    # the 1st of every month, 05:07 Beijing: after the nightly backup at 03:17
+    - cron: '7 21 1 * *'
+  workflow_dispatch:
+    inputs:
+      backup:
+        description: 'A backup stamp to drill instead of the newest, e.g. 20260929T191701Z'
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: recovery-drill
+  cancel-in-progress: false
+
+jobs:
+  drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: recovery-drill
+    env:
+      BUCKET: ${{ vars.QUALY_RECOVERY_COS_BUCKET }}
+      REGION: ${{ vars.QUALY_RECOVERY_COS_REGION }}
+      STAMP: ${{ inputs.backup }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.20.0
+      - name: the drill has an identity that can only read backups
+        env:
+          ID: ${{ secrets.QUALY_RECOVERY_COS_SECRET_ID }}
+          KEY: ${{ secrets.QUALY_RECOVERY_COS_SECRET_KEY }}
+        run: |
+          for name in ID KEY BUCKET REGION; do
+            eval "value=\${$name}"
+            [ -n "$value" ] || { echo "::error::the recovery-drill environment has no $name; see this workflow's header"; exit 1; }
+          done
+          if [ -n "$STAMP" ]; then
+            printf '%s' "$STAMP" | grep -Eqx '[0-9]{8}T[0-9]{6}Z' || { echo "::error::'$STAMP' is not a backup stamp"; exit 1; }
+          fi
+      # the same build the production host copies with, checked against the
+      # sums the release publishes
+      - name: install coscli 1.0.9
+        run: |
+          curl -fsSLo coscli https://github.com/tencentyun/coscli/releases/download/v1.0.9/coscli-v1.0.9-linux-amd64
+          echo 'a07de5ba2800147a700ed29036b0c76a4229088cee68e1682d0eae19b638a915  coscli' | sha256sum -c -
+          chmod +x coscli
+      - name: fetch the backup
+        id: fetch
+        env:
+          ID: ${{ secrets.QUALY_RECOVERY_COS_SECRET_ID }}
+          KEY: ${{ secrets.QUALY_RECOVERY_COS_SECRET_KEY }}
+        run: |
+          cos() { ./coscli --disable-log -i "$ID" -k "$KEY" -e "cos.$REGION.myqcloud.com" "$@"; }
+          if [ -z "$STAMP" ]; then
+            STAMP=$(cos ls "cos://$BUCKET/qualy/" | grep -oE '[0-9]{8}T[0-9]{6}Z' | sort -u | tail -n 1)
+            [ -n "$STAMP" ] || { echo "::error::no backup under cos://$BUCKET/qualy/"; exit 1; }
+          fi
+          started=$(date +%s)
+          mkdir -p fetched
+          cos cp -r "cos://$BUCKET/qualy/$STAMP/" fetched/
+          sums=$(find fetched -name SHA256SUMS | head -n 1)
+          [ -n "$sums" ] || { echo "::error::$STAMP has no SHA256SUMS"; exit 1; }
+          mkdir -p "backup/$STAMP"
+          mv "$(dirname "$sums")"/* "backup/$STAMP/"
+          echo "dir=backup/$STAMP" >> "$GITHUB_OUTPUT"
+          echo "seconds=$(( $(date +%s) - started ))" >> "$GITHUB_OUTPUT"
+      - name: restore it where nothing can reach it, and check it
+        run: >-
+          node tools/release/recovery-drill.ts "${{ steps.fetch.outputs.dir }}"
+          --summary drill.json --downloaded-in "${{ steps.fetch.outputs.seconds }}"
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: recovery-drill
+          path: drill.json
+          if-no-files-found: ignore
+          retention-days: 90
+      # a runner is discarded after the job; the backup is a whole database
+      # and every student's material, so it goes before that, not with it
+      - if: always()
+        run: rm -rf fetched backup

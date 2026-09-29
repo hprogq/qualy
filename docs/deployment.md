@@ -439,6 +439,36 @@ current,旧镜像的 server 要这一步才肯启动;旧 release 已被保留策
 - 两个脚本经 `COMPOSE_PROJECT_NAME`、`QUALY_ENV_FILE` 指向具体部署;`release-smoke.ts` 每次 CI 都调用它们演练:备份前写一行数据与一个附件,
   销库、清空附件,恢复后两样都读回。
 - `pg_backups` 卷删除:只挂载、从没有东西写它。README 的升级步骤第一步改为 `backup.sh`。
+- **恢复演练**(2026-09-30,`.github/workflows/recovery-drill.yml` + `tools/release/recovery-drill.ts`):每月 1 日与手动触发,
+  从备份桶取最新一份(或指定的时间戳),在**断网**的临时容器里起与生产同 digest 的 PostgreSQL,依次核对:SHA256SUMS(且三个包都在清单里)、
+  `pg_restore --exit-on-error`、迁移账本全部属于本仓库 lineage(旧备份只是「落后 N 条」)、`tenants` / `users` 非空、
+  每个 `staged` / `bound` / `retired` 附件在 `storage.tar.gz`(local)或 `attachments.tar.gz`(其余后端)里且大小与 sha256 指纹同行记录一致;
+  报告备份时长、大小、库大小、主要表行数与下载 / 起库 / 恢复 / 附件核对 / 总耗时(写进 job summary,`drill.json` 留 90 天),结束时删掉容器与下载的文件。
+  本机以演示基线拼成的同格式备份实测:14,274 个附件全部核对,起库 1.4 s、恢复 2.4 s、附件 6.4 s、合计 11.8 s;篡改一行校验和、删掉一个附件各被点名(变异检验)。
+  **身份分离**:演练用独立身份,只能列出与读取备份桶的 `qualy/`;服务器那个只写账号不加读权限——服务器失守也读不回、删不掉备份,演练身份也写不进。
+  它需要的 CAM 策略(`<appid>` 取桶名末段,按控制台的策略语法核对后创建;列目录是桶级操作,用前缀条件限定在 `qualy/`):
+
+  ```json
+  {
+    "version": "2.0",
+    "statement": [
+      {
+        "effect": "allow",
+        "action": ["name/cos:GetBucket"],
+        "resource": ["qcs::cos:ap-beijing:uid/<appid>:qualy-prod-backups-<appid>/*"],
+        "condition": { "string_like": { "cos:prefix": "qualy/*" } }
+      },
+      {
+        "effect": "allow",
+        "action": ["name/cos:GetObject", "name/cos:HeadObject"],
+        "resource": ["qcs::cos:ap-beijing:uid/<appid>:qualy-prod-backups-<appid>/qualy/*"]
+      }
+    ]
+  }
+  ```
+
+  密钥放 GitHub 的 `recovery-drill` 环境:secret `QUALY_RECOVERY_COS_SECRET_ID` / `_SECRET_KEY`,variable `QUALY_RECOVERY_COS_BUCKET`(完整桶名)
+  与 `QUALY_RECOVERY_COS_REGION`(`ap-beijing`)。没配时 workflow 第一步点名缺哪一项失败,不做别的。
 
 ## 4. 发布验证
 
