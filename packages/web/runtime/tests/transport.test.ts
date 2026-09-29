@@ -285,3 +285,38 @@ describe('a request nobody at the page asked for', () => {
     expect(await ask()).not.toHaveProperty(QUALY_BACKGROUND_HEADER)
   })
 })
+
+describe('the fetch a request goes through', () => {
+  // Production, from the page's boot: the api's first request goes out, then
+  // the rum sdk loads and replaces window.fetch with a wrapper around the
+  // fetch it found, then the api asks again. The fetch client kept the fetch
+  // of its first request, and the monitor never saw one of this product's
+  // calls. The wrapper here is built the way such an sdk builds one: it holds
+  // the fetch it replaced and calls it, with window as `this`.
+  it('reaches a monitor that replaced window.fetch after the first request', async () => {
+    const original = globalThis.fetch
+    const answered: Record<string, string>[] = []
+    const monitored: string[] = []
+    try {
+      // the page boots, and the api makes its first request
+      globalThis.fetch = answering(answered, pong)
+      const client = await Effect.runPromise(clientFor(api, 'http://qualy.test'))
+      await Effect.runPromise(client.ping.hello())
+
+      // the monitor loads late and wraps the fetch it finds
+      const found = globalThis.fetch
+      globalThis.fetch = function (this: unknown, input, init) {
+        if (this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation')
+        monitored.push(String(input instanceof Request ? input.url : input))
+        return found.call(globalThis, input, init)
+      } as typeof globalThis.fetch
+
+      // the api asks again: through the monitor, and on to the fetch it wrapped
+      await Effect.runPromise(client.ping.hello())
+    } finally {
+      globalThis.fetch = original
+    }
+    expect(monitored).toEqual(['http://qualy.test/ping/hello'])
+    expect(answered).toHaveLength(2)
+  })
+})

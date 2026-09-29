@@ -1,4 +1,4 @@
-import { Effect, identity } from 'effect'
+import { Context, Effect, identity } from 'effect'
 import {
   FetchHttpClient,
   HttpClient,
@@ -69,6 +69,30 @@ export interface TransportOptions {
  * would have; the refusal is an infrastructure signal, not a domain error
  * for every plugin's union to carry.
  */
+/**
+ * The page's fetch, looked up at every call rather than once.
+ *
+ * The fetch client reads its `Fetch` reference, whose default is
+ * `globalThis.fetch` - evaluated at the first request and then kept for the
+ * life of the page (effect/Context.ts, getDefaultValue). Anything that wraps
+ * `window.fetch` later is never called: the rum sdk loads after the page
+ * boots, so it measured none of this product's api calls while they all went
+ * to the fetch as it stood at the first one. Only where nobody provided a
+ * fetch of their own - a harness's is theirs to keep.
+ */
+const currentFetch: typeof globalThis.fetch = (input, init) => globalThis.fetch(input, init)
+
+const throughCurrentFetch = <E, R>(
+  client: HttpClient.HttpClient.With<E, R>,
+): HttpClient.HttpClient.With<E, R> =>
+  HttpClient.transform(client, (effect) =>
+    Effect.withFiber((fiber) =>
+      fiber.getRef(FetchHttpClient.Fetch) === Context.get(Context.empty(), FetchHttpClient.Fetch)
+        ? Effect.provideService(effect, FetchHttpClient.Fetch, currentFetch)
+        : effect,
+    ),
+  )
+
 const withIdentity = (options: TransportOptions) => {
   const named =
     options.identity === undefined
@@ -98,7 +122,7 @@ const withIdentity = (options: TransportOptions) => {
           }),
         )
   return <E, R>(client: HttpClient.HttpClient.With<E, R>): HttpClient.HttpClient.With<E, R> =>
-    judged(named(markedBackground(withoutTracePropagation(client))))
+    judged(named(markedBackground(withoutTracePropagation(throughCurrentFetch(client)))))
 }
 
 /**
