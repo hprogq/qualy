@@ -3,11 +3,12 @@
  *
  * Deliberately NOT the authoring try-run budget (2s/10s): scoring executes
  * per entry inside a results read. The soft deadline is the one value the
- * rollout benchmarks calibrated, in this one place: it is wall-clock over
- * the whole worker-side envelope (runtime, bootstrap, artifact, run), so
- * host scheduling jitter counts against it, and the sandbox's strict 25ms
- * was crossed once by a healthy formula on a loaded host; 50ms held across
- * every measured window. The hard deadline is the deployment's to set
+ * rollout benchmarks calibrated, in this one place. It was calibrated as
+ * wall clock over the whole worker-side envelope - the sandbox's strict
+ * 25ms was crossed once by a healthy formula on a loaded host, 50ms held
+ * across every measured window - and is now the program's CPU time on its
+ * worker thread from after the bootstrap, which is never more than that: a
+ * formula that fitted still fits, and a busy host no longer spends it. The hard deadline is the deployment's to set
  * (`QUALY_SANDBOX_HARD_DEADLINE_MS`, see below).
  *
  * The artifact budget is the one hard rule here: publishable must mean

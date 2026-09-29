@@ -26,10 +26,10 @@ export const invokeForScore = (
       limits,
     })
     .pipe(
-      // The soft deadline is wall clock over the whole worker envelope, so a
-      // starved host crosses it for a healthy formula; the hard one is a
-      // watchdog whose worker is replaced at once, so the second try lands
-      // on a worker already up. The program is pure: asking once more costs
-      // nothing, and a formula that is really slow fails again.
+      // The soft deadline is the program's CPU time, which a fresh worker's
+      // cold engine still inflates; the hard one is a watchdog whose worker is
+      // replaced at once, so the second try lands on a worker already up. The
+      // program is pure: asking once more costs nothing, and a formula that
+      // is really slow fails again.
       Effect.retry({ times: 1, while: (error) => error._tag === 'SandboxTimeout' }),
     )

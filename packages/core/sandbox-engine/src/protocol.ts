@@ -18,6 +18,7 @@ export interface InvokeRequest {
   readonly artifact: string
   readonly entrypoint: string
   readonly arguments: readonly JsonValue[]
+  /** the program's CPU budget on the worker thread, from after the bootstrap */
   readonly softDeadlineMs: number
   readonly memoryBytes: number
   readonly stackBytes: number

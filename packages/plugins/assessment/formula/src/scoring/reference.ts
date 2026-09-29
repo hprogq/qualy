@@ -2,8 +2,10 @@
  * The least a formula can be: one decimal in, the same decimal out.
  *
  * Publication asks a version's own examples once more under the scoring
- * budget, and the budget is wall clock, so an example that misses it may
- * mean a slow formula or a busy host. This formula tells the two apart:
+ * budget. The budget is CPU time, which a busy host no longer spends, but a
+ * cold engine spends more of it - a worker's first runs cost more than its
+ * later ones - so an example that misses it may mean a slow formula or a
+ * cold worker. This formula tells the two apart:
  * built by the same compiler and run the way a score runs, it costs what
  * any formula costs before its own code does anything. When it fits the
  * budget and an example does not, the time is the example's own - its run,

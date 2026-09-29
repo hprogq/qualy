@@ -95,6 +95,19 @@ for (const variant of variants) {
       expect(response.verdict).toBe('interrupted')
     })
 
+    it('counts what a program costs to compile against the same budget', async () => {
+      // a body the engine compiles and never runs: none of its bytecode
+      // executes, so the interrupt handler is never asked while that cost is
+      // paid - the budget has to be asked when the program hands back
+      const heavy = `function never(x) { ${'x = x + 1;'.repeat(60_000)} return x }
+globalThis.light = () => "light"`
+      const response = await responseOf(heavy, 'light', [], {
+        softDeadlineMs: 5,
+        hardDeadlineMs: 15_000,
+      })
+      expect(response.verdict).toBe('interrupted')
+    })
+
     it('stops an allocation bomb, and the pool heals afterwards', async () => {
       const settled = await run(
         'globalThis.bomb = () => { const a = []; for (;;) a.push(new Array(65536).fill(1)) }',

@@ -52,7 +52,11 @@ export const SANDBOX_RPC_MAX_FRAME_BYTES = 2 * 1024 * 1024
 export const SANDBOX_RPC_ENVELOPE_BUDGET = SANDBOX_RPC_MAX_FRAME_BYTES - 4 * 1024
 
 export interface SandboxLimits {
-  /** interrupt-handler deadline inside the engine */
+  /**
+   * CPU time the program may spend on its worker thread, counted from after
+   * the host's own bootstrap - its parse and compile included - past which
+   * the engine interrupts it. Time the thread is not running spends none.
+   */
   readonly softDeadlineMs: number
   /** wall-clock watchdog on the host side; the worker is terminated past it */
   readonly hardDeadlineMs: number

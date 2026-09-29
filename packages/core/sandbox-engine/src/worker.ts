@@ -197,17 +197,40 @@ const execute = (request: InvokeRequest): InvokeResponse => {
       problem: { name: 'TypeError', message: 'entrypoint is not an identifier' },
     }
   const runtime = engine.newRuntime()
-  const deadline = Date.now() + request.softDeadlineMs
   runtime.setMemoryLimit(request.memoryBytes)
   runtime.setMaxStackSize(request.stackBytes)
+  // The budget is the program's, in CPU time spent on this thread, and it
+  // starts once the trusted bootstrap has run: the host's own runtime is not
+  // the program's to pay for, while the artifact's parse and compile - which
+  // the engine never interrupts - are, since they come after the mark and
+  // are counted at the first check that follows. Time the thread spends
+  // descheduled, on a busy or shared host, is spent by nobody: the wall
+  // clock is the pool's watchdog, not this.
+  let budgetFrom: NodeJS.CpuUsage | undefined
+  const overBudget = (): boolean => {
+    if (budgetFrom === undefined) return false
+    const spent = process.threadCpuUsage(budgetFrom)
+    return (spent.user + spent.system) / 1000 > request.softDeadlineMs
+  }
   // recorded, because the verdict below must not take the guest's word for
   // it: an interrupt is something the host did, and this is the only place
   // that knows whether it did it
   let interrupted = false
   runtime.setInterruptHandler(() => {
-    if (Date.now() > deadline) interrupted = true
+    if (overBudget()) interrupted = true
     return interrupted
   })
+  // The engine asks the handler only while it runs bytecode, never while it
+  // parses or compiles: a program heavy to compile and light to run could
+  // spend its whole budget where nothing looks. So the budget is also asked
+  // at the two points the program hands back - after it loads, and after the
+  // entrypoint answers - and one spent there is spent: interrupted, by the
+  // host's own reckoning.
+  const exhausted = (): InvokeResponse | undefined => {
+    if (!overBudget()) return undefined
+    interrupted = true
+    return { id: request.id, verdict: 'interrupted' }
+  }
   const context = runtime.newContext({ intrinsics: { ...DefaultIntrinsics, Date: false } })
   let retired = false
   const owned: QuickJSHandle[] = []
@@ -238,6 +261,7 @@ const execute = (request: InvokeRequest): InvokeResponse => {
     }
     boot.value.dispose()
 
+    budgetFrom = process.threadCpuUsage()
     const loaded = context.evalCode(request.artifact, 'artifact.js')
     if (loaded.error) {
       const refused = failure(request.id, context, own(loaded.error), { interrupted })
@@ -245,6 +269,8 @@ const execute = (request: InvokeRequest): InvokeResponse => {
       return refused
     }
     loaded.value.dispose()
+    const loadedOver = exhausted()
+    if (loadedOver !== undefined) return loadedOver
 
     const entry = own(context.getProp(context.global, request.entrypoint))
     if (context.typeof(entry) !== 'function')
@@ -261,6 +287,8 @@ const execute = (request: InvokeRequest): InvokeResponse => {
       return refused
     }
     const answer = own(called.value)
+    const calledOver = exhausted()
+    if (calledOver !== undefined) return calledOver
 
     // the answer contract is a string, read length-first so an oversized one
     // never crosses the WASM boundary whole: utf-8 needs at least one byte

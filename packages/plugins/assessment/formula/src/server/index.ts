@@ -1514,8 +1514,9 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
    * score asks it - which loads the whole artifact, so whatever the module
    * does as it loads is counted with the run.
    *
-   * The deadline is wall clock, so an example that misses it is weighed
-   * against the reference formula asked the same way: when the reference
+   * The budget is the program's CPU time, which a cold engine spends more of
+   * than a warm one, so an example that misses it is weighed against the
+   * reference formula asked the same way: when the reference
    * fits and the example again does not, the time is the example's own and
    * the version is refused; when even the reference does not fit, the host
    * cannot say anything about the formula right now, and the publication is
