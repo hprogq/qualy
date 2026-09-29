@@ -1,0 +1,26 @@
+name: dependency-graph
+
+# Holds GitHub's dependency graph - what Dependabot alerts are drawn from - to
+# pnpm-lock.yaml, daily. A graph that stops seeing the lockfile does so
+# without an error anywhere (tools/quality/check-dependency-graph.ts).
+on:
+  schedule:
+    - cron: '23 1 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  graph:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.20.0
+      - name: the graph still sees the lockfile
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node tools/quality/check-dependency-graph.ts
