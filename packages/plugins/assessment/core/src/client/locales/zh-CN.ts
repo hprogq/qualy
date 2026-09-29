@@ -1070,6 +1070,7 @@ export default {
   'assessment/entries/when': '{when} {action}',
   'assessment/entries/files': '{count} 个附件',
   'assessment/entries/note-returned': '退回意见：{text}',
+  'assessment/entries/note-own': '备注：{text}',
   'assessment/entries/note-asked': '需补充：{text}',
   'assessment/entries/points': '{value} 分',
   'assessment/entries/fold': '收起{name}',

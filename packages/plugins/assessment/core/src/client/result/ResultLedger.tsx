@@ -17,6 +17,8 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AlignLeftIcon, BarChart3Icon, ChevronDownIcon, ChevronRightIcon } from 'lucide-react'
 import { isApiErrorCode, useI18n, useList } from '@qualy/web-i18n'
+import type { LinePart } from '../entry/identity.ts'
+import { LineParts } from '../entry/workspace/LineText.tsx'
 import { assessmentMessages as m } from '../i18n.ts'
 import { inZone, useBatchZone } from '../batch/zone.ts'
 import { EntryStanding } from '../entry/EntryStanding.tsx'
@@ -1632,7 +1634,7 @@ interface Tag {
 interface Made {
   readonly kind: MadeKind
   readonly said: string
-  readonly identity?: string | null
+  readonly identity?: readonly LinePart[] | null
 }
 
 type MadeKind =
@@ -1698,8 +1700,7 @@ const madeOf = (
     const day = only.recorded ? dayOf(only.at) : null
     const said = format(m.resultWord, { kind: only.standing })
     const word = day === null ? said : `${day} ${said}`
-    const identity = [only.lead, only.sub].filter((part): part is string => part !== null).join(' ')
-    return { kind: 'claim', said: word, identity: identity === '' ? null : identity }
+    return { kind: 'claim', said: word, identity: only.parts.length === 0 ? null : only.parts }
   }
   const told: readonly string[] = tag === null ? [] : TAG_SAYS[tag.kind]
   const parts = FACT_ORDER.filter((kind) => facts[kind] > 0 && !told.includes(kind)).map((kind) =>
@@ -1915,7 +1916,7 @@ function ItemRow({
               {made.said} {/* the rule stays with the claim's words when the line wraps */}
               <span aria-hidden {...stylex.props(styles.madeRule)} />
               {'\u00a0'}
-              {made.identity}
+              <LineParts parts={made.identity} />
             </>
           )}
           {/* on a phone the mark rides on the last word, never on a line of its own */}
@@ -2294,8 +2295,14 @@ function LineRow({
   const cells = (
     <>
       <span {...stylex.props(styles.lineFirst, standing === null && styles.lineWide)}>
-        <span {...stylex.props(styles.lineLead)}>{line.lead ?? fallback}</span>
-        {line.sub !== null && <span {...stylex.props(styles.lineSub)}>{line.sub}</span>}
+        <span {...stylex.props(styles.lineLead)}>
+          {line.parts.length === 0 ? fallback : <LineParts parts={line.parts.slice(0, 1)} />}
+        </span>
+        {line.parts.length > 1 && (
+          <span {...stylex.props(styles.lineSub)}>
+            <LineParts parts={line.parts.slice(1)} />
+          </span>
+        )}
       </span>
       {(standing !== null || second !== null) && (
         <span {...stylex.props(styles.lineMeta)}>

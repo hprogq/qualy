@@ -1,4 +1,4 @@
-import { projectEntrySummary } from '../../entry/summary.ts'
+import { identityPartsOf, type LinePart } from '../entry/identity.ts'
 import {
   claimActOf,
   claimAsked,
@@ -172,6 +172,8 @@ export interface LedgerLineView {
   /** what the claim says of itself, from its own payload */
   readonly lead: string | null
   readonly sub: string | null
+  /** the same, in parts: a figure beside the name of its field */
+  readonly parts: readonly LinePart[]
   /** when it was decided, or else filed */
   readonly at: string | null
   /** the office recorded it; nobody filed it */
@@ -573,19 +575,19 @@ export const buildLedger = ({
   const itemView = (item: LedgerItem, depth: number): LedgerItemView => {
     /** what a claim says of itself, from its own payload */
     const identityOf = (entry: LedgerEntry | undefined) => {
-      const parts =
+      const parts: readonly LinePart[] =
         entry === undefined
           ? []
-          : projectEntrySummary({
+          : identityPartsOf({
               formConfig: item.currentRevision?.formConfig,
               displayConfig: item.currentRevision?.displayConfig,
               payload: entry.currentRevision?.payload,
-            }).filter((part) => part.value !== '')
+            }).map(({ label, value }) => ({ label, value }))
       const sub = parts
         .slice(1)
         .map((part) => part.value)
         .join(' ')
-      return { lead: parts[0]?.value ?? null, sub: sub === '' ? null : sub }
+      return { lead: parts[0]?.value ?? null, sub: sub === '' ? null : sub, parts }
     }
     const decidedAt = (entry: LedgerEntry | undefined) =>
       entry === undefined

@@ -435,7 +435,9 @@ export function VersionPicker({
                               </span>
                             </span>
                             {revision.note !== null && (
-                              <span {...stylex.props(styles.versionNote)}>{revision.note}</span>
+                              <span {...stylex.props(styles.versionNote)}>
+                                {format(m.entriesNoteOwn, { text: revision.note })}
+                              </span>
                             )}
                           </span>
                           <span {...stylex.props(styles.rowChips)}>

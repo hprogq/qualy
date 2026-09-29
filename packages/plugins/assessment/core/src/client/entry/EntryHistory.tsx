@@ -851,8 +851,20 @@ function Version({
         payload={revision.payload}
         formConfig={revision.formConfig}
         attachments={revision.attachments}
+        note={
+          revision.note === null
+            ? null
+            : {
+                // a record's words are what it stands on; a filer's are their note
+                label: format(
+                  revision.source === 'record' || revision.source === 'import'
+                    ? m.entryRecordBasis
+                    : m.entryNote,
+                ),
+                text: revision.note,
+              }
+        }
       />
-      {revision.note !== null && <p {...stylex.props(styles.mutedInk)}>{revision.note}</p>}
     </>
   )
 }
@@ -1111,10 +1123,13 @@ function FiledFields({
   payload,
   formConfig,
   attachments,
+  note = null,
 }: {
   payload: unknown
   formConfig?: unknown
   attachments?: readonly { readonly attachmentId: string }[]
+  /** the words filed beside the fields, under the name they go by */
+  note?: { readonly label: string; readonly text: string } | null
 }) {
   const { format } = useI18n()
   if (typeof payload !== 'object' || payload === null) return null
@@ -1160,7 +1175,7 @@ function FiledFields({
   // so still shown, at the end rather than nowhere
   const cited = new Set(rows.flatMap((row) => (row.value.kind === 'files' ? row.value.ids : [])))
   const orphaned = (attachments ?? []).map((one) => one.attachmentId).filter((id) => !cited.has(id))
-  if (rows.length === 0 && orphaned.length === 0) return null
+  if (rows.length === 0 && orphaned.length === 0 && note === null) return null
   return (
     <div {...stylex.props(styles.filed)}>
       <dl {...stylex.props(styles.grid)}>
@@ -1180,6 +1195,12 @@ function FiledFields({
             )}
           </div>
         ))}
+        {note !== null && (
+          <div data-testid="filed-note" {...stylex.props(styles.gridRow)}>
+            <dt {...stylex.props(styles.filedTerm)}>{note.label}</dt>
+            <dd {...stylex.props(styles.detail)}>{note.text}</dd>
+          </div>
+        )}
       </dl>
       {orphaned.map((attachmentId) => (
         <AttachmentLink key={attachmentId} attachmentId={attachmentId} variant="line" />

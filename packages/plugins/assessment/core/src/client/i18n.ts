@@ -4330,6 +4330,10 @@ const i18n = definePluginMessages({
       id: 'assessment/entries/note-returned',
       defaultMessage: 'Returned: {text}',
     },
+    entriesNoteOwn: {
+      id: 'assessment/entries/note-own',
+      defaultMessage: 'Note: {text}',
+    },
     entriesNoteAsked: {
       id: 'assessment/entries/note-asked',
       defaultMessage: 'Needed: {text}',

@@ -1,15 +1,8 @@
 import type { MessageDescriptor } from '@qualy/i18n-contract'
-import { projectEntrySummary } from '../../../entry/summary.ts'
+import { identityPartsOf, type LinePart } from '../identity.ts'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { inZone } from '../../batch/zone.ts'
-import {
-  fieldsOf,
-  recordedOnly,
-  unitsOf,
-  type EntryDto,
-  type FilingGateDto,
-  type ItemDto,
-} from '../model.ts'
+import { recordedOnly, unitsOf, type EntryDto, type FilingGateDto, type ItemDto } from '../model.ts'
 import { eachWorth, mayFile, roomLeft, type Standing, type StructureRow } from '../standing.ts'
 import { filingHeldOf, type RoundState, type Said } from '../refusals.ts'
 import {
@@ -251,14 +244,7 @@ export const voidedWithItem = (entry: EntryDto, item: Pick<ItemDto, 'status'>): 
 export const standingOf = (entry: EntryDto): string =>
   entry.supplement !== null ? 'awaiting_supplement' : contested(entry) ? 'contested' : entry.status
 
-/**
- * One part of a claim's identity line: a value as filed, and - for a figure,
- * which says nothing without it - the name of the field it was filed under.
- */
-export interface LinePart {
-  readonly label: string | null
-  readonly value: string
-}
+export type { LinePart } from '../identity.ts'
 
 /** how one claim reads in a list */
 export interface EntryLine {
@@ -304,8 +290,6 @@ export const claimActWord: Readonly<Record<ClaimAct, MessageDescriptor>> = {
   saved: m.entriesActSaved,
 }
 
-const NUMERIC = new Set(['integer', 'decimal'])
-
 /**
  * How the identity line puts its parts together, in the reader's language:
  * a field's name beside its figure, and one part after another. The line is
@@ -326,10 +310,6 @@ export const entryLineOf = (
 ): EntryLine => {
   const payload = (entry.currentRevision?.payload ?? {}) as Record<string, unknown>
   const formConfig = item.currentRevision?.formConfig
-  const fields = fieldsOf(formConfig)
-  const typeOf = new Map(
-    fields.map((field) => [(field as { id?: string }).id ?? field.key, field.type] as const),
-  )
   const line = standing?.lines.find((one) => one.provenance?.entryId === entry.id) ?? null
   const each = eachWorth(item)
 
@@ -362,23 +342,18 @@ export const entryLineOf = (
 
   // the identity line (§32.74), with a figure that is also the amount said
   // once: in the amount column, not again as the title
-  const parts = projectEntrySummary({
+  const parts = identityPartsOf({
     formConfig,
     displayConfig: item.currentRevision?.displayConfig,
     payload,
-  }).filter((part) => part.value !== '')
+  })
   const counted = entry.status === 'approved' && line?.kind === 'entry' ? line.value : null
-  const numeric = (part: (typeof parts)[number]) => NUMERIC.has(typeOf.get(part.fieldId) ?? '')
-  const texts = parts.filter((part) => !numeric(part)).map((part) => part.value)
-  const figures = parts.filter(numeric)
-  const kept = figures.filter(
-    (part) => counted === null || unitsOf(part.value) !== unitsOf(counted),
-  )
-  const said: LinePart[] = [
-    ...texts.map((value) => ({ label: null, value })),
-    ...kept.map((part) => ({ label: part.label, value: part.value })),
-  ]
-  if (said.length === 0) said.push({ label: null, value: figures[0]?.label ?? item.title })
+  const said: LinePart[] = parts
+    .filter((part) => !part.numeric || counted === null || unitsOf(part.value) !== unitsOf(counted))
+    .map(({ label, value }) => ({ label, value }))
+  if (said.length === 0) {
+    said.push({ label: null, value: parts.find((part) => part.numeric)?.label ?? item.title })
+  }
   const text = (part: LinePart) =>
     part.label === null ? part.value : words.figure(part.label, part.value)
 
