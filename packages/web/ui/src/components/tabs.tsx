@@ -93,8 +93,10 @@ const styles = stylex.create({
     fontSize: 14,
     fontWeight: 500,
     whiteSpace: 'nowrap',
+    // 64%, not 60: over a segmented list's surface 60% read at 4.47:1, just
+    // under WCAG AA's 4.5 for text this size (axe, on the review queue)
     color: {
-      default: `color-mix(in oklab, ${tokens.foreground} 60%, transparent)`,
+      default: `color-mix(in oklab, ${tokens.foreground} 64%, transparent)`,
       ':hover': tokens.foreground,
     },
     outline: {
