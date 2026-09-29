@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { isRecordId, useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
@@ -24,6 +25,15 @@ import {
 // the open batch while it is not archived, where none of it could be mended;
 // everybody else's rail is untouched.
 
+// The counts behind a dot are asked once the batch is read, so on a fresh
+// page it comes a moment after the rail. It arrives rather than blinks in,
+// and nothing stands in for it meanwhile: a placeholder would read as
+// something waiting, where mostly nothing is.
+const arrive = stylex.keyframes({
+  from: { opacity: 0, transform: 'scale(0.6)' },
+  to: { opacity: 1, transform: 'scale(1)' },
+})
+
 const styles = stylex.create({
   dot: {
     flexShrink: 0,
@@ -32,6 +42,11 @@ const styles = stylex.create({
     marginLeft: 'auto',
     borderRadius: '9999px',
     backgroundColor: tokens.warning,
+  },
+  arriving: {
+    animationName: { default: arrive, '@media (prefers-reduced-motion: reduce)': 'none' },
+    animationDuration: '150ms',
+    animationTimingFunction: 'ease-out',
   },
 })
 
@@ -56,6 +71,9 @@ function Dot({ navigationId }: { navigationId: string }) {
   })
   const batch = detail.data?.batch
   const alerts = useAdminAlerts(batchId, batch !== undefined && owesAdministration(batch))
+  // only a dot that was waited for arrives; one already known when the rail
+  // is drawn again, moving between the batch's pages, is simply there
+  const [waited] = useState(() => batch === undefined || alerts.pending)
   if (!entryAlerted(alerts, navigationId)) return null
   // named, so the entry reads as one that needs attention to whoever
   // hears the rail rather than sees it
@@ -65,7 +83,7 @@ function Dot({ navigationId }: { navigationId: string }) {
       aria-label={format(m.railAlert)}
       data-testid="rail-alert"
       data-navigation={navigationId}
-      {...stylex.props(styles.dot)}
+      {...stylex.props(styles.dot, waited && styles.arriving)}
     />
   )
 }
