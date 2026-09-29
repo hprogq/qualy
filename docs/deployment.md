@@ -200,7 +200,9 @@ host key(不用 runner 自带的 known_hosts)。发布制品(tag)与批准部署
   2 核);计分的硬期限(看门狗)与沙箱默认值脱钩,默认 500 ms、`QUALY_SANDBOX_HARD_DEADLINE_MS` 可覆盖且不低于软期限的 3 倍
   (软期限 50 ms 不动,它才是公式的预算);两种超时都重试一次,硬超时仍失败时归为 `unavailable`(「暂时无法计分」,503),
   不再当作公式执行失败报 500;服务端记 `qualy.sandbox.invoke.duration`(按 `outcome`:completed / soft-timeout / hard-timeout /
-  refused / unavailable),进 TMP。
+  refused / unavailable),进 TMP。worker 等待就绪有 15 s 上限(启动与调用共用):到点仍未就绪即丢弃,启动因此失败并由 compose 重启沙箱进程,
+  不会停在半启动状态;「池起来之前 socket 不存在」由 `apps/sandbox-runtime/tests/serve.test.ts` 守住。生产 `.env` 显式写
+  `QUALY_SANDBOX_HARD_DEADLINE_MS=500`,作为这台主机的校准值。
 - `tools`(profile `tools`):当前 release 的 server 镜像 + 部署的 `.env` + `storage` 与 `web_releases` 卷,只跑一次性命令
   (`docker compose run --rm tools <命令>`),`QUALY_MIGRATIONS=off`。备份、恢复、基线导入与运维 CLI(`auth set-password`、
   `storage export`)都经它,不点名颜色,也不按带 project 前缀的名字找卷。
