@@ -60,6 +60,12 @@ receivers:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
+  # When the last whole backup succeeded: deploy/backup.sh rewrites this file
+  # only after the copy off the machine succeeds, so its modification time is
+  # the answer. Absent until the first backup that sets QUALY_BACKUP_STATUS_DIR.
+  filestats/backup:
+    include: /var/lib/qualy/backup-status/last-success
+    collection_interval: 60s
 
 processors:
   # memory_limiter first, batch second: refuse before buffering, bounded
@@ -82,6 +88,23 @@ processors:
       - key: host.name
         action: upsert
         value: ${env:QUALY_INSTANCE_ID}
+  # the file's modification time under a name that says what it means
+  # (qualy_backup_last_success_seconds in TMP), and nothing else the receiver
+  # measures; the path goes too, the name already says which file
+  transform/backup:
+    metric_statements:
+      - context: metric
+        statements:
+          - set(name, "qualy.backup.last_success") where name == "file.mtime"
+          - set(description, "When the last whole backup, the copy off the machine included, succeeded (Unix seconds)") where name == "qualy.backup.last_success"
+      - context: resource
+        statements:
+          - delete_matching_keys(attributes, "file\\..*")
+  filter/backup:
+    metrics:
+      include:
+        match_type: strict
+        metric_names: [qualy.backup.last_success]
 
 exporters:
   otlp_grpc/tencent_apm:
@@ -132,6 +155,12 @@ service:
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
+      exporters: [prometheus_remote_write/tencent_tmp]
+    # the backup's age, into the same TMP, for the alert in
+    # docs/deployment.md ("备份新鲜度")
+    metrics/backup:
+      receivers: [filestats/backup]
+      processors: [memory_limiter, transform/backup, filter/backup, batch]
       exporters: [prometheus_remote_write/tencent_tmp]
     logs:
       receivers: [otlp]

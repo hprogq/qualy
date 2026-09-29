@@ -15,7 +15,10 @@
 #   QUALY_BACKUP_OFFSITE='rclone copy "$1" remote:qualy-backups/"$(basename "$1")"'
 #
 # and the run fails if it does. On success the stamp is written to
-# <backup-root>/last-success, which a monitor can read for its age.
+# <backup-root>/last-success, and - when QUALY_BACKUP_STATUS_DIR is set - to
+# last-success there too: a directory anyone may read, holding nothing but
+# that stamp, which the collector reports as qualy_backup_last_success so an
+# alert can say a backup has stopped. The backup root stays root's alone.
 #
 # Not in a backup, on purpose: QUALY_SECRETS_MASTER_KEY. Nothing encrypted in
 # the database can be read without it, so keep it - with the rest of .env -
@@ -38,6 +41,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 root=${1:-$(setting QUALY_BACKUP_ROOT /var/backups/qualy)}
 keep=$(setting QUALY_BACKUP_KEEP 14)
 offsite=$(setting QUALY_BACKUP_OFFSITE)
+status=$(setting QUALY_BACKUP_STATUS_DIR)
 
 case $keep in '' | *[!0-9]* | 0)
   echo "QUALY_BACKUP_KEEP must be a whole number above 0, not $keep" >&2
@@ -92,4 +96,11 @@ ls -1 "$root" | grep -E '^[0-9]{8}T[0-9]{6}Z$' | sort -r | tail -n "+$((keep + 1
   while read -r old; do rm -rf "${root:?}/$old"; done
 
 printf '%s\n' "$stamp" > "$root/last-success"
+# only after everything above, the copy off the machine included: its time is
+# the time the whole backup last succeeded, which is what the alert reads
+if [ -n "$status" ]; then
+  install -d -m 755 "$status"
+  printf '%s\n' "$stamp" > "$status/last-success"
+  chmod 644 "$status/last-success"
+fi
 echo "backed up to $root/$stamp"

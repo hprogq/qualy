@@ -439,6 +439,22 @@ current,旧镜像的 server 要这一步才肯启动;旧 release 已被保留策
 - 两个脚本经 `COMPOSE_PROJECT_NAME`、`QUALY_ENV_FILE` 指向具体部署;`release-smoke.ts` 每次 CI 都调用它们演练:备份前写一行数据与一个附件,
   销库、清空附件,恢复后两样都读回。
 - `pg_backups` 卷删除:只挂载、从没有东西写它。README 的升级步骤第一步改为 `backup.sh`。
+- **备份新鲜度**(2026-09-30):`backup.sh` 在**异地复制也成功之后**才写 `<root>/last-success`;设了 `QUALY_BACKUP_STATUS_DIR`
+  (生产 `/var/lib/qualy/backup-status`)时,同时把这个时间戳写成那里的 `last-success`(目录 755、文件 644,只有时间戳)。备份根目录仍是 root 700,
+  collector 读不到也不该读。collector 挂载该目录(只读),`filestats/backup` 每分钟取它的修改时间,`transform/backup` 改名为
+  `qualy.backup.last_success`,经已有的 remote write 进 TMP,名为 **`qualy_backup_last_success_seconds`**(gauge,Unix 秒;本机用生产同版本
+  collector 实测命名)。不另起 exporter,不加新的监控系统。告警在 TMP 控制台配(仓库里不存告警规则),两条:
+
+  ```promql
+  # 备份停了:每天 03:17 一次,一次约一分钟;超过 26 小时即漏了一次并留了两小时余量
+  time() - max(qualy_backup_last_success_seconds) > 26 * 3600
+  # 看不到这个指标:collector 没在跑、状态目录没挂上,或从没成功过一次
+  absent_over_time(qualy_backup_last_success_seconds[15m])
+  ```
+
+  升级(`upgrade.sh` 先备份)与演示复原也会刷新它,所以它只会比每日一次更新,不会误报「停了」。`release-smoke.ts` 断言状态文件在成功后写出、
+  内容等于 `last-success`、对 collector 可读。
+
 - **恢复演练**(2026-09-30,`.github/workflows/recovery-drill.yml` + `tools/release/recovery-drill.ts`):每月 1 日与手动触发,
   从备份桶取最新一份(或指定的时间戳),在**断网**的临时容器里起与生产同 digest 的 PostgreSQL,依次核对:SHA256SUMS(且三个包都在清单里)、
   `pg_restore --exit-on-error`、迁移账本全部属于本仓库 lineage(旧备份只是「落后 N 条」)、`tenants` / `users` 非空、

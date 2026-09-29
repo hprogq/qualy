@@ -119,6 +119,7 @@ fs.writeFileSync(
     // the copy off the machine, read from this file as a deployment's is:
     // here it copies into the work directory instead of a bucket
     `QUALY_BACKUP_OFFSITE=cp -R "$1" ${JSON.stringify(path.join(work, 'offsite'))}/`,
+    `QUALY_BACKUP_STATUS_DIR=${path.join(work, 'backup-status')}`,
     // an address plan of its own, clear of a deployment on the same host
     'QUALY_NETWORK_SUBNET=172.30.54.0/24',
     'QUALY_NETWORK_GATEWAY=172.30.54.1',
@@ -629,6 +630,13 @@ try {
     if (!fs.existsSync(path.join(work, 'offsite', stamp, 'SHA256SUMS')))
       refuse('backup.sh did not run the QUALY_BACKUP_OFFSITE the env file names')
     step('backup: copied off the machine by the command the env file names')
+    // the stamp the collector reports as the time of the last whole backup
+    const status = path.join(work, 'backup-status', 'last-success')
+    if (!fs.existsSync(status) || fs.readFileSync(status, 'utf8').trim() !== stamp)
+      refuse('backup.sh did not leave its stamp in QUALY_BACKUP_STATUS_DIR for the collector')
+    if ((fs.statSync(status).mode & 0o044) !== 0o044)
+      refuse('the backup status file is not readable by the collector')
+    step('backup: the stamp is where the collector reads it')
   }
 
   expectCode('blue stop', compose(['stop', 'server-blue']), 0)

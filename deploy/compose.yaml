@@ -249,6 +249,9 @@ services:
         required: false
     volumes:
       - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+      # the time the last whole backup succeeded, and nothing else
+      # (deploy/backup.sh); reported as qualy_backup_last_success
+      - ${QUALY_BACKUP_STATUS_DIR:-/var/lib/qualy/backup-status}:/var/lib/qualy/backup-status:ro
     read_only: true
     # the collector's own memory_limiter stays under this
     mem_limit: 256m
