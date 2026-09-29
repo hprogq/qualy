@@ -245,3 +245,27 @@ describe('over SSH', () => {
     expect(asked.stdout).toBe('[-n][/usr/local/sbin/qualy-deploy][deploy][v1.0.0][*][$(id)]')
   })
 })
+
+describe('asking whether the deployment is well', () => {
+  it("runs the serving release's own doctor with the host's settings, and passes its verdict on", () => {
+    const deploy = path.join(root, 'releases', 'v2.0.0', 'deploy')
+    fs.mkdirSync(deploy, { recursive: true })
+    fs.writeFileSync(
+      path.join(deploy, 'doctor.sh'),
+      '#!/bin/sh\nprintf "doctor with %s\\n" "$QUALY_ENV_FILE"\nexit 3\n',
+      { mode: 0o755 },
+    )
+    fs.symlinkSync('releases/v2.0.0', path.join(root, 'current'))
+    const asked = run(['doctor'])
+    expect(asked.stdout.trim()).toBe(`doctor with ${path.join(root, '.env')}`)
+    expect(asked.status).toBe(3)
+  })
+
+  it('says so when the serving release carries no doctor', () => {
+    fs.mkdirSync(path.join(root, 'releases', 'v1.0.0'), { recursive: true })
+    fs.symlinkSync('releases/v1.0.0', path.join(root, 'current'))
+    const asked = run(['doctor'])
+    expect(asked.status).toBe(1)
+    expect(asked.stderr).toContain('carries no deploy/doctor.sh')
+  })
+})

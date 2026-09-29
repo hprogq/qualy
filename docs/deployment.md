@@ -455,6 +455,12 @@ current,旧镜像的 server 要这一步才肯启动;旧 release 已被保留策
   升级(`upgrade.sh` 先备份)与演示复原也会刷新它,所以它只会比每日一次更新,不会误报「停了」。`release-smoke.ts` 断言状态文件在成功后写出、
   内容等于 `last-success`、对 collector 可读。
 
+- **生产诊断**(2026-09-30,`deploy/doctor.sh`,主机上 `qualy-deploy doctor`):只读、不加锁,一项一行 PASS / WARN / FAIL,有 FAIL 即退出 1。
+  核对 `.env` 记录的 release 与色、`current` 链接、代理片段实际指向的色(事实而非记录)、该色三个容器在跑且镜像是该 release、`/health/live` 与
+  `/health/ready`、该色与公网地址 serve 的 web release 相同、证书剩余天数(<21 天 WARN、<7 天 FAIL)、PostgreSQL 健康、collector 在跑、
+  有过重启的容器(WARN)、最近一次完整备份的时长(>26 小时 FAIL,与告警同一阈值)、cron 里有备份、状态目录与备份根的时间戳一致、
+  备份根 / 部署根 / docker 的剩余磁盘(<5 GB WARN、<2 GB FAIL)与可用内存。2026-09-30 在生产上(rc.17)实测全部 PASS;把备份根指到不存在的目录则
+  报 FAIL 并退出 1。
 - **恢复演练**(2026-09-30,`.github/workflows/recovery-drill.yml` + `tools/release/recovery-drill.ts`):每月 1 日与手动触发,
   从备份桶取最新一份(或指定的时间戳),在**断网**的临时容器里起与生产同 digest 的 PostgreSQL,依次核对:SHA256SUMS(且三个包都在清单里)、
   `pg_restore --exit-on-error`、迁移账本全部属于本仓库 lineage(旧备份只是「落后 N 条」)、`tenants` / `users` 非空、

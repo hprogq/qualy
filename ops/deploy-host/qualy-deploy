@@ -5,6 +5,7 @@
 # (ops/deploy-host/README.md).
 #
 #   qualy-deploy check
+#   qualy-deploy doctor
 #   qualy-deploy fetch    <release> <server> <sandbox-runtime> <sandbox-authoring>
 #   qualy-deploy deploy   <release> <server> <sandbox-runtime> <sandbox-authoring> [--maintenance]
 #   qualy-deploy rollback
@@ -62,7 +63,7 @@ refuse() {
   exit 1
 }
 usage() {
-  refuse "usage: qualy-deploy check | fetch <release> <server> <sandbox-runtime> <sandbox-authoring> | deploy <release> <server> <sandbox-runtime> <sandbox-authoring> [--maintenance] | rollback"
+  refuse "usage: qualy-deploy check | doctor | fetch <release> <server> <sandbox-runtime> <sandbox-authoring> | deploy <release> <server> <sandbox-runtime> <sandbox-authoring> [--maintenance] | rollback"
 }
 
 # settings are read, never sourced
@@ -202,6 +203,15 @@ case ${1:-} in
     say "serving: $(env_value QUALY_ACTIVE_COLOR) $(env_value QUALY_RELEASE)"
     say "current: $(readlink "$root/current" 2> /dev/null || echo none)"
     say "releases: $(ls "$root/releases" 2> /dev/null | tr '\n' ' ')"
+    ;;
+  # The serving release's own deploy/doctor.sh: every fact a deployment
+  # should hold, PASS / WARN / FAIL, non-zero when one fails. It only reads,
+  # so it takes no lock and runs beside an upgrade as well as alone.
+  doctor)
+    [ $# -eq 1 ] || usage
+    [ -x "$root/current/deploy/doctor.sh" ] ||
+      refuse "the serving release ($(readlink "$root/current" 2> /dev/null || echo none)) carries no deploy/doctor.sh"
+    QUALY_ENV_FILE=$root/.env exec "$root/current/deploy/doctor.sh"
     ;;
   fetch)
     [ $# -eq 5 ] || usage

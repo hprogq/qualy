@@ -68,9 +68,18 @@ the release's `release.json`, or `rollback`. By hand, as root:
 
 ```sh
 qualy-deploy check
+qualy-deploy doctor                                          # every fact the deployment should hold; reads only
 qualy-deploy fetch v0.1.0 sha256:... sha256:... sha256:...   # pull, verify, extract; runs nothing
 QUALY_ENV_FILE=/opt/qualy/.env /opt/qualy/current/deploy/backup.sh /var/backups/qualy
 ```
+
+`doctor` runs the serving release's own `deploy/doctor.sh`: the release `.env`
+records against the color the edge actually sends traffic to, that color's
+containers and images, `/health/live` and `/health/ready`, the web release
+the color and the public address serve, the certificate's days left,
+PostgreSQL, the collector, containers that restarted, the last whole backup's
+age and its cron entry, free disk and memory - PASS, WARN or FAIL per line,
+exit 1 when anything fails. It changes nothing and takes no lock.
 
 `current` always names the release `.env` records as serving, and only the
 launcher moves it, after it has run one of a release's scripts; a fetch
