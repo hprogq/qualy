@@ -1,5 +1,5 @@
 import { Cause, type Context, Deferred, Effect, Exit, Fiber, Layer, Redacted, Scope } from 'effect'
-import { HttpRouter, HttpServerResponse } from 'effect/unstable/http'
+import { HttpRouter, HttpServerResponse } from 'effect/http'
 import { sql } from 'kysely'
 import { describe, expect, it } from 'vitest'
 import { unavailable, unavailableDependencies } from '@qualy/api-kit/unavailable'

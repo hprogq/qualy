@@ -1,6 +1,6 @@
 import { Effect, Layer } from 'effect'
 import { sql } from 'kysely'
-import { HttpApiBuilder } from 'effect/unstable/httpapi'
+import { HttpApiBuilder } from 'effect/http-api'
 import { Api } from '@qualy/api-kit/plugin'
 import {
   DEFAULT_PAGE_SIZE,

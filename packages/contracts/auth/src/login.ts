@@ -1,5 +1,5 @@
 import { Context, Data, Effect, Layer, Redacted, Scope } from 'effect'
-import type { HttpServerRequest } from 'effect/unstable/http/HttpServerRequest'
+import type { HttpServerRequest } from 'effect/http/HttpServerRequest'
 import type { UiText } from '@qualy/i18n-contract'
 import type { ClientComponentRef } from '@qualy/ui-contract'
 import type { TooManyAttempts } from './session.ts'

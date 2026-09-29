@@ -6,7 +6,7 @@ import {
   HttpServerRequest,
   HttpServerResponse,
   HttpTraceContext,
-} from 'effect/unstable/http'
+} from 'effect/http'
 import { randomUUID } from 'node:crypto'
 import { BlockList, isIP } from 'node:net'
 
@@ -68,7 +68,7 @@ export interface RequestContextShape {
    * route, and the enclosing request restores the fiber context on the way
    * out, so nothing around the router can read it. The span carries the
    * same value under `http.route`, but only when a real tracer is installed
-   * AND the span is sampled (repos/effect/packages/effect/src/unstable/
+   * AND the span is sampled (repos/effect/packages/effect/src/
    * http/HttpRouter.ts:223-227), which is no basis for a redaction.
    */
   readonly endpoint: string | undefined
@@ -309,7 +309,7 @@ export const routeSpanNames = <A, E, R>(
  * The scheme is read from the request instead, and used to be read from the
  * span beside the route. It could never work: the tracer writes `url.scheme`
  * from inside its own `onExit`, on a scheduled task, and only for a sampled
- * span (repos/effect/packages/effect/src/unstable/http/HttpMiddleware.ts:208,
+ * span (repos/effect/packages/effect/src/http/HttpMiddleware.ts:208,
  * :224) - all of which happen after this recorder has already read it. So the
  * label was the `'http'` fallback on every data point, and behind a
  * TLS-terminating proxy the trace said https while the metric said http for
@@ -363,7 +363,7 @@ const schemeOf = (
  *
  * The platform's tracer writes the URL onto the span whole - `url.full` and
  * `url.query` - and writes it from its own exit hook, outside every serve
- * middleware (repos/effect/packages/effect/src/unstable/http/HttpMiddleware.ts,
+ * middleware (repos/effect/packages/effect/src/http/HttpMiddleware.ts,
  * the tracer), where nothing here can reach it. A query can be a credential:
  * a CAS ticket, an OAuth code and state, a flow's state all arrive in one.
  * The access log has never written a query for that reason, and this is the

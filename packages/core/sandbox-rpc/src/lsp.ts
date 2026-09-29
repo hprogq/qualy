@@ -11,7 +11,7 @@
  */
 
 import { Schema } from 'effect'
-import { Rpc } from 'effect/unstable/rpc'
+import { Rpc } from 'effect/rpc'
 
 /** one LSP json-rpc frame's ceiling, either direction */
 export const LSP_FRAME_LIMIT = 1024 * 1024

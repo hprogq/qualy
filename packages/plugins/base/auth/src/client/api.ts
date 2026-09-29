@@ -1,4 +1,4 @@
-import { HttpApiClient } from 'effect/unstable/httpapi'
+import { HttpApiClient } from 'effect/http-api'
 import { Api } from '@qualy/api-kit/local'
 import { accessApiGroup } from '@qualy/plugin-rbac/api'
 import { identityApiGroup, loginIconApiGroup, selfApiGroup, sessionApiGroup } from '../api.ts'

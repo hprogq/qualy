@@ -7,8 +7,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { Effect, Exit, Fiber, Layer, Result, Schema, Scope, type Context } from 'effect'
 import { NodeSocketServer } from '@effect/platform-node'
-import { SocketServer } from 'effect/unstable/socket'
-import { Rpc, RpcGroup, RpcSerialization, RpcServer } from 'effect/unstable/rpc'
+import { SocketServer } from 'effect/socket'
+import { Rpc, RpcGroup, RpcSerialization, RpcServer } from 'effect/rpc'
 import { afterAll, beforeAll, describe, expect, it, onTestFinished } from 'vitest'
 import {
   Sandbox,

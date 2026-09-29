@@ -1,5 +1,5 @@
 import { Effect, Layer } from 'effect'
-import { HttpServerRequest } from 'effect/unstable/http'
+import { HttpServerRequest } from 'effect/http'
 import { QUALY_BACKGROUND_HEADER } from '@qualy/api-kit'
 import { bindSessionId } from '@qualy/api-kit/request'
 import { withDatabase } from '@qualy/plugin-database/server'

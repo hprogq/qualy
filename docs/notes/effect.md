@@ -24,3 +24,24 @@ schema 体)不做对象结构解析,不受影响——恰好实现「envelope �
 后果:`decodePluginConfig(Schema.Struct({}), block)` 不能表达「这个插件不读任何清单配置」——
 它会把整块静默放行,正是该 helper 要防的失败。database 插件的 `server/config.ts` 因此在 decode 之后
 自己检查 `Object.keys(block)` 非空即拒绝并指路。其他想声明「零配置」的插件照此办理,不要依赖空 Struct。
+
+## rc.115 → rc.118(2026-09-30)
+
+实查过的破坏面与本仓库的对应处理,依据是 `repos/effect`(tag `effect@4.0.0-rc.118`)与 changelog:
+
+- **模块路径**:`effect/unstable/*` 整体移到 `effect/*`,旧导出删除;`httpapi` 另改名 `http-api`。
+  本仓库 122 个源文件机械替换(`effect/unstable/httpapi` → `effect/http-api`,其余去掉 `unstable/`),
+  注释里指向上游源码的路径同步改为 `repos/effect/packages/effect/src/<模块>/…`(上游 `src/unstable/` 已不存在;
+  注释里的行号是旧版本的,读时以当前源码为准)。
+- **`Scope.close` 只收 `Scope.Closeable`**:13 处测试与 database testkit 把会被关闭的 scope 声明成了
+  `Scope.Scope`,值本来就来自 `Scope.make()`,收窄声明即可。
+- **`HttpRouter.serve` 用分叉的 MemoMap**(`src/http/HttpRouter.ts` serve;`Layer.CurrentMemoMap.forkOrCreate`,
+  `src/Layer.ts` `MemoMapImpl.get` 先查本表再查 parent):外面已建好的 layer 复用,serve 里**首次**建的 layer
+  私有。apps/server 的运行时图同时给启动屏障与 serve,只建一次靠的是屏障先建(`server.pipe(Layer.provide(booted))`)。
+  `apps/server/tests/runtime-memo.test.ts` 按同一形状计数;把顺序反过来(先建 serve)即建两次、测试失败(实测)。
+- **`HttpServer.address`** 变成 `NetAddress.SocketAddress`(`src/net/NetAddress.ts`:`InetAddressV4` /
+  `InetAddressV6` 带 `port`,`UnixPathAddress`),不再有 `TcpAddress` 标签。生产代码没有读它。
+- 顺带确认(非本次变化):`HttpRouter.add` 的处理函数在**请求时**才从上下文取服务,`Layer.provide` 给路由 layer
+  的依赖不进请求上下文,会 `Service not found`;插件的 handler 在构建期取服务并捕获,不受影响。
+- 全量 node 套件 403 个文件 3049 条通过,含 effect-source-policy 点名的两条承重测试(OTLP span 改名、
+  数据库追踪与事务传播)和冻结 OpenAPI 的全量比对,均未改动。

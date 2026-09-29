@@ -1,4 +1,4 @@
-import { HttpApi, type HttpApiGroup } from 'effect/unstable/httpapi'
+import { HttpApi, type HttpApiGroup } from 'effect/http-api'
 import { QUALY_API_ID, QUALY_API_PREFIX } from './index.ts'
 
 // The one piece of the api surface a browser is allowed to reach.

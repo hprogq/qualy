@@ -1,6 +1,8 @@
 # Effect Source Policy
 
-本项目正在迁往 Effect v4 beta。**这些 API 有一半住在 `effect/unstable/**`,beta 版本允许破坏它们。**
+本项目运行在 Effect v4 预发布版上。**这些 API 有一半标着 `@stability unstable`,预发布版本允许破坏它们**
+(rc.118 起它们从 `effect/unstable/*` 移到了 `effect/*`:`effect/http`、`effect/http-api`、`effect/rpc`、
+`effect/socket`、`effect/observability`,旧路径已删除)。
 因此「按 Effect 最佳实践」不是依据,记忆里的 API 也不是。依据是 `repos/` 里那份与 `pnpm-workspace.yaml`
 catalog 完全同版本的上游源码。
 
@@ -68,7 +70,7 @@ lock 里的 `contentSha256` 是对**剥离后**的树按「路径 + 文件内容
 
 ## 写 Effect 代码时
 
-- 不凭记忆猜 API,尤其 `effect/unstable/**`
+- 不凭记忆猜 API,尤其标着 `@stability unstable` 的模块
 - 在计划和收尾里列出**实际读过的上游文件路径**,不是「参考了 Effect 文档」
 - 项目 pattern 与 vendored 上游冲突时**停下并报告**,那意味着版本漂移,不是让你二选一
 - 生产源码里的 `Effect.run*` 只允许出现在:应用入口、CLI 边界、前端统一 API runtime、测试边界。
@@ -79,7 +81,7 @@ lock 里的 `contentSha256` 是对**剥离后**的树按「路径 + 文件内容
 TypeScript 7 是一个原生可执行文件,不再有可以打补丁的 JS `tsc`,也不再导出 `createProgram`
 那套编译器 API(包里只剩 `lib/version.cjs` 与 `typescript/unstable/*`)。因此 Effect 侧的集成
 换成了 **`@effect/tsgo`**:它是 tsgo 的超集(内嵌一份固定版本的 tsgo + Effect 语言服务),
-`prepare` 跑 `effect-tsgo patch --typescript` 把 `@typescript/typescript-<平台>` 里的原生
+`prepare` 跑 `effect-tsgo patch --typescript --force` 把 `@typescript/typescript-<平台>` 里的原生
 `tsc` 换成带 Effect 诊断的那份(原件留作 `tsc.original`),`tsc --version` 会显示
 `7.0.2+effect-tsgo.<版本>`。tsconfig 里的插件名**仍然是** `@effect/language-service`。
 
@@ -87,7 +89,7 @@ TypeScript 7 是一个原生可执行文件,不再有可以打补丁的 JS `tsc`
 不只是编辑器里的波浪线。实测能抓到 `Effect.succeed(1)` 这种既不 yield 也不赋值的悬空 Effect。
 
 一个会悄悄失效的门禁比没有门禁更糟,所以 `tools/tests/effect-diagnostics.test.ts` 会编译一个
-故意写错的 fixture,诊断没出现就失败并告诉你跑 `pnpm exec effect-tsgo patch --typescript`
+故意写错的 fixture,诊断没出现就失败并告诉你跑 `pnpm exec effect-tsgo patch --typescript --force`
 (已实测:未打补丁的原生 tsc 对同一个 fixture 一言不发)。
 
 suggestion 级诊断**显示但不判**(`includeSuggestionsInTsc: true` +

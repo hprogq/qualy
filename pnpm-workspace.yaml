@@ -65,15 +65,16 @@ catalog:
   kysely: 0.29.6
   # Effect v4 release candidate. Every effect package must sit on the SAME
   # version: the ecosystem peers on an exact prerelease. The modules this
-  # project needs (httpapi, schema, observability) are exported from
-  # effect/unstable/*, where a prerelease is still allowed to break them, so
-  # upgrades go through scripts/vendor-sync.ts and a full gate run rather
-  # than a version bump on its own. Moved to rc.115 with the test toolchain,
-  # so @effect/vitest sits on the same release as the runtime it tests.
-  effect: 4.0.0-rc.115
-  '@effect/vitest': 4.0.0-rc.115
-  '@effect/platform-node': 4.0.0-rc.115
-  '@effect/tsgo': 0.36.4
+  # project needs (http-api, http, rpc, observability) are marked
+  # @stability unstable, where a prerelease is still allowed to break them, so
+  # upgrades go through tools/repo/vendor-sync.ts and a full gate run rather
+  # than a version bump on its own. rc.118 moved them from effect/unstable/*
+  # to effect/* and removed the old paths; @effect/tsgo 0.47.0 is the first
+  # language service built against that layout.
+  effect: 4.0.0-rc.118
+  '@effect/vitest': 4.0.0-rc.118
+  '@effect/platform-node': 4.0.0-rc.118
+  '@effect/tsgo': 0.47.0
   # the SAME version @mikro-orm/postgresql depends on. It is the driver that
   # builds the pool this plugin measures, and at 8.22.0 the tree carried two
   # copies: the type came from ours and the Pool instance from the ORM's
@@ -100,7 +101,7 @@ catalog:
   # lookup answers with the address the outbound policy already checked, so a
   # second resolution cannot move the request somewhere else. The same version
   # @effect/platform-node already installs.
-  undici: 8.10.2
+  undici: 8.11.2
   # the parser a CAS validation answer is split with, and nothing more: the
   # driver refuses any document type or entity declaration before it runs,
   # turns its entity processing off and decodes the five predefined entities
@@ -188,22 +189,22 @@ overrides:
 patchedDependencies:
   '@stylexjs/unplugin@0.19.1': patches/@stylexjs__unplugin@0.19.1.patch
 minimumReleaseAgeExclude:
-  - effect@4.0.0-rc.115
-  - '@effect/vitest@4.0.0-rc.115'
-  - '@effect/platform-node-shared@4.0.0-rc.115'
-  - '@effect/platform-node@4.0.0-rc.115'
+  - effect@4.0.0-rc.118
+  - '@effect/vitest@4.0.0-rc.118'
+  - '@effect/platform-node-shared@4.0.0-rc.118'
+  - '@effect/platform-node@4.0.0-rc.118'
   - '@mikro-orm/core@7.2.2'
   - '@mikro-orm/migrations@7.2.2'
   - '@mikro-orm/postgresql@7.2.2'
   - '@mikro-orm/sql@7.2.2'
-  - '@effect/tsgo-darwin-arm64@0.36.4'
-  - '@effect/tsgo-darwin-x64@0.36.4'
-  - '@effect/tsgo-linux-arm64@0.36.4'
-  - '@effect/tsgo-linux-arm@0.36.4'
-  - '@effect/tsgo-linux-x64@0.36.4'
-  - '@effect/tsgo-win32-arm64@0.36.4'
-  - '@effect/tsgo-win32-x64@0.36.4'
-  - '@effect/tsgo@0.36.4'
+  - '@effect/tsgo-darwin-arm64@0.47.0'
+  - '@effect/tsgo-darwin-x64@0.47.0'
+  - '@effect/tsgo-linux-arm64@0.47.0'
+  - '@effect/tsgo-linux-arm@0.47.0'
+  - '@effect/tsgo-linux-x64@0.47.0'
+  - '@effect/tsgo-win32-arm64@0.47.0'
+  - '@effect/tsgo-win32-x64@0.47.0'
+  - '@effect/tsgo@0.47.0'
   # The Vitest 5 line, whole. `@vitest/browser-playwright` peers on an exact
   # vitest, and `@vitest/browser` pulls the ui package for its orchestrator,
   # so this set moves together or not at all - a partial exemption would just

@@ -6,7 +6,7 @@ import {
   OtlpMetrics,
   OtlpSerialization,
   OtlpTracer,
-} from 'effect/unstable/observability'
+} from 'effect/observability'
 import { resourceFromEnv } from './resource.ts'
 import { runtimeMetricsLoop } from './runtime-metrics.ts'
 

@@ -53,7 +53,7 @@ describe('effect diagnostics during tsc', () => {
       const output = typecheck(dir)
       expect(
         output,
-        'tsc reported nothing: the TypeScript binary is no longer patched. Run `pnpm exec effect-tsgo patch`.',
+        'tsc reported nothing: the TypeScript binary is no longer patched. Run `pnpm exec effect-tsgo patch --typescript --force`.',
       ).toMatch(/floatingEffect/)
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })

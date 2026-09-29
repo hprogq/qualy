@@ -89,7 +89,7 @@
     "lint": "oxlint",
     "lint:types": "oxlint --type-aware --report-unused-disable-directives-severity=error",
     "plugin:add": "node tools/repo/plugin-add.ts",
-    "prepare": "effect-tsgo patch --typescript --no-oxlint",
+    "prepare": "effect-tsgo patch --typescript --force",
     "qualy": "node apps/cli/src/main.ts",
     "seed": "node --env-file-if-exists=.env tools/fixtures/seed-cli.ts",
     "demo:reset-db": "node tools/demo/reset-db.ts",

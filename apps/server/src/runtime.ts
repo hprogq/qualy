@@ -1,7 +1,7 @@
 import { NodeHttpServer } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
-import { HttpRouter } from 'effect/unstable/http'
-import { HttpApiBuilder } from 'effect/unstable/httpapi'
+import { HttpRouter } from 'effect/http'
+import { HttpApiBuilder } from 'effect/http-api'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { Api, type ApiDocumentation } from '@qualy/api-kit/plugin'
@@ -147,7 +147,10 @@ export async function makeApplication(
   // The runtime phase, fed exactly once: service-backed bindings build over
   // the running services, and every consumer below - the boot barrier, the
   // router - is handed THIS reference, so the one memoized build serves them
-  // all rather than each provide growing its own copy.
+  // all rather than each provide growing its own copy. It also depends on the
+  // barrier being built first: HttpRouter.serve builds its application in a
+  // memo map forked from this one, reusing what is already built here but
+  // keeping to itself anything it builds first (tests/runtime-memo.test.ts).
   const runtimeGraph = runtime.pipe(Layer.provide(services), Layer.provide(prepared))
 
   const routes = Layer.mergeAll(

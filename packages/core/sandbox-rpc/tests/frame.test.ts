@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { RpcSerialization } from 'effect/unstable/rpc'
+import { RpcSerialization } from 'effect/rpc'
 import {
   SANDBOX_RPC_ENVELOPE_BUDGET,
   SANDBOX_RPC_MAX_FRAME_BYTES,

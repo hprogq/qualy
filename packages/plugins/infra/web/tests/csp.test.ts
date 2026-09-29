@@ -1,6 +1,6 @@
 import { NodeHttpServer } from '@effect/platform-node'
 import { Effect, Exit, Layer, Logger, References, Scope } from 'effect'
-import { HttpRouter } from 'effect/unstable/http'
+import { HttpRouter } from 'effect/http'
 import fs from 'node:fs'
 import { createServer } from 'node:http'
 import os from 'node:os'

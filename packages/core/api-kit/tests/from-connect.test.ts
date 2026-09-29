@@ -1,6 +1,6 @@
 import { NodeHttpServer } from '@effect/platform-node'
 import { Cause, Effect, Exit, Layer, Scope } from 'effect'
-import { HttpRouter, HttpServerResponse } from 'effect/unstable/http'
+import { HttpRouter, HttpServerResponse } from 'effect/http'
 import { createServer } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { fromConnect, type ConnectMiddleware } from '../src/node.ts'
@@ -38,7 +38,7 @@ const middleware: ConnectMiddleware = (request, response, next) => {
   response.end('served by the middleware')
 }
 
-let scope: Scope.Scope
+let scope: Scope.Closeable
 /** how each request to /streaming ended, as the server saw it, write included */
 const streamingExits: Exit.Exit<HttpServerResponse.HttpServerResponse, unknown>[] = []
 

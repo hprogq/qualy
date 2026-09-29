@@ -1,8 +1,8 @@
 import { NodeHttpServer } from '@effect/platform-node'
 import { sql } from 'kysely'
 import { Effect, Exit, Layer, Scope } from 'effect'
-import { HttpRouter } from 'effect/unstable/http'
-import { HttpApiBuilder } from 'effect/unstable/httpapi'
+import { HttpRouter } from 'effect/http'
+import { HttpApiBuilder } from 'effect/http-api'
 import { createServer } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
@@ -52,7 +52,7 @@ const base = `http://127.0.0.1:${port}${QUALY_API_PREFIX}`
 const password = 'correct horse battery staple'
 const secureName = sessionCookieNameFor(true)
 
-let scope: Scope.Scope
+let scope: Scope.Closeable
 let db: Awaited<ReturnType<typeof createTestContext>>
 let seeded: { tenant: string; user: string; other: string }
 

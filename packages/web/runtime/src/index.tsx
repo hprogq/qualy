@@ -49,7 +49,7 @@ import {
   runMutation,
   type QueryUtils,
 } from './api-query.ts'
-import type { HttpApi } from 'effect/unstable/httpapi'
+import type { HttpApi } from 'effect/http-api'
 import type { NamespacedId } from '@qualy/ui-contract'
 import {
   buildPageHref,

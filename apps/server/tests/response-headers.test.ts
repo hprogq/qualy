@@ -1,6 +1,6 @@
 import { NodeHttpServer } from '@effect/platform-node'
 import { Effect, Exit, Layer, Scope, Stream } from 'effect'
-import { HttpRouter, HttpServerResponse } from 'effect/unstable/http'
+import { HttpRouter, HttpServerResponse } from 'effect/http'
 import { createServer } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { serveMiddleware } from '../src/serve-middleware.ts'

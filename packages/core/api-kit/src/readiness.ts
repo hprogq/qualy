@@ -16,7 +16,7 @@ import { Context, Effect, Layer, Scope } from 'effect'
 //
 // This is the registry shape Effect uses for its own router - a service
 // holding a mutable structure, a Layer to register into it, and consumption at
-// request time. See HttpRouter.use in effect/unstable/http.
+// request time. See HttpRouter.use in effect/http.
 
 export interface ReadinessCheck {
   /** what is being probed, which is what a failing response logs */

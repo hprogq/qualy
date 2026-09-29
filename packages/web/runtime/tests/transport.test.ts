@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Effect, Exit, Schema } from 'effect'
-import { FetchHttpClient } from 'effect/unstable/http'
-import { HttpApi, HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
+import { FetchHttpClient } from 'effect/http'
+import { HttpApi, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api'
 import {
   QUALY_CLIENT_PROTOCOL_HEADER,
   QUALY_CLIENT_RELEASE_HEADER,

@@ -13,8 +13,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { Effect, Layer, Semaphore } from 'effect'
 import { NodeRuntime, NodeSocketServer } from '@effect/platform-node'
-import { SocketServer } from 'effect/unstable/socket'
-import { RpcSerialization, RpcServer } from 'effect/unstable/rpc'
+import { SocketServer } from 'effect/socket'
+import { RpcSerialization, RpcServer } from 'effect/rpc'
 import { FORMULA_ABI_VERSION } from '@qualy/formula'
 import {
   FORMULA_SOURCE_POLICY_VERSION,

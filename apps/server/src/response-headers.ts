@@ -1,5 +1,5 @@
 import { Context, Effect, Option } from 'effect'
-import { Headers, HttpEffect, HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
+import { Headers, HttpEffect, HttpServerRequest, HttpServerResponse } from 'effect/http'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { underPrefix } from '@qualy/api-kit/route-fallback'
 import { RequestContext } from '@qualy/api-kit/request'

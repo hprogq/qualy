@@ -4,8 +4,8 @@ import { Placement, UserPlacement } from '@qualy/auth-contract'
 import type { Principal } from '@qualy/rbac-contract'
 import { withDatabase, type Orm } from '@qualy/plugin-database/server'
 import type { Secrets } from '@qualy/plugin-secrets/plugin'
-import { HttpApiBuilder } from 'effect/unstable/httpapi'
-import { HttpServerRequest } from 'effect/unstable/http'
+import { HttpApiBuilder } from 'effect/http-api'
+import { HttpServerRequest } from 'effect/http'
 import {
   DEFAULT_PAGE_SIZE,
   encodeQueryCursor,

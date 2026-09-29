@@ -2,7 +2,7 @@ import { NodeUsageCatalog, type NodeUsage, type NodeUsageReport } from '@qualy/o
 import { Context, Effect, Layer } from 'effect'
 import { OrgNodeRefused, OrgProvisioning } from '@qualy/org-contract/effect'
 import type { OrgNodeRef } from '@qualy/org-contract'
-import { HttpApiBuilder } from 'effect/unstable/httpapi'
+import { HttpApiBuilder } from 'effect/http-api'
 import { Api } from '@qualy/api-kit/plugin'
 import { CurrentUser } from './session-port.ts'
 import { orgApiGroup } from '../api.ts'

@@ -1,6 +1,6 @@
 import { Cause, Effect, Exit, Layer, type Scope } from 'effect'
 import { NodeSocket } from '@effect/platform-node'
-import { RpcClient, RpcSerialization } from 'effect/unstable/rpc'
+import { RpcClient, RpcSerialization } from 'effect/rpc'
 import { CliRefused, type CliContext } from '@qualy/plugin-kit/cli'
 import {
   FormulaAuthoringRpcs,

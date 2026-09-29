@@ -1,5 +1,5 @@
 import { Effect, Option } from 'effect'
-import { HttpServerRequest } from 'effect/unstable/http'
+import { HttpServerRequest } from 'effect/http'
 import { deviceOfCookieHeader, type SignInDevice } from '@qualy/auth-contract/device'
 
 // Which device a sign-in is on, and the one place that answers it.

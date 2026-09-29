@@ -4,8 +4,8 @@ import type { AddressInfo } from 'node:net'
 import { NodeHttpServer } from '@effect/platform-node'
 import { sql } from 'kysely'
 import { Effect, Exit, Layer, Redacted, Scope } from 'effect'
-import { HttpRouter } from 'effect/unstable/http'
-import { HttpApiBuilder } from 'effect/unstable/httpapi'
+import { HttpRouter } from 'effect/http'
+import { HttpApiBuilder } from 'effect/http-api'
 import { createServer } from 'node:http'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import {
@@ -89,7 +89,7 @@ const reply = (response: import('node:http').ServerResponse, status: number, bod
   response.end(JSON.stringify(body))
 }
 
-let scope: Scope.Scope
+let scope: Scope.Closeable
 let db: Awaited<ReturnType<typeof createTestContext>>
 let providerId: string
 let ada: string

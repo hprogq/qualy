@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { OpenApi } from 'effect/unstable/httpapi'
+import { OpenApi } from 'effect/http-api'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { FROZEN_ROUTES } from './support/frozen-routes.ts'
 import { servedApi as qualyApi } from './support/served-api.ts'

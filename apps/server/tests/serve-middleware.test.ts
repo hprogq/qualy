@@ -1,6 +1,6 @@
 import { NodeHttpServer } from '@effect/platform-node'
 import { Effect, Exit, Layer, Scope } from 'effect'
-import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
+import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/http'
 import { createServer } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'

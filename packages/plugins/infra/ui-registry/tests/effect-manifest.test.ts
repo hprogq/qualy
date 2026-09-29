@@ -1,7 +1,7 @@
 import { NodeHttpServer } from '@effect/platform-node'
 import { Cause, Effect, Exit, Layer, Scope } from 'effect'
-import { HttpRouter } from 'effect/unstable/http'
-import { HttpApiBuilder } from 'effect/unstable/httpapi'
+import { HttpRouter } from 'effect/http'
+import { HttpApiBuilder } from 'effect/http-api'
 import { createServer } from 'node:http'
 import { it } from '@effect/vitest'
 import { afterAll, beforeAll, describe, expect } from 'vitest'
@@ -169,7 +169,7 @@ const port = 3193
 const api = Api.local(appApiGroup)
 const handlers = appApiHandlers
 
-let scope: Scope.Scope
+let scope: Scope.Closeable
 
 beforeAll(async () => {
   // the authorizer goes in at the application level, not into the manifest

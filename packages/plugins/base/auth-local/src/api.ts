@@ -1,7 +1,7 @@
 import { TooManyAttemptsResponse } from '@qualy/auth-contract/session'
 import { CaptchaProof, CaptchaRequired } from '@qualy/plugin-captcha/contract'
 import { Schema } from 'effect'
-import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
+import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api'
 
 // url shape is /auth/<provider-type>/<provider-code>/<operation>: the code
 // selects one provider of the tenant; for this driver there is exactly one.

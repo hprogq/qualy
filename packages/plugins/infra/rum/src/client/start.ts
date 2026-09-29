@@ -1,4 +1,4 @@
-import { HttpApiClient } from 'effect/unstable/httpapi'
+import { HttpApiClient } from 'effect/http-api'
 import { Api } from '@qualy/api-kit/local'
 import { rumApiGroup, RUM_SETTINGS_SCHEMA } from '../api.ts'
 import type { Dispose } from '@qualy/plugin-kit/browser'

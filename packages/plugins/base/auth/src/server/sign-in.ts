@@ -1,5 +1,5 @@
 import { Context, Duration, Effect, Layer, Option, Redacted } from 'effect'
-import { HttpServerRequest } from 'effect/unstable/http'
+import { HttpServerRequest } from 'effect/http'
 import { bindSessionId, currentRequestContext } from '@qualy/api-kit/request'
 import { boundedCounter } from '@qualy/telemetry/metrics'
 import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'

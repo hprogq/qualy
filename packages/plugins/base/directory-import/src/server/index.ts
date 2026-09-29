@@ -1,5 +1,5 @@
 import { Context, Effect, Layer } from 'effect'
-import { HttpApiBuilder } from 'effect/unstable/httpapi'
+import { HttpApiBuilder } from 'effect/http-api'
 import { Api } from '@qualy/api-kit/plugin'
 import { CurrentUser } from '@qualy/auth-contract/session'
 import { UserProvisioning } from '@qualy/auth-contract/provisioning'

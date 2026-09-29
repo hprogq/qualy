@@ -75,7 +75,10 @@ fixture 并要求诊断出现。
 - **Effect 语言服务换成 `@effect/tsgo`**(tsgo 超集,内嵌固定版本 tsgo + Effect LS)。
   `prepare` 由 `effect-language-service patch` 换成 `effect-tsgo patch --typescript --no-oxlint`,
   换的是 `@typescript/typescript-<平台>` 里的原生二进制,`tsc --version` 显示
-  `7.0.2+effect-tsgo.0.36.4`。tsconfig 里的插件名不变。
+  `7.0.2+effect-tsgo.<版本>`。tsconfig 里的插件名不变。
+  0.47.0(2026-09-30,随 Effect rc.118):oxlint 集成改为显式 `--oxlint` 才选中,`--no-oxlint` 不再存在;
+  而帮助里写着「已弃用、按包版本选替换」的 `--force` 却是必填,不带就 `Missing required flag: --force`
+  (带或不带 `--no-oxlint` 都一样,实测)。`prepare` 因此是 `effect-tsgo patch --typescript --force`。
 - **注释抑制的写法变了**:规则名不带 `effect/` 前缀,且 `-next-line` 是字面下一行。
   旧写法静默失效(实测:带前缀的 `effect/floatingEffect:off` 完全不生效,不报错也不抑制)。
   仓库里三处抑制:两处改成不需要抑制的写法(负面类型断言改为正面类型断言;

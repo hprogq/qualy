@@ -1,8 +1,8 @@
 import { NodeHttpServer } from '@effect/platform-node'
 import { sql } from 'kysely'
 import { Effect, Exit, Layer, Schema, Scope } from 'effect'
-import { HttpRouter } from 'effect/unstable/http'
-import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
+import { HttpRouter } from 'effect/http'
+import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api'
 import { createServer } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
@@ -48,7 +48,7 @@ const handlers = HttpApiBuilder.group(api, 'probe', (h) =>
   ),
 )
 
-let scope: Scope.Scope
+let scope: Scope.Closeable
 let db: Awaited<ReturnType<typeof createTestContext>>
 let infra: ReturnType<typeof databaseFor>
 let tenant: string

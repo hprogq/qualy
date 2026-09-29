@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { HttpApiBuilder } from 'effect/unstable/httpapi'
+import { HttpApiBuilder } from 'effect/http-api'
 import { Api } from '@qualy/api-kit/plugin'
 import { rumApiGroup, RUM_SETTINGS_SCHEMA } from '../api.ts'
 import { RumProviders } from './registry.ts'

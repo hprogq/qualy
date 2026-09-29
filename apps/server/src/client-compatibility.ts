@@ -1,5 +1,5 @@
 import { Context, Effect } from 'effect'
-import { HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
+import { HttpServerRequest, HttpServerResponse } from 'effect/http'
 import { ClientAssembly, type ReleaseStanding } from '@qualy/api-kit/client-assembly'
 import { insideApi } from '@qualy/api-kit/route-fallback'
 import {

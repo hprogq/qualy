@@ -1,7 +1,7 @@
 import { NodeHttpClient, NodeHttpServer } from '@effect/platform-node'
 import { Cause, Effect, Exit, Layer, Logger, Metric, Option, Schedule, Scope, Stream } from 'effect'
-import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
-import { OtlpSerialization, OtlpTracer } from 'effect/unstable/observability'
+import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/http'
+import { OtlpSerialization, OtlpTracer } from 'effect/observability'
 import { createServer, type Server } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
@@ -109,7 +109,7 @@ interface ExportedSpan {
 
 const exported: ExportedSpan[] = []
 let receiver: Server
-let scope: Scope.Scope
+let scope: Scope.Closeable
 
 beforeAll(async () => {
   receiver = createServer((request, response) => {

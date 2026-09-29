@@ -19,7 +19,7 @@
  * current buffer, so nothing unsaved is lost to it.
  */
 
-import { HttpApiClient } from 'effect/unstable/httpapi'
+import { HttpApiClient } from 'effect/http-api'
 import { formulaApi } from './api.ts'
 import { monaco } from './monaco-setup.ts'
 import { whenEditorLeaseEnds } from './editor-lease.ts'

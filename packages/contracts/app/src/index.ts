@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 import { UiTextSchema } from '@qualy/i18n-contract'
-import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
+import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api'
 import { Viewer } from '@qualy/auth-contract/session'
 
 // The authorized projection of the application shell for one viewer.

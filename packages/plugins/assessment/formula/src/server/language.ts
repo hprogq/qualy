@@ -14,7 +14,7 @@
 
 import { Context, Data, Effect, Layer, Predicate, Stream, type Scope } from 'effect'
 import { NodeSocket } from '@effect/platform-node'
-import { RpcClient, RpcSerialization } from 'effect/unstable/rpc'
+import { RpcClient, RpcSerialization } from 'effect/rpc'
 import {
   FormulaAuthoringRpcs,
   SANDBOX_RPC_MAX_FRAME_BYTES,

@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, Stream } from 'effect'
-import { HttpServerResponse } from 'effect/unstable/http'
-import { HttpApiBuilder } from 'effect/unstable/httpapi'
+import { HttpServerResponse } from 'effect/http'
+import { HttpApiBuilder } from 'effect/http-api'
 import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { Api } from '@qualy/api-kit/local'
 import { Audit } from '@qualy/audit-contract/effect'

@@ -2,8 +2,8 @@ import { assembledBarrier, assembledLayer } from '@qualy/api-kit/assembled'
 import { readinessLayer } from '@qualy/api-kit/readiness'
 import { Effect, Exit, Layer, Redacted, Schema, Scope } from 'effect'
 import { NodeHttpServer } from '@effect/platform-node'
-import { HttpRouter } from 'effect/unstable/http'
-import { HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
+import { HttpRouter } from 'effect/http'
+import { HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api'
 import fs from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
@@ -84,7 +84,7 @@ const traceTeardown = (label: string) => {
 
 const teardownStaged = async (
   label: string,
-  scope: Scope.Scope,
+  scope: Scope.Closeable,
   db: { dispose: () => Promise<void> },
 ) => {
   const at = () => new Date().toISOString().slice(11, 23)

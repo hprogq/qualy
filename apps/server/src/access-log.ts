@@ -1,5 +1,5 @@
 import { Cause, Context, Effect, Option, type LogLevel } from 'effect'
-import { HttpServerError, HttpServerRequest } from 'effect/unstable/http'
+import { HttpServerError, HttpServerRequest } from 'effect/http'
 import { insideApi } from '@qualy/api-kit/route-fallback'
 import { clientWentAway, RequestContext, type RequestContextShape } from '@qualy/api-kit/request'
 import type { LoggingSettings } from './logging.ts'

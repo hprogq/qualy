@@ -2,8 +2,8 @@ import { literal } from '@qualy/i18n-contract'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
 import { Effect, Exit, Layer } from 'effect'
-import { HttpRouter, HttpServer, HttpServerRequest } from 'effect/unstable/http'
-import { HttpApiBuilder } from 'effect/unstable/httpapi'
+import { HttpRouter, HttpServer, HttpServerRequest } from 'effect/http'
+import { HttpApiBuilder } from 'effect/http-api'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   createTestContext,

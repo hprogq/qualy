@@ -1,5 +1,5 @@
 import { Context, Schema } from 'effect'
-import { HttpApiMiddleware, HttpApiSchema } from 'effect/unstable/httpapi'
+import { HttpApiMiddleware, HttpApiSchema } from 'effect/http-api'
 import type { Principal } from '@qualy/rbac-contract'
 
 // What an endpoint declares, with nothing behind it.

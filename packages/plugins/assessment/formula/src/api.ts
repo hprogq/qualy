@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
+import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
 import { Authenticated } from '@qualy/auth-contract/session'
 import {

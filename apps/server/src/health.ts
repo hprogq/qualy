@@ -1,5 +1,5 @@
 import { Cause, Duration, Effect, Fiber, Option, Schema } from 'effect'
-import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
+import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api'
 import { HEALTH_LIVE_PATH, HEALTH_READY_PATH, QUALY_API_ID } from '@qualy/api-kit'
 import { Readiness } from '@qualy/api-kit/readiness'
 

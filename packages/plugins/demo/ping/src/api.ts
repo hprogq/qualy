@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
+import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api'
 
 // The API this plugin contributes, as a definition only: no handler, no
 // database, nothing a browser cannot import. The client is built from this

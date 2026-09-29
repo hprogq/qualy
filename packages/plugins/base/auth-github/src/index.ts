@@ -1,6 +1,6 @@
 import { Effect, Redacted } from 'effect'
-import { HttpServerResponse } from 'effect/unstable/http'
-import { HttpApiBuilder, HttpApiClient } from 'effect/unstable/httpapi'
+import { HttpServerResponse } from 'effect/http'
+import { HttpApiBuilder, HttpApiClient } from 'effect/http-api'
 import {
   LoginSessions,
   type BindingRejection,

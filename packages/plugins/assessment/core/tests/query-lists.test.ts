@@ -6,7 +6,7 @@ import { idList, isoDate } from '../src/api.ts'
 //
 // `?a=1&a=2` reaches a handler as an array and `?a=1` as a plain string -
 // that is what UrlParams.toRecord builds (repos/effect/packages/effect/src/
-// unstable/http/UrlParams.ts). A schema asking for an array therefore refused
+// http/UrlParams.ts). A schema asking for an array therefore refused
 // every request that named exactly one thing, which is most of them, and the
 // refusal arrived at the screen as a bare 400 with nothing to act on.
 //

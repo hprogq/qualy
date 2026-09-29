@@ -237,7 +237,7 @@ export interface TestContextOptions {
  * failure into a pass, because every error collected here is still thrown.
  */
 async function teardown(options: {
-  scope?: Scope.Scope
+  scope?: Scope.Closeable
   admin: Pool
   name: string
 }): Promise<void> {

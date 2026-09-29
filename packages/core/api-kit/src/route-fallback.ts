@@ -1,5 +1,5 @@
 import { Effect, Layer } from 'effect'
-import { HttpRouter, HttpServerResponse } from 'effect/unstable/http'
+import { HttpRouter, HttpServerResponse } from 'effect/http'
 import { QUALY_API_PREFIX } from './index.ts'
 import { ApiRouteNotFound } from './schema.ts'
 
@@ -24,7 +24,7 @@ import { ApiRouteNotFound } from './schema.ts'
  * not-found - believed the request was somewhere else.
  *
  * Same three steps, in the router's own order (its lookup in
- * repos/effect/packages/effect/src/unstable/http/FindMyWay/internal/router.ts:
+ * repos/effect/packages/effect/src/http/FindMyWay/internal/router.ts:
  * duplicate slashes collapsed, then decoded, then lowercased because
  * `caseSensitive` defaults to false). Where decoding is ambiguous this
  * answers yes: treating something as belonging to a mount that the router
@@ -61,7 +61,7 @@ export const apiRouteNotFound: Effect.Effect<HttpServerResponse.HttpServerRespon
  * specificity, so every declared endpoint wins over it, and a shell's own
  * catch-all at `/*` loses to it. A route rather than serve middleware
  * because the platform writes the router's not-found before the serve
- * middleware runs (repos/effect/packages/effect/src/unstable/http/HttpEffect.ts,
+ * middleware runs (repos/effect/packages/effect/src/http/HttpEffect.ts,
  * toHandled): by the time a middleware could catch the error, an empty 404
  * has already gone out.
  */

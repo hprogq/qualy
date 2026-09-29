@@ -6,7 +6,7 @@ import {
   HttpServerRequest,
   HttpServerRespondable,
   HttpServerResponse,
-} from 'effect/unstable/http'
+} from 'effect/http'
 import { NodeHttpServer } from '@effect/platform-node'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'

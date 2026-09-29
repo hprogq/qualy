@@ -1,7 +1,7 @@
 import { ByteSize, Effect as Eff } from 'effect'
 import type { Effect } from 'effect'
-import { HttpServerRequest as Incoming } from 'effect/unstable/http'
-import type { HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
+import { HttpServerRequest as Incoming } from 'effect/http'
+import type { HttpServerRequest, HttpServerResponse } from 'effect/http'
 import { requestOriginGuard } from '@qualy/api-kit/origin'
 import { storableTextGuard } from '@qualy/api-kit/storable-text'
 import {

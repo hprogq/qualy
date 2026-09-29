@@ -14,7 +14,7 @@ import {
 import { secretsLayer } from '@qualy/plugin-secrets/testkit'
 import { captchaLayer } from '@qualy/plugin-captcha/testkit'
 import { Secrets } from '@qualy/plugin-secrets/plugin'
-import { HttpServerRequest } from 'effect/unstable/http'
+import { HttpServerRequest } from 'effect/http'
 import { type Orm } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
 import { serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'

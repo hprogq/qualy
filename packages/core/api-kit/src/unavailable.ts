@@ -1,5 +1,5 @@
 import { Cause, Effect } from 'effect'
-import { HttpRouter, HttpServerRespondable, HttpServerResponse } from 'effect/unstable/http'
+import { HttpRouter, HttpServerRespondable, HttpServerResponse } from 'effect/http'
 import { ServiceUnavailable } from './schema.ts'
 
 // A request that failed because something this server depends on is down or

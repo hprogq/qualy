@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { Effect, Exit, Layer, Scope, Stream } from 'effect'
 import { NodeSocket } from '@effect/platform-node'
-import { RpcClient, RpcClientError, RpcGroup, RpcSerialization } from 'effect/unstable/rpc'
+import { RpcClient, RpcClientError, RpcGroup, RpcSerialization } from 'effect/rpc'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { FormulaAuthoringRpcs, SANDBOX_RPC_MAX_FRAME_BYTES } from '@qualy/sandbox-rpc'
 

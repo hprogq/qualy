@@ -1,7 +1,7 @@
 import { useContext } from 'react'
 import type { Effect } from 'effect'
 import type { NamespacedId } from '@qualy/ui-contract'
-import type { HttpApi } from 'effect/unstable/httpapi'
+import type { HttpApi } from 'effect/http-api'
 import { Api } from '@qualy/api-kit/local'
 import { appApiGroup } from '@qualy/app-contract'
 import { sharedContext } from './shared-context.ts'

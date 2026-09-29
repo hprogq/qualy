@@ -2,8 +2,8 @@ import fs from 'node:fs'
 import { NodeHttpServer } from '@effect/platform-node'
 import { sql } from 'kysely'
 import { Effect, Exit, Layer, Scope } from 'effect'
-import { HttpRouter } from 'effect/unstable/http'
-import { HttpApiBuilder } from 'effect/unstable/httpapi'
+import { HttpRouter } from 'effect/http'
+import { HttpApiBuilder } from 'effect/http-api'
 import { createServer } from 'node:http'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import {
@@ -54,7 +54,7 @@ const api = Api.local(sessionApiGroup, authLocalApiGroup)
 
 const password = 'correct horse battery staple'
 
-let scope: Scope.Scope
+let scope: Scope.Closeable
 let db: Awaited<ReturnType<typeof createTestContext>>
 
 let userId: string

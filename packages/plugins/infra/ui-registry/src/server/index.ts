@@ -1,5 +1,5 @@
 import { Effect, Layer } from 'effect'
-import { HttpApiBuilder } from 'effect/unstable/httpapi'
+import { HttpApiBuilder } from 'effect/http-api'
 import { Api } from '@qualy/api-kit/plugin'
 import { CurrentViewer } from '@qualy/auth-contract/session'
 import { appApiGroup } from '@qualy/app-contract'

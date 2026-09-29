@@ -1,6 +1,6 @@
 import { Effect, Stream } from 'effect'
-import { HttpApiBuilder } from 'effect/unstable/httpapi'
-import { HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
+import { HttpApiBuilder } from 'effect/http-api'
+import { HttpServerRequest, HttpServerResponse } from 'effect/http'
 import { Api } from '@qualy/api-kit/plugin'
 import { nameEndpoint } from '@qualy/api-kit/request'
 import { Storage } from '@qualy/plugin-storage/server'

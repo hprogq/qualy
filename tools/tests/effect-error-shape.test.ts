@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { HttpApi, OpenApi } from 'effect/unstable/httpapi'
+import { HttpApi, OpenApi } from 'effect/http-api'
 import { QUALY_API_ID } from '@qualy/api-kit'
 import { orgApiGroup } from '@qualy/plugin-org/api'
 

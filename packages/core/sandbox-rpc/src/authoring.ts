@@ -6,7 +6,7 @@
  */
 
 import { Schema } from 'effect'
-import { Rpc, RpcGroup } from 'effect/unstable/rpc'
+import { Rpc, RpcGroup } from 'effect/rpc'
 import { lspRpcs } from './lsp.ts'
 
 /** one formula source's byte ceiling, reported by capabilities */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Effect } from 'effect'
-import { FetchHttpClient, HttpClient } from 'effect/unstable/http'
+import { FetchHttpClient, HttpClient } from 'effect/http'
 import { retryQuery } from '../src/api-query.ts'
 import { nextRedialMs } from '../src/api-stream.ts'
 

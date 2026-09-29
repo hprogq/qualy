@@ -4,7 +4,7 @@ import { permissions as authPermissions } from '@qualy/plugin-auth/permissions'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
 import { Cause, Deferred, Effect, Exit, Fiber, Layer } from 'effect'
-import { HttpServerRequest } from 'effect/unstable/http'
+import { HttpServerRequest } from 'effect/http'
 import { describe, expect, it } from 'vitest'
 import {
   createTestContext,

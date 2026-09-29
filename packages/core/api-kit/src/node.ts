@@ -1,5 +1,5 @@
 import { Context, Effect } from 'effect'
-import { HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
+import { HttpServerRequest, HttpServerResponse } from 'effect/http'
 import { NodeHttpServerRequest } from '@effect/platform-node'
 import type * as Http from 'node:http'
 

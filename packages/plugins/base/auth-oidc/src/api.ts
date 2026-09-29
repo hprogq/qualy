@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/unstable/httpapi'
+import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api'
 import { RETURN_PATH_MAX_LENGTH } from '@qualy/ui-contract/return-path'
 import { Viewer } from '@qualy/auth-contract/session'
 

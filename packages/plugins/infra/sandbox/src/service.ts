@@ -16,7 +16,7 @@
 import { createHash } from 'node:crypto'
 import { Cause, Context, Effect, Fiber, Layer, Predicate, Result, Schema } from 'effect'
 import { NodeSocket } from '@effect/platform-node'
-import { RpcClient, RpcSerialization } from 'effect/unstable/rpc'
+import { RpcClient, RpcSerialization } from 'effect/rpc'
 import {
   DEFAULT_LIMITS,
   ENTRYPOINT,

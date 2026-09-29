@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { HttpApiBuilder } from 'effect/unstable/httpapi'
+import { HttpApiBuilder } from 'effect/http-api'
 import type { LoginDriver } from '@qualy/auth-contract/login'
 import { Login } from '@qualy/auth-contract/plugin'
 import { normalizeEmail } from '@qualy/auth-contract/email'

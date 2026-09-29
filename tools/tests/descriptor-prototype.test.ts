@@ -1,5 +1,5 @@
 import { Effect, Exit, Layer, Redacted, Scope } from 'effect'
-import { HttpRouter } from 'effect/unstable/http'
+import { HttpRouter } from 'effect/http'
 import { NodeHttpServer } from '@effect/platform-node'
 import { createServer } from 'node:http'
 import { describe, expect, it } from 'vitest'

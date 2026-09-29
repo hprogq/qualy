@@ -16,7 +16,9 @@
         "includeSuggestionsInTsc": true,
         "ignoreEffectSuggestionsInTscExitCode": true,
         "diagnosticSeverity": {
-          "schemaNumber": "off"
+          "schemaNumber": "off",
+          "unstableApiUsage": "off",
+          "experimentalApiUsage": "off"
         }
       }
     ]

@@ -1,4 +1,4 @@
-import { HttpApi, type HttpApiGroup } from 'effect/unstable/httpapi'
+import { HttpApi, type HttpApiGroup } from 'effect/http-api'
 import { QUALY_API_ID, QUALY_API_PREFIX } from '@qualy/api-kit'
 import { ApiGroups } from '@qualy/api-kit/plugin'
 import { Plugin } from '@qualy/plugin-kit'

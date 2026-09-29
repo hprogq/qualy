@@ -1,6 +1,6 @@
 import { Effect, Layer } from 'effect'
-import { HttpApi, HttpApiBuilder, HttpApiScalar } from 'effect/unstable/httpapi'
-import type { HttpApi as HttpApiType, HttpApiGroup } from 'effect/unstable/httpapi'
+import { HttpApi, HttpApiBuilder, HttpApiScalar } from 'effect/http-api'
+import type { HttpApi as HttpApiType, HttpApiGroup } from 'effect/http-api'
 import { ExtensionPoint, Plugin, type AnyLayer, type PluginFeature } from '@qualy/plugin-kit'
 import { QUALY_API_ID, QUALY_API_PREFIX } from './index.ts'
 import { Api as BrowserSafeApi } from './local.ts'

@@ -1,6 +1,6 @@
 import { Context, Effect, type Layer } from 'effect'
-import { HttpMethod, HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
-import { HttpApi, type HttpApiGroup } from 'effect/unstable/httpapi'
+import { HttpMethod, HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/http'
+import { HttpApi, type HttpApiGroup } from 'effect/http-api'
 import { insideApi } from './route-fallback.ts'
 import { BadRequest, unstorableText } from './schema.ts'
 
@@ -95,7 +95,7 @@ const carriesUnstorableText = (body: string): boolean => {
  * It reads no body. The typeless refusal happens here, in front of the
  * router, because the two readings of such a body disagree: an endpoint
  * decodes it as JSON (the platform falls back to `application/json` when the
- * header is missing - repos/effect/packages/effect/src/unstable/httpapi/
+ * header is missing - repos/effect/packages/effect/src/http-api/
  * HttpApiBuilder.ts, `decodePayload`), while a raw door streams it. Every
  * client of this api names the type of what it sends - the typed client
  * JSON, the upload door's `application/octet-stream` - so nothing legitimate

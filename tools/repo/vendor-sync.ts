@@ -8,7 +8,7 @@ import path from 'node:path'
 //
 // It is here so that anything reasoning about Effect or Drizzle reads the code
 // that actually runs rather than remembering an older API. Effect v4 is in
-// beta and the modules this project depends on live under `unstable/`, where
+// beta and the modules this project depends on are marked `@stability unstable`, where
 // a minor release is allowed to change them, so "the docs said" is not a
 // source. `repos/` is the source.
 //

@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { OpenApi } from 'effect/unstable/httpapi'
+import { OpenApi } from 'effect/http-api'
 import type { AuditAction } from '../../packages/contracts/audit/src/action.ts'
 import { servedApi } from './support/served-api.ts'
 

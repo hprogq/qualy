@@ -5,7 +5,7 @@ import {
   type ReleaseStanding,
 } from '@qualy/api-kit/client-assembly'
 import { Cause, Context, Effect, Exit, Layer, Logger, Schema, Scope } from 'effect'
-import { HttpRouter, HttpServerResponse } from 'effect/unstable/http'
+import { HttpRouter, HttpServerResponse } from 'effect/http'
 import fs from 'node:fs'
 import { createServer } from 'node:http'
 import os from 'node:os'
@@ -78,7 +78,7 @@ const policy = Layer.succeed(
   ShellPolicyHeader.of({ value: () => "default-src 'self'" }),
 )
 
-let scope: Scope.Scope
+let scope: Scope.Closeable
 /** what this process says about a release a page claims to be running */
 let standingOf: (releaseId: string) => ReleaseStanding
 

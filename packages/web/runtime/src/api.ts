@@ -4,8 +4,8 @@ import {
   HttpClient,
   HttpClientRequest,
   type HttpClientResponse,
-} from 'effect/unstable/http'
-import { HttpApiClient, type HttpApi, type HttpApiGroup } from 'effect/unstable/httpapi'
+} from 'effect/http'
+import { HttpApiClient, type HttpApi, type HttpApiGroup } from 'effect/http-api'
 import { QUALY_BACKGROUND_HEADER } from '@qualy/api-kit'
 import { apiRouteTemplates } from '@qualy/api-kit/local'
 import { registerApiRoutes } from '@qualy/browser-observability/api-routes'
@@ -158,7 +158,7 @@ const markedBackground = HttpClient.mapRequest((request) =>
  * the sentences written for them could never be reached.
  *
  * The client falls through two ways (repos/effect/packages/effect/src/
- * unstable/httpapi/HttpApiClient.ts): with a `DecodeError` when the endpoint
+ * http-api/HttpApiClient.ts): with a `DecodeError` when the endpoint
  * declares nothing for the status, and with a `StatusCodeError` when it
  * declares errors of its own there and the body is none of them - an
  * endpoint with its own 503 (a mail that could not be sent, a sandbox that

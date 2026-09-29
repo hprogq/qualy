@@ -1,6 +1,6 @@
 import { Cause, Effect, Result } from 'effect'
-import { HttpRouter, HttpServerResponse } from 'effect/unstable/http'
-import { HttpApiError } from 'effect/unstable/httpapi'
+import { HttpRouter, HttpServerResponse } from 'effect/http'
+import { HttpApiError } from 'effect/http-api'
 import { BadRequest } from './schema.ts'
 
 // A request the endpoint's own schema would not read, answered in the one
@@ -8,7 +8,7 @@ import { BadRequest } from './schema.ts'
 //
 // The platform turns a decoding failure into a defect and renders it as an
 // EMPTY 400 - no body, no content type (repos/effect/packages/effect/src/
-// unstable/httpapi/HttpApiError.ts, `badRequestResponse`; the die is in
+// http-api/HttpApiError.ts, `badRequestResponse`; the die is in
 // HttpApiBuilder's handler). Measured: `{status: 400, contentType: null,
 // body: ''}`. That is the one JSON error under `/api` with no `_tag` on it,
 // so the browser's error translation has nothing to key on and a stale tab

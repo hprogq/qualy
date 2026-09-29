@@ -5,7 +5,7 @@
  */
 
 import { Schema } from 'effect'
-import { Rpc, RpcGroup } from 'effect/unstable/rpc'
+import { Rpc, RpcGroup } from 'effect/rpc'
 import { invokeErrors } from './errors.ts'
 import { SandboxLimitsSchema } from './protocol.ts'
 

@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/unstable/httpapi'
+import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api'
 import {
   BadRequest,
   boundedText,
@@ -297,7 +297,7 @@ const phaseView = Schema.Struct({
  * A repeated query parameter, which is a list only when it repeats.
  *
  * `?a=1&a=2` arrives as an array and `?a=1` as a string - that is what
- * UrlParams.toRecord builds (repos/effect/packages/effect/src/unstable/http/
+ * UrlParams.toRecord builds (repos/effect/packages/effect/src/http/
  * UrlParams.ts). A schema asking for an array therefore refused every request
  * that named exactly one thing, which is most of them.
  */

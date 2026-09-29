@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 import { BUILTIN_LOGIN_ICONS } from '@qualy/auth-contract/login-icons'
-import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/unstable/httpapi'
+import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api'
 import { AccessDenied, LastAdministrator } from '@qualy/rbac-contract/effect'
 import {
   BadRequest,

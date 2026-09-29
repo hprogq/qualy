@@ -27,7 +27,7 @@ import {
   TenantAdminRequired,
 } from './server/errors.ts'
 import { Schema } from 'effect'
-import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
+import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api'
 import {
   BadRequest,
   boundedText,
