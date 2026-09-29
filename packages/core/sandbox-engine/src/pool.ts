@@ -38,6 +38,9 @@ export interface PoolProblem {
   readonly reason: string
 }
 
+/** how long a worker may take to report ready before it counts as lost */
+const READY_TIMEOUT_MS = 15_000
+
 export interface PoolOptions {
   readonly size: number
   readonly variant: 'release' | 'debug'
@@ -68,7 +71,17 @@ export class WorkerPool {
    */
   async start(): Promise<void> {
     while (this.#slots.length < this.#options.size) this.#spawn()
-    await Promise.all(this.#slots.map((slot) => slot.ready))
+    try {
+      await Promise.all(this.#slots.map((slot) => this.#awaitReady(slot)))
+    } catch (problem) {
+      const why =
+        problem instanceof Error
+          ? problem.message
+          : typeof problem === 'object' && problem !== null && 'reason' in problem
+            ? String(problem.reason)
+            : String(problem)
+      throw new Error(`a sandbox worker did not start: ${why}`, { cause: problem })
+    }
   }
 
   run(request: InvokeRequest, hardDeadlineMs: number): Promise<InvokeResponse> {
@@ -123,22 +136,8 @@ export class WorkerPool {
 
   async #settle(slot: Slot, pending: Pending): Promise<void> {
     let watchdog: NodeJS.Timeout | undefined
-    let readyTimer: NodeJS.Timeout | undefined
     try {
-      // a worker that never reports ready (a broken wasm load that hangs
-      // rather than throwing) must not wedge the queue forever - and once it
-      // IS ready, the timer must not keep the process alive either
-      await Promise.race([
-        slot.ready,
-        new Promise<never>((_, reject) => {
-          readyTimer = setTimeout(
-            () => reject({ kind: 'worker-lost', reason: 'the worker never became ready' }),
-            15_000,
-          )
-          readyTimer.unref()
-        }),
-      ])
-      if (readyTimer !== undefined) clearTimeout(readyTimer)
+      await this.#awaitReady(slot)
       const response = await new Promise<InvokeResponse>((resolve, reject) => {
         const onMessage = (message: WorkerMessage) => {
           if ('id' in message && message.id === pending.request.id) {
@@ -181,6 +180,30 @@ export class WorkerPool {
     } finally {
       slot.busy = false
       this.#dispatch()
+    }
+  }
+
+  /**
+   * A worker that never reports ready - a wasm load that hangs rather than
+   * throwing - must not wedge the queue forever, nor a start that awaits it:
+   * past the timeout it is thrown away and the wait fails as a lost worker.
+   * Once it IS ready, the timer must not keep the process alive either.
+   */
+  async #awaitReady(slot: Slot): Promise<void> {
+    let timer: NodeJS.Timeout | undefined
+    try {
+      await Promise.race([
+        slot.ready,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            this.#discard(slot)
+            reject({ kind: 'worker-lost', reason: 'the worker never became ready' })
+          }, READY_TIMEOUT_MS)
+          timer.unref()
+        }),
+      ])
+    } finally {
+      if (timer !== undefined) clearTimeout(timer)
     }
   }
 

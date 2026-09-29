@@ -7,25 +7,13 @@
  * The pool comes up before the socket does: every worker is spawned, loaded
  * and warmed before anything can connect, so a deployment's readiness check
  * finds an engine that is already warm, and nobody's request pays for one.
- *
- * The socket file is this process's own: stale ones are removed before
- * listening (a crash leaves them behind and listen would refuse), and the
- * file is unlinked again on shutdown. Defects stay per-request
- * (disableFatalDefects): one broken evaluation must not tear down the
- * connection under everyone else's.
+ * A worker that cannot come up fails the start, and the process is restarted
+ * rather than left half started (./serve.ts).
  */
 
-import fs from 'node:fs'
-import path from 'node:path'
-import { randomUUID } from 'node:crypto'
-import { Context, Effect, Layer } from 'effect'
-import { NodeRuntime, NodeSocketServer } from '@effect/platform-node'
-import { SocketServer } from 'effect/unstable/socket'
-import { RpcSerialization, RpcServer } from 'effect/unstable/rpc'
-import { WorkerPool } from '@qualy/sandbox-engine'
-import { RuntimeSandboxRpcs, SANDBOX_RPC_MAX_FRAME_BYTES } from '@qualy/sandbox-rpc'
-import { invoke } from './invoke.ts'
-import { runtimeCapabilities } from './capabilities.ts'
+import { Effect, Layer } from 'effect'
+import { NodeRuntime } from '@effect/platform-node'
+import { runtimeServer, warmPoolLayer } from './serve.ts'
 
 const socketPath =
   process.env.QUALY_SANDBOX_RUNTIME_SOCKET ?? '.qualy/run/sandbox/runtime/runtime.sock'
@@ -44,72 +32,8 @@ const poolSize = (() => {
   process.exit(1)
 })()
 
-class Pool extends Context.Service<Pool, WorkerPool>()('@qualy/sandbox-runtime/Pool') {}
-
-// kept warm: started whole before the socket listens, and a worker thrown
-// away is replaced at once
-const poolLayer = Layer.effect(
-  Pool,
-  Effect.acquireRelease(
-    Effect.promise(async () => {
-      const pool = new WorkerPool({ size: poolSize, variant: 'release', keepWarm: true })
-      await pool.start()
-      return pool
-    }),
-    (acquired) => Effect.promise(() => acquired.shutdown()),
-  ),
-)
-
-const handlers = RuntimeSandboxRpcs.toLayer(
-  Effect.gen(function* () {
-    const pool = yield* Pool
-    // minted once per process: the identity every answer carries, so a
-    // caller can tell this serving instance from the one before it
-    const runtimeInstanceId = randomUUID()
-    const capabilities = runtimeCapabilities(runtimeInstanceId)
-    const identity = {
-      engineVersion: capabilities.quickjsEngineVersion,
-      runtimeBuildId: capabilities.runtimeBuildId,
-      runtimeInstanceId,
-    }
-    return {
-      GetRuntimeCapabilities: () => Effect.succeed(capabilities),
-      Invoke: (request: Parameters<typeof invoke>[1]) =>
-        Effect.map(invoke(pool, request), (answer) => ({ ...answer, ...identity })),
-    }
-  }),
-)
-
-// the socket file's lifecycle wraps the listener's: cleared before listen
-// (Effect only closes the server; a crash-stale file would refuse the bind),
-// removed after close
-const socketServerLayer = Layer.effect(
-  SocketServer.SocketServer,
-  Effect.gen(function* () {
-    yield* Effect.acquireRelease(
-      Effect.sync(() => {
-        fs.mkdirSync(path.dirname(socketPath), { recursive: true })
-        fs.rmSync(socketPath, { force: true })
-      }),
-      () => Effect.sync(() => fs.rmSync(socketPath, { force: true })),
-    )
-    const listening = yield* NodeSocketServer.make({ path: socketPath })
-    yield* Effect.log(`sandbox runtime listening on ${socketPath}`)
-    return listening
-  }),
-)
-
-const server = RpcServer.layer(RuntimeSandboxRpcs, { disableFatalDefects: true }).pipe(
-  Layer.provide(handlers),
-  Layer.provideMerge(RpcServer.layerProtocolSocketServer),
-  Layer.provideMerge(socketServerLayer),
-  Layer.provide(RpcSerialization.layerNdjsonWith({ maxBufferSize: SANDBOX_RPC_MAX_FRAME_BYTES })),
-  // outermost, so it is built - every worker ready - before the socket is
-  Layer.provide(poolLayer),
-)
-
 NodeRuntime.runMain(
-  Layer.launch(server).pipe(
+  Layer.launch(runtimeServer(socketPath, warmPoolLayer(poolSize))).pipe(
     Effect.tapCause((cause) => Effect.logError('sandbox runtime failed', cause)),
   ),
 )
