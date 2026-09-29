@@ -25,7 +25,6 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@qualy/ui/dialog'
-import { Blank } from '@qualy/ui/screen'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Spinner } from '@qualy/ui/spinner'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
@@ -1294,12 +1293,12 @@ function Desk({
               {null}
             </AsyncSection>
           ) : rows.length === 0 ? (
-            <div data-testid="overview-activity-empty">
-              <Blank
-                size="compact"
-                icon={<HistoryIcon aria-hidden />}
-                title={format(m.overviewActivityNone)}
-              />
+            // the same card as the desk's "nothing waiting" above it
+            <div data-testid="overview-activity-empty" {...stylex.props(styles.clearCard)}>
+              <span {...stylex.props(styles.clearMark)}>
+                <HistoryIcon aria-hidden className={stylex.props(styles.clearIcon).className} />
+              </span>
+              <p {...stylex.props(styles.clearWord)}>{format(m.overviewActivityNone)}</p>
             </div>
           ) : (
             <div {...stylex.props(styles.card)} data-testid="overview-activity">

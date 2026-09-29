@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
@@ -19,6 +20,15 @@ import { assessmentApi } from '../api.ts'
 // the round, and walking the whole list every half minute to count it cost
 // a request per page of work for a figure one query answers.
 
+// The count is asked once the page is up, so on a fresh page it comes a
+// moment after the rail. It arrives rather than blinks in, as the rail's
+// administration dot does (AdminAlertBadge); one already known when the rail
+// is drawn again, moving between pages, is simply there.
+const arrive = stylex.keyframes({
+  from: { opacity: 0, transform: 'scale(0.6)' },
+  to: { opacity: 1, transform: 'scale(1)' },
+})
+
 const styles = stylex.create({
   count: {
     marginLeft: 'auto',
@@ -32,6 +42,11 @@ const styles = stylex.create({
     fontWeight: 500,
     color: tokens.primaryForeground,
     fontVariantNumeric: 'tabular-nums',
+  },
+  arriving: {
+    animationName: { default: arrive, '@media (prefers-reduced-motion: reduce)': 'none' },
+    animationDuration: '150ms',
+    animationTimingFunction: 'ease-out',
   },
 })
 
@@ -48,10 +63,15 @@ function Count() {
     ...query.assessment.getMyOverview.queryOptions({ params: { batchId } }),
     refetchInterval: 30_000,
   })
+  const [waited] = useState(() => desk.data === undefined)
   const waiting = desk.data?.reviewer?.pendingCount ?? 0
   if (waiting === 0) return null
   return (
-    <span {...stylex.props(styles.count)} data-testid="queue-badge" data-count={waiting}>
+    <span
+      {...stylex.props(styles.count, waited && styles.arriving)}
+      data-testid="queue-badge"
+      data-count={waiting}
+    >
       {waiting}
     </span>
   )
