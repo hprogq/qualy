@@ -2316,6 +2316,9 @@ importers:
       '@qualy/sandbox-rpc':
         specifier: workspace:*
         version: link:../../../core/sandbox-rpc
+      '@qualy/telemetry':
+        specifier: workspace:*
+        version: link:../../../core/telemetry
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.115

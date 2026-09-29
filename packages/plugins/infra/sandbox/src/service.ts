@@ -43,6 +43,7 @@ import {
   SandboxWorkerLost,
   type SandboxError,
 } from './errors.ts'
+import { measuredInvoke } from './metrics.ts'
 
 export { SANDBOX_ABI_VERSION }
 
@@ -295,7 +296,8 @@ export const sandboxLayer = (options?: { readonly socketPath?: string }): Layer.
           (call) => transportDeadline(call, limits.hardDeadlineMs + TRANSPORT_GRACE_MS),
         )
       }
-      return { invoke }
+      // timed here, where the answer arrives: the sandbox has no network
+      return { invoke: (invocation: SandboxInvocation) => measuredInvoke(invoke(invocation)) }
     }),
   ).pipe(
     Layer.provide(RpcClient.layerProtocolSocket()),

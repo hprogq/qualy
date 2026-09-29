@@ -15,6 +15,7 @@
     "@effect/platform-node": "catalog:",
     "@qualy/plugin-kit": "workspace:*",
     "@qualy/sandbox-rpc": "workspace:*",
+    "@qualy/telemetry": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {
