@@ -79,8 +79,15 @@ export interface TransportOptions {
  * boots, so it measured none of this product's api calls while they all went
  * to the fetch as it stood at the first one. Only where nobody provided a
  * fetch of their own - a harness's is theirs to keep.
+ *
+ * And with the address as a string. The client hands fetch a `URL`, which
+ * fetch accepts but a wrapper need not: the rum sdk's reads the address as
+ * `typeof input === 'string' ? input : input.url` - right for a string or a
+ * Request, `undefined` for a URL - so every call was forwarded untouched and
+ * recorded with no address, and the api policy dropped all of them.
  */
-const currentFetch: typeof globalThis.fetch = (input, init) => globalThis.fetch(input, init)
+const currentFetch: typeof globalThis.fetch = (input, init) =>
+  globalThis.fetch(input instanceof URL ? input.href : input, init)
 
 const throughCurrentFetch = <E, R>(
   client: HttpClient.HttpClient.With<E, R>,

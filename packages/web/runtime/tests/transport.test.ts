@@ -303,11 +303,13 @@ describe('the fetch a request goes through', () => {
       const client = await Effect.runPromise(clientFor(api, 'http://qualy.test'))
       await Effect.runPromise(client.ping.hello())
 
-      // the monitor loads late and wraps the fetch it finds
+      // the monitor loads late and wraps the fetch it finds, reading the
+      // address as the rum sdk does (lib/aegis.min.js): a string, or a
+      // Request's `url` - a URL has no `url`, and was recorded as nothing
       const found = globalThis.fetch
       globalThis.fetch = function (this: unknown, input, init) {
         if (this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation')
-        monitored.push(String(input instanceof Request ? input.url : input))
+        monitored.push(String(typeof input === 'string' ? input : (input as { url?: string }).url))
         return found.call(globalThis, input, init)
       }
 
