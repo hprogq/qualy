@@ -15,6 +15,8 @@ import type { ReauthenticationRequired } from '@qualy/auth-contract/sign-in-fail
 import { db } from './db.ts'
 import { requireReauthenticated } from './reauthentication.ts'
 import { safeReturnPath } from '@qualy/ui-contract/return-path'
+import type { SignInDevice } from '@qualy/auth-contract/device'
+import { deviceAtStart, recordFlowDevice } from './sign-in-device.ts'
 
 // One redirect through somebody else's server, from the moment it leaves to
 // the moment it comes back.
@@ -115,6 +117,8 @@ export const makeFlows = Effect.fn('Auth.makeFlows')(function* () {
             yield* requireReauthenticated(input.provider.tenantId, input.binding.sessionId)
           }
           yield* sweep
+          // what the person said of their device, read where they set out
+          const device = yield* deviceAtStart
           const state = Redacted.make(randomBytes(STATE_BYTES).toString('base64url'))
           // the id first, because the payload is sealed under it: a payload
           // lifted onto another flow does not open
@@ -150,6 +154,7 @@ export const makeFlows = Effect.fn('Auth.makeFlows')(function* () {
                 sessionId: input.purpose === 'bind' ? input.binding!.sessionId : null,
                 returnPath: safeReturnPath(input.returnPath) ?? null,
                 payloadSealed: sealed,
+                device,
                 expiresAt: sql<Date>`now() + ${sql.raw(`interval '${String(FLOW_TTL_MINUTES)} minutes'`)}`,
               })
               .returning(['expiresAt'])
@@ -190,6 +195,7 @@ export const makeFlows = Effect.fn('Auth.makeFlows')(function* () {
               session_id: string | null
               return_path: string | null
               payload_sealed: string | null
+              device: SignInDevice
             }>`
               update auth_flows
                  set consumed_at = now()
@@ -197,7 +203,7 @@ export const makeFlows = Effect.fn('Auth.makeFlows')(function* () {
                  and consumed_at is null
                  and expires_at > now()
               returning id, tenant_id, auth_provider_id, purpose, user_id, session_id,
-                        return_path, payload_sealed`.execute(k),
+                        return_path, payload_sealed, device`.execute(k),
           )
           const row = taken.rows[0]
           if (row === undefined) {
@@ -244,6 +250,8 @@ export const makeFlows = Effect.fn('Auth.makeFlows')(function* () {
                   .pipe(Effect.orDie)
           // judged again on the way out, for a row stored under an older rule
           const returnPath = safeReturnPath(row.return_path)
+          // the session this flow ends in is made for the device it left on
+          yield* recordFlowDevice(row.device === 'shared' ? 'shared' : 'personal')
           return {
             ok: true as const,
             flow: {

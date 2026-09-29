@@ -49,6 +49,7 @@ import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
 import { authClosure } from './support/closure.ts'
 import { reauthenticated } from './support/reauthenticated.ts'
 import { hashSessionToken } from '../src/session.ts'
+import { SIGN_IN_DEVICE_COOKIE } from '@qualy/auth-contract/device'
 
 // A sign-in that leaves this application and comes back.
 //
@@ -1235,3 +1236,95 @@ describe.runIf(postgresAvailable)('showing it is you again', () => {
 /** the type the driver-facing surface hands over, kept honest here */
 const _shape: (provider: ResolvedProvider) => string = (provider) => provider.code
 void _shape
+
+/** the newest session of the seeded person: the device it was made for, and how long it runs */
+const newestSession = (person: string) =>
+  Effect.map(
+    runSql<{ device: string; runs: number }>(sql`
+      select device, extract(epoch from expires_at - created_at)::int as runs from sessions
+       where user_id = ${person} order by created_at desc, id desc limit 1`),
+    (result) => result.rows[0]!,
+  )
+
+describe.runIf(postgresAvailable)('the device a session is signed in on', () => {
+  it('is what the page said at the sign-in, and a shared one runs no longer than eight hours', async () => {
+    const db = await createTestContext('flows-device-direct')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const sessions = yield* LoginSessions
+            const signIn = (cookies: Record<string, string>) =>
+              Effect.andThen(
+                sessions
+                  .completeLogin({ tenantId: f.tenant, providerId: f.local.id, userId: f.person })
+                  .pipe(inBrowser(cookies)),
+                newestSession(f.person),
+              )
+            return {
+              shared: yield* signIn({ [SIGN_IN_DEVICE_COOKIE]: 'shared' }),
+              personal: yield* signIn({}),
+              unclear: yield* signIn({ [SIGN_IN_DEVICE_COOKIE]: 'yes-please' }),
+            }
+          }),
+        ),
+      )
+      expect(answer.shared.device).toBe('shared')
+      expect(answer.shared.runs).toBeLessThanOrEqual(8 * 3600)
+      expect(answer.personal.device).toBe('personal')
+      // anything that is not the one word is a personal device
+      expect(answer.unclear.device).toBe('personal')
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('is what the flow recorded when it left, never what the request coming back carries', async () => {
+    const db = await createTestContext('flows-device-redirect')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const sessions = yield* LoginSessions
+            const door = yield* resolve('campus')
+            const leave = (cookies: Record<string, string>) =>
+              sessions.startFlow({ provider: door, purpose: 'login' }).pipe(inBrowser(cookies))
+            const arrive = (state: string, cookies: Record<string, string>) =>
+              Effect.andThen(
+                Effect.andThen(
+                  sessions.consumeFlow({ provider: door, state }),
+                  sessions.completeLogin({
+                    tenantId: f.tenant,
+                    providerId: door.providerId,
+                    userId: f.person,
+                  }),
+                ).pipe(inBrowser({ qualy_flow: state, ...cookies })),
+                newestSession(f.person),
+              )
+            // set out on a shared device; the way back carries no choice at all
+            const fromShared = yield* leave({ [SIGN_IN_DEVICE_COOKIE]: 'shared' })
+            const recorded = yield* runSql<{ device: string }>(
+              sql`select device from auth_flows where id = ${fromShared.flowId}`,
+            )
+            const shared = yield* arrive(Redacted.value(fromShared.state), {})
+            // set out on a personal one; the way back claims otherwise
+            const fromPersonal = yield* leave({})
+            const personal = yield* arrive(Redacted.value(fromPersonal.state), {
+              [SIGN_IN_DEVICE_COOKIE]: 'shared',
+            })
+            return { recorded: recorded.rows[0]!.device, shared, personal }
+          }),
+        ),
+      )
+      expect(answer.recorded).toBe('shared')
+      expect(answer.shared.device).toBe('shared')
+      expect(answer.personal.device).toBe('personal')
+    } finally {
+      await db.dispose()
+    }
+  })
+})

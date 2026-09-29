@@ -43,6 +43,7 @@ import { AuthShell, Ring } from './sign-in/AuthShell.tsx'
 import { gapped } from './sign-in/gapped.ts'
 import { returnPathFrom, startHref } from './sign-in/return-path.ts'
 import { LoginMethodGlyph } from './sign-in/glyph.tsx'
+import { SharedDeviceChoice } from './sign-in/SharedDevice.tsx'
 
 // The sign-in page: which workspace this is, and the ways into it.
 //
@@ -671,8 +672,14 @@ export default function LoginPage() {
     )
   })()
 
+  // asked once for the whole visit, whichever way in is taken, and only while
+  // there are ways in to take
+  const choosing =
+    !context.isPending && decided && !signedIn && context.isSuccess && methods.length > 0
+
   return (
     <AuthShell
+      footer={choosing ? <SharedDeviceChoice /> : undefined}
       overlay={
         <AnimatePresence>
           {leaving !== null && (

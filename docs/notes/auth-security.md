@@ -47,6 +47,16 @@ Cookie + 不透明 session token(库存 sha256),不用 JWT/localStorage:
   从 `coalesce(last_used_at, created_at)` 算,由库的 `now()` 判定;超过即与过期同样处理(删行、清 Cookie、回 SESSION_EXPIRED)。
   机房、共用电脑上关掉浏览器而会话还在,是这条要挡的;
 - last_used_at 节流 300s 才写(`TOUCH_INTERVAL_MS`),所以空闲判定有 5 分钟松弛:1 小时 55 分前记下的使用仍有效,2 小时 05 分前的一定过期;
+- **公用设备会话**(2026-09-29,用户裁决):登录页三处(入口首页、表单页、更多方式)都有「这是公用电脑」,答案写进页面自己的
+  cookie `qualy_sign_in_device=shared`(`@qualy/auth-contract/device`,半年,记在这台浏览器上,下一个人也看到已勾选)。
+  **每个会话自己知道自己的模式**:`sessions.device` 与 `auth_flows.device`(`personal` | `shared`,迁移
+  `20260929144138_session-device`,expand)。公用会话空闲 30 分钟、绝对 8 小时(不超过普通会话的绝对期限),两者都在服务端判定;
+  固定常量(`SHARED_DEVICE_IDLE_SECONDS` / `SHARED_DEVICE_TTL_SECONDS`)而非部署变量,因为这是登录页对勾选者的承诺;部署把普通空闲
+  设成 0 也不影响公用会话。会话 Cookie 不带 Max-Age(浏览器会话级),但**安全性不建立在「关浏览器即登出」上**:浏览器的会话恢复
+  可能把它带回来,真正生效的是服务端的 30 分钟与 8 小时。
+  **来源只有一个判定处**(`server/sign-in-device.ts`):表单登录读本次请求的 cookie;跳转登录在 `startFlow` 时读发起请求的 cookie
+  写进流程行,回调时 `consumeFlow` 把流程行的值记到本次请求上,`completeLogin` 只用它——回调请求携带的 cookie、地址参数一概不信
+  (测试以「发起时普通、回调时塞 shared」钉住)。四个驱动都不知道这件事。邮箱密码表单在公用电脑上不记住任何人的邮箱。
 - **后台请求不算使用**:浏览器在标签页隐藏或读者一分钟内没有按键、点按、触摸、滚动时发出的请求带 `x-qualy-background: 1`
   (`@qualy/api-kit` 的 `QUALY_BACKGROUND_HEADER`,由 web-runtime 的 transport 逐个请求判定),服务端照常服务、不改 last_used_at,
   否则开着不管的页面靠轮询与实时通道重连就能永远续命;

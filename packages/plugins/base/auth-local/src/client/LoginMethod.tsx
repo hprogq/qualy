@@ -7,6 +7,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { PageLink, useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
+import { deviceOfCookieHeader } from '@qualy/auth-contract/device'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Input } from '@qualy/ui/input'
 import { Label } from '@qualy/ui/label'
@@ -49,6 +50,15 @@ const remember = (email: string | null) => {
     else window.localStorage.setItem(REMEMBERED, email)
   } catch {
     // a browser that keeps nothing simply asks again next time
+  }
+}
+
+/** whether the sign-in page was told this is a computer others use */
+const onSharedDevice = (): boolean => {
+  try {
+    return deviceOfCookieHeader(document.cookie) === 'shared'
+  } catch {
+    return false
   }
 }
 
@@ -205,7 +215,8 @@ export default function LocalLoginMethod({
           payload: { email: address, password, ...(proof === undefined ? {} : { captcha: proof }) },
         }),
       )
-      remember(keep ? address : null)
+      // a computer others use keeps nobody's address, whatever the box said
+      remember(keep && !onSharedDevice() ? address : null)
       onAuthenticated()
     } catch (failure: unknown) {
       setBusy(false)

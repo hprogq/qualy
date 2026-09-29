@@ -103,6 +103,16 @@ const styles = stylex.create({
     paddingBlock: { default: '0 72px', [PHONE]: '16px 40px' },
   },
   content: { position: 'relative', width: '100%', maxWidth: 400 },
+  // what the page asks of the whole visit rather than of one way in, at the
+  // foot of the column and apart from the ways in above
+  foot: {
+    display: 'flex',
+    flexShrink: 0,
+    justifyContent: 'center',
+    paddingInline: { default: 48, [PHONE]: 24 },
+    paddingBottom: { default: 32, [PHONE]: 24 },
+  },
+  footContent: { width: '100%', maxWidth: 400 },
   itemCheck: { width: 14, height: 14, marginInlineStart: 'auto' },
   itemIcon: { width: 15, height: 15 },
   theme: {
@@ -201,7 +211,15 @@ function ThemeMenu() {
   )
 }
 
-export function AuthShell({ children, overlay }: { children: ReactNode; overlay?: ReactNode }) {
+export function AuthShell({
+  children,
+  overlay,
+  footer,
+}: {
+  children: ReactNode
+  overlay?: ReactNode
+  footer?: ReactNode
+}) {
   const still = useReducedMotion() === true
   return (
     <div data-testid="auth-shell" {...stylex.props(styles.frame)}>
@@ -232,6 +250,11 @@ export function AuthShell({ children, overlay }: { children: ReactNode; overlay?
             {children}
           </motion.div>
         </div>
+        {footer !== undefined && (
+          <div {...stylex.props(styles.foot)}>
+            <div {...stylex.props(styles.footContent)}>{footer}</div>
+          </div>
+        )}
         {overlay !== undefined && <div {...stylex.props(styles.overlay)}>{overlay}</div>}
       </main>
     </div>

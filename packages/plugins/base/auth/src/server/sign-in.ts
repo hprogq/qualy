@@ -27,7 +27,9 @@ import {
 import { createSessionToken, hashSessionToken } from '../session.ts'
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { Secrets } from '@qualy/plugin-secrets/plugin'
-import { AuthConfig } from './auth-config.ts'
+import { AuthConfig, SHARED_DEVICE_TTL_SECONDS } from './auth-config.ts'
+import type { SignInDevice } from '@qualy/auth-contract/device'
+import { signInDevice } from './sign-in-device.ts'
 import { configOf, entranceSecrets, makeReadiness } from './readiness.ts'
 import { FLOW_TTL_MINUTES, makeFlows } from './flows.ts'
 import { captchaPurpose } from '@qualy/plugin-captcha/contract'
@@ -499,6 +501,7 @@ const insertSession = (input: {
   authBindingId: string | undefined
   tokenHash: string
   ttlSeconds: number
+  device: SignInDevice
   loginIp?: string
   userAgent?: string
 }) =>
@@ -512,6 +515,7 @@ const insertSession = (input: {
         authBindingId: input.authBindingId ?? null,
         tokenHash: input.tokenHash,
         expiresAt: sql<Date>`now() + make_interval(secs => ${input.ttlSeconds})`,
+        device: input.device,
         loginIp: input.loginIp ?? null,
         userAgent: input.userAgent ?? null,
       })
@@ -786,10 +790,10 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
   // so 604800 serialized as `Max-Age=604` and every session died after ten
   // minutes while its row still held a seven-day expiry. Verified against the
   // installed package.
-  const setCookie = (value: string, maxAgeSeconds: number) =>
+  const setCookie = (value: string, maxAgeSeconds: number | undefined) =>
     setSessionCookie(config.sessionCookieName, value, {
       secure: config.secureCookies,
-      maxAge: Duration.seconds(maxAgeSeconds),
+      maxAge: maxAgeSeconds === undefined ? undefined : Duration.seconds(maxAgeSeconds),
     })
 
   /**
@@ -1218,6 +1222,14 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         // proxy itself on any proxied deployment
         const context = Option.getOrUndefined(yield* currentRequestContext)
         const { token, tokenHash } = createSessionToken()
+        // A device others use gets a session that ends sooner, idle and in
+        // any case; the lifetime is kept on the row, where a restored cookie
+        // cannot stretch it, and the cookie keeps no age of its own
+        const device = yield* signInDevice
+        const ttlSeconds =
+          device === 'shared'
+            ? Math.min(SHARED_DEVICE_TTL_SECONDS, config.sessionTtlSeconds)
+            : config.sessionTtlSeconds
         for (const grant of input.grants ?? []) {
           if (grant.kind.startsWith(CORE_GRANT_PREFIX)) {
             return yield* Effect.die(
@@ -1266,7 +1278,8 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
               authProviderId: input.providerId,
               authBindingId: input.bindingId,
               tokenHash,
-              ttlSeconds: config.sessionTtlSeconds,
+              ttlSeconds,
+              device,
               loginIp: context?.clientIp,
               userAgent: context?.userAgent,
             }).pipe(Effect.orDie)
@@ -1304,7 +1317,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         if (sessionId === undefined) return undefined
         // this request now has a session, before anything else records it
         yield* bindSessionId(sessionId)
-        yield* setCookie(token, config.sessionTtlSeconds)
+        yield* setCookie(token, device === 'shared' ? undefined : config.sessionTtlSeconds)
         // a secure deployment reads only the prefixed name; the bare one a
         // browser may still carry from before the rename is dropped here,
         // once, so it does not ride along for the rest of its lifetime

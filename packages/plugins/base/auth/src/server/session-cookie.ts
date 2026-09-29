@@ -33,7 +33,8 @@ export const sessionCookieNames: readonly [string, string] = [
 export const setSessionCookie = (
   name: string,
   value: string,
-  options: { readonly secure: boolean; readonly maxAge: Duration.Duration },
+  /** no age: the browser's own session keeps it, as a shared device's is kept */
+  options: { readonly secure: boolean; readonly maxAge: Duration.Duration | undefined },
 ): Effect.Effect<void, never, HttpServerRequest.HttpServerRequest> =>
   HttpEffect.appendPreResponseHandler((_request, response) =>
     Effect.orDie(
@@ -42,7 +43,7 @@ export const setSessionCookie = (
         sameSite: 'lax',
         path: '/',
         secure: options.secure,
-        maxAge: options.maxAge,
+        ...(options.maxAge === undefined ? {} : { maxAge: options.maxAge }),
       }),
     ),
   )

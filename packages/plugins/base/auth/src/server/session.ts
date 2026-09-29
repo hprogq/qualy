@@ -5,7 +5,7 @@ import { bindSessionId } from '@qualy/api-kit/request'
 import { withDatabase } from '@qualy/plugin-database/server'
 import { db } from './db.ts'
 import { sql } from 'kysely'
-import { AuthConfig } from './auth-config.ts'
+import { AuthConfig, SHARED_DEVICE_IDLE_SECONDS } from './auth-config.ts'
 import {
   AuthRequired,
   Authenticated,
@@ -45,9 +45,10 @@ import { hashSessionToken } from '../session.ts'
  * TENANT. Checking `t.enabled` and forgetting `n.enabled` leaves a disabled
  * tenant's sessions working, which is what this expression got wrong once.
  *
- * `idle` is the deployment's idle limit, measured from the last use recorded,
- * or from the start for a session never used since; the database's clock
- * decides it, as it decides the absolute expiry beside it.
+ * `idle` is the idle limit - the deployment's, or a shared device's own for
+ * a session signed in on one - measured from the last use recorded, or from
+ * the start for a session never used since; the database's clock decides it,
+ * as it decides the absolute expiry beside it.
  */
 const sessionByToken = (tokenHash: string, idleSeconds: number | undefined) =>
   db.query((k) =>
@@ -67,10 +68,17 @@ const sessionByToken = (tokenHash: string, idleSeconds: number | undefined) =>
         's.userId',
         's.lastUsedAt',
         sql<boolean>`${eb.ref('s.expiresAt')} <= now()`.as('expired'),
-        (idleSeconds === undefined
-          ? sql<boolean>`false`
-          : sql<boolean>`coalesce(${eb.ref('s.lastUsedAt')}, ${eb.ref('s.createdAt')}) <= now() - make_interval(secs => ${idleSeconds})`
-        ).as('idle'),
+        // a shared device's session keeps its own shorter limit, whatever the
+        // deployment's is - even none
+        sql<boolean>`case
+          when ${eb.ref('s.device')} = 'shared'
+            then coalesce(${eb.ref('s.lastUsedAt')}, ${eb.ref('s.createdAt')}) <= now() - make_interval(secs => ${SHARED_DEVICE_IDLE_SECONDS})
+          else ${
+            idleSeconds === undefined
+              ? sql<boolean>`false`
+              : sql<boolean>`coalesce(${eb.ref('s.lastUsedAt')}, ${eb.ref('s.createdAt')}) <= now() - make_interval(secs => ${idleSeconds})`
+          }
+        end`.as('idle'),
         sql<boolean>`
           ${eb.ref('u.enabled')} and ${eb.ref('t.enabled')} and ${eb.ref('n.enabled')}
           and (${eb.ref('n.expiresAt')} is null or ${eb.ref('n.expiresAt')} > now())

@@ -57,13 +57,13 @@ let user: string
 const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
 
 /** a session for the one user, last recorded as used `ago` (a postgres interval) before now */
-const session = (token: string, ago: string | null) =>
+const session = (token: string, ago: string | null, device: 'personal' | 'shared' = 'personal') =>
   Effect.runPromise(
     runSql(sql`
-      insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at, last_used_at, created_at)
+      insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at, last_used_at, created_at, device)
       select ${tenant}, ${user}, p.id, ${hashSessionToken(token)}, now() + interval '7 days',
              ${ago === null ? sql`null` : sql`now() - ${sql.raw(`interval '${ago}'`)}`},
-             now() - interval '3 hours'
+             now() - interval '3 hours', ${device}
         from auth_providers p where p.tenant_id = ${tenant} and p.code = 'local'`).pipe(
       Effect.provide(infra),
     ),
@@ -187,6 +187,24 @@ describe.runIf(postgresAvailable)('a session left unused', () => {
     const polled = await ask('abandoned', { [QUALY_BACKGROUND_HEADER]: '1' })
     expect(polled.status).toBe(401)
     expect(await polled.json()).toMatchObject({ _tag: 'SESSION_EXPIRED' })
+  })
+})
+
+describe.runIf(postgresAvailable)('a session signed in on a device others use', () => {
+  // thirty minutes is its limit whatever the deployment's is: the page
+  // promised it to whoever ticked the box
+  it('stays live 25 minutes after its last recorded use', async () => {
+    await session('shared-recent', '25 minutes', 'shared')
+    expect((await ask('shared-recent')).status).toBe(200)
+  })
+
+  it('is over 35 minutes after, where a personal one is not', async () => {
+    await session('shared-gone', '35 minutes', 'shared')
+    await session('personal-same', '35 minutes')
+    const shared = await ask('shared-gone')
+    expect(shared.status).toBe(401)
+    expect(await shared.json()).toMatchObject({ _tag: 'SESSION_EXPIRED' })
+    expect((await ask('personal-same')).status).toBe(200)
   })
 })
 

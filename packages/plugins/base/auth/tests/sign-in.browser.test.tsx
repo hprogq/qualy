@@ -588,3 +588,82 @@ describe('the way back after signing in', () => {
     expect(new URLSearchParams(addressNow().split('?')[1]).get('next')).toBe('/reports')
   })
 })
+
+describe('a computer others use', () => {
+  const COOKIE = 'qualy_sign_in_device'
+  const said = () => document.cookie.split('; ').find((part) => part.startsWith(`${COOKIE}=`))
+  const forget = () => {
+    document.cookie = `${COOKIE}=; Path=/; Max-Age=0`
+  }
+
+  it('is asked under the ways in, and the answer goes with whichever way is taken', async () => {
+    forget()
+    try {
+      await renderScreen({
+        client: fakeClient({
+          app: { getManifest: emptyManifest() },
+          auth: {
+            ...anonymous,
+            listLoginMethods: context([password, away('cas', '统一身份认证')]),
+          },
+        }),
+        route: '/login',
+        children: <LoginPage />,
+      })
+      const box = page.getByTestId('sign-in-shared-device')
+      await expect.element(box).not.toBeChecked()
+      await box.click()
+      await expect.element(box).toBeChecked()
+      // a cookie of the page's own, so a redirect's first step carries it too
+      expect(said()).toBe(`${COOKIE}=shared`)
+      await box.click()
+      await expect.element(box).not.toBeChecked()
+      expect(said()).toBeUndefined()
+    } finally {
+      forget()
+    }
+  })
+
+  it('is remembered at this browser for the next person', async () => {
+    document.cookie = `${COOKIE}=shared; Path=/`
+    try {
+      await renderScreen({
+        client: fakeClient({
+          app: { getManifest: emptyManifest() },
+          auth: { ...anonymous, listLoginMethods: context([password]) },
+        }),
+        route: '/login',
+        children: <LoginPage />,
+      })
+      await expect.element(page.getByTestId('sign-in-shared-device')).toBeChecked()
+    } finally {
+      forget()
+    }
+  })
+
+  it('keeps nobody’s address after a sign-in, whatever the address box said', async () => {
+    document.cookie = `${COOKIE}=shared; Path=/`
+    try {
+      await renderScreen({
+        client: fakeClient({
+          app: { getManifest: emptyManifest() },
+          auth: { ...anonymous, listLoginMethods: context([password]) },
+          authLocal: { login: () => Effect.succeed({}) },
+        }),
+        registry: {
+          login: { local: lazy(() => import('@qualy/plugin-auth-local/client/LoginMethod')) },
+        },
+        route: '/login?method=password',
+        storage: { 'qualy:sign-in-email': 'earlier@school.edu' },
+        children: <LoginPage />,
+      })
+      await expect.element(page.getByTestId('remember-email')).toBeChecked()
+      await page.getByLabelText('邮箱').fill('ada@school.edu')
+      await page.getByLabelText('密码').fill('a long enough password')
+      await page.getByTestId('local-submit').click()
+      await expect.poll(() => window.localStorage.getItem('qualy:sign-in-email')).toBeNull()
+    } finally {
+      forget()
+    }
+  })
+})

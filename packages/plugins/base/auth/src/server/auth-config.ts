@@ -81,6 +81,15 @@ export const SESSION_IDLE_MALFORMED =
 export const DEFAULT_SESSION_IDLE_SECONDS = 7_200
 
 /**
+ * A session signed in on a device others use: thirty minutes unused ends it,
+ * and it ends eight hours after sign-in in any case - never later than a
+ * personal one would. Fixed rather than a deployment's to move: it is what
+ * the sign-in page promises the person who ticked the box.
+ */
+export const SHARED_DEVICE_IDLE_SECONDS = 1_800
+export const SHARED_DEVICE_TTL_SECONDS = 28_800
+
+/**
  * The idle limit a deployment asked for: undefined for none, and nothing
  * shorter than ten minutes - use is recorded at most every five, so a shorter
  * limit would end sessions that are in use.

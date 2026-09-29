@@ -368,8 +368,16 @@ export const Session = defineEntity({
     lastUsedAt: p.datetime().nullable(),
     loginIp: p.string().type('inet').nullable(),
     userAgent: p.text().nullable(),
+    /**
+     * Whose device it was signed in on, as the person said: their own, or
+     * one others use. A shared device's session ends sooner idle and sooner
+     * outright, on the server - which is where the difference is kept, since
+     * a browser may restore a cookie it was told to forget.
+     */
+    device: p.string().length(8).defaultRaw(`'personal'`),
     createdAt: p.datetime().defaultRaw('now()'),
   },
+  checks: [{ name: 'chk_sessions_device', expression: `device IN ('personal', 'shared')` }],
   indexes: [
     // revoke-all-for-user, expiry sweeps and the referencing side of the fk
     {
@@ -493,12 +501,19 @@ export const AuthFlow = defineEntity({
     returnPath: p.string().length(2048).nullable(),
     /** what the driver has to remember, sealed under this flow */
     payloadSealed: p.text().nullable(),
+    /**
+     * The device the person said they were on when the flow left: the one
+     * answer the session it ends in may be made from - never anything the
+     * request that comes back carries
+     */
+    device: p.string().length(8).defaultRaw(`'personal'`),
     expiresAt: p.datetime(),
     consumedAt: p.datetime().nullable(),
     createdAt: p.datetime().defaultRaw('now()'),
   },
   checks: [
     { name: 'chk_auth_flows_purpose', expression: `purpose IN ('login', 'bind')` },
+    { name: 'chk_auth_flows_device', expression: `device IN ('personal', 'shared')` },
     {
       name: 'chk_auth_flows_bind',
       expression: `(purpose = 'bind') = (user_id IS NOT NULL AND session_id IS NOT NULL)`,

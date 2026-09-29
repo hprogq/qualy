@@ -53,6 +53,8 @@ export default {
   'auth/login/title': '登录 Qualy',
   'auth/login/choose': '请选择登录方式',
   'auth/login/others': '其他登录方式',
+  'auth/login/shared-device': '这是公用电脑',
+  'auth/login/shared-device-hint': '30 分钟无操作或关闭浏览器后需重新登录',
   'auth/login/demo': '使用演示账号体验',
   'auth/login/all-others': '全部 {count} 种其他方式',
   'auth/login/others-count': '{count} 种',
