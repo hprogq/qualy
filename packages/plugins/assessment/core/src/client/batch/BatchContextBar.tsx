@@ -16,6 +16,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
+import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { assessmentApi } from '../api.ts'
@@ -184,6 +185,34 @@ const styles = stylex.create({
     paddingInline: { default: null, [breakpoints.phone]: 16 },
     paddingBlock: { default: null, [breakpoints.phone]: 7 },
   },
+  // At a desk the stage and its clock are themselves the way to the whole
+  // plan: pointed at, they answer like a control; pressed, the plan opens
+  // at the side. The inset is given back so the words keep the margin every
+  // other line on the strip keeps.
+  stageKey: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    borderWidth: 0,
+    borderRadius: tokens.radiusMd,
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': tokens.surfaceMuted,
+      ':focus-visible': tokens.surfaceMuted,
+    },
+    paddingInline: 8,
+    paddingBlock: 4,
+    marginInline: -8,
+    color: 'inherit',
+    font: 'inherit',
+    textAlign: 'start',
+    cursor: 'pointer',
+    transitionProperty: 'background-color',
+    transitionDuration: '120ms',
+  },
+  flowPanel: {
+    maxWidth: { default: null, [breakpoints.tablet]: '24rem', [breakpoints.desktop]: '24rem' },
+  },
   progressText: {
     // one size across the strip: the stage and its clock are one line, and
     // a name a pixel larger than the time beside it reads as a heading
@@ -339,15 +368,32 @@ export default function BatchContextBar() {
           </span>
         ) : (
           <>
-            <BatchZone zone={batch.timezone}>
-              <BatchProgress
-                showStage
-                single={head}
-                flat={head}
-                timeline={stages}
-                xstyle={styles.progressText}
-              />
-            </BatchZone>
+            {head ? (
+              <BatchZone zone={batch.timezone}>
+                <BatchProgress
+                  showStage
+                  single
+                  flat
+                  timeline={stages}
+                  xstyle={styles.progressText}
+                />
+              </BatchZone>
+            ) : (
+              <button
+                type="button"
+                data-testid="stage-key"
+                aria-haspopup="dialog"
+                title={format(m.viewFullFlow)}
+                onClick={() => setFlowOpen(true)}
+                {...stylex.props(styles.stageKey)}
+              >
+                <BatchZone zone={batch.timezone}>
+                  <BatchProgress showStage timeline={stages} xstyle={styles.progressText} />
+                </BatchZone>
+                {/* heard after the stage it opens the plan of */}
+                <VisuallyHidden>{format(m.viewFullFlow)}</VisuallyHidden>
+              </button>
+            )}
             {/* the whole plan, one press away rather than repeated above
                 every section: a reader who wants it asks for it */}
             {head && (
@@ -366,7 +412,9 @@ export default function BatchContextBar() {
       </div>
 
       <Sheet open={flowOpen} onOpenChange={setFlowOpen}>
-        <SheetContent side="bottom">
+        {/* from the side at a desk, where the stage was pressed; from the
+            bottom on a phone, where the thumb is */}
+        <SheetContent side={head ? 'bottom' : 'right'} xstyle={styles.flowPanel}>
           <SheetHeader>
             <SheetTitle>{format(m.flowTitle)}</SheetTitle>
           </SheetHeader>
