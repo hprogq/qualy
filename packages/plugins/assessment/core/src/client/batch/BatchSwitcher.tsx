@@ -11,6 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@qualy/ui/popover'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Spinner } from '@qualy/ui/spinner'
 import { useIsMobile } from '@qualy/ui/use-mobile'
+import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { StatusBadge } from './StatusBadge.tsx'
@@ -283,11 +284,10 @@ export function BatchSwitcher({
         {/* motion lives in @qualy/ui, so the movement here is css: a plugin
             pulling its own animation library is how two of them end up in one
             bundle */}
-        <button
-          type="button"
-          aria-label={format(m.switchBatch)}
-          {...stylex.props(styles.trigger, open && styles.triggerOpen)}
-        >
+        <button type="button" {...stylex.props(styles.trigger, open && styles.triggerOpen)}>
+          {/* what it does, and then the words it shows: a name that left
+              those out could not be asked for by whoever reads them */}
+          <VisuallyHidden>{format(m.switchBatch)}</VisuallyHidden>
           <span {...stylex.props(styles.triggerName)} title={name}>
             {name}
           </span>

@@ -3045,8 +3045,12 @@ describe('the batch switcher', () => {
         : answer
     })
     await screen({ listBatches }, `/assessment/batches/${BATCH_ID}`)
-    await expect.element(page.getByRole('button', { name: '切换批次' })).toBeVisible()
-    await page.getByRole('button', { name: '切换批次' }).click()
+    const switcher = page.getByRole('button', { name: /^切换批次/ })
+    await expect.element(switcher).toBeVisible()
+    // named by what it does and then by the round it shows, so the words on
+    // it are words it can be asked for by
+    await expect.element(switcher).toHaveAccessibleName(new RegExp(batch().name))
+    await switcher.click()
 
     // the menu lives in a portal, which the page locators do not walk
     const menu = () => document.querySelector('[data-slot="popover-content"]')
