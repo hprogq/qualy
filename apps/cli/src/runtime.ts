@@ -5,6 +5,7 @@ import { shutdownTimeoutMs } from '@qualy/assembly/host'
 import { headlessGraph, headlessHost } from '@qualy/api-kit/headless'
 import { CliRefused, type RuntimeCliCommand } from '@qualy/plugin-kit/cli'
 import { stillFinalizing, traceLayerLifecycle } from '@qualy/plugin-kit/shutdown-trace'
+import { installProductMessages } from '@qualy/text/node'
 
 // The CLI's runtime edge.
 //
@@ -64,6 +65,7 @@ export async function runRuntimeCommand(
   resolution: Resolution,
   command: RuntimeCliCommand,
   args: readonly string[],
+  productRoot: string,
 ): Promise<number> {
   if (process.env.QUALY_MIGRATIONS === 'apply') {
     console.error(MIGRATIONS_REFUSED)
@@ -72,6 +74,13 @@ export async function runRuntimeCommand(
   let deadline: number
   try {
     deadline = shutdownTimeoutMs(process.env)
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error))
+    return 1
+  }
+  // the same messages the server says things with, from the same place
+  try {
+    await installProductMessages(productRoot)
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error))
     return 1

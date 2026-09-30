@@ -1,7 +1,7 @@
 import { inspect } from 'node:util'
 import { NodeRuntime } from '@effect/platform-node'
 import { Cause, Effect, Exit, Layer } from 'effect'
-import { readManifest } from '@qualy/assembly'
+import { productRootFor, readManifest } from '@qualy/assembly'
 import { shutdownTimeoutMs } from '@qualy/assembly/host'
 import { telemetryLayer } from '@qualy/telemetry'
 import { logLine, loggingLayer, resolveLogging } from './logging.ts'
@@ -17,6 +17,7 @@ import { supervisedPrepareFence } from './dev/fence.ts'
 import { verifyAssembly } from './verify-assembly.ts'
 import { manifestPath } from './manifest.ts'
 import { stillFinalizing, traceLayerLifecycle } from '@qualy/plugin-kit/shutdown-trace'
+import { installProductMessages } from '@qualy/text/node'
 
 // Everything this process does before it is an application, and everything it
 // says while doing it, through one logger. This process generates nothing:
@@ -109,6 +110,18 @@ const prepare = Effect.gen(function* () {
 
 const resolution = await Effect.runPromise(Effect.provide(prepare, logs)).catch(refuse)
 mark('assembly verified')
+
+// What the server says - navigation, permission names, a sign-in method's
+// form - it says from the messages compiled beside the product
+// (docs/adr/0011-i18n-paraglide.md). Development compiles them first, as the
+// dev server does for the browser; production loads what the image carries,
+// and a process that could not say them does not start.
+if (mode === 'development') {
+  const { compileForDevelopment } = await import('./dev/messages.ts')
+  await compileForDevelopment(manifestPath()).catch(refuse)
+}
+await installProductMessages(productRootFor(manifestPath())).catch(refuse)
+mark('messages loaded')
 
 const { makeApplication } = await import('./runtime.ts').catch(refuse)
 const application = await makeApplication(resolution, logging).catch(refuse)

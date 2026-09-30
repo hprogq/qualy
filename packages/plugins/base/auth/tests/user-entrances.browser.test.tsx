@@ -19,7 +19,7 @@ const LOCAL_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const CAS_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const OAUTH_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
 
-const word = (value: string) => ({ kind: 'literal' as const, value })
+const word = (value: string) => value
 
 const person = (over: Partial<Person['user']> = {}): Person => ({
   user: {

@@ -619,10 +619,10 @@ describe('roles screen', () => {
     const permission = (code: string, label: string) => ({
       code,
       plugin: 'assessment',
-      name: { kind: 'literal' as const, value: label },
+      name: label,
       description: null,
       groupKey: 'assessment',
-      group: { kind: 'literal' as const, value: '综合测评' },
+      group: '综合测评',
       target: 'org-node' as const,
     })
     await renderScreen({

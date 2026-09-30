@@ -19,12 +19,13 @@ import {
   type UiSurfaces,
   reactComponent,
 } from '@qualy/ui-contract'
-import { message } from '@qualy/i18n-contract'
+import { literal } from '@qualy/text'
 import type { Principal } from '@qualy/rbac-contract'
 import { Api } from '@qualy/api-kit/plugin'
 import { CurrentViewer, Viewer } from '@qualy/auth-contract/session'
 import { appApiHandlers } from '../src/server/index.ts'
 import { UiAuthorizer } from '../src/server/authorizer.ts'
+import { DocumentContext } from '../src/document-context.ts'
 import { UiManifest, layer as manifestLayer } from '../src/server/manifest.ts'
 import { registerSurfaces, uiLayer } from '../src/server/registry.ts'
 import { appApiGroup } from '@qualy/app-contract'
@@ -37,7 +38,7 @@ import { appApiGroup } from '@qualy/app-contract'
 // declarations never leave. Both are silent when broken, which is why they are
 // asserted rather than assumed.
 
-const label = message('test/nav/item', 'Item')
+const label = literal('Item')
 
 const publicPage = definePage({ id: 'test/public', path: '/public' })
 const memberPage = definePage({ id: 'test/member', path: '/member' })
@@ -137,7 +138,7 @@ const build = (principal: Principal | undefined, held: readonly string[]) =>
   Effect.runPromise(
     Effect.gen(function* () {
       const manifest = yield* UiManifest
-      return yield* manifest.build(principal)
+      return yield* manifest.build(principal, 'en-US')
     }).pipe(
       Effect.provide(
         manifestLayer.pipe(
@@ -188,6 +189,13 @@ beforeAll(async () => {
         Layer.succeed(UiAuthorizer, {
           permissionsFor: () => Effect.succeed(new Set(['test.thing.read'])),
         }),
+        // what a plugin would have the whole page read, in the reader's language
+        Layer.succeed(
+          DocumentContext,
+          DocumentContext.of({
+            of: (reader) => Effect.succeed({ 'probe/words': { locale: reader.locale } }),
+          }),
+        ),
         // the endpoint says who is asking through this middleware; a stub that
         // always reports the same viewer is enough to prove the wiring
         Layer.succeed(
@@ -242,7 +250,10 @@ describe('the manifest over the wire', () => {
     const body = (await response.json()) as {
       pages: { id: string }[]
       collections: Record<string, { id: string; icon?: string }[]>
+      context: Record<string, unknown>
     }
+    // what the page reads whole, for a reader who named no language: the product's
+    expect(body.context).toEqual({ 'probe/words': { locale: 'zh-CN' } })
     expect(body.pages.map((page) => page.id).sort()).toEqual([
       'test/gated',
       'test/member',
@@ -374,7 +385,8 @@ describe('the manifest a viewer receives', () => {
     expect(anonymous.collections[primaryNavigation.key]).toStrictEqual([
       {
         id: 'test/public/nav',
-        label,
+        // said, not referenced: the manifest carries words in the reader's language
+        label: 'Item',
         target: { kind: 'page', pageId: 'test/public', path: '/public' },
         order: 1,
       },

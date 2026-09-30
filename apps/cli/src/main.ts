@@ -292,7 +292,7 @@ async function main(): Promise<void> {
       // the one tier that builds services, loaded only when asked for: resolve
       // and the other two tiers never pay for Effect or a plugin's graph
       const { runRuntimeCommand } = await import('./runtime.ts')
-      process.exitCode = await runRuntimeCommand(resolution, entry.command, args)
+      process.exitCode = await runRuntimeCommand(resolution, entry.command, args, productRoot)
       return
     }
     const implementation = await entry.command.load()

@@ -7,36 +7,41 @@
 // AUTHENTICATED visibility. Modelling it as a permission meant every user
 // type needed a role just to carry it, which is most of why user types
 // started carrying roles at all.
-import { message } from '@qualy/i18n-contract'
 import type { PermissionDefinition } from '@qualy/rbac-contract'
+import { text } from '@qualy/text'
+import { messageRefs } from '@qualy/text/node'
+import type * as M from '#messages'
+
+// this package's messages, by name (docs/adr/0011-i18n-paraglide.md)
+const m = messageRefs<typeof M>(import.meta.url)
 
 export const permissions = [
   {
     code: 'auth.user-type.read',
-    name: message('auth/permission/user-type-read', 'View user types'),
+    name: text(m.permission_userTypeRead),
     groupKey: 'identity',
-    group: message('auth/permission-group/identity', 'People and sign-in'),
+    group: text(m.permissionGroup_identity),
     target: 'tenant',
   },
   {
     code: 'auth.user-type.manage',
-    name: message('auth/permission/user-type-manage', 'Manage user types'),
+    name: text(m.permission_userTypeManage),
     groupKey: 'identity',
-    group: message('auth/permission-group/identity', 'People and sign-in'),
+    group: text(m.permissionGroup_identity),
     target: 'tenant',
   },
   {
     code: 'auth.provider.read',
-    name: message('auth/permission/provider-read', 'View login methods'),
+    name: text(m.permission_providerRead),
     groupKey: 'identity',
-    group: message('auth/permission-group/identity', 'People and sign-in'),
+    group: text(m.permissionGroup_identity),
     target: 'tenant',
   },
   {
     code: 'auth.provider.manage',
-    name: message('auth/permission/provider-manage', 'Manage login methods'),
+    name: text(m.permission_providerManage),
     groupKey: 'identity',
-    group: message('auth/permission-group/identity', 'People and sign-in'),
+    group: text(m.permissionGroup_identity),
     target: 'tenant',
   },
   // Apart from manage, which arranges the doors: adding one, and what one
@@ -45,23 +50,23 @@ export const permissions = [
   // holds it; anybody else only when given it on purpose.
   {
     code: 'auth.provider.trust.manage',
-    name: message('auth/permission/provider-trust-manage', 'Add and connect login methods'),
+    name: text(m.permission_providerTrustManage),
     groupKey: 'identity',
-    group: message('auth/permission-group/identity', 'People and sign-in'),
+    group: text(m.permissionGroup_identity),
     target: 'tenant',
   },
   {
     code: 'auth.user.read',
-    name: message('auth/permission/user-read', 'View users'),
+    name: text(m.permission_userRead),
     groupKey: 'identity',
-    group: message('auth/permission-group/identity', 'People and sign-in'),
+    group: text(m.permissionGroup_identity),
     target: 'org-node',
   },
   {
     code: 'auth.user.manage',
-    name: message('auth/permission/user-manage', 'Manage users'),
+    name: text(m.permission_userManage),
     groupKey: 'identity',
-    group: message('auth/permission-group/identity', 'People and sign-in'),
+    group: text(m.permissionGroup_identity),
     target: 'org-node',
   },
   // Deliberately apart from manage: erasing a person from the living set is
@@ -69,9 +74,9 @@ export const permissions = [
   // everyone who administers a unit would make deletion routine.
   {
     code: 'auth.user.delete',
-    name: message('auth/permission/user-delete', 'Delete users'),
+    name: text(m.permission_userDelete),
     groupKey: 'identity',
-    group: message('auth/permission-group/identity', 'People and sign-in'),
+    group: text(m.permissionGroup_identity),
     target: 'org-node',
   },
 ] as const satisfies readonly PermissionDefinition[]

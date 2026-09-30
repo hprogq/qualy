@@ -8,7 +8,12 @@ import { APP_SHELL, PUBLIC } from '@qualy/ui-contract'
 import { withDatabase } from '@qualy/plugin-database/server'
 import { pingApiGroup } from './api.ts'
 import { entities } from './db/entities.ts'
-import { message } from '@qualy/i18n-contract'
+import { text } from '@qualy/text'
+import { messageRefs } from '@qualy/text/node'
+import type * as M from '#messages'
+
+// this package's messages, by name (docs/adr/0011-i18n-paraglide.md)
+const m = messageRefs<typeof M>(import.meta.url)
 
 // The plugin, as one description: a table, a screen, an api group. The
 // default export is the whole of it - what the descriptor assembler loads -
@@ -45,7 +50,6 @@ const plugin = Plugin.define(
   '@qualy/plugin-ping',
   { dependsOn: ['@qualy/plugin-database', '@qualy/plugin-ui-registry'] },
   Db.entities(entities),
-  Ui.i18n('./client/i18n'),
   Ui.page({
     id: 'ping/page',
     path: '/ping',
@@ -53,7 +57,7 @@ const plugin = Plugin.define(
     layout: APP_SHELL,
     // the demo endpoint is deliberately open; a real plugin would gate this
     visibility: PUBLIC,
-    navigation: { label: message('ping/navigation/ping', 'Ping'), order: 10 },
+    navigation: { label: text(m.navigation_ping), order: 10 },
   }),
   Api.group(pingApiGroup, handlers),
 )

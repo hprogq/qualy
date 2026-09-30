@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api'
-import { BadRequest, pageOf, pageQuery, uiText, uuidInput } from '@qualy/api-kit/schema'
+import { BadRequest, pageOf, pageQuery, uuidInput } from '@qualy/api-kit/schema'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
 import { Authenticated } from '@qualy/auth-contract/session'
 
@@ -19,7 +19,7 @@ const auditEvent = Schema.Struct({
   actionCode: Schema.String,
   actionVersion: Schema.Number,
   /** the declaring plugin's display name for the action; null for a code no loaded plugin declares */
-  actionName: Schema.NullOr(uiText),
+  actionName: Schema.NullOr(Schema.String),
   actorKind: Schema.Literals(['user', 'system', 'service', 'anonymous']),
   actorUserId: Schema.NullOr(Schema.String),
   actorLabel: Schema.NullOr(Schema.String),
@@ -61,7 +61,7 @@ export const auditApiGroup = HttpApiGroup.make('audit')
     HttpApiEndpoint.get('getAuditEventOptions', '/audit/event-options', {
       success: Schema.Struct({
         actions: Schema.Array(
-          Schema.Struct({ code: Schema.String, name: uiText, plugin: Schema.String }),
+          Schema.Struct({ code: Schema.String, name: Schema.String, plugin: Schema.String }),
         ),
       }),
       error: [AccessDenied],

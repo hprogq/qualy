@@ -15,7 +15,6 @@ import {
   type ResolvedNavigationItem,
 } from '@qualy/ui-contract'
 import { UiSlot, usePagePrefetch, usePendingNavigation } from '@qualy/web-runtime'
-import { LocalizedText } from '@qualy/web-i18n'
 
 // The one bar that never changes: which applications there are, which one is
 // open, and the account. Everything below it belongs to the application.
@@ -455,7 +454,7 @@ export function TopBar({
                 lit={styles.tabActive}
                 idle={styles.tabIdle}
               >
-                <LocalizedText value={app.label} />
+                {app.label}
               </BarLink>
             </li>
           ))}
@@ -506,7 +505,7 @@ export function SectionChips({ items }: { items: readonly ResolvedNavigationItem
             href={item.target.href}
             {...(item.target.newWindow ? { target: '_blank', rel: 'noreferrer noopener' } : {})}
           >
-            <LocalizedText value={item.label} />
+            {item.label}
           </a>
         ),
       )}
@@ -540,7 +539,7 @@ function SectionChip({
           .className ?? ''
       }
     >
-      <LocalizedText value={label} />
+      {label}
     </NavLink>
   )
 }
@@ -563,7 +562,7 @@ export function SectionBar({ items }: { items: readonly ResolvedNavigationItem[]
                   idle={styles.sectionIdle}
                   word={styles.sectionWord}
                 >
-                  <LocalizedText value={item.label} />
+                  {item.label}
                 </BarLink>
               ) : (
                 <a
@@ -573,7 +572,7 @@ export function SectionBar({ items }: { items: readonly ResolvedNavigationItem[]
                     ? { target: '_blank', rel: 'noreferrer noopener' }
                     : {})}
                 >
-                  <LocalizedText value={item.label} />
+                  {item.label}
                 </a>
               )}
             </li>

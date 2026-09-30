@@ -1,6 +1,5 @@
 import { defineErrorTranslations, type ErrorsByCode } from '@qualy/i18n-contract'
 import type * as formulaErrors from '../server/errors.ts'
-import type { Message } from '@qualy/i18n-contract'
 import * as m from '#messages'
 
 // What this plugin's screens say is in messages/<locale>.json, called as
@@ -35,25 +34,3 @@ export const errorMessages = defineErrorTranslations<ErrorsByCode<typeof formula
   ASSESSMENT_FORMULA_TEST_FAILED: m.error_testFailed,
   ASSESSMENT_FORMULA_COMPILE_UNAVAILABLE: m.error_compileUnavailable,
 }).registry
-
-// the messages the server names over the wire, by the id it sends
-export const wireMessages: Record<string, Message> = {
-  'assessment-formula/audit/archive': m.audit_archive,
-  'assessment-formula/audit/create': m.audit_create,
-  'assessment-formula/audit/delete': m.audit_delete,
-  'assessment-formula/audit/details-change': m.audit_detailsChange,
-  'assessment-formula/audit/draft-update': m.audit_draftUpdate,
-  'assessment-formula/audit/restore': m.audit_restore,
-  'assessment-formula/audit/sharing-change': m.audit_sharingChange,
-  'assessment-formula/audit/template-copy': m.audit_templateCopy,
-  'assessment-formula/audit/version-info-change': m.audit_versionInfoChange,
-  'assessment-formula/binding/calculator': m.binding_calculator,
-  'assessment-formula/list/title': m.list_title,
-  'assessment-formula/nav-group/library': m.navGroup_library,
-  'assessment-formula/navigation/formulas': m.navigation_formulas,
-  'assessment-formula/navigation/templates': m.navigation_templates,
-  'assessment-formula/permission-group/assessment': m.permissionGroup_assessment,
-  'assessment-formula/permission/author': m.permission_author,
-  'assessment-formula/permission/share': m.permission_share,
-  'assessment-formula/templates/title': m.templates_title,
-}

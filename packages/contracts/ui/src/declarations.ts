@@ -1,4 +1,4 @@
-import type { UiText } from '@qualy/i18n-contract'
+import type { Text } from '@qualy/text'
 import type { ClientComponentRef } from './components.ts'
 import type { NamespacedId } from './ids.ts'
 import type { UiCollectionToken, LayoutContractId } from './surfaces.ts'
@@ -39,7 +39,7 @@ export interface PageDeclaration {
    * declarations of the same thing drift. This is for the pages with no menu
    * entry, and for the ones a tab should name differently.
    */
-  readonly title?: UiText
+  readonly title?: Text
   /**
    * Sugar for the primary navigation entry most pages also want.
    *
@@ -47,7 +47,7 @@ export interface PageDeclaration {
    * its menu item cannot drift into disagreeing about who may see them.
    */
   readonly navigation?: {
-    readonly label: UiText
+    readonly label: Text
     readonly icon?: string
     readonly order?: number
     readonly group?: NamespacedId

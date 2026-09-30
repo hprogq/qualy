@@ -9,7 +9,7 @@ import { apiError, emptyManifest, fakeClient, renderScreen } from './support/scr
 
 const power = (n: number) => ({
   code: `x.${String(n)}`,
-  name: { kind: 'literal' as const, value: `权限${String(n)}` },
+  name: `权限${String(n)}`,
 })
 
 const role = (over: Record<string, unknown>) => ({

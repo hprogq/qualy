@@ -352,12 +352,24 @@ const relativeImport = (fromDir: string, file: string) => {
   return relative.startsWith('.') ? relative : `./${relative}`
 }
 
-/** writes a file only when its content changed, so a watcher sees only real changes */
+/**
+ * Writes a file only when its content changed, so a watcher sees only real
+ * changes, and whole: the dev server and a backend in development compile the
+ * same inputs side by side, and neither may read the other's half-written file.
+ */
 const put = (file: string, content: string, written: Set<string>) => {
   written.add(path.resolve(file))
   if (fs.existsSync(file) && fs.readFileSync(file, 'utf8') === content) return
   fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file, content)
+  const partial = `${file}.${process.pid}.partial`
+  fs.writeFileSync(partial, content)
+  fs.renameSync(partial, file)
+}
+
+/** a file this compile did not write goes, but not one a compile beside it is writing */
+const drop = (file: string, written: Set<string>) => {
+  if (written.has(file) || file.endsWith('.partial')) return
+  fs.rmSync(file, { force: true })
 }
 
 const GENERATOR_VERSION = '2'
@@ -416,8 +428,9 @@ export async function compileMessages(options: CompileOptions): Promise<CompileR
     return { outDir, sources, messages: compiled.length, compiled: false }
   }
 
-  // the project the compiler reads: merged, never edited, never written back
-  const projectDir = path.join(outDir, 'project')
+  // the project the compiler reads: merged, never edited, never written back,
+  // and this process's own, so a compile beside it cannot pull it away
+  const projectDir = path.join(outDir, 'project', String(process.pid))
   fs.rmSync(projectDir, { recursive: true, force: true })
   fs.mkdirSync(path.join(projectDir, 'project.inlang'), { recursive: true })
   fs.mkdirSync(path.join(projectDir, 'messages'), { recursive: true })
@@ -493,12 +506,12 @@ export async function compileMessages(options: CompileOptions): Promise<CompileR
     const compiledDir = path.join(outDir, 'paraglide')
     for (const [file, text] of Object.entries(output))
       put(path.join(compiledDir, file), text, written)
-    for (const stale of walkFiles(compiledDir)) if (!written.has(stale)) fs.rmSync(stale)
+    for (const stale of walkFiles(compiledDir)) drop(stale, written)
     const serverDir = path.join(outDir, 'server')
     for (const [file, text] of Object.entries(serverOutput)) {
       put(path.join(serverDir, file), text, written)
     }
-    for (const stale of walkFiles(serverDir)) if (!written.has(stale)) fs.rmSync(stale)
+    for (const stale of walkFiles(serverDir)) drop(stale, written)
     put(
       path.join(outDir, 'package.json'),
       `${JSON.stringify({ type: 'module', sideEffects: false }, null, 2)}\n`,
@@ -526,11 +539,11 @@ export async function compileMessages(options: CompileOptions): Promise<CompileR
       put(path.join(facadeDir, 'messages.d.ts'), declarationSource(own), written)
     }
     // a facade for a package no longer compiled goes with it
-    for (const stale of walkFiles(path.join(outDir, 'facades')))
-      if (!written.has(stale)) fs.rmSync(stale)
+    for (const stale of walkFiles(path.join(outDir, 'facades'))) drop(stale, written)
     put(stampFile, `${JSON.stringify({ fingerprint, structure }, null, 2)}\n`, written)
   } finally {
     await project.close()
+    fs.rmSync(projectDir, { recursive: true, force: true })
   }
   return { outDir, sources, messages: compiled.length, compiled: true }
 }

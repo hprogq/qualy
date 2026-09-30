@@ -1,4 +1,4 @@
-import { literal } from '@qualy/i18n-contract'
+import { literal } from '@qualy/text'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
 import { Effect, Exit, Layer } from 'effect'

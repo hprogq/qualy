@@ -18,6 +18,7 @@
     "@qualy/api-kit": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
+    "@qualy/text": "workspace:*",
     "kysely": "catalog:"
   },
   "devDependencies": {

@@ -17,14 +17,15 @@
 
 import { Schema } from 'effect'
 import { defineUiCollection, defineUiSlot } from '@qualy/ui-contract'
-import { UiTextSchema, type UiText } from '@qualy/i18n-contract'
+import { TextSchema } from '@qualy/text'
+import type { Text } from '@qualy/text'
 
 /** one calculator an administrator may choose for a question */
 export interface CalculatorAuthoringOption {
   /** the scoring driver's own reference, as the plan will freeze it */
   readonly ref: string
   /** what to call it in the chooser; the owning plugin translates it */
-  readonly label: UiText
+  readonly label: Text
   readonly order?: number
   /**
    * `itself` when choosing this calculator takes steps its own editor walks
@@ -49,7 +50,7 @@ export const calculatorAuthoringOptions = defineUiCollection<CalculatorAuthoring
   // manifest and failing in front of whoever opened the screen
   schema: Schema.Struct({
     ref: Schema.String.check(Schema.isMinLength(1)),
-    label: UiTextSchema,
+    label: TextSchema,
     order: Schema.optional(Schema.Number),
     confirms: Schema.optional(Schema.Literal('itself')),
   }),

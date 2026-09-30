@@ -1,8 +1,13 @@
 import { Effect } from 'effect'
-import { message } from '@qualy/i18n-contract'
 import type { NodeUsageReporter } from '@qualy/org-contract/plugin'
 import { withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { db } from './db.ts'
+import { text } from '@qualy/text'
+import { messageRefs } from '@qualy/text/node'
+import type * as M from '#messages'
+
+// this package's messages, by name (docs/adr/0011-i18n-paraglide.md)
+const m = messageRefs<typeof M>(import.meta.url)
 
 // The duties held over a unit, said to whoever is about to delete it.
 //
@@ -49,7 +54,7 @@ export const grantsAtNode: NodeUsageReporter<Orm> = {
           return [
             {
               kind: 'grants',
-              label: message('rbac/node-usage/grants', 'Role grants in force here'),
+              label: text(m.nodeUsage_grants),
               count: await countOf(true),
               clearable: true,
               examples: named.map((row) => `${row.displayName} ${row.roleName}`),
@@ -65,10 +70,7 @@ export const grantsAtNode: NodeUsageReporter<Orm> = {
             },
             {
               kind: 'grant-history',
-              label: message(
-                'rbac/node-usage/grant-history',
-                'Withdrawn role grants kept as history',
-              ),
+              label: text(m.nodeUsage_grantHistory),
               count: await countOf(false),
               clearable: false,
               examples: [],

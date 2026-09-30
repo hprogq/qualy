@@ -6,12 +6,17 @@ import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
 import { Audit } from '@qualy/audit-contract/plugin'
 import { orgActions } from './actions.ts'
-import { message } from '@qualy/i18n-contract'
 import { APP_SHELL, PUBLIC, navigationGroups, permissionOf } from '@qualy/ui-contract'
 import { orgApiGroup } from './api.ts'
 import { compositeForeignKeys, entities } from './db/entities.ts'
 import { permissions } from './permissions.ts'
 import { orgApiHandlers, serviceLayer } from './server/index.ts'
+import { text } from '@qualy/text'
+import { messageRefs } from '@qualy/text/node'
+import type * as M from '#messages'
+
+// this package's messages, by name (docs/adr/0011-i18n-paraglide.md)
+const m = messageRefs<typeof M>(import.meta.url)
 
 // The plugin, as one description: its tables, one screen, its permission
 // codes, its api group, and the service the rest of the assembly calls.
@@ -36,7 +41,7 @@ const plugin = Plugin.define(
     layout: APP_SHELL,
     visibility: permissionOf('org.tree.read'),
     navigation: {
-      label: message('org/navigation/organization', 'Organization tree'),
+      label: text(m.navigation_organization),
       icon: 'building-2',
       order: 10,
       group: 'org/organization',
@@ -53,7 +58,7 @@ const plugin = Plugin.define(
         id: 'org/organization',
         value: {
           id: 'org/organization',
-          label: message('org/nav-group/organization', 'Organization & access'),
+          label: text(m.navGroup_organization),
           order: 40,
           icon: 'users',
         },

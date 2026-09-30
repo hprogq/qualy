@@ -1,7 +1,7 @@
 import { sql } from 'kysely'
 import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
-import { literal } from '@qualy/i18n-contract'
+import { literal, text } from '@qualy/text'
 import { booted, systemActor } from '@qualy/rbac-contract/testkit'
 import { compileCatalog } from '@qualy/rbac-contract/plugin'
 import type { Principal } from '@qualy/rbac-contract'
@@ -10,6 +10,7 @@ import { AuditActionCatalog } from '@qualy/audit-contract/effect'
 import { compileActionCatalog } from '@qualy/audit-contract/plugin'
 import { SettingCatalog, TenantSettings } from '@qualy/settings-contract/effect'
 import {
+  checkDefaults,
   compileSettingCatalog,
   defineSettingCategory,
   defineTerm,
@@ -44,9 +45,12 @@ const personId = defineTerm({
   id: 'probe/person-id',
   categoryId: category.id,
   label: literal('Person identifier'),
-  defaults: { 'zh-CN': '学工号', 'en-US': 'Student or staff ID' },
+  // a real message, so the two languages have two words
+  default: text({ namespace: 'qualy-plugin-auth', key: 'settings_term_businessNumberDefault' }),
   order: 10,
 })
+const personIdDefaults = { 'zh-CN': '学工号', 'en-US': 'Student or staff ID' } as const
+const personIdWords = { maxLength: personId.maxLength, defaults: personIdDefaults }
 
 describe('compiling the setting catalog', () => {
   it('flattens declarations and stamps their plugins', () => {
@@ -57,7 +61,7 @@ describe('compiling the setting catalog', () => {
     expect(catalog.settings[0]?.plugin).toBe('@qualy/plugin-probe')
   })
 
-  it('refuses a setting declared twice, a category nobody declares, and a missing default', () => {
+  it('refuses a setting declared twice, a category nobody declares, and a missing default word', () => {
     expect(() =>
       compileSettingCatalog([
         { pluginId: 'a', value: { categories: [category], settings: [personId] } },
@@ -67,32 +71,30 @@ describe('compiling the setting catalog', () => {
     expect(() =>
       compileSettingCatalog([{ pluginId: 'a', value: { settings: [personId] } }]),
     ).toThrow(/nobody declares/)
+    // the default is a message, checked where it can be said
+    const registered = { ...personId, plugin: 'a' }
+    expect(checkDefaults(registered, (locale) => personIdDefaults[locale])).toEqual(
+      personIdDefaults,
+    )
     expect(() =>
-      compileSettingCatalog([
-        {
-          pluginId: 'a',
-          value: {
-            categories: [category],
-            settings: [{ ...personId, defaults: { 'zh-CN': '学工号', 'en-US': ' ' } }],
-          },
-        },
-      ]),
+      checkDefaults(registered, (locale) => (locale === 'en-US' ? ' ' : '学工号')),
     ).toThrow(/no default for en-US/)
+    expect(() => checkDefaults(registered, () => 'x'.repeat(65))).toThrow(/longer than 64/)
   })
 
   it('normalizes an override to the delta: trimmed, blanks and defaults dropped', () => {
     expect(
-      normalizeOverride(personId, { 'zh-CN': '  工号 ', 'en-US': 'Student or staff ID' }),
+      normalizeOverride(personIdWords, { 'zh-CN': '  工号 ', 'en-US': 'Student or staff ID' }),
     ).toEqual({
       ok: true,
       value: { 'zh-CN': '工号' },
     })
-    expect(normalizeOverride(personId, { 'fr-FR': 'Matricule' })).toEqual({
+    expect(normalizeOverride(personIdWords, { 'fr-FR': 'Matricule' })).toEqual({
       ok: false,
       reason: 'unknown-locale',
       locale: 'fr-FR',
     })
-    expect(normalizeOverride(personId, { 'zh-CN': 'x'.repeat(65) })).toEqual({
+    expect(normalizeOverride(personIdWords, { 'zh-CN': 'x'.repeat(65) })).toEqual({
       ok: false,
       reason: 'too-long',
       locale: 'zh-CN',
@@ -234,6 +236,9 @@ describe.runIf(postgresAvailable)('tenant terminology', () => {
               bZh: yield* settings.resolveTerm(b.tenant, personId, 'zh-CN'),
               read: yield* store.readTerminology(a.tenant),
               other: yield* store.readTerminology(b.tenant),
+              // what every page of each reader carries with its manifest
+              page: yield* store.termsFor(a.tenant, 'zh-CN'),
+              visitor: yield* store.termsFor(undefined, 'en-US'),
             }
           }),
         ),
@@ -246,6 +251,9 @@ describe.runIf(postgresAvailable)('tenant terminology', () => {
       expect(result.aZh).toBe('统一编号')
       expect(result.aEn).toBe('Student or staff ID')
       expect(result.bZh).toBe('学工号')
+      expect(result.page).toEqual({ [personId.id]: '统一编号' })
+      // nobody signed in: the product's words, which are nobody's secret
+      expect(result.visitor).toEqual({ [personId.id]: 'Student or staff ID' })
       expect(result.read.terms[0]).toMatchObject({ override: { 'zh-CN': '统一编号' }, version: 1 })
       expect(result.other.terms[0]).toMatchObject({ override: {}, version: 0 })
     } finally {

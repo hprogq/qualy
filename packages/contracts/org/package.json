@@ -16,6 +16,7 @@
   "dependencies": {
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
-    "@qualy/rbac-contract": "workspace:*"
+    "@qualy/rbac-contract": "workspace:*",
+    "@qualy/text": "workspace:*"
   }
 }

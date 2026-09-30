@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronDownIcon } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
 import { Field } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
@@ -91,7 +90,6 @@ export function MethodFields({
   clearable?: (key: string) => boolean
   disabled?: boolean
 }) {
-  const { formatText } = useI18n()
   const [folded, setFolded] = useState(false)
 
   const values = formValues(kind, config, draft)
@@ -108,7 +106,7 @@ export function MethodFields({
         ? (unreadable ? m.loginMethods_secretUnreadable : m.loginMethods_secretStored)()
         : field.hint === null
           ? undefined
-          : formatText(field.hint)
+          : field.hint
     if (field.kind === 'toggle') {
       const id = `entrance-${field.key}`
       return (
@@ -121,7 +119,7 @@ export function MethodFields({
               checked={values[field.key] === 'true'}
               onCheckedChange={(next) => set(field.key, String(next))}
             />
-            {formatText(field.label)}
+            {field.label}
           </label>
           {hint !== undefined && <p {...stylex.props(styles.toggleHint)}>{hint}</p>}
         </div>
@@ -130,7 +128,7 @@ export function MethodFields({
     return (
       <Field
         key={field.key}
-        label={formatText(field.label)}
+        label={field.label}
         required={field.required}
         {...(hint === undefined ? {} : { hint })}
       >
@@ -149,7 +147,7 @@ export function MethodFields({
                 <SelectContent>
                   {field.options.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
-                      {formatText(option.label)}
+                      {option.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -200,7 +198,7 @@ export function MethodFields({
                 size="sm"
                 variant="outline"
                 data-testid="secret-clear"
-                aria-label={m.loginMethods_secretClearLabel({ field: formatText(field.label) })}
+                aria-label={m.loginMethods_secretClearLabel({ field: field.label })}
                 disabled={disabled || !clearable(field.key)}
                 onClick={() => onClear(field.key)}
               >

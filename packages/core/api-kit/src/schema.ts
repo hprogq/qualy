@@ -1,25 +1,9 @@
 import { Schema } from 'effect'
-import { UiTextSchema } from '@qualy/i18n-contract'
 import { MAX_PAGE_SIZE } from './index.ts'
 
 // The page shape, as schemas. Its own module because the kit's root is
 // imported by the browser bundle through the oRPC contract package, and that
 // bundle has no reason to carry Effect.
-
-/**
- * A list request.
- *
- * Both fields arrive as strings because they are search parameters; the
- * handler is what decides the default size, not the schema, so an absent limit
- * stays absent rather than becoming a number the client did not send.
- */
-/**
- * Text on its way to a browser, in the only two shapes the boundary allows:
- * a message the reader's own catalog translates, or business data that must
- * not be translated at all. Shared, because a second copy of these two
- * shapes is a second thing to keep in step with the i18n contract.
- */
-export const uiText = UiTextSchema
 
 /**
  * How long a page cursor may be on the way back in.

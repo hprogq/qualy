@@ -40,7 +40,7 @@ export function NewMethodDialog({
   const run = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { formatText, formatError } = useI18n()
+  const { formatError } = useI18n()
   const [type, setType] = useState('')
   const [name, setName] = useState('')
   const [code, setCode] = useState('')
@@ -122,7 +122,7 @@ export function NewMethodDialog({
                 <SelectContent>
                   {kinds.map((one) => (
                     <SelectItem key={one.type} value={one.type}>
-                      {formatText(one.label)}
+                      {one.label}
                     </SelectItem>
                   ))}
                 </SelectContent>

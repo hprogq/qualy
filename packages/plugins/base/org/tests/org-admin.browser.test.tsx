@@ -84,7 +84,7 @@ const world = () => ({
         children: params.nodeId === COLLEGE ? 1 : 0,
         usage: [] as {
           kind: string
-          label: { kind: 'literal'; value: string }
+          label: string
           count: number
           examples: string[]
           target: null
@@ -253,7 +253,7 @@ describe('the organization screen', () => {
         usage: [
           {
             kind: 'people',
-            label: { kind: 'literal' as const, value: '在该组织的用户' },
+            label: '在该组织的用户',
             count: 12,
             clearable: true,
             examples: ['张明远', '李文静'],
@@ -289,7 +289,7 @@ describe('the organization screen', () => {
         usage: [
           {
             kind: 'archived-rounds',
-            label: { kind: 'literal' as const, value: '已归档批次' },
+            label: '已归档批次',
             count: 2,
             clearable: false,
             examples: [],

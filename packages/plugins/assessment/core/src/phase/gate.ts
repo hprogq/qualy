@@ -1,4 +1,4 @@
-import { PHASE_GATED } from '../permissions.ts'
+import { PHASE_GATED } from '../permission-codes.ts'
 
 // The phase gate, as a pure decision (§11). It only ever narrows: a code
 // outside the gated registry passes untouched, a gated one needs the current

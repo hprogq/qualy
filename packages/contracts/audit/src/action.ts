@@ -1,5 +1,5 @@
 import type { Schema } from 'effect'
-import type { UiText } from '@qualy/i18n-contract'
+import type { Text } from '@qualy/text'
 
 /**
  * What a details schema may be: plain data in, plain JSON out, no services on
@@ -34,8 +34,8 @@ export interface AuditAction<Details extends AuditDetailsSchema = AuditDetailsSc
    * shape it is looking at; the history itself is never rewritten.
    */
   readonly version: number
-  /** what a reader of the audit screen sees; the language is chosen there */
-  readonly name: UiText
+  /** what a reader of the audit screen sees, rendered in that reader's language */
+  readonly name: Text
   /**
    * What the person it happened to reads about it, in their own account's
    * activity, where the audit screen's name - an administrator's words for
@@ -43,7 +43,7 @@ export interface AuditAction<Details extends AuditDetailsSchema = AuditDetailsSc
    * (`target: PERSON_TARGET`); an action without one never reaches that
    * person's activity, which is how the trail stays the administrators'.
    */
-  readonly subject?: UiText
+  readonly subject?: Text
   /**
    * What may be recorded about this operation - and therefore what may not:
    * a credential has no field to arrive in. Encoded on write, so a value
@@ -57,8 +57,8 @@ export const AuditAction = {
     readonly code: string
     readonly target?: string
     readonly version: number
-    readonly name: UiText
-    readonly subject?: UiText
+    readonly name: Text
+    readonly subject?: Text
     readonly details: Details
   }): AuditAction<Details> => ({ _tag: 'AuditAction', ...options }),
 }

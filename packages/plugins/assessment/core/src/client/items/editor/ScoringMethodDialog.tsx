@@ -2,9 +2,7 @@ import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { XIcon } from 'lucide-react'
 import { UiSlot } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
-import type { UiText } from '@qualy/i18n-contract'
 import { Button } from '@qualy/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '@qualy/ui/dialog'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -100,13 +98,12 @@ export function ScoringMethodDialog({
 }: {
   batchId: string
   itemId: string | null
-  calculators: readonly { ref: string; label: UiText; confirms?: 'itself' }[]
+  calculators: readonly { ref: string; label: string; confirms?: 'itself' }[]
   chosen: { ref: string; config: unknown }
   amountPer: 'entry' | 'item'
   onApply: (next: { ref: string; config: unknown }) => void
   onClose: () => void
 }) {
-  const { formatText } = useI18n()
   const [candidate, setCandidate] = useState(chosen)
   const finishesItself = calculators.find((one) => one.ref === candidate.ref)?.confirms === 'itself'
   return (
@@ -150,7 +147,7 @@ export function ScoringMethodDialog({
                         )
                     }}
                   >
-                    {formatText(option.label)}
+                    {option.label}
                   </button>
                 )
               })}

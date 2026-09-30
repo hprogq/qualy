@@ -57,7 +57,6 @@ export interface WebPluginEntry {
   surfaces: SurfaceBinding[]
   /** the declared localisation module, absolute, when the plugin ships one */
   i18nModule?: string
-  hasWireMessages: boolean
   hasErrorMessages: boolean
   /** the modules whose default export is this plugin's browser half, absolute */
   browserModules: string[]
@@ -81,7 +80,6 @@ export async function collectWebPlugins(
   const resolution = await currentResolution(manifest)
   const found: WebPluginEntry[] = []
   const claimedSurfaces = new Map<string, string>()
-  const claimedMessageIds = new Map<string, string>()
   const claimedErrorCodes = new Map<string, string>()
   const COMMON_ERROR_CODES = new Set<string>(commonErrorCodes)
   const claim = (registry: Map<string, string>, key: string, owner: string, what: string) => {
@@ -120,21 +118,12 @@ export async function collectWebPlugins(
     if (declaredI18n.length > 1) {
       throw new Error(`${entry.name} declares Ui.i18n twice; one module carries everything`)
     }
-    let hasWireMessages = false
     let hasErrorMessages = false
     let i18nModule: string | undefined
     if (declaredI18n.length === 1) {
       i18nModule = moduleOf(declaredI18n[0]!.module)
       const module = (await import(pathToFileURL(i18nModule).href)) as {
-        wireMessages?: Record<string, unknown>
         errorMessages?: unknown
-      }
-      if (module.wireMessages) {
-        // the ids the server sends, each claimed once
-        for (const id of Object.keys(module.wireMessages)) {
-          claim(claimedMessageIds, id, entry.name, 'message id')
-        }
-        hasWireMessages = true
       }
       if (module.errorMessages) {
         for (const code of Object.keys(module.errorMessages)) {
@@ -147,7 +136,7 @@ export async function collectWebPlugins(
         }
         hasErrorMessages = true
       }
-      if (!module.wireMessages && !module.errorMessages) {
+      if (!module.errorMessages) {
         throw new Error(`${entry.name}: the declared i18n module exports nothing to say`)
       }
     }
@@ -157,12 +146,11 @@ export async function collectWebPlugins(
       browserModules.push(moduleOf(declared.module))
     }
 
-    if (surfaces.length > 0 || hasWireMessages || hasErrorMessages || browserModules.length > 0) {
+    if (surfaces.length > 0 || hasErrorMessages || browserModules.length > 0) {
       found.push({
         name: entry.name,
         surfaces,
         ...(i18nModule === undefined ? {} : { i18nModule }),
-        hasWireMessages,
         hasErrorMessages,
         browserModules,
       })
@@ -203,7 +191,6 @@ export async function buildPluginModuleSource(
   const slotEntries = new Map<string, string[]>()
   const loginEntries: string[] = []
   const browserEntries: string[] = []
-  const wireEntries: string[] = []
   const errorSpreads: string[] = []
   for (const entry of await collectWebPlugins(options)) {
     const ns = entry.name.split('/').pop()!.replace('plugin-', '').replaceAll('-', '_')
@@ -227,12 +214,6 @@ export async function buildPluginModuleSource(
         items.push(loader(surface.id, file, options.fromDir, '    '))
         slotEntries.set(surface.slot, items)
       }
-    }
-    if (entry.hasWireMessages) {
-      imports.push(
-        `import { wireMessages as ${ns}WireMessages } from ${JSON.stringify(specifier(entry.i18nModule!, options.fromDir))}`,
-      )
-      wireEntries.push(`  ...${ns}WireMessages,`)
     }
     if (entry.hasErrorMessages) {
       imports.push(
@@ -268,10 +249,6 @@ export async function buildPluginModuleSource(
     'export const browserPlugins = [',
     ...browserEntries,
     ']',
-    '',
-    'export const wireMessages = {',
-    ...wireEntries,
-    '}',
     '',
     'export const errorMessages = {',
     ...errorSpreads,

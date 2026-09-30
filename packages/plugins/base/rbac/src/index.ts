@@ -7,7 +7,6 @@ import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
 import { Audit } from '@qualy/audit-contract/plugin'
 import { accessActions } from './actions.ts'
-import { message } from '@qualy/i18n-contract'
 import {
   ACCOUNT_SHELL,
   APP_SHELL,
@@ -21,6 +20,12 @@ import { accessApiGroup } from './api.ts'
 import { compositeForeignKeys, entities } from './db/entities.ts'
 import { permissions } from './permissions.ts'
 import { accessApiHandlers, serviceLayer } from './server/index.ts'
+import { text } from '@qualy/text'
+import { messageRefs } from '@qualy/text/node'
+import type * as M from '#messages'
+
+// this package's messages, by name (docs/adr/0011-i18n-paraglide.md)
+const m = messageRefs<typeof M>(import.meta.url)
 
 // The plugin, as one description: authorization itself, its tables, its own
 // codes - declared like any contributor's, into the registry its service
@@ -41,7 +46,7 @@ const plugin = Plugin.define(
     layout: APP_SHELL,
     visibility: permissionOf('iam.role.read'),
     navigation: {
-      label: message('rbac/navigation/roles', 'Roles'),
+      label: text(m.navigation_roles),
       icon: 'shield-check',
       order: 30,
       group: 'org/organization',
@@ -55,7 +60,7 @@ const plugin = Plugin.define(
     path: '/organization/roles/:roleId',
     component: Ui.react('./client/RolePage'),
     layout: APP_SHELL,
-    title: message('rbac/roles/edit', 'Role'),
+    title: text(m.roles_edit),
     visibility: permissionOf('iam.role.read'),
   }),
   // What one person has been granted, as a section of their record. The
@@ -67,14 +72,14 @@ const plugin = Plugin.define(
     path: '/organization/users/:userId/role-grants',
     component: Ui.react('./client/UserRoleGrantsPage'),
     layout: USER_DETAIL_SHELL,
-    title: message('rbac/user-detail/role-grants', 'Role grants'),
+    title: text(m.userDetail_roleGrants),
     visibility: permissionOf('iam.grant.read'),
   }),
   Ui.collection(userDetailNavigation, {
     id: 'rbac/user-detail/role-grants',
     value: {
       id: 'rbac/user-detail/role-grants',
-      label: message('rbac/user-detail/role-grants', 'Role grants'),
+      label: text(m.userDetail_roleGrants),
       target: { kind: 'page', pageId: 'rbac/user-role-grants' },
       icon: 'shield-check',
       order: 30,
@@ -88,14 +93,14 @@ const plugin = Plugin.define(
     path: '/account/roles',
     component: Ui.react('./client/AccountRolesPage'),
     layout: ACCOUNT_SHELL,
-    title: message('rbac/account/title', 'Roles and permissions'),
+    title: text(m.account_title),
     visibility: AUTHENTICATED,
   }),
   Ui.collection(accountNavigation, {
     id: 'rbac/account/roles',
     value: {
       id: 'rbac/account/roles',
-      label: message('rbac/account/title', 'Roles and permissions'),
+      label: text(m.account_title),
       target: { kind: 'page', pageId: 'rbac/account-roles' },
       icon: 'id-card',
       order: 2,

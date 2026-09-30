@@ -6,41 +6,37 @@
 // (rbac stays untouched). Every member is a code this plugin declares, so a
 // global code can never appear in a phase editor - asserted below at import
 // time, which is boot and resolve alike.
-import { message } from '@qualy/i18n-contract'
 import type { PermissionDefinition } from '@qualy/rbac-contract'
+import { text } from '@qualy/text'
+import { messageRefs } from '@qualy/text/node'
+import type * as M from '#messages'
+
+// this package's messages, by name (docs/adr/0011-i18n-paraglide.md)
+const m = messageRefs<typeof M>(import.meta.url)
 
 export const permissions = [
   {
     code: 'assessment.batch.manage',
-    name: message('assessment/permission/batch-manage', 'Manage assessment batches'),
-    description: message(
-      'assessment/permission-hint/batch-manage',
-      'The whole life of a batch: stages, questions and the roster.',
-    ),
+    name: text(m.permission_batchManage),
+    description: text(m.permissionHint_batchManage),
     groupKey: 'assessment',
-    group: message('assessment/permission-group/assessment', 'Assessment'),
+    group: text(m.permissionGroup_assessment),
     target: 'org-node',
   },
   {
     code: 'assessment.batch.force-advance',
-    name: message('assessment/permission/batch-force-advance', 'Force a stage change'),
-    description: message(
-      'assessment/permission-hint/batch-force-advance',
-      'Move a batch past its guard conditions; a reason is required.',
-    ),
+    name: text(m.permission_batchForceAdvance),
+    description: text(m.permissionHint_batchForceAdvance),
     groupKey: 'assessment',
-    group: message('assessment/permission-group/assessment', 'Assessment'),
+    group: text(m.permissionGroup_assessment),
     target: 'org-node',
   },
   {
     code: 'assessment.entry.record',
-    name: message('assessment/permission/entry-record', 'Record recognized items'),
-    description: message(
-      'assessment/permission-hint/entry-record',
-      'Record deductions and awards the organization has already decided; they take effect without review.',
-    ),
+    name: text(m.permission_entryRecord),
+    description: text(m.permissionHint_entryRecord),
     groupKey: 'assessment',
-    group: message('assessment/permission-group/assessment', 'Assessment'),
+    group: text(m.permissionGroup_assessment),
     target: 'org-node',
   },
   {
@@ -48,13 +44,10 @@ export const permissions = [
     // 2026-09-25): granted on purpose - an inspection group, say - and never
     // implied by judging at the end of a route
     code: 'assessment.entry.redetermine',
-    name: message('assessment/permission/entry-redetermine', 'Re-determine concluded claims'),
-    description: message(
-      'assessment/permission-hint/entry-redetermine',
-      'Correct the result of a concluded claim directly; the participant can appeal the new result.',
-    ),
+    name: text(m.permission_entryRedetermine),
+    description: text(m.permissionHint_entryRedetermine),
     groupKey: 'assessment',
-    group: message('assessment/permission-group/assessment', 'Assessment'),
+    group: text(m.permissionGroup_assessment),
     target: 'org-node',
   },
   {
@@ -65,48 +58,39 @@ export const permissions = [
     // judging, re-examining and recording read only what their own task
     // puts in front of them.
     code: 'assessment.entry.read-all',
-    name: message('assessment/permission/entry-read-all', 'View all claims'),
-    description: message(
-      'assessment/permission-hint/entry-read-all',
-      'See every claim a participant has submitted and their whole account; nothing can be changed with this alone.',
-    ),
+    name: text(m.permission_entryReadAll),
+    description: text(m.permissionHint_entryReadAll),
     groupKey: 'assessment',
-    group: message('assessment/permission-group/assessment', 'Assessment'),
+    group: text(m.permissionGroup_assessment),
     target: 'org-node',
   },
   {
     code: 'assessment.review.process',
-    name: message('assessment/permission/review-process', 'Review submissions'),
+    name: text(m.permission_reviewProcess),
     groupKey: 'assessment',
-    group: message('assessment/permission-group/assessment', 'Assessment'),
+    group: text(m.permissionGroup_assessment),
     target: 'org-node',
   },
   {
     code: 'assessment.review.reopen',
-    name: message('assessment/permission/review-reopen', 'Re-examine concluded claims'),
-    description: message(
-      'assessment/permission-hint/review-reopen',
-      'Send a concluded claim through the escalation workflow again on the participant\u2019s behalf.',
-    ),
+    name: text(m.permission_reviewReopen),
+    description: text(m.permissionHint_reviewReopen),
     groupKey: 'assessment',
-    group: message('assessment/permission-group/assessment', 'Assessment'),
+    group: text(m.permissionGroup_assessment),
     target: 'org-node',
   },
   {
     code: 'assessment.result.view-peers',
-    name: message(
-      'assessment/permission/result-view-peers',
-      'View other participants\u2019 results',
-    ),
+    name: text(m.permission_resultViewPeers),
     groupKey: 'assessment',
-    group: message('assessment/permission-group/assessment', 'Assessment'),
+    group: text(m.permissionGroup_assessment),
     target: 'tenant',
   },
   {
     code: 'assessment.ranking.view',
-    name: message('assessment/permission/ranking-view', 'View ranking'),
+    name: text(m.permission_rankingView),
     groupKey: 'assessment',
-    group: message('assessment/permission-group/assessment', 'Assessment'),
+    group: text(m.permissionGroup_assessment),
     target: 'tenant',
   },
 ] as const satisfies readonly PermissionDefinition[]
@@ -120,133 +104,16 @@ export const permissions = [
  * bare set because the editor's label map is keyed by it: a code added here
  * without a translation stops compiling.
  */
-/**
- * What being on the roster is worth.
- *
- * These are actions, not permissions, and deliberately not in the catalog
- * above: no role grants them and no administrator can. A participant's
- * capabilities come from being one - the roster is the whole of the answer -
- * and a role that could hand out "submit an entry" would be claiming to make
- * somebody a participant in a round they are not in, which it cannot do. The
- * codes still exist because a phase opens and closes them by name, and
- * because the resource policy that checks ownership needs something to name.
- */
-export const PARTICIPANT_ACTION_CODES = [
-  'assessment.entry.create',
-  'assessment.entry.edit',
-  'assessment.entry.submit',
-  'assessment.entry.withdraw',
-  // giving a claim up for good - distinct from withdraw on purpose: the
-  // window for taking work back to edit closes when review begins, while
-  // the window for no longer claiming it closes with the phase plan
-  // (typically at final publication)
-  'assessment.entry.abandon',
-  // contesting a decided entry is the participant's move (§32.14, §32.65):
-  // a member of staff who wants another look reopens the review, which is a
-  // different code and a different act. Named for what it gates - the
-  // appeal - not for the resubmission that is plain entry.submit
-  'assessment.entry.appeal',
-  'assessment.result.view-self',
-  // Who judged one's own claim. Reading the claim's account is always the
-  // participant's; whether that account names the people in it is the
-  // batch's to decide, phase by phase - hidden while judging is under way,
-  // shown once it can no longer be leaned on, or never
-  'assessment.review.view-reviewers',
-] as const
-
-/**
- * What a batch copies out of the tenant's authority when it is created.
- *
- * The work staff do inside a round, and only that. Administering the batch
- * itself (`assessment.batch.manage`, forcing a boundary) deliberately stays
- * live tenant authority: it is the capability that decides who may edit this
- * very list, and freezing it at creation would leave an administrator
- * appointed afterwards unable to touch rounds that already exist.
- */
-/**
- * What a reviewer may do beyond deciding, and only while a phase says so.
- *
- * Not permissions either, for the same shape of reason as the participant
- * actions above: who may act on a round is already answered by
- * `assessment.review.process` together with the level the round is standing
- * at. A second grantable permission would mean maintaining two nearly
- * identical ticks against every reviewing role and would buy nothing - what
- * varies is not who, it is when.
- */
-export const REVIEW_ACTION_CODES = [
-  'assessment.review.escalate',
-  // what stands after the level a reviewer is judging at: the levels still
-  // to come and who holds them. Closed, a reviewer judges what is in front
-  // of them without knowing who reads it next
-  'assessment.review.view-chain',
-] as const
-
-export const BATCH_STAFF_CODES = [
-  'assessment.entry.record',
-  // not phase gated either: reading is not a window the calendar opens
-  'assessment.entry.read-all',
-  // not phase gated: correcting a conclusion is not a window the calendar
-  // opens, and the batch's acceptance is what bounds it
-  'assessment.entry.redetermine',
-  'assessment.review.process',
-  'assessment.review.reopen',
-  'assessment.result.view-peers',
-  'assessment.ranking.view',
-] as const
-
-/**
- * Codes the product has named but does not offer yet (ruling of 2026-09-25
- * #22): filing on a participant's behalf and managing publication have no
- * act behind them, so a tick that grants them promises nothing.
- *
- * Kept out of the catalog, so the role editor never lists them and a batch
- * never accepts them, and out of what a stage editor offers. Not deleted:
- * rows that already name them - a role's permissions, a batch's acceptance,
- * a stage's profile - stay as they are and inert, since a code the catalog
- * does not serve authorizes nothing, and a stage profile that names one is
- * still a valid profile. When an act arrives, the code returns to the
- * catalog under the same name.
- */
-export const UNOFFERED_CODES: readonly string[] = [
-  'assessment.entry.proxy',
-  'assessment.publication.manage',
-]
-
-/**
- * Staff codes a role does not carry into a batch merely by holding every
- * permission by its mode (the canonical tenant administrator's
- * `all-active`). Re-determining a concluded claim is granted on purpose
- * (ruling of 2026-09-25): a system administrator who needs it gives it to
- * themselves through a role that names it, which the record then shows.
- */
-export const EXPLICIT_ONLY_STAFF_CODES: readonly string[] = ['assessment.entry.redetermine']
-
-export const PHASE_GATED_CODES = [
-  'assessment.entry.create',
-  'assessment.entry.edit',
-  'assessment.entry.submit',
-  'assessment.entry.withdraw',
-  'assessment.entry.abandon',
-  'assessment.entry.proxy',
-  'assessment.entry.record',
-  'assessment.entry.appeal',
-  'assessment.review.process',
-  'assessment.review.escalate',
-  'assessment.review.reopen',
-  'assessment.review.view-reviewers',
-  'assessment.review.view-chain',
-  'assessment.result.view-peers',
-  'assessment.ranking.view',
-] as const
-
-export type PhaseGatedCode = (typeof PHASE_GATED_CODES)[number]
-
-/** what a stage editor offers: the gated codes, less the ones not offered yet */
-export const OFFERED_PHASE_CODES: readonly PhaseGatedCode[] = PHASE_GATED_CODES.filter(
-  (code) => !UNOFFERED_CODES.includes(code),
-)
-
-export const PHASE_GATED: ReadonlySet<string> = new Set(PHASE_GATED_CODES)
+// the codes themselves are a module of their own: the screens that name them
+// must not import the catalog's messages, which are the server's
+export * from './permission-codes.ts'
+import {
+  BATCH_STAFF_CODES,
+  PARTICIPANT_ACTION_CODES,
+  PHASE_GATED,
+  REVIEW_ACTION_CODES,
+  UNOFFERED_CODES,
+} from './permission-codes.ts'
 
 const declared = new Set<string>(permissions.map((definition) => definition.code))
 

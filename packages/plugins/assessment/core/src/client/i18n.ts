@@ -1,7 +1,6 @@
 import { defineErrorTranslations, type ErrorsByCode } from '@qualy/i18n-contract'
 import { selectKey } from '@qualy/i18n-contract'
 import type * as assessmentErrors from '../errors.ts'
-import type { Message } from '@qualy/i18n-contract'
 import * as m from '#messages'
 
 // What this plugin's screens say is in messages/<locale>.json, called as
@@ -79,40 +78,3 @@ export const errorMessages = defineErrorTranslations<ErrorsByCode<typeof assessm
     },
   },
 }).registry
-
-// the messages the server names over the wire, by the id it sends
-export const wireMessages: Record<string, Message> = {
-  'assessment/audit/batch-create': m.audit_batchCreate,
-  'assessment/audit/batch-delete': m.audit_batchDelete,
-  'assessment/entry/tab': m.entry_tab,
-  'assessment/items/calculator-fixed': m.items_calculatorFixed,
-  'assessment/items/tab': m.items_tab,
-  'assessment/nav-group/batch-admin': m.navGroup_batchAdmin,
-  'assessment/nav-group/library': m.navGroup_library,
-  'assessment/nav-group/main': m.navGroup_main,
-  'assessment/nav-group/personal': m.navGroup_personal,
-  'assessment/nav-group/user-detail': m.navGroup_userDetail,
-  'assessment/nav-group/work': m.navGroup_work,
-  'assessment/navigation/access': m.navigation_access,
-  'assessment/navigation/batches': m.navigation_batches,
-  'assessment/navigation/overview': m.navigation_overview,
-  'assessment/navigation/phases': m.navigation_phases,
-  'assessment/navigation/settings': m.navigation_settings,
-  'assessment/node-usage/managed': m.nodeUsage_managed,
-  'assessment/participant-results/tab': m.participantResults_tab,
-  'assessment/permission-group/assessment': m.permissionGroup_assessment,
-  'assessment/permission/batch-force-advance': m.permission_batchForceAdvance,
-  'assessment/permission/batch-manage': m.permission_batchManage,
-  'assessment/permission/entry-read-all': m.permission_entryReadAll,
-  'assessment/permission/entry-record': m.permission_entryRecord,
-  'assessment/permission/entry-redetermine': m.permission_entryRedetermine,
-  'assessment/permission/ranking-view': m.permission_rankingView,
-  'assessment/permission/review-process': m.permission_reviewProcess,
-  'assessment/permission/review-reopen': m.permission_reviewReopen,
-  'assessment/person/batches-tab': m.person_batchesTab,
-  'assessment/person/entries-tab': m.person_entriesTab,
-  'assessment/record/tab': m.record_tab,
-  'assessment/result/tab': m.result_tab,
-  'assessment/review/detail-tab': m.review_detailTab,
-  'assessment/review/tab': m.review_tab,
-}

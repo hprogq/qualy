@@ -369,7 +369,7 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
         id: 'ping/page',
         path: '/ping',
         layout: 'app-shell/v1',
-        title: { kind: 'message', id: 'ping/navigation/ping', defaultMessage: 'Ping' },
+        title: 'Ping',
       })
       expect(manifest.layouts.map((layout) => layout.contract)).toContain('app-shell/v1')
     } finally {

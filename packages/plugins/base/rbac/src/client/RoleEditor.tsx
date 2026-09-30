@@ -168,7 +168,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
   const runApi = useRunApi()
   const query = useApiQuery(accessApi)
   const queryClient = useQueryClient()
-  const { formatError, formatText } = useI18n()
+  const { formatError } = useI18n()
   const describe = useLoadFailure()
   const listJoin = useList()
   const navigate = usePageNavigate()
@@ -408,24 +408,24 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
       { title: string; items: { code: string; label: string; note?: string }[] }
     >()
     for (const permission of catalog.data?.permissions ?? []) {
-      const label = formatText(permission.name)
+      const label = permission.name
       if (needle !== '' && !label.toLowerCase().includes(needle)) {
         if (!permission.code.toLowerCase().includes(needle)) continue
       }
       const key = permission.groupKey ?? permission.plugin
-      const title = permission.group === null ? m.roles_groupOther() : formatText(permission.group)
+      const title = permission.group === null ? m.roles_groupOther() : permission.group
       const bucket = buckets.get(key) ?? { title, items: [] }
       // what the duty amounts to, where its owner wrote that down: a code says
       // nothing to whoever is deciding whether a counsellor should have it
       bucket.items.push({
         code: permission.code,
         label,
-        ...(permission.description === null ? {} : { note: formatText(permission.description) }),
+        ...(permission.description === null ? {} : { note: permission.description }),
       })
       buckets.set(key, bucket)
     }
     return [...buckets.values()].sort((a, b) => a.title.localeCompare(b.title))
-  }, [catalog.data, search, formatText])
+  }, [catalog.data, search])
 
   const holder = role.holderPolicy
   // the canonical administrator is the one role eligibility does not apply

@@ -36,7 +36,6 @@ import {
   kebabCode,
   pageQuery,
   trimmedName,
-  uiText,
   uuidInput,
 } from '@qualy/api-kit/schema'
 import { AccessDenied, LastAdministrator } from '@qualy/rbac-contract/effect'
@@ -202,10 +201,10 @@ export const accessApiGroup = HttpApiGroup.make('access')
           Schema.Struct({
             code: Schema.String,
             plugin: Schema.String,
-            name: uiText,
-            description: Schema.NullOr(uiText),
+            name: Schema.String,
+            description: Schema.NullOr(Schema.String),
             groupKey: Schema.NullOr(Schema.String),
-            group: Schema.NullOr(uiText),
+            group: Schema.NullOr(Schema.String),
             target: permissionTarget,
           }),
         ),
@@ -580,7 +579,7 @@ export const accessApiGroup = HttpApiGroup.make('access')
             validUntil: Schema.NullOr(Schema.String),
             /** carries everything this assembly can grant, which a list would only bury */
             allPermissions: Schema.Boolean,
-            permissions: Schema.Array(Schema.Struct({ code: Schema.String, name: uiText })),
+            permissions: Schema.Array(Schema.Struct({ code: Schema.String, name: Schema.String })),
           }),
         ),
       }),
@@ -596,7 +595,7 @@ export const accessApiGroup = HttpApiGroup.make('access')
         permissions: Schema.Array(
           Schema.Struct({
             code: Schema.String,
-            name: uiText,
+            name: Schema.String,
             target: permissionTarget,
             sources: Schema.Array(permissionSourceShape),
           }),

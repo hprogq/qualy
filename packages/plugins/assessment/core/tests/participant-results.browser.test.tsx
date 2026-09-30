@@ -1012,7 +1012,7 @@ describe('one account beside its person', () => {
     { nodeId: 'n1', nodeTypeId: 'college' },
     { nodeId: SCHOOL, nodeTypeId: 'school' },
   ]
-  const text = (value: string) => ({ kind: 'literal' as const, value })
+  const text = (value: string) => value
   const rail = [
     {
       id: 'assessment/batch-results/rail',
@@ -1413,7 +1413,7 @@ describe('the list beside an open account', () => {
   const rail = [
     {
       id: 'assessment/batch-results/rail',
-      label: { kind: 'literal' as const, value: '参评名单' },
+      label: '参评名单',
       target: {
         kind: 'page',
         pageId: 'assessment/batch-results',
@@ -1981,7 +1981,7 @@ describe('working the list beside an open account', () => {
   const rail = [
     {
       id: 'assessment/batch-results/rail',
-      label: { kind: 'literal' as const, value: '参评名单' },
+      label: '参评名单',
       target: {
         kind: 'page',
         pageId: 'assessment/batch-results',

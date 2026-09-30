@@ -123,11 +123,11 @@ export function MethodSheet({
   const runApi = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { formatText, formatError, locale } = useI18n()
+  const { formatError, locale } = useI18n()
   const listJoin = useList()
   const figure = new Intl.NumberFormat(locale)
   // the kind as its driver names it; its code only where no driver claims it
-  const kindWord = provider.kindLabel === null ? provider.type : formatText(provider.kindLabel)
+  const kindWord = provider.kindLabel === null ? provider.type : provider.kindLabel
   const detail = useQuery(
     query.identity.getAuthProvider.queryOptions({ params: { providerId: provider.id } }),
   )
@@ -193,7 +193,7 @@ export function MethodSheet({
   const gaps = detail.data?.missing ?? []
   const labelOf = (key: string) => {
     const field = fields.find((one) => one.key === key)
-    return field === undefined ? key : formatText(field.label)
+    return field === undefined ? key : field.label
   }
   const missingWords = gaps.flatMap((gap) => {
     if (gap.kind === 'driver') return [m.loginMethods_driverMissing()]

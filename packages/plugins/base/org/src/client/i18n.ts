@@ -1,6 +1,5 @@
 import { defineErrorTranslations, type ErrorsByCode } from '@qualy/i18n-contract'
 import type * as orgErrors from '../server/errors.ts'
-import type { Message } from '@qualy/i18n-contract'
 import * as m from '#messages'
 
 // What this plugin's screens say is in messages/<locale>.json, called as
@@ -36,23 +35,3 @@ export const errorMessages = defineErrorTranslations<ErrorsByCode<typeof orgErro
   ORG_NODE_RULE_VIOLATION: m.error_ruleViolation,
   ORG_NODE_INVALID_MOVE: m.error_invalidMove,
 }).registry
-
-// the messages the server names over the wire, by the id it sends
-export const wireMessages: Record<string, Message> = {
-  'org/audit/node-create': m.audit_nodeCreate,
-  'org/audit/node-delete': m.audit_nodeDelete,
-  'org/audit/node-move': m.audit_nodeMove,
-  'org/audit/node-restore': m.audit_nodeRestore,
-  'org/audit/node-retype': m.audit_nodeRetype,
-  'org/audit/node-update': m.audit_nodeUpdate,
-  'org/audit/rule-delete': m.audit_ruleDelete,
-  'org/audit/rule-put': m.audit_rulePut,
-  'org/audit/type-create': m.audit_typeCreate,
-  'org/audit/type-delete': m.audit_typeDelete,
-  'org/audit/type-update': m.audit_typeUpdate,
-  'org/nav-group/organization': m.navGroup_organization,
-  'org/navigation/organization': m.navigation_organization,
-  'org/permission-group/structure': m.permissionGroup_structure,
-  'org/permission/tree-manage': m.permission_treeManage,
-  'org/permission/tree-read': m.permission_treeRead,
-}

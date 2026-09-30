@@ -711,7 +711,7 @@ describe('the workbench inside the workspace shell', () => {
                 'workspace-shell/navigation': [
                   {
                     id: 'assessment/batch-reviews/rail',
-                    label: { kind: 'literal', value: '审核工作' },
+                    label: '审核工作',
                     target: {
                       kind: 'page',
                       pageId: 'assessment/batch-reviews',
@@ -780,7 +780,7 @@ describe('the workbench inside the workspace shell', () => {
                   'workspace-shell/navigation': [
                     {
                       id: 'assessment/batch-reviews/rail',
-                      label: { kind: 'literal', value: '审核工作' },
+                      label: '审核工作',
                       target: {
                         kind: 'page',
                         pageId: 'assessment/batch-reviews',

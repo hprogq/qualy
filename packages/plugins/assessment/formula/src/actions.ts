@@ -1,6 +1,11 @@
 import { Schema } from 'effect'
-import { message } from '@qualy/i18n-contract'
 import { AuditAction } from '@qualy/audit-contract/action'
+import { text } from '@qualy/text'
+import { messageRefs } from '@qualy/text/node'
+import type * as M from '#messages'
+
+// this package's messages, by name (docs/adr/0011-i18n-paraglide.md)
+const m = messageRefs<typeof M>(import.meta.url)
 
 // Only what leaves no other trace. Publication is deliberately absent: a
 // published version IS the domain history - immutable row, publisher and
@@ -15,7 +20,7 @@ export const FormulaFunctionCreated = AuditAction.define({
   // 2: the owning node it used to record is not a fact about a formula any
   // more - authorship is, and the audit row already carries the actor
   version: 2,
-  name: message('assessment-formula/audit/create', 'Create scoring formula'),
+  name: text(m.audit_create),
   details: Schema.Struct({}),
 })
 
@@ -30,7 +35,7 @@ export const FormulaDraftReplaced = AuditAction.define({
   code: 'assessment.formula.draft.update',
   target: 'assessment.formula',
   version: 1,
-  name: message('assessment-formula/audit/draft-update', 'Update formula draft'),
+  name: text(m.audit_draftUpdate),
   details: Schema.Struct({ draftRevision: Schema.Number }),
 })
 
@@ -45,7 +50,7 @@ export const FormulaFunctionDetailsChanged = AuditAction.define({
   code: 'assessment.formula.details.change',
   target: 'assessment.formula',
   version: 1,
-  name: message('assessment-formula/audit/details-change', 'Change scoring formula details'),
+  name: text(m.audit_detailsChange),
   details: Schema.Struct({
     name: Schema.optional(Schema.Struct({ from: Schema.String, to: Schema.String })),
     descriptionChanged: Schema.Boolean,
@@ -56,7 +61,7 @@ export const FormulaFunctionArchived = AuditAction.define({
   code: 'assessment.formula.archive',
   target: 'assessment.formula',
   version: 1,
-  name: message('assessment-formula/audit/archive', 'Archive scoring formula'),
+  name: text(m.audit_archive),
   details: Schema.Struct({}),
 })
 
@@ -72,7 +77,7 @@ export const FormulaVersionSharingChanged = AuditAction.define({
   code: 'assessment.formula.sharing.change',
   target: 'assessment.formula',
   version: 1,
-  name: message('assessment-formula/audit/sharing-change', 'Change formula sharing'),
+  name: text(m.audit_sharingChange),
   details: Schema.Struct({
     versionId: Schema.String,
     addedOrgNodeIds: Schema.Array(Schema.String),
@@ -93,7 +98,7 @@ export const FormulaVersionInfoChanged = AuditAction.define({
   code: 'assessment.formula.version.info.change',
   target: 'assessment.formula',
   version: 1,
-  name: message('assessment-formula/audit/version-info-change', 'Rename formula version'),
+  name: text(m.audit_versionInfoChange),
   details: Schema.Struct({
     versionId: Schema.String,
     versionNo: Schema.Number,
@@ -118,7 +123,7 @@ export const FormulaFunctionDeleted = AuditAction.define({
   code: 'assessment.formula.delete',
   target: 'assessment.formula',
   version: 1,
-  name: message('assessment-formula/audit/delete', 'Delete scoring formula'),
+  name: text(m.audit_delete),
   details: Schema.Struct({}),
 })
 
@@ -126,7 +131,7 @@ export const FormulaFunctionRestored = AuditAction.define({
   code: 'assessment.formula.restore',
   target: 'assessment.formula',
   version: 1,
-  name: message('assessment-formula/audit/restore', 'Restore scoring formula'),
+  name: text(m.audit_restore),
   details: Schema.Struct({}),
 })
 
@@ -141,7 +146,7 @@ export const FormulaTemplateCopied = AuditAction.define({
   code: 'assessment.formula.template.copy',
   target: 'assessment.formula',
   version: 1,
-  name: message('assessment-formula/audit/template-copy', 'Copy formula template'),
+  name: text(m.audit_templateCopy),
   details: Schema.Struct({ sourceVersionId: Schema.String }),
 })
 

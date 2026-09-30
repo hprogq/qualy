@@ -2,6 +2,7 @@
   "settings_category_identity": "用户与登录",
   "settings_term_businessNumber": "人员编号",
   "settings_term_businessNumberDescription": "用于在机构内唯一识别人员的编号",
+  "settings_term_businessNumberDefault": "学工号",
   "permission_userTypeRead": "查看用户类型",
   "permission_userTypeManage": "管理用户类型",
   "permission_providerRead": "查看登录方式",

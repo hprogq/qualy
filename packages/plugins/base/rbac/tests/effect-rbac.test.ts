@@ -1,4 +1,4 @@
-import { literal } from '@qualy/i18n-contract'
+import { literal } from '@qualy/text'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { UiAuthorizer } from '@qualy/plugin-ui-registry/server/authorizer'
 import { sql } from 'kysely'

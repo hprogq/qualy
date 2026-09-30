@@ -1,5 +1,10 @@
-import { message } from '@qualy/i18n-contract'
 import type { PermissionDefinition } from '@qualy/rbac-contract'
+import { text } from '@qualy/text'
+import { messageRefs } from '@qualy/text/node'
+import type * as M from '#messages'
+
+// this package's messages, by name (docs/adr/0011-i18n-paraglide.md)
+const m = messageRefs<typeof M>(import.meta.url)
 
 // Two permissions, answering two questions that must not merge.
 //
@@ -24,24 +29,18 @@ import type { PermissionDefinition } from '@qualy/rbac-contract'
 export const permissions = [
   {
     code: 'assessment.formula.author',
-    name: message('assessment-formula/permission/author', 'Write scoring formulas'),
-    description: message(
-      'assessment-formula/permission-hint/author',
-      'Write, test, publish and archive your own scoring formulas.',
-    ),
+    name: text(m.permission_author),
+    description: text(m.permissionHint_author),
     groupKey: 'assessment',
-    group: message('assessment-formula/permission-group/assessment', 'Assessment'),
+    group: text(m.permissionGroup_assessment),
     target: 'tenant',
   },
   {
     code: 'assessment.formula.share',
-    name: message('assessment-formula/permission/share', 'Share scoring formulas'),
-    description: message(
-      'assessment-formula/permission-hint/share',
-      'Offer your published formulas to the authors working under this unit.',
-    ),
+    name: text(m.permission_share),
+    description: text(m.permissionHint_share),
     groupKey: 'assessment',
-    group: message('assessment-formula/permission-group/assessment', 'Assessment'),
+    group: text(m.permissionGroup_assessment),
     target: 'org-node',
   },
 ] as const satisfies readonly PermissionDefinition[]

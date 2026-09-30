@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { usePageQueryState, usePageQueryUpdate } from '@qualy/web-runtime'
 import { ACCESS_STANDINGS } from '../../api.ts'
-import { BATCH_STAFF_CODES } from '../../permissions.ts'
+import { BATCH_STAFF_CODES } from '../../permission-codes.ts'
 
 // Which of a round's staff the page is showing: the words searched for, the
 // three narrowings and the page. In the address, so a reload keeps the

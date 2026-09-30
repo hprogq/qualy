@@ -2,7 +2,7 @@ import { useLocation } from 'react-router'
 import {
   navigationGroups,
   primaryNavigation,
-  type NavigationGroup,
+  type ResolvedNavigationGroup,
   type ResolvedNavigationItem,
 } from '@qualy/ui-contract'
 import { useUiCollection } from '@qualy/web-runtime'
@@ -26,7 +26,7 @@ const pathOf = (item: ResolvedNavigationItem): string | undefined =>
 export interface SectionGroup {
   id: string
   /** absent when a lone heading would only repeat the tab drawn above it */
-  label: NavigationGroup['label'] | undefined
+  label: string | undefined
   items: readonly ResolvedNavigationItem[]
 }
 
@@ -48,7 +48,7 @@ export function useAppNavigation(): AppNavigation {
   // a group inside another one is a section of that application, not an
   // application of its own; the top bar flattens both into one row of
   // sections, because two levels of menu under one tab is a menu nobody reads
-  const appOf = (group: NavigationGroup): string =>
+  const appOf = (group: ResolvedNavigationGroup): string =>
     group.parent !== undefined && registered.has(group.parent) ? group.parent : group.id
   const itemsOf = (appId: string) =>
     navigation

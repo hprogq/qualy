@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
-import type { UiText } from '@qualy/i18n-contract'
+import type { SupportedLocale } from '@qualy/i18n-contract'
+import { render, renderTexts } from '@qualy/text'
 import { Context, Effect, Layer } from 'effect'
 import {
   isVisibleTo,
@@ -40,8 +41,8 @@ export interface ManifestPage {
   readonly id: string
   readonly path: string
   readonly layout: string
-  /** what a tab should call it, in the viewer's own language once resolved */
-  readonly title?: UiText
+  /** what a tab should call it, in the reader's language */
+  readonly title?: string
 }
 
 export interface Manifest {
@@ -133,7 +134,10 @@ export const make = Effect.fn('Ui.manifest.make')(function* () {
   })
 
   return {
-    build: Effect.fn('Ui.manifest.build')(function* (principal?: Principal) {
+    build: Effect.fn('Ui.manifest.build')(function* (
+      principal: Principal | undefined,
+      locale: SupportedLocale,
+    ) {
       const viewer = yield* viewerAccess(principal)
       const { pages, layouts, slots, collections } = yield* collect()
       const byContract = new Map(layouts.map((layout) => [layout.declaration.contract, layout]))
@@ -170,10 +174,12 @@ export const make = Effect.fn('Ui.manifest.make')(function* () {
                 pageId: page.declaration.page.id,
                 path: page.declaration.page.path,
               },
-            } satisfies ResolvedNavigationItem
+            } satisfies Omit<ResolvedNavigationItem, 'label'>
           }
         }
-        ;(projectedCollections[item.collection.key] ??= []).push(value)
+        // what a plugin filed says its words as Texts; the reader gets them
+        // in the language of the page that asked
+        ;(projectedCollections[item.collection.key] ??= []).push(renderTexts(value, { locale }))
       }
 
       // A section nothing files under is not a section.
@@ -241,7 +247,7 @@ export const make = Effect.fn('Ui.manifest.make')(function* () {
             id: page.declaration.page.id,
             path: page.declaration.page.path,
             layout: page.declaration.layout,
-            ...(title === undefined ? {} : { title }),
+            ...(title === undefined ? {} : { title: render(title, { locale }) }),
           }
         }),
         collections: projectedCollections,

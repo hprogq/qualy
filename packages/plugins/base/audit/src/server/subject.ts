@@ -3,7 +3,7 @@ import { sql } from 'kysely'
 import { pageWindow } from '@qualy/api-kit/schema'
 import { PERSON_TARGET } from '@qualy/audit-contract/action'
 import type { SubjectEventsPage, SubjectEventsQuery } from '@qualy/audit-contract/effect'
-import type { UiText } from '@qualy/i18n-contract'
+import type { Text } from '@qualy/text'
 import { db } from './db.ts'
 
 // What happened to one person's account, as they are told it: the actions
@@ -31,7 +31,7 @@ const matching = (k: Kysely, query: SubjectEventsQuery, codes: readonly string[]
     )
 
 /** one page of them, with how many there are in all */
-export const subjectEvents = (query: SubjectEventsQuery, voices: ReadonlyMap<string, UiText>) =>
+export const subjectEvents = (query: SubjectEventsQuery, voices: ReadonlyMap<string, Text>) =>
   Effect.gen(function* () {
     if (voices.size === 0) return { items: [], total: 0, page: 1 } satisfies SubjectEventsPage
     const codes = [...voices.keys()]

@@ -1,8 +1,13 @@
 import { Effect } from 'effect'
-import { message } from '@qualy/i18n-contract'
 import type { NodeUsageReporter } from '@qualy/org-contract/plugin'
 import { withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { db } from './db.ts'
+import { text } from '@qualy/text'
+import { messageRefs } from '@qualy/text/node'
+import type * as M from '#messages'
+
+// this package's messages, by name (docs/adr/0011-i18n-paraglide.md)
+const m = messageRefs<typeof M>(import.meta.url)
 
 // The people standing at a unit, said to whoever is about to delete it.
 //
@@ -35,7 +40,7 @@ export const peopleAtNode: NodeUsageReporter<Orm> = {
           return [
             {
               kind: 'people',
-              label: message('auth/node-usage/people', 'People standing here'),
+              label: text(m.nodeUsage_people),
               count: Number(count),
               clearable: true,
               examples: named.map((row) => row.displayName),

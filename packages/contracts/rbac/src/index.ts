@@ -3,7 +3,7 @@
 // which keeps the package graph acyclic (the implementation itself depends
 // on auth/org schemas)
 
-import type { UiText } from '@qualy/i18n-contract'
+import type { Text } from '@qualy/text'
 export { isSystemActor, type SystemActor } from './system-actor.ts'
 export { scopeCoverage, scopeCoverageAtLeast, type OrgNodeRef } from './scope.ts'
 
@@ -45,23 +45,22 @@ export interface PermissionDefinition {
   /**
    * What a person administering roles sees on the tick box.
    *
-   * UiText, not a string: this is authored product copy that crosses to a
-   * browser, and the boundary says the server carries the semantics while
-   * the reader's own language is chosen there. The declaring plugin owns
-   * the message id, so a permission is named by whoever defined it.
+   * A Text, not a string: the declaring plugin's own message, rendered in the
+   * reader's language when an answer carries it, so a permission is named by
+   * whoever defined it and in whatever language its reader reads.
    */
-  name: UiText
-  description?: UiText
+  name: Text
+  description?: Text
   /**
    * Which part of the product this permission belongs to.
    *
    * The key is stable and machine-facing; the name is what a reader sees on
-   * the group heading, and it is UiText for the same reason `name` is - the
+   * the group heading, and it is a Text for the same reason `name` is - the
    * plugin that declares the permission is the one that gets to name the
-   * section it appears under, and the language is chosen in the browser.
+   * section it appears under.
    */
   groupKey?: string
-  group?: UiText
+  group?: Text
   target: PermissionTarget
 }
 

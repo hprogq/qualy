@@ -2,6 +2,7 @@
   "settings_category_identity": "People and sign-in",
   "settings_term_businessNumber": "Person identifier",
   "settings_term_businessNumberDescription": "The business identifier assigned to a person in this tenant.",
+  "settings_term_businessNumberDefault": "Student or staff ID",
   "permission_userTypeRead": "View user types",
   "permission_userTypeManage": "Manage user types",
   "permission_providerRead": "View login methods",

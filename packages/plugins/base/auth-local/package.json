@@ -30,6 +30,7 @@
     "@qualy/plugin-captcha": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
+    "@qualy/text": "workspace:*",
     "@qualy/ui": "workspace:*",
     "@qualy/web-i18n": "workspace:*",
     "@qualy/web-runtime": "workspace:*",

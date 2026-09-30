@@ -1,4 +1,4 @@
-import { literal } from '@qualy/i18n-contract'
+import { literal } from '@qualy/text'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'

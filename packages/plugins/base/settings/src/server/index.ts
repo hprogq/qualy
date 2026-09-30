@@ -13,14 +13,19 @@ import {
   type QueryFailed,
 } from '@qualy/plugin-database/server'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
-import type { SupportedLocale, UiText } from '@qualy/i18n-contract'
+import type { SupportedLocale } from '@qualy/i18n-contract'
+import { render, renderTexts, type Text } from '@qualy/text'
+import { requestLocale } from '@qualy/api-kit/locale'
 import { SettingCatalog, TenantSettings } from '@qualy/settings-contract/effect'
 import {
+  checkDefaults,
   effectiveText,
   normalizeOverride,
+  type LocalizedText,
   type LocalizedTextOverride,
   type RegisteredSetting,
   type TermDefinition,
+  type TermRef,
 } from '@qualy/settings-contract'
 import { settingsApiGroup } from '../api.ts'
 import { TermOverrideUpdated } from '../actions.ts'
@@ -43,8 +48,8 @@ export const MANAGE = 'settings.terminology.manage'
 export interface TermView {
   readonly id: string
   readonly categoryId: string
-  readonly label: UiText
-  readonly description: UiText | null
+  readonly label: Text
+  readonly description: Text | null
   readonly order: number
   readonly maxLength: number
   readonly defaults: Readonly<Record<string, string>>
@@ -55,7 +60,7 @@ export interface TermView {
 export interface TerminologyView {
   readonly categories: readonly {
     readonly id: string
-    readonly label: UiText
+    readonly label: Text
     readonly order: number
   }[]
   readonly terms: readonly TermView[]
@@ -76,9 +81,18 @@ export class SettingsStore extends Context.Service<
     >
     readonly resolveTerm: (
       tenantId: string,
-      term: TermDefinition,
+      term: TermRef,
       locale: SupportedLocale,
     ) => Effect.Effect<string>
+    /**
+     * Every term's word in one locale, by id: the tenant's where it chose
+     * one, the product's otherwise. Without a tenant - a visitor nobody has
+     * signed in as - the product's words alone, which are nobody's secret.
+     */
+    readonly termsFor: (
+      tenantId: string | undefined,
+      locale: SupportedLocale,
+    ) => Effect.Effect<Readonly<Record<string, string>>>
   }
 >()('@qualy/plugin-settings/SettingsStore') {}
 
@@ -124,6 +138,15 @@ const make = Effect.gen(function* () {
     (setting): setting is RegisteredSetting & TermDefinition => setting.purpose === 'term',
   )
   const termById = new Map(terms.map((term) => [term.id, term]))
+  // the product's words for every term, said once in every locale and
+  // checked: a default that says nothing in one language refuses the boot
+  const defaults = new Map<string, LocalizedText>(
+    terms.map((term) => [
+      term.id,
+      checkDefaults(term, (locale) => render(term.default, { locale })),
+    ]),
+  )
+  const defaultsOf = (term: { readonly id: string }) => defaults.get(term.id)!
 
   const readTerminology = Effect.fn('Settings.readTerminology')(function* (tenantId: string) {
     const rows = yield* withDb(storedValues(tenantId)).pipe(Effect.orDie)
@@ -142,7 +165,7 @@ const make = Effect.gen(function* () {
           description: term.description ?? null,
           order: term.order,
           maxLength: term.maxLength,
-          defaults: term.defaults,
+          defaults: defaultsOf(term),
           override: row === undefined ? {} : wordsOf(row.value),
           version: row?.version ?? 0,
         }
@@ -152,11 +175,11 @@ const make = Effect.gen(function* () {
 
   /** what a term is called after a write: the first override that says anything, else its default */
   const termWord = (
-    term: { readonly defaults: Readonly<Record<string, string | undefined>> },
+    termDefaults: LocalizedText,
     override: Readonly<Record<string, string | undefined>>,
   ): string => {
     const spoken = Object.values(override).find((word) => (word ?? '') !== '')
-    return spoken ?? Object.values(term.defaults).find((word) => (word ?? '') !== '') ?? ''
+    return spoken ?? Object.values(termDefaults).find((word) => word !== '') ?? ''
   }
 
   const writeTerm: SettingsStore['Service']['writeTerm'] = Effect.fn('Settings.writeTerm')(
@@ -164,7 +187,10 @@ const make = Effect.gen(function* () {
       yield* rbac.require(as, MANAGE)
       const term = termById.get(settingId)
       if (term === undefined) return yield* new SettingNotFound()
-      const normalized = normalizeOverride(term, input.override)
+      const normalized = normalizeOverride(
+        { maxLength: term.maxLength, defaults: defaultsOf(term) },
+        input.override,
+      )
       if (!normalized.ok) {
         return yield* new SettingValueInvalid({
           reason: normalized.reason,
@@ -209,7 +235,7 @@ const make = Effect.gen(function* () {
               // the word the tenant now uses, or the default it went back
               // to: "auth/business-number" is this plugin's key for the term,
               // and told a reader of the trail nothing
-              target: { id: settingId, label: termWord(term, next) },
+              target: { id: settingId, label: termWord(defaultsOf(term), next) },
               details: {
                 locales: Object.keys(next) as ('zh-CN' | 'en-US')[],
               },
@@ -223,14 +249,39 @@ const make = Effect.gen(function* () {
 
   const resolveTerm = Effect.fn('Settings.resolveTerm')(function* (
     tenantId: string,
-    term: TermDefinition,
+    term: TermRef,
     locale: SupportedLocale,
   ) {
+    if (!termById.has(term.id)) {
+      return yield* Effect.die(new Error(`no plugin of this assembly declares the term ${term.id}`))
+    }
     const row = yield* withDb(storedValue(tenantId, term.id)).pipe(Effect.orDie)
-    return effectiveText(term, row === undefined ? undefined : wordsOf(row.value), locale)
+    return effectiveText(
+      defaultsOf(term),
+      row === undefined ? undefined : wordsOf(row.value),
+      locale,
+    )
   })
 
-  return SettingsStore.of({ readTerminology, writeTerm, resolveTerm })
+  const termsFor = Effect.fn('Settings.termsFor')(function* (
+    tenantId: string | undefined,
+    locale: SupportedLocale,
+  ) {
+    const stored =
+      tenantId === undefined
+        ? new Map<string, Record<string, string>>()
+        : new Map(
+            (yield* withDb(storedValues(tenantId)).pipe(Effect.orDie)).map((row) => [
+              row.settingId,
+              wordsOf(row.value),
+            ]),
+          )
+    return Object.fromEntries(
+      terms.map((term) => [term.id, effectiveText(defaultsOf(term), stored.get(term.id), locale)]),
+    )
+  })
+
+  return SettingsStore.of({ readTerminology, writeTerm, resolveTerm, termsFor })
 })
 
 export const storeLayer: Layer.Layer<SettingsStore, never, Orm | SettingCatalog | Rbac | Audit> =
@@ -257,7 +308,9 @@ export const settingsApiHandlers = HttpApiBuilder.group(local, 'settings', (hand
       Effect.fn('settings.getTerminology.handler')(function* () {
         const store = yield* SettingsStore
         const principal = yield* CurrentUser
-        return yield* store.readTerminology(principal.tenantId)
+        return renderTexts(yield* store.readTerminology(principal.tenantId), {
+          locale: yield* requestLocale,
+        })
       }),
     )
     .handle(

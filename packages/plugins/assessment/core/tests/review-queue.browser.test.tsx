@@ -28,7 +28,7 @@ const PAGES = [
   { id: 'assessment/review-instance', path: '/assessment/batches/:batchId/reviews/:instanceId' },
 ].map((entry) => ({ ...entry, layout: 'admin' }))
 
-const text = (value: string) => ({ kind: 'literal' as const, value })
+const text = (value: string) => value
 const rail = [
   {
     id: 'assessment/batch-reviews/rail',

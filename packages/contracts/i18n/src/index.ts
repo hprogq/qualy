@@ -1,26 +1,7 @@
-import { Schema } from 'effect'
-
-// the serializable text protocol between server-side plugins and the web
-// runtime: plugins never pick the display language. A MessageRef names a
-// translatable message (stable namespaced id plus its English fallback), a
-// LiteralText carries business data verbatim (an org name, a provider name
-// configured by an administrator) that must never be machine-translated.
-// This package is framework-free on purpose: no react, no i18n engine.
-
-export type MessageId = string
-
-export interface MessageRef {
-  kind: 'message'
-  id: MessageId
-  defaultMessage: string
-}
-
-export interface LiteralText {
-  kind: 'literal'
-  value: string
-}
-
-export type UiText = MessageRef | LiteralText
+// The locales and message types every side of the product shares
+// (docs/adr/0011-i18n-paraglide.md). Framework-free on purpose: no react, no
+// message compiler. What a server says is a Text (@qualy/text), said into a
+// string before it leaves; nothing on the wire names a message.
 
 export type MessageValues = Record<string, unknown>
 
@@ -44,50 +25,6 @@ export type Message = (inputs?: any, options?: { readonly locale?: SupportedLoca
  */
 export const selectKey = (value: string): string =>
   value.replace(/-([a-z0-9])/g, (_, next: string) => next.toUpperCase())
-
-export const message = (id: MessageId, defaultMessage: string): MessageRef => ({
-  kind: 'message',
-  id,
-  defaultMessage,
-})
-
-export const literal = (value: string): LiteralText => ({
-  kind: 'literal',
-  value,
-})
-
-/**
- * The text with no reader to choose for: a message's own default, or a
- * literal as it stands.
- *
- * For the places that are not a screen - a mirror row, a log line, a
- * server-side search over authored copy. A browser must never use this: it
- * has a reader, and the catalog is how their language is chosen.
- */
-export const plainText = (text: UiText): string =>
-  text.kind === 'literal' ? text.value : text.defaultMessage
-
-// message ids are namespaced like every other cross-plugin identifier:
-// <plugin>/<segment>(/<segment>)*, lowercase kebab-case segments
-const messageIdPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)+$/
-
-// The one runtime schema of UiText, for every boundary a text crosses: a
-// plugin's contribution at registration, an api response, a manifest. A
-// bad contribution fails at the plugin, not in the browser. Effect Schema,
-// as every other contract's runtime schema is - the api layer declares its
-// shapes in it, and a second schema language for the same type is what the
-// migration set out to end.
-export const UiTextSchema = Schema.Union([
-  Schema.Struct({
-    kind: Schema.Literal('message'),
-    id: Schema.String.check(Schema.isPattern(messageIdPattern)),
-    defaultMessage: Schema.String.check(Schema.isMinLength(1)),
-  }),
-  Schema.Struct({
-    kind: Schema.Literal('literal'),
-    value: Schema.String,
-  }),
-])
 
 export type SupportedLocale = 'zh-CN' | 'en-US'
 export const supportedLocales: readonly SupportedLocale[] = ['zh-CN', 'en-US']

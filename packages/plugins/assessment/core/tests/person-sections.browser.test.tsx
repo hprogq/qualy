@@ -11,7 +11,7 @@ import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 const USER_ID = '88888888-8888-4888-8888-888888888888'
 
-const text = (value: string) => ({ kind: 'literal' as const, value })
+const text = (value: string) => value
 const section = (id: string, pageId: string, path: string, label: string, order: number) => ({
   id,
   label: text(label),

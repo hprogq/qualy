@@ -2,6 +2,8 @@ import { Effect, Layer } from 'effect'
 import { sql } from 'kysely'
 import { HttpApiBuilder } from 'effect/http-api'
 import { Api } from '@qualy/api-kit/plugin'
+import { requestLocale } from '@qualy/api-kit/locale'
+import { render } from '@qualy/text'
 import {
   DEFAULT_PAGE_SIZE,
   encodeQueryCursor,
@@ -152,7 +154,10 @@ export const auditApiHandlers = HttpApiBuilder.group(local, 'audit', (handlers) 
         const principal = yield* CurrentUser
         yield* rbac.require(principal, 'audit.event.read')
         const catalog = yield* AuditActionCatalog
-        const names = new Map(catalog.map((entry) => [entry.action.code, entry.action.name]))
+        const locale = yield* requestLocale
+        const names = new Map(
+          catalog.map((entry) => [entry.action.code, render(entry.action.name, { locale })]),
+        )
 
         const from = yield* timeBound(query.from)
         const to = yield* timeBound(query.to)
@@ -218,10 +223,11 @@ export const auditApiHandlers = HttpApiBuilder.group(local, 'audit', (handlers) 
         const principal = yield* CurrentUser
         yield* rbac.require(principal, 'audit.event.read')
         const catalog = yield* AuditActionCatalog
+        const locale = yield* requestLocale
         return {
           actions: catalog.map((entry) => ({
             code: entry.action.code,
-            name: entry.action.name,
+            name: render(entry.action.name, { locale }),
             plugin: entry.plugin,
           })),
         }

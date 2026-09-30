@@ -7,7 +7,6 @@ import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Scoring } from '@qualy/plugin-assessment/plugin'
 import { calculatorEditorSlot, calculatorSummarySlot } from '@qualy/plugin-assessment/surfaces'
 import { APP_SHELL, PUBLIC, navigationGroups, permissionOf } from '@qualy/ui-contract'
-import { message } from '@qualy/i18n-contract'
 import { permissions } from './permissions.ts'
 import { formulaActions } from './actions.ts'
 import { formulaApiGroup } from './api.ts'
@@ -24,6 +23,12 @@ import { formula1 } from './scoring/formula-calculator.ts'
 import { formulaAuthoringPolicy } from './scoring/authoring-policy.ts'
 import { Layer } from 'effect'
 import { compositeForeignKeys, entities } from './db/entities.ts'
+import { text } from '@qualy/text'
+import { messageRefs } from '@qualy/text/node'
+import type * as M from '#messages'
+
+// this package's messages, by name (docs/adr/0011-i18n-paraglide.md)
+const m = messageRefs<typeof M>(import.meta.url)
 
 // The formula library: typed scoring functions written by administrators,
 // compiled and frozen into immutable versions. This plugin owns authoring
@@ -61,7 +66,7 @@ const plugin = Plugin.define(
         id: 'assessment-formula/library',
         value: {
           id: 'assessment-formula/library',
-          label: message('assessment-formula/nav-group/library', 'Scoring formulas'),
+          label: text(m.navGroup_library),
           order: 10,
           parent: 'library/main',
         },
@@ -99,10 +104,10 @@ const plugin = Plugin.define(
     path: '/library/formulas',
     component: Ui.react('./client/FormulaListPage'),
     layout: APP_SHELL,
-    title: message('assessment-formula/list/title', 'Scoring formulas'),
+    title: text(m.list_title),
     visibility: permissionOf('assessment.formula.author'),
     navigation: {
-      label: message('assessment-formula/navigation/formulas', 'Scoring formulas'),
+      label: text(m.navigation_formulas),
       icon: 'sigma',
       order: 20,
       group: 'assessment-formula/library',
@@ -113,12 +118,12 @@ const plugin = Plugin.define(
     path: '/library/formula-templates',
     component: Ui.react('./client/FormulaTemplatesPage'),
     layout: APP_SHELL,
-    title: message('assessment-formula/templates/title', 'Formula templates'),
+    title: text(m.templates_title),
     // the same capability the library itself takes: the only thing to do
     // with a template is start a formula of your own from it
     visibility: permissionOf('assessment.formula.author'),
     navigation: {
-      label: message('assessment-formula/navigation/templates', 'Formula templates'),
+      label: text(m.navigation_templates),
       icon: 'file-text',
       order: 30,
       group: 'assessment-formula/library',
@@ -131,7 +136,7 @@ const plugin = Plugin.define(
     path: '/library/formula-templates/:versionId',
     component: Ui.react('./client/FormulaTemplatePage'),
     layout: APP_SHELL,
-    title: message('assessment-formula/templates/title', 'Formula templates'),
+    title: text(m.templates_title),
     visibility: permissionOf('assessment.formula.author'),
   }),
   Ui.page({
@@ -139,7 +144,7 @@ const plugin = Plugin.define(
     path: '/library/formulas/:functionId',
     component: Ui.react('./client/FormulaEditorPage'),
     layout: APP_SHELL,
-    title: message('assessment-formula/list/title', 'Scoring formulas'),
+    title: text(m.list_title),
     visibility: permissionOf('assessment.formula.author'),
   }),
   // this plugin's arithmetic editing its own configuration in the seat

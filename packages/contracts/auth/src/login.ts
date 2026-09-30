@@ -1,6 +1,6 @@
 import { Context, Data, Effect, Layer, Redacted, Scope } from 'effect'
 import type { HttpServerRequest } from 'effect/http/HttpServerRequest'
-import type { UiText } from '@qualy/i18n-contract'
+import type { Text } from '@qualy/text'
 import type { ClientComponentRef } from '@qualy/ui-contract'
 import type { TooManyAttempts } from './session.ts'
 import type { ReauthenticationRequired } from './sign-in-failure.ts'
@@ -182,8 +182,8 @@ export type AuthBindingDeclaration =
       readonly mode: 'managed'
       /** the secret typed for the person, and what makes one acceptable */
       readonly secret: {
-        readonly label: UiText
-        readonly hint?: UiText
+        readonly label: Text
+        readonly hint?: Text
         readonly minLength: number
         readonly maxLength: number
       }
@@ -244,8 +244,8 @@ export type AuthBindingDeclaration =
  */
 interface EntranceFieldBase {
   readonly key: string
-  readonly label: UiText
-  readonly hint?: UiText
+  readonly label: Text
+  readonly hint?: Text
   readonly required: boolean
   /**
    * Shown, stored and asked of the entrance only while another field of the
@@ -261,7 +261,7 @@ interface EntranceFieldBase {
 /** one of a fixed set, stored as the option's value */
 export interface EntranceChoice {
   readonly value: string
-  readonly label: UiText
+  readonly label: Text
 }
 
 export type EntranceField = EntranceFieldBase &
@@ -289,7 +289,7 @@ export type EntranceValue = string | boolean | number
 
 export interface EntranceKind {
   /** what this kind of entrance is called when one is being added */
-  readonly label: UiText
+  readonly label: Text
   readonly fields: readonly EntranceField[]
   /**
    * The config keys that say whose accounts the entrance speaks for, and how
@@ -338,7 +338,7 @@ export type ProviderProvisioning =
       readonly mode: 'system-singleton'
       readonly code: string
       /** what the kind is called on the screens that list the tenant's ways in */
-      readonly label: UiText
+      readonly label: Text
     }
   | { readonly mode: 'tenant-managed'; readonly entrance: EntranceKind }
 

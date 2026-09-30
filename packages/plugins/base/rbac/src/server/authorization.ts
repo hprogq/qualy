@@ -1,4 +1,4 @@
-import { plainText } from '@qualy/i18n-contract'
+import { render, type Text } from '@qualy/text'
 import { Effect } from 'effect'
 import { db, type Db, admitsOrgType, admitsUserType, inForce } from './db.ts'
 import { sql, type Expression } from 'kysely'
@@ -788,6 +788,11 @@ export const grantsBlockingOrgType = (tenantId: string, orgNodeId: string, orgTy
     )
     .pipe(Effect.map((rows) => rows.map((row) => row.code)))
 
+// The stored catalog row is a mirror that decides nothing: its words are the
+// declaration's in the product's source language, and every answer a reader
+// sees says the declaration itself in the reader's language.
+const stored = (said: Text) => render(said, { locale: 'en-US' })
+
 /** how far a grant reaches, ordered so a wider one can be compared to a narrower */
 export const REACH_RANK = { self: 0, subtree: 1, tenant: 2 } as const
 export type Reach = keyof typeof REACH_RANK
@@ -800,9 +805,8 @@ export const upsertPermission = (permission: ActivePermission) =>
       .values({
         code: permission.code,
         plugin: permission.plugin,
-        name: plainText(permission.name),
-        description:
-          permission.description === undefined ? null : plainText(permission.description),
+        name: stored(permission.name),
+        description: permission.description === undefined ? null : stored(permission.description),
         groupKey: permission.groupKey ?? null,
         targetKind: permission.target,
       })
@@ -825,9 +829,8 @@ export const refreshPermissionText = (permission: ActivePermission) =>
     k
       .updateTable('Permission')
       .set({
-        name: plainText(permission.name),
-        description:
-          permission.description === undefined ? null : plainText(permission.description),
+        name: stored(permission.name),
+        description: permission.description === undefined ? null : stored(permission.description),
         groupKey: permission.groupKey ?? null,
         updatedAt: sql<Date>`now()`,
       })

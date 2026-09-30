@@ -57,6 +57,7 @@
     "@qualy/plugin-kit": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
     "@qualy/release-contract": "workspace:*",
+    "@qualy/text": "workspace:*",
     "@qualy/tsconfig": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "@qualy/web-build": "workspace:*",

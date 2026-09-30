@@ -4,7 +4,6 @@ import * as stylex from '@stylexjs/stylex'
 import { CheckIcon, ChevronRightIcon, PlusIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import type { UiText } from '@qualy/i18n-contract'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Input } from '@qualy/ui/input'
@@ -372,7 +371,7 @@ export function RulesTab({
   batchId: string
   options: ItemOptions
   placement: Placement
-  method: { ref: string; label: UiText | null }
+  method: { ref: string; label: string | null }
   problems: readonly EditorProblem[]
   onPatch: (next: Partial<Draft>) => void
   onOpenStage: (key: string) => void
@@ -448,11 +447,11 @@ function RulesCard({
 }: {
   draft: Draft
   placement: Placement
-  method: { ref: string; label: UiText | null }
+  method: { ref: string; label: string | null }
   problem: EditorProblem | undefined
   onPatch: (next: Partial<Draft>) => void
 }) {
-  const { formatText, locale } = useI18n()
+  const { locale } = useI18n()
   const entries = draft.maxEntries.trim() === '' ? null : Number(draft.maxEntries)
   const folding = foldingOf(draft)
   const each = Number(draft.fixedValue.trim())
@@ -462,7 +461,7 @@ function RulesCard({
     !perEntryAmount || counted === null || !Number.isFinite(each)
       ? null
       : amountOf(unitsOf(draft.fixedValue.trim()) * counted)
-  const methodName = method.label === null ? m.items_scoringMethodFixed() : formatText(method.label)
+  const methodName = method.label === null ? m.items_scoringMethodFixed() : method.label
   const chain = placement.sections
     .map((section) =>
       section.cap === null

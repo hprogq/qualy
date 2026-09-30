@@ -1,5 +1,4 @@
 import { Schema } from 'effect'
-import { UiTextSchema } from '@qualy/i18n-contract'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api'
 import { Viewer } from '@qualy/auth-contract/session'
 
@@ -29,15 +28,12 @@ const namespaced = Schema.String.check(
 // shell by the contract its pages name.
 const layout = Schema.Struct({ contract: namespaced })
 
-// a message the browser translates, or business data that must not be
-// translated at all: the i18n contract's own schema of it
-const uiText = UiTextSchema
-
 const page = Schema.Struct({
   id: namespaced,
   path: Schema.String,
   layout: namespaced,
-  title: Schema.optional(uiText),
+  // what a tab calls the page, in the reader's language
+  title: Schema.optional(Schema.String),
 })
 
 // its id under its slot: the pair the browser resolves a renderer by, and
@@ -69,6 +65,10 @@ export const appApiGroup = HttpApiGroup.make('app').add(
       pages: Schema.Array(page),
       collections: Schema.Record(Schema.String, Schema.Array(Schema.Unknown)),
       slots: Schema.Record(Schema.String, Schema.Array(slotItem)),
+      // what the whole page reads while it is open, by the key of the plugin
+      // that provides it, already said in the page's language: a tenant's
+      // words for its terms
+      context: Schema.Record(Schema.String, Schema.Unknown),
     }),
   }).middleware(Viewer),
 )

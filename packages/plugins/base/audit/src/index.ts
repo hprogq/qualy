@@ -4,7 +4,6 @@ import { Db } from '@qualy/plugin-database/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
 import { Audit } from '@qualy/audit-contract/plugin'
-import { message } from '@qualy/i18n-contract'
 import {
   APP_SHELL,
   PUBLIC,
@@ -17,6 +16,12 @@ import { auditApiGroup } from './api.ts'
 import { entities } from './db/entities.ts'
 import { permissions } from './permissions.ts'
 import { auditApiHandlers, serviceLayer } from './server/index.ts'
+import { text } from '@qualy/text'
+import { messageRefs } from '@qualy/text/node'
+import type * as M from '#messages'
+
+// this package's messages, by name (docs/adr/0011-i18n-paraglide.md)
+const m = messageRefs<typeof M>(import.meta.url)
 
 // The trail as one description: the table events land in, the writer every
 // recording plugin reaches through the contract, the one read permission,
@@ -33,7 +38,6 @@ const plugin = Plugin.define(
   // org for the tenant edge; auth read-only, so the trail can show an
   // actor's current name when the event kept no snapshot
   Db.entities(entities, { dependsOn: ['@qualy/plugin-org', '@qualy/plugin-auth'] }),
-  Ui.i18n('./client/i18n'),
   Ui.page({
     id: 'audit/events',
     path: '/organization/audit',
@@ -41,7 +45,7 @@ const plugin = Plugin.define(
     layout: APP_SHELL,
     visibility: permissionOf('audit.event.read'),
     navigation: {
-      label: message('audit/navigation/events', 'Audit log'),
+      label: text(m.navigation_events),
       icon: 'clipboard-list',
       order: 60,
       group: 'audit/records',
@@ -55,7 +59,7 @@ const plugin = Plugin.define(
     path: '/organization/users/:userId/audit',
     component: Ui.react('./client/UserAuditPage'),
     layout: USER_DETAIL_SHELL,
-    title: message('audit/user-events/title', 'Audit events'),
+    title: text(m.userEvents_title),
     visibility: permissionOf('audit.event.read'),
   }),
   // A heading of its own inside the organization application: reading what
@@ -68,7 +72,7 @@ const plugin = Plugin.define(
         id: 'audit/user-detail/events',
         value: {
           id: 'audit/user-detail/events',
-          label: message('audit/user-events/title', 'Audit events'),
+          label: text(m.userEvents_title),
           target: { kind: 'page', pageId: 'audit/user-events' },
           icon: 'clipboard-list',
           // after every section about who the person is and what they hold
@@ -81,7 +85,7 @@ const plugin = Plugin.define(
         id: 'audit/records',
         value: {
           id: 'audit/records',
-          label: message('audit/nav-group/records', 'Audit'),
+          label: text(m.navGroup_records),
           order: 90,
           parent: 'org/organization',
         },

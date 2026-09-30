@@ -1,9 +1,14 @@
 import { Effect, Layer } from 'effect'
-import { message } from '@qualy/i18n-contract'
 import { permissionOf } from '@qualy/ui-contract'
 import { UiContributions } from '@qualy/plugin-ui-registry/service'
 import { calculatorAuthoringOptions } from '@qualy/plugin-assessment/surfaces'
 import { FormulaSettings } from './config.ts'
+import { text } from '@qualy/text'
+import { messageRefs } from '@qualy/text/node'
+import type * as M from '#messages'
+
+// this package's messages, by name (docs/adr/0011-i18n-paraglide.md)
+const m = messageRefs<typeof M>(import.meta.url)
 
 // This plugin's arithmetic, offered in the question editor's chooser - or
 // not, as the manifest decides while the plugin is being built.
@@ -39,7 +44,7 @@ export const formulaAuthoringSurfaceLayer: Layer.Layer<
       id: 'assessment-formula/calculator',
       value: {
         ref: 'formula@1',
-        label: message('assessment-formula/binding/calculator', 'A published formula'),
+        label: text(m.binding_calculator),
         order: 20,
         // a formula, then one of its publications: the editor walks both
         // steps and finishes the choice on its own

@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api'
-import { BadRequest, INT4_MAX, boundedInt, uiText } from '@qualy/api-kit/schema'
+import { BadRequest, INT4_MAX, boundedInt } from '@qualy/api-kit/schema'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
 import { Authenticated } from '@qualy/auth-contract/session'
 import { SettingNotFound, SettingValueInvalid, SettingVersionConflict } from './server/errors.ts'
@@ -18,7 +18,7 @@ const localizedWords = Schema.Record(Schema.String, Schema.String)
 
 const settingCategory = Schema.Struct({
   id: Schema.String,
-  label: uiText,
+  label: Schema.String,
   order: Schema.Number,
 })
 
@@ -26,8 +26,8 @@ const settingCategory = Schema.Struct({
 const termView = Schema.Struct({
   id: Schema.String,
   categoryId: Schema.String,
-  label: uiText,
-  description: Schema.NullOr(uiText),
+  label: Schema.String,
+  description: Schema.NullOr(Schema.String),
   order: Schema.Number,
   maxLength: Schema.Number,
   defaults: localizedWords,

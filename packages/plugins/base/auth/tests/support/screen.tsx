@@ -1,21 +1,15 @@
-import { renderScreen as render } from '@qualy/testkit/browser'
-import { wireMessages as authWire, errorMessages as authErrors } from '../../src/client/i18n.ts'
-import {
-  wireMessages as authLocalWire,
-  errorMessages as authLocalErrors,
-} from '@qualy/plugin-auth-local/client/i18n'
+import { renderScreen as render, withDocumentContext } from '@qualy/testkit/browser'
+import { errorMessages as authErrors } from '../../src/client/i18n.ts'
+import { errorMessages as authLocalErrors } from '@qualy/plugin-auth-local/client/i18n'
 import { errorMessages as captchaErrors } from '@qualy/plugin-captcha/client/i18n'
-import {
-  wireMessages as rbacWire,
-  errorMessages as rbacErrors,
-} from '@qualy/plugin-rbac/client/i18n'
+import { errorMessages as rbacErrors } from '@qualy/plugin-rbac/client/i18n'
 // the host's stylesheet, because a screen asserted unstyled is a screen
 // nobody sees; it is the product's one stylesheet wherever a screen renders
 import '../../../../../../apps/web/src/app.css'
 
 // This package's own use of the testkit.
 //
-// What is said by code - api failures by code, server texts by id - is
+// What is said by code - api failures by code - is
 // named here rather than taken from the generated aggregate: these tests
 // render this plugin's screens, and what they meet is this plugin's own -
 // plus, where one of its screens renders a neighbour's contribution, that
@@ -24,7 +18,6 @@ import '../../../../../../apps/web/src/app.css'
 // whole-composition test, and a plugin outside this repository could not
 // write one at all.
 
-export const wireMessages = { ...authWire, ...authLocalWire, ...rbacWire }
 export const errorMessages = {
   ...authErrors,
   ...authLocalErrors,
@@ -41,6 +34,16 @@ export {
   type FakeManifest,
 } from '@qualy/testkit/browser'
 
-export const renderScreen = (
-  options: Omit<Parameters<typeof render>[0], 'wireMessages' | 'errorMessages'>,
-) => render({ ...options, wireMessages, errorMessages })
+/** the tenant's words settings gives every page, as a tenant that never renamed them has them */
+const termsIn = (locale: 'zh-CN' | 'en-US') => ({
+  'settings/terms': {
+    'auth/business-number': locale === 'en-US' ? 'Student or staff ID' : '学工号',
+  },
+})
+
+export const renderScreen = (options: Omit<Parameters<typeof render>[0], 'errorMessages'>) =>
+  render({
+    ...options,
+    client: withDocumentContext(options.client, termsIn(options.locale ?? 'zh-CN')),
+    errorMessages,
+  })

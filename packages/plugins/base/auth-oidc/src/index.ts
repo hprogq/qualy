@@ -22,7 +22,9 @@ import {
 } from '@qualy/auth-contract/sign-in-failure'
 import { Api } from '@qualy/api-kit/local'
 import { Api as ApiFeature } from '@qualy/api-kit/plugin'
-import { message } from '@qualy/i18n-contract'
+import { text } from '@qualy/text'
+import { messageRefs } from '@qualy/text/node'
+import type * as M from '#messages'
 import { Plugin } from '@qualy/plugin-kit'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { authOidcApiGroup, OidcRejected, OidcUnavailable } from './api.ts'
@@ -34,6 +36,9 @@ import {
   settingsOf,
   sortFailure,
 } from './oidc.ts'
+
+// this package's messages, by name (docs/adr/0011-i18n-paraglide.md)
+const m = messageRefs<typeof M>(import.meta.url)
 
 // Signing in through any OpenID Connect provider, and binding an account of
 // one to yourself.
@@ -49,101 +54,91 @@ import {
 const local = Api.local(authOidcApiGroup)
 const urls = HttpApiClient.urlBuilder(local)
 
-const say = (id: string, fallback: string) => message(`auth-oidc/${id}`, fallback)
-
-const choice = (value: string, id: string, fallback: string) => ({
-  value,
-  label: say(`field/${id}`, fallback),
-})
-
 const manual = { field: 'discoveryMode', equals: 'manual' } as const
 
 const fields: readonly EntranceField[] = [
   {
     key: 'issuer',
-    label: say('field/issuer', 'Issuer'),
-    hint: say('field/issuer-hint', 'The provider’s address, exactly as its tokens name it'),
+    label: text(m.field_issuer),
+    hint: text(m.field_issuerHint),
     kind: 'url',
     required: true,
   },
   {
     key: 'discoveryMode',
-    label: say('field/discovery', 'Endpoints'),
+    label: text(m.field_discovery),
     kind: 'choice',
     required: true,
     options: [
-      choice('discovery', 'discovery-auto', 'Discover from the issuer'),
-      choice('manual', 'discovery-manual', 'Enter by hand'),
+      { value: 'discovery', label: text(m.field_discoveryAuto) },
+      { value: 'manual', label: text(m.field_discoveryManual) },
     ],
     defaultValue: 'discovery',
   },
   {
     key: 'authorizationEndpoint',
-    label: say('field/authorization-endpoint', 'Authorization endpoint'),
+    label: text(m.field_authorizationEndpoint),
     kind: 'url',
     required: true,
     visibleWhen: manual,
   },
   {
     key: 'tokenEndpoint',
-    label: say('field/token-endpoint', 'Token endpoint'),
+    label: text(m.field_tokenEndpoint),
     kind: 'url',
     required: true,
     visibleWhen: manual,
   },
   {
     key: 'jwksUri',
-    label: say('field/jwks-uri', 'Key set (JWKS) address'),
+    label: text(m.field_jwksUri),
     kind: 'url',
     required: true,
     visibleWhen: manual,
   },
   {
     key: 'userinfoEndpoint',
-    label: say('field/userinfo-endpoint', 'UserInfo endpoint'),
+    label: text(m.field_userinfoEndpoint),
     kind: 'url',
     required: false,
     visibleWhen: manual,
   },
   {
     key: 'clientId',
-    label: say('field/client-id', 'Client ID'),
+    label: text(m.field_clientId),
     kind: 'text',
     required: true,
   },
   {
     key: 'clientSecret',
-    label: say('field/client-secret', 'Client secret'),
+    label: text(m.field_clientSecret),
     kind: 'secret',
     required: true,
   },
   {
     key: 'scopes',
-    label: say('field/scopes', 'Scopes'),
-    hint: say(
-      'field/scopes-hint',
-      'Separated by spaces; openid is always asked for. Empty means openid profile email',
-    ),
+    label: text(m.field_scopes),
+    hint: text(m.field_scopesHint),
     kind: 'text',
     required: false,
     section: 'advanced',
   },
   {
     key: 'tokenAuthMethod',
-    label: say('field/token-auth', 'Client authentication'),
+    label: text(m.field_tokenAuth),
     kind: 'choice',
     required: true,
     section: 'advanced',
     options: [
-      choice('auto', 'token-auth-auto', 'Automatic'),
-      choice('basic', 'token-auth-basic', 'HTTP Basic'),
-      choice('post', 'token-auth-post', 'In the request body'),
+      { value: 'auto', label: text(m.field_tokenAuthAuto) },
+      { value: 'basic', label: text(m.field_tokenAuthBasic) },
+      { value: 'post', label: text(m.field_tokenAuthPost) },
     ],
     defaultValue: 'auto',
   },
   {
     key: 'clockSkewSeconds',
-    label: say('field/clock-skew', 'Clock tolerance, in seconds'),
+    label: text(m.field_clockSkew),
     kind: 'number',
     required: true,
     section: 'advanced',
@@ -164,7 +159,7 @@ export const driver: LoginDriver = {
   provisioning: {
     mode: 'tenant-managed',
     entrance: {
-      label: say('entrance/kind', 'OpenID Connect'),
+      label: text(m.entrance_kind),
       fields,
       // a `sub` means one account to one issuer, and may mean another to
       // another client of it (pairwise subjects). Where its keys and tokens

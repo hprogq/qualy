@@ -1,6 +1,11 @@
 import { Schema } from 'effect'
-import { message } from '@qualy/i18n-contract'
 import { AuditAction } from '@qualy/audit-contract/action'
+import { text } from '@qualy/text'
+import { messageRefs } from '@qualy/text/node'
+import type * as M from '#messages'
+
+// this package's messages, by name (docs/adr/0011-i18n-paraglide.md)
+const m = messageRefs<typeof M>(import.meta.url)
 
 // The identity domain's audit actions: pure constants, like ./permissions.
 // Details name ids and field names, never values - what changed is the
@@ -12,7 +17,7 @@ export const UserCreated = AuditAction.define({
   code: 'auth.user.create',
   target: 'auth.user',
   version: 1,
-  name: message('auth/audit/user-create', 'Create user'),
+  name: text(m.audit_userCreate),
   details: Schema.Struct({ userTypeId: id, orgNodeId: id }),
 })
 
@@ -20,8 +25,8 @@ export const UserUpdated = AuditAction.define({
   code: 'auth.user.update',
   target: 'auth.user',
   version: 1,
-  name: message('auth/audit/user-update', 'Edit user'),
-  subject: message('auth/audit-subject/user-update', 'Your account details were changed'),
+  name: text(m.audit_userUpdate),
+  subject: text(m.auditSubject_userUpdate),
   details: Schema.Struct({
     fields: Schema.Array(Schema.Literals(['displayName', 'userTypeId', 'businessNo', 'email'])),
   }),
@@ -31,8 +36,8 @@ export const UserMoved = AuditAction.define({
   code: 'auth.user.move',
   target: 'auth.user',
   version: 1,
-  name: message('auth/audit/user-move', 'Move user'),
-  subject: message('auth/audit-subject/user-move', 'Your unit was changed'),
+  name: text(m.audit_userMove),
+  subject: text(m.auditSubject_userMove),
   details: Schema.Struct({ fromOrgNodeId: id, toOrgNodeId: id }),
 })
 
@@ -40,8 +45,8 @@ export const UserEnabled = AuditAction.define({
   code: 'auth.user.enable',
   target: 'auth.user',
   version: 1,
-  name: message('auth/audit/user-enable', 'Enable user'),
-  subject: message('auth/audit-subject/user-enable', 'Your account was enabled'),
+  name: text(m.audit_userEnable),
+  subject: text(m.auditSubject_userEnable),
   details: Schema.Struct({}),
 })
 
@@ -49,8 +54,8 @@ export const UserDisabled = AuditAction.define({
   code: 'auth.user.disable',
   target: 'auth.user',
   version: 1,
-  name: message('auth/audit/user-disable', 'Disable user'),
-  subject: message('auth/audit-subject/user-disable', 'Your account was disabled'),
+  name: text(m.audit_userDisable),
+  subject: text(m.auditSubject_userDisable),
   details: Schema.Struct({}),
 })
 
@@ -60,7 +65,7 @@ export const UserDeleted = AuditAction.define({
   // version 1 rows count `revokedIdentities`; the same fact, before the
   // table was named for bindings
   version: 2,
-  name: message('auth/audit/user-delete', 'Delete user'),
+  name: text(m.audit_userDelete),
   // the counts say what fell with the person; the ids say where they stood,
   // which the row itself stops saying if the unit or type is later removed
   details: Schema.Struct({
@@ -78,7 +83,7 @@ export const UserRestored = AuditAction.define({
   code: 'auth.user.restore',
   target: 'auth.user',
   version: 1,
-  name: message('auth/audit/user-restore', 'Restore user'),
+  name: text(m.audit_userRestore),
   details: Schema.Struct({ userTypeId: id, orgNodeId: id }),
 })
 
@@ -88,7 +93,7 @@ export const UserTypeCreated = AuditAction.define({
   code: 'auth.user-type.create',
   target: 'auth.user-type',
   version: 1,
-  name: message('auth/audit/user-type-create', 'Create user type'),
+  name: text(m.audit_userTypeCreate),
   details: Schema.Struct({ placementMode }),
 })
 
@@ -96,7 +101,7 @@ export const UserTypeUpdated = AuditAction.define({
   code: 'auth.user-type.update',
   target: 'auth.user-type',
   version: 1,
-  name: message('auth/audit/user-type-update', 'Edit user type'),
+  name: text(m.audit_userTypeUpdate),
   details: Schema.Struct({
     fields: Schema.Array(Schema.Literals(['name', 'description', 'sortOrder'])),
   }),
@@ -106,7 +111,7 @@ export const UserTypeEnabled = AuditAction.define({
   code: 'auth.user-type.enable',
   target: 'auth.user-type',
   version: 1,
-  name: message('auth/audit/user-type-enable', 'Enable user type'),
+  name: text(m.audit_userTypeEnable),
   details: Schema.Struct({}),
 })
 
@@ -114,7 +119,7 @@ export const UserTypeDisabled = AuditAction.define({
   code: 'auth.user-type.disable',
   target: 'auth.user-type',
   version: 1,
-  name: message('auth/audit/user-type-disable', 'Disable user type'),
+  name: text(m.audit_userTypeDisable),
   details: Schema.Struct({}),
 })
 
@@ -122,7 +127,7 @@ export const UserTypePlacementUpdated = AuditAction.define({
   code: 'auth.user-type.placement.update',
   target: 'auth.user-type',
   version: 1,
-  name: message('auth/audit/user-type-placement', 'Change where a user type may stand'),
+  name: text(m.audit_userTypePlacement),
   details: Schema.Struct({ mode: placementMode, orgTypeCount: Schema.Number }),
 })
 
@@ -130,7 +135,7 @@ export const UserTypeDeleted = AuditAction.define({
   code: 'auth.user-type.delete',
   target: 'auth.user-type',
   version: 1,
-  name: message('auth/audit/user-type-delete', 'Delete user type'),
+  name: text(m.audit_userTypeDelete),
   details: Schema.Struct({}),
 })
 
@@ -138,7 +143,7 @@ export const ProviderAudienceUpdated = AuditAction.define({
   code: 'auth.provider.audience.update',
   target: 'auth.provider',
   version: 1,
-  name: message('auth/audit/provider-audience', 'Change who may sign in through an entrance'),
+  name: text(m.audit_providerAudience),
   // `endedSessions`: the sessions of people it no longer admits, signed out
   // with the change; absent from rows written before it signed anybody out
   details: Schema.Struct({
@@ -152,7 +157,7 @@ export const ProviderCreated = AuditAction.define({
   code: 'auth.provider.create',
   target: 'auth.provider',
   version: 1,
-  name: message('auth/audit/provider-create', 'Add an entrance'),
+  name: text(m.audit_providerCreate),
   details: Schema.Struct({ type: Schema.String, code: Schema.String }),
 })
 
@@ -160,7 +165,7 @@ export const ProviderUpdated = AuditAction.define({
   code: 'auth.provider.update',
   target: 'auth.provider',
   version: 1,
-  name: message('auth/audit/provider-update', 'Edit an entrance'),
+  name: text(m.audit_providerUpdate),
   // which settings moved (`name`, or a field key of the entrance's kind, a
   // cleared secret included), never what they moved to
   details: Schema.Struct({ fields: Schema.Array(Schema.String) }),
@@ -172,7 +177,7 @@ export const ProviderDeleted = AuditAction.define({
   code: 'auth.provider.delete',
   target: 'auth.provider',
   version: 1,
-  name: message('auth/audit/provider-delete', 'Delete an entrance'),
+  name: text(m.audit_providerDelete),
   details: Schema.Struct({
     type: Schema.String,
     code: Schema.String,
@@ -185,7 +190,7 @@ export const ProviderStatusChanged = AuditAction.define({
   code: 'auth.provider.status',
   target: 'auth.provider',
   version: 1,
-  name: message('auth/audit/provider-status', 'Enable or disable an entrance'),
+  name: text(m.audit_providerStatus),
   // `endedSessions`: signed out because the entrance went out of service;
   // absent from rows written before taking one out ended anything
   details: Schema.Struct({
@@ -198,7 +203,7 @@ export const ProvidersReordered = AuditAction.define({
   code: 'auth.provider.reorder',
   target: 'auth.provider',
   version: 1,
-  name: message('auth/audit/provider-reorder', 'Reorder the sign-in page'),
+  name: text(m.audit_providerReorder),
   // `primary`: the doors listed in full, first in `order`; absent from rows
   // written before the page had two groups
   details: Schema.Struct({ order: Schema.Array(id), primary: Schema.optional(Schema.Array(id)) }),
@@ -208,7 +213,7 @@ export const ProviderRecommended = AuditAction.define({
   code: 'auth.provider.recommend',
   target: 'auth.provider',
   version: 1,
-  name: message('auth/audit/provider-recommend', 'Choose the recommended way to sign in'),
+  name: text(m.audit_providerRecommend),
   details: Schema.Struct({ providerId: Schema.NullOr(id) }),
 })
 
@@ -218,7 +223,7 @@ export const ProviderIconChanged = AuditAction.define({
   code: 'auth.provider.icon',
   target: 'auth.provider',
   version: 1,
-  name: message('auth/audit/provider-icon', 'Change how a way to sign in is drawn'),
+  name: text(m.audit_providerIcon),
   // `surface` and `version` arrived with images for a dark surface; rows
   // written before them are an image for a light one
   details: Schema.Struct({
@@ -240,8 +245,8 @@ export const BindingWritten = AuditAction.define({
   code: 'auth.identity.bind',
   target: 'auth.user',
   version: 2,
-  name: message('auth/audit/identity-bind', 'Set a sign-in credential for a user'),
-  subject: message('auth/audit-subject/identity-bind', 'A way to sign in was set or changed'),
+  name: text(m.audit_identityBind),
+  subject: text(m.auditSubject_identityBind),
   details: Schema.Struct({
     providerId: id,
     bindingId: id,
@@ -255,8 +260,8 @@ export const BindingRevoked = AuditAction.define({
   code: 'auth.identity.revoke',
   target: 'auth.user',
   version: 2,
-  name: message('auth/audit/identity-revoke', 'Withdraw a sign-in binding from a user'),
-  subject: message('auth/audit-subject/identity-revoke', 'A way to sign in was removed'),
+  name: text(m.audit_identityRevoke),
+  subject: text(m.auditSubject_identityRevoke),
   details: Schema.Struct({ providerId: id, bindingId: id, endedSessions: Schema.Number }),
 })
 
@@ -267,8 +272,8 @@ export const SessionsEnded = AuditAction.define({
   code: 'auth.session.revoke',
   target: 'auth.user',
   version: 1,
-  name: message('auth/audit/session-revoke', 'End sign-in sessions'),
-  subject: message('auth/audit-subject/session-revoke', 'Signed out on other devices'),
+  name: text(m.audit_sessionRevoke),
+  subject: text(m.auditSubject_sessionRevoke),
   details: Schema.Struct({ scope: Schema.Literals(['one', 'others']), ended: Schema.Number }),
 })
 
@@ -279,8 +284,8 @@ export const UserSessionsEnded = AuditAction.define({
   code: 'auth.user.session.revoke',
   target: 'auth.user',
   version: 1,
-  name: message('auth/audit/user-session-revoke', 'End a user’s sign-in sessions'),
-  subject: message('auth/audit-subject/user-session-revoke', 'An administrator signed you out'),
+  name: text(m.audit_userSessionRevoke),
+  subject: text(m.auditSubject_userSessionRevoke),
   details: Schema.Struct({ scope: Schema.Literals(['one', 'all']), ended: Schema.Number }),
 })
 

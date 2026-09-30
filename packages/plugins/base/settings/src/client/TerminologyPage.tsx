@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { useApi, useLoadFailure, useRunApi } from '@qualy/web-runtime'
+import { useApi, useLoadFailure, useManifestRefresh, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -96,7 +96,6 @@ const LOCALE_NAME = {
 } as const
 
 export default function TerminologyPage() {
-  const { formatText } = useI18n()
   const failures = useLoadFailure()
   // Narrow, a dozen terms means a dozen forms opened at once - two boxes and
   // two buttons each, a screen apiece. The list says what every word is
@@ -128,7 +127,7 @@ export default function TerminologyPage() {
               if (own.length === 0) return null
               return (
                 <section key={category.id} {...stylex.props(styles.section)}>
-                  <span {...stylex.props(styles.sectionLabel)}>{formatText(category.label)}</span>
+                  <span {...stylex.props(styles.sectionLabel)}>{category.label}</span>
                   {phone ? (
                     <Card>
                       <Table columns="minmax(0, 1fr) auto" openable>
@@ -162,6 +161,7 @@ function useTermDraft(term: Term) {
   const api = useApi(settingsApi)
   const run = useRunApi()
   const queryClient = useQueryClient()
+  const refreshManifest = useManifestRefresh()
   const [drafts, setDrafts] = useState<Record<SupportedLocale, string>>(() => ({
     'zh-CN': term.override['zh-CN'] ?? '',
     'en-US': term.override['en-US'] ?? '',
@@ -182,7 +182,12 @@ function useTermDraft(term: Term) {
           payload: { version: term.version, override },
         }),
       )
-      await queryClient.invalidateQueries({ queryKey: TERMINOLOGY_KEY })
+      // the screen's own list, and the words every other screen reads with
+      // the manifest
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: TERMINOLOGY_KEY }),
+        refreshManifest(),
+      ])
       toast.success(m.terminology_saved())
       return true
     } catch (error) {
@@ -238,19 +243,16 @@ function TermBoxes({
 
 /** one term: a box per language, saved as one resource under the version it was read at */
 function TermEditor({ term }: { term: Term }) {
-  const { formatText } = useI18n()
   const { drafts, setDrafts, saving, customised, dirty, write } = useTermDraft(term)
 
   return (
     <div {...stylex.props(styles.term)} data-testid="term" data-term={term.id}>
       <div {...stylex.props(styles.termHead)}>
         <span {...stylex.props(styles.termTitle)}>
-          {formatText(term.label)}
+          {term.label}
           {customised && <Badge variant="secondary">{m.terminology_customised()}</Badge>}
         </span>
-        {term.description !== null && (
-          <p {...stylex.props(styles.termNote)}>{formatText(term.description)}</p>
-        )}
+        {term.description !== null && <p {...stylex.props(styles.termNote)}>{term.description}</p>}
       </div>
       <div {...stylex.props(styles.words)}>
         <div {...stylex.props(styles.boxes)}>
@@ -276,7 +278,7 @@ function TermEditor({ term }: { term: Term }) {
 
 /** the same term as one line of a list, with the form a press away */
 function TermRow({ term }: { term: Term }) {
-  const { formatText, locale } = useI18n()
+  const { locale } = useI18n()
   const { drafts, setDrafts, saving, customised, dirty, write } = useTermDraft(term)
   const [open, setOpen] = useState(false)
   const word = term.override[locale] ?? term.defaults[locale] ?? ''
@@ -293,7 +295,7 @@ function TermRow({ term }: { term: Term }) {
     <>
       <TableRow onOpen={() => setOpen(true)} data-testid="term" data-term={term.id}>
         <Cell lead>
-          <LeadWord>{formatText(term.label)}</LeadWord>
+          <LeadWord>{term.label}</LeadWord>
           {customised && <Tag>{m.terminology_customised()}</Tag>}
         </Cell>
         {/* what the word is today, whether it was chosen here or fell back */}
@@ -303,8 +305,8 @@ function TermRow({ term }: { term: Term }) {
       </TableRow>
       <FormDialog
         open={open}
-        title={formatText(term.label)}
-        description={term.description === null ? undefined : formatText(term.description)}
+        title={term.label}
+        description={term.description === null ? undefined : term.description}
         onClose={close}
         footer={
           <>

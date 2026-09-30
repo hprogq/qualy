@@ -42,7 +42,7 @@ const password: Entrance = {
   binding: {
     mode: 'managed',
     secret: {
-      label: { kind: 'literal', value: '密码' },
+      label: '密码',
       hint: null,
       minLength: 12,
       maxLength: 128,

@@ -1,18 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
-import { useApi, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
-import { effectiveText, type TermDefinition } from '@qualy/settings-contract'
+import { useApi, useDocumentContext, useRunApi } from '@qualy/web-runtime'
+import type { TermRef } from '@qualy/settings-contract'
+import { TERMS_CONTEXT } from '../terms-context.ts'
 import { settingsApi } from './api.ts'
 
 // The word a tenant uses, read from a screen.
 //
-// One query for the whole tenant, shared by every `useTerm` on every screen:
-// a page that asks twenty times still asks the server once. Switching locale
-// re-renders from the same answer, because the answer carries every locale.
-// And the answer is presentation - a screen that cannot reach it shows the
-// plugin's default word rather than refusing to open.
+// Every page already has it: the manifest carries the tenant's words for
+// every declared term, said in the page's language, so a screen reads a
+// term synchronously and never waits or flickers for it. The terminology
+// screen alone asks the api, for everything a term is in every language.
 
-/** where the tenant's words live in the query cache; invalidated after a save */
+/** where the terminology screen keeps what it edits; invalidated after a save */
 export const TERMINOLOGY_KEY = ['settings', 'terminology'] as const
 
 export function useTerminology() {
@@ -26,10 +25,10 @@ export function useTerminology() {
   })
 }
 
-/** the tenant's word for a term in the reader's locale, or the plugin's default until it arrives */
-export function useTerm(term: TermDefinition): string {
-  const { locale } = useI18n()
-  const terminology = useTerminology()
-  const found = terminology.data?.terms.find((one) => one.id === term.id)
-  return effectiveText(term, found?.override, locale)
+/** the tenant's word for a term in the page's language */
+export function useTerm(term: TermRef): string {
+  const words = useDocumentContext<Readonly<Record<string, string>>>(TERMS_CONTEXT)
+  // every declared term is in the context; its id stands in only where no
+  // settings plugin provides one, which is a harness and never a product
+  return words?.[term.id] ?? term.id
 }

@@ -1,4 +1,4 @@
-import { literal } from '@qualy/i18n-contract'
+import { literal } from '@qualy/text'
 import { defineCapabilityProvider, type ContributionInput } from '@qualy/assembly-contract'
 import { Plugin, isPluginDescriptor } from '@qualy/plugin-kit'
 import { compileCatalog, PermissionDeclarations } from '@qualy/rbac-contract/plugin'

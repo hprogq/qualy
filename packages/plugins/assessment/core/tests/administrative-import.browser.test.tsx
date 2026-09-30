@@ -261,7 +261,7 @@ const openInShell = (route: string, stubs: Record<string, unknown> = {}) =>
               'workspace-shell/navigation': [
                 {
                   id: 'assessment/batch-record/rail',
-                  label: { kind: 'literal', value: '行政认定' },
+                  label: '行政认定',
                   target: {
                     kind: 'page',
                     pageId: 'assessment/batch-record',

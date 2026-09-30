@@ -59,6 +59,18 @@ export function useRuntime(): Runtime {
 export const useManifest = () => useRuntime().manifest
 
 /**
+ * What the whole page reads while it is open, by the key of the plugin that
+ * provides it: carried by the manifest, already said in the page's language
+ * (docs/adr/0011-i18n-paraglide.md, decision 10). Undefined where nothing in
+ * this assembly provides the key.
+ */
+export function useDocumentContext<T>(key: string): T | undefined {
+  // a harness's hand-written manifest may carry no context at all
+  const context = useManifest().context as Readonly<Record<string, unknown>> | undefined
+  return context?.[key] as T | undefined
+}
+
+/**
  * The manifest entry for a page reference, or nothing when the viewer cannot
  * see it in this deployment.
  */

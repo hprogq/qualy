@@ -379,11 +379,7 @@ describe('a rule that re-prices what stands', () => {
                   {
                     id: 'assessment/fixed-calculator',
                     ref: 'fixed@1',
-                    label: {
-                      kind: 'message',
-                      id: 'assessment/items/calculator-fixed',
-                      defaultMessage: 'Fixed',
-                    },
+                    label: '固定分值',
                     order: 10,
                   },
                 ],

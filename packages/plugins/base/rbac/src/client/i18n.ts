@@ -6,7 +6,6 @@ import {
 } from '@qualy/i18n-contract'
 import type * as rbacErrors from '../server/errors.ts'
 import type * as invariantErrors from '@qualy/rbac-contract/effect'
-import type { Message } from '@qualy/i18n-contract'
 import * as m from '#messages'
 
 // What this plugin's screens say is in messages/<locale>.json, called as
@@ -75,32 +74,3 @@ export const errorMessages = mergeErrorTranslations(
     LAST_ADMINISTRATOR: m.error_lastAdministrator,
   }),
 ).registry
-
-// the messages the server names over the wire, by the id it sends
-export const wireMessages: Record<string, Message> = {
-  'rbac/account/title': m.account_title,
-  'rbac/audit/grant-create': m.audit_grantCreate,
-  'rbac/audit/grant-revoke': m.audit_grantRevoke,
-  'rbac/audit/role-appointment': m.audit_roleAppointment,
-  'rbac/audit/role-create': m.audit_roleCreate,
-  'rbac/audit/role-delete': m.audit_roleDelete,
-  'rbac/audit/role-disable': m.audit_roleDisable,
-  'rbac/audit/role-eligibility': m.audit_roleEligibility,
-  'rbac/audit/role-enable': m.audit_roleEnable,
-  'rbac/audit/role-permissions': m.audit_rolePermissions,
-  'rbac/audit/role-update': m.audit_roleUpdate,
-  'rbac/navigation/roles': m.navigation_roles,
-  'rbac/node-usage/grants': m.nodeUsage_grants,
-  'rbac/permission-group/access': m.permissionGroup_access,
-  'rbac/permission/authorization-inspect': m.permission_authorizationInspect,
-  'rbac/permission/grant-manage': m.permission_grantManage,
-  'rbac/permission/grant-read': m.permission_grantRead,
-  'rbac/permission/role-appointment-manage': m.permission_roleAppointmentManage,
-  'rbac/permission/role-escalate': m.permission_roleEscalate,
-  'rbac/permission/role-manage': m.permission_roleManage,
-  'rbac/permission/role-read': m.permission_roleRead,
-  'rbac/permission/tenant-grant-manage': m.permission_tenantGrantManage,
-  'rbac/permission/tenant-grant-read': m.permission_tenantGrantRead,
-  'rbac/roles/edit': m.roles_edit,
-  'rbac/user-detail/role-grants': m.userDetail_roleGrants,
-}

@@ -37,7 +37,7 @@ import {
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { personCard } from '@qualy/ui-contract'
-import { BATCH_STAFF_CODES } from '../../permissions.ts'
+import { BATCH_STAFF_CODES } from '../../permission-codes.ts'
 import { assessmentApi } from '../api.ts'
 
 import { AccessAdjustDialog } from './AccessAdjustDialog.tsx'

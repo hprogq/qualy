@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { CheckIcon, XIcon } from 'lucide-react'
 import { PageLink, useApiQuery, usePageHref } from '@qualy/web-runtime'
-import { useI18n, useList } from '@qualy/web-i18n'
+import { useList } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
 import { Card, CardHead } from '@qualy/ui/screen'
@@ -104,7 +104,6 @@ export function DeleteChecklist({
   childCount: number
   onDelete: () => void
 }) {
-  const { formatText } = useI18n()
   const listJoin = useList()
   const query = useApiQuery(orgApi)
   const usage = useQuery(query.org.getNodeUsage.queryOptions({ params: { nodeId } }))
@@ -170,7 +169,7 @@ export function DeleteChecklist({
               </span>
               <span {...stylex.props(styles.words)}>
                 <span {...stylex.props(styles.what)}>
-                  {m.node_holdLine({ label: formatText(one.label), count: one.count })}
+                  {m.node_holdLine({ label: one.label, count: one.count })}
                 </span>
                 {one.examples.length > 0 && (
                   <span {...stylex.props(styles.which)}>

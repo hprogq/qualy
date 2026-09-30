@@ -118,6 +118,9 @@ export const classify = (file: string, plan: WatchPlan): Action | 'restart-host'
     .split(path.sep)
     .join('/')
   if (within === 'package.json') return 'session'
+  // a message is said by the backend as well as the page: the dev server
+  // recompiles and reloads the page, and the backend is replaced to load them
+  if (within.startsWith('messages/')) return 'backend'
   if (!within.startsWith('src/')) return null
   if (within.startsWith('src/client/')) return null
   if (within.startsWith('src/dev/')) {
@@ -143,7 +146,11 @@ export const watchTargets = (plan: WatchPlan): readonly string[] => [
   // build output are not inputs to anything running
   ...plan.roots
     .filter((root) => root.linked)
-    .flatMap((root) => [path.join(root.root, 'src'), path.join(root.root, 'package.json')]),
+    .flatMap((root) => [
+      path.join(root.root, 'src'),
+      path.join(root.root, 'messages'),
+      path.join(root.root, 'package.json'),
+    ]),
   path.join(plan.repoRoot, 'apps/server/src'),
   path.join(plan.repoRoot, 'packages/core'),
   path.join(plan.repoRoot, 'packages/contracts'),

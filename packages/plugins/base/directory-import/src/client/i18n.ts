@@ -1,6 +1,5 @@
 import { defineErrorTranslations, type ErrorsByCode } from '@qualy/i18n-contract'
 import type * as directoryErrors from '../server/errors.ts'
-import type { Message } from '@qualy/i18n-contract'
 import * as m from '#messages'
 
 // What this plugin's screens say is in messages/<locale>.json, called as
@@ -16,10 +15,3 @@ export const errorMessages = defineErrorTranslations<ErrorsByCode<typeof directo
   USER_IMPORT_BUSY: m.error_busy,
   USER_IMPORT_SOURCE_USED: m.error_sourceUsed,
 }).registry
-
-// the messages the server names over the wire, by the id it sends
-export const wireMessages: Record<string, Message> = {
-  'directory-import/audit/clean-nodes': m.audit_cleanNodes,
-  'directory-import/audit/commit': m.audit_commit,
-  'directory-import/audit/reverse': m.audit_reverse,
-}

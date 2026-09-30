@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@qualy/i18n-contract": "workspace:*",
+    "@qualy/text": "workspace:*",
     "effect": "catalog:"
   }
 }

@@ -8,7 +8,15 @@
 // on a developer's machine keeps that developer's .env - QUALY_SEED_DEMO=1
 // among it - and a production seed must not pick any of it up.
 import { Pool } from 'pg'
+import { productRootFor } from '@qualy/assembly'
+import { compileMessages } from '@qualy/message-build'
+import { installProductMessages } from '@qualy/text/node'
+import { manifestPath } from '../lib/manifest.ts'
 import { seed } from './seed.ts'
+
+// the permission names it writes are said from the product's messages
+await compileMessages({ manifestPath: manifestPath() })
+await installProductMessages(productRootFor(manifestPath()))
 
 const url = process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy'
 const pool = new Pool({ connectionString: url })

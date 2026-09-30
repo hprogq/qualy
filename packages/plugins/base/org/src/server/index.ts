@@ -4,6 +4,8 @@ import { OrgNodeRefused, OrgProvisioning } from '@qualy/org-contract/effect'
 import type { OrgNodeRef } from '@qualy/org-contract'
 import { HttpApiBuilder } from 'effect/http-api'
 import { Api } from '@qualy/api-kit/plugin'
+import { requestLocale } from '@qualy/api-kit/locale'
+import { render } from '@qualy/text'
 import { CurrentUser } from './session-port.ts'
 import { orgApiGroup } from '../api.ts'
 import { Placement } from '@qualy/auth-contract'
@@ -1317,12 +1319,13 @@ export const orgApiHandlers = HttpApiBuilder.group(local, 'org', (handlers) =>
           principal,
           catalog.usageOf,
         )
+        const locale = yield* requestLocale
         return {
           isRoot,
           children,
           usage: usage.map((one) => ({
             kind: one.kind,
-            label: one.label,
+            label: render(one.label, { locale }),
             count: one.count,
             clearable: one.clearable,
             examples: [...one.examples],

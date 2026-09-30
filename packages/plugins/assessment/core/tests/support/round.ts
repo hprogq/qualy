@@ -97,8 +97,8 @@ export const stack = (url: string) => {
       Layer.succeed(
         TenantSettings,
         TenantSettings.of({
-          resolveTerm: (_tenantId, term, locale) =>
-            Effect.succeed(locale === 'zh-CN' ? '统一编号' : term.defaults[locale]),
+          resolveTerm: (_tenantId, _term, locale) =>
+            Effect.succeed(locale === 'zh-CN' ? '统一编号' : 'Student or staff ID'),
         }),
       ),
     ),

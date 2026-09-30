@@ -19,7 +19,7 @@ const event = (id: string, over: Partial<Event> = {}): Event => ({
   occurredAt: '2026-09-25T06:30:00.000Z',
   actionCode: 'auth.user.update',
   actionVersion: 1,
-  actionName: { kind: 'literal', value: 'Edit user' },
+  actionName: 'Edit user',
   actorKind: 'user',
   actorUserId: '11111111-1111-4111-8111-111111111111',
   actorLabel: '李老师',

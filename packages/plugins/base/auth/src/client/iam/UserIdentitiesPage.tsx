@@ -318,7 +318,7 @@ function PasswordDialog({
   const run = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { formatText, formatError } = useI18n()
+  const { formatError } = useI18n()
   const binding = entrance.binding?.mode === 'managed' ? entrance.binding : null
   const [secret, setSecret] = useState('')
   const [feedback, setFeedback] = useState<string | null>(null)
@@ -403,8 +403,8 @@ function PasswordDialog({
         >
           <Feedback message={feedback} />
           <Field
-            label={formatText(binding.secret.label)}
-            {...(binding.secret.hint === null ? {} : { hint: formatText(binding.secret.hint) })}
+            label={binding.secret.label}
+            {...(binding.secret.hint === null ? {} : { hint: binding.secret.hint })}
           >
             {(id) => (
               <Input

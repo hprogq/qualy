@@ -72,22 +72,19 @@ describe('the Effect api against the frozen surface', () => {
     walk(manifest)
     // Not vacuous, and not a word filter: this is every property name the
     // document declares for this response, and all of them are things a
-    // reader of the product can point at. `kind`, `defaultMessage` and
-    // `value` come from the translatable-text contract a title is written in.
-    // A module path, a package name or a plugin id would have to be added to
+    // reader of the product can point at; a title arrives already said, in
+    // the language of the page that asked. A module path, a package name or a plugin id would have to be added to
     // this list by somebody, which is the point.
     expect(properties.sort()).toEqual([
       'collections',
+      // what the whole page reads, by the key of the plugin providing it
+      'context',
       'contract',
-      'defaultMessage',
-      'id',
       'id',
       'id',
       // who is signed in, as an opaque key: whether a page that lost its
       // session is being carried on by the same person
       'identity',
-      'kind',
-      'kind',
       'layout',
       'layouts',
       'order',
@@ -95,7 +92,6 @@ describe('the Effect api against the frozen surface', () => {
       'path',
       'slots',
       'title',
-      'value',
       // whether anybody is signed in: which way an unplaceable address goes
       'viewer',
     ])

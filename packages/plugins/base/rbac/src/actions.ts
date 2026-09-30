@@ -1,6 +1,11 @@
 import { Schema } from 'effect'
-import { message } from '@qualy/i18n-contract'
 import { AuditAction } from '@qualy/audit-contract/action'
+import { text } from '@qualy/text'
+import { messageRefs } from '@qualy/text/node'
+import type * as M from '#messages'
+
+// this package's messages, by name (docs/adr/0011-i18n-paraglide.md)
+const m = messageRefs<typeof M>(import.meta.url)
 
 // The access domain's audit actions. Codes live under iam like its urls and
 // permissions: rbac is how authorization is implemented, and a reader of the
@@ -14,7 +19,7 @@ export const RoleCreated = AuditAction.define({
   code: 'iam.role.create',
   target: 'iam.role',
   version: 1,
-  name: message('rbac/audit/role-create', 'Create role'),
+  name: text(m.audit_roleCreate),
   details: Schema.Struct({ kind: Schema.Literals(['tenant', 'org']) }),
 })
 
@@ -22,7 +27,7 @@ export const RoleUpdated = AuditAction.define({
   code: 'iam.role.update',
   target: 'iam.role',
   version: 1,
-  name: message('rbac/audit/role-update', 'Edit role'),
+  name: text(m.audit_roleUpdate),
   details: Schema.Struct({
     fields: Schema.Array(Schema.Literals(['name', 'description', 'assignable'])),
   }),
@@ -32,7 +37,7 @@ export const RoleEnabled = AuditAction.define({
   code: 'iam.role.enable',
   target: 'iam.role',
   version: 1,
-  name: message('rbac/audit/role-enable', 'Activate role'),
+  name: text(m.audit_roleEnable),
   details: Schema.Struct({}),
 })
 
@@ -40,7 +45,7 @@ export const RoleDisabled = AuditAction.define({
   code: 'iam.role.disable',
   target: 'iam.role',
   version: 1,
-  name: message('rbac/audit/role-disable', 'Disable role'),
+  name: text(m.audit_roleDisable),
   details: Schema.Struct({}),
 })
 
@@ -51,7 +56,7 @@ export const RolePermissionsUpdated = AuditAction.define({
   code: 'iam.role.permissions.update',
   target: 'iam.role',
   version: 1,
-  name: message('rbac/audit/role-permissions', 'Change role permissions'),
+  name: text(m.audit_rolePermissions),
   details: Schema.Struct({
     added: Schema.Array(Schema.String),
     removed: Schema.Array(Schema.String),
@@ -62,7 +67,7 @@ export const RoleEligibilityUpdated = AuditAction.define({
   code: 'iam.role.eligibility.update',
   target: 'iam.role',
   version: 1,
-  name: message('rbac/audit/role-eligibility', 'Change who may hold a role'),
+  name: text(m.audit_roleEligibility),
   details: Schema.Struct({
     holderMode: Schema.Literals(['unrestricted', 'allow-list']),
     anchorMode: Schema.NullOr(Schema.Literals(['unrestricted', 'allow-list'])),
@@ -75,7 +80,7 @@ export const RoleAppointmentUpdated = AuditAction.define({
   code: 'iam.role.appointment.update',
   target: 'iam.role',
   version: 1,
-  name: message('rbac/audit/role-appointment', 'Change which roles this one may appoint'),
+  name: text(m.audit_roleAppointment),
   details: Schema.Struct({ targetRoleIds: Schema.Array(id) }),
 })
 
@@ -83,7 +88,7 @@ export const RoleDeleted = AuditAction.define({
   code: 'iam.role.delete',
   target: 'iam.role',
   version: 1,
-  name: message('rbac/audit/role-delete', 'Delete role'),
+  name: text(m.audit_roleDelete),
   details: Schema.Struct({}),
 })
 
@@ -91,7 +96,7 @@ export const GrantCreated = AuditAction.define({
   code: 'iam.role-grant.create',
   target: 'iam.role-grant',
   version: 1,
-  name: message('rbac/audit/grant-create', 'Grant role'),
+  name: text(m.audit_grantCreate),
   details: Schema.Struct({
     userId: id,
     roleId: id,
@@ -108,7 +113,7 @@ export const GrantRevoked = AuditAction.define({
   code: 'iam.role-grant.revoke',
   target: 'iam.role-grant',
   version: 1,
-  name: message('rbac/audit/grant-revoke', 'Revoke role grant'),
+  name: text(m.audit_grantRevoke),
   details: Schema.Struct({ userId: id, roleId: id }),
 })
 

@@ -16,7 +16,7 @@ import {
   uuidInput,
 } from '@qualy/api-kit/schema'
 import { Authenticated } from '@qualy/auth-contract/session'
-import { BATCH_STAFF_CODES, PHASE_GATED_CODES } from './permissions.ts'
+import { BATCH_STAFF_CODES, PHASE_GATED_CODES } from './permission-codes.ts'
 
 /**
  * One wake-up on a batch's live stream.

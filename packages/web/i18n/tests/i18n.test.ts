@@ -1,13 +1,6 @@
-import { Schema } from 'effect'
-import {
-  supportedLocales,
-  UiTextSchema,
-  literal,
-  message,
-  type Message,
-} from '@qualy/i18n-contract'
+import { supportedLocales, type Message } from '@qualy/i18n-contract'
 import { afterEach, describe, expect, it } from 'vitest'
-import { formatText, installMessages, resolveLocale } from '../src/index.tsx'
+import { installMessages, resolveLocale } from '../src/index.tsx'
 import { bootstrapMessages } from '../src/bootstrap.ts'
 import { formatApiError, isTransportError } from '../src/format.ts'
 import * as commonMessages from '#messages'
@@ -79,31 +72,6 @@ describe('web i18n runtime', () => {
     expect(formatApiError(apiError('SOMETHING_NEW'), registry)).toBe('backend fallback message')
     // a non-api throwable degrades to the generic message
     expect(formatApiError({ oops: true })).toBe(commonMessages.error_unexpected())
-  })
-
-  it('says a text the server names by id, and business data as it stands', () => {
-    onPage('en-US')
-    installMessages({ wireMessages: { 'org/navigation/organization': () => 'Organisation' } })
-    expect(formatText(message('org/navigation/organization', 'Organization'))).toBe('Organisation')
-    // an id this page does not know is said by the server's own default
-    expect(formatText(message('org/navigation/unknown', 'Unknown'))).toBe('Unknown')
-    expect(formatText(literal('软件学院'))).toBe('软件学院')
-  })
-
-  it('validates ui text references at the contract boundary', () => {
-    const decode = Schema.decodeUnknownSync(UiTextSchema)
-    const admits = Schema.is(UiTextSchema)
-    expect(decode(message('org/navigation/organization', 'Organization'))).toEqual({
-      kind: 'message',
-      id: 'org/navigation/organization',
-      defaultMessage: 'Organization',
-    })
-    // business data passes through untranslated
-    expect(decode(literal('软件学院'))).toEqual({ kind: 'literal', value: '软件学院' })
-    // a bare string, an unnamespaced id or an empty default are rejected
-    expect(admits('组织架构')).toBe(false)
-    expect(admits({ kind: 'message', id: 'organization', defaultMessage: 'x' })).toBe(false)
-    expect(admits({ kind: 'message', id: 'org/nav', defaultMessage: '' })).toBe(false)
   })
 
   it('resolves the locale through the documented preference chain', () => {

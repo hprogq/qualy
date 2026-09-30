@@ -9,7 +9,6 @@
     ".": "./src/index.ts",
     "./api": "./src/api.ts",
     "./client/PingPage": "./src/client/PingPage.tsx",
-    "./client/i18n": "./src/client/i18n.ts",
     "./db": "./src/db/entities.ts",
     "./package.json": "./package.json"
   },
@@ -29,6 +28,7 @@
     "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
+    "@qualy/text": "workspace:*",
     "@qualy/ui": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "@qualy/web-runtime": "workspace:*",

@@ -218,7 +218,7 @@ export const templateLayout = (
   },
 ): { readonly headers: readonly string[]; readonly columns: readonly TemplateColumn[] } => {
   const headers = [
-    businessNoHeader(spec.businessNoLabel ?? authTerms.businessNumber.defaults['zh-CN']),
+    businessNoHeader(spec.businessNoLabel ?? authTerms.businessNumber.id),
     NAME_HEADER,
   ]
   const columns: TemplateColumn[] = []

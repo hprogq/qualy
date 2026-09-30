@@ -3,7 +3,6 @@ import { NavLink } from 'react-router'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import type { NamespacedId } from '@qualy/ui-contract'
-import { LocalizedText } from '@qualy/web-i18n'
 import { useIdlePagePrefetch, usePagePrefetch, usePendingNavigation } from '@qualy/web-runtime'
 import { NavIcon } from './icons.tsx'
 import { hasEntriesBelow } from './rail.ts'
@@ -119,11 +118,7 @@ export function SideNav({ groups, label }: { groups: readonly SectionGroup[]; la
     <nav aria-label={label} data-testid="side-nav" {...stylex.props(styles.nav)}>
       {groups.map((group) => (
         <section key={group.id} data-nav-group={group.id} {...stylex.props(styles.group)}>
-          {group.label !== undefined && (
-            <p {...stylex.props(styles.heading)}>
-              <LocalizedText value={group.label} />
-            </p>
-          )}
+          {group.label !== undefined && <p {...stylex.props(styles.heading)}>{group.label}</p>}
           <ul {...stylex.props(styles.list)}>
             {group.items.map((item) => (
               <li key={item.id}>
@@ -134,7 +129,7 @@ export function SideNav({ groups, label }: { groups: readonly SectionGroup[]; la
                     icon={item.icon}
                     exact={hasEntriesBelow(item.target.path, paths)}
                   >
-                    <LocalizedText value={item.label} />
+                    {item.label}
                   </SideLink>
                 ) : (
                   <a
@@ -145,9 +140,7 @@ export function SideNav({ groups, label }: { groups: readonly SectionGroup[]; la
                       : {})}
                   >
                     <NavIcon name={item.icon} className={stylex.props(styles.icon).className} />
-                    <span {...stylex.props(styles.word)}>
-                      <LocalizedText value={item.label} />
-                    </span>
+                    <span {...stylex.props(styles.word)}>{item.label}</span>
                   </a>
                 )}
               </li>

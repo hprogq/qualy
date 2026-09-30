@@ -1,4 +1,4 @@
-import { plainText } from '@qualy/i18n-contract'
+import { render, type Text } from '@qualy/text'
 import type { PoolClient } from 'pg'
 import { resolvePluginModuleUrl } from '@qualy/assembly/host'
 import { manifestPath } from '../lib/manifest.ts'
@@ -25,6 +25,8 @@ const passwordModule = async () =>
   (await import(
     resolvePluginModuleUrl('@qualy/plugin-auth-local/password', manifestPath())
   )) as typeof import('../../packages/plugins/base/auth-local/src/password.ts')
+
+const stored = (said: Text) => render(said, { locale: 'en-US' })
 
 type PermissionRow = import('../../packages/contracts/rbac/src/index.ts').PermissionDefinition
 
@@ -145,10 +147,10 @@ async function provisionRbac(
         [
           row.code,
           plugin,
-          // the mirror keeps the label's own default: the reader's language
-          // is chosen in the browser, from the catalog the message names
-          plainText(row.name),
-          row.description === undefined ? null : plainText(row.description),
+          // the mirror keeps the label in the product's source language; the
+          // rbac plugin rewrites it from the declaration whenever it starts
+          stored(row.name),
+          row.description === undefined ? null : stored(row.description),
           row.groupKey ?? null,
           row.target,
         ],

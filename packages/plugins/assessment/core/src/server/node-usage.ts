@@ -1,8 +1,13 @@
 import { Effect } from 'effect'
-import { message } from '@qualy/i18n-contract'
 import type { NodeUsageReporter } from '@qualy/org-contract/plugin'
 import { withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { db } from './db.ts'
+import { text, type Text } from '@qualy/text'
+import { messageRefs } from '@qualy/text/node'
+import type * as M from '#messages'
+
+// this package's messages, by name (docs/adr/0011-i18n-paraglide.md)
+const m = messageRefs<typeof M>(import.meta.url)
 
 // The rounds that hold a unit in place, said to whoever is about to delete
 // it: a round administered from the unit, and a round whose participants
@@ -49,8 +54,8 @@ export const batchesAtNode: NodeUsageReporter<Orm> = {
           const split = (
             kind: string,
             rows: readonly { id: string; name: string; status: string }[],
-            open: ReturnType<typeof message>,
-            closed: ReturnType<typeof message>,
+            open: Text,
+            closed: Text,
           ) => {
             const running = rows.filter((row) => row.status !== 'archived')
             const archived = rows.filter((row) => row.status === 'archived')
@@ -77,23 +82,14 @@ export const batchesAtNode: NodeUsageReporter<Orm> = {
             ...split(
               'managed-batches',
               administered,
-              message('assessment/node-usage/managed', 'Rounds administered from here'),
-              message(
-                'assessment/node-usage/managed-archived',
-                'Archived rounds administered from here',
-              ),
+              text(m.nodeUsage_managed),
+              text(m.nodeUsage_managedArchived),
             ),
             ...split(
               'participant-batches',
               frozen,
-              message(
-                'assessment/node-usage/participants',
-                'Rounds whose participants were recorded here',
-              ),
-              message(
-                'assessment/node-usage/participants-archived',
-                'Archived rounds whose participants were recorded here',
-              ),
+              text(m.nodeUsage_participants),
+              text(m.nodeUsage_participantsArchived),
             ),
           ]
         }),

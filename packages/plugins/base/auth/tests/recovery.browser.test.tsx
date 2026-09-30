@@ -575,7 +575,7 @@ describe('the reader’s security activity', () => {
   const change = (id: string, actor: 'self' | 'other') => ({
     id,
     occurredAt: '2026-09-20T08:00:00.000Z',
-    name: { kind: 'literal' as const, value: `变更 ${id}` },
+    name: `变更 ${id}`,
     actor,
   })
 

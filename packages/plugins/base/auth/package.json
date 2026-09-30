@@ -75,6 +75,7 @@
     "@qualy/rbac-contract": "workspace:*",
     "@qualy/settings-contract": "workspace:*",
     "@qualy/telemetry": "workspace:*",
+    "@qualy/text": "workspace:*",
     "@qualy/ui": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "@qualy/web-i18n": "workspace:*",

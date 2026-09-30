@@ -11,12 +11,14 @@
     "@qualy/plugin-kit": "workspace:*",
     "@qualy/release-contract": "workspace:*",
     "@qualy/telemetry": "workspace:*",
+    "@qualy/text": "workspace:*",
     "@qualy/web-build": "workspace:*",
     "chalk": "^6.0.0",
     "chokidar": "catalog:",
     "effect": "catalog:"
   },
   "devDependencies": {
+    "@qualy/message-build": "workspace:*",
     "@qualy/plugin-assessment": "workspace:*",
     "@qualy/plugin-assessment-formula": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",

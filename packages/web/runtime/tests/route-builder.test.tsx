@@ -37,6 +37,7 @@ const manifest = (
   pages,
   collections: {},
   slots: {},
+  context: {},
 })
 
 const page = (id: string, path: string, layout = ADMIN): Manifest['pages'][number] => ({

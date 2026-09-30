@@ -49,6 +49,7 @@ import { EmailFlows, emailFlowsLayer } from './email-flows.ts'
 import { mailLocaleFor } from './mail-copy.ts'
 import { recipientLocaleOf } from './locale.ts'
 import { requestLocale } from '@qualy/api-kit/locale'
+import { renderTexts } from '@qualy/text'
 
 // auth as an Effect layer.
 //
@@ -368,21 +369,25 @@ export const selfApiHandlers = HttpApiBuilder.group(local, 'self', (handlers) =>
       Effect.fn('iam.listSelfEntrances.handler')(function* () {
         const iam = yield* Iam
         const found = yield* iam.self.entrances(yield* CurrentUser)
-        return {
-          entrances: found.map((entrance) => ({
-            ...entrance,
-            binding: bindingView(entrance.binding),
-            lastSignInAt: instant(entrance.lastSignInAt),
-            bound:
-              entrance.bound === null
-                ? null
-                : {
-                    ...entrance.bound,
-                    boundAt: instant(entrance.bound.boundAt) ?? '',
-                    lastUsedAt: instant(entrance.bound.lastUsedAt),
-                  },
-          })),
-        }
+        const locale = yield* requestLocale
+        return renderTexts(
+          {
+            entrances: found.map((entrance) => ({
+              ...entrance,
+              binding: bindingView(entrance.binding),
+              lastSignInAt: instant(entrance.lastSignInAt),
+              bound:
+                entrance.bound === null
+                  ? null
+                  : {
+                      ...entrance.bound,
+                      boundAt: instant(entrance.bound.boundAt) ?? '',
+                      lastUsedAt: instant(entrance.bound.lastUsedAt),
+                    },
+            })),
+          },
+          { locale },
+        )
       }),
     )
     .handle(
@@ -496,7 +501,13 @@ export const selfApiHandlers = HttpApiBuilder.group(local, 'self', (handlers) =>
           page: pageNumber(query.page),
           pageSize,
         })
-        return { items: [...found.items], total: found.total, page: found.page, pageSize }
+        const locale = yield* requestLocale
+        return {
+          items: renderTexts([...found.items], { locale }),
+          total: found.total,
+          page: found.page,
+          pageSize,
+        }
       }),
     )
     .handle(
@@ -786,7 +797,9 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const principal = yield* CurrentUser
         yield* rbac.require(principal, 'auth.provider.read')
         return {
-          providers: yield* iam.providers.list(principal.tenantId),
+          providers: renderTexts(yield* iam.providers.list(principal.tenantId), {
+            locale: yield* requestLocale,
+          }),
           capabilities: {
             canManage: yield* rbac.hasPermission(principal, 'auth.provider.manage'),
             canManageTrust: yield* rbac.hasPermission(principal, 'auth.provider.trust.manage'),
@@ -801,7 +814,7 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const rbac = yield* Rbac
         const principal = yield* CurrentUser
         yield* rbac.require(principal, 'auth.provider.read')
-        return { kinds: yield* iam.providers.kinds }
+        return { kinds: renderTexts(yield* iam.providers.kinds, { locale: yield* requestLocale }) }
       }),
     )
     .handle(
@@ -827,7 +840,9 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const rbac = yield* Rbac
         const principal = yield* CurrentUser
         yield* rbac.require(principal, 'auth.provider.read')
-        return yield* iam.providers.detail(principal.tenantId, params.providerId)
+        return renderTexts(yield* iam.providers.detail(principal.tenantId, params.providerId), {
+          locale: yield* requestLocale,
+        })
       }),
     )
     .handle(
@@ -1166,32 +1181,36 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const principal = yield* CurrentUser
         yield* requireUserRead(principal)
         const found = yield* iam.users.entrances(principal, params.userId)
-        return {
-          manageable: found.manageable,
-          entrances: found.entrances.map((entrance) => ({
-            providerId: entrance.providerId,
-            name: entrance.name,
-            type: entrance.type,
-            status: entrance.enabled ? ('active' as const) : ('disabled' as const),
-            // Kysely types a boolean expression as SqlBool, which is a
-            // number on some drivers; the wire says boolean
-            admits: entrance.admits === true,
-            resolution: entrance.resolution ?? null,
-            binding: bindingView(entrance.binding),
-            lastSignInAt: instant(entrance.lastSignInAt),
-            bound:
-              entrance.bindingId === null
-                ? null
-                : {
-                    id: entrance.bindingId,
-                    subject: entrance.subject,
-                    displayLabel: entrance.displayLabel,
-                    boundAt: instant(entrance.boundAt) ?? '',
-                    lastUsedAt: instant(entrance.lastUsedAt),
-                    hasCredential: entrance.hasCredential === true,
-                  },
-          })),
-        }
+        const locale = yield* requestLocale
+        return renderTexts(
+          {
+            manageable: found.manageable,
+            entrances: found.entrances.map((entrance) => ({
+              providerId: entrance.providerId,
+              name: entrance.name,
+              type: entrance.type,
+              status: entrance.enabled ? ('active' as const) : ('disabled' as const),
+              // Kysely types a boolean expression as SqlBool, which is a
+              // number on some drivers; the wire says boolean
+              admits: entrance.admits === true,
+              resolution: entrance.resolution ?? null,
+              binding: bindingView(entrance.binding),
+              lastSignInAt: instant(entrance.lastSignInAt),
+              bound:
+                entrance.bindingId === null
+                  ? null
+                  : {
+                      id: entrance.bindingId,
+                      subject: entrance.subject,
+                      displayLabel: entrance.displayLabel,
+                      boundAt: instant(entrance.boundAt) ?? '',
+                      lastUsedAt: instant(entrance.lastUsedAt),
+                      hasCredential: entrance.hasCredential === true,
+                    },
+            })),
+          },
+          { locale },
+        )
       }),
     )
     .handle(

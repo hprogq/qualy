@@ -1,7 +1,6 @@
 import { Layer } from 'effect'
 import { OrgUsage } from '@qualy/org-contract/plugin'
 import { peopleAtNode } from './server/node-usage.ts'
-import { message } from '@qualy/i18n-contract'
 import { Plugin } from '@qualy/plugin-kit'
 import { Cli } from '@qualy/plugin-kit/cli'
 import { Api } from '@qualy/api-kit/plugin'
@@ -11,7 +10,7 @@ import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
 import { Audit } from '@qualy/audit-contract/plugin'
 import { Settings } from '@qualy/settings-contract/plugin'
-import { authTermCategories, authTerms } from '@qualy/auth-contract/terms'
+import { authTermCategories, authTermDefinitions } from './terms.ts'
 import { SIGN_IN_PAGE, SIGN_IN_PAGE_PATH } from '@qualy/auth-contract/sign-in-failure'
 import { CONFIRM_EMAIL_PATH, RESET_PASSWORD_PATH } from './constants.ts'
 import { userActions } from './actions.ts'
@@ -50,6 +49,12 @@ import {
   selfApiHandlers,
   sessionApiHandlers,
 } from './server/index.ts'
+import { text } from '@qualy/text'
+import { messageRefs } from '@qualy/text/node'
+import type * as M from '#messages'
+
+// this package's messages, by name (docs/adr/0011-i18n-paraglide.md)
+const m = messageRefs<typeof M>(import.meta.url)
 
 // The plugin, as one description: identity itself, its tables, four screens,
 // a header slot, its permission codes, and its two api groups.
@@ -83,7 +88,7 @@ const plugin = Plugin.define(
   // the words a tenant may choose for this domain, compiled by the settings plugin
   Settings.definitions({
     categories: Object.values(authTermCategories),
-    settings: Object.values(authTerms),
+    settings: Object.values(authTermDefinitions),
   }),
   Ui.i18n('./client/i18n'),
   Ui.page({
@@ -96,7 +101,7 @@ const plugin = Plugin.define(
     visibility: PUBLIC,
     // no menu entry to borrow the words from: a page reached before there is
     // anybody to show a menu to
-    title: message('auth/navigation/login', 'Sign in'),
+    title: text(m.navigation_login),
   }),
   Ui.page({
     id: 'auth/users',
@@ -105,7 +110,7 @@ const plugin = Plugin.define(
     layout: APP_SHELL,
     visibility: permissionOf('auth.user.read'),
     navigation: {
-      label: message('auth/navigation/users', 'Users'),
+      label: text(m.navigation_users),
       icon: 'users',
       order: 20,
       group: 'org/organization',
@@ -122,7 +127,7 @@ const plugin = Plugin.define(
     path: '/organization/users/:userId',
     component: Ui.react('./client/iam/UserProfilePage'),
     layout: USER_DETAIL_SHELL,
-    title: message('auth/users/profile', 'Profile'),
+    title: text(m.users_profile),
     visibility: permissionOf('auth.user.read'),
   }),
   Ui.page({
@@ -130,7 +135,7 @@ const plugin = Plugin.define(
     path: '/organization/users/:userId/organization',
     component: Ui.react('./client/iam/UserOrganizationPage'),
     layout: USER_DETAIL_SHELL,
-    title: message('auth/users/placement', 'Organization placement'),
+    title: text(m.users_placement),
     visibility: permissionOf('auth.user.read'),
   }),
   Ui.page({
@@ -138,7 +143,7 @@ const plugin = Plugin.define(
     path: '/organization/users/:userId/identities',
     component: Ui.react('./client/iam/UserIdentitiesPage'),
     layout: USER_DETAIL_SHELL,
-    title: message('auth/person/tab-identities', 'Ways in'),
+    title: text(m.person_tabIdentities),
     visibility: permissionOf('auth.user.read'),
   }),
   // where they are signed in and every attempt to come in as them: security
@@ -148,7 +153,7 @@ const plugin = Plugin.define(
     path: '/organization/users/:userId/activity',
     component: Ui.react('./client/iam/UserActivityPage'),
     layout: USER_DETAIL_SHELL,
-    title: message('auth/activity/title', 'Security activity'),
+    title: text(m.activity_title),
     visibility: permissionOf('auth.user.manage'),
   }),
   Ui.slot({
@@ -164,7 +169,7 @@ const plugin = Plugin.define(
         id: 'auth/user-detail/profile',
         value: {
           id: 'auth/user-detail/profile',
-          label: message('auth/users/profile', 'Profile'),
+          label: text(m.users_profile),
           target: { kind: 'page', pageId: 'auth/user-detail' },
           icon: 'id-card',
           order: 0,
@@ -176,7 +181,7 @@ const plugin = Plugin.define(
         id: 'auth/user-detail/organization',
         value: {
           id: 'auth/user-detail/organization',
-          label: message('auth/users/placement', 'Organization placement'),
+          label: text(m.users_placement),
           target: { kind: 'page', pageId: 'auth/user-organization' },
           icon: 'building-2',
           order: 10,
@@ -188,7 +193,7 @@ const plugin = Plugin.define(
         id: 'auth/user-detail/identities',
         value: {
           id: 'auth/user-detail/identities',
-          label: message('auth/person/tab-identities', 'Ways in'),
+          label: text(m.person_tabIdentities),
           target: { kind: 'page', pageId: 'auth/user-identities' },
           icon: 'key-round',
           order: 20,
@@ -200,7 +205,7 @@ const plugin = Plugin.define(
         id: 'auth/user-detail/activity',
         value: {
           id: 'auth/user-detail/activity',
-          label: message('auth/activity/title', 'Security activity'),
+          label: text(m.activity_title),
           target: { kind: 'page', pageId: 'auth/user-activity' },
           icon: 'calendar-clock',
           // after the ways in, before the roles another plugin files at 30
@@ -218,7 +223,7 @@ const plugin = Plugin.define(
     path: '/account',
     component: Ui.react('./client/account/AccountProfilePage'),
     layout: ACCOUNT_SHELL,
-    title: message('auth/account/profile', 'Profile'),
+    title: text(m.account_profile),
     visibility: AUTHENTICATED,
   }),
   Ui.page({
@@ -226,7 +231,7 @@ const plugin = Plugin.define(
     path: '/account/logins',
     component: Ui.react('./client/account/AccountLoginsPage'),
     layout: ACCOUNT_SHELL,
-    title: message('auth/account/logins', 'Ways in'),
+    title: text(m.account_logins),
     visibility: AUTHENTICATED,
   }),
   Ui.page({
@@ -234,7 +239,7 @@ const plugin = Plugin.define(
     path: '/account/security',
     component: Ui.react('./client/account/AccountSecurityPage'),
     layout: ACCOUNT_SHELL,
-    title: message('auth/account/security', 'Security'),
+    title: text(m.account_security),
     visibility: AUTHENTICATED,
   }),
   // what happened to the reader's account: sign-ins and changes, a page of
@@ -244,7 +249,7 @@ const plugin = Plugin.define(
     path: '/account/activity',
     component: Ui.react('./client/account/AccountActivityPage'),
     layout: ACCOUNT_SHELL,
-    title: message('auth/activity/title', 'Security activity'),
+    title: text(m.activity_title),
     visibility: AUTHENTICATED,
   }),
   // where the links mail sends land: public, because the person following
@@ -254,7 +259,7 @@ const plugin = Plugin.define(
     path: RESET_PASSWORD_PATH,
     component: Ui.react('./client/recovery/ResetPasswordPage'),
     layout: BLANK_SHELL,
-    title: message('auth/reset/title', 'Reset password'),
+    title: text(m.reset_title),
     visibility: PUBLIC,
   }),
   Ui.page({
@@ -262,7 +267,7 @@ const plugin = Plugin.define(
     path: CONFIRM_EMAIL_PATH,
     component: Ui.react('./client/recovery/ConfirmEmailPage'),
     layout: BLANK_SHELL,
-    title: message('auth/confirm/title', 'Confirm email'),
+    title: text(m.confirm_title),
     visibility: PUBLIC,
   }),
   Ui.slot({
@@ -278,7 +283,7 @@ const plugin = Plugin.define(
         id: 'auth/account',
         value: {
           id: 'auth/account',
-          label: message('auth/navigation/account', 'Me'),
+          label: text(m.navigation_account),
           target: { kind: 'page', pageId: 'auth/account-profile' },
           icon: 'user-round',
           // after every application, whatever they are numbered
@@ -291,7 +296,7 @@ const plugin = Plugin.define(
         id: 'auth/account/profile',
         value: {
           id: 'auth/account/profile',
-          label: message('auth/account/profile', 'Profile'),
+          label: text(m.account_profile),
           target: { kind: 'page', pageId: 'auth/account-profile' },
           icon: 'id-card',
           order: 0,
@@ -303,7 +308,7 @@ const plugin = Plugin.define(
         id: 'auth/account/security',
         value: {
           id: 'auth/account/security',
-          label: message('auth/account/security', 'Security'),
+          label: text(m.account_security),
           target: { kind: 'page', pageId: 'auth/account-security' },
           icon: 'shield-check',
           order: 20,
@@ -315,7 +320,7 @@ const plugin = Plugin.define(
         id: 'auth/account/activity',
         value: {
           id: 'auth/account/activity',
-          label: message('auth/activity/title', 'Security activity'),
+          label: text(m.activity_title),
           target: { kind: 'page', pageId: 'auth/account-activity' },
           icon: 'calendar-clock',
           order: 25,
@@ -327,7 +332,7 @@ const plugin = Plugin.define(
         id: 'auth/account/logins',
         value: {
           id: 'auth/account/logins',
-          label: message('auth/account/logins', 'Ways in'),
+          label: text(m.account_logins),
           target: { kind: 'page', pageId: 'auth/account-logins' },
           icon: 'key-round',
           order: 10,
@@ -343,7 +348,7 @@ const plugin = Plugin.define(
     layout: APP_SHELL,
     visibility: permissionOf('auth.user-type.read'),
     navigation: {
-      label: message('auth/navigation/user-types', 'User types'),
+      label: text(m.navigation_userTypes),
       icon: 'id-card',
       order: 40,
       group: 'org/organization',
@@ -355,7 +360,7 @@ const plugin = Plugin.define(
     path: '/organization/user-types/:typeId',
     component: Ui.react('./client/iam/UserTypePage'),
     layout: APP_SHELL,
-    title: message('auth/user-types/edit', 'User type configuration'),
+    title: text(m.userTypes_edit),
     visibility: permissionOf('auth.user-type.read'),
   }),
   Ui.page({
@@ -365,7 +370,7 @@ const plugin = Plugin.define(
     layout: APP_SHELL,
     visibility: permissionOf('auth.provider.read'),
     navigation: {
-      label: message('auth/navigation/login-methods', 'Ways in'),
+      label: text(m.navigation_loginMethods),
       icon: 'key-round',
       order: 50,
       group: 'org/organization',

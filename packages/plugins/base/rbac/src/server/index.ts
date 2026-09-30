@@ -1,4 +1,3 @@
-import { plainText } from '@qualy/i18n-contract'
 import { Context, Effect, Layer } from 'effect'
 import {
   AccessDenied,
@@ -14,6 +13,8 @@ import { withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { CANONICAL_ADMIN_ROLE } from '@qualy/rbac-contract'
 import { HttpApiBuilder } from 'effect/http-api'
 import { Api } from '@qualy/api-kit/plugin'
+import { requestLocale } from '@qualy/api-kit/locale'
+import { render } from '@qualy/text'
 import { CurrentUser } from '@qualy/auth-contract/session'
 import { UiAuthorizer } from '@qualy/plugin-ui-registry/server/authorizer'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
@@ -711,6 +712,7 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
         const rbac = yield* Rbac
         const principal = yield* CurrentUser
         yield* rbac.require(principal, 'iam.role.read')
+        const locale = yield* requestLocale
         const search = query.search?.trim().toLowerCase()
         const permissions = (yield* rbac.listPermissions({
           target: query.target,
@@ -719,10 +721,8 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
           (definition) =>
             !search ||
             definition.code.toLowerCase().includes(search) ||
-            // the label as authored, because a server has no reader to
-            // choose a language for; a screen searching what it displays
-            // does it where the catalog is
-            plainText(definition.name).toLowerCase().includes(search),
+            // the label the reader sees, in the language they read it in
+            render(definition.name, { locale }).toLowerCase().includes(search),
         )
         return {
           // sorted by code, as the registry's own reads are: the checkbox list
@@ -732,10 +732,13 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
             .map((definition) => ({
               code: definition.code,
               plugin: definition.plugin,
-              name: definition.name,
-              description: definition.description ?? null,
+              name: render(definition.name, { locale }),
+              description:
+                definition.description === undefined
+                  ? null
+                  : render(definition.description, { locale }),
               groupKey: definition.groupKey ?? null,
-              group: definition.group ?? null,
+              group: definition.group === undefined ? null : render(definition.group, { locale }),
               target: definition.target,
             })),
         }
@@ -927,7 +930,10 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
         const principal = yield* CurrentUser
         const found = yield* access.grants.held(principal.tenantId, principal.userId)
         const catalog = yield* rbac.listPermissions()
-        const names = new Map(catalog.map((definition) => [definition.code, definition.name]))
+        const locale = yield* requestLocale
+        const names = new Map(
+          catalog.map((definition) => [definition.code, render(definition.name, { locale })]),
+        )
         const now = Date.now()
         // a grant that has run out holds nothing; one not begun yet is shown
         // with the day it begins
@@ -969,12 +975,14 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
         const rbac = yield* Rbac
         const principal = yield* CurrentUser
         yield* rbac.require(principal, 'iam.authorization.inspect')
+        const locale = yield* requestLocale
+        const explained = yield* access.diagnostics.explain(
+          principal.tenantId,
+          params.userId,
+          query.orgNodeId,
+        )
         return {
-          permissions: yield* access.diagnostics.explain(
-            principal.tenantId,
-            params.userId,
-            query.orgNodeId,
-          ),
+          permissions: explained.map((one) => ({ ...one, name: render(one.name, { locale }) })),
         }
       }),
     )

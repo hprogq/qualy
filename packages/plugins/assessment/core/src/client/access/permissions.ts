@@ -1,5 +1,5 @@
 import type { Message } from '@qualy/i18n-contract'
-import { BATCH_STAFF_CODES } from '../../permissions.ts'
+import { BATCH_STAFF_CODES } from '../../permission-codes.ts'
 import * as m from '#messages'
 
 // The words for the capabilities a round can hand out.

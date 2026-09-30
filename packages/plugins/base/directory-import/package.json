@@ -42,6 +42,7 @@
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
     "@qualy/spreadsheet": "workspace:*",
+    "@qualy/text": "workspace:*",
     "@qualy/ui": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "@qualy/value-schema": "workspace:*",

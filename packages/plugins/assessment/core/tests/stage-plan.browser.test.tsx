@@ -397,7 +397,7 @@ describe('the stage plan, being edited in the workspace', () => {
                 'workspace-shell/navigation': [
                   {
                     id: 'assessment/batch-phases/rail',
-                    label: { kind: 'literal' as const, value: '阶段安排' },
+                    label: '阶段安排',
                     target: {
                       kind: 'page',
                       pageId: 'assessment/batch-phases',

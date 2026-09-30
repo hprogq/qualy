@@ -1,6 +1,6 @@
 import { Context, type Effect } from 'effect'
 import type { AuditAction, AuditDetailsSchema } from './action.ts'
-import type { UiText } from '@qualy/i18n-contract'
+import type { Text } from '@qualy/text'
 import type { AuditActor, AuditOutcome, AuditSource, AuditTargetRef } from './index.ts'
 
 // The Effect side of this contract, behind its own subpath like rbac's: a
@@ -91,7 +91,7 @@ export interface SubjectEventsQuery {
 export interface SubjectEvent {
   readonly id: string
   readonly occurredAt: string
-  readonly name: UiText
+  readonly name: Text
   readonly actor: 'self' | 'other'
 }
 

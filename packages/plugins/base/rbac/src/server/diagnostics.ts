@@ -1,4 +1,4 @@
-import type { UiText } from '@qualy/i18n-contract'
+import type { Text } from '@qualy/text'
 import { Effect } from 'effect'
 import { orgNodeRowExists, userExists } from './db.ts'
 
@@ -39,7 +39,7 @@ export interface PermissionSource {
 export interface EffectivePermission {
   readonly code: string
   /** the permission's own label, still a message: this answer reaches a screen */
-  readonly name: UiText
+  readonly name: Text
   readonly target: 'tenant' | 'org-node'
   readonly sources: readonly PermissionSource[]
 }
@@ -68,7 +68,7 @@ export const make = Effect.fn('Rbac.diagnostics.make')(function* (
 
     const out = new Map<
       string,
-      { code: string; name: UiText; target: 'tenant' | 'org-node'; sources: PermissionSource[] }
+      { code: string; name: Text; target: 'tenant' | 'org-node'; sources: PermissionSource[] }
     >()
     for (const row of found) {
       // the catalog is the authority on what a code means; a stored row that

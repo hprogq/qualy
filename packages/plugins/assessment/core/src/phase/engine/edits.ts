@@ -1,4 +1,4 @@
-import { PHASE_GATED } from '../../permissions.ts'
+import { PHASE_GATED } from '../../permission-codes.ts'
 import { effectiveState, isScheduled, scheduledIndex } from './queue.ts'
 import type { EpochMillis, PhasePlan, PhaseSnapshot } from './types.ts'
 

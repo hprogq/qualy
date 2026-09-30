@@ -1,4 +1,4 @@
-import { literal } from '@qualy/i18n-contract'
+import { literal } from '@qualy/text'
 import { sql } from 'kysely'
 import { Cause, Effect, Exit, Layer, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'

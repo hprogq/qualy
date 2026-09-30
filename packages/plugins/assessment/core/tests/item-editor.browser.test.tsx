@@ -187,11 +187,7 @@ const CALCULATOR_SURFACES = {
       {
         id: 'assessment/fixed-calculator',
         ref: 'fixed@1',
-        label: {
-          kind: 'message',
-          id: 'assessment/items/calculator-fixed',
-          defaultMessage: 'Fixed',
-        },
+        label: '固定分值',
         order: 10,
       },
     ],
@@ -209,11 +205,7 @@ const BOTH_CALCULATORS_CONFIRMING = {
       {
         id: 'assessment-formula/calculator',
         ref: 'formula@1',
-        label: {
-          kind: 'message',
-          id: 'assessment-formula/binding/calculator',
-          defaultMessage: 'A published formula',
-        },
+        label: '已发布的公式',
         order: 20,
         confirms: 'itself',
       },
@@ -234,11 +226,7 @@ const BOTH_CALCULATORS = {
       {
         id: 'assessment-formula/calculator',
         ref: 'formula@1',
-        label: {
-          kind: 'message',
-          id: 'assessment-formula/binding/calculator',
-          defaultMessage: 'A published formula',
-        },
+        label: '已发布的公式',
         order: 20,
       },
     ],
@@ -358,7 +346,7 @@ const SHELL_COLLECTIONS = {
     ['assessment/batch-access', '人员权限', 20],
   ].map(([pageId, label, order]) => ({
     id: `${pageId}/rail`,
-    label: { kind: 'literal', value: label },
+    label: label,
     target: {
       kind: 'page',
       pageId,

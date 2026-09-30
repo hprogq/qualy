@@ -1,4 +1,4 @@
-import { literal } from '@qualy/i18n-contract'
+import { literal } from '@qualy/text'
 import { booted } from '@qualy/rbac-contract/testkit'
 import { compileCatalog } from '@qualy/rbac-contract/plugin'
 import { permissions as rbacPermissions } from '@qualy/plugin-rbac/permissions'

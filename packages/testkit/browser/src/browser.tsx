@@ -15,7 +15,7 @@ import { UiProvider } from '@qualy/ui/provider'
 import { Effect } from 'effect'
 import { toast } from '@qualy/ui/toast'
 
-import type { ErrorMessageMap, Message } from '@qualy/i18n-contract'
+import type { ErrorMessageMap } from '@qualy/i18n-contract'
 
 declare module 'vitest/browser' {
   interface LocatorSelectors {
@@ -57,6 +57,8 @@ export interface FakeManifest {
   pages: { id: string; path: string; layout: string }[]
   collections: Record<string, unknown[]>
   slots: Record<string, { id: string; order: number }[]>
+  /** what the whole page reads, by the key of the plugin providing it (a tenant's terms) */
+  context: Record<string, unknown>
 }
 
 // anonymous unless a test says otherwise: a session that stops working is
@@ -68,6 +70,7 @@ export const emptyManifest = (): FakeManifest => ({
   pages: [],
   collections: {},
   slots: {},
+  context: {},
 })
 
 // A client is a tree of functions returning effects and the query utils bind
@@ -92,6 +95,32 @@ export function fakeClient(stubs: Record<string, Record<string, unknown>>): Fake
 
 export type FakeClient = Record<string, Record<string, unknown>>
 
+/**
+ * The client with more in every manifest's document context than the test
+ * stubbed: what a neighbouring plugin would have every page read, such as a
+ * tenant's words, in the language the screen is rendered in. What the test's
+ * own manifest carries wins.
+ */
+export function withDocumentContext(
+  client: FakeClient,
+  context: Record<string, unknown>,
+): FakeClient {
+  const app = client['app']
+  const ask = app?.['getManifest']
+  if (typeof ask !== 'function') return client
+  return {
+    ...client,
+    app: {
+      ...app,
+      getManifest: (...args: unknown[]) =>
+        Effect.map(
+          (ask as (...args: unknown[]) => Effect.Effect<FakeManifest>)(...args),
+          (manifest) => ({ ...manifest, context: { ...context, ...manifest.context } }),
+        ),
+    },
+  }
+}
+
 // same bridge the app mounts: the widget library follows the product
 // theme's resolved scheme and holds no scheme state of its own
 function WidgetBridge({ children }: { children: ReactNode }) {
@@ -113,7 +142,6 @@ export function apiError(code: string, data?: Record<string, unknown>) {
 
 export function renderScreen({
   client,
-  wireMessages,
   errorMessages,
   registry,
   children,
@@ -128,12 +156,11 @@ export function renderScreen({
   client: FakeClient
   /**
    * What is said by code rather than by the screen: the api failures this
-   * screen may meet, and the texts its server names by id. A plugin's own,
-   * for a test about that plugin's screen; the whole aggregate's, for a test
-   * about the product. Everything else a screen says itself.
+   * screen may meet. A plugin's own, for a test about that plugin's screen;
+   * the whole aggregate's, for a test about the product. Everything else a
+   * screen says itself, and what its server sends arrives already said.
    */
   errorMessages?: ErrorMessageMap
-  wireMessages?: Readonly<Record<string, Message>>
   /**
    * The renderers this screen may resolve, by surface.
    *
@@ -170,7 +197,7 @@ export function renderScreen({
   // the shell's boot script marks the root with the locale it resolved and
   // every message reads the mark; here the harness stands in for the script
   document.documentElement.dataset['locale'] = locale
-  installMessages({ errorMessages: errorMessages ?? {}, wireMessages: wireMessages ?? {} })
+  installMessages({ errorMessages: errorMessages ?? {} })
   // the toast queue is module-global: a success said in one test would
   // replay into the next screen's toaster and stand over its top bar
   toast.dismiss()

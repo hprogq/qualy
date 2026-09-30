@@ -17,7 +17,7 @@ import {
   uuidInput,
 } from '@qualy/api-kit/schema'
 
-import { supportedLocales, UiTextSchema } from '@qualy/i18n-contract'
+import { supportedLocales } from '@qualy/i18n-contract'
 import { EMAIL_MAX_LENGTH, normalizeEmail } from '@qualy/auth-contract/email'
 import {
   Authenticated,
@@ -257,8 +257,8 @@ const userEntrance = Schema.Struct({
       Schema.Struct({
         mode: Schema.Literal('managed'),
         secret: Schema.Struct({
-          label: UiTextSchema,
-          hint: Schema.NullOr(UiTextSchema),
+          label: Schema.String,
+          hint: Schema.NullOr(Schema.String),
           minLength: Schema.Number,
           maxLength: Schema.Number,
         }),
@@ -323,7 +323,7 @@ const authProvider = Schema.Struct({
   code: Schema.String,
   type: Schema.String,
   /** what its driver calls the kind, in the reader's language; null for a kind no driver claims */
-  kindLabel: Schema.NullOr(UiTextSchema),
+  kindLabel: Schema.NullOr(Schema.String),
   name: Schema.String,
   status: resourceStatus,
   // whether it has everything its kind needs to be put in service
@@ -404,12 +404,12 @@ export const identityApiGroup = HttpApiGroup.make('identity')
         kinds: Schema.Array(
           Schema.Struct({
             type: Schema.String,
-            label: UiTextSchema,
+            label: Schema.String,
             fields: Schema.Array(
               Schema.Struct({
                 key: Schema.String,
-                label: UiTextSchema,
-                hint: Schema.NullOr(UiTextSchema),
+                label: Schema.String,
+                hint: Schema.NullOr(Schema.String),
                 kind: Schema.Literals(['text', 'url', 'secret', 'choice', 'toggle', 'number']),
                 required: Schema.Boolean,
                 // advanced fields fold away until somebody asks for them
@@ -419,7 +419,9 @@ export const identityApiGroup = HttpApiGroup.make('identity')
                   Schema.Struct({ field: Schema.String, equals: Schema.String }),
                 ),
                 // a choice's options; empty for every other kind
-                options: Schema.Array(Schema.Struct({ value: Schema.String, label: UiTextSchema })),
+                options: Schema.Array(
+                  Schema.Struct({ value: Schema.String, label: Schema.String }),
+                ),
                 defaultValue: Schema.NullOr(Schema.String),
                 min: Schema.NullOr(Schema.Number),
                 max: Schema.NullOr(Schema.Number),
@@ -1202,7 +1204,7 @@ const selfEntrance = Schema.Struct({
 const selfAccountChange = Schema.Struct({
   id: Schema.String,
   occurredAt: Schema.String,
-  name: UiTextSchema,
+  name: Schema.String,
   /** the reader themselves, or somebody else */
   actor: Schema.Literals(['self', 'other']),
 })

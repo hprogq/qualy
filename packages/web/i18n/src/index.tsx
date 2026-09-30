@@ -2,9 +2,7 @@ import {
   defaultLocale,
   supportedLocales,
   type ErrorMessageMap,
-  type Message,
   type SupportedLocale,
-  type UiText,
 } from '@qualy/i18n-contract'
 import { formatApiError } from './format.ts'
 
@@ -30,28 +28,18 @@ export { onLocaleChosenElsewhere, reopenInLocale } from './locale-channel.ts'
 // from the moment it opens, and choosing another opens the page again.
 //
 // What remains is what a screen cannot say by itself: an api failure by its
-// code, which may be any plugin's, and a text the server names by id.
+// code, which may be any plugin's. Whatever else the server sends, it has
+// already said in the page's language.
 
 let errorRegistry: ErrorMessageMap = {}
-let wireRegistry: Readonly<Record<string, Message>> = {}
 
 /**
- * What the assembly's plugins say for their api failures, and for the texts
- * their server sends by id. Installed once by the composition root, before
- * the first render; a test installs what its screen needs.
+ * What the assembly's plugins say for their api failures. Installed once by
+ * the composition root, before the first render; a test installs what its
+ * screen needs.
  */
-export function installMessages(installed: {
-  readonly errorMessages?: ErrorMessageMap
-  readonly wireMessages?: Readonly<Record<string, Message>>
-}): void {
+export function installMessages(installed: { readonly errorMessages?: ErrorMessageMap }): void {
   errorRegistry = installed.errorMessages ?? {}
-  wireRegistry = installed.wireMessages ?? {}
-}
-
-/** a text the server sent: business data as it stands, a message by its id */
-export function formatText(text: UiText): string {
-  if (text.kind === 'literal') return text.value
-  return wireRegistry[text.id]?.() ?? text.defaultMessage
 }
 
 /** an api failure, in the reader's words, from its code */
@@ -61,13 +49,12 @@ export function formatError(error: unknown, registry?: ErrorMessageMap): string 
 
 export interface I18nRuntime {
   readonly locale: SupportedLocale
-  readonly formatText: (text: UiText) => string
   readonly formatError: (error: unknown, registry?: ErrorMessageMap) => string
 }
 
-/** the page's language and the two sayings above, as a screen reaches for them */
+/** the page's language and a failure's words, as a screen reaches for them */
 export function useI18n(): I18nRuntime {
-  return { locale: resolveInitialLocale(), formatText, formatError }
+  return { locale: resolveInitialLocale(), formatError }
 }
 
 /** the language this page is written in, from the moment it opened until it closes */
@@ -143,11 +130,6 @@ const storedLocale = (): string | null => {
   if (typeof document === 'undefined') return null
   const found = /(?:^|;\s*)qualy\.locale=([^;]*)/.exec(document.cookie)
   return found?.[1] ?? null
-}
-
-// declarative rendering of a manifest-carried text reference
-export function LocalizedText({ value }: { value: UiText }) {
-  return <>{formatText(value)}</>
 }
 
 export const localeNames: Record<SupportedLocale, string> = {

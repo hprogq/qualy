@@ -130,7 +130,7 @@ const styles = stylex.create({
 
 export default function LoginMethodsPage() {
   const query = useApiQuery(authApi)
-  const { formatText, formatError, locale } = useI18n()
+  const { formatError, locale } = useI18n()
   const describe = useLoadFailure()
   const listJoin = useList()
   const [selected, setSelected] = usePageQueryState('provider')
@@ -409,7 +409,7 @@ export default function LoginMethodsPage() {
                   {/* the kind as the driver names itself; its code only
                       where no installed driver claims it */}
                   <Cell tone="muted" unlabelled>
-                    {provider.kindLabel === null ? provider.type : formatText(provider.kindLabel)}
+                    {provider.kindLabel === null ? provider.type : provider.kindLabel}
                   </Cell>
                   <Cell tone={nobody ? 'warn' : 'muted'}>
                     {provider.audience.mode === 'unrestricted' ? (

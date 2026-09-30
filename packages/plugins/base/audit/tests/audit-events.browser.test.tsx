@@ -19,7 +19,7 @@ describe('the audit log', () => {
             occurredAt: '2026-09-25T06:30:00.000Z',
             actionCode: 'auth.user.update',
             actionVersion: 1,
-            actionName: { kind: 'literal' as const, value: 'Edit user' },
+            actionName: 'Edit user',
             actorKind: 'user' as const,
             actorUserId: ACTOR,
             actorLabel: '李老师',

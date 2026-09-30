@@ -195,10 +195,7 @@ export type EventRow = {
   id: string
   occurredAt: string
   actionCode: string
-  actionName:
-    | { kind: 'message'; id: string; defaultMessage: string }
-    | { kind: 'literal'; value: string }
-    | null
+  actionName: string | null
   actorKind: 'user' | 'system' | 'service' | 'anonymous'
   actorUserId: string | null
   actorLabel: string | null
@@ -228,7 +225,7 @@ export function EventTable({
   /** every row is about the same object, which the page already names */
   hideTarget?: boolean
 }) {
-  const { formatText, locale } = useI18n()
+  const { locale } = useI18n()
   const [openId, setOpenId] = useState('')
   const when = (iso: string) =>
     new Date(iso).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'medium' })
@@ -239,7 +236,7 @@ export function EventTable({
       : row.actorKind === 'user'
         ? (row.actorUserId?.slice(0, 8) ?? '—')
         : m.events_actorSystem())
-  const actionOf = (row: EventRow) => (row.actionName ? formatText(row.actionName) : row.actionCode)
+  const actionOf = (row: EventRow) => (row.actionName ? row.actionName : row.actionCode)
   const outcomeLabel = {
     success: m.events_outcomeSuccess,
     denied: m.events_outcomeDenied,

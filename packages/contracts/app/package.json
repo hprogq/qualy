@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@qualy/auth-contract": "workspace:*",
-    "@qualy/i18n-contract": "workspace:*"
+    "@qualy/i18n-contract": "workspace:*",
+    "@qualy/text": "workspace:*"
   }
 }

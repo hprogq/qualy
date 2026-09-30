@@ -13,7 +13,7 @@ import { apiError, emptyManifest, fakeClient, renderScreen } from './support/har
 // each the state a page draws for a record that is not there, told by the
 // kind it names and the ways out it offers - never by its words.
 
-const text = (value: string) => ({ kind: 'literal' as const, value })
+const text = (value: string) => value
 
 type Manifest = ReturnType<typeof emptyManifest> & { viewer: 'anonymous' | 'authenticated' }
 

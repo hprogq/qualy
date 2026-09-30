@@ -39,7 +39,7 @@ const USER_ID = '66666666-6666-4666-8666-666666666666'
 /** what a computed colour reads as when nothing is drawn */
 const BLANK = 'rgba(0, 0, 0, 0)'
 
-const text = (value: string) => ({ kind: 'literal' as const, value })
+const text = (value: string) => value
 
 const manifest = () => ({
   ...emptyManifest(),

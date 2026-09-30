@@ -1,4 +1,4 @@
-import { literal } from '@qualy/i18n-contract'
+import { literal } from '@qualy/text'
 import { it } from '@effect/vitest'
 import { Effect, Layer } from 'effect'
 import { describe, expect } from 'vitest'

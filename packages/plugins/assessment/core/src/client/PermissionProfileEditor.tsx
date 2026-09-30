@@ -12,7 +12,7 @@ import {
   FieldSeparator,
   FieldSet,
 } from '@qualy/ui/field'
-import { OFFERED_PHASE_CODES, type PhaseGatedCode } from '../permissions.ts'
+import { OFFERED_PHASE_CODES, type PhaseGatedCode } from '../permission-codes.ts'
 import * as m from '#messages'
 
 // each action a stage may open, by its code: what it is called, and what it lets somebody do

@@ -6,7 +6,6 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import type { ResolvedNavigationItem } from '@qualy/ui-contract'
 import { shell } from './shell.stylex.ts'
-import { LocalizedText } from '@qualy/web-i18n'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Loader } from '@qualy/brand/loader'
 import { usePendingNavigation } from '@qualy/web-runtime'
@@ -243,9 +242,7 @@ function BottomLink({ item }: { item: BottomItem }) {
       ) : (
         <NavIcon name={item.icon} className={stylex.props(styles.glyph).className} />
       )}
-      <span {...stylex.props(styles.word)}>
-        <LocalizedText value={item.label} />
-      </span>
+      <span {...stylex.props(styles.word)}>{item.label}</span>
       {item.badge !== undefined && <span {...stylex.props(styles.count)}>{item.badge}</span>}
     </NavLink>
   )

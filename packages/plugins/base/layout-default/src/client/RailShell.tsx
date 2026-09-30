@@ -40,7 +40,6 @@ import {
   WorkspaceCapabilityScope,
   useWorkspaceCapabilities,
 } from '@qualy/web-runtime'
-import { LocalizedText } from '@qualy/web-i18n'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
 import { useIsBelow } from '@qualy/ui/use-mobile'
@@ -823,9 +822,7 @@ function RailEntry({
         ) : (
           <NavIcon name={icon} className={stylex.props(styles.entryIcon).className} />
         )}
-        <span {...stylex.props(styles.entryLabel)}>
-          <LocalizedText value={label} />
-        </span>
+        <span {...stylex.props(styles.entryLabel)}>{label}</span>
         {/* a live number the manifest cannot carry: whoever owns the page
             answers for it, and an entry nobody answers for shows nothing */}
         {badge !== undefined && <UiSlot token={badge} context={{ navigationId: id }} />}
@@ -875,7 +872,7 @@ function PersonChip({
           .className ?? ''
       }
     >
-      <LocalizedText value={label} />
+      {label}
       {badge}
     </NavLink>
   )
@@ -915,9 +912,7 @@ function PersonEntry({
           ).className ?? ''
         }
       >
-        <span {...stylex.props(styles.personWord)}>
-          <LocalizedText value={label} />
-        </span>
+        <span {...stylex.props(styles.personWord)}>{label}</span>
         {/* the same live number the narrow row of sections carries */}
         {badge !== undefined && <UiSlot token={badge} context={{ navigationId: id }} />}
       </NavLink>
@@ -960,9 +955,7 @@ function DrawerEntry({
         ).className ?? ''
       }
     >
-      <span {...stylex.props(styles.entryLabel)}>
-        <LocalizedText value={label} />
-      </span>
+      <span {...stylex.props(styles.entryLabel)}>{label}</span>
       {badge !== undefined && <UiSlot token={badge} context={{ navigationId: id }} />}
     </NavLink>
   )
@@ -1192,9 +1185,7 @@ function CapableRailShell({
         )}
         {sections.map((section) => (
           <section key={section.id}>
-            <p {...stylex.props(styles.sectionLabel)}>
-              <LocalizedText value={section.label} />
-            </p>
+            <p {...stylex.props(styles.sectionLabel)}>{section.label}</p>
             <ul {...stylex.props(styles.entryList)}>
               {section.items.map((item) => (
                 <RailEntry
@@ -1353,11 +1344,7 @@ function CapableRailShell({
                   ].map((group) => (
                     <section key={group.id} {...stylex.props(styles.personGroup)}>
                       <p {...stylex.props(styles.personHeading)}>
-                        {group.label === undefined ? (
-                          m.person_account()
-                        ) : (
-                          <LocalizedText value={group.label} />
-                        )}
+                        {group.label === undefined ? m.person_account() : group.label}
                       </p>
                       <ul {...stylex.props(styles.personList)}>
                         {group.items.map((item) => (
@@ -1544,9 +1531,7 @@ function CapableRailShell({
             )}
             {sections.map((section) => (
               <section key={section.id} {...stylex.props(styles.drawerSection)}>
-                <p {...stylex.props(styles.drawerSectionLabel)}>
-                  <LocalizedText value={section.label} />
-                </p>
+                <p {...stylex.props(styles.drawerSectionLabel)}>{section.label}</p>
                 <div {...stylex.props(styles.drawerGrid)}>
                   {section.items.map((item) => (
                     <DrawerEntry
@@ -1583,9 +1568,7 @@ function CapableRailShell({
                       name={app.icon}
                       className={stylex.props(styles.moduleIcon).className}
                     />
-                    <span {...stylex.props(styles.moduleWord)}>
-                      <LocalizedText value={app.label} />
-                    </span>
+                    <span {...stylex.props(styles.moduleWord)}>{app.label}</span>
                   </NavLink>
                 ))}
               </div>

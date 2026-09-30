@@ -11,7 +11,9 @@ import {
 } from '@qualy/auth-contract/sign-in-failure'
 import { Api } from '@qualy/api-kit/local'
 import { Api as ApiFeature } from '@qualy/api-kit/plugin'
-import { message } from '@qualy/i18n-contract'
+import { text } from '@qualy/text'
+import { messageRefs } from '@qualy/text/node'
+import type * as M from '#messages'
 import { Plugin } from '@qualy/plugin-kit'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import {
@@ -29,6 +31,9 @@ import {
   validateTicket,
 } from './protocol/validate.ts'
 
+// this package's messages, by name (docs/adr/0011-i18n-paraglide.md)
+const m = messageRefs<typeof M>(import.meta.url)
+
 // Signing in through a CAS server: send the person there, take the ticket it
 // sends them back with, ask the server who the ticket is for, and find that
 // person here by their person identifier.
@@ -44,60 +49,50 @@ import {
 const local = Api.local(authCasApiGroup)
 const urls = HttpApiClient.urlBuilder(local)
 
-const say = (id: string, fallback: string) => message(`auth-cas/${id}`, fallback)
-
-const choice = (value: string, id: string, fallback: string) => ({
-  value,
-  label: say(`field/${id}`, fallback),
-})
-
 /** what an administrator is asked, in the order the form asks it */
 const fields: readonly EntranceField[] = [
   {
     key: 'serverUrl',
-    label: say('field/server-url', 'CAS server address'),
-    hint: say(
-      'field/server-url-hint',
-      'The address the server’s pages sit under, such as https://cas.example.edu/cas',
-    ),
+    label: text(m.field_serverUrl),
+    hint: text(m.field_serverUrlHint),
     kind: 'url',
     required: true,
   },
   {
     key: 'protocol',
-    label: say('field/protocol', 'Protocol'),
+    label: text(m.field_protocol),
     kind: 'choice',
     required: true,
     options: [
-      choice('cas3', 'protocol-cas3', 'CAS 3.0'),
-      choice('cas2', 'protocol-cas2', 'CAS 2.0'),
-      choice('cas1', 'protocol-cas1', 'CAS 1.0'),
-      choice('custom', 'protocol-custom', 'Custom addresses'),
+      { value: 'cas3', label: text(m.field_protocolCas3) },
+      { value: 'cas2', label: text(m.field_protocolCas2) },
+      { value: 'cas1', label: text(m.field_protocolCas1) },
+      { value: 'custom', label: text(m.field_protocolCustom) },
     ],
     defaultValue: 'cas3',
   },
   {
     key: 'identitySource',
-    label: say('field/identity-source', 'Person identifier'),
+    label: text(m.field_identitySource),
     kind: 'choice',
     required: true,
     options: [
-      choice('principal', 'identity-principal', 'The name they sign in with'),
-      choice('attribute', 'identity-attribute-choice', 'An attribute the server returns'),
+      { value: 'principal', label: text(m.field_identityPrincipal) },
+      { value: 'attribute', label: text(m.field_identityAttributeChoice) },
     ],
     defaultValue: 'principal',
   },
   {
     key: 'identityAttribute',
-    label: say('field/attribute-name', 'Attribute name'),
-    hint: say('field/attribute-name-hint', 'Exactly as the server spells it, such as id_number'),
+    label: text(m.field_attributeName),
+    hint: text(m.field_attributeNameHint),
     kind: 'text',
     required: true,
     visibleWhen: { field: 'identitySource', equals: 'attribute' },
   },
   {
     key: 'identityFallback',
-    label: say('field/fallback', 'Use the sign-in name when the attribute is missing'),
+    label: text(m.field_fallback),
     kind: 'toggle',
     required: false,
     defaultValue: false,
@@ -105,11 +100,8 @@ const fields: readonly EntranceField[] = [
   },
   {
     key: 'loginUrl',
-    label: say('field/login-url', 'Sign-in address'),
-    hint: say(
-      'field/custom-hint',
-      'Leave empty to use the CAS 3.0 address under the server address',
-    ),
+    label: text(m.field_loginUrl),
+    hint: text(m.field_customHint),
     kind: 'url',
     required: false,
     section: 'advanced',
@@ -117,11 +109,8 @@ const fields: readonly EntranceField[] = [
   },
   {
     key: 'validateUrl',
-    label: say('field/validate-url', 'Ticket validation address'),
-    hint: say(
-      'field/custom-hint',
-      'Leave empty to use the CAS 3.0 address under the server address',
-    ),
+    label: text(m.field_validateUrl),
+    hint: text(m.field_customHint),
     kind: 'url',
     required: false,
     section: 'advanced',
@@ -129,31 +118,34 @@ const fields: readonly EntranceField[] = [
   },
   {
     key: 'validateMethod',
-    label: say('field/validate-method', 'Validation request'),
+    label: text(m.field_validateMethod),
     kind: 'choice',
     required: true,
     section: 'advanced',
-    options: [choice('GET', 'validate-get', 'GET'), choice('POST', 'validate-post', 'POST form')],
+    options: [
+      { value: 'GET', label: text(m.field_validateGet) },
+      { value: 'POST', label: text(m.field_validatePost) },
+    ],
     defaultValue: 'GET',
     visibleWhen: { field: 'protocol', equals: 'custom' },
   },
   {
     key: 'responseFormat',
-    label: say('field/response-format', 'Answer format'),
+    label: text(m.field_responseFormat),
     kind: 'choice',
     required: true,
     section: 'advanced',
     options: [
-      choice('auto', 'format-auto', 'Detect'),
-      choice('xml', 'format-xml', 'XML'),
-      choice('json', 'format-json', 'JSON'),
+      { value: 'auto', label: text(m.field_formatAuto) },
+      { value: 'xml', label: text(m.field_formatXml) },
+      { value: 'json', label: text(m.field_formatJson) },
     ],
     defaultValue: 'auto',
     visibleWhen: { field: 'protocol', equals: 'custom' },
   },
   {
     key: 'renew',
-    label: say('field/renew', 'Ask for the password every time'),
+    label: text(m.field_renew),
     kind: 'toggle',
     required: false,
     section: 'advanced',
@@ -171,7 +163,7 @@ export const driver: LoginDriver = {
   provisioning: {
     mode: 'tenant-managed',
     entrance: {
-      label: say('entrance/kind', 'CAS single sign-on'),
+      label: text(m.entrance_kind),
       fields,
       // which server is believed, and where in its answer the person's
       // number is read: once somebody has come in, another answer to either

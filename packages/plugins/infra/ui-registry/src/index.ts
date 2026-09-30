@@ -3,6 +3,7 @@ import { Api } from '@qualy/api-kit/plugin'
 import { Ui } from './plugin.ts'
 import { appApiGroup } from '@qualy/app-contract'
 import { appApiHandlers, layer as serviceLayer } from './server/index.ts'
+import { documentContextProvider } from './document-context.ts'
 
 // The registry-and-manifest plugin, as a description: it owns the surface
 // extension point, provides the registry service, and serves the manifest
@@ -12,6 +13,7 @@ import { appApiHandlers, layer as serviceLayer } from './server/index.ts'
 const plugin = Plugin.define(
   '@qualy/plugin-ui-registry',
   Ui.provider,
+  documentContextProvider,
   Plugin.layer(serviceLayer),
   Api.group(appApiGroup, appApiHandlers),
 )

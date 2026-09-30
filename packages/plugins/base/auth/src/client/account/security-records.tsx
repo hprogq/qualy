@@ -434,7 +434,7 @@ function SignInRow({ attempt }: { attempt: SignIn }) {
 
 /** one change: when, what, and whether the reader did it */
 function ChangeRow({ change }: { change: Change }) {
-  const { formatText, locale } = useI18n()
+  const { locale } = useI18n()
   return (
     <div data-testid="account-change" data-actor={change.actor} {...stylex.props(styles.row)}>
       <span {...stylex.props(styles.words)}>
@@ -442,7 +442,7 @@ function ChangeRow({ change }: { change: Change }) {
           {instantWords(locale, change.occurredAt)}
         </span>
         <span {...stylex.props(styles.meta)}>
-          <span>{formatText(change.name)}</span>
+          <span>{change.name}</span>
           <span>{(change.actor === 'self' ? m.activity_bySelf : m.activity_byOther)()}</span>
         </span>
       </span>

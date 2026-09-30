@@ -8,6 +8,7 @@
     "@qualy/api-kit": "workspace:*",
     "@qualy/assembly": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
+    "@qualy/text": "workspace:*",
     "effect": "catalog:"
   }
 }

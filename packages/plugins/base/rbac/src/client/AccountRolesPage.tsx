@@ -3,7 +3,6 @@ import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { useApiQuery, useLoadFailure } from '@qualy/web-runtime'
 import type { ApiResult } from '@qualy/web-runtime/api'
-import { useI18n } from '@qualy/web-i18n'
 
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -91,7 +90,6 @@ export default function AccountRolesPage() {
 const SHOWN = 8
 
 function RoleRow({ role }: { role: Role }) {
-  const { formatText } = useI18n()
   const moment = useMoment()
   const [open, setOpen] = useState(false)
   const where =
@@ -138,7 +136,7 @@ function RoleRow({ role }: { role: Role }) {
         <>
           <div {...stylex.props(styles.powers)}>
             {powers.map((power) => (
-              <Tag key={power.code}>{formatText(power.name)}</Tag>
+              <Tag key={power.code}>{power.name}</Tag>
             ))}
           </div>
           {role.permissions.length > SHOWN && (

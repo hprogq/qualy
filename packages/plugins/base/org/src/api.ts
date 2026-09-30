@@ -1,4 +1,3 @@
-import { UiTextSchema } from '@qualy/i18n-contract'
 import { Schema } from 'effect'
 import { boundedInt, changed, trimmedName, uuidInput } from '@qualy/api-kit/schema'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api'
@@ -168,7 +167,7 @@ export const orgApiGroup = HttpApiGroup.make('org')
         usage: Schema.Array(
           Schema.Struct({
             kind: Schema.String,
-            label: UiTextSchema,
+            label: Schema.String,
             count: Schema.Number,
             /** whether anything the reader can do makes it go away */
             clearable: Schema.Boolean,

@@ -24,6 +24,7 @@
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
+    "@qualy/text": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "effect": "catalog:"
   },

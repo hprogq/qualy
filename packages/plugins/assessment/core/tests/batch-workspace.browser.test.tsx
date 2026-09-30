@@ -116,7 +116,7 @@ const stubs = (over: Record<string, Stub> = {}): Record<string, Stub> => ({
   ...over,
 })
 
-const text = (value: string) => ({ kind: 'literal' as const, value })
+const text = (value: string) => value
 const railEntry = (id: string, pageId: string, path: string, label: string, order: number) => ({
   id,
   label: text(label),

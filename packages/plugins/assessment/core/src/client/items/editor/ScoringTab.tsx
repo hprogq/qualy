@@ -12,7 +12,7 @@ import {
   type ChoiceSchema,
 } from '@qualy/value-schema'
 import { draftFromValue, type FieldDraft as ValueDraft } from '@qualy/web-value-form/model'
-import type { Message, UiText } from '@qualy/i18n-contract'
+import type { Message } from '@qualy/i18n-contract'
 import { Feedback } from '@qualy/ui/admin'
 import { DatePicker } from '@qualy/ui/date-picker'
 import { Input } from '@qualy/ui/input'
@@ -205,7 +205,7 @@ export function ScoringTab({
   itemId: string | null
   contract: Contract | null
   contractState: ContractState
-  calculators: readonly { ref: string; label: UiText; confirms?: 'itself' }[]
+  calculators: readonly { ref: string; label: string; confirms?: 'itself' }[]
   chosenCalculator: { ref: string; config: unknown }
   placement: Placement
   problems: readonly EditorProblem[]
@@ -221,7 +221,7 @@ export function ScoringTab({
   /** which fields name a record in a list, in order */
   onSummary: (fieldIds: string[]) => void
 }) {
-  const { formatText, locale } = useI18n()
+  const { locale } = useI18n()
   const words = usePickerWords()
   const [choosing, setChoosing] = useState(false)
   const automatic = draft.mode === 'automatic'
@@ -230,7 +230,7 @@ export function ScoringTab({
   const fixed = chosenCalculator.ref === 'fixed@1'
   const parameters = contract === null ? [] : inputOrder(contract.inputSchema)
   const chosenLabel = calculators.find((one) => one.ref === chosenCalculator.ref)?.label
-  const methodName = chosenLabel === undefined ? m.items_calculatorFixed() : formatText(chosenLabel)
+  const methodName = chosenLabel === undefined ? m.items_calculatorFixed() : chosenLabel
   const separator = m.items_listSeparator()
   const slotContext = { batchId, itemId, calculator: chosenCalculator }
 

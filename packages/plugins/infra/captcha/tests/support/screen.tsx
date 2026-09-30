@@ -7,11 +7,9 @@ import '../../../../../../apps/web/src/app.css'
 // This package's own use of the testkit: this plugin's catalogs and nobody
 // else's, so a test here is a test of this plugin's host.
 
-export const wireMessages = {}
 export const errorMessages = { ...captchaErrors }
 
 export { emptyManifest, fakeClient } from '@qualy/testkit/browser'
 
-export const renderScreen = (
-  options: Omit<Parameters<typeof render>[0], 'wireMessages' | 'errorMessages'>,
-) => render({ ...options, wireMessages, errorMessages })
+export const renderScreen = (options: Omit<Parameters<typeof render>[0], 'errorMessages'>) =>
+  render({ ...options, errorMessages })

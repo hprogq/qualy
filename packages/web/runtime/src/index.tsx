@@ -162,6 +162,7 @@ const clientProviderFor = (transport: TransportOptions): ClientProvider => {
 
 export {
   RuntimeContext,
+  useDocumentContext,
   useManifest,
   useManifestPage,
   usePageAvailable,
@@ -422,6 +423,24 @@ function RuntimeLoader({
 // all of it and let the manifest and page queries refetch under the new
 // identity — a session-partitioned key scheme would be more surgical and
 // far easier to get subtly wrong.
+/**
+ * Asks for the manifest again: for a page that has just changed something
+ * the manifest carries, such as a tenant's words in the document context.
+ */
+export function useManifestRefresh(): () => Promise<void> {
+  const queryClient = useQueryClient()
+  const runtime = useRuntime()
+  return useCallback(
+    () =>
+      queryClient.invalidateQueries({
+        queryKey: (
+          runtime.utilsFor(appApi) as QueryUtils<ClientOf<typeof appApi>>
+        ).app.getManifest.queryOptions().queryKey,
+      }),
+    [queryClient, runtime],
+  )
+}
+
 export function useSessionTransition() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()

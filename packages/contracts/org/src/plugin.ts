@@ -1,6 +1,6 @@
 import { Context, Effect, Layer } from 'effect'
 import { ExtensionPoint, Plugin, type PluginFeature } from '@qualy/plugin-kit'
-import type { UiText } from '@qualy/i18n-contract'
+import type { Text } from '@qualy/text'
 
 // Who is using a unit, asked before it is deleted.
 //
@@ -20,7 +20,7 @@ export interface NodeUsage {
   /** stable within the reporter: what kind of thing is holding the unit */
   readonly kind: string
   /** the kind in words: "People", "Role grants" */
-  readonly label: UiText
+  readonly label: Text
   readonly count: number
   /**
    * Whether anything a reader can do makes this go away.

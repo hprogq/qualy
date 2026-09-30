@@ -9,7 +9,6 @@ import { Plugin } from '@qualy/plugin-kit'
 import { LoginSessions } from '@qualy/auth-contract/login'
 import { CaptchaRequired } from '@qualy/plugin-captcha/contract'
 import { authLocalApiGroup, InvalidCredentials } from './api.ts'
-import { message } from '@qualy/i18n-contract'
 import {
   hashPassword,
   PASSWORD_MAX_LENGTH,
@@ -19,6 +18,12 @@ import {
 } from './password.ts'
 import { acceptable, assessPassword } from './strength.ts'
 import { TooManyAttempts } from '@qualy/auth-contract/session'
+import { text } from '@qualy/text'
+import { messageRefs } from '@qualy/text/node'
+import type * as M from '#messages'
+
+// this package's messages, by name (docs/adr/0011-i18n-paraglide.md)
+const m = messageRefs<typeof M>(import.meta.url)
 
 /** how long a sign-in turned away for want of a seat is told to wait */
 const SEATS_BUSY_RETRY_SECONDS = 2
@@ -40,7 +45,7 @@ export const driver: LoginDriver = {
   provisioning: {
     mode: 'system-singleton',
     code: 'local',
-    label: message('auth-local/entrance/kind', 'Email and password'),
+    label: text(m.entrance_kind),
   },
   // the address a person signs in with is theirs, kept on the person: the
   // door stores no second copy of it
@@ -50,7 +55,7 @@ export const driver: LoginDriver = {
   binding: {
     mode: 'managed',
     secret: {
-      label: message('auth-local/binding/password', 'Password'),
+      label: text(m.binding_password),
       minLength: PASSWORD_MIN_LENGTH,
       maxLength: PASSWORD_MAX_LENGTH,
     },

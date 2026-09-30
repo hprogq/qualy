@@ -1,5 +1,5 @@
 import { Layer } from 'effect'
-import type { UiText } from '@qualy/i18n-contract'
+import type { Text } from '@qualy/text'
 import {
   definePage,
   reactComponent,
@@ -22,6 +22,7 @@ import {
   type PluginFeature,
 } from '@qualy/plugin-kit'
 import { registerSurfaces, uiContributionsLayer, uiLayer } from './server/registry.ts'
+import { documentContext } from './document-context.ts'
 
 // The shell's face in the descriptor model.
 //
@@ -94,9 +95,9 @@ export interface PageOptions {
   readonly layout: LayoutContractId
   readonly visibility: UiVisibility
   /** what a browser tab calls it; a page with a menu entry inherits its words */
-  readonly title?: UiText
+  readonly title?: Text
   readonly navigation?: {
-    readonly label: UiText
+    readonly label: Text
     readonly icon?: string
     readonly order?: number
     readonly group?: NamespacedId
@@ -155,8 +156,11 @@ export const Ui = {
   surfaces: (surfaces: UiSurfaces): PluginFeature =>
     Plugin.contribute(UiSurfaceDeclarations, surfaces),
 
-  /** names the module exporting `catalogs` (and optionally `errorMessages`) */
+  /** names the module exporting `errorMessages`: what this plugin's api failures say */
   i18n: (module: string): PluginFeature => Plugin.contribute(I18nCatalogs, { module }),
+
+  /** something of this plugin's that a whole page reads, delivered with the manifest */
+  documentContext,
 
   /**
    * The owner's interpretation: the registry, already populated.

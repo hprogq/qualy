@@ -21,7 +21,6 @@ import {
   loginComponents,
   pageComponents,
   slotComponents,
-  wireMessages,
 } from 'virtual:qualy/plugins'
 import { releases, webRelease } from './release.ts'
 import { useRouteSlots } from './route-states.tsx'
@@ -48,15 +47,15 @@ const registry: ComponentRegistry = {
 }
 
 // The cold start's own copy, in the reader's language: the host stands above
-// the catalogs, which is the point of it, so it reads the small table the
-// runtime keeps for before them - in the locale the shell's boot script
+// everything else, which is the point of it, so it reads the small table said
+// for before anything has started - in the locale the shell's boot script
 // resolved and marked on the root before the first frame, which is the one
-// the catalogs will arrive in.
+// every screen will speak.
 const coldStartCopy = bootstrapMessages[resolveInitialLocale()]
 
-// what the assembly's plugins say for their api failures and for the texts
-// their server names by id; everything else a screen says itself
-installMessages({ errorMessages, wireMessages })
+// what the assembly's plugins say for their api failures; everything else a
+// screen says itself, and what the server sends arrives already said
+installMessages({ errorMessages })
 
 export default function App() {
   // The cold-start host wraps it all, above every provider, and draws the

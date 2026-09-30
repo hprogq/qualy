@@ -210,7 +210,7 @@ describe('the tab of a page that cannot be shown', () => {
         id: 'probe/record',
         path: '/records/:recordId',
         layout: 'app-shell/v1',
-        title: { kind: 'literal' as const, value: 'Record' },
+        title: 'Record',
       },
     ],
   }

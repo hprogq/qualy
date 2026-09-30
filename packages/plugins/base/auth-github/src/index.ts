@@ -21,11 +21,16 @@ import {
 } from '@qualy/auth-contract/sign-in-failure'
 import { Api } from '@qualy/api-kit/local'
 import { Api as ApiFeature } from '@qualy/api-kit/plugin'
-import { message } from '@qualy/i18n-contract'
+import { text } from '@qualy/text'
+import { messageRefs } from '@qualy/text/node'
+import type * as M from '#messages'
 import { Plugin } from '@qualy/plugin-kit'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { authGithubApiGroup, GithubRejected, GithubUnavailable } from './api.ts'
 import { authorizeRedirect, endpointsOf, identify, pkce } from './oauth.ts'
+
+// this package's messages, by name (docs/adr/0011-i18n-paraglide.md)
+const m = messageRefs<typeof M>(import.meta.url)
 
 // Signing in with a GitHub account, and binding one to yourself.
 //
@@ -43,25 +48,23 @@ import { authorizeRedirect, endpointsOf, identify, pkce } from './oauth.ts'
 const local = Api.local(authGithubApiGroup)
 const urls = HttpApiClient.urlBuilder(local)
 
-const say = (id: string, fallback: string) => message(`auth-github/${id}`, fallback)
-
 const fields: readonly EntranceField[] = [
   {
     key: 'clientId',
-    label: say('field/client-id', 'Client ID'),
+    label: text(m.field_clientId),
     kind: 'text',
     required: true,
   },
   {
     key: 'clientSecret',
-    label: say('field/client-secret', 'Client secret'),
+    label: text(m.field_clientSecret),
     kind: 'secret',
     required: true,
   },
   {
     key: 'enterpriseUrl',
-    label: say('field/enterprise-url', 'GitHub Enterprise Server address'),
-    hint: say('field/enterprise-url-hint', 'Leave empty for github.com'),
+    label: text(m.field_enterpriseUrl),
+    hint: text(m.field_enterpriseUrlHint),
     kind: 'url',
     required: false,
     section: 'advanced',
@@ -78,7 +81,7 @@ export const driver: LoginDriver = {
   provisioning: {
     mode: 'tenant-managed',
     entrance: {
-      label: say('entrance/kind', 'GitHub'),
+      label: text(m.entrance_kind),
       fields,
       // an account id means one account on one server; on another server
       // the same number is somebody else

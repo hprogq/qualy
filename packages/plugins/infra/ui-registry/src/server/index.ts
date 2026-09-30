@@ -3,7 +3,9 @@ import { HttpApiBuilder } from 'effect/http-api'
 import { Api } from '@qualy/api-kit/plugin'
 import { CurrentViewer } from '@qualy/auth-contract/session'
 import { appApiGroup } from '@qualy/app-contract'
+import { requestLocale } from '@qualy/api-kit/locale'
 import { UiManifest, layer as manifestLayer } from './manifest.ts'
+import { DocumentContext } from '../document-context.ts'
 import { Ui } from './registry.ts'
 
 // The registry as a layer: a projection over declarations, plus the one live
@@ -29,7 +31,13 @@ export const appApiHandlers = HttpApiBuilder.group(local, 'app', (handlers) =>
       // an absent principal is a viewer who sees the public surfaces, not a
       // caller to refuse
       const viewer = yield* CurrentViewer
-      return yield* manifest.build(viewer.principal)
+      const locale = yield* requestLocale
+      const built = yield* manifest.build(viewer.principal, locale)
+      const documentContext = yield* DocumentContext
+      return {
+        ...built,
+        context: yield* documentContext.of({ principal: viewer.principal, locale }),
+      }
     }),
   ),
 )

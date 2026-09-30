@@ -446,6 +446,33 @@ describe('one plugin reaching into another', () => {
  * a test that lives with its plugin may not reach for the aggregate, and
  * may not reach into the host.
  */
+// What the server says reaches a browser already said, in the page's
+// language (docs/adr/0011-i18n-paraglide.md): a page says its own sentences
+// through its package's #messages and never holds a Text. So nothing a
+// browser runs imports the server's text package or its Node half - the
+// one way a page could start rendering server texts itself, or pull a
+// message table into its graph.
+describe('a browser holds no server text', () => {
+  const browserSources = [
+    ...pluginDirs.flatMap((dir) => walkSources(path.join(repoRoot, dir, 'src/client'))),
+    ...walkSources(path.join(repoRoot, 'packages/web')),
+    ...walkSources(path.join(repoRoot, 'apps/web/src')),
+  ]
+
+  it('found the browser sources', () => {
+    expect(browserSources.length).toBeGreaterThan(100)
+  })
+
+  it('imports neither @qualy/text nor its Node half', () => {
+    const offenders = browserSources.filter((file) =>
+      importsOf(fs.readFileSync(file, 'utf8')).some(
+        (specifier) => specifier === '@qualy/text' || specifier.startsWith('@qualy/text/'),
+      ),
+    )
+    expect(offenders.map(relative)).toEqual([])
+  })
+})
+
 describe('a browser test outside the host reaches for neither aggregate nor host', () => {
   const owned = (root: string): string[] => {
     const found: string[] = []

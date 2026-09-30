@@ -1,7 +1,6 @@
 import { useEffect, useMemo, type ReactNode } from 'react'
 import { matchPath, Navigate, useLocation, useRoutes, type RouteObject } from 'react-router'
 import type { BrowserSurface, NamespacedId } from '@qualy/ui-contract'
-import { useI18n } from '@qualy/web-i18n'
 import { setObservedPage } from '@qualy/browser-observability'
 import type { Manifest } from './runtime-context.tsx'
 import type { ComponentRegistry } from './registry.ts'
@@ -214,15 +213,14 @@ const PRODUCT = typeof document === 'undefined' ? '' : document.title
  */
 function DocumentTitle({ pages }: { pages: Manifest['pages'] }) {
   const { pathname } = useLocation()
-  const { formatText } = useI18n()
   const instead = useDocumentTitleOverride()
   const named = pages.find(
     (page) => page.title !== undefined && matchPath({ path: page.path, end: true }, pathname),
   )
   const title = named?.title
   useEffect(() => {
-    const name = instead ?? (title === undefined ? undefined : formatText(title))
+    const name = instead ?? title
     document.title = name === undefined ? PRODUCT : `${name} - ${PRODUCT}`
-  }, [instead, title, formatText])
+  }, [instead, title])
   return null
 }

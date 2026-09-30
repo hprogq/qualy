@@ -66,6 +66,9 @@ RUN pnpm install --frozen-lockfile --ignore-scripts --prod \
       --filter-prod 'qualy...' --filter-prod '@qualy/app...' --filter-prod '@qualy/cli...' \
  && node tools/release/prune-server-image.mjs
 COPY --from=web /app/packages/plugins/infra/web/client-dist /app/packages/plugins/infra/web/client-dist
+# what the server says in the reader's language: the messages the web build
+# compiled, in the one module per locale a server loads at start
+COPY --from=web /app/.qualy/i18n/server /app/.qualy/i18n/server
 
 # --- the image ------------------------------------------------------------------
 FROM ${NODE_IMAGE}

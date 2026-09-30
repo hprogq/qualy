@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import { UiTextSchema, type UiText } from '@qualy/i18n-contract'
+import { TextSchema, type Rendered, type Text } from '@qualy/text'
 import { NAMESPACED_ID, type NamespacedId } from './ids.ts'
 
 export type LayoutContractId = NamespacedId
@@ -58,7 +58,9 @@ export const ACCOUNT_SHELL: LayoutContractId = 'account-shell/v1'
 // a collection surface distinguishes what a plugin contributes from what
 // the browser receives: the registry may resolve references (a navigation
 // page id becomes the mounted path) before the item leaves the server
-export interface UiCollectionToken<TContribution, TResolved = TContribution> {
+// what reaches the browser is the item with every Text said in the reader's
+// language, so the resolved shape defaults to the rendered contribution
+export interface UiCollectionToken<TContribution, TResolved = Rendered<TContribution>> {
   readonly kind: 'collection'
   readonly key: NamespacedId
   // The item's runtime schema, decoded by the registry when a plugin
@@ -82,7 +84,7 @@ export interface UiSlotToken {
   readonly cardinality: 'one' | 'many'
 }
 
-export function defineUiCollection<TContribution, TResolved = TContribution>(options: {
+export function defineUiCollection<TContribution, TResolved = Rendered<TContribution>>(options: {
   key: NamespacedId
   schema: Schema.Top
 }): UiCollectionToken<TContribution, TResolved> {
@@ -113,7 +115,7 @@ export type NavigationTarget =
 // reference stays visible instead of vanishing.
 export interface NavigationGroup {
   id: NamespacedId
-  label: UiText
+  label: Text
   order?: number
   // a group inside another group renders as a collapsible cluster under its
   // parent section; a top-level group is a plain section heading
@@ -124,9 +126,9 @@ export interface NavigationGroup {
 
 export interface NavigationItem {
   id: NamespacedId
-  // never a display string: plugins name a translatable message, the layout
-  // provider resolves it against the viewer's locale
-  label: UiText
+  // never a display string where it is declared: a plugin's own message,
+  // rendered in the reader's language when the manifest is answered
+  label: Text
   target: NavigationTarget
   icon?: string
   order?: number
@@ -150,8 +152,15 @@ export type ResolvedNavigationTarget =
   | { kind: 'page'; pageId: NamespacedId; path: string }
   | { kind: 'external'; href: string; newWindow?: boolean }
 
-export interface ResolvedNavigationItem extends Omit<NavigationItem, 'target'> {
+export interface ResolvedNavigationItem extends Omit<NavigationItem, 'target' | 'label'> {
+  /** in the reader's language */
+  label: string
   target: ResolvedNavigationTarget
+}
+
+/** a section heading as the browser receives it: in the reader's language */
+export interface ResolvedNavigationGroup extends Omit<NavigationGroup, 'label'> {
+  label: string
 }
 
 // only same-document schemes may be linked; javascript: and data: are the
@@ -162,7 +171,7 @@ const namespaced = Schema.String.check(Schema.isPattern(NAMESPACED_ID))
 
 const navigationItemSchema = Schema.Struct({
   id: namespaced,
-  label: UiTextSchema,
+  label: TextSchema,
   target: Schema.Union([
     Schema.Struct({ kind: Schema.Literal('page'), pageId: namespaced }),
     Schema.Struct({
@@ -179,7 +188,7 @@ const navigationItemSchema = Schema.Struct({
 
 const navigationGroupSchema = Schema.Struct({
   id: namespaced,
-  label: UiTextSchema,
+  label: TextSchema,
   order: Schema.optional(Schema.Number),
   parent: Schema.optional(namespaced),
   icon: Schema.optional(Schema.String),
@@ -233,7 +242,7 @@ export const accountNavigation = defineUiCollection<NavigationItem, ResolvedNavi
 })
 
 /** the sections every navigation files its entries under */
-export const navigationGroups = defineUiCollection<NavigationGroup>({
+export const navigationGroups = defineUiCollection<NavigationGroup, ResolvedNavigationGroup>({
   key: 'app-shell/navigation-groups',
   schema: navigationGroupSchema,
 })

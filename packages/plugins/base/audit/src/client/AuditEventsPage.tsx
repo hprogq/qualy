@@ -13,7 +13,6 @@ import {
   usePageQueryState,
   useRunApi,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
 
 import { AsyncSection, FormDialog } from '@qualy/ui/admin'
 import { Blank, Card, CardFoot, FootNote, Screen, Spacer, TableSkeleton } from '@qualy/ui/screen'
@@ -60,7 +59,6 @@ export default function AuditEventsPage() {
   const api = useApi(auditApi)
   const runApi = useRunApi()
   const query = useApiQuery(auditApi)
-  const { formatText } = useI18n()
   const failures = useLoadFailure()
   const [action, setAction] = usePageQueryState('action')
   const [outcome, setOutcome] = usePageQueryState('outcome')
@@ -103,7 +101,7 @@ export default function AuditEventsPage() {
             <SelectItem value={ALL}>{m.events_anyAction()}</SelectItem>
             {(options.data?.actions ?? []).map((entry) => (
               <SelectItem key={entry.code} value={entry.code}>
-                {formatText(entry.name)}
+                {entry.name}
               </SelectItem>
             ))}
           </SelectContent>

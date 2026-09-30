@@ -1,6 +1,6 @@
 import { Context, type Effect } from 'effect'
 import type { SupportedLocale } from '@qualy/i18n-contract'
-import type { SettingCatalogValue, TermDefinition } from './index.ts'
+import type { SettingCatalogValue, TermRef } from './index.ts'
 
 // The Effect side of this contract, behind its own subpath like every other
 // contract's: the root reaches the browser, and `effect` has no business in
@@ -27,7 +27,7 @@ export interface TenantSettingsShape {
    */
   readonly resolveTerm: (
     tenantId: string,
-    term: TermDefinition,
+    term: TermRef,
     locale: SupportedLocale,
   ) => Effect.Effect<string>
 }

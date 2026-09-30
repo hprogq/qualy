@@ -1,5 +1,10 @@
-import { message } from '@qualy/i18n-contract'
 import type { PermissionDefinition } from '@qualy/rbac-contract'
+import { text } from '@qualy/text'
+import { messageRefs } from '@qualy/text/node'
+import type * as M from '#messages'
+
+// this package's messages, by name (docs/adr/0011-i18n-paraglide.md)
+const m = messageRefs<typeof M>(import.meta.url)
 
 // The settings domain's own catalog: pure constants shared by the runtime
 // registry declaration and the seed. Tenant-wide, because a word the tenant
@@ -9,9 +14,9 @@ import type { PermissionDefinition } from '@qualy/rbac-contract'
 export const permissions = [
   {
     code: 'settings.terminology.manage',
-    name: message('settings/permission/terminology-manage', 'Manage terminology'),
+    name: text(m.permission_terminologyManage),
     groupKey: 'settings',
-    group: message('settings/permission-group/settings', 'System settings'),
+    group: text(m.permissionGroup_settings),
     target: 'tenant',
   },
 ] as const satisfies readonly PermissionDefinition[]

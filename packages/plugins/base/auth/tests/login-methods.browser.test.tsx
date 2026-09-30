@@ -22,7 +22,7 @@ const provider = (over: Partial<ProviderDto> = {}): ProviderDto => ({
   id: PASSWORD_ID,
   code: 'password',
   type: 'password',
-  kindLabel: { kind: 'literal', value: '邮箱密码' },
+  kindLabel: '邮箱密码',
   name: '账号密码',
   status: 'active',
   setup: 'complete',
@@ -47,7 +47,7 @@ const detail = (row: ProviderDto, over: Partial<Omit<DetailDto, 'provider'>> = {
   ...over,
 })
 
-const word = (value: string) => ({ kind: 'literal' as const, value })
+const word = (value: string) => value
 
 // every field a driver declares arrives flat: what a kind does not use is null
 const box = {

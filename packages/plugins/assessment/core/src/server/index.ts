@@ -3428,14 +3428,14 @@ export const make = Effect.fn('Assessment.make')(function* () {
   })
 
   // The tenant's word for a person's identifier heads the workbook. Read
-  // through the settings service when the assembly has one; a harness
-  // without it gets the term's default, which is also what a tenant that
-  // never chose otherwise gets.
+  // through the settings service when the assembly has one; the words are
+  // the settings plugin's to say, so a harness without it heads the column
+  // with the term's id.
   const terminology = yield* Effect.serviceOption(TenantSettings)
   const businessNoLabel = (tenantId: string, locale: string) =>
     Option.isSome(terminology)
       ? terminology.value.resolveTerm(tenantId, authTerms.businessNumber, localeOf(locale))
-      : Effect.succeed(authTerms.businessNumber.defaults[localeOf(locale)])
+      : Effect.succeed(authTerms.businessNumber.id)
 
   const importMethods = makeAdministrativeImportMethods({
     withDb,

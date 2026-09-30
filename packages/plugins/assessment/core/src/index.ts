@@ -10,7 +10,6 @@ import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
 import { Audit } from '@qualy/audit-contract/plugin'
 import { assessmentActions } from './actions.ts'
-import { message } from '@qualy/i18n-contract'
 import {
   ACCOUNT_SHELL,
   APP_SHELL,
@@ -44,6 +43,12 @@ import { configurationAccessLayer } from './server/configuration-access.ts'
 import { scoringAuthoringAccessLayer } from './server/scoring-authoring-access.ts'
 import { schedulerLayer } from './phase/scheduler.ts'
 import { assessmentApiHandlers, serviceLayer } from './server/index.ts'
+import { text } from '@qualy/text'
+import { messageRefs } from '@qualy/text/node'
+import type * as M from '#messages'
+
+// this package's messages, by name (docs/adr/0011-i18n-paraglide.md)
+const m = messageRefs<typeof M>(import.meta.url)
 
 // The assessment bounded context: its tables, its permission codes, its api
 // group, the service the batch screens talk to, the fiber that writes down
@@ -113,7 +118,7 @@ const plugin = Plugin.define(
         id: 'assessment/fixed-calculator',
         value: {
           ref: 'fixed@1',
-          label: message('assessment/items/calculator-fixed', 'A fixed amount'),
+          label: text(m.items_calculatorFixed),
           order: 10,
         },
         visibility: permissionOf('assessment.batch.manage'),
@@ -136,7 +141,7 @@ const plugin = Plugin.define(
         id: 'assessment/main',
         value: {
           id: 'assessment/main',
-          label: message('assessment/nav-group/main', 'Assessment'),
+          label: text(m.navGroup_main),
           order: 20,
           icon: 'list-checks',
         },
@@ -152,7 +157,7 @@ const plugin = Plugin.define(
         id: 'library/main',
         value: {
           id: 'library/main',
-          label: message('assessment/nav-group/library', 'Library'),
+          label: text(m.navGroup_library),
           order: 30,
           icon: 'library',
         },
@@ -171,7 +176,7 @@ const plugin = Plugin.define(
         id: 'assessment/batch-personal',
         value: {
           id: 'assessment/batch-personal',
-          label: message('assessment/nav-group/personal', 'My part'),
+          label: text(m.navGroup_personal),
           order: 22,
         },
         visibility: PUBLIC,
@@ -181,7 +186,7 @@ const plugin = Plugin.define(
         id: 'assessment/batch-work',
         value: {
           id: 'assessment/batch-work',
-          label: message('assessment/nav-group/work', 'Handling'),
+          label: text(m.navGroup_work),
           order: 26,
         },
         visibility: PUBLIC,
@@ -191,7 +196,7 @@ const plugin = Plugin.define(
         id: 'assessment/batch-admin',
         value: {
           id: 'assessment/batch-admin',
-          label: message('assessment/nav-group/batch-admin', 'Managing'),
+          label: text(m.navGroup_batchAdmin),
           order: 30,
         },
         visibility: PUBLIC,
@@ -207,7 +212,7 @@ const plugin = Plugin.define(
     // to; what it contains is decided per reader, not per permission
     visibility: AUTHENTICATED,
     navigation: {
-      label: message('assessment/navigation/batches', 'Assessment rounds'),
+      label: text(m.navigation_batches),
       order: 10,
       group: 'assessment/main',
     },
@@ -223,14 +228,14 @@ const plugin = Plugin.define(
     component: Ui.react('./client/BatchOverviewPage'),
     layout: WORKSPACE_SHELL,
     visibility: AUTHENTICATED,
-    title: message('assessment/navigation/overview', 'Overview'),
+    title: text(m.navigation_overview),
   }),
   Ui.page({
     id: 'assessment/batch-phases',
     path: '/assessment/batches/:batchId/phases',
     component: Ui.react('./client/BatchPhasesPage'),
     layout: WORKSPACE_SHELL,
-    title: message('assessment/navigation/phases', 'Stage plan'),
+    title: text(m.navigation_phases),
     visibility: permissionOf('assessment.batch.manage'),
   }),
   Ui.page({
@@ -238,7 +243,7 @@ const plugin = Plugin.define(
     path: '/assessment/batches/:batchId/results',
     component: Ui.react('./client/result/ParticipantResultsPage'),
     layout: WORKSPACE_SHELL,
-    title: message('assessment/participant-results/tab', 'Participant results'),
+    title: text(m.participantResults_tab),
     // Two doors, decided per round rather than per tenant: administering the
     // roster, and re-determining claims in it (ruling of 2026-09-25 #33),
     // which reads the accounts its authority covers. Not the permission
@@ -254,7 +259,7 @@ const plugin = Plugin.define(
     path: '/assessment/batches/:batchId/access',
     component: Ui.react('./client/BatchAccessPage'),
     layout: WORKSPACE_SHELL,
-    title: message('assessment/navigation/access', 'Staffs'),
+    title: text(m.navigation_access),
     visibility: permissionOf('assessment.batch.manage'),
   }),
   Ui.page({
@@ -262,7 +267,7 @@ const plugin = Plugin.define(
     path: '/assessment/batches/:batchId/settings',
     component: Ui.react('./client/BatchSettingsPage'),
     layout: WORKSPACE_SHELL,
-    title: message('assessment/navigation/settings', 'Settings'),
+    title: text(m.navigation_settings),
     visibility: permissionOf('assessment.batch.manage'),
   }),
   // Taking part: one's own filings and where they stand. Anybody the round
@@ -272,7 +277,7 @@ const plugin = Plugin.define(
     path: '/assessment/batches/:batchId/my-entries',
     component: Ui.react('./client/entry/MyEntriesPage'),
     layout: WORKSPACE_SHELL,
-    title: message('assessment/entry/tab', 'My entries'),
+    title: text(m.entry_tab),
     visibility: AUTHENTICATED,
   }),
   Ui.page({
@@ -280,7 +285,7 @@ const plugin = Plugin.define(
     path: '/assessment/batches/:batchId/my-result',
     component: Ui.react('./client/result/MyResultPage'),
     layout: WORKSPACE_SHELL,
-    title: message('assessment/result/tab', 'My standing'),
+    title: text(m.result_tab),
     visibility: AUTHENTICATED,
   }),
   // Handling other people's work: the queue, one submission, and recording
@@ -290,7 +295,7 @@ const plugin = Plugin.define(
     path: '/assessment/batches/:batchId/reviews',
     component: Ui.react('./client/review/ReviewInboxPage'),
     layout: WORKSPACE_SHELL,
-    title: message('assessment/review/tab', 'Reviewing'),
+    title: text(m.review_tab),
     visibility: permissionOf('assessment.review.process'),
   }),
   Ui.page({
@@ -298,7 +303,7 @@ const plugin = Plugin.define(
     path: '/assessment/batches/:batchId/reviews/:instanceId',
     component: Ui.react('./client/review/ReviewInstancePage'),
     layout: WORKSPACE_SHELL,
-    title: message('assessment/review/detail-tab', 'Review'),
+    title: text(m.review_detailTab),
     visibility: permissionOf('assessment.review.process'),
   }),
   Ui.page({
@@ -306,7 +311,7 @@ const plugin = Plugin.define(
     path: '/assessment/batches/:batchId/record',
     component: Ui.react('./client/record/AdministrativeRecordsPage'),
     layout: WORKSPACE_SHELL,
-    title: message('assessment/record/tab', 'Administrative records'),
+    title: text(m.record_tab),
     visibility: permissionOf('assessment.entry.record'),
   }),
   Ui.page({
@@ -314,7 +319,7 @@ const plugin = Plugin.define(
     path: '/assessment/batches/:batchId/items',
     component: Ui.react('./client/items/ItemSettingsPage'),
     layout: WORKSPACE_SHELL,
-    title: message('assessment/items/tab', 'Questions'),
+    title: text(m.items_tab),
     visibility: permissionOf('assessment.batch.manage'),
   }),
   // What the rail offers inside a batch, and the bar that says which batch it
@@ -330,7 +335,7 @@ const plugin = Plugin.define(
         id: 'assessment/batch-overview/rail',
         value: {
           id: 'assessment/batch-overview/rail',
-          label: message('assessment/navigation/overview', 'Overview'),
+          label: text(m.navigation_overview),
           target: { kind: 'page', pageId: 'assessment/batch' },
           icon: 'layout-dashboard',
           order: 0,
@@ -342,7 +347,7 @@ const plugin = Plugin.define(
         id: 'assessment/batch-my-entries/rail',
         value: {
           id: 'assessment/batch-my-entries/rail',
-          label: message('assessment/entry/tab', 'My entries'),
+          label: text(m.entry_tab),
           target: { kind: 'page', pageId: 'assessment/batch-my-entries' },
           icon: 'file-text',
           capability: 'assessment/personal',
@@ -356,7 +361,7 @@ const plugin = Plugin.define(
         id: 'assessment/batch-my-result/rail',
         value: {
           id: 'assessment/batch-my-result/rail',
-          label: message('assessment/result/tab', 'My standing'),
+          label: text(m.result_tab),
           target: { kind: 'page', pageId: 'assessment/batch-my-result' },
           icon: 'chart-column',
           capability: 'assessment/personal',
@@ -370,7 +375,7 @@ const plugin = Plugin.define(
         id: 'assessment/batch-reviews/rail',
         value: {
           id: 'assessment/batch-reviews/rail',
-          label: message('assessment/review/tab', 'Reviewing'),
+          label: text(m.review_tab),
           target: { kind: 'page', pageId: 'assessment/batch-reviews' },
           icon: 'inbox',
           capability: 'assessment/review',
@@ -384,7 +389,7 @@ const plugin = Plugin.define(
         id: 'assessment/batch-record/rail',
         value: {
           id: 'assessment/batch-record/rail',
-          label: message('assessment/record/tab', 'Administrative records'),
+          label: text(m.record_tab),
           target: { kind: 'page', pageId: 'assessment/batch-record' },
           icon: 'stamp',
           capability: 'assessment/record',
@@ -398,7 +403,7 @@ const plugin = Plugin.define(
         id: 'assessment/batch-items/rail',
         value: {
           id: 'assessment/batch-items/rail',
-          label: message('assessment/items/tab', 'Questions'),
+          label: text(m.items_tab),
           target: { kind: 'page', pageId: 'assessment/batch-items' },
           icon: 'list-checks',
           capability: 'assessment/manage',
@@ -412,7 +417,7 @@ const plugin = Plugin.define(
         id: 'assessment/batch-phases/rail',
         value: {
           id: 'assessment/batch-phases/rail',
-          label: message('assessment/navigation/phases', 'Stage plan'),
+          label: text(m.navigation_phases),
           target: { kind: 'page', pageId: 'assessment/batch-phases' },
           icon: 'calendar-clock',
           capability: 'assessment/manage',
@@ -426,7 +431,7 @@ const plugin = Plugin.define(
         id: 'assessment/batch-results/rail',
         value: {
           id: 'assessment/batch-results/rail',
-          label: message('assessment/participant-results/tab', 'Participant results'),
+          label: text(m.participantResults_tab),
           target: { kind: 'page', pageId: 'assessment/batch-results' },
           icon: 'users',
           capability: 'assessment/results',
@@ -440,7 +445,7 @@ const plugin = Plugin.define(
         id: 'assessment/batch-access/rail',
         value: {
           id: 'assessment/batch-access/rail',
-          label: message('assessment/navigation/access', 'Staffs'),
+          label: text(m.navigation_access),
           target: { kind: 'page', pageId: 'assessment/batch-access' },
           icon: 'shield-check',
           capability: 'assessment/manage',
@@ -454,7 +459,7 @@ const plugin = Plugin.define(
         id: 'assessment/batch-settings/rail',
         value: {
           id: 'assessment/batch-settings/rail',
-          label: message('assessment/navigation/settings', 'Settings'),
+          label: text(m.navigation_settings),
           target: { kind: 'page', pageId: 'assessment/batch-settings' },
           icon: 'settings',
           capability: 'assessment/manage',
@@ -510,7 +515,7 @@ const plugin = Plugin.define(
     path: '/organization/users/:userId/assessment/batches',
     component: Ui.react('./client/person/UserBatchesPage'),
     layout: USER_DETAIL_SHELL,
-    title: message('assessment/person/batches-tab', 'Rounds taken part in'),
+    title: text(m.person_batchesTab),
     visibility: permissionOf('assessment.batch.manage'),
   }),
   // the rounds the reader is in, under their own account: no permission
@@ -520,7 +525,7 @@ const plugin = Plugin.define(
     path: '/account/batches',
     component: Ui.react('./client/person/MyBatchesPage'),
     layout: ACCOUNT_SHELL,
-    title: message('assessment/person/batches-tab', 'Rounds taken part in'),
+    title: text(m.person_batchesTab),
     visibility: AUTHENTICATED,
   }),
   Ui.page({
@@ -528,7 +533,7 @@ const plugin = Plugin.define(
     path: '/organization/users/:userId/assessment/entries',
     component: Ui.react('./client/person/UserEntriesPage'),
     layout: USER_DETAIL_SHELL,
-    title: message('assessment/person/entries-tab', 'Claims filed'),
+    title: text(m.person_entriesTab),
     visibility: permissionOf('assessment.batch.manage'),
   }),
   Ui.surfaces({
@@ -538,7 +543,7 @@ const plugin = Plugin.define(
         id: 'assessment/user-detail',
         value: {
           id: 'assessment/user-detail',
-          label: message('assessment/nav-group/user-detail', 'Assessment'),
+          label: text(m.navGroup_userDetail),
           order: 20,
         },
         visibility: PUBLIC,
@@ -550,7 +555,7 @@ const plugin = Plugin.define(
         id: 'assessment/account',
         value: {
           id: 'assessment/account',
-          label: message('assessment/nav-group/user-detail', 'Assessment'),
+          label: text(m.navGroup_userDetail),
           order: 20,
         },
         visibility: PUBLIC,
@@ -560,7 +565,7 @@ const plugin = Plugin.define(
         id: 'assessment/account-batches',
         value: {
           id: 'assessment/account-batches',
-          label: message('assessment/person/batches-tab', 'Rounds taken part in'),
+          label: text(m.person_batchesTab),
           target: { kind: 'page', pageId: 'assessment/account-batches' },
           icon: 'graduation-cap',
           order: 10,
@@ -573,7 +578,7 @@ const plugin = Plugin.define(
         id: 'assessment/user-batches/rail',
         value: {
           id: 'assessment/user-batches/rail',
-          label: message('assessment/person/batches-tab', 'Rounds taken part in'),
+          label: text(m.person_batchesTab),
           target: { kind: 'page', pageId: 'assessment/user-batches' },
           icon: 'graduation-cap',
           order: 10,
@@ -586,7 +591,7 @@ const plugin = Plugin.define(
         id: 'assessment/user-entries/rail',
         value: {
           id: 'assessment/user-entries/rail',
-          label: message('assessment/person/entries-tab', 'Claims filed'),
+          label: text(m.person_entriesTab),
           target: { kind: 'page', pageId: 'assessment/user-entries' },
           icon: 'file-text',
           order: 20,
