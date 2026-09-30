@@ -24,16 +24,16 @@
 
 ## 1. 技术栈总览
 
-| 层       | 选型                                                                        | 备注                                               |
-| -------- | --------------------------------------------------------------------------- | -------------------------------------------------- |
-| 运行时   | Node 24 LTS,**原生 strip-types 直接跑 TS,无加载器**                         | 冷启到端口 2.0s → 1.3s                             |
-| 后端     | **Effect v4**(HttpApi、Layer、Scope、Fiber、Schema)                         | 唯一运行时,Cordis 与 oRPC 已完全离场               |
-| 数据     | PostgreSQL 18(ltree、daterange、uuidv7)、MikroORM 7 定义实体、Kysely 写查询 | 迁移为纯 SQL,可 `psql -f` 执行                     |
-| 前端     | React 19、React Router、TanStack Query、Vite、Mantine + StyleX、Lingui ICU  | 插件化页面组合                                     |
-| 类型     | TypeScript 7 原生 tsc + `@effect/tsgo`(Effect 诊断进 tsc)                   | floating Effect、layer 需求泄漏在 typecheck 即失败 |
-| 测试     | Vitest(node)、Vitest Browser Mode(Playwright Chromium / WebKit)             | 每轮建删约 150 个临时数据库                        |
-| 可观测性 | Effect OTLP、OpenTelemetry Collector、Grafana LGTM、腾讯云 APM / CLS / RUM  |                                                    |
-| 工程     | pnpm workspaces + catalog、GitHub Actions、AGPL-3.0-only                    | 约 40+ workspace 包,19 个插件                      |
+| 层       | 选型                                                                          | 备注                                               |
+| -------- | ----------------------------------------------------------------------------- | -------------------------------------------------- |
+| 运行时   | Node 24 LTS,**原生 strip-types 直接跑 TS,无加载器**                           | 冷启到端口 2.0s → 1.3s                             |
+| 后端     | **Effect v4**(HttpApi、Layer、Scope、Fiber、Schema)                           | 唯一运行时,Cordis 与 oRPC 已完全离场               |
+| 数据     | PostgreSQL 18(ltree、daterange、uuidv7)、MikroORM 7 定义实体、Kysely 写查询   | 迁移为纯 SQL,可 `psql -f` 执行                     |
+| 前端     | React 19、React Router、TanStack Query、Vite、Mantine + StyleX、Paraglide ICU | 插件化页面组合                                     |
+| 类型     | TypeScript 7 原生 tsc + `@effect/tsgo`(Effect 诊断进 tsc)                     | floating Effect、layer 需求泄漏在 typecheck 即失败 |
+| 测试     | Vitest(node)、Vitest Browser Mode(Playwright Chromium / WebKit)               | 每轮建删约 150 个临时数据库                        |
+| 可观测性 | Effect OTLP、OpenTelemetry Collector、Grafana LGTM、腾讯云 APM / CLS / RUM    |                                                    |
+| 工程     | pnpm workspaces + catalog、GitHub Actions、AGPL-3.0-only                      | 约 40+ workspace 包,19 个插件                      |
 
 ---
 
@@ -208,11 +208,11 @@
 - 组合根按装配顺序先全部 setup 再全部 start,teardown 逆序;单个插件失败隔离且只告警一次;ctx 只有 `release`,刻意「不是第二个 DI 容器」。
 - 替换了顶层副作用注册(没有时机、无法撤销、HMR 下重复注册)。
 
-### 6.5 i18n:后端传语义,前端定语言
+### 6.5 i18n:编译期消息函数,语言随文档固定(ADR 0011)
 
-- 服务端只传 `UiText`:`message(id, en)` 可译或 `literal(value)` 业务数据,**禁传已选定语言的字符串**(权限名、权限分组也是 UiText)。
-- message id 为 `<plugin>/<段>/<段>`,插件独占命名空间;catalog 是纯 TS 模块(raw ICU,运行时编译)。
-- `catalogs.test.ts` 从描述器发现 catalog,校验全语言完整、无孤儿键、命名空间不越界、ICU 可编译;组件内禁止裸中文。
+- 每个包自带 ICU MessageFormat 1 JSON(`messages/en-US.json`、`zh-CN.json`),Paraglide 在构建期编译成按消息拆分的函数;浏览器 `import * as m from '#messages'`(包私有导入,只拿得到自己的消息),页面只下载它真正说到的那几句。换框架前后做了 4241 条消息 × 两种语言的逐字差分,并对四个页面的首屏闭包做了对照测量(请求数、小 chunk 数、Brotli 字节全部下降)。
+- 一个文档从打开到关闭只有一种语言:boot script 按 cookie → 浏览器语言 → zh-CN 决定并标在 `<html data-locale>`,切换即整页重载;账户 `preferredLocale` 决定新设备的默认值与发给他人的邮件语言。
+- 服务端文字是 `@qualy/text` 的 `Text`(消息引用、租户术语、业务数据),在 handler 里按请求语言说成字符串再离开,wire 上没有待翻译的结构;租户术语随 manifest 的 document-context 下发,前端同步查表。
 - 错误翻译 `defineErrorTranslations`,按 `_tag` 判断而不是 `instanceof`(模块重复加载下依然成立),后端英文 message 只是协议兜底。
 - 界面文案原则写成规范:文案只服务「读者下一步做什么」,禁止在界面解释实现机制。
 

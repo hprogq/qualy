@@ -20949,9 +20949,37 @@ docs/adr/0011-i18n-paraglide.md(本轮完善,讨论原文 docs/i18n-chat-A/B/C.m
   org-tree 428.0 → 372.7;请求数 75/109/136/100 → 68/105/133/95;<2 KB 的 chunk 同步减少;无 chunk 环。消息池合并阈值
   0 时请求数反比对照组多 15–30 个,取 64 KiB。手机 Lighthouse 的 LCP 对照尚未跑(E2E 镜像构建撞上 Docker 磁盘满,清理
   31.5 GB 构建缓存后重建,时间给了功能验收)。
-- **阶段 3 未完成**:服务端 `@qualy/text`、UiText 从 wire 退役(届时删掉过渡用的 `wireMessages` 与 `formatText`)、术语库、
-  bootstrap 与邮件改走消息,正在 worktree 分支 `i18n-phase3` 上进行,未合入 main。
+- **阶段 3 与 4**:已完成并合入,见下一节。
 - 验收(main `dbc1fe82d`,本机):`pnpm typecheck`、`pnpm lint`、`pnpm lint:types`、`pnpm format:check` exit 0;`pnpm test`
   407 文件 3060 条通过(27 跳过);`pnpm test:browser` 122 文件 1584 条中 1 条失败——record-recognition 的点击超时(已知的
   满载不稳定用例,单独重跑通过);E2E(`6e6388a6c-dirty` arm64 镜像)6 文件 15 条全过;`check-chunks`、`check-csp-build`、
   `check-public-web`、`check-staged-web` 通过。生产闭包里 inlang/lix 条目 26 → 0(编译器移出 web-build)。
+
+## i18n 改为 Paraglide:阶段 3 至 4(2026-10-01 清晨)
+
+rc.21(阶段 0 至 2)05:15 上线,公网 release id 与 release.json 一致;其 CI 的 browser job 第一次因
+storage-local 的 upload-route-unavailable 用例失败(mock 未生效,上一轮同一代码通过,单独冷缓存重跑也通过),重跑失败的
+job 后通过。阶段 3、4 在 worktree 上完成,拆成三个功能提交与一个文档提交后合入 main。细节与取舍见 docs/adr/0011 的"阶段 3 的实施"。
+
+- **服务端文字**:新包 `@qualy/text`(`Text` = 消息引用 / 术语 / 业务数据;`./node` 的 `messageRefs` 按模块所在包取命名空间);
+  各插件的声明(导航、权限、审计动作、登录方式的表单、节点占用说明、计算器选项)从 `message(id, en)` 改为本包的消息引用;
+  handler 以 `requestLocale` 渲染成字符串,manifest 的标题与集合项、权限目录、审计动作名、登录方式与账户记录、术语视图、
+  节点占用都在离开服务端前说好;浏览器端删掉 `formatText` / `LocalizedText` / `wireMessages`,i18n-contract 删掉
+  `UiText` 一族。消息表在 server 启动(开发态先编译)、CLI runtime 档与 node 测试的 setupFiles 里安装;镜像多带
+  `.qualy/i18n/server`(约 6.7 MB,加载约 50 ms)。
+- **邮件**:45 条消息进 auth,`mail-copy.ts` 删除,版式留在 `server/mail.ts`。**bootstrap**:boot 文案全部来自
+  `@qualy/web-i18n` 的消息(新增 7 条,其余 14 行本来就是通用消息)。
+- **术语**:契约只剩 `TermRef`,定义与默认词移到 auth;settings 启动时按两种语言渲染并检查默认词;ui-registry 新增
+  document-context 扩展点,manifest 带 `context`(整页 4 KiB 预算),settings 以 `settings/terms` 提供当前语言的生效术语,
+  `useTerm` 同步查表,术语页保存后刷新 manifest。
+- **门禁**:plugin-isolation 新增"浏览器源码不 import `@qualy/text`";术语门禁改为源码不得出现默认词、消息里只有声明它的
+  那一条;document-context 的合并、重键与超预算各有测试;`@qualy/text` 自己的测试对真实产品消息渲染两种语言。
+- **阶段 4**:CLAUDE.md 的目录、零 codegen 与 i18n 边界按新模型重写;ADR 0011 状态改为阶段 0 至 4 已实施;
+  resume-highlights 同步。
+- **未做**:手机 Lighthouse 的 LCP 对照(其余验收项阶段 1 已满足);`qualyChunkGraph` 的结果检查没有进门禁。
+- 验收(`0bd771af1`,即三个功能提交之后,本机):`pnpm typecheck`、`pnpm lint`、`pnpm lint:types`、`pnpm format:check`
+  exit 0;`pnpm test` 409 文件 3071 条通过(28 跳过);`pnpm test:browser` 122 文件 1584 条全过;`pnpm build` 后
+  `check-staged-web`、`check-chunks`、`check-csp-build`、`check-public-web` 通过;scratch 库上 `qualy deploy` → seed →
+  `smoke-production.ts` 通过(权限镜像行为英文源语言);`pnpm release:build e2e --check --platform linux/arm64` 通过
+  (无库启动越过 lock 与 web release、在数据库处拒绝,镜像 144 MB);E2E 6 文件 15 条全过。中间两个提交各自单独
+  typecheck 通过并跑了邮件与 bootstrap 相关测试。

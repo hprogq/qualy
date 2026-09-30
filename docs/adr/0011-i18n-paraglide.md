@@ -1,6 +1,6 @@
 # ADR 0011:i18n 迁移到 Paraglide JS,语言随文档固定,展示文字在服务端渲染
 
-- 状态:**已接受**(2026-10-01)。阶段 0 至 2 已实施:阶段 1 的对照测量通过(见文末),切换到 Paraglide;实施中的修正见"已裁决的细节"与"实施中的修正"两节,与上文不同处以它们为准
+- 状态:**已接受**(2026-10-01)。阶段 0 至 4 已实施:阶段 1 的对照测量通过(见文末),切换到 Paraglide;实施中的修正见"已裁决的细节""实施中的修正""阶段 3 的实施"三节,与上文不同处以它们为准
 - 相关:STATUS.md 2026-09-30 晚 i18n PoC 记录与 2026-10-01 记录、docs/notes/web-performance.md、apps/web/vite.config.ts 中 codeSplitting 的注释、讨论原文 docs/i18n-chat-A.md / B.md / C.md
 
 > 给执行者(Claude Code):本文是一轮较长的架构讨论的结论。"被否决的方案"一节里的选项都已逐一权衡过,除非实测数据推翻其中的理由,不要重新开启讨论。
@@ -88,6 +88,20 @@
 - **codeSplitting**:删除 `locale-*` 分组;新增 `messages` 分组(entriesAware、`minShareCount: 2`、子组合并阈值 64 KiB、不带依赖)。消息模块只依赖同为叶子的 runtime 与 registry,合并不会形成 chunk 环;实测阈值 0 时每种页面组合都成为一个几百字节的 chunk,首屏请求数比对照组多 15–30 个。
 - **迁移中暴露并修正的真实缺陷**(旧的宽松类型放过了它们):`ASSESSMENT_FORMULA_VERSION_UNCHANGED` 的版本号一直渲染为空;`AUTH_BINDING_USER_FIELD_MISSING` 永远落在 other 分支;`GRANT_ESCALATION_REFUSED` 给了消息并不读取的参数;若干 id 在客户端描述与服务端 wire 上写了两份不同的英文(以用户实际看到的 wire 版本为准,共 9 条)。
 - **失去的东西**:i18n.ts 里给译者看的注释没有迁进 ICU JSON(JSON 不带注释);需要保留的写作理由应进 docs/。
+
+## 阶段 3 的实施(2026-10-01)
+
+- **`@qualy/text`**:根导出是纯值(`Text`、`text` / `term` / `literal`、`render`、`renderTexts`、`TextSchema`),`./node` 导出 `messageRefs` 与消息表加载。声明方写 `import type * as M from '#messages'` 与 `const m = messageRefs<typeof M>(import.meta.url)`,`text(m.key, inputs)` 持有的是消息的名字(命名空间取自模块所在包的 `package.json`,与编译器同一条派生规则)而不是函数:声明在 resolve 期就被导入,那时消息可能还没编译。inputs 的类型来自 facade,`string` 类参数也收 `Text`。
+- **消息表是进程级的,在启动时安装**:server 的 main 在装配校验之后、组合应用之前安装(开发态先编译,生产只加载镜像里的 `.qualy/i18n/server`,缺了拒绝启动);CLI 的 runtime 档同样安装;node 测试经 `setupFiles` 安装。服务端产物是按语言的两个模块(`locale-modules`),约 6.7 MB 源码,实测 `import` 约 50 ms,不影响冷启动的量级。开发态后端与 dev server 编译同一份输入:文件整份写入(临时文件改名)、编译工程目录按进程分开,谁后到谁发现无事可做。
+- **渲染在 handler**:handler 以 `requestLocale` 显式渲染。字段少的逐个 `render`;service 交回的结构里文字埋得深(登录方式的表单字段、账户记录、术语视图、manifest 的集合项)时,handler 对整个答复调用 `renderTexts`,它只走普通对象与数组,`Date` 等值原样保留,类型上把 `Text` 换成 `string`(`Rendered<T>`)。这仍是 handler 的显式一步,api-kit 不做自动渲染。集合 token 的解析类型默认就是 `Rendered<贡献类型>`。
+- **镜像**:`Permission.name` / `description` 按 en-US 渲染后写入(种子脚本与 rbac 启动时的刷新同一规则);权限列表的搜索改为匹配读者语言里的名称。
+- **wire 退役**:删除 `wireMessages`(插件 i18n 模块、构建聚合、组合根、测试 harness)、`formatText`、`LocalizedText`、`UiText` / `UiTextSchema` / `message` / `literal` / `plainText`(i18n-contract)与 api-kit 的 `uiText`;i18n-contract 不再依赖 effect。只剩 wire 条目的 i18n 模块(audit、ping)连同其 `Ui.i18n` 声明一并删除。`tools/tests/plugin-isolation.test.ts` 新增:浏览器源码(插件 `src/client`、`packages/web`、`apps/web/src`)不得 import `@qualy/text`。
+- **邮件**:45 条 `mail_*` 消息进 auth 的 `messages/`,`mail-copy.ts` 删除,版式留在 `server/mail.ts`;语言即 `SupportedLocale`,原先的 `'en'` 别名去掉。换绑链接在无人登录的页面上被打开时,告知旧地址的邮件改用产品默认 zh-CN(原来是英文)。
+- **bootstrap**:boot 文案全部是 `@qualy/web-i18n` 的消息,其中 14 行本来就是通用消息,只新增 7 条;两种语言在模块加载时按显式 locale 说出。`qualyBootFrame` 的 copy 改为延迟加载,在 `qualyMessages` 编译之后才读;维护页测试照旧对照这张表,表本身即生成结果。
+- **术语**:契约只剩 `TermRef` / `termRef`;`defineTerm` 的 `defaults` 记录改为 `default: Text`,定义移到声明方插件(auth 的 `src/terms.ts`,`@qualy/auth-contract/terms` 只导出引用)。settings 在建层时把每个术语的默认词按两种语言渲染并检查(非空、不超过 `maxLength`,否则拒绝启动),管理端 DTO 的 `defaults` 是这份渲染结果,`normalizeOverride` 与它比较。生效术语经 document-context 下发:ui-registry 新增 runtime 相扩展点 `DocumentContexts`,manifest 的 `context` 字段按提供方的键携带,整页 JSON 预算 4 KiB,超出或同键两家提供即为缺陷;settings 以 `settings/terms` 提供 `{ 术语 id: 当前语言的词 }`,未登录的访客得到产品默认词(不是租户数据)。`useTerm` 同步查表,缺表时显示术语 id(只会发生在没有 settings 的 harness);术语页保存后同时刷新 manifest。术语门禁改为:源码不得出现默认词,消息里只有声明它的那一条。
+- **SSE 与 WebSocket 不带语言**:现有的流(公式语言服务的诊断、SSE 事件)不携带 `Text`,第 8 条"语言放进连接 URL"暂无对象;出现第一个需要渲染的流时再加。
+- **隔离门禁只查直接 import**:集合 token 所在的共享模块(`@qualy/ui-contract` 的 surfaces、assessment 的 `surfaces.ts`)为了在注册时解码贡献而带着 `TextSchema`,浏览器经它们传递地拿到 `@qualy/text` 的根导出(纯值,几百字节);浏览器源码自己不得 import 它,也拿不到 `./node` 与消息表。
+- **未做**:第 13 条的 `qualyChunkGraph` 结果检查(首屏闭包请求数、小 chunk 数等)仍是阶段 1 的一次性测量,没有进门禁;手机 Lighthouse 的 LCP 对照未测(见下节,其余验收项已满足)。
 
 ## 阶段 1 实测(2026-10-01,本地生产构建,首屏静态闭包 = 入口 + 该页 layout + 页面 chunk + 登录驱动 + 对照组的 zh-CN catalog chunk,各自的静态 import 闭包;Brotli q11)
 
