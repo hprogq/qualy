@@ -29,7 +29,7 @@ import {
 } from './runtime-context.tsx'
 import { Effect } from 'effect'
 import type { ClientUnsupportedReason } from '@qualy/release-contract'
-import { useNavigate, useParams, useSearchParams } from 'react-router'
+import { matchPath, useNavigate, useParams, useSearchParams } from 'react-router'
 import type { UiCollectionToken, UiSlotToken } from '@qualy/ui-contract'
 import { Toaster } from '@qualy/ui/toast'
 import { isAuthenticationError, useI18n } from '@qualy/web-i18n'
@@ -355,24 +355,32 @@ function RuntimeLoader({
     retry: retryManifest,
     retryDelay,
   })
-  // the layouts this manifest names are fetched before the routes render,
-  // so the shell is drawn in the same commit the manifest arrives in rather
-  // than behind a fallback React holds for 300ms; the loading screen keeps
-  // standing meanwhile, the same element in the same place
+  // The layouts this manifest names, and the page the address is on, are
+  // fetched before the routes render, so the shell and the page are drawn in
+  // the same commit the manifest arrives in rather than one after the other,
+  // each behind a fallback React holds for 300ms - and the page's own
+  // requests, which start only once it is drawn, with them. The loading
+  // screen keeps standing meanwhile, the same element in the same place.
   const layouts = manifest.data?.layouts
+  const pages = manifest.data?.pages
   const [warm, setWarm] = useState<typeof layouts>(undefined)
   useEffect(() => {
     if (layouts === undefined) return
     let cancelled = false
-    void Promise.all(
-      layouts.map((layout) => registry.layouts[layout.contract]?.preload?.() ?? Promise.resolve()),
-    ).then(() => {
+    const here = pages?.find((page) =>
+      matchPath({ path: page.path, end: true }, window.location.pathname),
+    )
+    void Promise.all([
+      ...layouts.map((layout) => registry.layouts[layout.contract]?.preload?.()),
+      // a page whose code does not arrive says so where it stands, in its shell
+      here === undefined ? undefined : registry.pages[here.id]?.preload?.().catch(() => undefined),
+    ]).then(() => {
       if (!cancelled) setWarm(layouts)
     })
     return () => {
       cancelled = true
     }
-  }, [layouts, registry])
+  }, [layouts, pages, registry])
   // Only a page that never had a manifest is stopped by not getting one. It
   // is asked again in the background - a reader coming back to the tab may
   // have been signed out, or had their access changed, meanwhile - and one of
