@@ -208,6 +208,11 @@ for (const dir of ['tools', 'docs', 'apps/web', 'packages/testkit', '.git', 'leg
   expectOut(`no /app/${dir}`, `test -e /app/${dir} && echo present || echo absent`, 'absent')
 }
 expectOut('no .env baked in', 'test -e /app/.env && echo present || echo absent', 'absent')
+expectOut(
+  'no package manager beside node',
+  'for tool in npm npx corepack yarn; do command -v $tool; done; ls -d /usr/local/lib/node_modules/* /opt/yarn-* 2>/dev/null; true',
+  '',
+)
 
 // --- the assembly resolves from inside the image, against its own lock, with nothing mounted
 {

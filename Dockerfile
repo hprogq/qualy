@@ -76,6 +76,12 @@ LABEL org.opencontainers.image.title="qualy-server" \
       org.opencontainers.image.revision="${QUALY_REVISION}" \
       org.opencontainers.image.licenses="AGPL-3.0-only"
 COPY --from=runtime --chown=node:node /app /app
+# The package managers the base image ships (npm, npx, corepack, yarn) are
+# for building, which happened in the stage before; nothing here runs them,
+# and kept they are a second dependency tree the scanners report on.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /opt/yarn-v* \
+      /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+      /usr/local/bin/yarn /usr/local/bin/yarnpkg
 # The paths a deployment mounts (deploy/compose.yaml): the attachment store,
 # the web release store the deploy job installs each image's release into, and
 # the two sandbox socket directories. Created here and owned by the runtime

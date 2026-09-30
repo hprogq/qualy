@@ -23,6 +23,12 @@ LABEL org.opencontainers.image.title="qualy-sandbox-runtime" \
       org.opencontainers.image.revision="${QUALY_REVISION}" \
       org.opencontainers.image.licenses="AGPL-3.0-only"
 COPY --from=builder /app /app
+# The package managers the base image ships (npm, npx, corepack, yarn) are
+# for building, which happened in the stage before; nothing here runs them,
+# and kept they are a second dependency tree the scanners report on.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /opt/yarn-v* \
+      /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+      /usr/local/bin/yarn /usr/local/bin/yarnpkg
 # the socket directory, owned by the runtime user so a fresh named volume
 # mounted there (deploy/compose.yaml) takes that ownership on first mount
 RUN mkdir -p /run/qualy-sandbox/runtime && chown node:node /run/qualy-sandbox/runtime
