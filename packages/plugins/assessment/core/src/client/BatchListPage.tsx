@@ -751,9 +751,14 @@ export default function BatchListPage() {
   // the list is being asked again - a filter, a search, a page - and the
   // answer is slow enough to be worth saying so
   const refreshing = useHeld(batches.isFetching && !batches.isPending, REFRESH_NOTICE_AFTER)
-  // the card's question is open until the running rounds are known; its
-  // room is kept meanwhile, so the answer does not push the list down
-  const heroPending = runningQuery.isPending && !searching
+  // the card's question is open until the running rounds are known, and
+  // so is this reader's part in them, which the card draws too; its room
+  // is kept meanwhile, so neither answer pushes the list down
+  const heroPending = (runningQuery.isPending || agendas.isPending) && !searching
+  // the list's name tells it apart from the cards above it; a phone with no
+  // card above has nothing to tell it from, and the page's own title
+  // already says what it lists
+  const listLabelled = !narrow || heroPending || running.length > 0
 
   const searchBox = (
     <Input
@@ -836,73 +841,68 @@ export default function BatchListPage() {
           </div>
         </div>
 
-        <AsyncSection
-          pending={batches.isPending}
-          // a list already on the page stays through a later look that failed
-          error={batches.isError && batches.data === undefined ? failure.of(batches.error) : null}
-          framed
-          retrying={batches.isFetching}
-          loadingLabel={format(commonMessages.loading)}
-          retryLabel={format(commonMessages.retry)}
-          onRetry={() => void batches.refetch()}
-          skeleton={
-            <div {...stylex.props(styles.results)}>
-              {heroPending && <HeroSkeleton />}
-              <ListSkeleton />
-            </div>
-          }
-        >
-          <div {...stylex.props(styles.results)}>
-            {heroPending ? (
-              <HeroSkeleton />
-            ) : narrow ? (
-              // On a phone every running round is a card in a row that
-              // snaps, rather than one card with a way to step between
-              // them: a thumb already knows how to do this, and arrows
-              // would be two more targets on the busiest part of the page.
-              running.length > 0 && (
-                <div {...stylex.props(styles.list)}>
-                  <div {...stylex.props(styles.deck)}>
-                    {running.map((one) => (
-                      <div key={one.id} {...stylex.props(styles.deckCard)}>
-                        <BatchCard
-                          row={one}
-                          agenda={agendaOf(agendas.data?.items ?? [], one.id)}
-                          frame={{ kind: 'single' }}
-                        />
-                      </div>
+        {/* The card stands apart from the list's own loading: it answers
+            its own questions, and a card that came and went with the list
+            would move the list twice. */}
+        <div {...stylex.props(styles.results)}>
+          {heroPending ? (
+            <HeroSkeleton />
+          ) : narrow ? (
+            // On a phone every running round is a card in a row that
+            // snaps, rather than one card with a way to step between
+            // them: a thumb already knows how to do this, and arrows
+            // would be two more targets on the busiest part of the page.
+            running.length > 0 && (
+              <div {...stylex.props(styles.list)}>
+                <div {...stylex.props(styles.deck)}>
+                  {running.map((one) => (
+                    <div key={one.id} {...stylex.props(styles.deckCard)}>
+                      <BatchCard
+                        row={one}
+                        agenda={agendaOf(agendas.data?.items ?? [], one.id)}
+                        frame={{ kind: 'single' }}
+                      />
+                    </div>
+                  ))}
+                </div>
+                {/* one card is not a choice, so it gets no marks */}
+                {running.length > 1 && (
+                  <div aria-hidden {...stylex.props(styles.deckDots)}>
+                    {running.map((one, index) => (
+                      <span
+                        key={one.id}
+                        {...stylex.props(styles.deckDot, index === heroIndex && styles.deckDotHere)}
+                      />
                     ))}
                   </div>
-                  {/* one card is not a choice, so it gets no marks */}
-                  {running.length > 1 && (
-                    <div aria-hidden {...stylex.props(styles.deckDots)}>
-                      {running.map((one, index) => (
-                        <span
-                          key={one.id}
-                          {...stylex.props(
-                            styles.deckDot,
-                            index === heroIndex && styles.deckDotHere,
-                          )}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            ) : (
-              shown !== undefined && (
-                // keyed by the batch, so a change of batch is a new card
-                // arriving rather than the old one's words swapped in place
-                <BatchCard
-                  key={shown.id}
-                  row={shown}
-                  agenda={agenda}
-                  frame={frame}
-                  entered={hero.entered}
-                />
-              )
-            )}
+                )}
+              </div>
+            )
+          ) : (
+            shown !== undefined && (
+              // keyed by the batch, so a change of batch is a new card
+              // arriving rather than the old one's words swapped in place
+              <BatchCard
+                key={shown.id}
+                row={shown}
+                agenda={agenda}
+                frame={frame}
+                entered={hero.entered}
+              />
+            )
+          )}
 
+          <AsyncSection
+            pending={batches.isPending}
+            // a list already on the page stays through a later look that failed
+            error={batches.isError && batches.data === undefined ? failure.of(batches.error) : null}
+            framed
+            retrying={batches.isFetching}
+            loadingLabel={format(commonMessages.loading)}
+            retryLabel={format(commonMessages.retry)}
+            onRetry={() => void batches.refetch()}
+            skeleton={<ListSkeleton labelled={listLabelled} />}
+          >
             <section {...stylex.props(styles.list)}>
               {/* the list has a name of its own because the cards above it
                   are batches too: without it the pills read as filtering
@@ -910,10 +910,7 @@ export default function BatchListPage() {
                   that name, since it is the table being asked again */}
               <div {...stylex.props(styles.listHead)}>
                 <div {...stylex.props(styles.listHeadLine)}>
-                  {/* the list's name tells it apart from the cards above it;
-                      a phone with no card above has nothing to tell it from,
-                      and the page's own title already says what it lists */}
-                  {(!narrow || heroPending || running.length > 0) && (
+                  {listLabelled && (
                     <span {...stylex.props(styles.listLabel)}>{format(m.batchesAll)}</span>
                   )}
                   {refreshing && (
@@ -1155,8 +1152,8 @@ export default function BatchListPage() {
                 )}
               </div>
             </section>
-          </div>
-        </AsyncSection>
+          </AsyncSection>
+        </div>
 
         <NewBatchDialog
           open={creating}
