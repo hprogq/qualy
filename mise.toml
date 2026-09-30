@@ -5,7 +5,7 @@
 # there. Two places to write one version is two versions waiting to disagree,
 # and the one that loses is whichever the reader did not check.
 [tools]
-node = "24.20.0"
+node = "24.21.0"
 
 [settings]
 # read `packageManager` out of package.json, the way corepack did - which node

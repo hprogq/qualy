@@ -212,12 +212,19 @@ ui-registry(统一 API runtime 拉 manifest 契约;页面组件用 useApi)。这
 - **分诊(2026-09-30,用户授权代为裁决)**:
   - **修掉的**:npm、npx、corepack、yarn 随 node 基础镜像而来,只在构建阶段用,三个最终镜像都删掉(tar、ip-address、brace-expansion、
     undici 那几条都在 npm 自己的依赖树里);`check-release-image.ts` 断言 server 镜像里没有它们。
-  - **试过并退回的**:Node 24.21.0 的两个基础镜像修掉了 alpine OpenSSL 与 bookworm PCRE2(本地 Trivy 实扫),但以 24.21.0 作客户端时
-    release smoke 在「被拒的升级」之后第一次 fetch 必定失败(`UND_ERR_SOCKET` `other side closed`:在服务端早已关闭的 keep-alive 连接上发请求),
-    CI 两次、本机一次;同一批镜像换 24.20.0 客户端全部通过。孤立复现(空闲 8/22 s、不读完 body、`spawnSync` 阻塞事件循环)都没打出来,
-    触发条件还没找准。服务端对外请求也用同一个 fetch,所以不是只影响测试,留在 24.20.0,下一个 24.x 补丁再试(先跑 release smoke)。
-  - **有期限地接受**:沙箱 alpine 的 OpenSSL(CVE-2026-14456,QUIC 内存增长)与 server bookworm 的 PCRE2(三条)——node 用自带的
-    OpenSSL 与 V8 正则,系统库只给 apk / grep 这类工具用,沙箱还无网络;随下一次 Node 基础镜像升级清掉。
+  - **Node 24.21.0**:它的两个基础镜像修掉了 alpine OpenSSL 与 bookworm PCRE2(本地 Trivy 实扫)。第一次升级时 release smoke 在
+    「被拒的升级」之后第一次 fetch 必定失败(`UND_ERR_SOCKET` `other side closed`),先退回过一次(`a96ac2d41`)。复现与归因:
+    24.21.0 内置的 undici 7.29.1 把空闲 keep-alive 连接的校验从 `setTimeout(0)` 改到 `setImmediate`,改变了时序;上游早有
+    「fetch may try to use a closed connection」这个未关闭的竞态。smoke 的写法正好给它造了触发条件——请求之间用 `spawnSync`
+    跑部署脚本,事件循环被阻塞的几秒里服务端(`Keep-Alive: timeout=5`)关掉了池里的空闲连接,循环一恢复就在它上面发请求。
+    最小复现(对着本机部署:三次 fetch 读完 body → `spawnSync('sleep', ['7'])` → 再 fetch,20 轮):24.20.0 失败 0 次,24.21.0 失败 8 次;
+    **不读完 body 反而只失败 1/10**(没读完的连接不回池,下一次只好新建)。所以不是「只看状态码」本身出错,而是池里的空闲连接跨过了阻塞。
+    修法在 harness(`release-smoke.ts` 的 `probe`):每个请求用 `node:http` 的 `agent: false` 独占一条连接、读完 body,smoke 只检验部署,
+    不再经过任何连接池;同一复现改用它后 24.21.0 为 0/20,整套 smoke 在 24.21.0 客户端下通过,于是重新升级。
+    服务端:auth 的对外请求(CAS / GitHub / OIDC,`outbound.ts`)每次新建 undici `Agent`、读完即关,不经全局连接池;仍用全局 `fetch`
+    的只有 Turnstile 校验、两处远程导入这类,正常运行时事件循环不会阻塞到跨过对端空闲超时,不改,也不加通用重试。
+  - **原先有期限地接受、现已随升级修掉**:沙箱 alpine 的 OpenSSL(CVE-2026-14456,QUIC 内存增长)与 server bookworm 的 PCRE2(三条)——node 用自带的
+    OpenSSL 与 V8 正则,系统库只给 apk / grep 这类工具用,沙箱还无网络;随 Node 24.21.0 的基础镜像清掉。
   - **dismiss(won't fix,理由写在告警上)**:authoring 沙箱里 TypeScript 7 原生 tsc 编进去的 Go 标准库十条(tsc 在无网络沙箱里当编译器跑,
     net/http、tls、xml、template、asn1 都不经手外部输入,等 TypeScript 用新 Go 重新构建);server 的 fast-xml-parser 三条(见上一条,
     服务端从不加载 cos-js-sdk-v5,浏览器里用的是它 webpack 内联的那份,1.10.1 已是最新)。
