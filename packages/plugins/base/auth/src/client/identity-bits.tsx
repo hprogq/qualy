@@ -3,6 +3,7 @@ import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
 import { MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
 import { useTheme, type ThemeChoice } from '@qualy/web-runtime'
 import { localeNames, useI18n, useLocale } from '@qualy/web-i18n'
+import { useChooseLocale } from './locale-choice.ts'
 import { supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
 import { authMessages as m } from './i18n.ts'
 
@@ -42,7 +43,8 @@ export function ThemeChoicePicker() {
  * language, which is the one label its reader is sure to know.
  */
 export function LocaleChoicePicker() {
-  const [locale, setLocale] = useLocale()
+  const locale = useLocale()
+  const setLocale = useChooseLocale()
   const { format } = useI18n()
   return (
     <Select value={locale} onValueChange={(next) => setLocale(next as SupportedLocale)}>

@@ -227,7 +227,6 @@ describe('a page with unsaved changes, under the browser’s own history', () =>
   let origin = ''
   beforeEach(() => {
     origin = `${location.pathname}${location.search}${location.hash}`
-    localStorage.setItem('qualy.locale', 'zh-CN')
     document.documentElement.dataset['locale'] = 'zh-CN'
     window.history.replaceState(null, '', '/start')
   })

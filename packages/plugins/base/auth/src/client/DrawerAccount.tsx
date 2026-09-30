@@ -1,4 +1,5 @@
 import { localeNames, useI18n, useLocale } from '@qualy/web-i18n'
+import { useChooseLocale } from './locale-choice.ts'
 import { supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -33,7 +34,8 @@ const styles = stylex.create({
 
 export default function DrawerAccount() {
   const { format } = useI18n()
-  const [locale, setLocale] = useLocale()
+  const locale = useLocale()
+  const setLocale = useChooseLocale()
   return (
     <div data-testid="drawer-account" {...stylex.props(styles.row)}>
       <span {...stylex.props(styles.label)}>{format(m.appearance)}</span>

@@ -17,10 +17,23 @@
     <script>
       ;(function () {
         var choice = null
-        var stored = null
+        var locales = ['zh-CN', 'en-US']
+        var cookie = /(?:^|;\s*)qualy\.locale=([^;]*)/.exec(document.cookie)
+        var stored = cookie && locales.indexOf(cookie[1]) >= 0 ? cookie[1] : null
         try {
           choice = localStorage.getItem('qualy.theme')
-          stored = localStorage.getItem('qualy.locale')
+          var kept = localStorage.getItem('qualy.locale')
+          if (kept !== null) {
+            localStorage.removeItem('qualy.locale')
+            if (stored === null && locales.indexOf(kept) >= 0) {
+              stored = kept
+              document.cookie =
+                'qualy.locale=' +
+                kept +
+                '; path=/; max-age=34560000; samesite=lax' +
+                (location.protocol === 'https:' ? '; secure' : '')
+            }
+          }
         } catch (error) {}
         var dark =
           choice === 'dark' ||
@@ -32,8 +45,7 @@
         var ground = dark ? 'oklch(0.17 0.006 80)' : 'oklch(0.99 0.001 80)'
         var chrome = document.querySelectorAll('meta[name="theme-color"]')
         for (var i = 0; i < chrome.length; i++) chrome[i].setAttribute('content', ground)
-        var locales = ['zh-CN', 'en-US']
-        var locale = locales.indexOf(stored) < 0 ? null : stored
+        var locale = stored
         var languages = navigator.languages || [navigator.language]
         for (var j = 0; j < languages.length && locale === null; j++) {
           var language = String(languages[j] || '')

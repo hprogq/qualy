@@ -6,6 +6,7 @@ import { useTheme, type ThemeChoice } from '@qualy/web-runtime'
 import { Mark } from '@qualy/brand/mark'
 import { Wordmark } from '@qualy/brand/wordmark'
 import { localeNames, useI18n, useLocale } from '@qualy/web-i18n'
+import { useChooseLocale } from '../locale-choice.ts'
 import { supportedLocales } from '@qualy/i18n-contract'
 import {
   DropdownMenu,
@@ -147,7 +148,8 @@ const styles = stylex.create({
 
 /** the language, chosen from the corner, each named in its own language */
 function LanguageMenu() {
-  const [locale, setLocale] = useLocale()
+  const locale = useLocale()
+  const setLocale = useChooseLocale()
   const { format } = useI18n()
   return (
     <DropdownMenu>

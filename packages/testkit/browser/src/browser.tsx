@@ -167,7 +167,6 @@ export function renderScreen({
   // product persists must not leak from one test into the next (styled
   // layouts genuinely hide things in a remembered mode)
   localStorage.clear()
-  localStorage.setItem('qualy.locale', locale)
   for (const [key, value] of Object.entries(storage)) localStorage.setItem(key, value)
   // the shell's boot script marks the root with the locale it resolved and
   // the runtime takes the mark; here the harness stands in for the script

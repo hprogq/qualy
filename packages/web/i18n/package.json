@@ -10,7 +10,8 @@
     "./format": "./src/format.ts",
     "./bootstrap": "./src/bootstrap.ts",
     "./messages": "./src/messages.ts",
-    "./picker-words": "./src/picker-words.ts"
+    "./picker-words": "./src/picker-words.ts",
+    "./locale-channel": "./src/locale-channel.ts"
   },
   "peerDependencies": {
     "react": "catalog:"

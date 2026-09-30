@@ -62,7 +62,7 @@ export function NewBatchDialog({
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
-  const [locale] = useLocale()
+  const locale = useLocale()
 
   // asked for when the form is opened, not when the page behind it loads: a
   // reader with no authority to start a round would otherwise be refused twice

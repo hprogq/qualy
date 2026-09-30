@@ -1,8 +1,9 @@
-import { useSyncExternalStore, type ReactNode } from 'react'
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import type { SupportedLocale } from '@qualy/i18n-contract'
 import { defaultLocale } from '@qualy/i18n-contract'
 import type { BootstrapMessages } from '@qualy/web-i18n/bootstrap'
+import { onLocaleChosenElsewhere } from '@qualy/web-i18n/locale-channel'
 import type { ReleaseCoordinator, ReleaseState } from '@qualy/web-runtime/release'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -202,8 +203,45 @@ export function ReleaseRecoveryGate({
           copy={copyFor(table)}
           releaseId={state.latest.releaseId}
         />
-      ) : null}
+      ) : (
+        <LocaleNotice copy={copyFor(table)} />
+      )}
     </>
+  )
+}
+
+/**
+ * Another page of this browser chose a language. This one keeps the language
+ * it opened in - a page has one while it is open - and says a reload shows
+ * the new one; it is never reloaded for the reader.
+ */
+function LocaleNotice({ copy }: { copy: BootstrapMessages }) {
+  const [chosen, setChosen] = useState<SupportedLocale | undefined>(undefined)
+  useEffect(
+    () =>
+      onLocaleChosenElsewhere((locale) =>
+        setChosen(locale === document.documentElement.dataset['locale'] ? undefined : locale),
+      ),
+    [],
+  )
+  if (chosen === undefined) return null
+  return (
+    <div role="status" data-locale-changed={chosen} {...stylex.props(styles.notice)}>
+      <p {...stylex.props(styles.noticeTitle)}>{copy.localeChangedTitle}</p>
+      <p {...stylex.props(styles.noticeHint)}>{copy.localeChangedHint}</p>
+      <div {...stylex.props(styles.actions)}>
+        <button type="button" {...stylex.props(styles.button)} onClick={() => setChosen(undefined)}>
+          {copy.later}
+        </button>
+        <button
+          type="button"
+          {...stylex.props(styles.button, styles.primary)}
+          onClick={() => window.location.reload()}
+        >
+          {copy.reloadNow}
+        </button>
+      </div>
+    </div>
   )
 }
 

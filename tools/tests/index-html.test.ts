@@ -4,6 +4,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { defaultLocale, supportedLocales } from '@qualy/i18n-contract'
+import { QUALY_LOCALE_COOKIE } from '@qualy/api-kit'
 import {
   BOOT_COPY_ID,
   BOOT_PLACEHOLDER,
@@ -81,9 +82,13 @@ describe('the shell source', () => {
 
   it('resolves the locale the way the runtime does, once, and marks the root with it', () => {
     const script = scriptOf(html)!
-    const key = /const STORAGE_KEY = '([^']+)'/.exec(i18n)?.[1]
-    expect(key).toBeDefined()
-    expect(script).toContain(`localStorage.getItem('${key}')`)
+    // a choice is the cookie the server writes, read before anything else
+    expect(script).toContain(
+      `${QUALY_LOCALE_COOKIE.replace('.', '\\.')}=([^;]*)/.exec(document.cookie)`,
+    )
+    expect(i18n).toContain(
+      `${QUALY_LOCALE_COOKIE.replace('.', '\\.')}=([^;]*)/.exec(document.cookie)`,
+    )
     // the same locales, the same default, the same chain: a stored
     // preference, then each of the browser's languages exactly and then by
     // its language subtag, then the deployment's default

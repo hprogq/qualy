@@ -17,10 +17,11 @@
     <script>
       ;(function () {
         var choice = null
-        var stored = null
+        var locales = ['zh-CN', 'en-US']
+        var cookie = /(?:^|;\s*)qualy\.locale=([^;]*)/.exec(document.cookie)
+        var stored = cookie && locales.indexOf(cookie[1]) >= 0 ? cookie[1] : null
         try {
           choice = localStorage.getItem('qualy.theme')
-          stored = localStorage.getItem('qualy.locale')
         } catch (error) {}
         var dark =
           choice === 'dark' ||
@@ -28,8 +29,7 @@
         var root = document.documentElement
         root.setAttribute('data-mode', dark ? 'dark' : 'light')
         root.style.colorScheme = dark ? 'dark' : 'light'
-        var locales = ['zh-CN', 'en-US']
-        var locale = locales.indexOf(stored) < 0 ? null : stored
+        var locale = stored
         var languages = navigator.languages || [navigator.language]
         for (var j = 0; j < languages.length && locale === null; j++) {
           var language = String(languages[j] || '')

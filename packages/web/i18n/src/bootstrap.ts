@@ -50,6 +50,9 @@ export interface BootstrapMessages {
   readonly clientProtocolHint: string
   /** the one way out of any of the three */
   readonly reloadPage: string
+  /** another page of this browser chose a language; this one keeps its own until reloaded */
+  readonly localeChangedTitle: string
+  readonly localeChangedHint: string
   /** the edge's own page while no release answers (deploy/demo/maintenance.html) */
   readonly maintenanceTitle: string
   readonly maintenanceHint: string
@@ -74,6 +77,8 @@ export const bootstrapMessages = {
     clientProtocolTitle: '需要刷新页面',
     clientProtocolHint: '页面需要刷新后才能继续使用。',
     reloadPage: '刷新页面',
+    localeChangedTitle: '界面语言已更改',
+    localeChangedHint: '刷新后本页将以新语言显示',
     maintenanceTitle: 'Qualy 正在维护',
     maintenanceHint: '稍后恢复，届时页面会自动刷新',
   },
@@ -95,6 +100,8 @@ export const bootstrapMessages = {
     clientProtocolTitle: 'Reload needed',
     clientProtocolHint: 'Reload the page to continue.',
     reloadPage: 'Reload the page',
+    localeChangedTitle: 'The language has changed',
+    localeChangedHint: 'Reload to see this page in it',
     maintenanceTitle: 'Qualy is down for maintenance',
     maintenanceHint: 'It will be back shortly, and the page will reload on its own.',
   },

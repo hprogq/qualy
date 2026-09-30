@@ -6,7 +6,7 @@ import {
   type HttpClientResponse,
 } from 'effect/http'
 import { HttpApiClient, type HttpApi, type HttpApiGroup } from 'effect/http-api'
-import { QUALY_ACTIVITY_HEADER } from '@qualy/api-kit'
+import { QUALY_ACTIVITY_HEADER, QUALY_LOCALE_HEADER } from '@qualy/api-kit'
 import { apiRouteTemplates } from '@qualy/api-kit/local'
 import { registerApiRoutes } from '@qualy/browser-observability/api-routes'
 import {
@@ -129,8 +129,29 @@ const withIdentity = (options: TransportOptions) => {
           }),
         )
   return <E, R>(client: HttpClient.HttpClient.With<E, R>): HttpClient.HttpClient.With<E, R> =>
-    judged(named(markedActivity(withoutTracePropagation(throughCurrentFetch(client)))))
+    judged(
+      named(markedLocale(markedActivity(withoutTracePropagation(throughCurrentFetch(client))))),
+    )
 }
+
+/**
+ * The language the page is written in, on every request: what the server
+ * writes an answer this page shows in. The page's own mark, not the
+ * browser's settings - a page keeps one language from the moment it opens.
+ */
+const markedLocale = HttpClient.mapRequest((request) => {
+  // read through globalThis: this module is also typechecked, and run, where
+  // there is no document
+  const root = (
+    globalThis as {
+      document?: { documentElement: { dataset: Record<string, string | undefined> } }
+    }
+  ).document?.documentElement
+  const locale = root?.dataset['locale']
+  return locale === undefined
+    ? request
+    : HttpClientRequest.setHeader(request, QUALY_LOCALE_HEADER, locale)
+})
 
 /**
  * A request the reader made just now, said so.

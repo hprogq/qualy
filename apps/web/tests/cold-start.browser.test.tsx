@@ -49,6 +49,7 @@ const firstFrame = async () => {
     // the boot script marks the root; the next test starts unmarked
     document.documentElement.lang = lang
     delete document.documentElement.dataset['locale']
+    document.cookie = 'qualy.locale=; path=/; max-age=0'
     localStorage.removeItem('qualy.locale')
   }
 }
@@ -364,18 +365,26 @@ describe('the cold start', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const restore = await firstFrame()
     try {
-      // a stored preference: applied by the script, taken by the runtime
-      localStorage.setItem('qualy.locale', 'en-US')
+      // a choice kept in this browser: applied by the script, taken by the runtime
+      document.cookie = 'qualy.locale=en-US; path=/'
       await runBootScript()
       expect(document.documentElement.dataset['locale']).toBe('en-US')
       expect(document.documentElement.lang).toBe('en-US')
       expect(resolveInitialLocale()).toBe('en-US')
-      // the mark is the answer, not the key: the runtime does not decide again
-      localStorage.setItem('qualy.locale', 'zh-CN')
+      // the mark is the answer, not the cookie: the runtime does not decide again
+      document.cookie = 'qualy.locale=zh-CN; path=/'
       expect(resolveInitialLocale()).toBe('en-US')
-      // nothing stored: the browser's own languages, through the chain the
+      // a choice an earlier release kept in storage becomes the cookie, once
+      document.cookie = 'qualy.locale=; path=/; max-age=0'
+      localStorage.setItem('qualy.locale', 'en-US')
+      delete document.documentElement.dataset['locale']
+      await runBootScript()
+      expect(document.documentElement.dataset['locale']).toBe('en-US')
+      expect(document.cookie).toContain('qualy.locale=en-US')
+      expect(localStorage.getItem('qualy.locale')).toBeNull()
+      // nothing chosen: the browser's own languages, through the chain the
       // runtime would have walked
-      localStorage.removeItem('qualy.locale')
+      document.cookie = 'qualy.locale=; path=/; max-age=0'
       delete document.documentElement.dataset['locale']
       await runBootScript()
       expect(document.documentElement.dataset['locale']).toBe(

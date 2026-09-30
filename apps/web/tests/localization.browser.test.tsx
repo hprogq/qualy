@@ -1,8 +1,7 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
 import { pageComponents } from 'virtual:qualy/plugins'
-import { useI18n } from '@qualy/web-i18n'
 import { LoadFailure, useLoadFailure } from '@qualy/web-runtime'
 import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
@@ -352,16 +351,6 @@ describe('one claim in one word', () => {
   })
 })
 
-// what every language menu calls, reduced to one press
-function LanguageSwitch() {
-  const { locale, setLocale } = useI18n()
-  return (
-    <button type="button" data-locale={locale} onClick={() => setLocale('en-US')}>
-      English
-    </button>
-  )
-}
-
 describe('a thing that is not there', () => {
   // The generic sentence stands under whatever noun its owner names in the
   // heading - a batch, a record, a person - so it names nothing itself: "it"
@@ -388,27 +377,6 @@ describe('a thing that is not there', () => {
       await expect.element(page.getByRole('heading', { name: '找不到该用户' })).toBeVisible()
       await expect.element(page.getByText(sentence, { exact: true })).toBeVisible()
       await unmount()
-    }
-  })
-})
-
-describe('choosing a language', () => {
-  it('changes the language where the browser keeps nothing for the page', async () => {
-    await renderScreen({
-      client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
-      children: <LanguageSwitch />,
-    })
-    const choice = page.getByRole('button', { name: 'English' })
-    await expect.element(choice).toHaveAttribute('data-locale', 'zh-CN')
-    // site data blocked: every write is refused the way the browser refuses it
-    const refused = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-      throw new DOMException('The operation is insecure.', 'SecurityError')
-    })
-    try {
-      await choice.click()
-      await expect.element(choice).toHaveAttribute('data-locale', 'en-US')
-    } finally {
-      refused.mockRestore()
     }
   })
 })

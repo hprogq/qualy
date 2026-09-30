@@ -76,10 +76,13 @@ describe('the maintenance page', () => {
   })
 
   it('resolves the locale and the theme as the shell does', () => {
-    for (const key of ['qualy.theme', 'qualy.locale']) {
-      expect(page).toContain(`localStorage.getItem('${key}')`)
-      expect(shell).toContain(`localStorage.getItem('${key}')`)
-    }
+    expect(page).toContain(`localStorage.getItem('qualy.theme')`)
+    expect(shell).toContain(`localStorage.getItem('qualy.theme')`)
+    // the language a person chose is the cookie both pages read first
+    const chosen = (source: string) =>
+      /var cookie = [^\n]*\n\s*var stored = [^\n]*/.exec(source)?.[0]
+    expect(chosen(page)).toBeDefined()
+    expect(chosen(page)).toBe(chosen(shell))
     const listed = /var locales = (\[[^\]]*\])/.exec(page)?.[1]
     expect(JSON.parse(listed!.replaceAll("'", '"'))).toEqual([...supportedLocales])
     expect(page).toContain(`if (locale === null) locale = '${defaultLocale}'`)

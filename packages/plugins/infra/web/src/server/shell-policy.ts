@@ -39,7 +39,7 @@ import {
 //   policy is enforced.
 
 /** sha256, base64, of the bytes between the shell's `<script>` and `</script>` */
-export const INLINE_BOOT_SCRIPT_HASH = 'sha256-JnTCOGx0BPQBORMqQEx+gNv9NImgWDClzic2PslYA6I='
+export const INLINE_BOOT_SCRIPT_HASH = 'sha256-g6ntCYmA/0OMvNUOnkJMeRzgeQigdLrdfD8GWWxD6tA='
 
 /** the report endpoint, in the shell's own namespace outside the api mount */
 export const REPORT_PATH = '/csp-reports'

@@ -14,7 +14,6 @@ import {
 import {
   createContext,
   use,
-  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -33,6 +32,7 @@ export {
   isBackendUnavailable,
 } from './format.ts'
 export type { MessageFormatter } from './format.ts'
+export { onLocaleChosenElsewhere, reopenInLocale } from './locale-channel.ts'
 
 // the web localization runtime: one lingui core instance holding raw icu
 // catalogs (compiled on demand, so catalogs stay plain typescript modules
@@ -40,11 +40,8 @@ export type { MessageFormatter } from './format.ts'
 // Plugins own their namespace and ship their own catalogs; this runtime only
 // assembles, activates and falls back.
 
-const STORAGE_KEY = 'qualy.locale'
-
 export interface I18nRuntime extends MessageFormatter {
   locale: SupportedLocale
-  setLocale(locale: SupportedLocale): void
   formatText(text: UiText): string
   formatError(error: unknown, registry?: ErrorMessageMap): string
 }
@@ -57,9 +54,9 @@ export function useI18n(): I18nRuntime {
   return runtime
 }
 
-export function useLocale(): [SupportedLocale, (locale: SupportedLocale) => void] {
-  const { locale, setLocale } = useI18n()
-  return [locale, setLocale]
+/** the language this page is written in, from the moment it opened until it closes */
+export function useLocale(): SupportedLocale {
+  return useI18n().locale
 }
 
 /**
@@ -125,13 +122,11 @@ export function resolveInitialLocale(): SupportedLocale {
   })
 }
 
-/** what an earlier visit chose, where this browser lets a page keep anything */
+/** what somebody chose in this browser, kept as the cookie every page opens by */
 const storedLocale = (): string | null => {
-  try {
-    return typeof localStorage === 'undefined' ? null : localStorage.getItem(STORAGE_KEY)
-  } catch {
-    return null
-  }
+  if (typeof document === 'undefined') return null
+  const found = /(?:^|;\s*)qualy\.locale=([^;]*)/.exec(document.cookie)
+  return found?.[1] ?? null
 }
 
 // the runtime's own catalogs (common/*), shipped with this package
@@ -181,7 +176,7 @@ export function I18nProvider({
     instance.setMessagesCompiler(compileMessage)
     return instance
   }, [])
-  const [locale, setLocaleState] = useState<SupportedLocale>(resolveInitialLocale)
+  const [locale] = useState<SupportedLocale>(resolveInitialLocale)
   const [activated, setActivated] = useState<SupportedLocale | undefined>(undefined)
 
   useEffect(() => {
@@ -209,15 +204,6 @@ export function I18nProvider({
     }
   }, [i18n, locale, catalogs])
 
-  const setLocale = useCallback((next: SupportedLocale) => {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, next)
-    } catch {
-      // the choice still applies to this page; it will not be remembered
-    }
-    setLocaleState(next)
-  }, [])
-
   const runtime = useMemo<I18nRuntime>(() => {
     const format = <Descriptor extends MessageDescriptor>(
       descriptor: Descriptor,
@@ -230,7 +216,6 @@ export function I18nProvider({
       })
     return {
       locale,
-      setLocale,
       format,
       // literals are business data (an org name, a tenant name): shown as is
       formatText: (text: UiText) =>
@@ -247,7 +232,7 @@ export function I18nProvider({
     // `activated` is not read but ties the memo to the active catalog, so
     // every consumer re-renders after a locale switch
     // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately one more than is read
-  }, [i18n, locale, setLocale, errorMessages, activated])
+  }, [i18n, locale, errorMessages, activated])
 
   if (activated === undefined) return <>{fallback}</>
   return <I18nContext value={runtime}>{children}</I18nContext>
@@ -261,24 +246,4 @@ export function LocalizedText({ value }: { value: UiText }) {
 export const localeNames: Record<SupportedLocale, string> = {
   'zh-CN': '简体中文',
   'en-US': 'English',
-}
-
-// shell chrome owned by the runtime: switching activates the catalogs and
-// re-renders, without refetching the manifest or any business data
-export function LocaleSwitcher({ className }: { className?: string }) {
-  const [locale, setLocale] = useLocale()
-  return (
-    <select
-      className={className}
-      aria-label="Language"
-      value={locale}
-      onChange={(event) => setLocale(event.target.value as SupportedLocale)}
-    >
-      {supportedLocales.map((candidate) => (
-        <option key={candidate} value={candidate}>
-          {localeNames[candidate]}
-        </option>
-      ))}
-    </select>
-  )
 }
